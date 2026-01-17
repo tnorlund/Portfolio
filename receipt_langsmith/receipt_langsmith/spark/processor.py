@@ -59,6 +59,9 @@ class LangSmithSparkProcessor:
         Requires spark.sql.legacy.parquet.nanosAsLong=true for nanosecond
         timestamp handling.
 
+        Handles flexible schema - adds missing columns with nulls when they
+        don't exist in the source parquet (e.g., trace_id, token columns).
+
         Args:
             path: S3 URI or local path to Parquet files.
 
@@ -74,10 +77,49 @@ class LangSmithSparkProcessor:
             else path
         )
 
-        # Columns we need for analytics
+        # Read all columns first, then select/add needed ones
+        df = self.spark.read.parquet(spark_path)
+        available_columns = set(df.columns)
+
+        logger.info("Available columns in parquet: %s", sorted(available_columns))
+
+        # If timestamps are read as Long (nanoseconds), convert to timestamp
+        from pyspark.sql.types import LongType
+
+        if "start_time" in available_columns and isinstance(
+            df.schema["start_time"].dataType, LongType
+        ):
+            # Nanoseconds to timestamp conversion
+            df = df.withColumn(
+                "start_time",
+                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
+            ).withColumn(
+                "end_time",
+                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
+            )
+
+        # Add missing columns with appropriate defaults
+        # trace_id: use 'id' if trace_id doesn't exist (for root traces)
+        if "trace_id" not in available_columns:
+            df = df.withColumn("trace_id", F.col("id"))
+
+        # Token columns: add as null if missing
+        if "total_tokens" not in available_columns:
+            df = df.withColumn("total_tokens", F.lit(None).cast("long"))
+        if "prompt_tokens" not in available_columns:
+            df = df.withColumn("prompt_tokens", F.lit(None).cast("long"))
+        if "completion_tokens" not in available_columns:
+            df = df.withColumn("completion_tokens", F.lit(None).cast("long"))
+
+        # parent_run_id: add as null if missing (needed for hierarchy validation)
+        if "parent_run_id" not in available_columns:
+            df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
+
+        # Select the columns we need for analytics
         needed_columns = [
             "id",
             "trace_id",
+            "parent_run_id",
             "name",
             "run_type",
             "status",
@@ -90,23 +132,7 @@ class LangSmithSparkProcessor:
             "completion_tokens",
         ]
 
-        # Read with native Spark - requires spark.sql.legacy.parquet.nanosAsLong=true
-        # to handle nanosecond timestamps (converts to Long, then we cast to timestamp)
-        df = self.spark.read.parquet(spark_path).select(*needed_columns)
-
-        # If timestamps are read as Long (nanoseconds), convert to timestamp
-        # Check if start_time is LongType and convert if needed
-        from pyspark.sql.types import LongType
-
-        if isinstance(df.schema["start_time"].dataType, LongType):
-            # Nanoseconds to timestamp conversion
-            df = df.withColumn(
-                "start_time",
-                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-            ).withColumn(
-                "end_time",
-                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-            )
+        df = df.select(*needed_columns)
 
         logger.info(
             "Read Parquet with %d partitions", df.rdd.getNumPartitions()
@@ -158,6 +184,93 @@ class LangSmithSparkProcessor:
                 * 1000,
             )
         )
+
+    def compute_job_analytics(self, df: DataFrame) -> DataFrame:
+        """Compute per-job analytics for both Phase 1 and Phase 2.
+
+        Identifies two job types:
+        - phase1_patterns: PatternComputation traces (per-merchant pattern learning)
+        - phase2_evaluation: ReceiptEvaluation traces (per-receipt evaluation)
+
+        Aggregates metrics for each job type:
+        - Job count
+        - Duration statistics (avg, min, max)
+        - Token usage
+
+        Args:
+            df: DataFrame with parsed metadata.
+
+        Returns:
+            DataFrame with job-level analytics.
+        """
+        # Filter to root job traces
+        jobs = df.filter(
+            (F.col("name") == "PatternComputation")
+            | (F.col("name") == "ReceiptEvaluation")
+        )
+
+        # Add job_type column
+        jobs_with_type = jobs.withColumn(
+            "job_type",
+            F.when(F.col("name") == "PatternComputation", "phase1_patterns").when(
+                F.col("name") == "ReceiptEvaluation", "phase2_evaluation"
+            ),
+        )
+
+        # Aggregate by job type
+        result = jobs_with_type.groupBy("job_type").agg(
+            F.count("*").alias("job_count"),
+            F.avg("duration_ms").alias("avg_duration_ms"),
+            F.min("duration_ms").alias("min_duration_ms"),
+            F.max("duration_ms").alias("max_duration_ms"),
+            F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
+            F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
+            F.sum("total_tokens").alias("total_tokens"),
+        )
+
+        logger.info("Computed job analytics")
+        return result
+
+    def compute_job_analytics_by_merchant(self, df: DataFrame) -> DataFrame:
+        """Compute per-job analytics grouped by merchant.
+
+        Provides merchant-level breakdown for both job types.
+
+        Args:
+            df: DataFrame with parsed metadata.
+
+        Returns:
+            DataFrame with job analytics by merchant.
+        """
+        # Filter to root job traces
+        jobs = df.filter(
+            (F.col("name") == "PatternComputation")
+            | (F.col("name") == "ReceiptEvaluation")
+        )
+
+        # Add job_type column
+        jobs_with_type = jobs.withColumn(
+            "job_type",
+            F.when(F.col("name") == "PatternComputation", "phase1_patterns").when(
+                F.col("name") == "ReceiptEvaluation", "phase2_evaluation"
+            ),
+        )
+
+        # Aggregate by job type and merchant
+        result = jobs_with_type.groupBy(
+            "job_type", "metadata_merchant_name"
+        ).agg(
+            F.count("*").alias("job_count"),
+            F.avg("duration_ms").alias("avg_duration_ms"),
+            F.min("duration_ms").alias("min_duration_ms"),
+            F.max("duration_ms").alias("max_duration_ms"),
+            F.sum("total_tokens").alias("total_tokens"),
+        )
+
+        result = result.withColumnRenamed("metadata_merchant_name", "merchant_name")
+
+        logger.info("Computed job analytics by merchant")
+        return result
 
     def compute_receipt_analytics(self, df: DataFrame) -> DataFrame:
         """Compute per-receipt analytics.
@@ -222,25 +335,36 @@ class LangSmithSparkProcessor:
             DataFrame with step timing statistics.
         """
         # Step names we care about
-        # Includes both old multi-Lambda and new unified architecture names
+        # Includes Phase 1 (pattern computation), old multi-Lambda, and new unified architecture
         step_names = [
-            # Root trace (both architectures)
+            # Phase 1 - Pattern computation (per-merchant)
+            "PatternComputation",
+            "LearnLineItemPatterns",
+            "BuildMerchantPatterns",
+            "ollama_pattern_discovery",
+            # Phase 2 - Root trace (both architectures)
             "ReceiptEvaluation",
-            # Old multi-Lambda architecture
+            # Phase 2 - Old multi-Lambda architecture
             "EvaluateLabels",
             "EvaluateCurrencyLabels",
             "EvaluateMetadataLabels",
             "ValidateFinancialMath",
             "LLMReview",
-            # New unified architecture child traces
+            # Phase 2 - New unified architecture child traces
             "load_patterns",
             "build_visual_lines",
             "setup_llm",
+            "currency_evaluation",
+            "metadata_evaluation",
+            "geometric_evaluation",
             "phase1_concurrent_evaluations",
             "apply_phase1_corrections",
             "phase2_financial_validation",
             "phase3_llm_review",
             "upload_results",
+            # Phase 2 - Additional child traces (virtual spans from shared computation)
+            "ComputePatterns",
+            "DiscoverPatterns",
         ]
 
         steps = df.filter(F.col("name").isin(step_names))
