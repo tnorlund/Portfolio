@@ -21,7 +21,7 @@ Design decisions:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from receipt_chroma.compaction.models import CollectionUpdateResult
@@ -250,7 +250,7 @@ def apply_collection_updates(
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Cloud errors are logged but don't fail the batch
             # S3 upload proceeds independently
-            cloud_error = str(e)
+            cloud_error = f"{type(e).__name__}: {e}"
             op_logger.error(
                 "Cloud updates failed (non-blocking)",
                 error=cloud_error,

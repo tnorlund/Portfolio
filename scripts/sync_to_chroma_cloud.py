@@ -30,7 +30,7 @@ import os
 import shutil
 import sys
 import tempfile
-from typing import Iterator, List, Optional
+from typing import Iterator
 
 import boto3
 from botocore.exceptions import ClientError
@@ -309,8 +309,8 @@ def main():
     try:
         s3_client.head_bucket(Bucket=bucket)
         logger.info("S3 bucket '%s' is accessible", bucket)
-    except ClientError as e:
-        logger.error("Cannot access S3 bucket '%s': %s", bucket, e)
+    except ClientError:
+        logger.exception("Cannot access S3 bucket '%s'", bucket)
         sys.exit(1)
 
     # Create Chroma Cloud client

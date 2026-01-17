@@ -184,17 +184,22 @@ def test_apply_collection_updates_metrics_tracked(temp_chromadb_dir):
             dynamo_client=None,
         )
 
+    # Verify result structure
+    assert result.local_result is not None
+    assert result.cloud_enabled is False
+
     # Verify dual-write status metric was tracked
     mock_metrics.count.assert_called()
-    # Find the CompactionDualWriteStatus call
+    # Find the CompactionDualWriteStatus call using call.args attribute
     dual_write_calls = [
         call
         for call in mock_metrics.count.call_args_list
-        if call[0][0] == "CompactionDualWriteStatus"
+        if call.args and call.args[0] == "CompactionDualWriteStatus"
     ]
     assert len(dual_write_calls) == 1
-    _, kwargs = dual_write_calls[0][0], dual_write_calls[0]
-    dimensions = kwargs[0][2] if len(kwargs[0]) > 2 else {}
+    matched_call = dual_write_calls[0]
+    # Dimensions are in the third positional arg
+    dimensions = matched_call.args[2] if len(matched_call.args) > 2 else {}
     assert dimensions.get("cloud_enabled") == "false"
 
 

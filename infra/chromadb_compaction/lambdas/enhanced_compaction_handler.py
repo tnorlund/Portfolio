@@ -52,6 +52,7 @@ from receipt_chroma.compaction import (
     apply_collection_updates,
     sort_and_deduplicate_messages,
 )
+from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
