@@ -13,10 +13,12 @@ Entities updated:
 - ReceiptPlace
 
 Usage:
+    python scripts/migrate_gsi4.py --env dev [--dry-run]
     python scripts/migrate_gsi4.py --table-name <table_name> [--dry-run]
 
 Options:
-    --table-name    DynamoDB table name (required)
+    --env           Pulumi environment (dev/prod) to load table name from
+    --table-name    DynamoDB table name (overrides --env)
     --dry-run       Print what would be updated without making changes
     --batch-size    Number of records to update per batch (default: 25)
 """
@@ -25,6 +27,7 @@ import argparse
 import sys
 from typing import Any
 
+from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
@@ -91,9 +94,14 @@ def main():
         description="Migrate DynamoDB records to add GSI4 keys"
     )
     parser.add_argument(
+        "--env",
+        default="dev",
+        choices=["dev", "prod"],
+        help="Pulumi environment to load table name from (default: dev)",
+    )
+    parser.add_argument(
         "--table-name",
-        required=True,
-        help="DynamoDB table name",
+        help="DynamoDB table name (overrides --env)",
     )
     parser.add_argument(
         "--dry-run",
@@ -108,13 +116,29 @@ def main():
     )
     args = parser.parse_args()
 
+    # Get table name from args or Pulumi environment
+    if args.table_name:
+        table_name = args.table_name
+    else:
+        print(f"Loading table name from Pulumi environment: {args.env}")
+        env_config = load_env(args.env)
+        table_name = env_config.get("dynamodb_table_name")
+        if not table_name:
+            print(
+                f"ERROR: Could not load dynamodb_table_name from "
+                f"Pulumi stack '{args.env}'"
+            )
+            print("Use --table-name to specify the table name directly.")
+            return 1
+
     print(f"GSI4 Migration Script")
-    print(f"Table: {args.table_name}")
+    print(f"Environment: {args.env}")
+    print(f"Table: {table_name}")
     print(f"Dry run: {args.dry_run}")
     print(f"Batch size: {args.batch_size}")
 
     # Initialize client
-    client = DynamoClient(args.table_name)
+    client = DynamoClient(table_name)
 
     # Track results
     results: dict[str, dict[str, int]] = {}
