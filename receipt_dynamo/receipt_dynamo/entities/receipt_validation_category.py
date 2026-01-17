@@ -1,10 +1,13 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_metadata_field,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -55,17 +58,10 @@ class ReceiptValidationCategory(SerializationMixin):
         if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
 
-        if self.validation_timestamp is not None and not isinstance(
-            self.validation_timestamp, str
-        ):
-            raise ValueError("validation_timestamp must be a string")
-        if self.validation_timestamp is None:
-            self.validation_timestamp = datetime.now().isoformat()
-
-        if self.metadata is not None and not isinstance(self.metadata, dict):
-            raise ValueError("metadata must be a dictionary")
-        if self.metadata is None:
-            self.metadata = {}
+        self.validation_timestamp = validate_iso_timestamp(
+            self.validation_timestamp, "validation_timestamp"
+        )
+        self.metadata = validate_metadata_field(self.metadata)
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:

@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_iso_timestamp,
     validate_positive_int,
 )
 
@@ -125,21 +125,10 @@ class ReceiptWordLabelSpatialAnalysis:
                     f"spatial_relationships[{i}] must be a SpatialRelationship"
                 )
 
-        # Convert datetime to string for storage
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            # Validate it's a valid ISO format by trying to parse it
-            try:
-                datetime.fromisoformat(self.timestamp_added)
-            except ValueError as e:
-                raise ValueError(
-                    "timestamp_added string must be in ISO format"
-                ) from e
-        else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        # Convert datetime to string for storage and validate ISO format
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
         if (
             not isinstance(self.analysis_version, str)

@@ -463,3 +463,70 @@ def validate_confidence_range(field_name: str, value: Any) -> float:
         raise ValueError(f"{field_name} must be between 0 and 1")
 
     return value
+
+
+def validate_metadata_field(metadata: Any) -> Dict[str, Any]:
+    """
+    Validate and default a metadata field.
+
+    Eliminates duplicate validation code across entities that have
+    optional metadata dictionary fields (receipt_chatgpt_validation,
+    receipt_validation_category, etc.).
+
+    Args:
+        metadata: The metadata value to validate (can be None, dict, or invalid)
+
+    Returns:
+        Validated metadata dict (empty dict if None was passed)
+
+    Raises:
+        ValueError: If metadata is not None and not a dictionary
+    """
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("metadata must be a dictionary")
+    return metadata if metadata is not None else {}
+
+
+def validate_iso_timestamp(
+    value: Any, field_name: str = "timestamp", default_now: bool = True
+) -> str:
+    """
+    Validate and normalize a timestamp field to ISO format string.
+
+    Eliminates duplicate timestamp validation code across entities that
+    store timestamps as ISO strings (receipt_word_label, image, receipt, etc.).
+
+    Args:
+        value: The timestamp value (can be datetime, str, or None)
+        field_name: Name of the field for error messages
+        default_now: If True and value is None, return current time as ISO string
+
+    Returns:
+        ISO format timestamp string
+
+    Raises:
+        ValueError: If value is not a valid datetime, ISO string, or None
+    """
+    from datetime import datetime
+
+    if value is None:
+        if default_now:
+            return datetime.now().isoformat()
+        raise ValueError(f"{field_name} cannot be None")
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, str):
+        # Validate it's a valid ISO format by trying to parse it
+        try:
+            datetime.fromisoformat(value)
+            return value
+        except ValueError as e:
+            raise ValueError(
+                f"{field_name} must be a valid ISO format timestamp"
+            ) from e
+
+    raise ValueError(
+        f"{field_name} must be a datetime object or ISO format string"
+    )

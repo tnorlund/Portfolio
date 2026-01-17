@@ -1,10 +1,13 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_chatgpt_validation.py
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_metadata_field,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -52,15 +55,8 @@ class ReceiptChatGPTValidation(SerializationMixin):
         if not isinstance(self.response, str):
             raise ValueError("response must be a string")
 
-        if self.timestamp is not None and not isinstance(self.timestamp, str):
-            raise ValueError("timestamp must be a string")
-        if self.timestamp is None:
-            self.timestamp = datetime.now().isoformat()
-
-        if self.metadata is not None and not isinstance(self.metadata, dict):
-            raise ValueError("metadata must be a dictionary")
-        if self.metadata is None:
-            self.metadata = {}
+        self.timestamp = validate_iso_timestamp(self.timestamp, "timestamp")
+        self.metadata = validate_metadata_field(self.metadata)
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
