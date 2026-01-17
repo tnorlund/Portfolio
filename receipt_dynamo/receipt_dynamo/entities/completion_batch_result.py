@@ -206,11 +206,9 @@ class CompletionBatchResult(BatchResultGSIMixin):
             line_id = int(sk_parts[4])
             word_id = int(sk_parts[6])
             original_label = sk_parts[8]
-            gpt_suggested_label = (
-                item["gpt_suggested_label"]["S"]
-                if item["gpt_suggested_label"]["S"]
-                else None
-            )
+            # Handle NULL or absent gpt_suggested_label
+            gpt_field = item.get("gpt_suggested_label", {})
+            gpt_suggested_label = gpt_field.get("S") or None
             status = item["status"]["S"]
             validated_at = datetime.fromisoformat(item["validated_at"]["S"])
             image_id = item["GSI3PK"]["S"].split("#")[1]

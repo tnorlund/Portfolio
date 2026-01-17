@@ -63,13 +63,13 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
-            raise ValueError("line_id must be positive")
+            raise ValueError("line_id must be non-negative")
 
         # Validate word_id
         if not isinstance(self.word_id, int):
-            raise ValueError("id must be an integer")
+            raise ValueError("word_id must be an integer")
         if self.word_id < 0:
-            raise ValueError("id must be positive")
+            raise ValueError("word_id must be non-negative")
 
         # Use base class geometry validation
         self._validate_geometry()

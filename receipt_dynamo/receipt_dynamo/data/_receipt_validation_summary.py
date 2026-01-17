@@ -1,5 +1,3 @@
-from typing import Dict
-
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     PutRequestTypeDef,
@@ -203,14 +201,14 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
     def list_receipt_validation_summaries(
         self,
         limit: int | None = None,
-        last_evaluated_key: Dict | None = None,
-    ) -> tuple[list[ReceiptValidationSummary], Dict | None]:
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Returns ReceiptValidationSummaries and the last evaluated key.
 
         Args:
             limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Dict | None, optional): The key to start
+            last_evaluated_key (dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -244,15 +242,15 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
         self,
         status: str,
         limit: int | None = None,
-        last_evaluated_key: Dict | None = None,
-    ) -> tuple[list[ReceiptValidationSummary], Dict | None]:
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Returns ReceiptValidationSummaries with a specific status.
 
         Args:
             status (str): The status to filter by.
             limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Dict | None, optional): The key to start
+            last_evaluated_key (dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:

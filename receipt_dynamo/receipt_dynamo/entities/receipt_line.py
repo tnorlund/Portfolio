@@ -50,9 +50,9 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         """Validate and normalize initialization arguments."""
         # Validate line_id
         if not isinstance(self.line_id, int):
-            raise ValueError("id must be an integer")
-        if self.line_id <= 0:
-            raise ValueError("id must be positive")
+            raise ValueError("line_id must be an integer")
+        if self.line_id < 0:
+            raise ValueError("line_id must be non-negative")
 
         # Use base class geometry validation
         self._validate_geometry()
@@ -243,4 +243,4 @@ def item_to_receipt_line(item: dict[str, Any]) -> ReceiptLine:
 
 
 # Re-export EmbeddingStatus for backwards compatibility
-__all__ = ["ReceiptLine", "item_to_receipt_line", "EmbeddingStatus"]
+__all__ = ["EmbeddingStatus", "ReceiptLine", "item_to_receipt_line"]

@@ -30,7 +30,8 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
 
     Subclasses (ReceiptLine, ReceiptWord, ReceiptLetter) should:
         1. Add their specific ID fields (line_id, word_id, letter_id)
-        2. Call super().__post_init__() in their __post_init__
+        2. Define __post_init__ with their own validation, then call
+           super().__post_init__() to validate receipt fields
         3. Override _get_geometry_hash_fields() to include their ID fields
 
     Class Variables:
@@ -48,6 +49,15 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
     receipt_id: int
     embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
     is_noise: bool = False
+
+    def __post_init__(self) -> None:
+        """
+        Validate receipt-specific fields.
+
+        Subclasses should call super().__post_init__() after their own
+        validation.
+        """
+        self._validate_receipt_fields()
 
     def _validate_receipt_fields(self) -> None:
         """

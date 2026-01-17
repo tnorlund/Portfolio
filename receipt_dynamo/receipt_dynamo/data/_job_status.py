@@ -35,7 +35,7 @@ class _JobStatus(FlattenedStandardMixin):
         self._add_entity(
             job_status,
             condition_expression=(
-                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
             ),
         )
 

@@ -69,6 +69,14 @@ class Word(TextGeometryEntity):
             assert_type(
                 "extracted_data", self.extracted_data, dict, ValueError
             )
+            # Validate extracted_data schema has required keys
+            if self.extracted_data:  # Non-empty dict
+                required_keys = {"type", "value"}
+                missing_keys = required_keys - set(self.extracted_data.keys())
+                if missing_keys:
+                    raise ValueError(
+                        f"extracted_data missing required keys: {missing_keys}"
+                    )
 
     @property
     def key(self) -> dict[str, Any]:
@@ -109,7 +117,7 @@ class Word(TextGeometryEntity):
             **self._get_geometry_fields(),
         }
 
-        # Add extracted_data conditionally
+        # Add extracted_data conditionally (empty dict treated as None)
         if self.extracted_data:
             item["extracted_data"] = {
                 "M": {

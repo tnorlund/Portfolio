@@ -694,7 +694,22 @@ class TextGeometryEntity(DynamoDBEntity):
             dst_height: Destination image height
             _flip_y: Whether to flip Y coordinates (not used in current
                 implementation, kept for API compatibility)
+
+        Raises:
+            ValueError: If any dimension is zero or negative
         """
+        # Guard against zero/negative dimensions to avoid ZeroDivisionError
+        if src_width <= 0 or dst_width <= 0:
+            raise ValueError(
+                f"Width dimensions must be positive: "
+                f"src_width={src_width}, dst_width={dst_width}"
+            )
+        if src_height <= 0 or dst_height <= 0:
+            raise ValueError(
+                f"Height dimensions must be positive: "
+                f"src_height={src_height}, dst_height={dst_height}"
+            )
+
         # Calculate the scaled offsets based on bounding box and image
         # dimensions
         x_offset = c * (self.bounding_box["width"] / (src_width * dst_width))
@@ -947,4 +962,4 @@ class TextGeometryEntity(DynamoDBEntity):
 GeometryEntity = TextGeometryEntity
 
 
-__all__ = ["TextGeometryEntity", "GeometryEntity"]
+__all__ = ["GeometryEntity", "TextGeometryEntity"]
