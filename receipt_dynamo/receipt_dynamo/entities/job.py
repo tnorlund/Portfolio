@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import JobStatus
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
     parse_dynamodb_map,
 )
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid, normalize_enum
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -82,20 +83,7 @@ class Job:
         if not isinstance(self.created_by, str) or not self.created_by:
             raise ValueError("created_by must be a non-empty string")
 
-        valid_statuses = [
-            "pending",
-            "running",
-            "succeeded",
-            "failed",
-            "cancelled",
-            "interrupted",
-        ]
-        if (
-            not isinstance(self.status, str)
-            or self.status.lower() not in valid_statuses
-        ):
-            raise ValueError(f"status must be one of {valid_statuses}")
-        self.status = self.status.lower()
+        self.status = normalize_enum(self.status, JobStatus)
 
         valid_priorities = ["low", "medium", "high", "critical"]
         if (

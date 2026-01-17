@@ -342,22 +342,7 @@ class _ReceiptMetadata(
         ValueError
             If keys is invalid.
         """
-        if keys is None:
-            raise EntityValidationError("keys cannot be None")
-        if not isinstance(keys, list):
-            raise EntityValidationError("keys must be a list")
-        if not all(isinstance(key, dict) for key in keys):
-            raise EntityValidationError("keys must be a list of dictionaries")
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise EntityValidationError("SK must start with 'RECEIPT#'")
-            if not key["SK"]["S"].split("#")[-1] == "METADATA":
-                raise EntityValidationError("SK must contain 'METADATA'")
-
+        self._validate_batch_receipt_keys(keys, "METADATA")
         results = self._batch_get_items(keys)
         return [item_to_receipt_metadata(result) for result in results]
 

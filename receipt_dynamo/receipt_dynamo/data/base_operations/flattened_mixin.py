@@ -199,6 +199,37 @@ class FlattenedStandardMixin:
         if not all(index[1] > 0 for index in indices):
             raise EntityValidationError("receipt_id must be positive")
 
+    def _validate_batch_receipt_keys(
+        self, keys: List[Dict[str, Any]], expected_sk_suffix: str
+    ) -> None:
+        """Validate batch keys for receipt-related entities.
+
+        Args:
+            keys: List of DynamoDB key dictionaries with PK and SK
+            expected_sk_suffix: Expected suffix of the SK (e.g., "METADATA",
+                "PLACE")
+
+        Raises:
+            EntityValidationError: If keys are invalid
+        """
+        if keys is None:
+            raise EntityValidationError("keys cannot be None")
+        if not isinstance(keys, list):
+            raise EntityValidationError("keys must be a list")
+        if not all(isinstance(key, dict) for key in keys):
+            raise EntityValidationError("keys must be a list of dictionaries")
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise EntityValidationError("keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise EntityValidationError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("RECEIPT#"):
+                raise EntityValidationError("SK must start with 'RECEIPT#'")
+            if not key["SK"]["S"].split("#")[-1] == expected_sk_suffix:
+                raise EntityValidationError(
+                    f"SK must end with '{expected_sk_suffix}'"
+                )
+
     # ========== Single Entity CRUD Operations ==========
 
     @handle_dynamodb_errors("add_entity")
