@@ -30,6 +30,7 @@ try:
         TraceContext,
         child_trace,
         create_merchant_trace,
+        end_merchant_trace,
         flush_langsmith_traces,
     )
 except ImportError:
@@ -48,6 +49,7 @@ except ImportError:
         TraceContext,
         child_trace,
         create_merchant_trace,
+        end_merchant_trace,
         flush_langsmith_traces,
     )
 
@@ -315,6 +317,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             **merchant_trace.to_dict(),
         }
 
-    # Flush traces before returning (don't end trace - compute_patterns will add sibling)
+    # End the merchant trace to persist it (compute_patterns will add sibling via trace_id)
+    end_merchant_trace(merchant_trace, outputs={"patterns_discovered": result.get("patterns") is not None})
     flush_langsmith_traces()
     return result

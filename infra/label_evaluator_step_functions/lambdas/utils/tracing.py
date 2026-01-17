@@ -666,12 +666,9 @@ def child_trace(
         if child is not None:
             try:
                 child.end()
-                # NOTE: Do NOT call patch() here. The trace was already posted.
-                # Calling patch() after post() can cause "dotted_order appears
-                # more than once" errors in LangSmith.
-                # The end() call should be sufficient to mark completion.
+                child.patch()
                 logger.info(
-                    "[child_trace] Child '%s' ended (no patch)", name
+                    "[child_trace] Child '%s' ended and patched", name
                 )
             except Exception as e:
                 logger.warning(
