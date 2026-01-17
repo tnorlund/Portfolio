@@ -640,14 +640,12 @@ def child_trace(
             inputs=inputs or {},
             extra={"metadata": metadata or {}},
         )
-        # NOTE: Do NOT call child.post() here. We'll call it in the finally block.
-        # Calling post() followed by patch() causes LangSmith to create duplicate
-        # dotted_order entries, leading to "dotted_order appears more than once" errors.
+        # Post immediately after create_child to register the trace
+        child.post()
 
-        # Use headers for tracing_context (consistent across all helpers)
         child_headers = child.to_headers()
         logger.info(
-            "[child_trace] Created child id=%s, trace_id=%s (not posted yet)",
+            "[child_trace] Created and posted child id=%s, trace_id=%s",
             child.id,
             child.trace_id,
         )
@@ -662,20 +660,17 @@ def child_trace(
 
     try:
         # NOTE: We intentionally do NOT use _tracing_context here.
-        # Using _tracing_context(parent=child_headers) after child.post() causes
-        # LangSmith to create duplicate trace entries with the same run_id,
-        # resulting in "dotted_order appears more than once" errors.
         yield ctx
     finally:
         if child is not None:
             try:
                 child.end()
-                # NOTE: Call post() here, NOT patch(). Since we didn't call post()
-                # earlier, the run doesn't exist in LangSmith yet. We post it now
-                # with all final data (outputs, end_time).
-                child.post()
+                # NOTE: Do NOT call patch() here. The trace was already posted.
+                # Calling patch() after post() can cause "dotted_order appears
+                # more than once" errors in LangSmith.
+                # The end() call should be sufficient to mark completion.
                 logger.info(
-                    "[child_trace] Child '%s' completed and posted", name
+                    "[child_trace] Child '%s' ended (no patch)", name
                 )
             except Exception as e:
                 logger.warning(
@@ -747,13 +742,12 @@ def start_child_trace(
             inputs=inputs or {},
             extra={"metadata": metadata or {}},
         )
-        # NOTE: Do NOT call child.post() here. We'll call it in end_child_trace.
-        # Calling post() followed by patch() causes LangSmith to create duplicate
-        # dotted_order entries, leading to "dotted_order appears more than once" errors.
+        # Post immediately to register the trace
+        child.post()
 
         child_headers = child.to_headers()
         logger.info(
-            "[start_child_trace] Created child id=%s, trace_id=%s (not posted yet)",
+            "[start_child_trace] Created and posted child id=%s, trace_id=%s",
             child.id,
             child.trace_id,
         )
@@ -785,13 +779,11 @@ def end_child_trace(
         if outputs:
             ctx.run_tree.outputs = outputs
         ctx.run_tree.end()
-        # NOTE: We call post() here, NOT patch(). Since start_child_trace does NOT
-        # call post(), the run doesn't exist in LangSmith yet. We post it now with
-        # all the final data (outputs, end_time). This avoids the "dotted_order
-        # appears more than once" error that occurs when calling post() then patch().
-        ctx.run_tree.post()
+        # NOTE: Do NOT call patch() here. The trace was already posted in
+        # start_child_trace(). Calling patch() can cause "dotted_order appears
+        # more than once" errors in LangSmith.
         logger.info(
-            "[end_child_trace] Child completed and posted (id=%s)",
+            "[end_child_trace] Child ended (no patch, id=%s)",
             ctx.run_tree.id,
         )
     except Exception as e:
@@ -1191,9 +1183,11 @@ def end_receipt_trace(
         if outputs:
             trace_info.run_tree.outputs = outputs
         trace_info.run_tree.end()
-        trace_info.run_tree.patch()
+        # NOTE: Do NOT call patch() here. The trace was already posted in
+        # create_receipt_trace(). Calling patch() can cause "dotted_order
+        # appears more than once" errors in LangSmith.
         logger.info(
-            "Receipt trace ended (image_id=%s, receipt_id=%s)",
+            "Receipt trace ended (no patch, image_id=%s, receipt_id=%s)",
             (
                 trace_info.image_id[:8]
                 if len(trace_info.image_id) > 8
