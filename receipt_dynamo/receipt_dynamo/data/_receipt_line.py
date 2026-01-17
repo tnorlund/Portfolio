@@ -99,19 +99,9 @@ class _ReceiptLine(FlattenedStandardMixin):
     ) -> None:
         """Deletes a single ReceiptLine by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
         # Direct key-based deletion is more efficient than creating
         # dummy objects
         key = {
@@ -145,19 +135,9 @@ class _ReceiptLine(FlattenedStandardMixin):
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}",
@@ -329,15 +309,8 @@ class _ReceiptLine(FlattenedStandardMixin):
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
 
         # Use GSI3 for efficient querying by image_id + receipt_id
         # This eliminates the need for client-side filtering

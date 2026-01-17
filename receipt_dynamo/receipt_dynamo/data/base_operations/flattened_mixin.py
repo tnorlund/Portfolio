@@ -109,9 +109,26 @@ class FlattenedStandardMixin:
         self, receipt_id: int, param_name: str = "receipt_id"
     ) -> None:
         """Validate receipt_id is not None and is a positive integer."""
-        if receipt_id is None:
+        self._validate_positive_int_id(receipt_id, param_name)
+
+    def _validate_positive_int_id(
+        self, value: int, param_name: str
+    ) -> None:
+        """Validate that value is a positive integer.
+
+        This is the generic validator for ID fields like line_id, word_id,
+        letter_id, receipt_id, etc.
+
+        Args:
+            value: The value to validate
+            param_name: Name of the parameter for error messages
+
+        Raises:
+            EntityValidationError: If value is None, not an int, or <= 0
+        """
+        if value is None:
             raise EntityValidationError(f"{param_name} cannot be None")
-        if not isinstance(receipt_id, int) or receipt_id <= 0:
+        if not isinstance(value, int) or value <= 0:
             raise EntityValidationError(
                 f"{param_name} must be a positive integer"
             )

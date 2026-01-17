@@ -16,7 +16,6 @@ from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
     ReceiptWordLabelSpatialAnalysis,
     item_to_receipt_word_label_spatial_analysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class _ReceiptWordLabelSpatialAnalysis(
@@ -198,41 +197,10 @@ class _ReceiptWordLabelSpatialAnalysis(
             EntityNotFoundError: When the spatial analysis does not exist
         """
         # Validate inputs
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an int, got {type(receipt_id).__name__}"
-            )
-        if not isinstance(line_id, int):
-            raise EntityValidationError(
-                f"line_id must be an integer, got {type(line_id).__name__}"
-            )
-        if not isinstance(word_id, int):
-            raise EntityValidationError(
-                f"word_id must be an integer, got {type(word_id).__name__}"
-            )
-
-        # Validate positive integers
-        if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be positive")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be positive")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be positive")
-
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -279,24 +247,14 @@ class _ReceiptWordLabelSpatialAnalysis(
             EntityValidationError: When validation fails
         """
         # Validate inputs
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an int, got {type(receipt_id).__name__}"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-
-        assert_valid_uuid(image_id)
 
         return self._query_entities(
             index_name="GSI2",
@@ -385,18 +343,13 @@ class _ReceiptWordLabelSpatialAnalysis(
         Raises:
             EntityValidationError: When validation fails
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
+        self._validate_image_id(image_id)
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-
-        assert_valid_uuid(image_id)
 
         # Since we need to find SK patterns ending with SPATIAL_ANALYSIS,
         # we'll scan the partition but this should be limited to one image

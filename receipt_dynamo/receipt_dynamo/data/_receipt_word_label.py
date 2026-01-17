@@ -290,56 +290,19 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When the receipt word label does not exist
         """
-        # Check for None values first
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
+        # Validate parameters
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
         if label is None:
             raise EntityValidationError("label cannot be None")
-
-        # Then check types
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
-            )
-        if not isinstance(line_id, int):
-            raise EntityValidationError(
-                "line_id must be an integer, got " f"{type(line_id).__name__}"
-            )
-        if not isinstance(word_id, int):
-            raise EntityValidationError(
-                "word_id must be an integer, got " f"{type(word_id).__name__}"
-            )
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                "image_id must be a string, got " f"{type(image_id).__name__}"
-            )
         if not isinstance(label, str):
             raise EntityValidationError(
                 "label must be a string, got " f"{type(label).__name__}"
             )
-
-        # Check for positive integers
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "Receipt ID must be a positive integer."
-            )
-        if line_id <= 0:
-            raise EntityValidationError("Line ID must be a positive integer.")
-        if word_id <= 0:
-            raise EntityValidationError("Word ID must be a positive integer.")
-
-        # Check for non-empty label
         if not label:
             raise EntityValidationError("Label must be a non-empty string.")
-
-        assert_valid_uuid(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -500,21 +463,8 @@ class _ReceiptWordLabel(
             Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
                 The receipt word labels for the receipt and last evaluated key
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        assert_valid_uuid(image_id)
-
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, "
-                f"got {type(receipt_id).__name__}"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -574,26 +524,10 @@ class _ReceiptWordLabel(
                 The receipt word labels for the specific word and last
                 evaluated key
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        assert_valid_uuid(image_id)
-
-        for param_name, param_value in [
-            ("receipt_id", receipt_id),
-            ("line_id", line_id),
-            ("word_id", word_id),
-        ]:
-            if not isinstance(param_value, int):
-                raise EntityValidationError(
-                    f"{param_name} must be an integer, "
-                    f"got {type(param_value).__name__}"
-                )
-            if param_value <= 0:
-                raise EntityValidationError(
-                    f"{param_name} must be a positive integer"
-                )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
         if limit is not None:
             if not isinstance(limit, int):

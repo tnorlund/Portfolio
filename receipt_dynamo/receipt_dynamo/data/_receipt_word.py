@@ -165,23 +165,10 @@ class _ReceiptWord(
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None or not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=(
@@ -366,15 +353,8 @@ class _ReceiptWord(
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords under a specific receipt/image."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
         # Use GSI3 for efficient querying by image_id + receipt_id
         # This eliminates the need for client-side filtering
         results, _ = self._query_entities(

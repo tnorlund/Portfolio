@@ -193,18 +193,9 @@ class _ReceiptLetter(FlattenedStandardMixin):
         """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer.")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer.")
-        if letter_id is None:
-            raise EntityValidationError("letter_id cannot be None")
-        if not isinstance(letter_id, int):
-            raise EntityValidationError("letter_id must be an integer.")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
+        self._validate_positive_int_id(letter_id, "letter_id")
 
         # Direct key-based deletion is more efficient
         key = {
@@ -287,35 +278,11 @@ class _ReceiptLetter(FlattenedStandardMixin):
             If parameters are invalid or letter not found.
         """
         # Validate all parameters
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
+        self._validate_positive_int_id(receipt_id, "receipt_id")
         self._validate_image_id(image_id)
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
-        if letter_id is None:
-            raise EntityValidationError("letter_id cannot be None")
-        if not isinstance(letter_id, int):
-            raise EntityValidationError("letter_id must be an integer")
-        if letter_id <= 0:
-            raise EntityValidationError("letter_id must be a positive integer")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
+        self._validate_positive_int_id(letter_id, "letter_id")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -408,31 +375,10 @@ class _ReceiptLetter(FlattenedStandardMixin):
             If parameters are invalid.
         """
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
         results, _ = self._query_entities(
             index_name=None,
