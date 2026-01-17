@@ -194,7 +194,9 @@ def test_job_init_invalid_status():
             {"model": "layoutlm"},
         )
 
-    with pytest.raises(ValueError, match="JobStatus must be a str or JobStatus"):
+    with pytest.raises(
+        ValueError, match="JobStatus must be a str or JobStatus"
+    ):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",

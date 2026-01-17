@@ -714,7 +714,9 @@ def test_update_line_not_found(
     """Tests update_line when line doesn't exist."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.update_line(sample_line)
 
 
@@ -732,7 +734,9 @@ def test_delete_line_success(
     client.delete_line(sample_line.image_id, sample_line.line_id)
 
     # Verify - Line's get_line raises EntityNotFoundError when not found
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_line(sample_line.image_id, sample_line.line_id)
 
 
@@ -746,7 +750,9 @@ def test_delete_line_not_found(
     client = DynamoClient(dynamodb_table)
 
     # Line's delete_line raises EntityNotFoundError for non-existent items
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.delete_line(unique_image_id, 999)
 
 
@@ -760,7 +766,9 @@ def test_get_line_not_found(
     client = DynamoClient(dynamodb_table)
 
     # Line's get_line raises EntityNotFoundError when not found
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_line(unique_image_id, 999)
 
 
@@ -890,7 +898,9 @@ def test_delete_lines_success(
 
     # Verify deletion
     for line in lines:
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.get_line(line.image_id, line.line_id)
 
 
@@ -1119,5 +1129,7 @@ def test_large_batch_operations(
     client.delete_lines(lines)
 
     # Verify deletion
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_line(unique_image_id, 50)

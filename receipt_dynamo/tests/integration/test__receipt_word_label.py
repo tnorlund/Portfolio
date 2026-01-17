@@ -333,9 +333,7 @@ def test_add_receipt_word_label_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt_word_label(sample_receipt_word_label)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_word_label(sample_receipt_word_label)
 
 
@@ -371,7 +369,9 @@ def test_get_receipt_word_label_not_found(
     """Tests that get_receipt_word_label raises EntityNotFoundError for non-existent label."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_receipt_word_label(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             1,

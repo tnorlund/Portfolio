@@ -168,9 +168,7 @@ def test_addJobCheckpoint_raises_conditional_check_failed(
     job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
     # Try to add it again
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
 

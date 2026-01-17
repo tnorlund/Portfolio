@@ -139,9 +139,7 @@ def test_addQueue_raises_resource_not_found(
     # Patch the put_item method to raise ResourceNotFoundException
     monkeypatch.setattr(queue_dynamo._client, "put_item", mock_put_item)
 
-    with pytest.raises(
-        OperationError, match="DynamoDB resource not found"
-    ):
+    with pytest.raises(OperationError, match="DynamoDB resource not found"):
         queue_dynamo.add_queue(sample_queue)
 
 
@@ -278,9 +276,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to update a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="does not exist"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         queue_dynamo.update_queue(sample_queue)
 
 
@@ -319,9 +315,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to delete a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="does not exist"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         queue_dynamo.delete_queue(sample_queue)
 
 

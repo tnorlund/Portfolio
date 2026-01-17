@@ -347,7 +347,8 @@ def test_spatial_analysis_init_invalid_timestamp():
     """ReceiptWordLabelSpatialAnalysis with invalid timestamp raises ValueError."""
     # Invalid string format
     with pytest.raises(
-        ValueError, match="timestamp_added must be a valid ISO format timestamp"
+        ValueError,
+        match="timestamp_added must be a valid ISO format timestamp",
     ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

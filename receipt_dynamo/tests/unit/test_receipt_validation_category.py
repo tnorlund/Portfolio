@@ -283,7 +283,8 @@ def test_validation_category_init_invalid_result_summary():
 def test_validation_category_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
     with pytest.raises(
-        ValueError, match="validation_timestamp must be a datetime object or ISO format string"
+        ValueError,
+        match="validation_timestamp must be a datetime object or ISO format string",
     ):
         ReceiptValidationCategory(
             receipt_id=1,

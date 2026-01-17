@@ -694,9 +694,7 @@ def test_add_receipt_line_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_line(sample_receipt_line)
 
     mock_put.assert_called_once()

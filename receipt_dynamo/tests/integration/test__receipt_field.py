@@ -434,7 +434,9 @@ def test_updateReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.update_receipt_field(sample_receipt_field)
 
 
@@ -801,7 +803,9 @@ def test_deleteReceiptField_success(
     client.delete_receipt_field(sample_receipt_field)
 
     # Assert
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
@@ -818,7 +822,9 @@ def test_deleteReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.delete_receipt_field(sample_receipt_field)
 
 
@@ -961,7 +967,9 @@ def test_deleteReceiptFields_success(
 
     # Assert
     for field in fields:
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.get_receipt_field(
                 field.field_type,
                 field.image_id,
@@ -1171,7 +1179,9 @@ def test_getReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,

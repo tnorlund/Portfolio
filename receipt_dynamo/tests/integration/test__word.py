@@ -138,9 +138,7 @@ class TestWordBasicOperations:
         dynamodb_client.add_word(example_word)
 
         # Act & Assert
-        with pytest.raises(
-            EntityAlreadyExistsError, match="already exists"
-        ):
+        with pytest.raises(EntityAlreadyExistsError, match="already exists"):
             dynamodb_client.add_word(example_word)
 
     def test_get_word_success(
@@ -162,7 +160,9 @@ class TestWordBasicOperations:
 
     def test_get_word_not_found(self, dynamodb_client: DynamoClient) -> None:
         """Test get word raises EntityNotFoundError when not found."""
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             dynamodb_client.get_word(
                 "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
             )
@@ -192,7 +192,9 @@ class TestWordBasicOperations:
         self, dynamodb_client: DynamoClient, example_word: Word
     ) -> None:
         """Test update word raises EntityNotFoundError when not found."""
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             dynamodb_client.update_word(example_word)
 
     def test_delete_word_success(
@@ -221,7 +223,9 @@ class TestWordBasicOperations:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test delete non-existent word raises EntityNotFoundError."""
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             dynamodb_client.delete_word(
                 "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
             )

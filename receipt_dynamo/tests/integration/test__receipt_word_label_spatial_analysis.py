@@ -245,7 +245,9 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test that getting a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
 
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=999,
@@ -295,7 +297,9 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test that updating a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
 
-        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.update_receipt_word_label_spatial_analysis(
                 sample_spatial_analysis
             )

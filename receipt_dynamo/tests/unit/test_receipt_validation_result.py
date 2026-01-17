@@ -390,9 +390,7 @@ def test_validation_result_init_invalid_validation_timestamp():
 @pytest.mark.unit
 def test_validation_result_init_invalid_metadata():
     """Test initialization with invalid metadata"""
-    with pytest.raises(
-        ValueError, match="metadata must be a dictionary"
-    ):
+    with pytest.raises(ValueError, match="metadata must be a dictionary"):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

@@ -440,14 +440,10 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 @pytest.mark.unit
 def test_itemToReceiptLabelAnalysis_missing_keys():
     """Test that item_to_receipt_label_analysis raises ValueError with missing keys."""
-    with pytest.raises(
-        ValueError, match="Item is missing required keys"
-    ):
+    with pytest.raises(ValueError, match="Item is missing required keys"):
         item_to_receipt_label_analysis({})
 
-    with pytest.raises(
-        ValueError, match="Item is missing required keys"
-    ):
+    with pytest.raises(ValueError, match="Item is missing required keys"):
         item_to_receipt_label_analysis({"PK": {"S": "IMAGE#test"}})
 
 

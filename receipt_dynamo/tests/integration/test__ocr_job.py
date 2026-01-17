@@ -342,9 +342,7 @@ def test_add_ocr_job_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_ocr_job(sample_ocr_job)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_ocr_job(sample_ocr_job)
 
 
@@ -395,7 +393,9 @@ def test_get_ocr_job_not_found(
     """Tests that get_ocr_job raises EntityNotFoundError for non-existent job."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_ocr_job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "4f52804b-2fad-4e00-92c8-b593da3a8ed3",

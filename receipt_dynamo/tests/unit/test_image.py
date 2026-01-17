@@ -510,7 +510,9 @@ def test_image_eq():
 
     i1 = Image(**base_args)
     i2 = Image(**base_args)
-    i3 = Image(**{**base_args, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
+    i3 = Image(
+        **{**base_args, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"}
+    )
     i4 = Image(**{**base_args, "width": 20})
     i5 = Image(**{**base_args, "height": 30})
     i6 = Image(**{**base_args, "timestamp_added": "2021-01-01T00:00:01"})

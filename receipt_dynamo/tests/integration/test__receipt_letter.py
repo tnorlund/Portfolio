@@ -771,9 +771,7 @@ def test_add_receipt_letter_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_letter(sample_receipt_letter)
 
     mock_put.assert_called_once()

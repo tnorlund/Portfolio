@@ -126,9 +126,7 @@ def test_addJobLog_raises_resource_not_found(
     )
 
     # Attempt to add the job log
-    with pytest.raises(
-        OperationError, match="DynamoDB resource not found"
-    ):
+    with pytest.raises(OperationError, match="DynamoDB resource not found"):
         job_log_dynamo.add_job_log(sample_job_log)
 
 
@@ -311,7 +309,9 @@ def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
     job_log_dynamo.delete_job_log(sample_job_log)
 
     # Verify it was deleted
-    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         job_log_dynamo.get_job_log(
             job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
         )
@@ -344,9 +344,7 @@ def test_deleteJobLog_raises_conditional_check_failed(
     Test that deleteJobLog raises EntityNotFoundError when the job log does not exist.
     """
     # Try to delete a job log that doesn't exist
-    with pytest.raises(
-        EntityNotFoundError, match="does not exist"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         job_log_dynamo.delete_job_log(sample_job_log)
 
 
