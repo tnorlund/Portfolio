@@ -17,6 +17,9 @@ class CircuitBreakerState:
     HALF_OPEN = "half_open"
 
 
+# Inherits from DynamoClient which uses mixin composition pattern.
+# See dynamo_client.py for explanation of the intentional high ancestor count.
+# pylint: disable=too-many-ancestors
 class ResilientDynamoClient(DynamoClient):
     """
     DynamoDB client with resilience patterns for production use.
