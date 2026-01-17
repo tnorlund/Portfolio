@@ -836,21 +836,8 @@ async def evaluate_financial_math_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Get LangChain config and headers for trace linking
+    # Get LangChain config for trace linking (passed to LLM calls)
     llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
-    trace_headers = None
-    if llm_config and "configurable" in llm_config:
-        trace_headers = llm_config["configurable"].get("langsmith_headers")
-
-    # Import tracing context for proper trace nesting
-    _tracing_ctx = None
-    try:
-        from langsmith.run_helpers import tracing_context as _tc
-        from contextlib import nullcontext
-        _tracing_ctx = _tc(parent=trace_headers) if trace_headers else nullcontext()
-    except ImportError:
-        from contextlib import nullcontext
-        _tracing_ctx = nullcontext()
 
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
@@ -875,9 +862,7 @@ async def evaluate_financial_math_async(
     num_issues = len(math_issues)
     use_structured = hasattr(llm, "with_structured_output")
 
-    # Wrap LLM calls in tracing context for proper trace nesting
-    with _tracing_ctx:
-      try:
+    try:
         decisions = None
 
         for attempt in range(max_retries):
@@ -1023,7 +1008,7 @@ async def evaluate_financial_math_async(
 
         return results
 
-      except Exception as e:
+    except Exception as e:
         from receipt_agent.utils import (
             BothProvidersFailedError,
             OllamaRateLimitError,

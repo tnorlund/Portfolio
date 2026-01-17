@@ -833,21 +833,8 @@ async def evaluate_metadata_labels_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Get LangChain config and headers for trace linking
+    # Get LangChain config for trace linking (passed to LLM calls)
     llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
-    trace_headers = None
-    if llm_config and "configurable" in llm_config:
-        trace_headers = llm_config["configurable"].get("langsmith_headers")
-
-    # Import tracing context for proper trace nesting
-    _tracing_ctx = None
-    try:
-        from langsmith.run_helpers import tracing_context as _tc
-        from contextlib import nullcontext
-        _tracing_ctx = _tc(parent=trace_headers) if trace_headers else nullcontext()
-    except ImportError:
-        from contextlib import nullcontext
-        _tracing_ctx = nullcontext()
 
     # Step 1: Collect metadata words to evaluate
     metadata_words, prefiltered_count = collect_metadata_words(
@@ -878,9 +865,7 @@ async def evaluate_metadata_labels_async(
 
     use_structured = hasattr(llm, "with_structured_output")
 
-    # Wrap LLM calls in tracing context for proper trace nesting
-    with _tracing_ctx:
-      for attempt in range(max_retries):
+    for attempt in range(max_retries):
         try:
             if use_structured:
                 try:
