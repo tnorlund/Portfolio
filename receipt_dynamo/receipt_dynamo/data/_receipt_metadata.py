@@ -16,9 +16,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
 
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
-
 
 class _ReceiptMetadata(
     FlattenedStandardMixin,
@@ -375,22 +372,7 @@ class _ReceiptMetadata(
             if not key["SK"]["S"].split("#")[-1] == "METADATA":
                 raise EntityValidationError("SK must contain 'METADATA'")
 
-        results = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-            response = self._client.batch_get_item(
-                RequestItems={self.table_name: {"Keys": chunk}}
-            )
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
+        results = self._batch_get_items(keys)
         return [item_to_receipt_metadata(result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_metadatas")

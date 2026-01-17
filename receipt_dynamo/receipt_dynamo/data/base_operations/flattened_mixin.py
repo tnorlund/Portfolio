@@ -41,6 +41,9 @@ from .validators import EntityValidator
 
 T = TypeVar("T")
 
+# DynamoDB BatchGetItem can handle up to 100 keys per request
+BATCH_GET_CHUNK_SIZE = 100
+
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
@@ -271,6 +274,56 @@ class FlattenedStandardMixin:
                 )
                 if unprocessed:
                     remaining_items.extend(unprocessed)
+
+    def _batch_get_items(
+        self, keys: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Execute batch get operations with chunking and retry logic.
+
+        Args:
+            keys: List of DynamoDB key dictionaries, each with PK and SK.
+
+        Returns:
+            List of raw DynamoDB items (not converted to entities).
+            Callers should apply their own converter function.
+
+        Note:
+            DynamoDB BatchGetItem can handle up to 100 keys per request.
+            This method handles chunking and retries for unprocessed keys.
+        """
+        if not keys:
+            return []
+
+        results: List[Dict[str, Any]] = []
+
+        # Process keys in chunks of BATCH_GET_CHUNK_SIZE
+        for i in range(0, len(keys), BATCH_GET_CHUNK_SIZE):
+            chunk = keys[i : i + BATCH_GET_CHUNK_SIZE]
+
+            # Perform BatchGetItem
+            response = self._client.batch_get_item(
+                RequestItems={self.table_name: {"Keys": chunk}}
+            )
+
+            # Collect results
+            batch_items = response.get("Responses", {}).get(
+                self.table_name, []
+            )
+            results.extend(batch_items)
+
+            # Retry unprocessed keys
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name, {}).get("Keys"):
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
+                batch_items = response.get("Responses", {}).get(
+                    self.table_name, []
+                )
+                results.extend(batch_items)
+                unprocessed = response.get("UnprocessedKeys", {})
+
+        return results
 
     # ========== Transactional Operations ==========
 

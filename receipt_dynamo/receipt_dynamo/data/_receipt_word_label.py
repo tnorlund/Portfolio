@@ -34,7 +34,6 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
         QueryInputTypeDef,
     )
 
@@ -394,22 +393,8 @@ class _ReceiptWordLabel(
             for receipt_id, word_id, image_id in keys
         ]
 
-        # Process in chunks of 100 (DynamoDB limit)
-        all_labels = []
-        for i in range(0, len(request_keys), 100):
-            chunk = request_keys[i : i + 100]
-
-            batch_get_params: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            response = self._client.batch_get_item(**batch_get_params)
-            items = response.get("Responses", {}).get(self.table_name, [])
-            all_labels.extend(
-                [item_to_receipt_word_label(item) for item in items]
-            )
-
-        return all_labels
+        results = self._batch_get_items(request_keys)
+        return [item_to_receipt_word_label(item) for item in results]
 
     @handle_dynamodb_errors("list_receipt_word_labels")
     def list_receipt_word_labels(

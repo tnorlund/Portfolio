@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -11,15 +11,6 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.word import Word
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-    )
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
 
 
 class _Word(FlattenedStandardMixin):
@@ -191,8 +182,8 @@ class _Word(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_words")
     def get_words(self, keys: List[Dict]) -> List[Word]:
-        """Get a list of words using a list of keys"""
-        # Check the validity of the keys
+        """Get a list of words using a list of keys."""
+        # Validate keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
                 raise EntityValidationError("Keys must contain 'PK' and 'SK'")
@@ -200,39 +191,11 @@ class _Word(FlattenedStandardMixin):
                 raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("LINE#"):
                 raise EntityValidationError("SK must start with 'LINE#'")
-            if not key["SK"]["S"].split("#")[-2] == "WORD":
+            if key["SK"]["S"].split("#")[-2] != "WORD":
                 raise EntityValidationError("SK must contain 'WORD'")
-        results = []
 
-        # Split keys into chunks of up to 100
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-
-            # Prepare parameters for BatchGetItem
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform BatchGet
-            response = self._client.batch_get_item(**request)
-
-            # Combine all found items
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-
-            # Retry unprocessed keys if any
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get(
-                "Keys"
-            ):  # type: ignore[call-overload]
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
-
-        return [item_to_word(result) for result in results]
+        results = self._batch_get_items(keys)
+        return [item_to_word(item) for item in results]
 
     @handle_dynamodb_errors("list_words")
     def list_words(

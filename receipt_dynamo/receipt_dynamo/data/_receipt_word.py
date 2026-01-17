@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -16,13 +14,7 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
-    )
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _ReceiptWord(
@@ -307,49 +299,9 @@ class _ReceiptWord(
                 raise EntityValidationError(
                     "SK must contain a 5-digit word ID"
                 )
-        results = []
 
-        try:
-            # Split keys into chunks of up to 100
-            for i in range(0, len(keys), CHUNK_SIZE):
-                chunk = keys[i : i + CHUNK_SIZE]
-
-                # Prepare parameters for BatchGetItem
-                request: BatchGetItemInputTypeDef = {
-                    "RequestItems": {
-                        self.table_name: {
-                            "Keys": chunk,
-                        }
-                    }
-                }
-
-                # Perform BatchGet
-                response = self._client.batch_get_item(**request)
-
-                # Combine all found items
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-
-                # Retry unprocessed keys if any
-                unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(self.table_name, {}).get(
-                    "Keys"
-                ):  # type: ignore[call-overload]
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
-                    results.extend(batch_items)
-                    unprocessed = response.get("UnprocessedKeys", {})
-
-            return [item_to_receipt_word(result) for result in results]
-
-        except ClientError as e:
-            raise EntityValidationError(
-                f"Could not get ReceiptWords from the database: {e}"
-            ) from e
+        results = self._batch_get_items(keys)
+        return [item_to_receipt_word(item) for item in results]
 
     @handle_dynamodb_errors("list_receipt_words")
     def list_receipt_words(

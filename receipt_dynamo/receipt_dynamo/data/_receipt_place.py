@@ -10,7 +10,6 @@ records in DynamoDB.
 """
 
 import re
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from boto3.dynamodb.types import TypeDeserializer
@@ -30,14 +29,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities import ReceiptPlace
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
-
-# Maximum retry attempts for unprocessed items in batch operations.
-# With exponential backoff (2^n seconds, max 32s), this allows up to
-# ~13 minutes of retries.
-MAX_BATCH_RETRIES = 10
 
 # Type deserializer for converting DynamoDB JSON format to Python types
 _deserializer = TypeDeserializer()
@@ -402,39 +393,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             if not key["SK"]["S"].split("#")[-1] == "PLACE":
                 raise EntityValidationError("SK must contain 'PLACE'")
 
-        results = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-            response = self._client.batch_get_item(
-                RequestItems={self.table_name: {"Keys": chunk}}
-            )
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-            unprocessed = response.get("UnprocessedKeys", {})
-            retry_count = 0
-            while (
-                unprocessed.get(self.table_name)
-                and retry_count < MAX_BATCH_RETRIES
-            ):
-                # Exponential backoff: 2^retry_count seconds, max 32 seconds
-                wait_time = min(2**retry_count, 32)
-                time.sleep(wait_time)
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
-                retry_count += 1
-            # Log warning if max retries exceeded
-            if unprocessed.get(self.table_name):
-                logger = __import__("logging").getLogger(__name__)
-                unprocessed_count = len(unprocessed.get(self.table_name, []))
-                logger.warning(
-                    f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded "
-                    f"for get_receipt_places_by_ids. {unprocessed_count} "
-                    "items remain unprocessed."
-                )
+        results = self._batch_get_items(keys)
         return [item_to_receipt_place(result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_places")

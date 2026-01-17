@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
-    BatchGetItemInputTypeDef,
     DeleteTypeDef,
     FlattenedStandardMixin,
     PutRequestTypeDef,
@@ -278,27 +277,7 @@ class _BatchSummary(FlattenedStandardMixin):
             if key["SK"]["S"] != "STATUS":
                 raise EntityValidationError("SK must be 'STATUS'")
 
-        # Batch get items in chunks of 100 (DynamoDB limit)
-        results: List[Dict[str, Any]] = []
-        for i in range(0, len(keys), 100):
-            chunk = keys[i : i + 100]
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform batch get with retry for unprocessed keys
-            response = self._client.batch_get_item(**request)
-            results.extend(response["Responses"].get(self.table_name, []))
-
-            # Handle unprocessed keys
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                results.extend(response["Responses"].get(self.table_name, []))
-                unprocessed = response.get("UnprocessedKeys", {})
-
+        results = self._batch_get_items(keys)
         return [item_to_batch_summary(item) for item in results]
 
     @handle_dynamodb_errors("list_batch_summaries")
