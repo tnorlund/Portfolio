@@ -30,7 +30,7 @@ class _CoreMLExportJob(FlattenedStandardMixin):
             export_job: The CoreML export job to add.
 
         Raises:
-            EntityAlreadyExistsError: When an export job with same ID exists.
+            EntityAlreadyExistsError: When an export job with the same ID exists.
             EntityValidationError: If export_job parameters are invalid.
         """
         self._validate_entity(export_job, CoreMLExportJob, "export_job")

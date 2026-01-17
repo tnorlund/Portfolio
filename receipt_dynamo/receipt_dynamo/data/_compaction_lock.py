@@ -242,12 +242,15 @@ class _CompactionLock(FlattenedStandardMixin):
 
         Args:
             collection: Optional collection filter. If None, returns
-                locks from all collections.
+                locks from all collections (pagination not supported in
+                this case; last_evaluated_key is ignored).
             limit: Maximum number of locks to return
-            last_evaluated_key: Pagination token
+            last_evaluated_key: Pagination token (only used when
+                collection is specified)
 
         Returns:
-            Tuple of (locks, pagination_token)
+            Tuple of (locks, pagination_token). When collection is None,
+            pagination_token is always None.
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -266,8 +269,17 @@ class _CompactionLock(FlattenedStandardMixin):
                 last_evaluated_key=last_evaluated_key,
             )
         # Query all collections and combine results
-        all_locks = []
+        # Note: Pagination is not supported when collection=None because we
+        # need to query each collection separately. This is acceptable since
+        # ChromaDBCollection has only a few values (currently 2).
+        all_locks: list[CompactionLock] = []
+        remaining = limit  # Track remaining items to fetch
+
         for coll in ChromaDBCollection:
+            # Stop early if we've collected enough items
+            if remaining is not None and remaining <= 0:
+                break
+
             locks, _ = self._query_entities(
                 index_name="GSI1",
                 key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
@@ -277,13 +289,13 @@ class _CompactionLock(FlattenedStandardMixin):
                     ":sk": {"S": f"EXPIRES#{now}"},
                 },
                 converter_func=item_to_compaction_lock,
-                limit=None,  # Get all for this collection
+                limit=remaining,  # Respect remaining limit per collection
             )
             all_locks.extend(locks)
 
-        # Apply limit if specified
-        if limit is not None:
-            all_locks = all_locks[:limit]
+            # Update remaining count
+            if remaining is not None:
+                remaining -= len(locks)
 
         return all_locks, None  # No pagination for combined results
 

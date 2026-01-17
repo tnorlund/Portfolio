@@ -1127,11 +1127,11 @@ def _parse_section_map(section_map: dict[str, Any]) -> dict[str, Any]:
         section_map.get("line_ids", {}).get("L", [])
     )
 
-    # Start/end lines
-    start_line_attr = section_map.get("start_line", {}).get("N", "0")
-    section_data["start_line"] = int(start_line_attr) if start_line_attr else 0
-    end_line_attr = section_map.get("end_line", {}).get("N", "0")
-    section_data["end_line"] = int(end_line_attr) if end_line_attr else 0
+    # Start/end lines - default to None so ReceiptSection can compute from line_ids
+    start_line_attr = section_map.get("start_line", {}).get("N")
+    section_data["start_line"] = int(start_line_attr) if start_line_attr else None
+    end_line_attr = section_map.get("end_line", {}).get("N")
+    section_data["end_line"] = int(end_line_attr) if end_line_attr else None
 
     # Patterns
     section_data["spatial_patterns"] = _parse_spatial_patterns(

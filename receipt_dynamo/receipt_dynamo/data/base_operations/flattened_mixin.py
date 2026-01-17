@@ -184,6 +184,10 @@ class FlattenedStandardMixin:
             raise EntityValidationError(
                 f"{param_name} must be a list of tuples"
             )
+        if not all(len(index) == 2 for index in indices):
+            raise EntityValidationError(
+                f"{param_name} tuples must have exactly 2 elements"
+            )
         if not all(
             isinstance(index[0], str) and isinstance(index[1], int)
             for index in indices
@@ -217,11 +221,22 @@ class FlattenedStandardMixin:
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
                 raise EntityValidationError("keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
+            # Validate DynamoDB attribute format
+            pk_val = key["PK"]
+            sk_val = key["SK"]
+            if not isinstance(pk_val, dict) or "S" not in pk_val:
+                raise EntityValidationError(
+                    "PK must be a DynamoDB string attribute {'S': ...}"
+                )
+            if not isinstance(sk_val, dict) or "S" not in sk_val:
+                raise EntityValidationError(
+                    "SK must be a DynamoDB string attribute {'S': ...}"
+                )
+            if not pk_val["S"].startswith("IMAGE#"):
                 raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("RECEIPT#"):
+            if not sk_val["S"].startswith("RECEIPT#"):
                 raise EntityValidationError("SK must start with 'RECEIPT#'")
-            if not key["SK"]["S"].split("#")[-1] == expected_sk_suffix:
+            if not sk_val["S"].split("#")[-1] == expected_sk_suffix:
                 raise EntityValidationError(
                     f"SK must end with '{expected_sk_suffix}'"
                 )

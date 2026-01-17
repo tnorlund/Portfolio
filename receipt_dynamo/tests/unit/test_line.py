@@ -234,6 +234,48 @@ def test_line_init_invalid_top_left():
                 "width": 5.0,
                 "height": 2.0,
             },
+            top_right={"x": 15.0, "y": 20.0},
+            top_left=1,
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90,
+        )
+    with pytest.raises(ValueError, match="point must contain the key 'y'"):
+        Line(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90,
+        )
+
+
+@pytest.mark.unit
+def test_line_init_invalid_top_right():
+    with pytest.raises(ValueError, match="point must be a dictionary"):
+        Line(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
+                "x": 10.0,
+                "y": 20.0,
+                "width": 5.0,
+                "height": 2.0,
+            },
             top_right=1,
             top_left={"x": 10.0, "y": 20.0},
             bottom_right={"x": 15.0, "y": 22.0},
@@ -264,48 +306,6 @@ def test_line_init_invalid_top_left():
 
 
 @pytest.mark.unit
-def test_line_init_invalid_top_right():
-    with pytest.raises(ValueError, match="point must be a dictionary"):
-        Line(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            text="Test",
-            bounding_box={
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left=1,
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-    with pytest.raises(ValueError, match="point must contain the key 'y'"):
-        Line(
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=1,
-            text="Test",
-            bounding_box={
-                "x": 10.0,
-                "y": 20.0,
-                "width": 5.0,
-                "height": 2.0,
-            },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left={"x": 15.0},
-            bottom_right={"x": 15.0, "y": 22.0},
-            bottom_left={"x": 10.0, "y": 22.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.90,
-        )
-
-
-@pytest.mark.unit
 def test_line_init_invalid_bottom_left():
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Line(
@@ -318,10 +318,10 @@ def test_line_init_invalid_bottom_left():
                 "width": 5.0,
                 "height": 2.0,
             },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left={"x": 15.0, "y": 22.0},
-            bottom_right=1,
-            bottom_left={"x": 10.0, "y": 22.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left=1,
             angle_degrees=1.0,
             angle_radians=5.0,
             confidence=0.90,
@@ -337,10 +337,10 @@ def test_line_init_invalid_bottom_left():
                 "width": 5.0,
                 "height": 2.0,
             },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left={"x": 15.0, "y": 22.0},
-            bottom_right={"x": 15.0},
-            bottom_left={"x": 10.0, "y": 22.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0},
             angle_degrees=1.0,
             angle_radians=5.0,
             confidence=0.90,
@@ -360,10 +360,10 @@ def test_line_init_invalid_bottom_right():
                 "width": 5.0,
                 "height": 2.0,
             },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left={"x": 15.0, "y": 22.0},
-            bottom_right={"x": 10.0, "y": 22.0},
-            bottom_left=1,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right=1,
+            bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
             confidence=0.90,
@@ -379,10 +379,10 @@ def test_line_init_invalid_bottom_right():
                 "width": 5.0,
                 "height": 2.0,
             },
-            top_right={"x": 10.0, "y": 20.0},
-            top_left={"x": 15.0, "y": 22.0},
-            bottom_right={"x": 10.0, "y": 22.0},
-            bottom_left={"x": 15.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0},
+            bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
             confidence=0.90,
@@ -1227,7 +1227,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # noqa: E501
+    ) 
     l2 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1240,7 +1240,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # noqa: E501
+    ) 
     l3 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
         line_id=1,
@@ -1253,7 +1253,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different Image ID # noqa: E501
+    )  # Different Image ID
     l4 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=2,
@@ -1266,7 +1266,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different ID # noqa: E501
+    )  # Different ID
     l5 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1279,7 +1279,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different text # noqa: E501
+    )  # Different text
     l6 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1292,7 +1292,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different bounding box # noqa: E501
+    )  # Different bounding box
     l7 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1305,7 +1305,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different top_right # noqa: E501
+    )  # Different top_right
     l8 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1318,7 +1318,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different top_left # noqa: E501
+    )  # Different top_left
     l9 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1331,7 +1331,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different bottom_right # noqa: E501
+    )  # Different bottom_right
     l10 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1344,7 +1344,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different bottom_left # noqa: E501
+    )  # Different bottom_left
     l11 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1357,7 +1357,7 @@ def test_line_eq():
         angle_degrees=2.0,
         angle_radians=5.0,
         confidence=0.90
-    )  # Different angle_degrees # noqa: E501
+    )  # Different angle_degrees
     l12 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1370,7 +1370,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=6.0,
         confidence=0.90
-    )  # Different angle_radians # noqa: E501
+    )  # Different angle_radians
     l13 = Line(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -1383,7 +1383,7 @@ def test_line_eq():
         angle_degrees=1.0,
         angle_radians=5.0,
         confidence=0.91
-    )  # Different confidence # noqa: E501
+    )  # Different confidence
     # fmt: on
 
     assert l1 == l2
