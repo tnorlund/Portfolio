@@ -409,17 +409,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If parameters are invalid.
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("limit must be positive")
-
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        self._validate_pagination_params(limit, last_evaluated_key)
 
         return self._query_by_type(
             entity_type="RECEIPT_PLACE",

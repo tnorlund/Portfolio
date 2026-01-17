@@ -164,7 +164,7 @@ class Letter(TextGeometryEntity):
         )
 
     def __hash__(self) -> int:
-        """Return hash based on geometry fields."""
+        """Return hash based on all fields (required due to explicit __eq__)."""
         return hash(self._get_geometry_hash_fields())
 
 

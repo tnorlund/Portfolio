@@ -286,7 +286,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         )
 
     def __hash__(self) -> int:
-        """Return hash based on geometry fields."""
+        """Return hash (required for dataclass with eq=True, frozen=False)."""
         return hash(self._get_geometry_hash_fields())
 
 
