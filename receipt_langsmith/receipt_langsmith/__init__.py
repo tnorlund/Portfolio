@@ -47,7 +47,7 @@ Example:
     ```
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"  # Bump to force EMR image rebuild with processor.py fix
 
 # Client (always available)
 from receipt_langsmith.client import (

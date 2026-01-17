@@ -685,17 +685,18 @@ class LangSmithSparkProcessor:
             df: DataFrame with raw trace data (from read_parquet).
 
         Returns:
-            List of dicts containing outputs from LangGraph traces.
+            List of dicts containing outputs from receipt evaluation traces.
             Each dict has an 'outputs' key with the raw JSON string.
         """
-        logger.info("Extracting LangGraph receipts from DataFrame")
-        langgraph_df = df.filter(F.col("name") == "LangGraph").select(
-            "outputs"
-        )
+        logger.info("Extracting receipt evaluation traces from DataFrame")
+        # Support both old format (LangGraph) and new format (ReceiptEvaluation)
+        receipt_df = df.filter(
+            F.col("name").isin(["LangGraph", "ReceiptEvaluation"])
+        ).select("outputs")
 
         # Collect to driver for processing
-        rows = langgraph_df.collect()
+        rows = receipt_df.collect()
         result = [row.asDict() for row in rows]
 
-        logger.info("Extracted %d LangGraph receipts", len(result))
+        logger.info("Extracted %d receipt evaluation traces", len(result))
         return result
