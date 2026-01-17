@@ -338,6 +338,40 @@ class FlattenedStandardMixin:
 
     # ========== Query Operations ==========
 
+    def _build_last_evaluated_key(
+        self, item: Dict[str, Any], index_name: Optional[str]
+    ) -> Dict[str, Any]:
+        """Build a LastEvaluatedKey from a DynamoDB item.
+
+        Args:
+            item: The raw DynamoDB item
+            index_name: The GSI name if querying an index, None for main table
+
+        Returns:
+            A LastEvaluatedKey dict suitable for pagination
+        """
+        # Always include the table's primary key
+        key: Dict[str, Any] = {
+            "PK": item["PK"],
+            "SK": item["SK"],
+        }
+
+        # Add GSI key attributes if querying an index
+        if index_name:
+            # Special case: GSITYPE index uses "TYPE" as partition key
+            if index_name == "GSITYPE" and "TYPE" in item:
+                key["TYPE"] = item["TYPE"]
+            else:
+                # Standard pattern: GSI{N}PK and GSI{N}SK
+                pk_attr = f"{index_name}PK"
+                sk_attr = f"{index_name}SK"
+                if pk_attr in item:
+                    key[pk_attr] = item[pk_attr]
+                if sk_attr in item:
+                    key[sk_attr] = item[sk_attr]
+
+        return key
+
     def _query_entities(
         self,
         index_name: Optional[str],
@@ -377,15 +411,35 @@ class FlattenedStandardMixin:
             response = self._client.query(**query_params)
 
             # Process items
-            if "Items" in response:
-                for item in response["Items"]:
-                    entity = converter_func(item)
-                    if entity is not None:
-                        entities.append(entity)
-                        if limit and len(entities) >= limit:
-                            return entities[:limit], response.get(
-                                "LastEvaluatedKey"
+            items = response.get("Items", [])
+            last_processed_item = None
+            items_processed_count = 0
+
+            for item in items:
+                entity = converter_func(item)
+                if entity is not None:
+                    entities.append(entity)
+                    last_processed_item = item
+                    items_processed_count += 1
+
+                    if limit and len(entities) >= limit:
+                        # Check if there are more items available
+                        has_more_in_response = items_processed_count < len(
+                            items
+                        )
+                        has_more_pages = (
+                            response.get("LastEvaluatedKey") is not None
+                        )
+
+                        if has_more_in_response or has_more_pages:
+                            # Construct key from last processed item
+                            next_key = self._build_last_evaluated_key(
+                                last_processed_item, index_name
                             )
+                            return entities[:limit], next_key
+                        else:
+                            # No more items anywhere
+                            return entities[:limit], None
 
             # Check for more pages
             current_last_key = response.get("LastEvaluatedKey")
@@ -402,11 +456,14 @@ class FlattenedStandardMixin:
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
-        """Query entities by TYPE using GSITYPE index."""
+        """Query entities by TYPE using GSITYPE index.
+
+        Note: The index is named GSITYPE but uses TYPE as its partition key.
+        """
         return self._query_entities(
             index_name="GSITYPE",
-            key_condition_expression="GSITYPE = :type_value",
-            expression_attribute_names=None,
+            key_condition_expression="#type_attr = :type_value",
+            expression_attribute_names={"#type_attr": "TYPE"},
             expression_attribute_values={":type_value": {"S": entity_type}},
             converter_func=converter_func,
             limit=limit,

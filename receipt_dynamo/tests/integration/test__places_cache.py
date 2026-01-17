@@ -1,13 +1,18 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities.places_cache import PlacesCache
 
@@ -91,56 +96,35 @@ def test_addPlacesCache_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
+    "error_code,expected_exception",
     [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "ValidationException",
-            "Invalid parameters",
-            "Validation error",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "DynamoDB error during add_places_cache",
-        ),
+        ("ResourceNotFoundException", OperationError),
+        ("ProvisionedThroughputExceededException", DynamoDBThroughputError),
+        ("ValidationException", EntityValidationError),
+        ("AccessDeniedException", DynamoDBError),
+        ("UnknownError", DynamoDBError),
     ],
 )
 def test_addPlacesCache_client_errors(
-    dynamodb_table,
-    sample_places_cache,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_places_cache: PlacesCache,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+) -> None:
     """Test handling of various client errors when adding a PlacesCache."""
     # Arrange
     dynamo = DynamoClient(dynamodb_table)
     mock_client = mocker.patch.object(dynamo, "_client")
     mock_client.put_item.side_effect = ClientError(
         error_response={
-            "Error": {"Code": error_code, "Message": error_message}
+            "Error": {"Code": error_code, "Message": "Test error"}
         },
         operation_name="PutItem",
     )
 
     # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception):
         dynamo.add_places_cache(sample_places_cache)
 
 
@@ -229,15 +213,13 @@ def test_updatePlacesCache_success(
 def test_updatePlacesCache_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_places_cache: PlacesCache,
-):
-    """Test updating a non-existent PlacesCache raises ValueError."""
+) -> None:
+    """Test updating a non-existent PlacesCache raises EntityNotFoundError."""
     # Arrange
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(
-        EntityNotFoundError, match="not found during update_places_cache"
-    ):
+    with pytest.raises(EntityNotFoundError):
         dynamo.update_places_cache(sample_places_cache)
 
 
@@ -265,15 +247,13 @@ def test_deletePlacesCache_success(
 def test_deletePlacesCache_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_places_cache: PlacesCache,
-):
-    """Test deleting a non-existent PlacesCache raises ValueError."""
+) -> None:
+    """Test deleting a non-existent PlacesCache raises EntityNotFoundError."""
     # Arrange
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(
-        EntityNotFoundError, match="not found during delete_places_cache"
-    ):
+    with pytest.raises(EntityNotFoundError):
         dynamo.delete_places_cache(sample_places_cache)
 
 

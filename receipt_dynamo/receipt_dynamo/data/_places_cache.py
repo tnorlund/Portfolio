@@ -80,13 +80,8 @@ class _PlacesCache(
         Raises:
             EntityValidationError: If item parameters are invalid
         """
-        if item is None:
-            raise EntityValidationError("item cannot be None")
-        if not isinstance(item, PlacesCache):
-            raise EntityValidationError(
-                "item must be an instance of PlacesCache"
-            )
-        self._execute_put_item(item, condition_expression=None)
+        self._validate_entity(item, PlacesCache, "item")
+        self._add_entity(item, condition_expression=None)
 
     @handle_dynamodb_errors("update_places_cache")
     def update_places_cache(self, item: PlacesCache):
