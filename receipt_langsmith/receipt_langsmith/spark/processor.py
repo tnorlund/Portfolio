@@ -81,7 +81,9 @@ class LangSmithSparkProcessor:
         df = self.spark.read.parquet(spark_path)
         available_columns = set(df.columns)
 
-        logger.info("Available columns in parquet: %s", sorted(available_columns))
+        logger.info(
+            "Available columns in parquet: %s", sorted(available_columns)
+        )
 
         # If timestamps are read as Long (nanoseconds), convert to timestamp
         from pyspark.sql.types import LongType
@@ -212,9 +214,9 @@ class LangSmithSparkProcessor:
         # Add job_type column
         jobs_with_type = jobs.withColumn(
             "job_type",
-            F.when(F.col("name") == "PatternComputation", "phase1_patterns").when(
-                F.col("name") == "ReceiptEvaluation", "phase2_evaluation"
-            ),
+            F.when(
+                F.col("name") == "PatternComputation", "phase1_patterns"
+            ).when(F.col("name") == "ReceiptEvaluation", "phase2_evaluation"),
         )
 
         # Aggregate by job type
@@ -223,8 +225,12 @@ class LangSmithSparkProcessor:
             F.avg("duration_ms").alias("avg_duration_ms"),
             F.min("duration_ms").alias("min_duration_ms"),
             F.max("duration_ms").alias("max_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
+            F.expr("percentile_approx(duration_ms, 0.5)").alias(
+                "p50_duration_ms"
+            ),
+            F.expr("percentile_approx(duration_ms, 0.95)").alias(
+                "p95_duration_ms"
+            ),
             F.sum("total_tokens").alias("total_tokens"),
         )
 
@@ -251,9 +257,9 @@ class LangSmithSparkProcessor:
         # Add job_type column
         jobs_with_type = jobs.withColumn(
             "job_type",
-            F.when(F.col("name") == "PatternComputation", "phase1_patterns").when(
-                F.col("name") == "ReceiptEvaluation", "phase2_evaluation"
-            ),
+            F.when(
+                F.col("name") == "PatternComputation", "phase1_patterns"
+            ).when(F.col("name") == "ReceiptEvaluation", "phase2_evaluation"),
         )
 
         # Aggregate by job type and merchant
@@ -267,7 +273,9 @@ class LangSmithSparkProcessor:
             F.sum("total_tokens").alias("total_tokens"),
         )
 
-        result = result.withColumnRenamed("metadata_merchant_name", "merchant_name")
+        result = result.withColumnRenamed(
+            "metadata_merchant_name", "merchant_name"
+        )
 
         logger.info("Computed job analytics by merchant")
         return result
@@ -664,3 +672,31 @@ class LangSmithSparkProcessor:
         writer.parquet(spark_path)
 
         logger.info("Analytics written successfully")
+
+    def extract_langgraph_receipts(self, df: DataFrame) -> list[dict]:
+        """Extract LangGraph trace outputs for visualization cache.
+
+        Filters to name='LangGraph' rows and extracts receipt data from outputs.
+        Returns collected data for driver-side processing.
+
+        This method is used by viz_cache_job to extract receipt data from
+        LangSmith Parquet exports for building visualization cache files.
+
+        Args:
+            df: DataFrame with raw trace data (from read_parquet).
+
+        Returns:
+            List of dicts containing outputs from LangGraph traces.
+            Each dict has an 'outputs' key with the raw JSON string.
+        """
+        logger.info("Extracting LangGraph receipts from DataFrame")
+        langgraph_df = df.filter(F.col("name") == "LangGraph").select(
+            "outputs"
+        )
+
+        # Collect to driver for processing
+        rows = langgraph_df.collect()
+        result = [row.asDict() for row in rows]
+
+        logger.info("Extracted %d LangGraph receipts", len(result))
+        return result

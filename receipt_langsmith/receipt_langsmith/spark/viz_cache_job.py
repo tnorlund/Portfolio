@@ -37,7 +37,7 @@ from typing import Any
 
 import boto3
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+
 from receipt_langsmith.entities.visualization import (
     BoundingBox,
     DecisionCounts,
@@ -47,6 +47,7 @@ from receipt_langsmith.entities.visualization import (
     WordWithLabel,
 )
 from receipt_langsmith.parsers.trace_helpers import load_s3_result
+from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -422,32 +423,31 @@ def _resolve_execution_id(
 
 def _extract_parquet_receipts(
     spark: SparkSession,
-    s3_client: Any,
+    _s3_client: Any,  # Unused - kept for API compatibility
     args: argparse.Namespace,
     parquet_prefix: str,
 ) -> list[dict[str, Any]]:
-    """Extract receipt data from Parquet files."""
-    # List all parquet files
-    parquet_files = _list_parquet_files(
-        s3_client, args.parquet_bucket, parquet_prefix
-    )
-    if not parquet_files:
-        logger.error("No parquet files found in %s", parquet_prefix)
-        return []
+    """Extract receipt data from Parquet files using LangSmithSparkProcessor.
 
-    logger.info("Found %d parquet files", len(parquet_files))
+    Uses the shared processor for consistent Parquet handling:
+    - Automatic s3:// to s3a:// conversion
+    - Proper nanosecond timestamp handling
+    - Flexible schema (handles missing columns)
+    """
+    # Build full parquet path
+    parquet_path = f"s3://{args.parquet_bucket}/{parquet_prefix}"
 
-    # Read and filter
-    df = spark.read.parquet(*parquet_files)
-    langgraph_df = df.filter(col("name") == "LangGraph")
+    # Use processor for consistent Parquet reading
+    processor = LangSmithSparkProcessor(spark)
+    df = processor.read_parquet(parquet_path)
 
-    # Extract all receipt data
-    logger.info("Extracting all receipt candidates...")
-    langgraph_data = langgraph_df.select("outputs").collect()
+    # Extract LangGraph receipts using processor
+    langgraph_data = processor.extract_langgraph_receipts(df)
 
+    # Parse each row into receipt format
     receipts = []
     for row in langgraph_data:
-        receipt = _parse_langgraph_row(row)
+        receipt = _parse_langgraph_row_dict(row)
         if receipt:
             receipts.append(receipt)
 
@@ -455,28 +455,23 @@ def _extract_parquet_receipts(
     return receipts
 
 
-def _list_parquet_files(s3_client: Any, bucket: str, prefix: str) -> list[str]:
-    """List all parquet files in an S3 prefix."""
-    parquet_files = []
-    paginator = s3_client.get_paginator("list_objects_v2")
+def _parse_langgraph_row_dict(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Parse a LangGraph row dict into receipt data.
 
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".parquet"):
-                parquet_files.append(f"s3://{bucket}/{key}")
-                if len(parquet_files) <= 3:
-                    logger.info("  File: s3://%s/%s", bucket, key)
+    Args:
+        row: Dict with 'outputs' key containing JSON string or parsed dict.
 
-    return parquet_files
+    Returns:
+        Receipt data dict or None if invalid.
+    """
+    raw_outputs = row.get("outputs")
+    if not raw_outputs:
+        return None
 
-
-def _parse_langgraph_row(row: Any) -> dict[str, Any] | None:
-    """Parse a LangGraph row into receipt data."""
     outputs = (
-        json.loads(row.outputs)
-        if isinstance(row.outputs, str)
-        else row.outputs
+        json.loads(raw_outputs)
+        if isinstance(raw_outputs, str)
+        else raw_outputs
     )
     if not outputs:
         return None
@@ -613,8 +608,12 @@ def _build_single_viz_receipt(
     cdn_webp_s3_key = cdn_webp_s3_key or generated["cdn_webp_s3_key"]
     cdn_avif_s3_key = cdn_avif_s3_key or generated["cdn_avif_s3_key"]
     cdn_medium_s3_key = cdn_medium_s3_key or generated["cdn_medium_s3_key"]
-    cdn_medium_webp_s3_key = cdn_medium_webp_s3_key or generated["cdn_medium_webp_s3_key"]
-    cdn_medium_avif_s3_key = cdn_medium_avif_s3_key or generated["cdn_medium_avif_s3_key"]
+    cdn_medium_webp_s3_key = (
+        cdn_medium_webp_s3_key or generated["cdn_medium_webp_s3_key"]
+    )
+    cdn_medium_avif_s3_key = (
+        cdn_medium_avif_s3_key or generated["cdn_medium_avif_s3_key"]
+    )
 
     # Get dimensions from lookup (with fallback for legacy format)
     width = receipt_data.get("width", 800)
@@ -822,14 +821,20 @@ def _write_cache(
     uploaded_count = 0
     failed_count = 0
     with ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_receipt = {executor.submit(upload_receipt, r): r for r in receipts}
+        future_to_receipt = {
+            executor.submit(upload_receipt, r): r for r in receipts
+        }
         for future in as_completed(future_to_receipt):
             receipt = future_to_receipt[future]
             try:
                 future.result()
                 uploaded_count += 1
                 if uploaded_count % 50 == 0:
-                    logger.info("Uploaded %d/%d receipts", uploaded_count, len(receipts))
+                    logger.info(
+                        "Uploaded %d/%d receipts",
+                        uploaded_count,
+                        len(receipts),
+                    )
             except Exception:
                 failed_count += 1
                 logger.exception(
@@ -842,7 +847,9 @@ def _write_cache(
 
     if failed_count > 0:
         logger.warning(
-            "Completed with %d failures out of %d receipts", failed_count, len(receipts)
+            "Completed with %d failures out of %d receipts",
+            failed_count,
+            len(receipts),
         )
 
     # Write metadata.json with pool stats
