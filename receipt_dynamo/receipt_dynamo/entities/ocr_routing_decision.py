@@ -4,6 +4,12 @@ from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_image_receipt_pk_parser,
+    create_ocr_job_extractors,
+    create_ocr_job_sk_parser,
+)
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -150,39 +156,21 @@ def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
         "receipt_count",
         "status",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}"
-            f"\nadditional keys: {additional_keys}"
-        )
 
-    try:
-        sk_parts = item["SK"]["S"].split("#")
-        image_id = item["PK"]["S"].split("#")[1]
-        job_id = sk_parts[1]
-        s3_bucket = item["s3_bucket"]["S"]
-        s3_key = item["s3_key"]["S"]
-        created_at = datetime.fromisoformat(item["created_at"]["S"])
-        updated_at = (
-            datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item and "S" in item["updated_at"]
-            else None
-        )
-        receipt_count = int(item["receipt_count"]["N"])
-        status = item["status"]["S"]
-        return OCRRoutingDecision(
-            image_id=image_id,
-            job_id=job_id,
-            s3_bucket=s3_bucket,
-            s3_key=s3_key,
-            created_at=created_at,
-            updated_at=updated_at,
-            receipt_count=receipt_count,
-            status=status,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Invalid item format\nitem: {item}\nerror: {e}"
-        ) from e
+    # OCRRoutingDecision-specific extractors (in addition to common OCR
+    # extractors)
+    custom_extractors = {
+        **create_ocr_job_extractors(),
+        "receipt_count": EntityFactory.extract_int_field("receipt_count"),
+    }
+
+    return EntityFactory.create_entity(
+        entity_class=OCRRoutingDecision,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": create_ocr_job_sk_parser(),
+        },
+        custom_extractors=custom_extractors,
+    )

@@ -395,3 +395,52 @@ def create_geometry_extractors() -> Dict[str, DynamoDBItemExtractor]:
         field: create_geometry_field_extractor(field)
         for field in geometry_field_names
     }
+
+
+def create_ocr_job_sk_parser() -> KeyParser:
+    """Create a type-safe SK parser for OCR_JOB# pattern.
+
+    Parses SK like "OCR_JOB#{job_id}" or "OCR_ROUTING#{job_id}"
+    """
+
+    def parser(sk: str) -> Dict[str, Any]:
+        sk_parts = sk.split("#")
+        if len(sk_parts) < 2:
+            raise ValueError(f"Invalid OCR job SK format: {sk}")
+        return {"job_id": sk_parts[1]}
+
+    return parser
+
+
+def create_ocr_job_extractors() -> Dict[str, DynamoDBItemExtractor]:
+    """Create type-safe extractors for common OCR job fields.
+
+    These fields are shared between OCRJob and OCRRoutingDecision:
+    - s3_bucket
+    - s3_key
+    - created_at
+    - updated_at (optional)
+    - status
+    """
+    return {
+        "s3_bucket": EntityFactory.extract_string_field("s3_bucket"),
+        "s3_key": EntityFactory.extract_string_field("s3_key"),
+        "created_at": EntityFactory.extract_datetime_field("created_at"),
+        "updated_at": _create_optional_datetime_extractor("updated_at"),
+        "status": EntityFactory.extract_string_field("status"),
+    }
+
+
+def _create_optional_datetime_extractor(
+    field_name: str,
+) -> DynamoDBItemExtractor:
+    """Create extractor for optional datetime field."""
+
+    def extractor(item: Dict[str, Any]) -> Optional[datetime]:
+        if field_name not in item:
+            return None
+        if "S" not in item[field_name]:
+            return None
+        return datetime.fromisoformat(item[field_name]["S"])
+
+    return extractor

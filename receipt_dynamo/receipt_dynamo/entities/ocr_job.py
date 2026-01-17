@@ -3,6 +3,12 @@ from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_image_receipt_pk_parser,
+    create_ocr_job_extractors,
+    create_ocr_job_sk_parser,
+)
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -175,42 +181,21 @@ def item_to_ocr_job(item: Dict[str, Any]) -> OCRJob:
         "job_type",
         "receipt_id",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}"
-            f"\nadditional keys: {additional_keys}"
-        )
-    try:
-        sk_parts = item["SK"]["S"].split("#")
-        image_id = item["PK"]["S"].split("#")[1]
-        job_id = sk_parts[1]
-        s3_bucket = item["s3_bucket"]["S"]
-        s3_key = item["s3_key"]["S"]
-        created_at = datetime.fromisoformat(item["created_at"]["S"])
-        updated_at = (
-            datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item and "S" in item["updated_at"]
-            else None
-        )
-        status = item["status"]["S"]
-        job_type = item["job_type"]["S"]
-        receipt_id = (
-            int(item["receipt_id"]["N"])
-            if "receipt_id" in item and "N" in item["receipt_id"]
-            else None
-        )
-        return OCRJob(
-            image_id=image_id,
-            job_id=job_id,
-            s3_bucket=s3_bucket,
-            s3_key=s3_key,
-            created_at=created_at,
-            updated_at=updated_at,
-            status=status,
-            job_type=job_type,
-            receipt_id=receipt_id,
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting item to OCRJob: {e}") from e
+
+    # OCRJob-specific extractors (in addition to common OCR extractors)
+    custom_extractors = {
+        **create_ocr_job_extractors(),
+        "job_type": EntityFactory.extract_string_field("job_type"),
+        "receipt_id": EntityFactory.extract_int_field("receipt_id"),
+    }
+
+    return EntityFactory.create_entity(
+        entity_class=OCRJob,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": create_ocr_job_sk_parser(),
+        },
+        custom_extractors=custom_extractors,
+    )
