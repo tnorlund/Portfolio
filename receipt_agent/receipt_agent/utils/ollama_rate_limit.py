@@ -41,7 +41,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +321,7 @@ class RateLimitedLLMInvoker:
     """
 
     llm: Any  # LangChain LLM instance
-    circuit_breaker: Optional[OllamaCircuitBreaker] = None
+    circuit_breaker: OllamaCircuitBreaker | None = None
     max_jitter_seconds: float = 0.25
     call_count: int = field(default=0, init=False)
     _async_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -340,7 +340,7 @@ class RateLimitedLLMInvoker:
             if jitter > 0:
                 await asyncio.sleep(jitter)
 
-    def invoke(self, messages: Any, config: Optional[dict] = None) -> Any:
+    def invoke(self, messages: Any, config: dict | None = None) -> Any:
         """
         Invoke the LLM with rate limiting and circuit breaker protection.
 
@@ -379,7 +379,7 @@ class RateLimitedLLMInvoker:
         self,
         messages: Any,
         fallback_fn: Callable[[], Any],
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> Any:
         """
         Invoke LLM with a fallback function for non-rate-limit errors.
@@ -404,7 +404,7 @@ class RateLimitedLLMInvoker:
             logger.warning("LLM call failed, using fallback: %s", e)
             return fallback_fn()
 
-    async def ainvoke(self, messages: Any, config: Optional[dict] = None) -> Any:
+    async def ainvoke(self, messages: Any, config: dict | None = None) -> Any:
         """
         Async invoke the LLM with rate limiting and circuit breaker protection.
 
