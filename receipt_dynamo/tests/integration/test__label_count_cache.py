@@ -164,7 +164,7 @@ class TestLabelCountCacheBasicOperations:
     ) -> None:
         """Test that updating a non-existent label count cache raises error."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             client.update_label_count_cache(example_label_count_cache)
 
     def test_add_duplicate_label_count_cache_raises_error(

@@ -161,7 +161,7 @@ class _ReceiptLineItemAnalysis(FlattenedStandardMixin):
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
-        self._delete_entity(analysis)
+        self._delete_entity(analysis, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_receipt_line_item_analyses")
     def delete_receipt_line_item_analyses(

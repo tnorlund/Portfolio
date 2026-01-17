@@ -97,7 +97,9 @@ class _ReceiptField(FlattenedStandardMixin):
             When a receipt field with the same ID already exists.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._add_entity(receipt_field)
+        self._add_entity(
+            receipt_field, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_fields")
     def add_receipt_fields(self, receipt_fields: list[ReceiptField]) -> None:
@@ -143,7 +145,7 @@ class _ReceiptField(FlattenedStandardMixin):
             When the receipt field does not exist.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._update_entity(receipt_field)
+        self._update_entity(receipt_field, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipt_fields")
     def update_receipt_fields(
@@ -194,7 +196,7 @@ class _ReceiptField(FlattenedStandardMixin):
             When the receipt field does not exist.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._delete_entity(receipt_field)
+        self._delete_entity(receipt_field, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_receipt_fields")
     def delete_receipt_fields(

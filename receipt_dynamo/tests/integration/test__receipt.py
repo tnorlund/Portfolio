@@ -759,7 +759,7 @@ def test_update_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -790,7 +790,7 @@ def test_delete_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 

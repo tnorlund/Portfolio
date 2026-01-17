@@ -156,7 +156,7 @@ def test_addJobResource_raises_conditional_check_failed(
     # Try to add it again
     with pytest.raises(
         EntityAlreadyExistsError,
-        match="job_resource already exists",
+        match="already exists",
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
 

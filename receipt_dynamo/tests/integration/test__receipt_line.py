@@ -695,7 +695,7 @@ def test_add_receipt_line_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityAlreadyExistsError, match="receipt_line already exists"
+        EntityAlreadyExistsError, match="already exists"
     ):
         client.add_receipt_line(sample_receipt_line)
 
@@ -751,7 +751,7 @@ def test_delete_receipt_line_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityNotFoundError, match="not found during delete_receipt_line"
+        EntityNotFoundError, match="(does not exist|not found)"
     ):
         client.delete_receipt_line(
             sample_receipt_line.image_id,

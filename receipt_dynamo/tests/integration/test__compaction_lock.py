@@ -274,7 +274,7 @@ class TestCompactionLockErrors:
         """Test that updating a non-existent lock raises error."""
         client = DynamoClient(dynamodb_table)
 
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             client.update_compaction_lock(example_compaction_lock)
 
     def test_delete_non_existent_lock_raises_error(

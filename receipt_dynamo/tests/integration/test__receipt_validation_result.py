@@ -80,7 +80,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "receipt_validation_result already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -89,7 +89,7 @@ UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "not found during update_receipt_validation_result",
+        "does not exist",
     ),
 ] + ERROR_SCENARIOS
 

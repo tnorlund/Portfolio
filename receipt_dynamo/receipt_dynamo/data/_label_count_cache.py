@@ -24,7 +24,7 @@ class _LabelCountCache(FlattenedStandardMixin):
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        self._add_entity(item)
+        self._add_entity(item, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
@@ -70,7 +70,7 @@ class _LabelCountCache(FlattenedStandardMixin):
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        self._update_entity(item)
+        self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:

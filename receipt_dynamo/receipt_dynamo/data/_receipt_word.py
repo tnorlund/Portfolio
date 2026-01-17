@@ -76,7 +76,9 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._add_entity(receipt_word)
+        self._add_entity(
+            receipt_word, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_words")
     def add_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
@@ -102,7 +104,7 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._update_entity(receipt_word)
+        self._update_entity(receipt_word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipt_words")
     def update_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
@@ -128,7 +130,7 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._delete_entity(receipt_word)
+        self._delete_entity(receipt_word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_receipt_words")
     def delete_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:

@@ -50,7 +50,9 @@ class _ReceiptLine(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_line must be an instance of ReceiptLine"
             )
-        self._add_entity(receipt_line)
+        self._add_entity(
+            receipt_line, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_lines")
     def add_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
@@ -76,7 +78,7 @@ class _ReceiptLine(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_line must be an instance of ReceiptLine"
             )
-        self._update_entity(receipt_line)
+        self._update_entity(receipt_line, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipt_lines")
     def update_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:

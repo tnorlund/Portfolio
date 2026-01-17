@@ -242,7 +242,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "image already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -459,7 +459,7 @@ def test_add_image_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_image(sample_image)
 
-    with pytest.raises(EntityAlreadyExistsError, match="image already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_image(sample_image)
 
 

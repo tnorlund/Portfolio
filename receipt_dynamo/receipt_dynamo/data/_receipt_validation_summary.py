@@ -144,7 +144,7 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
         """
         self._validate_entity(summary, ReceiptValidationSummary, "summary")
 
-        self._delete_entity(summary, condition_expression=None)
+        self._delete_entity(summary, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("get_receipt_validation_summary")
     def get_receipt_validation_summary(

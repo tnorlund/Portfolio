@@ -74,7 +74,9 @@ class _ReceiptLetter(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._add_entity(receipt_letter)
+        self._add_entity(
+            receipt_letter, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_letters")
     def add_receipt_letters(
@@ -128,7 +130,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._update_entity(receipt_letter)
+        self._update_entity(receipt_letter, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipt_letters")
     def update_receipt_letters(

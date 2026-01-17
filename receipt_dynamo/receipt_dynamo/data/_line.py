@@ -47,7 +47,7 @@ class _Line(FlattenedStandardMixin):
             ValueError: When a line with the same ID already exists
         """
         self._validate_entity(line, Line, "line")
-        self._add_entity(line)
+        self._add_entity(line, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_lines")
     def add_lines(self, lines: List[Line]):
@@ -73,7 +73,7 @@ class _Line(FlattenedStandardMixin):
             ValueError: When a line with the same ID does not exist
         """
         self._validate_entity(line, Line, "line")
-        self._update_entity(line)
+        self._update_entity(line, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_lines")
     def update_lines(self, lines: List[Line]):

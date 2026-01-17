@@ -78,7 +78,7 @@ class _Job(FlattenedStandardMixin):
             ValueError: When a job with the same ID already exists
         """
         self._validate_entity(job, Job, "job")
-        self._add_entity(job)
+        self._add_entity(job, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_jobs")
     def add_jobs(self, jobs: list[Job]):
@@ -111,7 +111,7 @@ class _Job(FlattenedStandardMixin):
             ValueError: When the job does not exist
         """
         self._validate_entity(job, Job, "job")
-        self._update_entity(job)
+        self._update_entity(job, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_jobs")
     def update_jobs(self, jobs: list[Job]):
@@ -143,7 +143,7 @@ class _Job(FlattenedStandardMixin):
             ValueError: When the job does not exist
         """
         self._validate_entity(job, Job, "job")
-        self._delete_entity(job)
+        self._delete_entity(job, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_jobs")
     def delete_jobs(self, jobs: list[Job]):

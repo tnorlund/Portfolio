@@ -97,7 +97,9 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "receipt_word_label"
         )
-        self._add_entity(receipt_word_label)
+        self._add_entity(
+            receipt_word_label, condition_expression="attribute_not_exists(PK)"
+        )
 
     def _handle_add_receipt_word_label_error(
         self, error: ClientError, receipt_word_label: ReceiptWordLabel
@@ -199,7 +201,7 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._update_entity(receipt_word_label)
+        self._update_entity(receipt_word_label, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipt_word_labels")
     def update_receipt_word_labels(
@@ -232,7 +234,7 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._delete_entity(receipt_word_label)
+        self._delete_entity(receipt_word_label, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_receipt_word_labels")
     def delete_receipt_word_labels(

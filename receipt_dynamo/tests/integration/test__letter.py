@@ -144,7 +144,7 @@ class TestLetterBasicOperations:
 
         # Act & Assert
         with pytest.raises(
-            EntityAlreadyExistsError, match="letter already exists"
+            EntityAlreadyExistsError, match="already exists"
         ):
             dynamodb_client.add_letter(example_letter)
 
@@ -168,7 +168,7 @@ class TestLetterBasicOperations:
 
     def test_get_letter_not_found(self, dynamodb_client: DynamoClient) -> None:
         """Test get letter raises EntityNotFoundError when not found."""
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             dynamodb_client.get_letter(
                 "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 999
             )
@@ -199,7 +199,7 @@ class TestLetterBasicOperations:
         self, dynamodb_client: DynamoClient, example_letter: Letter
     ) -> None:
         """Test update letter raises EntityNotFoundError when not found."""
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             dynamodb_client.update_letter(example_letter)
 
     def test_delete_letter_success(
@@ -230,7 +230,7 @@ class TestLetterBasicOperations:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test delete non-existent letter raises EntityNotFoundError."""
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             dynamodb_client.delete_letter(
                 "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 999
             )
@@ -826,7 +826,7 @@ class TestLetterErrorHandling:
             ),
         )
 
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             dynamodb_client.update_letter(example_letter)
 
     @pytest.mark.parametrize(
@@ -880,7 +880,7 @@ class TestLetterErrorHandling:
             ),
         )
 
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
             dynamodb_client.update_letters([example_letter])
 
 

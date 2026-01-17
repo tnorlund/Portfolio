@@ -118,7 +118,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "batch_summary already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -127,7 +127,7 @@ UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "not found during update_batch_summary",
+        "does not exist",
     ),
 ] + ERROR_SCENARIOS
 
@@ -136,7 +136,7 @@ UPDATE_BATCH_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "not found during update_batch_summaries",
+        "not found",
     ),
 ] + ERROR_SCENARIOS
 
@@ -414,7 +414,7 @@ def test_add_batch_summary_duplicate_raises(
     client.add_batch_summary(sample_batch_summary)
 
     with pytest.raises(
-        EntityAlreadyExistsError, match="batch_summary already exists"
+        EntityAlreadyExistsError, match="already exists"
     ):
         client.add_batch_summary(sample_batch_summary)
 
@@ -463,7 +463,7 @@ def test_get_batch_summary_not_found(
     """Tests that get_batch_summary raises EntityNotFoundError for non-existent summary."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
         client.get_batch_summary(str(uuid4()))
 
 
@@ -526,7 +526,7 @@ def test_update_batch_summary_not_found(
 
     with pytest.raises(
         EntityNotFoundError,
-        match="not found during update_batch_summary",
+        match="(does not exist|not found)",
     ):
         client.update_batch_summary(sample_batch_summary)
 

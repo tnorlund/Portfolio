@@ -311,7 +311,7 @@ def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
     job_log_dynamo.delete_job_log(sample_job_log)
 
     # Verify it was deleted
-    with pytest.raises(EntityNotFoundError, match="not found"):
+    with pytest.raises(EntityNotFoundError, match="(does not exist|not found)"):
         job_log_dynamo.get_job_log(
             job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
         )

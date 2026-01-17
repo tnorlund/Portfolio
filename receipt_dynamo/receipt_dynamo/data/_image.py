@@ -57,7 +57,7 @@ class _Image(FlattenedStandardMixin):
     def add_image(self, image: Image) -> None:
         """Adds an Image item to the database."""
         self._validate_entity(image, Image, "image")
-        self._add_entity(image)
+        self._add_entity(image, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_images")
     def add_images(self, images: List[Image]) -> None:
@@ -93,7 +93,7 @@ class _Image(FlattenedStandardMixin):
     def update_image(self, image: Image) -> None:
         """Updates an existing Image item in the database."""
         self._validate_entity(image, Image, "image")
-        self._update_entity(image)
+        self._update_entity(image, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_images")
     def update_images(self, images: List[Image]) -> None:

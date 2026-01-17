@@ -41,7 +41,7 @@ class _CompactionRun(FlattenedStandardMixin):
             raise EntityValidationError(
                 "run must be an instance of CompactionRun"
             )
-        self._add_entity(run)
+        self._add_entity(run, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("update_compaction_run")
     def update_compaction_run(self, run: CompactionRun) -> None:

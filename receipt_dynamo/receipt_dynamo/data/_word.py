@@ -54,7 +54,7 @@ class _Word(FlattenedStandardMixin):
             ValueError: When a word with the same ID already exists
         """
         self._validate_entity(word, Word, "word")
-        self._add_entity(word)
+        self._add_entity(word, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_words")
     def add_words(self, words: List[Word]):
@@ -80,7 +80,7 @@ class _Word(FlattenedStandardMixin):
             ValueError: When a word with the same ID does not exist
         """
         self._validate_entity(word, Word, "word")
-        self._update_entity(word)
+        self._update_entity(word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_words")
     def update_words(self, words: List[Word]):
@@ -129,7 +129,7 @@ class _Word(FlattenedStandardMixin):
             angle_radians=0.0,
             confidence=0.01,
         )
-        self._delete_entity(temp_word)
+        self._delete_entity(temp_word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_words")
     def delete_words(self, words: List[Word]):

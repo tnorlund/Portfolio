@@ -38,7 +38,9 @@ class _AIUsageMetric(FlattenedStandardMixin):
             (),
             {"to_item": staticmethod(metric.to_dynamodb_item)},
         )()
-        self._add_entity(temp_metric)
+        self._add_entity(
+            temp_metric, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("batch_add_ai_usage_metrics")
     def batch_put_ai_usage_metrics(
