@@ -48,10 +48,10 @@ from typing import Optional
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import (
-    process_collection_updates,
+    CloudConfig,
+    apply_collection_updates,
     sort_and_deduplicate_messages,
 )
-from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -106,35 +106,6 @@ class LambdaResponse:
             if key not in ["status_code", "message"] and value is not None:
                 result[key] = value
         return result
-
-
-def _get_cloud_client(collection: ChromaDBCollection) -> Optional[ChromaClient]:
-    """Create Chroma Cloud client if dual-write is enabled.
-
-    Args:
-        collection: The ChromaDB collection (for logging context)
-
-    Returns:
-        ChromaClient configured for Chroma Cloud, or None if disabled
-    """
-    if os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() != "true":
-        return None
-
-    api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
-    if not api_key:
-        logger.warning(
-            "CHROMA_CLOUD_ENABLED=true but no API key configured",
-            extra={"collection": collection.value},
-        )
-        return None
-
-    return ChromaClient(
-        cloud_api_key=api_key,
-        cloud_tenant=os.environ.get("CHROMA_CLOUD_TENANT") or None,
-        cloud_database=os.environ.get("CHROMA_CLOUD_DATABASE") or None,
-        mode="write",
-        metadata_only=True,
-    )
 
 
 def configure_receipt_chroma_loggers():
@@ -397,68 +368,29 @@ def process_collection(  # pylint: disable=too-many-locals
             version=download_result.get("version"),
         )
 
-        # Phase 2a: Open ChromaDB client and apply updates to LOCAL snapshot
-        with op_logger.operation_timer("in_memory_updates"):
+        # Phase 2: Apply updates to local snapshot and optionally Chroma Cloud
+        # CloudConfig.from_env() returns None if cloud is disabled
+        cloud_config = CloudConfig.from_env()
+
+        with op_logger.operation_timer("collection_updates"):
             with ChromaClient(
                 persist_directory=temp_dir, mode="write", metadata_only=True
-            ) as client:
-                # Call receipt_chroma package for business logic
-                result = process_collection_updates(
+            ) as local_client:
+                # Use receipt_chroma's dual-write function
+                dual_result = apply_collection_updates(
                     stream_messages=messages,
                     collection=collection,
-                    chroma_client=client,
-                    logger=op_logger,
+                    local_client=local_client,
+                    cloud_config=cloud_config,
+                    op_logger=op_logger,
                     metrics=metrics,
                     dynamo_client=dynamo_client,
                 )
 
-        op_logger.info(
-            "Local updates applied",
-            metadata_updates=result.total_metadata_updated,
-            label_updates=result.total_labels_updated,
-            delta_merges=result.delta_merge_count,
-            has_errors=result.has_errors,
-        )
+        # Extract local result for S3 upload metadata
+        result = dual_result.local_result
 
-        # Phase 2b: Apply updates to CHROMA CLOUD (if enabled)
-        # Cloud writes are non-blocking - S3 remains authoritative
-        cloud_result = None
-        cloud_error = None
-        cloud_client = _get_cloud_client(collection)
-        if cloud_client:
-            try:
-                with cloud_client:
-                    with op_logger.operation_timer("cloud_updates"):
-                        cloud_result = process_collection_updates(
-                            stream_messages=messages,
-                            collection=collection,
-                            chroma_client=cloud_client,
-                            logger=op_logger,
-                            metrics=metrics,
-                            dynamo_client=dynamo_client,
-                        )
-                op_logger.info(
-                    "Cloud updates applied",
-                    metadata_updates=cloud_result.total_metadata_updated,
-                    label_updates=cloud_result.total_labels_updated,
-                )
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Cloud errors are logged but don't fail the batch
-                # S3 upload proceeds independently
-                cloud_error = str(e)
-                op_logger.error(
-                    "Cloud updates failed (non-blocking)",
-                    error=cloud_error,
-                    collection=collection.value,
-                )
-                if metrics:
-                    metrics.count(
-                        "CompactionCloudError",
-                        1,
-                        {"collection": collection.value},
-                    )
-
-        # Track metrics from local result
+        # Track Lambda-specific metrics (dual-write metrics handled by receipt_chroma)
         if metrics:
             metrics.gauge(
                 "CompactionMetadataUpdatedRecords",
@@ -472,33 +404,6 @@ def process_collection(  # pylint: disable=too-many-locals
             )
             if result.has_errors:
                 metrics.count("CompactionProcessingErrors", 1)
-
-            # Track cloud metrics
-            if cloud_result:
-                metrics.gauge(
-                    "CompactionCloudMetadataUpdated",
-                    cloud_result.total_metadata_updated,
-                    {"collection": collection.value},
-                )
-                metrics.gauge(
-                    "CompactionCloudLabelsUpdated",
-                    cloud_result.total_labels_updated,
-                    {"collection": collection.value},
-                )
-
-            # Track dual-write status for observability
-            metrics.count(
-                "CompactionDualWriteStatus",
-                1,
-                {
-                    "collection": collection.value,
-                    "local_success": "true",
-                    "cloud_success": (
-                        "true" if cloud_result and not cloud_error else "false"
-                    ),
-                    "cloud_enabled": "true" if cloud_client else "false",
-                },
-            )
 
         # Collect failed message IDs for retry
         failed_message_ids = (
