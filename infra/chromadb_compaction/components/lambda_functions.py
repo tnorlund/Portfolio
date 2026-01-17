@@ -14,7 +14,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Output, ResourceOptions
+from pulumi import ComponentResource, Config, Output, ResourceOptions
 
 from .docker_image import DockerImageComponent
 from .s3_buckets import ChromaDBBuckets
@@ -209,6 +209,31 @@ class HybridLambdaDeployment(ComponentResource):
                     # Standard queues allow batch_size=1000 from Lambda event source
                     # Lambda sorts messages (REMOVE first) and deduplicates within batch
                     "MAX_MESSAGES_PER_COMPACTION": "1000",
+                    # Chroma Cloud dual-write configuration
+                    # Feature flag: "true" enables dual-write to both S3 and Chroma Cloud
+                    # Set via: pulumi config set portfolio:CHROMA_CLOUD_ENABLED true
+                    "CHROMA_CLOUD_ENABLED": Config("portfolio").get(
+                        "CHROMA_CLOUD_ENABLED"
+                    )
+                    or "false",
+                    # Chroma Cloud API key (stored as secret in Pulumi config)
+                    # Set via: pulumi config set --secret portfolio:CHROMA_CLOUD_API_KEY xxx
+                    "CHROMA_CLOUD_API_KEY": Config("portfolio").get_secret(
+                        "CHROMA_CLOUD_API_KEY"
+                    )
+                    or "",
+                    # Chroma Cloud tenant ID from dashboard
+                    # Set via: pulumi config set portfolio:CHROMA_CLOUD_TENANT xxx
+                    "CHROMA_CLOUD_TENANT": Config("portfolio").get(
+                        "CHROMA_CLOUD_TENANT"
+                    )
+                    or "",
+                    # Chroma Cloud database name (defaults to "default")
+                    # Set via: pulumi config set portfolio:CHROMA_CLOUD_DATABASE xxx
+                    "CHROMA_CLOUD_DATABASE": Config("portfolio").get(
+                        "CHROMA_CLOUD_DATABASE"
+                    )
+                    or "default",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,

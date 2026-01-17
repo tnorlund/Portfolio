@@ -108,6 +108,35 @@ class LambdaResponse:
         return result
 
 
+def _get_cloud_client(collection: ChromaDBCollection) -> Optional[ChromaClient]:
+    """Create Chroma Cloud client if dual-write is enabled.
+
+    Args:
+        collection: The ChromaDB collection (for logging context)
+
+    Returns:
+        ChromaClient configured for Chroma Cloud, or None if disabled
+    """
+    if os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() != "true":
+        return None
+
+    api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
+    if not api_key:
+        logger.warning(
+            "CHROMA_CLOUD_ENABLED=true but no API key configured",
+            extra={"collection": collection.value},
+        )
+        return None
+
+    return ChromaClient(
+        cloud_api_key=api_key,
+        cloud_tenant=os.environ.get("CHROMA_CLOUD_TENANT") or None,
+        cloud_database=os.environ.get("CHROMA_CLOUD_DATABASE") or None,
+        mode="write",
+        metadata_only=True,
+    )
+
+
 def configure_receipt_chroma_loggers():
     """Configure receipt_chroma loggers to respect Lambda's LOG_LEVEL."""
     log_level = getattr(
@@ -368,7 +397,7 @@ def process_collection(  # pylint: disable=too-many-locals
             version=download_result.get("version"),
         )
 
-        # Phase 2: Open ChromaDB client and apply updates
+        # Phase 2a: Open ChromaDB client and apply updates to LOCAL snapshot
         with op_logger.operation_timer("in_memory_updates"):
             with ChromaClient(
                 persist_directory=temp_dir, mode="write", metadata_only=True
@@ -384,14 +413,52 @@ def process_collection(  # pylint: disable=too-many-locals
                 )
 
         op_logger.info(
-            "Updates applied",
+            "Local updates applied",
             metadata_updates=result.total_metadata_updated,
             label_updates=result.total_labels_updated,
             delta_merges=result.delta_merge_count,
             has_errors=result.has_errors,
         )
 
-        # Track metrics from result
+        # Phase 2b: Apply updates to CHROMA CLOUD (if enabled)
+        # Cloud writes are non-blocking - S3 remains authoritative
+        cloud_result = None
+        cloud_error = None
+        cloud_client = _get_cloud_client(collection)
+        if cloud_client:
+            try:
+                with cloud_client:
+                    with op_logger.operation_timer("cloud_updates"):
+                        cloud_result = process_collection_updates(
+                            stream_messages=messages,
+                            collection=collection,
+                            chroma_client=cloud_client,
+                            logger=op_logger,
+                            metrics=metrics,
+                            dynamo_client=dynamo_client,
+                        )
+                op_logger.info(
+                    "Cloud updates applied",
+                    metadata_updates=cloud_result.total_metadata_updated,
+                    label_updates=cloud_result.total_labels_updated,
+                )
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Cloud errors are logged but don't fail the batch
+                # S3 upload proceeds independently
+                cloud_error = str(e)
+                op_logger.error(
+                    "Cloud updates failed (non-blocking)",
+                    error=cloud_error,
+                    collection=collection.value,
+                )
+                if metrics:
+                    metrics.count(
+                        "CompactionCloudError",
+                        1,
+                        {"collection": collection.value},
+                    )
+
+        # Track metrics from local result
         if metrics:
             metrics.gauge(
                 "CompactionMetadataUpdatedRecords",
@@ -406,6 +473,33 @@ def process_collection(  # pylint: disable=too-many-locals
             if result.has_errors:
                 metrics.count("CompactionProcessingErrors", 1)
 
+            # Track cloud metrics
+            if cloud_result:
+                metrics.gauge(
+                    "CompactionCloudMetadataUpdated",
+                    cloud_result.total_metadata_updated,
+                    {"collection": collection.value},
+                )
+                metrics.gauge(
+                    "CompactionCloudLabelsUpdated",
+                    cloud_result.total_labels_updated,
+                    {"collection": collection.value},
+                )
+
+            # Track dual-write status for observability
+            metrics.count(
+                "CompactionDualWriteStatus",
+                1,
+                {
+                    "collection": collection.value,
+                    "local_success": "true",
+                    "cloud_success": (
+                        "true" if cloud_result and not cloud_error else "false"
+                    ),
+                    "cloud_enabled": "true" if cloud_client else "false",
+                },
+            )
+
         # Collect failed message IDs for retry
         failed_message_ids = (
             _collect_failed_message_ids(result, messages)
@@ -413,7 +507,7 @@ def process_collection(  # pylint: disable=too-many-locals
             else []
         )
 
-        # Phase 3: Upload snapshot atomically with lock
+        # Phase 3: Upload S3 snapshot (unchanged - always upload local changes)
         with op_logger.operation_timer("snapshot_upload"):
             upload_result = upload_snapshot_atomic(
                 local_path=temp_dir,
