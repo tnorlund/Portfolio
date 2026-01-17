@@ -245,6 +245,44 @@ class TextGeometryEntity(DynamoDBEntity):
         return hash(self._get_geometry_hash_fields())
 
     # =========================================================================
+    # EQUALITY
+    # Helper for subclass __eq__ implementations
+    # =========================================================================
+
+    def _geometry_fields_equal(self, other: "TextGeometryEntity") -> bool:
+        """
+        Compare geometry fields for equality.
+
+        Subclasses can use this in their __eq__ implementation:
+
+            def __eq__(self, other: object) -> bool:
+                if not isinstance(other, MyEntity):
+                    return False
+                return (
+                    self.my_id == other.my_id
+                    and self._geometry_fields_equal(other)
+                )
+
+        Args:
+            other: Another TextGeometryEntity to compare against
+
+        Returns:
+            True if all geometry fields are equal
+        """
+        return (
+            self.image_id == other.image_id
+            and self.text == other.text
+            and self.bounding_box == other.bounding_box
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
+            and self.confidence == other.confidence
+        )
+
+    # =========================================================================
     # REPR
     # From: GeometryReprMixin
     # =========================================================================

@@ -200,7 +200,7 @@ def test_receipt_word_label_init_invalid_timestamp():
     """Constructing a ReceiptWordLabel with an invalid timestamp raises ValueError."""
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be a datetime object or ISO format string",
     ):
         ReceiptWordLabel(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

@@ -163,7 +163,7 @@ def test_image_init_invalid_width_and_height():
 def test_image_init_invalid_timestamp():
     with pytest.raises(
         ValueError,
-        match="timestamp_added must be a datetime object or a string",
+        match="timestamp_added must be a datetime object or ISO format string",
     ):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

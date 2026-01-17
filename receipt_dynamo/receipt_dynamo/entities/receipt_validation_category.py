@@ -1,5 +1,6 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -7,6 +8,8 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     validate_iso_timestamp,
     validate_metadata_field,
+    validate_non_empty_string,
+    validate_positive_int,
 )
 
 
@@ -28,32 +31,12 @@ class ReceiptValidationCategory(SerializationMixin):
     metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        validate_positive_int("receipt_id", self.receipt_id)
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.field_name, str):
-            raise ValueError("field_name must be a string")
-        if not self.field_name:
-            raise ValueError("field_name must not be empty")
-
-        if not isinstance(self.field_category, str):
-            raise ValueError("field_category must be a string")
-        if not self.field_category:
-            raise ValueError("field_category must not be empty")
-
-        if not isinstance(self.status, str):
-            raise ValueError("status must be a string")
-        if not self.status:
-            raise ValueError("status must not be empty")
-
-        if not isinstance(self.reasoning, str):
-            raise ValueError("reasoning must be a string")
-        if not self.reasoning:
-            raise ValueError("reasoning must not be empty")
+        validate_non_empty_string("field_name", self.field_name)
+        validate_non_empty_string("field_category", self.field_category)
+        validate_non_empty_string("status", self.status)
+        validate_non_empty_string("reasoning", self.reasoning)
 
         if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
@@ -165,56 +148,6 @@ class ReceiptValidationCategory(SerializationMixin):
         )
 
 
-def dynamo_to_python(dynamo_value):
-    """
-    Convert a DynamoDB typed value to a native Python value.
-
-    Args:
-        dynamo_value (dict): A DynamoDB formatted value with type indicators
-            like S, N, BOOL, M, L, etc.
-
-    Returns:
-        The equivalent Python native value (str, int, float, bool, dict,
-        list, None)
-    """
-    if not dynamo_value or not isinstance(dynamo_value, dict):
-        return dynamo_value
-
-    if "NULL" in dynamo_value:
-        return None
-    if "S" in dynamo_value:
-        return dynamo_value["S"]
-    if "N" in dynamo_value:
-        # Try to convert to int if possible, otherwise float
-        try:
-            return int(dynamo_value["N"])
-        except ValueError:
-            return float(dynamo_value["N"])
-    if "BOOL" in dynamo_value:
-        return dynamo_value["BOOL"]
-    if "M" in dynamo_value:
-        return {k: dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
-    if "L" in dynamo_value:
-        return [dynamo_to_python(item) for item in dynamo_value["L"]]
-    if "SS" in dynamo_value:  # String Set
-        return set(dynamo_value["SS"])
-    if "NS" in dynamo_value:  # Number Set
-        # Try to convert to int if possible, otherwise float
-        result = set()
-        for num_str in dynamo_value["NS"]:
-            try:
-                result.add(int(num_str))
-            except ValueError:
-                result.add(float(num_str))
-        return result
-    if "BS" in dynamo_value:  # Binary Set
-        return set(dynamo_value["BS"])
-    # Handle any other type by returning the first value
-    for value in dynamo_value.values():
-        return value
-    return None
-
-
 def item_to_receipt_validation_category(
     item: Dict[str, Any],
 ) -> ReceiptValidationCategory:
@@ -322,7 +255,7 @@ def item_to_receipt_validation_category(
     # Get result_summary safely
     result_summary: Dict[str, Any]
     if "result_summary" in item:
-        result_summary = dynamo_to_python(item["result_summary"])
+        result_summary = SerializationMixin._dynamo_to_python(item["result_summary"])
     else:
         # Use an empty dictionary as default
         result_summary = {}
@@ -337,7 +270,7 @@ def item_to_receipt_validation_category(
     # Get metadata safely
     metadata: Dict[str, Any]
     if "metadata" in item:
-        metadata = dynamo_to_python(item["metadata"])
+        metadata = SerializationMixin._dynamo_to_python(item["metadata"])
     else:
         # Use an empty dictionary as default
         metadata = {}

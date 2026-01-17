@@ -530,3 +530,23 @@ def validate_iso_timestamp(
     raise ValueError(
         f"{field_name} must be a datetime object or ISO format string"
     )
+
+
+def validate_non_empty_string(field_name: str, value: Any) -> None:
+    """
+    Validate that a field is a non-empty string.
+
+    Eliminates duplicate validation code across entities that require
+    non-empty string fields like field_name, status, reasoning, etc.
+
+    Args:
+        field_name: Name of the field being validated (for error messages)
+        value: Value to validate
+
+    Raises:
+        ValueError: If value is not a string or is empty
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")

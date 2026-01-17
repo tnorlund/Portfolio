@@ -9,6 +9,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    validate_iso_timestamp,
     validate_positive_dimensions,
     validate_positive_int,
 )
@@ -88,12 +89,9 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         validate_positive_int("receipt_id", self.receipt_id)
         validate_positive_dimensions(self.width, self.height)
 
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif not isinstance(self.timestamp_added, str):
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
         if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")

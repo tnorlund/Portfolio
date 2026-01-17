@@ -1,10 +1,16 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_result.py
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_metadata_field,
+    validate_non_empty_string,
+    validate_non_negative_int,
+    validate_positive_int,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -29,37 +35,13 @@ class ReceiptValidationResult(SerializationMixin):
     metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        validate_positive_int("receipt_id", self.receipt_id)
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.field_name, str):
-            raise ValueError("field_name must be a string")
-        if not self.field_name:
-            raise ValueError("field_name must not be empty")
-
-        if not isinstance(self.result_index, int):
-            raise ValueError("result_index must be an integer")
-        if self.result_index < 0:
-            raise ValueError("result_index must be positive")
-
-        if not isinstance(self.type, str):
-            raise ValueError("type must be a string")
-        if not self.type:
-            raise ValueError("type must not be empty")
-
-        if not isinstance(self.message, str):
-            raise ValueError("message must be a string")
-        if not self.message:
-            raise ValueError("message must not be empty")
-
-        if not isinstance(self.reasoning, str):
-            raise ValueError("reasoning must be a string")
-        if not self.reasoning:
-            raise ValueError("reasoning must not be empty")
+        validate_non_empty_string("field_name", self.field_name)
+        validate_non_negative_int("result_index", self.result_index)
+        validate_non_empty_string("type", self.type)
+        validate_non_empty_string("message", self.message)
+        validate_non_empty_string("reasoning", self.reasoning)
 
         if self.field is not None and not isinstance(self.field, str):
             raise ValueError("field must be a string or None")
@@ -74,21 +56,11 @@ class ReceiptValidationResult(SerializationMixin):
         ):
             raise ValueError("actual_value must be a string or None")
 
-        if isinstance(self.validation_timestamp, datetime):
-            self.validation_timestamp = self.validation_timestamp.isoformat()
-        elif isinstance(self.validation_timestamp, str):
-            pass  # Already a string
-        elif self.validation_timestamp is None:
-            pass  # Leave as None
-        else:
-            raise ValueError(
-                "validation_timestamp must be a datetime, string, or None"
+        if self.validation_timestamp is not None:
+            self.validation_timestamp = validate_iso_timestamp(
+                self.validation_timestamp, "validation_timestamp"
             )
-
-        if self.metadata is not None and not isinstance(self.metadata, dict):
-            raise ValueError("metadata must be a dictionary or None")
-        if self.metadata is None:
-            self.metadata = {}
+        self.metadata = validate_metadata_field(self.metadata)
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:

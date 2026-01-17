@@ -260,7 +260,7 @@ def test_chatgpt_validation_init_invalid_response():
 @pytest.mark.unit
 def test_chatgpt_validation_init_invalid_timestamp():
     """Test initialization with invalid timestamp"""
-    with pytest.raises(ValueError, match="timestamp must be a string"):
+    with pytest.raises(ValueError, match="timestamp must be a datetime object or ISO format string"):
         ReceiptChatGPTValidation(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

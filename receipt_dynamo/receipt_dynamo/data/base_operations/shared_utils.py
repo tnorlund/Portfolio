@@ -11,6 +11,28 @@ from typing import Any, Dict, Optional
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+    """Validate that a LastEvaluatedKey has the required DynamoDB format.
+
+    Args:
+        lek: The LastEvaluatedKey dictionary to validate.
+
+    Raises:
+        EntityValidationError: If the key format is invalid or missing
+            required fields.
+    """
+    required_keys = {"PK", "SK"}
+    if not required_keys.issubset(lek.keys()):
+        raise EntityValidationError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
+    for key in required_keys:
+        if not isinstance(lek[key], dict) or "S" not in lek[key]:
+            raise EntityValidationError(
+                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+            )
+
+
 def validate_pagination_params(
     limit: Optional[int],
     last_evaluated_key: Optional[Dict[str, Any]],
