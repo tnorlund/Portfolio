@@ -33,7 +33,7 @@ import logging
 import re
 import string
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langsmith.run_trees import RunTree
@@ -44,12 +44,12 @@ from pydantic import ValidationError
 class TraceContext:
     """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
 
-    run_tree: Optional[RunTree] = None
-    headers: Optional[dict] = None
-    trace_id: Optional[str] = None
-    root_run_id: Optional[str] = None
+    run_tree: RunTree | None = None
+    headers: dict | None = None
+    trace_id: str | None = None
+    root_run_id: str | None = None
 
-    def get_langchain_config(self) -> Optional[dict]:
+    def get_langchain_config(self) -> dict | None:
         """Get a LangChain-compatible config for passing to LLM invoke calls.
 
         Returns config that links LLM calls to this trace context in LangSmith.
@@ -813,7 +813,7 @@ async def evaluate_metadata_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: Optional[TraceContext] = None,
+    trace_ctx: TraceContext | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_metadata_labels.

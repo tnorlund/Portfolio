@@ -7,7 +7,6 @@ on LangSmith trace exports using PySpark on EMR Serverless.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -644,7 +643,7 @@ class LangSmithSparkProcessor:
         self,
         df: DataFrame,
         output_path: str,
-        partition_by: Optional[list[str]] = None,
+        partition_by: list[str] | None = None,
         mode: str = "overwrite",
     ) -> None:
         """Write analytics results to S3 or local path.

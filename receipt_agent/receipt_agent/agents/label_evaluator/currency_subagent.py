@@ -33,7 +33,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langsmith.run_trees import RunTree
@@ -44,12 +44,12 @@ from pydantic import ValidationError
 class TraceContext:
     """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
 
-    run_tree: Optional[RunTree] = None
-    headers: Optional[dict] = None
-    trace_id: Optional[str] = None
-    root_run_id: Optional[str] = None
+    run_tree: RunTree | None = None
+    headers: dict | None = None
+    trace_id: str | None = None
+    root_run_id: str | None = None
 
-    def get_langchain_config(self) -> Optional[dict]:
+    def get_langchain_config(self) -> dict | None:
         """Get a LangChain-compatible config for passing to LLM invoke calls.
 
         Returns config that links LLM calls to this trace context in LangSmith.
@@ -128,11 +128,11 @@ class CurrencyWord:
     """A word that is currency-related (labeled or should be labeled)."""
 
     word_context: WordContext
-    current_label: Optional[str]
+    current_label: str | None
     line_index: int
     position_zone: str  # "left", "center", "right"
     looks_like_currency: bool
-    non_currency_pattern: Optional[str]  # If it matches a non-currency pattern
+    non_currency_pattern: str | None  # If it matches a non-currency pattern
 
 
 # =============================================================================
@@ -140,7 +140,7 @@ class CurrencyWord:
 # =============================================================================
 
 
-def get_position_zone(x: float, zones: Optional[dict] = None) -> str:
+def get_position_zone(x: float, zones: dict | None = None) -> str:
     """Determine which zone (left/center/right) a word is in."""
     if zones:
         left_bounds = zones.get("left", [0, 0.33])
@@ -176,7 +176,7 @@ def looks_like_currency(text: str) -> bool:
         return False
 
 
-def get_non_currency_pattern(text: str) -> Optional[str]:
+def get_non_currency_pattern(text: str) -> str | None:
     """Check if text matches a non-currency pattern like phone, date, etc."""
     for pattern, label in NON_CURRENCY_PATTERNS:
         if pattern.match(text):
@@ -186,9 +186,7 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[
-        dict
-    ] = None,  # Reserved for future pattern-based detection
+    patterns: dict | None = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -232,7 +230,7 @@ def identify_line_item_rows(
 def collect_currency_words(
     visual_lines: list[VisualLine],
     line_item_rows: list[LineItemRow],
-    patterns: Optional[dict] = None,
+    patterns: dict | None = None,
 ) -> list[CurrencyWord]:
     """
     Collect all words that need evaluation on line item rows.
@@ -290,7 +288,7 @@ def collect_currency_words(
 def build_currency_evaluation_prompt(
     visual_lines: list[VisualLine],
     currency_words: list[CurrencyWord],
-    patterns: Optional[dict] = None,
+    patterns: dict | None = None,
     merchant_name: str = "Unknown",
 ) -> str:
     """
@@ -475,7 +473,7 @@ def parse_currency_evaluation_response(
 
 def evaluate_currency_labels(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict],
+    patterns: dict | None,
     llm: BaseChatModel,
     image_id: str,
     receipt_id: int,
@@ -731,12 +729,12 @@ def evaluate_currency_labels(
 
 async def evaluate_currency_labels_async(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict],
+    patterns: dict | None,
     llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: Optional[TraceContext] = None,
+    trace_ctx: TraceContext | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_currency_labels.
@@ -995,7 +993,7 @@ async def evaluate_currency_labels_async(
 
 def evaluate_currency_labels_sync(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict],
+    patterns: dict | None,
     llm: BaseChatModel,
     image_id: str,
     receipt_id: int,

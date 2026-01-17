@@ -249,7 +249,7 @@ def main():
 
         parsed.unpersist()
 
-    except Exception as e:
+    except Exception:
         logger.exception("Test failed")
         return 1
     finally:
