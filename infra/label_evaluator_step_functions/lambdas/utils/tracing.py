@@ -275,6 +275,8 @@ class TraceContext:
 
             # Return config that will link to this trace via headers
             # When passed to invoke(), LangChain will use these headers
+            # NOTE: Do NOT pass run_id - it causes LangChain to reuse the parent's
+            # trace ID, resulting in "dotted_order appears more than once" errors
             return {
                 "callbacks": [],  # LangSmith auto-traces when LANGCHAIN_TRACING_V2=true
                 "metadata": {
@@ -283,7 +285,6 @@ class TraceContext:
                         self.run_tree.id if self.run_tree else None
                     ),
                 },
-                "run_id": self.run_tree.id if self.run_tree else None,
                 # Pass headers for trace linking
                 "configurable": {
                     "langsmith_headers": headers,
