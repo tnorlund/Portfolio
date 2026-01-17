@@ -33,6 +33,39 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
+def validate_status_list_params(
+    status: str,
+    limit: Optional[int],
+    last_evaluated_key: Optional[Dict[str, Any]],
+) -> None:
+    """
+    Validate parameters for status-based listing methods.
+
+    This eliminates duplicate validation code across data layer classes
+    that have list_*_by_status methods.
+
+    Args:
+        status: The status string to filter by
+        limit: Maximum number of items to return (or None)
+        last_evaluated_key: Pagination key (or None)
+
+    Raises:
+        EntityValidationError: If any parameter is invalid
+    """
+    if not isinstance(status, str):
+        raise EntityValidationError(
+            f"status must be a string, got {type(status).__name__}"
+        )
+    if limit is not None and not isinstance(limit, int):
+        raise EntityValidationError("limit must be an integer or None")
+    if last_evaluated_key is not None and not isinstance(
+        last_evaluated_key, dict
+    ):
+        raise EntityValidationError(
+            "last_evaluated_key must be a dictionary or None"
+        )
+
+
 def validate_pagination_params(
     limit: Optional[int],
     last_evaluated_key: Optional[Dict[str, Any]],
@@ -149,6 +182,35 @@ def build_get_item_key(
         "PK": {"S": primary_key},
         "SK": {"S": sort_key},
     }
+
+
+def validate_batch_get_keys(
+    keys,
+    entity_type: str,
+    pk_prefix: str = "IMAGE#",
+    sk_prefix: str = "LINE#",
+) -> None:
+    """
+    Validate keys for batch get operations.
+
+    Args:
+        keys: List of key dictionaries to validate
+        entity_type: The expected entity type in the SK (e.g., "LETTER", "WORD")
+        pk_prefix: Expected prefix for PK (default: "IMAGE#")
+        sk_prefix: Expected prefix for SK (default: "LINE#")
+
+    Raises:
+        EntityValidationError: If any key is invalid
+    """
+    for key in keys:
+        if not {"PK", "SK"}.issubset(key.keys()):
+            raise EntityValidationError("Keys must contain 'PK' and 'SK'")
+        if not key["PK"]["S"].startswith(pk_prefix):
+            raise EntityValidationError(f"PK must start with '{pk_prefix}'")
+        if not key["SK"]["S"].startswith(sk_prefix):
+            raise EntityValidationError(f"SK must start with '{sk_prefix}'")
+        if key["SK"]["S"].split("#")[-2] != entity_type:
+            raise EntityValidationError(f"SK must contain '{entity_type}'")
 
 
 def batch_write_with_retry(

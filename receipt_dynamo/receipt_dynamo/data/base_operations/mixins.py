@@ -10,7 +10,6 @@ This module provides reusable mixins that can be composed to create
 data access classes with common CRUD functionality.
 """
 
-import time
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -24,6 +23,7 @@ from typing import (
 )
 
 from .error_handling import ErrorMessageConfig, handle_dynamodb_errors
+from .shared_utils import batch_write_with_retry_dict
 from .validators import EntityValidator
 
 if TYPE_CHECKING:
@@ -196,26 +196,9 @@ class BatchOperationsMixin:
             max_retries: Maximum number of retries for unprocessed items
             initial_backoff: Initial backoff time in seconds
         """
-        backoff = initial_backoff
-
-        for attempt in range(max_retries + 1):
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            unprocessed_items = response.get("UnprocessedItems", {})
-            if not unprocessed_items:
-                break
-
-            if attempt < max_retries:
-                time.sleep(backoff)
-                backoff *= 2  # Exponential backoff
-                request_items = unprocessed_items
-            else:
-                # Final attempt failed, log unprocessed items
-                raise RuntimeError(
-                    f"Failed to process all items after {max_retries} retries"
-                )
+        batch_write_with_retry_dict(
+            self._client, request_items, max_retries, initial_backoff
+        )
 
     def _prepare_batch_request(
         self, entities: List[Any], operation: str = "PutRequest"

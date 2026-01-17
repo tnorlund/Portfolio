@@ -6,6 +6,9 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_status_list_params,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
@@ -260,18 +263,7 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
             Exception: If the ReceiptValidationSummaries cannot be retrieved
                 from DynamoDB.
         """
-        if not isinstance(status, str):
-            raise EntityValidationError(
-                f"status must be a string, got {type(status).__name__}"
-            )
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None"
-            )
+        validate_status_list_params(status, limit, last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI2",

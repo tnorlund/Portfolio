@@ -4,9 +4,11 @@ from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_batch_get_keys,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
-    EntityValidationError,
 )
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -183,17 +185,7 @@ class _Word(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_words")
     def get_words(self, keys: List[Dict]) -> List[Word]:
         """Get a list of words using a list of keys."""
-        # Validate keys
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("LINE#"):
-                raise EntityValidationError("SK must start with 'LINE#'")
-            if key["SK"]["S"].split("#")[-2] != "WORD":
-                raise EntityValidationError("SK must contain 'WORD'")
-
+        validate_batch_get_keys(keys, "WORD")
         results = self._batch_get_items(keys)
         return [item_to_word(item) for item in results]
 
