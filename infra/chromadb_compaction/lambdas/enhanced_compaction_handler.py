@@ -48,7 +48,8 @@ from typing import Optional
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import (
-    process_collection_updates,
+    CloudConfig,
+    apply_collection_updates,
     sort_and_deduplicate_messages,
 )
 from receipt_chroma.compaction.models import CollectionUpdateResult
@@ -368,30 +369,29 @@ def process_collection(  # pylint: disable=too-many-locals
             version=download_result.get("version"),
         )
 
-        # Phase 2: Open ChromaDB client and apply updates
-        with op_logger.operation_timer("in_memory_updates"):
+        # Phase 2: Apply updates to local snapshot and optionally Chroma Cloud
+        # CloudConfig.from_env() returns None if cloud is disabled
+        cloud_config = CloudConfig.from_env()
+
+        with op_logger.operation_timer("collection_updates"):
             with ChromaClient(
                 persist_directory=temp_dir, mode="write", metadata_only=True
-            ) as client:
-                # Call receipt_chroma package for business logic
-                result = process_collection_updates(
+            ) as local_client:
+                # Use receipt_chroma's dual-write function
+                dual_result = apply_collection_updates(
                     stream_messages=messages,
                     collection=collection,
-                    chroma_client=client,
-                    logger=op_logger,
+                    local_client=local_client,
+                    cloud_config=cloud_config,
+                    op_logger=op_logger,
                     metrics=metrics,
                     dynamo_client=dynamo_client,
                 )
 
-        op_logger.info(
-            "Updates applied",
-            metadata_updates=result.total_metadata_updated,
-            label_updates=result.total_labels_updated,
-            delta_merges=result.delta_merge_count,
-            has_errors=result.has_errors,
-        )
+        # Extract local result for S3 upload metadata
+        result = dual_result.local_result
 
-        # Track metrics from result
+        # Track Lambda-specific metrics (dual-write metrics handled by receipt_chroma)
         if metrics:
             metrics.gauge(
                 "CompactionMetadataUpdatedRecords",
@@ -413,7 +413,7 @@ def process_collection(  # pylint: disable=too-many-locals
             else []
         )
 
-        # Phase 3: Upload snapshot atomically with lock
+        # Phase 3: Upload S3 snapshot (unchanged - always upload local changes)
         with op_logger.operation_timer("snapshot_upload"):
             upload_result = upload_snapshot_atomic(
                 local_path=temp_dir,

@@ -46,3 +46,7 @@ config:
     secure: AAABALDwD+PxYHuh4x/KSvGVb4AL0l+nWLeMQVmnOdwBfvImSLIZa62jYL4mdflrCVxKsRUt2PAsCnrh0DG0nRjPnzb3XBsfEco9cpSM9HE1+Ak=
   portfolio:LANGSMITH_TENANT_ID: 2586637a-4a13-4ad7-8bc1-2f8221e32c1b
   emr-docker-build:force-rebuild: "true"
+  portfolio:CHROMA_CLOUD_API_KEY:
+    secure: AAABAOP8c/tGBBkG7zeelX1jYME2xValrcE1NLmxVTylK+sPeV4cDVoqON7xl60brrqqCVXUdagUUJiuZSpeXlJ5aece8Pc+exbXFNRqCQ==
+  portfolio:CHROMA_CLOUD_TENANT: cf5b7019-a74c-4416-96cc-9578906bfc52
+  portfolio:CHROMA_CLOUD_DATABASE: receipt_dev

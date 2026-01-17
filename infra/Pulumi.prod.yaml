@@ -42,3 +42,7 @@ config:
   portfolio:LANGSMITH_SERVICE_API_KEY:
     secure: AAABAE/vEZFs0Yo9hsM30Di3PAZUENpGkevmRx+he24laSy8gX2ThyzNOCrC4/RVy+xJxaGzLXIqj5O9DnmnAv7uTL5NC72RHPEh78iiuhClZrg=
   portfolio:LANGSMITH_TENANT_ID: 2586637a-4a13-4ad7-8bc1-2f8221e32c1b
+  portfolio:CHROMA_CLOUD_API_KEY:
+    secure: AAABALA2lRVioyilkPaleV5yFlRxPQU5cax7deey+jD4hu+Oh4K8TX3JOWogU6qfNnak8QVtlBx9KInVhilKvgUz7I0ookpeIYtHk/nKtQ==
+  portfolio:CHROMA_CLOUD_TENANT: cf5b7019-a74c-4416-96cc-9578906bfc52
+  portfolio:CHROMA_CLOUD_DATABASE: receipt_prod
