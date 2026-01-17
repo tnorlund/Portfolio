@@ -1,7 +1,7 @@
 """Word entity with geometry and character information for DynamoDB."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar, Dict, Optional, Set, Tuple
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
@@ -289,76 +289,80 @@ class Word(TextGeometryEntity):
         geometry_fields = self._get_geometry_repr_fields()
         return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
 
+    # Use base class required keys (no additional keys needed for Word)
+    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
-def item_to_word(item: Dict[str, Any]) -> Word:
-    """Converts a DynamoDB item to a Word object using EntityFactory.
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "Word":
+        """Convert a DynamoDB item to a Word object.
 
-    Args:
-        item (dict): The DynamoDB item to convert.
+        Args:
+            item: The DynamoDB item dictionary to convert.
 
-    Returns:
-        Word: The Word object represented by the DynamoDB item.
+        Returns:
+            A Word object with all fields properly extracted and validated.
 
-    Raises:
-        ValueError: When the item is missing required keys or has malformed
-        fields.
-    """
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Custom SK parser for LINE#{line_id:05d}#WORD#{word_id:05d} pattern
+        def parse_word_sk(sk: str) -> Dict[str, Any]:
+            """Parse the SK to extract line_id and word_id."""
+            parts = sk.split("#")
+            if len(parts) < 4 or parts[0] != "LINE" or parts[2] != "WORD":
+                raise ValueError(f"Invalid SK format for Word: {sk}")
 
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
+            return {
+                "line_id": int(parts[1]),
+                "word_id": int(parts[3]),
+            }
 
-    # Custom SK parser for LINE#{line_id:05d}#WORD#{word_id:05d} pattern
-    def parse_word_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract line_id and word_id."""
-        parts = sk.split("#")
-        if len(parts) < 4 or parts[0] != "LINE" or parts[2] != "WORD":
-            raise ValueError(f"Invalid SK format for Word: {sk}")
-
-        return {
-            "line_id": int(parts[1]),
-            "word_id": int(parts[3]),
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),  # Handles all geometry fields
         }
 
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
+        # Handle optional extracted_data field
+        if "extracted_data" in item and not item.get("extracted_data", {}).get(
+            "NULL"
+        ):
+            custom_extractors["extracted_data"] = (
+                EntityFactory.extract_optional_extracted_data
+            )
 
-    # Handle optional extracted_data field
-    if "extracted_data" in item and not item.get("extracted_data", {}).get(
-        "NULL"
-    ):
-        custom_extractors["extracted_data"] = (
-            EntityFactory.extract_optional_extracted_data
-        )
+        # Use EntityFactory to create the entity with full type safety
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": parse_word_sk,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Check if it's a missing keys error and re-raise as-is
+            if str(e).startswith("Item is missing required keys:"):
+                raise
+            # Otherwise, wrap the error
+            raise ValueError(f"Error converting item to Word: {e}") from e
 
-    # Use EntityFactory to create the entity with full type safety
-    try:
-        return EntityFactory.create_entity(
-            entity_class=Word,
-            item=item,
-            required_keys=required_keys,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_word_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
-    except ValueError as e:
-        # Check if it's a missing keys error and re-raise as-is
-        if str(e).startswith("Item is missing required keys:"):
-            raise
-        # Otherwise, wrap the error
-        raise ValueError(f"Error converting item to Word: {e}") from e
+
+def item_to_word(item: Dict[str, Any]) -> Word:
+    """Convert a DynamoDB item to a Word object.
+
+    This is a convenience function that delegates to Word.from_item().
+
+    Args:
+        item: The DynamoDB item dictionary to convert.
+
+    Returns:
+        A Word object with all fields properly extracted and validated.
+
+    Raises:
+        ValueError: If required fields are missing or have invalid format.
+    """
+    return Word.from_item(item)

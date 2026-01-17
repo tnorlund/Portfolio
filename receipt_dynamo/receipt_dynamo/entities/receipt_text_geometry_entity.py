@@ -12,7 +12,7 @@ Benefits:
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, ClassVar, Dict, Set
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
@@ -32,7 +32,16 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
         1. Add their specific ID fields (line_id, word_id, letter_id)
         2. Call super().__post_init__() in their __post_init__
         3. Override _get_geometry_hash_fields() to include their ID fields
+
+    Class Variables:
+        BASE_REQUIRED_KEYS: Inherited from TextGeometryEntity, used by all
+            receipt geometry entities. Receipt-specific fields (embedding_status,
+            is_noise) have defaults and are not required in DynamoDB items.
     """
+
+    # Receipt entities use the same required keys as base geometry entities
+    # (receipt_id comes from SK parsing, embedding_status/is_noise have defaults)
+    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     # Receipt-specific fields
     receipt_id: int

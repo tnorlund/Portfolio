@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Dict, Tuple
+from typing import Any, ClassVar, Dict, Set, Tuple
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
@@ -127,9 +127,61 @@ class Line(TextGeometryEntity):
             f")"
         )
 
+    # Use base class required keys (no additional keys needed for Line)
+    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "Line":
+        """Convert a DynamoDB item to a Line object.
+
+        Args:
+            item: The DynamoDB item dictionary to convert.
+
+        Returns:
+            A Line object with all fields properly extracted and validated.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Custom SK parser for LINE#{line_id:05d} pattern
+        def parse_line_sk(sk: str) -> Dict[str, Any]:
+            """Parse the SK to extract line_id."""
+            parts = sk.split("#")
+            if len(parts) < 2 or parts[0] != "LINE":
+                raise ValueError(f"Invalid SK format for Line: {sk}")
+
+            return {"line_id": int(parts[1])}
+
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),  # Handles all geometry fields
+        }
+
+        # Use EntityFactory to create the entity with full type safety
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": parse_line_sk,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Check if it's a missing keys error and re-raise as-is
+            if str(e).startswith("Item is missing required keys:"):
+                raise
+            # Otherwise, wrap the error
+            raise ValueError(f"Error converting item to Line: {e}") from e
+
 
 def item_to_line(item: Dict[str, Any]) -> Line:
-    """Convert a DynamoDB item to a Line object using type-safe EntityFactory.
+    """Convert a DynamoDB item to a Line object.
+
+    This is a convenience function that delegates to Line.from_item().
 
     Args:
         item: The DynamoDB item dictionary to convert.
@@ -140,50 +192,4 @@ def item_to_line(item: Dict[str, Any]) -> Line:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
-
-    # Custom SK parser for LINE#{line_id:05d} pattern
-    def parse_line_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract line_id."""
-        parts = sk.split("#")
-        if len(parts) < 2 or parts[0] != "LINE":
-            raise ValueError(f"Invalid SK format for Line: {sk}")
-
-        return {"line_id": int(parts[1])}
-
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
-
-    # Use EntityFactory to create the entity with full type safety
-    try:
-        return EntityFactory.create_entity(
-            entity_class=Line,
-            item=item,
-            required_keys=required_keys,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_line_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
-    except ValueError as e:
-        # Check if it's a missing keys error and re-raise as-is
-        if str(e).startswith("Item is missing required keys:"):
-            raise
-        # Otherwise, wrap the error
-        raise ValueError(f"Error converting item to Line: {e}") from e
+    return Line.from_item(item)

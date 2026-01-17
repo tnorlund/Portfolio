@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, ClassVar, Dict, Generator, Set, Tuple
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
@@ -167,10 +167,72 @@ class Letter(TextGeometryEntity):
         """Return hash based on all fields (required due to explicit __eq__)."""
         return hash(self._get_geometry_hash_fields())
 
+    # Use base class required keys (no additional keys needed for Letter)
+    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "Letter":
+        """Convert a DynamoDB item to a Letter object.
+
+        Args:
+            item: The DynamoDB item dictionary to convert.
+
+        Returns:
+            A Letter object with all fields properly extracted and validated.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Custom SK parser for LINE#...#WORD#...#LETTER#{letter_id:05d} pattern
+        def parse_letter_sk(sk: str) -> Dict[str, Any]:
+            """Parse the SK to extract line_id, word_id, and letter_id."""
+            parts = sk.split("#")
+
+            # Expected format: LINE#{line_id}#WORD#{word_id}#LETTER#{letter_id}
+            if (
+                len(parts) < 6
+                or parts[0] != "LINE"
+                or parts[2] != "WORD"
+                or parts[4] != "LETTER"
+            ):
+                raise ValueError(f"Invalid SK format for Letter: {sk}")
+
+            return {
+                "line_id": int(parts[1]),
+                "word_id": int(parts[3]),
+                "letter_id": int(parts[5]),
+            }
+
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),  # Handles all geometry fields
+        }
+
+        # Use EntityFactory to create the entity with full type safety
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": parse_letter_sk,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Check if it's a missing keys error and re-raise as-is
+            if str(e).startswith("Item is missing required keys:"):
+                raise
+            # Otherwise, wrap the error
+            raise ValueError(f"Error converting item to Letter: {e}") from e
+
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:
-    """Convert a DynamoDB item to a Letter object using type-safe
-    EntityFactory.
+    """Convert a DynamoDB item to a Letter object.
+
+    This is a convenience function that delegates to Letter.from_item().
 
     Args:
         item: The DynamoDB item dictionary to convert.
@@ -181,61 +243,4 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
-
-    # Custom SK parser for LINE#...#WORD#...#LETTER#{letter_id:05d} pattern
-    def parse_letter_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract line_id, word_id, and letter_id."""
-        parts = sk.split("#")
-
-        # Expected format: LINE#{line_id}#WORD#{word_id}#LETTER#{letter_id}
-        if (
-            len(parts) < 6
-            or parts[0] != "LINE"
-            or parts[2] != "WORD"
-            or parts[4] != "LETTER"
-        ):
-            raise ValueError(f"Invalid SK format for Letter: {sk}")
-
-        return {
-            "line_id": int(parts[1]),
-            "word_id": int(parts[3]),
-            "letter_id": int(parts[5]),
-        }
-
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
-
-    # Use EntityFactory to create the entity with full type safety
-    try:
-        return EntityFactory.create_entity(
-            entity_class=Letter,
-            item=item,
-            required_keys=required_keys,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_letter_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
-    except ValueError as e:
-        # Check if it's a missing keys error and re-raise as-is
-        if str(e).startswith("Item is missing required keys:"):
-            raise
-        # Otherwise, wrap the error
-        raise ValueError(f"Error converting item to Letter: {e}") from e
+    return Letter.from_item(item)

@@ -32,7 +32,7 @@ Usage:
 
 from dataclasses import dataclass
 from math import atan2, cos, degrees, pi, radians, sin
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar, Dict, Optional, Set, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
@@ -73,7 +73,25 @@ class TextGeometryEntity(DynamoDBEntity):
         - Repr formatting
         - Geometry operations (translate, scale, rotate, etc.)
         - Perspective transforms
+
+    Class Variables:
+        BASE_REQUIRED_KEYS: Required DynamoDB item keys for geometry entities
     """
+
+    # Required keys shared by all geometry entities (subclasses add their own)
+    BASE_REQUIRED_KEYS: ClassVar[Set[str]] = {
+        "PK",
+        "SK",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+    }
 
     # Core geometry fields - subclasses inherit these
     image_id: str

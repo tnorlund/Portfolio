@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, ClassVar, Dict, Set, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
@@ -160,14 +160,75 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         """Return hash (required for dataclass with eq=True, frozen=False)."""
         return hash(self._get_geometry_hash_fields())
 
+    # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
+    REQUIRED_KEYS: ClassVar[Set[str]] = (
+        ReceiptTextGeometryEntity.REQUIRED_KEYS
+    )
+
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLine":
+        """Convert a DynamoDB item to a ReceiptLine object.
+
+        Args:
+            item: The DynamoDB item dictionary to convert.
+
+        Returns:
+            A ReceiptLine object with all fields properly extracted and
+            validated.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Custom SK parser for RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
+        def parse_receipt_line_sk(sk: str) -> Dict[str, Any]:
+            """Parse the SK to extract receipt_id and line_id."""
+            parts = sk.split("#")
+            if len(parts) < 4 or parts[0] != "RECEIPT" or parts[2] != "LINE":
+                raise ValueError(f"Invalid SK format for ReceiptLine: {sk}")
+
+            return {
+                "receipt_id": int(parts[1]),
+                "line_id": int(parts[3]),
+            }
+
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            "embedding_status": EntityFactory.extract_embedding_status,
+            "is_noise": EntityFactory.extract_is_noise,
+            **create_geometry_extractors(),  # Handles all geometry fields
+        }
+
+        # Use EntityFactory to create the entity with full type safety
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": parse_receipt_line_sk,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Re-raise ValueError with original message if about missing keys
+            if "missing required keys" in str(e):
+                raise
+            # Otherwise wrap it as a conversion error
+            raise ValueError(
+                f"Error converting item to ReceiptLine: {e}"
+            ) from e
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to ReceiptLine: {e}"
+            ) from e
+
 
 def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
-    """
-    Convert a DynamoDB item to a ReceiptLine object using.
+    """Convert a DynamoDB item to a ReceiptLine object.
 
-    This function uses the EntityFactory pattern to provide full type safety
-    and eliminate code duplication. All field extraction is handled by
-    type-safe extractors that mypy can validate.
+    This is a convenience function that delegates to ReceiptLine.from_item().
 
     Args:
         item: The DynamoDB item dictionary to convert.
@@ -178,61 +239,7 @@ def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
-
-    # Custom SK parser for RECEIPT#{receipt_id:05d}#LINE#{line_id:05d} pattern
-    def parse_receipt_line_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract receipt_id and line_id."""
-        parts = sk.split("#")
-        if len(parts) < 4 or parts[0] != "RECEIPT" or parts[2] != "LINE":
-            raise ValueError(f"Invalid SK format for ReceiptLine: {sk}")
-
-        return {
-            "receipt_id": int(parts[1]),
-            "line_id": int(parts[3]),
-        }
-
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        "embedding_status": EntityFactory.extract_embedding_status,
-        "is_noise": EntityFactory.extract_is_noise,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
-
-    # Use EntityFactory to create the entity with full type safety
-    try:
-        return EntityFactory.create_entity(
-            entity_class=ReceiptLine,
-            item=item,
-            required_keys=required_keys,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_receipt_line_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
-    except ValueError as e:
-        # Re-raise ValueError with original message if it's about missing keys
-        if "missing required keys" in str(e):
-            raise
-        # Otherwise wrap it as a conversion error
-        raise ValueError(f"Error converting item to ReceiptLine: {e}") from e
-    except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptLine: {e}") from e
+    return ReceiptLine.from_item(item)
 
 
 # Re-export EmbeddingStatus for backwards compatibility

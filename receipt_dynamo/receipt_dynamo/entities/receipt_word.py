@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from math import atan2
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar, Dict, Optional, Set, Tuple
 
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
@@ -289,59 +289,66 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         """Return hash (required for dataclass with eq=True, frozen=False)."""
         return hash(self._get_geometry_hash_fields())
 
+    # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
+    REQUIRED_KEYS: ClassVar[Set[str]] = (
+        ReceiptTextGeometryEntity.REQUIRED_KEYS
+    )
 
-def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
-    """
-    Converts a DynamoDB item to a ReceiptWord object using EntityFactory.
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptWord":
+        """Convert a DynamoDB item to a ReceiptWord object.
 
-    Args:
-        item (dict): The DynamoDB item to convert.
+        Args:
+            item: The DynamoDB item dictionary to convert.
 
-    Returns:
-        ReceiptWord: The ReceiptWord object represented by the DynamoDB item.
+        Returns:
+            A ReceiptWord object with all fields properly extracted and
+            validated.
 
-    Raises:
-        ValueError: When the item format is invalid or required keys are
-            missing.
-    """
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            "embedding_status": EntityFactory.extract_embedding_status,
+            "is_noise": EntityFactory.extract_is_noise,
+            **create_geometry_extractors(),  # Handles all geometry fields
+        }
 
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        "embedding_status": EntityFactory.extract_embedding_status,
-        "is_noise": EntityFactory.extract_is_noise,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
+        # Handle optional extracted_data field
+        if "extracted_data" in item and not item.get("extracted_data", {}).get(
+            "NULL"
+        ):
+            custom_extractors["extracted_data"] = (
+                EntityFactory.extract_optional_extracted_data
+            )
 
-    # Handle optional extracted_data field
-    if "extracted_data" in item and not item.get("extracted_data", {}).get(
-        "NULL"
-    ):
-        custom_extractors["extracted_data"] = (
-            EntityFactory.extract_optional_extracted_data
+        # Use EntityFactory to create the entity with full type safety
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_receipt_line_word_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
         )
 
-    # Use EntityFactory to create the entity with full type safety
-    return EntityFactory.create_entity(
-        entity_class=ReceiptWord,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": create_receipt_line_word_sk_parser(),
-        },
-        custom_extractors=custom_extractors,
-    )
+
+def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
+    """Convert a DynamoDB item to a ReceiptWord object.
+
+    This is a convenience function that delegates to ReceiptWord.from_item().
+
+    Args:
+        item: The DynamoDB item dictionary to convert.
+
+    Returns:
+        A ReceiptWord object with all fields properly extracted and validated.
+
+    Raises:
+        ValueError: If required fields are missing or have invalid format.
+    """
+    return ReceiptWord.from_item(item)

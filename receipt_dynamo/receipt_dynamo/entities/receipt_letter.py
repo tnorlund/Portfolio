@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, ClassVar, Dict, Generator, Set, Tuple
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
@@ -204,72 +204,74 @@ class ReceiptLetter(TextGeometryEntity):
         """Return hash based on all fields (required due to explicit __eq__)."""
         return hash(self._get_geometry_hash_fields())
 
+    # Use base class required keys (no additional keys needed for ReceiptLetter)
+    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
-def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
-    """
-    Converts a DynamoDB item to a ReceiptLetter object.
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLetter":
+        """Convert a DynamoDB item to a ReceiptLetter object.
 
-    Args:
-        item (dict): The DynamoDB item to convert.
+        Args:
+            item: The DynamoDB item dictionary to convert.
 
-    Returns:
-        ReceiptLetter: The ReceiptLetter object represented by the DynamoDB
-        item.
+        Returns:
+            A ReceiptLetter object with all fields properly extracted and
+            validated.
 
-    Raises:
-        ValueError: When the item format is invalid or required keys are
-        missing.
-    """
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+        # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
+        def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
+            """Parse SK to extract receipt_id, line_id, word_id, letter_id."""
+            parts = sk.split("#")
+            if (
+                len(parts) < 8
+                or parts[0] != "RECEIPT"
+                or parts[2] != "LINE"
+                or parts[4] != "WORD"
+                or parts[6] != "LETTER"
+            ):
+                raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
 
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
+            return {
+                "receipt_id": int(parts[1]),
+                "line_id": int(parts[3]),
+                "word_id": int(parts[5]),
+                "letter_id": int(parts[7]),
+            }
 
-    # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
-    def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract receipt_id, line_id, word_id, and
-        letter_id."""
-        parts = sk.split("#")
-        if (
-            len(parts) < 8
-            or parts[0] != "RECEIPT"
-            or parts[2] != "LINE"
-            or parts[4] != "WORD"
-            or parts[6] != "LETTER"
-        ):
-            raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
-
-        return {
-            "receipt_id": int(parts[1]),
-            "line_id": int(parts[3]),
-            "word_id": int(parts[5]),
-            "letter_id": int(parts[7]),
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),  # Handles all geometry fields
         }
 
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
+        # Use EntityFactory to create the entity with full type safety
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": parse_receipt_letter_sk,
+            },
+            custom_extractors=custom_extractors,
+        )
 
-    # Use EntityFactory to create the entity with full type safety
-    return EntityFactory.create_entity(
-        entity_class=ReceiptLetter,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": parse_receipt_letter_sk,
-        },
-        custom_extractors=custom_extractors,
-    )
+
+def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
+    """Convert a DynamoDB item to a ReceiptLetter object.
+
+    This is a convenience function that delegates to ReceiptLetter.from_item().
+
+    Args:
+        item: The DynamoDB item dictionary to convert.
+
+    Returns:
+        A ReceiptLetter object with all fields properly extracted and validated.
+
+    Raises:
+        ValueError: If required fields are missing or have invalid format.
+    """
+    return ReceiptLetter.from_item(item)
