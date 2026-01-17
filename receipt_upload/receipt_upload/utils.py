@@ -318,16 +318,21 @@ def upload_avif_to_s3(
     s3_client = client("s3")
 
     try:
-        # Try to import and register the AVIF plugin
+        # Try to import and register an AVIF plugin
+        # Supports both pillow-avif-plugin and pillow-heif
         try:
             # pylint: disable=import-outside-toplevel,unused-import
             import pillow_avif  # noqa: F401
-
             # The import should auto-register the plugin
-        except ImportError as import_error:
-            raise AVIFError(
-                f"pillow-avif-plugin is not installed: {import_error}"
-            ) from import_error
+        except ImportError:
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            except ImportError as import_error:
+                raise AVIFError(
+                    f"No AVIF plugin installed (tried pillow-avif-plugin and "
+                    f"pillow-heif): {import_error}"
+                ) from import_error
 
         # Check if AVIF is supported
         if ".avif" not in PIL_Image.registered_extensions():

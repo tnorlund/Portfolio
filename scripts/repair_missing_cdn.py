@@ -50,16 +50,21 @@ def get_pulumi_outputs(stack_name: str, work_dir: str) -> dict:
     return {k: v.value for k, v in outputs.items()}
 
 
-def get_receipts_missing_cdn(dynamo_client: DynamoClient) -> list[Receipt]:
+def get_receipts_missing_cdn(
+    dynamo_client: DynamoClient, avif_only: bool = False
+) -> list[Receipt]:
     """
     Get all receipts with missing CDN files using efficient GSI2 query.
 
     Uses list_receipts() which queries GSI2 (much more efficient than scan),
-    then filters locally for receipts where cdn_s3_key is None.
+    then filters locally for receipts where cdn_s3_key is None (or cdn_avif_s3_key
+    is None if avif_only is True).
     """
-    missing_cdn_receipts = []
+    missing_receipts = []
     last_key = None
     total_scanned = 0
+
+    filter_desc = "missing AVIF" if avif_only else "missing CDN"
 
     while True:
         receipts, last_key = dynamo_client.list_receipts(
@@ -68,20 +73,26 @@ def get_receipts_missing_cdn(dynamo_client: DynamoClient) -> list[Receipt]:
         )
         total_scanned += len(receipts)
 
-        # Filter for missing CDN keys
+        # Filter for missing keys
         for receipt in receipts:
-            if receipt.cdn_s3_key is None:
-                missing_cdn_receipts.append(receipt)
+            if avif_only:
+                # Has CDN but missing AVIF
+                if receipt.cdn_s3_key and receipt.cdn_avif_s3_key is None:
+                    missing_receipts.append(receipt)
+            else:
+                # Missing CDN entirely
+                if receipt.cdn_s3_key is None:
+                    missing_receipts.append(receipt)
 
         logger.info(
             f"  Scanned {total_scanned} receipts, "
-            f"found {len(missing_cdn_receipts)} missing CDN..."
+            f"found {len(missing_receipts)} {filter_desc}..."
         )
 
         if last_key is None:
             break
 
-    return missing_cdn_receipts
+    return missing_receipts
 
 
 def download_raw_image(s3_client, bucket: str, key: str) -> PIL_Image.Image:
@@ -97,12 +108,16 @@ def repair_receipt_cdn(
     receipt: Receipt,
     cdn_bucket: str,
     dry_run: bool = False,
+    avif_only: bool = False,
 ) -> dict:
     """
     Repair missing CDN files for a single receipt.
 
-    Downloads the raw image, generates all CDN formats, and updates DynamoDB.
+    Downloads the raw image, generates CDN formats, and updates DynamoDB.
+    If avif_only is True, only generates AVIF files (skips JPEG/WebP).
     """
+    from receipt_upload.utils import upload_avif_to_s3, generate_image_sizes
+
     result = {
         "image_id": receipt.image_id,
         "receipt_id": receipt.receipt_id,
@@ -123,47 +138,79 @@ def repair_receipt_cdn(
         base_key = f"assets/{receipt.image_id}_RECEIPT_{receipt.receipt_id:05d}"
 
         if dry_run:
-            logger.info(f"  [DRY RUN] Would upload CDN files with base_key: {base_key}")
+            mode = "AVIF only" if avif_only else "all CDN"
+            logger.info(f"  [DRY RUN] Would upload {mode} files with base_key: {base_key}")
             result["success"] = True
             return result
 
-        # Generate and upload all CDN formats
-        logger.info(f"  Uploading CDN files to s3://{cdn_bucket}/{base_key}.*")
-        cdn_keys = upload_all_cdn_formats(
-            image=image,
-            s3_bucket=cdn_bucket,
-            base_key=base_key,
-            generate_thumbnails=True,
-        )
+        if avif_only:
+            # Only upload AVIF files
+            logger.info(f"  Uploading AVIF files to s3://{cdn_bucket}/{base_key}*.avif")
 
-        # Map returned keys to Receipt fields
-        receipt.cdn_s3_bucket = cdn_bucket
-        receipt.cdn_s3_key = cdn_keys.get("jpeg")
-        receipt.cdn_webp_s3_key = cdn_keys.get("webp")
-        receipt.cdn_avif_s3_key = cdn_keys.get("avif")
+            # Generate different sizes
+            size_configs = {"thumbnail": 300, "small": 600, "medium": 1200}
+            sizes = generate_image_sizes(image, size_configs)
+            sizes["full"] = image
 
-        # Thumbnail versions
-        receipt.cdn_thumbnail_s3_key = cdn_keys.get("jpeg_thumbnail")
-        receipt.cdn_thumbnail_webp_s3_key = cdn_keys.get("webp_thumbnail")
-        receipt.cdn_thumbnail_avif_s3_key = cdn_keys.get("avif_thumbnail")
+            avif_keys = {}
+            for size_name, sized_image in sizes.items():
+                if size_name == "full":
+                    size_key = base_key
+                else:
+                    size_key = f"{base_key}_{size_name}"
 
-        # Small versions
-        receipt.cdn_small_s3_key = cdn_keys.get("jpeg_small")
-        receipt.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
-        receipt.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
+                avif_key = f"{size_key}.avif"
+                try:
+                    upload_avif_to_s3(sized_image, cdn_bucket, avif_key, quality=85)
+                    avif_keys[size_name] = avif_key
+                except Exception as e:
+                    logger.warning(f"  AVIF upload failed for {size_name}: {e}")
+                    avif_keys[size_name] = None
 
-        # Medium versions
-        receipt.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
-        receipt.cdn_medium_webp_s3_key = cdn_keys.get("webp_medium")
-        receipt.cdn_medium_avif_s3_key = cdn_keys.get("avif_medium")
+            # Update only AVIF fields
+            receipt.cdn_avif_s3_key = avif_keys.get("full")
+            receipt.cdn_thumbnail_avif_s3_key = avif_keys.get("thumbnail")
+            receipt.cdn_small_avif_s3_key = avif_keys.get("small")
+            receipt.cdn_medium_avif_s3_key = avif_keys.get("medium")
+        else:
+            # Generate and upload all CDN formats
+            logger.info(f"  Uploading CDN files to s3://{cdn_bucket}/{base_key}.*")
+            cdn_keys = upload_all_cdn_formats(
+                image=image,
+                s3_bucket=cdn_bucket,
+                base_key=base_key,
+                generate_thumbnails=True,
+            )
+
+            # Map returned keys to Receipt fields
+            receipt.cdn_s3_bucket = cdn_bucket
+            receipt.cdn_s3_key = cdn_keys.get("jpeg")
+            receipt.cdn_webp_s3_key = cdn_keys.get("webp")
+            receipt.cdn_avif_s3_key = cdn_keys.get("avif")
+
+            # Thumbnail versions
+            receipt.cdn_thumbnail_s3_key = cdn_keys.get("jpeg_thumbnail")
+            receipt.cdn_thumbnail_webp_s3_key = cdn_keys.get("webp_thumbnail")
+            receipt.cdn_thumbnail_avif_s3_key = cdn_keys.get("avif_thumbnail")
+
+            # Small versions
+            receipt.cdn_small_s3_key = cdn_keys.get("jpeg_small")
+            receipt.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
+            receipt.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
+
+            # Medium versions
+            receipt.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
+            receipt.cdn_medium_webp_s3_key = cdn_keys.get("webp_medium")
+            receipt.cdn_medium_avif_s3_key = cdn_keys.get("avif_medium")
 
         # Update DynamoDB
         logger.info(f"  Updating DynamoDB record...")
         dynamo_client.update_receipt(receipt)
 
         result["success"] = True
+        mode = "AVIF" if avif_only else "CDN"
         logger.info(
-            f"  Successfully repaired CDN for "
+            f"  Successfully repaired {mode} for "
             f"{receipt.image_id}_{receipt.receipt_id}"
         )
 
@@ -197,6 +244,11 @@ def main():
         default=None,
         help="Limit number of receipts to process (for testing)",
     )
+    parser.add_argument(
+        "--avif-only",
+        action="store_true",
+        help="Only add AVIF files to receipts that have CDN but missing AVIF",
+    )
 
     args = parser.parse_args()
 
@@ -223,9 +275,13 @@ def main():
         logger.info("\n*** DRY RUN MODE - No changes will be made ***\n")
 
     # Query for receipts with missing CDN keys (efficient GSI2 query)
-    logger.info("Querying for receipts with missing CDN files...")
-    receipts = get_receipts_missing_cdn(dynamo_client)
-    logger.info(f"Found {len(receipts)} receipts with missing CDN files")
+    if args.avif_only:
+        logger.info("Querying for receipts with CDN but missing AVIF...")
+    else:
+        logger.info("Querying for receipts with missing CDN files...")
+    receipts = get_receipts_missing_cdn(dynamo_client, avif_only=args.avif_only)
+    filter_desc = "missing AVIF" if args.avif_only else "missing CDN files"
+    logger.info(f"Found {len(receipts)} receipts with {filter_desc}")
 
     if not receipts:
         logger.info("No receipts need repair!")
@@ -251,6 +307,7 @@ def main():
             receipt=receipt,
             cdn_bucket=cdn_bucket,
             dry_run=args.dry_run,
+            avif_only=args.avif_only,
         )
         results.append(result)
 
