@@ -15,22 +15,22 @@ from receipt_dynamo import Line, item_to_line
 def example_line():
     """A pytest fixture for a sample Line object."""
     return Line(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        1,
-        "Test",
-        {
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={
             "x": 10.0,
             "y": 20.0,
             "width": 5.0,
             "height": 2.0,
         },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        0.90,
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
     )
 
 
@@ -80,41 +80,41 @@ def test_line_init_invalid_uuid():
     """Test the Line constructor with bad ID"""
     with pytest.raises(ValueError, match="uuid must be a string"):
         Line(
-            1,
-            1,
-            "Test",
-            {
+            image_id=1,
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         Line(
-            "not-a-uuid",
-            1,
-            "Test",
-            {
+            image_id="not-a-uuid",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -122,41 +122,41 @@ def test_line_init_invalid_uuid():
 def test_line_init_invalid_id():
     with pytest.raises(ValueError, match="line_id must be an integer"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "not-an-int",
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id="not-an-int",
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="line_id must be positive"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            -1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=-1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -164,22 +164,22 @@ def test_line_init_invalid_id():
 def test_line_init_invalid_text():
     with pytest.raises(ValueError, match="text must be a string"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            1,
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text=1,
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -190,34 +190,34 @@ def test_line_init_invalid_bounding_box():
         match="bounding_box must be a dictionary",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            1,
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box=1,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(
         ValueError,
         match="bounding_box must contain the key 'height'",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0},
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0},
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -225,41 +225,41 @@ def test_line_init_invalid_bounding_box():
 def test_line_init_invalid_top_left():
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            1,
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right=1,
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 15.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -267,41 +267,41 @@ def test_line_init_invalid_top_left():
 def test_line_init_invalid_top_right():
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            1,
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left=1,
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left={"x": 15.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -309,41 +309,41 @@ def test_line_init_invalid_top_right():
 def test_line_init_invalid_bottom_left():
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            1,
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left={"x": 15.0, "y": 22.0},
+            bottom_right=1,
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 15.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left={"x": 15.0, "y": 22.0},
+            bottom_right={"x": 15.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -351,41 +351,41 @@ def test_line_init_invalid_bottom_left():
 def test_line_init_invalid_bottom_right():
     with pytest.raises(ValueError, match="point must be a dictionary"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1,
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left={"x": 15.0, "y": 22.0},
+            bottom_right={"x": 10.0, "y": 22.0},
+            bottom_left=1,
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            {"x": 15.0},
-            1.0,
-            5.0,
-            0.90,
+            top_right={"x": 10.0, "y": 20.0},
+            top_left={"x": 15.0, "y": 22.0},
+            bottom_right={"x": 10.0, "y": 22.0},
+            bottom_left={"x": 15.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=0.90
         )
 
 
@@ -396,44 +396,44 @@ def test_line_init_invalid_angle():
         match="angle_degrees must be float or int, got",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            "1.0",
-            5.0,
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees="1.0",
+            angle_radians=5.0,
+            confidence=0.90
         )
     with pytest.raises(
         ValueError,
         match="angle_radians must be float or int, got",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={
                 "x": 10.0,
                 "y": 20.0,
                 "width": 5.0,
                 "height": 2.0,
             },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            "5.0",
-            0.90,
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians="5.0",
+            confidence=0.90
         )
 
 
@@ -445,30 +445,30 @@ def test_line_init_invalid_confidence():
         match="confidence must be float or int, got",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            "0.90",
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence="0.90"
         )
     line = Line(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        1,
-        "Test",
-        {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-        {"x": 15.0, "y": 20.0},
-        {"x": 10.0, "y": 20.0},
-        {"x": 15.0, "y": 22.0},
-        {"x": 10.0, "y": 22.0},
-        1.0,
-        5.0,
-        1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=1
     )
     assert line.confidence == 1.0
     with pytest.raises(
@@ -476,17 +476,17 @@ def test_line_init_invalid_confidence():
         match="confidence must be between 0 and 1, got",
     ):
         Line(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            "Test",
-            {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
-            {"x": 15.0, "y": 20.0},
-            {"x": 10.0, "y": 20.0},
-            {"x": 15.0, "y": 22.0},
-            {"x": 10.0, "y": 22.0},
-            1.0,
-            5.0,
-            -0.90,
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            line_id=1,
+            text="Test",
+            bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0, },
+            top_right={"x": 15.0, "y": 20.0},
+            top_left={"x": 10.0, "y": 20.0},
+            bottom_right={"x": 15.0, "y": 22.0},
+            bottom_left={"x": 10.0, "y": 22.0},
+            angle_degrees=1.0,
+            angle_radians=5.0,
+            confidence=-0.90
         )
     # fmt: on
 
@@ -1215,19 +1215,175 @@ def test_line_iter(example_line):
 def test_line_eq():
     """Test the Line.__eq__() method"""
     # fmt: off
-    l1 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # noqa: E501
-    l2 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # noqa: E501
-    l3 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different Image ID # noqa: E501
-    l4 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different ID # noqa: E501
-    l5 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test2", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different text # noqa: E501
-    l6 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 20.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different bounding box # noqa: E501
-    l7 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 20.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different top_right # noqa: E501
-    l8 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 20.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different top_left # noqa: E501
-    l9 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 20.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different bottom_right # noqa: E501
-    l10 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 20.0, "y": 22.0}, 1.0, 5.0, 0.90)  # Different bottom_left # noqa: E501
-    l11 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 2.0, 5.0, 0.90)  # Different angle_degrees # noqa: E501
-    l12 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 6.0, 0.90)  # Different angle_radians # noqa: E501
-    l13 = Line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, "Test", {"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0}, {"x": 15.0, "y": 20.0}, {"x": 10.0, "y": 20.0}, {"x": 15.0, "y": 22.0}, {"x": 10.0, "y": 22.0}, 1.0, 5.0, 0.91)  # Different confidence # noqa: E501
+    l1 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # noqa: E501
+    l2 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # noqa: E501
+    l3 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different Image ID # noqa: E501
+    l4 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=2,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different ID # noqa: E501
+    l5 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test2",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different text # noqa: E501
+    l6 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 20.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different bounding box # noqa: E501
+    l7 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 20.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different top_right # noqa: E501
+    l8 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 20.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different top_left # noqa: E501
+    l9 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 20.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different bottom_right # noqa: E501
+    l10 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 20.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different bottom_left # noqa: E501
+    l11 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=2.0,
+        angle_radians=5.0,
+        confidence=0.90
+    )  # Different angle_degrees # noqa: E501
+    l12 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=6.0,
+        confidence=0.90
+    )  # Different angle_radians # noqa: E501
+    l13 = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test",
+        bounding_box={"x": 10.0, "y": 20.0, "width": 5.0, "height": 2.0},
+        top_right={"x": 15.0, "y": 20.0},
+        top_left={"x": 10.0, "y": 20.0},
+        bottom_right={"x": 15.0, "y": 22.0},
+        bottom_left={"x": 10.0, "y": 22.0},
+        angle_degrees=1.0,
+        angle_radians=5.0,
+        confidence=0.91
+    )  # Different confidence # noqa: E501
     # fmt: on
 
     assert l1 == l2

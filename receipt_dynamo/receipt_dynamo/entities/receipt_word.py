@@ -3,19 +3,10 @@ from math import atan2
 from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    WarpTransformMixin,
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
 )
-
-from .entity_factory import (
+from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
@@ -23,18 +14,8 @@ from .entity_factory import (
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class ReceiptWord(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    WarpTransformMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class ReceiptWord(ReceiptTextGeometryEntity):
     """
     Represents a receipt word and its associated metadata stored in a
     DynamoDB table.
@@ -72,79 +53,40 @@ class ReceiptWord(
             word.
     """
 
-    receipt_id: int
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
     word_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
     extracted_data: Optional[Dict[str, Any]] = None
-    embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
-    is_noise: bool = False
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        # Validate line_id
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
             raise ValueError("line_id must be positive")
 
+        # Validate word_id
         if not isinstance(self.word_id, int):
             raise ValueError("id must be an integer")
         if self.word_id < 0:
             raise ValueError("id must be positive")
 
-        # Use validation utils mixin for common validation
-        self._validate_common_geometry_entity_fields()
+        # Use base class geometry validation
+        self._validate_geometry()
 
-        # Note: confidence validation in mixin allows <= 0.0, but receipt
-        # entities require > 0.0
+        # Use base class receipt field validation
+        self._validate_receipt_fields()
+
+        # Additional confidence check for receipt entities
         if self.confidence <= 0.0:
             raise ValueError("confidence must be between 0 and 1")
 
+        # Validate extracted_data
         if self.extracted_data is not None and not isinstance(
             self.extracted_data, dict
         ):
             raise ValueError("extracted_data must be a dict")
-
-        # Normalize and validate embedding_status (allow enum or string)
-        if isinstance(self.embedding_status, EmbeddingStatus):
-            self.embedding_status = self.embedding_status.value
-        elif isinstance(self.embedding_status, str):
-            valid_values = [s.value for s in EmbeddingStatus]
-            if self.embedding_status not in valid_values:
-                raise ValueError(
-                    (
-                        "embedding_status must be one of: "
-                        f"{', '.join(valid_values)}\n"
-                        f"Got: {self.embedding_status}"
-                    )
-                )
-        else:
-            raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
-            )
-
-        # Validate is_noise field
-        if not isinstance(self.is_noise, bool):
-            raise ValueError(
-                (
-                    "is_noise must be a boolean, got "
-                    f"{type(self.is_noise).__name__}"
-                )
-            )
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -215,46 +157,34 @@ class ReceiptWord(
             "GSI3SK": {"S": "WORD"},
         }
 
+    def _serialize_extracted_data(self) -> Dict[str, Any]:
+        """Serialize extracted_data for DynamoDB."""
+        if self.extracted_data is None:
+            return {"NULL": True}
+        return {
+            "M": {
+                k: {"S": str(v)} for k, v in self.extracted_data.items()
+            }
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """
-        Converts the ReceiptWord object to a DynamoDB item using
-        SerializationMixin.
+        Converts the ReceiptWord object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the ReceiptWord object as a
             DynamoDB item.
         """
-        # Use mixin for common geometry fields and add specialized fields
-        custom_fields = {
+        return {
+            **self.key,
+            "TYPE": {"S": "RECEIPT_WORD"},
+            **self.gsi1_key(),
+            **self.gsi2_key(),
+            **self.gsi3_key(),
             **self._get_geometry_fields(),
-            "extracted_data": self._serialize_value(self.extracted_data),
-            "embedding_status": {"S": self.embedding_status},
-            "is_noise": {"BOOL": self.is_noise},
+            **self._get_receipt_fields_for_serialization(),
+            "extracted_data": self._serialize_extracted_data(),
         }
-
-        return self.build_dynamodb_item(
-            entity_type="RECEIPT_WORD",
-            gsi_methods=["gsi1_key", "gsi2_key", "gsi3_key"],
-            custom_fields=custom_fields,
-            exclude_fields={
-                "text",
-                "bounding_box",
-                "top_right",
-                "top_left",
-                "bottom_right",
-                "bottom_left",
-                "angle_degrees",
-                "angle_radians",
-                "confidence",
-                "extracted_data",
-                "embedding_status",
-                "is_noise",
-            },
-        )
-
-    def __hash__(self) -> int:
-        """Returns the hash value of the ReceiptWord object."""
-        return hash(self._get_geometry_hash_fields())
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptWord object."""
@@ -321,7 +251,7 @@ class ReceiptWord(
                     differences[attr] = {"self": value, "other": other_value}
         return differences
 
-    def _get_geometry_hash_fields(self) -> tuple:
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
         """
         Override to include entity-specific ID fields in hash computation.
 
@@ -341,6 +271,12 @@ class ReceiptWord(
             self.embedding_status,
             self.is_noise,
         )
+
+
+# Re-enable __hash__ after dataclass sets it to None
+ReceiptWord.__hash__ = lambda self: hash(  # type: ignore
+    self._get_geometry_hash_fields()
+)
 
 
 def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:

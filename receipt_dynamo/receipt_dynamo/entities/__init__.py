@@ -37,7 +37,13 @@ from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
 # =============================================================================
 # Base classes and mixins for entity consolidation
 # =============================================================================
-from receipt_dynamo.entities.geometry_entity import GeometryEntity
+from receipt_dynamo.entities.text_geometry_entity import (
+    TextGeometryEntity,
+    GeometryEntity,  # Backwards compatibility alias
+)
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
+)
 from receipt_dynamo.entities.identifier_mixins import (
     ImageIdentifierMixin,
     ImageLineIdentifierMixin,
@@ -178,7 +184,9 @@ from receipt_dynamo.entities.word import Word, item_to_word  # noqa: F401
 
 __all__ = [
     # Base classes and mixins
-    "GeometryEntity",
+    "TextGeometryEntity",
+    "ReceiptTextGeometryEntity",
+    "GeometryEntity",  # Backwards compatibility alias
     "ImageIdentifierMixin",
     "ImageLineIdentifierMixin",
     "ImageWordIdentifierMixin",

@@ -1,38 +1,20 @@
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
 )
 from receipt_dynamo.entities.util import (
-    assert_valid_uuid,
+    build_base_item,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class Line(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class Line(TextGeometryEntity):
     """
     Represents a line and its associated metadata stored in a DynamoDB table.
 
@@ -63,41 +45,19 @@ class Line(
         num_chars (int): The number of characters in the line.
     """
 
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        assert_valid_uuid(self.image_id)
-
+        # Validate entity-specific ID fields
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id <= 0:
             raise ValueError("line_id must be positive")
 
-        if not isinstance(self.text, str):
-            raise ValueError("text must be a string")
-
-        # Use validation utils mixin for common validation
-        self._validate_common_geometry_entity_fields()
-
-        # Note: confidence validation in mixin allows <= 0.0, but Line
-        # entities require > 0.0
-        if isinstance(self.confidence, int):
-            self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float) or not (
-            0 < self.confidence <= 1
-        ):
-            raise ValueError("confidence must be a float between 0 and 1")
+        # Use base class geometry validation
+        self._validate_geometry()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -128,29 +88,11 @@ class Line(
         Returns:
             dict: A dictionary representing the Line object as a DynamoDB item.
         """
-        # Use mixin for common geometry fields
-        custom_fields = self._get_geometry_fields()
-
-        return self.build_dynamodb_item(
-            entity_type="LINE",
-            gsi_methods=["gsi1_key"],
-            custom_fields=custom_fields,
-            exclude_fields={
-                "image_id",
-                "line_id",
-                "text",
-                "bounding_box",
-                "top_right",
-                "top_left",
-                "bottom_right",
-                "bottom_left",
-                "angle_degrees",
-                "angle_radians",
-                "confidence",
-                # Prevent auto-serialization of helper property for GSI
-                "gsi1_key",
-            },
-        )
+        return {
+            **build_base_item(self, "LINE"),
+            **self.gsi1_key(),
+            **self._get_geometry_fields(),
+        }
 
     def calculate_diagonal_length(self) -> float:
         """Calculates the length of the diagonal of the line.
@@ -163,28 +105,12 @@ class Line(
             + (self.top_right["y"] - self.bottom_left["y"]) ** 2
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
-        geometry_fields = (
-            self.text,
-            tuple(self.bounding_box.items()),
-            tuple(self.top_right.items()),
-            tuple(self.top_left.items()),
-            tuple(self.bottom_right.items()),
-            tuple(self.bottom_left.items()),
-            self.angle_degrees,
-            self.angle_radians,
-            self.confidence,
-        )
-        return geometry_fields + (
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+        """Override to include entity-specific ID fields in hash computation."""
+        return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
         )
-
-    def __hash__(self) -> int:
-        """Returns the hash value of the Line object."""
-        return hash(self._get_geometry_hash_fields())
 
     def __repr__(self) -> str:
         """Returns a string representation of the Line object."""
@@ -196,6 +122,10 @@ class Line(
             f"{geometry_fields}"
             f")"
         )
+
+
+# Re-enable __hash__ after dataclass sets it to None
+Line.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
 
 
 def item_to_line(item: Dict[str, Any]) -> Line:

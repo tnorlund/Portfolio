@@ -1,40 +1,23 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
-from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
+)
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
 )
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    WarpTransformMixin,
-)
-from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
+    build_base_item,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class ReceiptLine(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    WarpTransformMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class ReceiptLine(ReceiptTextGeometryEntity):
     """Receipt line metadata stored in DynamoDB.
 
     This class encapsulates receipt line information such as the receipt
@@ -60,60 +43,22 @@ class ReceiptLine(
         embedding_status (EmbeddingStatus): Embedding status for the line.
     """
 
-    receipt_id: int
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
-    embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
-    is_noise: bool = False
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        # Validate line_id
         if not isinstance(self.line_id, int):
             raise ValueError("id must be an integer")
         if self.line_id <= 0:
             raise ValueError("id must be positive")
 
-        # Use validation utils mixin for common validation
-        self._validate_common_geometry_entity_fields()
+        # Use base class geometry validation
+        self._validate_geometry()
 
-        if isinstance(self.embedding_status, EmbeddingStatus):
-            self.embedding_status = self.embedding_status.value
-        elif isinstance(self.embedding_status, str):
-            allowed_statuses = [s.value for s in EmbeddingStatus]
-            if self.embedding_status not in allowed_statuses:
-                error_message = (
-                    "embedding_status must be one of: "
-                    f"{', '.join(allowed_statuses)}\n"
-                    f"Got: {self.embedding_status}"
-                )
-                raise ValueError(error_message)
-        else:
-            raise ValueError(
-                "embedding_status must be an EmbeddingStatus or a string"
-            )
-
-        # Validate is_noise field
-        if not isinstance(self.is_noise, bool):
-            raise ValueError(
-                (
-                    "is_noise must be a boolean, got "
-                    f"{type(self.is_noise).__name__}"
-                )
-            )
+        # Use base class receipt field validation
+        self._validate_receipt_fields()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -166,31 +111,13 @@ class ReceiptLine(
             dict: A dictionary representing the ReceiptLine object as a
                 DynamoDB item.
         """
-        # Use mixin for common geometry fields and add specialized fields
-        custom_fields = {
+        return {
+            **build_base_item(self, "RECEIPT_LINE"),
+            **self.gsi1_key(),
+            **self.gsi3_key(),
             **self._get_geometry_fields(),
-            "embedding_status": {"S": self.embedding_status},
-            "is_noise": {"BOOL": self.is_noise},
+            **self._get_receipt_fields_for_serialization(),
         }
-
-        return self.build_dynamodb_item(
-            entity_type="RECEIPT_LINE",
-            gsi_methods=["gsi1_key", "gsi3_key"],
-            custom_fields=custom_fields,
-            exclude_fields={
-                "text",
-                "bounding_box",
-                "top_right",
-                "top_left",
-                "bottom_right",
-                "bottom_left",
-                "angle_degrees",
-                "angle_radians",
-                "confidence",
-                "embedding_status",
-                "is_noise",
-            },
-        )
 
     def __repr__(self) -> str:
         geometry_fields = self._get_geometry_repr_fields()
@@ -205,9 +132,8 @@ class ReceiptLine(
             f")"
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+        """Override to include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
             self.image_id,
@@ -216,9 +142,11 @@ class ReceiptLine(
             self.is_noise,
         )
 
-    def __hash__(self) -> int:
-        """Returns the hash value of the ReceiptLine object."""
-        return hash(self._get_geometry_hash_fields())
+
+# Re-enable __hash__ after dataclass sets it to None
+ReceiptLine.__hash__ = lambda self: hash(  # type: ignore
+    self._get_geometry_hash_fields()
+)
 
 
 def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
@@ -293,3 +221,7 @@ def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
         raise ValueError(f"Error converting item to ReceiptLine: {e}") from e
     except Exception as e:
         raise ValueError(f"Error converting item to ReceiptLine: {e}") from e
+
+
+# Re-export EmbeddingStatus for backwards compatibility
+__all__ = ["ReceiptLine", "item_to_receipt_line", "EmbeddingStatus"]

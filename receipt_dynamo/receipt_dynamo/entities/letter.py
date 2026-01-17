@@ -1,27 +1,20 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
 )
 from receipt_dynamo.entities.util import (
-    assert_valid_uuid,
     build_base_item,
     validate_positive_int,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class Letter(
-    GeometryMixin, GeometrySerializationMixin, GeometryValidationMixin
-):
+@dataclass(kw_only=True)
+class Letter(TextGeometryEntity):
     """Represents a single letter extracted from an image for DynamoDB.
 
     This class encapsulates letter-related information such as its unique
@@ -52,35 +45,24 @@ class Letter(
             1).
     """
 
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
     word_id: int
     letter_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        assert_valid_uuid(self.image_id)
-
+        # Validate entity-specific ID fields
         validate_positive_int("line_id", self.line_id)
         validate_positive_int("word_id", self.word_id)
         validate_positive_int("letter_id", self.letter_id)
 
-        if not isinstance(self.text, str):
-            raise ValueError("text must be a string")
+        # Use base class geometry validation
+        self._validate_geometry()
+
+        # Additional validation for letter entity
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
-
-        # Use mixin for common geometry validation
-        self._validate_geometry_fields()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -152,24 +134,6 @@ class Letter(
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Returns a dictionary representation of the Letter object."""
-        return {
-            "image_id": self.image_id,
-            "line_id": self.line_id,
-            "word_id": self.word_id,
-            "letter_id": self.letter_id,
-            "text": self.text,
-            "bounding_box": self.bounding_box,
-            "top_right": self.top_right,
-            "top_left": self.top_left,
-            "bottom_right": self.bottom_right,
-            "bottom_left": self.bottom_left,
-            "angle_degrees": self.angle_degrees,
-            "angle_radians": self.angle_radians,
-            "confidence": self.confidence,
-        }
-
     def __eq__(self, other: object) -> bool:
         """Determines whether two Letter objects are equal.
 
@@ -198,29 +162,18 @@ class Letter(
             and self.confidence == other.confidence
         )
 
-    def __hash__(self) -> int:
-        """Returns the hash value of the Letter object.
-
-        Returns:
-            int: The hash value of the Letter object.
-        """
-        return hash(
-            (
-                self.image_id,
-                self.line_id,
-                self.word_id,
-                self.letter_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-            )
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+        """Override to include entity-specific ID fields in hash computation."""
+        return self._get_base_geometry_hash_fields() + (
+            self.image_id,
+            self.line_id,
+            self.word_id,
+            self.letter_id,
         )
+
+
+# Re-enable __hash__ after dataclass sets it to None
+Letter.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
 
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:

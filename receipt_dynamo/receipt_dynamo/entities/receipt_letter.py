@@ -1,16 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    WarpTransformMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
@@ -21,17 +12,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class ReceiptLetter(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    WarpTransformMixin,
-    GeometryValidationUtilsMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class ReceiptLetter(TextGeometryEntity):
     """
     Represents a receipt letter and its associated metadata stored in a
     DynamoDB table.
@@ -68,53 +50,46 @@ class ReceiptLetter(
             0 and 1).
     """
 
+    # Entity-specific ID fields
     receipt_id: int
-    image_id: str
     line_id: int
     word_id: int
     letter_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        # Validate receipt_id
         if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
+        # Validate line_id
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
             raise ValueError("line_id must be positive")
 
+        # Validate word_id
         if not isinstance(self.word_id, int):
             raise ValueError("word_id must be an integer")
         if self.word_id < 0:
             raise ValueError("word_id must be positive")
 
+        # Validate letter_id
         if not isinstance(self.letter_id, int):
             raise ValueError("letter_id must be an integer")
         if self.letter_id < 0:
             raise ValueError("letter_id must be positive")
 
-        # Use validation utils mixin for common validation
-        # (handles image_id and text)
-        self._validate_common_geometry_entity_fields()
+        # Use base class geometry validation
+        self._validate_geometry()
 
         # Additional validation specific to letter
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
 
-        # Note: confidence validation in mixin allows <= 0.0, but receipt
-        # entities require > 0.0
+        # Additional confidence check for receipt entities
         if self.confidence <= 0.0:
             raise ValueError("confidence must be between 0 and 1")
 
@@ -223,9 +198,8 @@ class ReceiptLetter(
             f")"
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+        """Override to include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
             self.image_id,
@@ -234,14 +208,11 @@ class ReceiptLetter(
             self.letter_id,
         )
 
-    def __hash__(self) -> int:
-        """
-        Generates a hash value for the ReceiptLetter object.
 
-        Returns:
-            int: The hash value for the ReceiptLetter object.
-        """
-        return hash(self._get_geometry_hash_fields())
+# Re-enable __hash__ after dataclass sets it to None
+ReceiptLetter.__hash__ = lambda self: hash(  # type: ignore
+    self._get_geometry_hash_fields()
+)
 
 
 def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:

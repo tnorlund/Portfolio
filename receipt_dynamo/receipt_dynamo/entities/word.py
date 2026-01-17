@@ -1,19 +1,9 @@
 """Word entity with geometry and character information for DynamoDB."""
 
-# infra/lambda_layer/python/dynamo/entities/word.py
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
@@ -21,22 +11,13 @@ from receipt_dynamo.entities.entity_factory import (
 )
 from receipt_dynamo.entities.util import (
     assert_type,
-    assert_valid_uuid,
+    build_base_item,
     validate_non_negative_int,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class Word(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class Word(TextGeometryEntity):
     """Represents a word extracted from an image for DynamoDB.
 
     This class encapsulates word-related information such as its unique
@@ -70,31 +51,19 @@ class Word(
         num_chars (int): The number of characters in the word.
     """
 
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
     word_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
     extracted_data: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        assert_valid_uuid(self.image_id)
-
+        # Validate entity-specific ID fields
         validate_non_negative_int("line_id", self.line_id)
         validate_non_negative_int("word_id", self.word_id)
 
-        assert_type("text", self.text, str, ValueError)
-
-        # Use validation utils mixin for common validation
-        self._validate_common_geometry_entity_fields()
+        # Use base class geometry validation
+        self._validate_geometry()
 
         if self.extracted_data is not None:
             assert_type(
@@ -133,40 +102,25 @@ class Word(
             dict: A dictionary representing the Word object as a DynamoDB
             item.
         """
-        # Use mixin for common geometry fields
-        custom_fields = self._get_geometry_fields()
+        # Start with base item and geometry fields
+        item = {
+            **build_base_item(self, "WORD"),
+            **self.gsi2_key(),
+            **self._get_geometry_fields(),
+        }
 
-        # Add extracted_data conditionally to avoid type conflicts
+        # Add extracted_data conditionally
         if self.extracted_data:
-            custom_fields["extracted_data"] = {
+            item["extracted_data"] = {
                 "M": {
                     "type": {"S": self.extracted_data["type"]},
                     "value": {"S": self.extracted_data["value"]},
                 }
             }
         else:
-            custom_fields["extracted_data"] = {"NULL": True}
+            item["extracted_data"] = {"NULL": True}
 
-        return self.build_dynamodb_item(
-            entity_type="WORD",
-            gsi_methods=["gsi2_key"],
-            custom_fields=custom_fields,
-            exclude_fields={
-                "image_id",
-                "line_id",
-                "word_id",
-                "text",
-                "bounding_box",
-                "top_right",
-                "top_left",
-                "bottom_right",
-                "bottom_left",
-                "angle_degrees",
-                "angle_radians",
-                "confidence",
-                "extracted_data",
-            },
-        )
+        return item
 
     def calculate_centroid(
         self,
@@ -313,21 +267,9 @@ class Word(
             (bottom_right_x, bottom_right_y),
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
-        geometry_fields = (
-            self.text,
-            tuple(self.bounding_box.items()),
-            tuple(self.top_right.items()),
-            tuple(self.top_left.items()),
-            tuple(self.bottom_right.items()),
-            tuple(self.bottom_left.items()),
-            self.angle_degrees,
-            self.angle_radians,
-            self.confidence,
-        )
-        return geometry_fields + (
+    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+        """Override to include entity-specific ID fields in hash computation."""
+        return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
             self.word_id,
@@ -338,14 +280,14 @@ class Word(
             ),
         )
 
-    def __hash__(self) -> int:
-        """Returns the hash value of the Word object."""
-        return hash(self._get_geometry_hash_fields())
-
     def __repr__(self) -> str:
         """Returns a string representation of the Word object."""
         geometry_fields = self._get_geometry_repr_fields()
         return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
+
+
+# Re-enable __hash__ after dataclass sets it to None
+Word.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
 
 
 def item_to_word(item: Dict[str, Any]) -> Word:

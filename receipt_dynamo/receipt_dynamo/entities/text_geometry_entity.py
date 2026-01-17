@@ -1,5 +1,5 @@
 """
-Flattened geometry entity base class.
+Flattened text geometry entity base class.
 
 This module consolidates the 7 geometry mixins into a single base class,
 following the same pattern as FlattenedStandardMixin for data operations.
@@ -20,8 +20,8 @@ Benefits:
     - Maintains full backwards compatibility
 
 Usage:
-    @dataclass
-    class MyGeometryEntity(GeometryEntity):
+    @dataclass(kw_only=True)
+    class MyGeometryEntity(TextGeometryEntity):
         # Add entity-specific fields
         my_field: str
 
@@ -48,8 +48,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class GeometryEntity(DynamoDBEntity):
+@dataclass(kw_only=True)
+class TextGeometryEntity(DynamoDBEntity):
     """
     Flattened base class for entities with geometric properties.
 
@@ -479,7 +479,9 @@ class GeometryEntity(DynamoDBEntity):
             )
         self._update_bounding_box_from_corners()
 
-    def rotate_90_ccw_in_place(self) -> None:
+    def rotate_90_ccw_in_place(
+        self, _old_width: float, _old_height: float
+    ) -> None:
         """
         Rotate the entity 90 degrees counter-clockwise in place.
 
@@ -487,6 +489,12 @@ class GeometryEntity(DynamoDBEntity):
         coordinates (0-1). The coordinates transform as:
             new_x = old_y
             new_y = 1 - old_x
+
+        Args:
+            _old_width: The width of the original image/page (kept for API
+                compatibility)
+            _old_height: The height of the original image/page (kept for API
+                compatibility)
         """
 
         def rotate_90_ccw(px: float, py: float) -> Tuple[float, float]:
@@ -503,6 +511,62 @@ class GeometryEntity(DynamoDBEntity):
         self._update_bounding_box_from_corners()
         self.angle_degrees += 90
         self.angle_radians += pi / 2
+
+    def warp_affine_normalized_forward(
+        self,
+        _a: float,
+        _b: float,
+        c: float,
+        _d: float,
+        _e: float,
+        f: float,
+        src_width: float,
+        src_height: float,
+        dst_width: float,
+        dst_height: float,
+        _flip_y: bool = False,
+    ) -> None:
+        """
+        Apply a normalized forward affine transformation to the entity.
+
+        This method applies an affine transformation where the c and f
+        parameters are normalized offsets that get scaled based on the
+        bounding box dimensions and the source/destination dimensions.
+
+        The actual offset applied is:
+        - x_offset = c * (bounding_box.width / (src_width * dst_width))
+        - y_offset = f * (bounding_box.height / (src_height * dst_height))
+
+        Args:
+            _a, _b, c, _d, _e, f: The affine transformation coefficients.
+                Only c and f are used; others kept for API compatibility.
+            src_width: Source image width
+            src_height: Source image height
+            dst_width: Destination image width
+            dst_height: Destination image height
+            _flip_y: Whether to flip Y coordinates (not used in current
+                implementation, kept for API compatibility)
+        """
+        # Calculate the scaled offsets based on bounding box and image
+        # dimensions
+        x_offset = c * (self.bounding_box["width"] / (src_width * dst_width))
+        y_offset = f * (
+            self.bounding_box["height"] / (src_height * dst_height)
+        )
+
+        # Apply the transformation to all corners
+        self.top_left["x"] += x_offset
+        self.top_left["y"] += y_offset
+        self.top_right["x"] += x_offset
+        self.top_right["y"] += y_offset
+        self.bottom_left["x"] += x_offset
+        self.bottom_left["y"] += y_offset
+        self.bottom_right["x"] += x_offset
+        self.bottom_right["y"] += y_offset
+
+        # Update bounding box
+        self.bounding_box["x"] += x_offset
+        self.bounding_box["y"] += y_offset
 
     def warp_affine(
         self,
@@ -728,4 +792,8 @@ class GeometryEntity(DynamoDBEntity):
         self.angle_degrees = self.angle_radians * 180.0 / pi
 
 
-__all__ = ["GeometryEntity"]
+# Backwards compatibility alias
+GeometryEntity = TextGeometryEntity
+
+
+__all__ = ["TextGeometryEntity", "GeometryEntity"]
