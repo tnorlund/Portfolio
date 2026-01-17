@@ -774,11 +774,9 @@ def end_child_trace(
         if outputs:
             ctx.run_tree.outputs = outputs
         ctx.run_tree.end()
-        # NOTE: Do NOT call patch() here. The trace was already posted in
-        # start_child_trace(). Calling patch() can cause "dotted_order appears
-        # more than once" errors in LangSmith.
+        ctx.run_tree.patch()
         logger.info(
-            "[end_child_trace] Child ended (no patch, id=%s)",
+            "[end_child_trace] Child ended and patched (id=%s)",
             ctx.run_tree.id,
         )
     except Exception as e:
@@ -1178,11 +1176,9 @@ def end_receipt_trace(
         if outputs:
             trace_info.run_tree.outputs = outputs
         trace_info.run_tree.end()
-        # NOTE: Do NOT call patch() here. The trace was already posted in
-        # create_receipt_trace(). Calling patch() can cause "dotted_order
-        # appears more than once" errors in LangSmith.
+        trace_info.run_tree.patch()
         logger.info(
-            "Receipt trace ended (no patch, image_id=%s, receipt_id=%s)",
+            "Receipt trace ended and patched (image_id=%s, receipt_id=%s)",
             (
                 trace_info.image_id[:8]
                 if len(trace_info.image_id) > 8
