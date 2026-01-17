@@ -35,12 +35,13 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
 
     Class Variables:
         BASE_REQUIRED_KEYS: Inherited from TextGeometryEntity, used by all
-            receipt geometry entities. Receipt-specific fields (embedding_status,
-            is_noise) have defaults and are not required in DynamoDB items.
+            receipt geometry entities. Receipt-specific fields
+            (embedding_status, is_noise) have defaults and are not required
+            in DynamoDB items.
     """
 
     # Receipt entities use the same required keys as base geometry entities
-    # (receipt_id comes from SK parsing, embedding_status/is_noise have defaults)
+    # (receipt_id from SK parsing, embedding_status/is_noise have defaults)
     REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     # Receipt-specific fields

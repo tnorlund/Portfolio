@@ -654,9 +654,9 @@ class ReceiptLineItemAnalysis:
                 word_labels_dynamo = item["word_labels"]["M"]
                 for key, value in word_labels_dynamo.items():
                     line_id, word_id = map(int, key.split(":"))
-                    if word_labels is not None:  # Type guard for mypy
-                        word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(
-                            value["M"]
+                    if word_labels is not None:
+                        word_labels[(line_id, word_id)] = (
+                            _convert_dynamo_to_dict(value["M"])
                         )
 
             return cls(

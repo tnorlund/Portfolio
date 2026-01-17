@@ -201,10 +201,10 @@ class ReceiptLetter(TextGeometryEntity):
         )
 
     def __hash__(self) -> int:
-        """Return hash based on all fields (required due to explicit __eq__)."""
+        """Return hash based on all fields (due to explicit __eq__)."""
         return hash(self._get_geometry_hash_fields())
 
-    # Use base class required keys (no additional keys needed for ReceiptLetter)
+    # Use base class required keys (no additional keys for ReceiptLetter)
     REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     @classmethod
@@ -269,7 +269,7 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
         item: The DynamoDB item dictionary to convert.
 
     Returns:
-        A ReceiptLetter object with all fields properly extracted and validated.
+        A ReceiptLetter object with all fields extracted and validated.
 
     Raises:
         ValueError: If required fields are missing or have invalid format.

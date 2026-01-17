@@ -287,9 +287,9 @@ class ReceiptLabelAnalysis:
                         "label_type" in label_item["M"]
                         and "S" in label_item["M"]["label_type"]
                     ):
-                        label_dict["label_type"] = label_item["M"]["label_type"][
-                            "S"
-                        ]
+                        label_dict["label_type"] = (
+                            label_item["M"]["label_type"]["S"]
+                        )
 
                     if (
                         "line_id" in label_item["M"]
@@ -317,7 +317,9 @@ class ReceiptLabelAnalysis:
                         "reasoning" in label_item["M"]
                         and "S" in label_item["M"]["reasoning"]
                     ):
-                        label_dict["reasoning"] = label_item["M"]["reasoning"]["S"]
+                        label_dict["reasoning"] = (
+                            label_item["M"]["reasoning"]["S"]
+                        )
 
                     # Extract bounding_box if present
                     if (
@@ -333,7 +335,8 @@ class ReceiptLabelAnalysis:
                             "bottom_left",
                             "bottom_right",
                         ]:
-                            if corner in bbox_item and "M" in bbox_item[corner]:
+                            has_corner = corner in bbox_item
+                            if has_corner and "M" in bbox_item[corner]:
                                 point: Dict[str, Any] = {}
                                 if (
                                     "x" in bbox_item[corner]["M"]

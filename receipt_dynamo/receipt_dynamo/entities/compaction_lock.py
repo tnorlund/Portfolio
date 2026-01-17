@@ -173,7 +173,8 @@ class CompactionLock(DynamoDBEntity):
                 raise ValueError(f"Invalid lock PK format: {item['PK']['S']}")
 
             collection_value = pk_parts[1]
-            lock_id = "#".join(pk_parts[2:])  # Rejoin in case lock_id contains #
+            # Rejoin in case lock_id contains #
+            lock_id = "#".join(pk_parts[2:])
 
             # Validate collection value
             try:

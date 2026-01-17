@@ -978,7 +978,8 @@ class ReceiptStructureAnalysis:
 
                     # Extract line_ids
                     line_ids = []
-                    line_ids_attr = section_map.get("line_ids", {}).get("L", [])
+                    ids_map = section_map.get("line_ids", {})
+                    line_ids_attr = ids_map.get("L", [])
                     for line_id in line_ids_attr:
                         if isinstance(line_id, dict) and "N" in line_id:
                             line_ids.append(int(line_id["N"]))
@@ -1080,7 +1081,8 @@ class ReceiptStructureAnalysis:
 
                     # Extract metadata
                     section_metadata: Dict[str, Any] = {}
-                    metadata_attr = section_map.get("metadata", {}).get("M", {})
+                    meta_map = section_map.get("metadata", {})
+                    metadata_attr = meta_map.get("M", {})
                     for k, v in metadata_attr.items():
                         section_metadata[k] = v.get("S", "")
                     section_data["metadata"] = section_metadata

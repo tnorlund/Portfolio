@@ -207,7 +207,7 @@ class _Receipt(FlattenedStandardMixin):
 
         This method uses GSI4 which is designed for efficient single-query
         retrieval of receipt details. By design, GSI4 excludes ReceiptLetters
-        to reduce read costs - letters are rarely needed in most access patterns.
+        to reduce read costs - letters are rarely needed in most patterns.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to

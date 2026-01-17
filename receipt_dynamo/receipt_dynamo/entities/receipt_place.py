@@ -296,7 +296,7 @@ class ReceiptPlace(SerializationMixin):
         """Get GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
-        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+        entities (Receipt, Lines, Words, Labels, Place) excluding Letters.
         """
         return {
             "GSI4PK": {
@@ -444,7 +444,9 @@ class ReceiptPlace(SerializationMixin):
         """
         # First, deserialize from DynamoDB JSON format to Python types
         deserializer = TypeDeserializer()
-        deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
+        deserialized = {
+            k: deserializer.deserialize(v) for k, v in item.items()
+        }
 
         # Filter out computed fields
         filtered_item = {

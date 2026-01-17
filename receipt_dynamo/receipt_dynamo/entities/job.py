@@ -7,7 +7,11 @@ from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
     parse_dynamodb_map,
 )
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid, normalize_enum
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)

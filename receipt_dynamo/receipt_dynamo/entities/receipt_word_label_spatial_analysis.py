@@ -312,7 +312,7 @@ class ReceiptWordLabelSpatialAnalysis:
     def from_item(
         cls, item: Dict[str, Any]
     ) -> "ReceiptWordLabelSpatialAnalysis":
-        """Converts a DynamoDB item to a ReceiptWordLabelSpatialAnalysis object.
+        """Converts a DynamoDB item to a spatial analysis object.
 
         Args:
             item: The DynamoDB item to convert.

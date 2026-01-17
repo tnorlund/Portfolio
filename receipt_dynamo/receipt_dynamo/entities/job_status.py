@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import JobStatus as JobStatusEnum
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid, normalize_enum
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)

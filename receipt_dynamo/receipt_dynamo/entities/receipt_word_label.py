@@ -191,7 +191,7 @@ class ReceiptWordLabel:
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
-        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+        entities (Receipt, Lines, Words, Labels, Place) excluding Letters.
         """
         return {
             "GSI4PK": {
@@ -391,10 +391,11 @@ class ReceiptWordLabel:
 
             label_consolidated_from = None
             if "label_consolidated_from" in item:
-                if "NULL" in item["label_consolidated_from"]:
+                consolidated = item["label_consolidated_from"]
+                if "NULL" in consolidated:
                     label_consolidated_from = None
-                elif "S" in item["label_consolidated_from"]:
-                    label_consolidated_from = item["label_consolidated_from"]["S"]
+                elif "S" in consolidated:
+                    label_consolidated_from = consolidated["S"]
 
             label_proposed_by = None
             if "label_proposed_by" in item:

@@ -296,7 +296,8 @@ class CoreMLExportJob:
 
             output_s3_prefix = (
                 item["output_s3_prefix"]["S"]
-                if "output_s3_prefix" in item and "S" in item["output_s3_prefix"]
+                if "output_s3_prefix" in item
+                and "S" in item["output_s3_prefix"]
                 else None
             )
 
@@ -314,7 +315,8 @@ class CoreMLExportJob:
 
             mlpackage_s3_uri = (
                 item["mlpackage_s3_uri"]["S"]
-                if "mlpackage_s3_uri" in item and "S" in item["mlpackage_s3_uri"]
+                if "mlpackage_s3_uri" in item
+                and "S" in item["mlpackage_s3_uri"]
                 else None
             )
 
@@ -326,7 +328,8 @@ class CoreMLExportJob:
 
             model_size_bytes = (
                 int(item["model_size_bytes"]["N"])
-                if "model_size_bytes" in item and "N" in item["model_size_bytes"]
+                if "model_size_bytes" in item
+                and "N" in item["model_size_bytes"]
                 else None
             )
 

@@ -160,7 +160,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
-        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+        entities (Receipt, Lines, Words, Labels, Place) excluding Letters.
         """
         return {
             "GSI4PK": {
