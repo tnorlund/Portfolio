@@ -271,7 +271,6 @@ class TraceContext:
 
             # LangChain uses 'callbacks' in config to pass trace context
             # The LangSmithCallbackHandler can be initialized with parent headers
-            from langsmith.run_helpers import get_current_run_tree, tracing_context
 
             # Return config that will link to this trace via headers
             # When passed to invoke(), LangChain will use these headers

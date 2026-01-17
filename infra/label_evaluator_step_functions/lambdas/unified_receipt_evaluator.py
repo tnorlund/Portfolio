@@ -1000,6 +1000,15 @@ async def unified_receipt_evaluator(
                 "Rate limit error, propagating for Step Function retry: %s",
                 e,
             )
+            # Close receipt trace before re-raising so trace is properly finalized
+            if receipt_trace is not None:
+                end_receipt_trace(
+                    receipt_trace,
+                    outputs={
+                        "status": "rate_limited",
+                        "error": str(e),
+                    },
+                )
             flush_langsmith_traces()
             raise
 
