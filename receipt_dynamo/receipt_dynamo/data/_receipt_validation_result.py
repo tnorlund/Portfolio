@@ -376,29 +376,10 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        try:
-            assert_valid_uuid(image_id)
-        except ValueError as e:
-            raise EntityValidationError(f"Invalid image_id format: {e}") from e
-
-        return self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)",
-            ),
-            expression_attribute_names={
-                "#pk": "PK",
-                "#sk": "SK",
-            },
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
-                        f"CATEGORY#{field_name}#RESULT#"
-                    )
-                },
-            },
+        return self._query_by_image_receipt_sk_prefix(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            sk_suffix=f"ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#",
             converter_func=item_to_receipt_validation_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

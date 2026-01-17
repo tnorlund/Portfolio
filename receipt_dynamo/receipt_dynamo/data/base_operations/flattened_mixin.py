@@ -686,3 +686,56 @@ class FlattenedStandardMixin:
             converter_func=converter_func,
         )
         return results
+
+    def _query_by_image_receipt_sk_prefix(
+        self,
+        image_id: str,
+        receipt_id: int,
+        sk_suffix: str,
+        converter_func: Callable[[Dict[str, Any]], T],
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        """Query entities by image_id with SK prefix on main table.
+
+        This is a common pattern for listing receipt analysis entities
+        (validation categories, validation results) that use a SK prefix
+        pattern starting with RECEIPT#{receipt_id}#ANALYSIS#...
+
+        Args:
+            image_id: The image ID (UUID)
+            receipt_id: The receipt ID (positive integer)
+            sk_suffix: The suffix after RECEIPT#{receipt_id}# (e.g.,
+                "ANALYSIS#VALIDATION#CATEGORY#")
+            converter_func: Function to convert DynamoDB items to entities
+            limit: Maximum number of items to return
+            last_evaluated_key: Key for pagination
+
+        Returns:
+            Tuple of (list of entities, last_evaluated_key for pagination)
+
+        Raises:
+            EntityValidationError: If image_id format is invalid
+        """
+        try:
+            self._validate_image_id(image_id)
+        except ValueError as e:
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
+
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
+            expression_attribute_names={
+                "#pk": "PK",
+                "#sk": "SK",
+            },
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#{sk_suffix}"},
+            },
+            converter_func=converter_func,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
