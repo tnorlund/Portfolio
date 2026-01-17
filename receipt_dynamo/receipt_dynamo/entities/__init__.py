@@ -33,17 +33,6 @@ from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
     EmbeddingBatchResult,
     item_to_embedding_batch_result,
 )
-
-# =============================================================================
-# Base classes and mixins for entity consolidation
-# =============================================================================
-from receipt_dynamo.entities.text_geometry_entity import (
-    TextGeometryEntity,
-    GeometryEntity,  # Backwards compatibility alias
-)
-from receipt_dynamo.entities.receipt_text_geometry_entity import (
-    ReceiptTextGeometryEntity,
-)
 from receipt_dynamo.entities.identifier_mixins import (
     ImageIdentifierMixin,
     ImageLineIdentifierMixin,
@@ -144,6 +133,9 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
     SpatialPattern,
     item_to_receipt_structure_analysis,
 )
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
+)
 from receipt_dynamo.entities.receipt_validation_category import (  # noqa: F401
     ReceiptValidationCategory,
     item_to_receipt_validation_category,
@@ -169,6 +161,16 @@ from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
 )
 from receipt_dynamo.entities.rwl_queue import Queue  # noqa: F401
 from receipt_dynamo.entities.rwl_queue import item_to_queue
+
+# =============================================================================
+# Base classes and mixins for entity consolidation
+# =============================================================================
+from receipt_dynamo.entities.text_geometry_entity import (
+    GeometryEntity,  # Backwards compatibility alias
+)
+from receipt_dynamo.entities.text_geometry_entity import (
+    TextGeometryEntity,
+)
 
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401

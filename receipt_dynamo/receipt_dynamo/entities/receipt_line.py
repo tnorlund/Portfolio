@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities.receipt_text_geometry_entity import (
-    ReceiptTextGeometryEntity,
-)
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
+)
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
 )
 from receipt_dynamo.entities.util import (
     _repr_str,

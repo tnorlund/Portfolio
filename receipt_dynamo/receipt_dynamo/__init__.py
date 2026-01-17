@@ -6,47 +6,35 @@ __version__ = "0.2.0"
 # Entity imports (explicit, no star imports)
 # =============================================================================
 
+# Item conversion functions
+# Core entities
+# Value objects
 # Base classes and mixins
 from receipt_dynamo.entities import (
-    GeometryEntity,
-    ImageIdentifierMixin,
-    ImageLineIdentifierMixin,
-    ImageWordIdentifierMixin,
-    JobIdentifierMixin,
-    LineIdentifierMixin,
-    ReceiptIdentifierMixin,
-    ReceiptTextGeometryEntity,
-    TextGeometryEntity,
-    WordIdentifierMixin,
-)
-
-# Value objects
-from receipt_dynamo.entities import (
+    AIUsageMetric,
     Angle,
+    BatchSummary,
     BoundingBox,
     CDNVariants,
-    Corners,
-    Point,
-    S3Location,
-)
-
-# Core entities
-from receipt_dynamo.entities import (
-    AIUsageMetric,
-    BatchSummary,
     CompactionLock,
     CompactionRun,
     CompletionBatchResult,
     ContentPattern,
     CoreMLExportJob,
+    Corners,
     EmbeddingBatchResult,
+    GeometryEntity,
     Image,
     ImageDetails,
+    ImageIdentifierMixin,
+    ImageLineIdentifierMixin,
+    ImageWordIdentifierMixin,
     Instance,
     InstanceJob,
     Job,
     JobCheckpoint,
     JobDependency,
+    JobIdentifierMixin,
     JobLog,
     JobMetric,
     JobResource,
@@ -56,9 +44,11 @@ from receipt_dynamo.entities import (
     LabelMetadata,
     Letter,
     Line,
+    LineIdentifierMixin,
     OCRJob,
     OCRRoutingDecision,
     PlacesCache,
+    Point,
     Queue,
     QueueJob,
     Receipt,
@@ -66,6 +56,7 @@ from receipt_dynamo.entities import (
     ReceiptChatGPTValidation,
     ReceiptDetails,
     ReceiptField,
+    ReceiptIdentifierMixin,
     ReceiptLabelAnalysis,
     ReceiptLetter,
     ReceiptLine,
@@ -74,19 +65,19 @@ from receipt_dynamo.entities import (
     ReceiptPlace,
     ReceiptSection,
     ReceiptStructureAnalysis,
+    ReceiptTextGeometryEntity,
     ReceiptValidationCategory,
     ReceiptValidationResult,
     ReceiptValidationSummary,
     ReceiptWord,
     ReceiptWordLabel,
     ReceiptWordLabelSpatialAnalysis,
+    S3Location,
     SpatialPattern,
     SpatialRelationship,
+    TextGeometryEntity,
     Word,
-)
-
-# Item conversion functions
-from receipt_dynamo.entities import (
+    WordIdentifierMixin,
     assert_valid_uuid,
     item_to_ai_usage_metric,
     item_to_batch_summary,

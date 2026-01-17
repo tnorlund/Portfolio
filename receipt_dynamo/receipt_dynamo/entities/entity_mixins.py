@@ -23,7 +23,6 @@ from typing import (
 
 from receipt_dynamo.entities.util import _repr_str
 
-
 T = TypeVar("T")
 
 

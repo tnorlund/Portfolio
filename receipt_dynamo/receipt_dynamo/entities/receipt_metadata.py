@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import Any, Generator
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_image_receipt_pk_parser,
     create_image_receipt_sk_parser,
 )
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,

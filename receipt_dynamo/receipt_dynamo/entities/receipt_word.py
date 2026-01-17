@@ -2,14 +2,14 @@ from dataclasses import dataclass
 from math import atan2
 from typing import Any, ClassVar
 
-from receipt_dynamo.entities.receipt_text_geometry_entity import (
-    ReceiptTextGeometryEntity,
-)
 from receipt_dynamo.entities.entity_factory import (
     EntityFactory,
     create_geometry_extractors,
     create_image_receipt_pk_parser,
     create_receipt_line_word_sk_parser,
+)
+from receipt_dynamo.entities.receipt_text_geometry_entity import (
+    ReceiptTextGeometryEntity,
 )
 
 
