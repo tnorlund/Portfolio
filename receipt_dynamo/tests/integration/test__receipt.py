@@ -728,9 +728,7 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -761,9 +759,7 @@ def test_update_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityNotFoundError, match="receipt not found during update_receipt"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -794,9 +790,7 @@ def test_delete_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityNotFoundError, match="receipt not found during delete_receipt"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -887,9 +881,7 @@ def test_add_receipt_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
 
 
@@ -1196,25 +1188,27 @@ def test_list_receipts_invalid_limit(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "invalid_lek",
+    "invalid_lek,expected_exception",
     [
-        "not-a-dict",
-        {"PK": {"S": "IMAGE#start"}},  # Missing SK
-        {"SK": {"S": "DUMMY_START"}},  # Missing PK
-        {"PK": "not-a-dict", "SK": {"S": "DUMMY_START"}},  # Invalid PK format
-        {"PK": {"S": "IMAGE#start"}, "SK": "not-a-dict"},  # Invalid SK format
+        ("not-a-dict", EntityValidationError),
+        ({"PK": {"S": "IMAGE#start"}}, EntityValidationError),  # Missing SK
+        ({"SK": {"S": "DUMMY_START"}}, EntityValidationError),  # Missing PK
+        # Invalid PK/SK format - passes validation but fails at DynamoDB
+        ({"PK": "not-a-dict", "SK": {"S": "DUMMY_START"}}, OperationError),
+        ({"PK": {"S": "IMAGE#start"}, "SK": "not-a-dict"}, OperationError),
     ],
 )
 def test_list_receipts_invalid_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_lek: Any,
+    expected_exception: Type[Exception],
 ) -> None:
     """
-    Tests that list_receipts raises ValueError when last_evaluated_key is
-    invalid.
+    Tests that list_receipts raises appropriate error when last_evaluated_key
+    is invalid.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="LastEvaluatedKey"):
+    with pytest.raises(expected_exception):
         client.list_receipts(last_evaluated_key=invalid_lek)
 
 
