@@ -650,3 +650,39 @@ class FlattenedStandardMixin:
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
+
+    def _query_entities_by_receipt_gsi3(
+        self,
+        image_id: str,
+        receipt_id: int,
+        entity_type: str,
+        converter_func: Callable[[Dict[str, Any]], T],
+    ) -> List[T]:
+        """Query entities by image_id and receipt_id using GSI3.
+
+        This is a common pattern for listing receipt-level entities
+        (lines, words) that belong to a specific receipt.
+
+        Args:
+            image_id: The image ID (UUID)
+            receipt_id: The receipt ID (positive integer)
+            entity_type: The entity type for GSI3SK (e.g., "LINE", "WORD")
+            converter_func: Function to convert DynamoDB items to entities
+
+        Returns:
+            List of entities matching the query
+        """
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+
+        results, _ = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
+                ":sk": {"S": entity_type},
+            },
+            converter_func=converter_func,
+        )
+        return results

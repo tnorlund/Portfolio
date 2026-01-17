@@ -301,21 +301,6 @@ class _ReceiptLine(FlattenedStandardMixin):
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
-        # Validate parameters
-        self._validate_image_id(image_id)
-        self._validate_positive_int_id(receipt_id, "receipt_id")
-
-        # Use GSI3 for efficient querying by image_id + receipt_id
-        # This eliminates the need for client-side filtering
-        results, _ = self._query_entities(
-            index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
-                ":sk": {"S": "LINE"},
-            },
-            converter_func=item_to_receipt_line,
+        return self._query_entities_by_receipt_gsi3(
+            image_id, receipt_id, "LINE", item_to_receipt_line
         )
-
-        return results
