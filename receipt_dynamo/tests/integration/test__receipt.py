@@ -1077,16 +1077,17 @@ def test_get_receipt_details_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     sample_receipt_word: ReceiptWord,
-    sample_receipt_letter: ReceiptLetter,
 ) -> None:
     """
-    Tests get_receipt_details retrieves a receipt with its associated
-    words and letters.
+    Tests get_receipt_details retrieves a receipt with its associated words.
+
+    Note: GSI4 (used by get_receipt_details) intentionally excludes
+    ReceiptLetters to reduce read costs, so letters will always be
+    an empty list.
     """
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
     client.add_receipt_words([sample_receipt_word])
-    client.add_receipt_letters([sample_receipt_letter])
 
     details = client.get_receipt_details(
         sample_receipt.image_id, sample_receipt.receipt_id
@@ -1103,7 +1104,8 @@ def test_get_receipt_details_success(
 
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word
-    assert len(letters) == 1 and letters[0] == sample_receipt_letter
+    # Letters are intentionally excluded from GSI4 to reduce read costs
+    assert len(letters) == 0
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."

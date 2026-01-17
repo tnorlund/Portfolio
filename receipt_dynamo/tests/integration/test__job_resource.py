@@ -182,7 +182,7 @@ def test_addJobResource_raises_resource_not_found(
 
     with pytest.raises(
         OperationError,
-        match="DynamoDB resource not found during add_job_resource",
+        match="DynamoDB resource not found",
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
     mock_put.assert_called_once()

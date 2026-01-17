@@ -848,17 +848,17 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
 @pytest.mark.parametrize(
     "image_id,receipt_id,expected_error",
     [
-        (None, 1, "image_id must be a string, got NoneType"),
+        (None, 1, "image_id cannot be None"),
         ("not-a-uuid", 1, "uuid must be a valid UUIDv4"),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "receipt_id must be an integer, got NoneType",
+            "receipt_id cannot be None",
         ),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "not-an-int",
-            "receipt_id must be an integer, got str",
+            "receipt_id must be a positive integer",
         ),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

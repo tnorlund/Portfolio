@@ -448,7 +448,7 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             1,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id must be a positive integer",
         ),
         (
             -1,
@@ -485,7 +485,7 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             1,
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id must be a positive integer",
         ),
         (
             1,
@@ -512,7 +512,7 @@ def test_batch_receipt_letter_validation_mixed_types(
             "not-an-int",
             1,
             EntityValidationError,
-            "word_id must be an integer",
+            "word_id must be a positive integer",
         ),
         (
             1,
@@ -539,7 +539,7 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             "not-an-int",
             EntityValidationError,
-            "letter_id must be an integer",
+            "letter_id must be a positive integer",
         ),
         (
             1,
@@ -647,7 +647,7 @@ def test_list_receipt_letters_invalid_last_evaluated_key(
             "not-an-int",
             1,
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id must be a positive integer",
         ),
         (
             1,
@@ -663,7 +663,7 @@ def test_list_receipt_letters_invalid_last_evaluated_key(
             1,
             "not-an-int",
             EntityValidationError,
-            "word_id must be an integer",
+            "word_id must be a positive integer",
         ),
     ],
 )
@@ -800,7 +800,7 @@ def test_update_receipt_letter_conditional_check_failed(
 
     with pytest.raises(
         EntityNotFoundError,
-        match="receiptletter not found during update_receipt_letter",
+        match="does not exist",
     ):
         client.update_receipt_letter(sample_receipt_letter)
 

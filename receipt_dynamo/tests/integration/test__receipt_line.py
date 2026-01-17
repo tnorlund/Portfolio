@@ -434,14 +434,14 @@ def test_batch_receipt_line_validation_mixed_types(
             FIXED_UUIDS[0],
             1,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id cannot be None",
         ),
         (
             "not-an-int",
             FIXED_UUIDS[0],
             1,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id must be a positive integer",
         ),
         (
             -1,
@@ -457,14 +457,14 @@ def test_batch_receipt_line_validation_mixed_types(
             FIXED_UUIDS[0],
             None,
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id cannot be None",
         ),
         (
             1,
             FIXED_UUIDS[0],
             "not-an-int",
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id must be a positive integer",
         ),
         (
             1,
@@ -723,7 +723,7 @@ def test_update_receipt_line_conditional_check_failed(
 
     with pytest.raises(
         EntityNotFoundError,
-        match="receiptline not found during update_receipt_line",
+        match="does not exist",
     ):
         client.update_receipt_line(sample_receipt_line)
 
@@ -1362,13 +1362,13 @@ def test_list_receipt_lines_from_receipt_empty_result(
             FIXED_UUIDS[0],
             None,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id cannot be None",
         ),
         (
             FIXED_UUIDS[0],
             "not-an-int",
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id must be a positive integer",
         ),
         (
             FIXED_UUIDS[0],

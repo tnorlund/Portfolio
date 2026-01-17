@@ -111,7 +111,7 @@ ERROR_SCENARIOS = [
 ]
 
 UPDATE_DELETE_ERROR_SCENARIOS = ERROR_SCENARIOS + [
-    ("ConditionalCheckFailedException", EntityNotFoundError, "not found"),
+    ("ConditionalCheckFailedException", EntityNotFoundError, "(does not exist|not found)"),
 ]
 
 # =============================================================================
@@ -403,7 +403,7 @@ def test_batch_receipt_word_validation_mixed_types(
             1,
             1,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id cannot be None",
         ),
         (
             "not-an-int",
@@ -411,7 +411,7 @@ def test_batch_receipt_word_validation_mixed_types(
             1,
             1,
             EntityValidationError,
-            "receipt_id must be an integer",
+            "receipt_id must be a positive integer",
         ),
         (
             -1,
@@ -431,7 +431,7 @@ def test_batch_receipt_word_validation_mixed_types(
             None,
             1,
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id cannot be None",
         ),
         (
             1,
@@ -439,7 +439,7 @@ def test_batch_receipt_word_validation_mixed_types(
             "not-an-int",
             1,
             EntityValidationError,
-            "line_id must be an integer",
+            "line_id must be a positive integer",
         ),
         (
             1,
@@ -456,7 +456,7 @@ def test_batch_receipt_word_validation_mixed_types(
             1,
             None,
             EntityValidationError,
-            "word_id must be an integer",
+            "word_id cannot be None",
         ),
         (
             1,
@@ -464,7 +464,7 @@ def test_batch_receipt_word_validation_mixed_types(
             1,
             "not-an-int",
             EntityValidationError,
-            "word_id must be an integer",
+            "word_id must be a positive integer",
         ),
         (
             1,

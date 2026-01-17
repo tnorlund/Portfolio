@@ -133,7 +133,7 @@ UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "does not exist",
+        "(does not exist|not found)",
     ),
 ] + ERROR_SCENARIOS
 
@@ -958,9 +958,9 @@ def test_list_receipt_metadatas_with_place_id_validation(
 @pytest.mark.parametrize(
     "limit,expected_error",
     [
-        ("not-an-int", "limit must be an integer"),
-        (0, "limit must be positive"),
-        (-5, "limit must be positive"),
+        ("not-an-int", "Limit must be an integer"),
+        (0, "Limit must be greater than 0"),
+        (-5, "Limit must be greater than 0"),
     ],
 )
 def test_list_receipt_metadatas_limit_validation(

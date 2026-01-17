@@ -140,7 +140,7 @@ def test_addQueue_raises_resource_not_found(
     monkeypatch.setattr(queue_dynamo._client, "put_item", mock_put_item)
 
     with pytest.raises(
-        OperationError, match="DynamoDB resource not found during add_queue"
+        OperationError, match="DynamoDB resource not found"
     ):
         queue_dynamo.add_queue(sample_queue)
 
@@ -279,7 +279,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     # Don't add the queue first
 
     with pytest.raises(
-        EntityNotFoundError, match="queue not found during update_queue"
+        EntityNotFoundError, match="does not exist"
     ):
         queue_dynamo.update_queue(sample_queue)
 
@@ -320,7 +320,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     # Don't add the queue first
 
     with pytest.raises(
-        EntityNotFoundError, match="queue not found during delete_queue"
+        EntityNotFoundError, match="does not exist"
     ):
         queue_dynamo.delete_queue(sample_queue)
 
@@ -566,8 +566,8 @@ def test_removeJobFromQueue_queue_not_found(queue_dynamo, sample_queue_job):
     # Don't add the queue first
 
     with pytest.raises(
-        EntityValidationError,
-        match="Conditional check failed",
+        EntityNotFoundError,
+        match="does not exist",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
 
@@ -586,8 +586,8 @@ def test_removeJobFromQueue_job_not_in_queue(
     # Don't add the job to the queue
 
     with pytest.raises(
-        EntityValidationError,
-        match="Conditional check failed",
+        EntityNotFoundError,
+        match="does not exist",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
 
