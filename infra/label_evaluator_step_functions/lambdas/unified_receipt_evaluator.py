@@ -757,7 +757,7 @@ async def unified_receipt_evaluator(
         issues_found = geometric_result.get("issues_found", 0)
 
         if issues_found > 0:
-            with child_trace("phase3_llm_review", trace_ctx):
+            with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
                 # Setup ChromaDB if available
                 chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
                 chroma_client = None
@@ -901,9 +901,16 @@ async def unified_receipt_evaluator(
                             line_item_patterns=line_item_patterns,
                         )
 
+                        llm_config = (
+                            review_ctx.get_langchain_config()
+                            if review_ctx
+                            else None
+                        )
+
                         # Make async LLM call
                         response = await llm_invoker.ainvoke(
-                            [HumanMessage(content=prompt)]
+                            [HumanMessage(content=prompt)],
+                            config=llm_config,
                         )
 
                         # Parse response

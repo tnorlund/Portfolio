@@ -77,7 +77,6 @@ class TraceContext:
                         self.run_tree.id if self.run_tree else None
                     ),
                 },
-                "run_id": self.run_tree.id if self.run_tree else None,
                 "configurable": {"langsmith_headers": headers},
             }
         except Exception:

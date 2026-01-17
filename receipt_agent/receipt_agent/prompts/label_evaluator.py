@@ -729,6 +729,9 @@ def build_receipt_context_prompt(
 Receipts analyzed from this merchant: {merchant_receipt_count}
 {patterns_text}
 
+## Allowed Labels (CORE_LABELS)
+{CORE_LABELS}
+
 ## Receipt Text (flagged words in **bold**)
 ```
 {receipt_text}
@@ -749,7 +752,9 @@ Consider:
 3. Patterns from other receipts of this merchant
 4. Whether the word should have no label at all (promotional text, legal disclaimers)
 
-**IMPORTANT**: Many receipt words correctly have no label. For these, use VALID with null suggested_label.
+**IMPORTANT**:
+- Use ONLY labels listed in CORE_LABELS above.
+- If the word should remain unlabeled (promo/legal/footer text), use VALID with null suggested_label.
 
 Respond with ONLY a JSON object:
 ```json
@@ -759,7 +764,7 @@ Respond with ONLY a JSON object:
       "issue_index": 0,
       "decision": "VALID | INVALID | NEEDS_REVIEW",
       "reasoning": "Brief reasoning...",
-      "suggested_label": "LABEL_NAME or null",
+      "suggested_label": "CORE_LABEL or null",
       "confidence": "low | medium | high"
     }}
   ]
