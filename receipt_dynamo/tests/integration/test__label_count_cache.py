@@ -235,10 +235,10 @@ class TestLabelCountCacheBatchOperations:
     def test_add_empty_list_label_count_caches_raises_error(
         self, dynamodb_table: Literal["MyMockedTable"]
     ) -> None:
-        """Test that adding an empty list raises OperationError."""
+        """Test that adding an empty list raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
-            OperationError, match="Parameter validation failed"
+            EntityValidationError, match="items cannot be an empty list"
         ):
             client.add_label_count_caches([])
 

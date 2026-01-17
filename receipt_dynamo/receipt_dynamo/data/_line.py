@@ -1,8 +1,11 @@
-from typing import Dict
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    DEFAULT_GEOMETRY_FIELDS,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_line
@@ -29,8 +32,8 @@ class _Line(FlattenedStandardMixin):
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: int | None = None, last_evaluated_key: Dict | None
-        = None) -> tuple[list[Line], Dict | None]
+    list_lines(limit: int | None = None, last_evaluated_key: dict | None
+        = None) -> tuple[list[Line], dict | None]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -85,6 +88,7 @@ class _Line(FlattenedStandardMixin):
         Raises:
             ValueError: When validation fails or lines don't exist
         """
+        self._validate_entity_list(lines, Line, "lines")
         self._update_entities(lines, Line, "lines")
 
     @handle_dynamodb_errors("delete_line")
@@ -99,10 +103,6 @@ class _Line(FlattenedStandardMixin):
         self._validate_image_id(image_id)
 
         # Create a temporary Line object with just the keys for deletion
-        from receipt_dynamo.data.base_operations.shared_utils import (
-            DEFAULT_GEOMETRY_FIELDS,
-        )
-
         temp_line = Line(
             image_id=image_id,
             line_id=line_id,
@@ -169,8 +169,8 @@ class _Line(FlattenedStandardMixin):
     def list_lines(
         self,
         limit: int | None = None,
-        last_evaluated_key: Dict | None = None,
-    ) -> tuple[list[Line], Dict | None]:
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Line], dict[str, Any] | None]:
         """Lists all lines in the database
 
         Args:

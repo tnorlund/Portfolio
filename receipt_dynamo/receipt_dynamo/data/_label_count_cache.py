@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -6,10 +6,7 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    EntityValidationError,
-    OperationError,
-)
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,
@@ -33,14 +30,14 @@ class _LabelCountCache(FlattenedStandardMixin):
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
             raise EntityValidationError("items cannot be None")
+        if not items:
+            raise EntityValidationError("items cannot be an empty list")
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
             raise EntityValidationError(
                 "items must be a list of LabelCountCache objects."
             )
-        if not items:
-            raise OperationError("Parameter validation failed")
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=item.to_item())
@@ -57,14 +54,8 @@ class _LabelCountCache(FlattenedStandardMixin):
             isinstance(cache, LabelCountCache) for cache in caches
         ):
             raise EntityValidationError(
-                "items must be a list of LabelCountCache objects."
+                "caches must be a list of LabelCountCache objects."
             )
-        for i, cache in enumerate(caches):
-            if not isinstance(cache, LabelCountCache):
-                raise EntityValidationError(
-                    f"caches[{i}] must be a LabelCountCache object, "
-                    f"got {type(cache).__name__}"
-                )
         self._delete_entities(caches)
 
     @handle_dynamodb_errors("update_label_count_cache")
@@ -90,7 +81,7 @@ class _LabelCountCache(FlattenedStandardMixin):
     def list_label_count_caches(
         self,
         limit: int | None = None,
-        last_evaluated_key: Dict | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> tuple[list[LabelCountCache], dict[str, Any] | None]:
         self._validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(

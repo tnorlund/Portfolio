@@ -1,10 +1,11 @@
-from typing import Any, Dict
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.base_operations.shared_utils import (
+    DEFAULT_GEOMETRY_FIELDS,
     validate_batch_get_keys,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -37,9 +38,10 @@ class _Letter(FlattenedStandardMixin):
         -> Letter
         Gets a letter from the database.
     get_letters(keys: list[dict]) -> list[Letter]
-        Gets multiple letters from the database.
+        Gets multiple letters from the database. Missing keys are silently
+        omitted (DynamoDB BatchGetItem behavior).
     list_letters(limit: int | None = None, last_evaluated_key:
-        Dict | None = None) -> tuple[list[Letter], dict[str, Any] | None]
+        dict | None = None) -> tuple[list[Letter], dict[str, Any] | None]
         Lists all letters from the database.
     list_letters_from_word(image_id: str, line_id: int, word_id: int)
         -> list[Letter]
@@ -125,10 +127,6 @@ class _Letter(FlattenedStandardMixin):
         # Validate UUID
         assert_valid_uuid(image_id)
         # Create a temporary Letter object with just the keys for deletion
-        from receipt_dynamo.data.base_operations.shared_utils import (
-            DEFAULT_GEOMETRY_FIELDS,
-        )
-
         temp_letter = Letter(
             image_id=image_id,
             line_id=line_id,
@@ -203,8 +201,16 @@ class _Letter(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("get_letters")
-    def get_letters(self, keys: list[Dict]) -> list[Letter]:
-        """Get a list of letters using a list of keys."""
+    def get_letters(self, keys: list[dict]) -> list[Letter]:
+        """Get a list of letters using a list of keys.
+
+        Args:
+            keys: List of DynamoDB key dicts with PK and SK
+
+        Returns:
+            list[Letter]: Letters found in the database. Missing keys are
+                silently omitted (DynamoDB BatchGetItem behavior).
+        """
         validate_batch_get_keys(keys, "LETTER")
         results = self._batch_get_items(keys)
         return [item_to_letter(item) for item in results]
@@ -213,7 +219,7 @@ class _Letter(FlattenedStandardMixin):
     def list_letters(
         self,
         limit: int | None = None,
-        last_evaluated_key: Dict | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> tuple[list[Letter], dict[str, Any] | None]:
         """Lists all letters in the database
 

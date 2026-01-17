@@ -198,9 +198,9 @@ def build_get_item_key(
 
 
 def validate_receipt_field_params(
-    receipt_id,
-    image_id,
-    field_name,
+    receipt_id: int,
+    image_id: str,
+    field_name: str,
 ) -> None:
     """
     Validate common parameters for receipt field-based operations.
@@ -228,7 +228,7 @@ def validate_receipt_field_params(
 
 
 def validate_batch_get_keys(
-    keys,
+    keys: list[dict[str, dict[str, str]]],
     entity_type: str,
     pk_prefix: str = "IMAGE#",
     sk_prefix: str = "LINE#",

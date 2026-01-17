@@ -5,7 +5,7 @@ This refactored version reduces code from ~969 lines to ~310 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -15,6 +15,9 @@ from receipt_dynamo.data.base_operations import (
     PutRequestTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_last_evaluated_key,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -31,23 +34,6 @@ from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    pass
-
-
-def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"last_evaluated_key must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"last_evaluated_key[{key}] must be a dict containing a key "
-                f"'S'"
-            )
 
 
 class _ReceiptWordLabel(
@@ -328,25 +314,27 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("get_receipt_word_labels")
     def get_receipt_word_labels(
-        self, keys: list[tuple[int, int, str]]
+        self, keys: list[tuple[str, int, int, int, str]]
     ) -> list[ReceiptWordLabel]:
-        """Retrieves multiple receipt word labels from the database
+        """Retrieves multiple receipt word labels from the database.
 
         Args:
-            keys (list[tuple[int, int, str]]): List of
-                (receipt_id, word_id, image_id) tuples
+            keys: List of (image_id, receipt_id, line_id, word_id, label) tuples
 
         Returns:
-            list[ReceiptWordLabel]: The receipt word labels from the database
+            list[ReceiptWordLabel]: The receipt word labels found in the
+                database. Missing keys are silently omitted (DynamoDB
+                BatchGetItem behavior).
 
         Raises:
-            ValueError: When any key is invalid
+            EntityValidationError: When any key is invalid
         """
         if not isinstance(keys, list):
             raise EntityValidationError("keys must be a list")
-        if not all(isinstance(key, tuple) and len(key) == 3 for key in keys):
+        if not all(isinstance(key, tuple) and len(key) == 5 for key in keys):
             raise EntityValidationError(
-                "keys must be a list of (receipt_id, word_id, image_id) tuples"
+                "keys must be a list of "
+                "(image_id, receipt_id, line_id, word_id, label) tuples"
             )
 
         # Prepare batch get request
@@ -354,10 +342,13 @@ class _ReceiptWordLabel(
             {
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}#LABEL#{label}"
+                    )
                 },
             }
-            for receipt_id, word_id, image_id in keys
+            for image_id, receipt_id, line_id, word_id, label in keys
         ]
 
         results = self._batch_get_items(request_keys)
