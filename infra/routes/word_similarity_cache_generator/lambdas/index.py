@@ -372,7 +372,8 @@ def handler(_event, _context):
     temp_dir = tempfile.mkdtemp()
 
     try:
-        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
+        # Use larger connection pool to match parallel workers (25) + headroom for retries
+        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=50)
 
         # Step 1: Download ChromaDB lines snapshot
         logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)

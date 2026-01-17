@@ -31,6 +31,8 @@ class WordSimilarityCacheGenerator(ComponentResource):
         name: str,
         *,
         chromadb_bucket_name: Input[str],
+        vpc_subnet_ids: Input[list[str]] | None = None,
+        lambda_security_group_id: Input[str] | None = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -89,6 +91,15 @@ class WordSimilarityCacheGenerator(ComponentResource):
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self.lambda_role),
         )
+
+        # Attach VPC access policy if VPC config provided
+        if vpc_subnet_ids is not None and lambda_security_group_id is not None:
+            aws.iam.RolePolicyAttachment(
+                f"{name}-vpc-access",
+                role=self.lambda_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self.lambda_role),
+            )
 
         # Convert Input[str] to Output[str] for proper resolution
         chromadb_bucket_name_output = Output.from_input(chromadb_bucket_name)
@@ -183,6 +194,14 @@ class WordSimilarityCacheGenerator(ComponentResource):
         # Create Lambda function name
         lambda_function_name = f"{name}-lambda-{stack}"
 
+        # Build VPC config if parameters provided
+        vpc_config = None
+        if vpc_subnet_ids is not None and lambda_security_group_id is not None:
+            vpc_config = {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [lambda_security_group_id],
+            }
+
         # Build Docker image using CodeBuild
         self.docker_image = CodeBuildDockerImage(
             f"{name}-image",
@@ -196,6 +215,7 @@ class WordSimilarityCacheGenerator(ComponentResource):
                 "memory_size": 2048,  # More memory for ChromaDB operations
                 "ephemeral_storage": 10240,  # 10GB for snapshot download
                 "architectures": ["arm64"],
+                "vpc_config": vpc_config,
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
                     "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
@@ -259,23 +279,21 @@ class WordSimilarityCacheGenerator(ComponentResource):
 
 def create_word_similarity_cache_generator(
     chromadb_bucket_name: Input[str],
+    vpc_subnet_ids: Input[list[str]] | None = None,
+    lambda_security_group_id: Input[str] | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> WordSimilarityCacheGenerator:
     """Factory function to create word similarity cache generator."""
     return WordSimilarityCacheGenerator(
         f"word-similarity-cache-generator-{pulumi.get_stack()}",
         chromadb_bucket_name=chromadb_bucket_name,
+        vpc_subnet_ids=vpc_subnet_ids,
+        lambda_security_group_id=lambda_security_group_id,
         opts=opts,
     )
 
 
-# Create the component instance using bucket name
-cache_generator = create_word_similarity_cache_generator(
-    chromadb_bucket_name=chromadb_bucket_name,
-)
-
-# Export for backward compatibility
-word_similarity_cache_generator_lambda = cache_generator.lambda_function
-
-# Export cache bucket name for use by API Lambda
-cache_bucket_name = cache_generator.cache_bucket.id
+# Note: Component is now created in __main__.py to allow VPC configuration
+# The factory function create_word_similarity_cache_generator() should be called
+# from __main__.py with vpc_subnet_ids and lambda_security_group_id parameters
+# to enable DynamoDB Gateway endpoint access for reduced latency variance.
