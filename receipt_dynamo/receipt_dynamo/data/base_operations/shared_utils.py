@@ -184,6 +184,36 @@ def build_get_item_key(
     }
 
 
+def validate_receipt_field_params(
+    receipt_id,
+    image_id,
+    field_name,
+) -> None:
+    """
+    Validate common parameters for receipt field-based operations.
+
+    Args:
+        receipt_id: The receipt ID (must be int)
+        image_id: The image ID (must be str)
+        field_name: The field name (must be str)
+
+    Raises:
+        EntityValidationError: If any parameter is invalid
+    """
+    if not isinstance(receipt_id, int):
+        raise EntityValidationError(
+            f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+        )
+    if not isinstance(image_id, str):
+        raise EntityValidationError(
+            f"image_id must be a string, got {type(image_id).__name__}"
+        )
+    if not isinstance(field_name, str):
+        raise EntityValidationError(
+            f"field_name must be a string, got {type(field_name).__name__}"
+        )
+
+
 def validate_batch_get_keys(
     keys,
     entity_type: str,

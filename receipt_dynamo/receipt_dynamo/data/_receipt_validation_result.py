@@ -7,6 +7,9 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_receipt_field_params,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
@@ -233,19 +236,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
         if result_index is None:
             raise EntityValidationError("result_index cannot be None")
 
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
-            )
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(field_name, str):
-            raise EntityValidationError(
-                f"field_name must be a string, got {type(field_name).__name__}"
-            )
+        validate_receipt_field_params(receipt_id, image_id, field_name)
         if not field_name:
             raise EntityValidationError("field_name must not be empty.")
 

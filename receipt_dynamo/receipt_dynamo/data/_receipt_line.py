@@ -5,6 +5,9 @@ from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_pagination_params,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
@@ -247,19 +250,7 @@ class _ReceiptLine(FlattenedStandardMixin):
         last_evaluated_key: dict | None = None,
     ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
         """Returns all ReceiptLines from the table."""
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError(
-                    "limit must be an integer or None."
-                )
-            if limit <= 0:
-                raise EntityValidationError("limit must be greater than 0.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None."
-            )
+        validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(
             entity_type="RECEIPT_LINE",
             converter_func=item_to_receipt_line,
