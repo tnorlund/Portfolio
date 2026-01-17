@@ -640,16 +640,16 @@ def child_trace(
             inputs=inputs or {},
             extra={"metadata": metadata or {}},
         )
-        child.post()
+        # NOTE: Do NOT call child.post() here. We'll call it in the finally block.
+        # Calling post() followed by patch() causes LangSmith to create duplicate
+        # dotted_order entries, leading to "dotted_order appears more than once" errors.
 
         # Use headers for tracing_context (consistent across all helpers)
         child_headers = child.to_headers()
         logger.info(
-            "[child_trace] Created child id=%s, trace_id=%s, headers=%s, using_tracing_context=%s",
+            "[child_trace] Created child id=%s, trace_id=%s (not posted yet)",
             child.id,
             child.trace_id,
-            list(child_headers.keys()) if child_headers else None,
-            _tracing_context is not None,
         )
         ctx = TraceContext(
             run_tree=child,
@@ -665,15 +665,17 @@ def child_trace(
         # Using _tracing_context(parent=child_headers) after child.post() causes
         # LangSmith to create duplicate trace entries with the same run_id,
         # resulting in "dotted_order appears more than once" errors.
-        # Since we've manually created and posted the trace, we just yield the context.
         yield ctx
     finally:
         if child is not None:
             try:
                 child.end()
-                child.patch()
+                # NOTE: Call post() here, NOT patch(). Since we didn't call post()
+                # earlier, the run doesn't exist in LangSmith yet. We post it now
+                # with all final data (outputs, end_time).
+                child.post()
                 logger.info(
-                    "[child_trace] Child '%s' completed and patched", name
+                    "[child_trace] Child '%s' completed and posted", name
                 )
             except Exception as e:
                 logger.warning(
