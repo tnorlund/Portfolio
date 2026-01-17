@@ -468,11 +468,14 @@ def _parse_langgraph_row_dict(row: dict[str, Any]) -> dict[str, Any] | None:
     if not raw_outputs:
         return None
 
-    outputs = (
-        json.loads(raw_outputs)
-        if isinstance(raw_outputs, str)
-        else raw_outputs
-    )
+    if isinstance(raw_outputs, str):
+        try:
+            outputs = json.loads(raw_outputs)
+        except json.JSONDecodeError:
+            logger.warning("Malformed JSON in outputs, skipping row")
+            return None
+    else:
+        outputs = raw_outputs
     if not outputs:
         return None
 

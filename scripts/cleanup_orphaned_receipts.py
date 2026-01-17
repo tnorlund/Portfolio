@@ -23,6 +23,7 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt import Receipt
 
 # Configure logging
@@ -63,7 +64,7 @@ def find_orphaned_receipts(dynamo_client: DynamoClient) -> list[Receipt]:
         for receipt in receipts:
             try:
                 dynamo_client.get_image(receipt.image_id)
-            except Exception:
+            except EntityNotFoundError:
                 # Image doesn't exist - this receipt is orphaned
                 orphaned.append(receipt)
 

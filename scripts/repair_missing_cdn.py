@@ -216,8 +216,8 @@ def repair_receipt_cdn(
 
     except Exception as e:
         result["error"] = str(e)
-        logger.error(
-            f"  Failed to repair {receipt.image_id}_{receipt.receipt_id}: {e}"
+        logger.exception(
+            "  Failed to repair %s_%s", receipt.image_id, receipt.receipt_id
         )
 
     return result

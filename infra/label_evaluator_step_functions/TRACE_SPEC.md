@@ -168,7 +168,7 @@ if __name__ == "__main__":
 ### 2.1 Goal
 Each receipt gets ONE parent trace (`ReceiptEvaluation`) with ALL child steps nested underneath:
 
-```
+```text
 ReceiptEvaluation (Job: Phase 2 - Receipt Evaluation)
 ├── load_patterns
 ├── build_visual_lines
@@ -201,7 +201,7 @@ ReceiptEvaluation (Job: Phase 2 - Receipt Evaluation)
 ### 3.1 Goal
 Each merchant gets ONE parent trace (`PatternComputation`) with pattern learning steps nested:
 
-```
+```text
 PatternComputation (Job: Phase 1 - Pattern Learning)
 ├── LearnLineItemPatterns (LLM call to discover patterns)
 └── BuildMerchantPatterns (Geometric computation)
@@ -513,7 +513,7 @@ if __name__ == "__main__":
 
 ## Files Modified
 
-```
+```text
 infra/label_evaluator_step_functions/
 ├── infrastructure.py              # LANGCHAIN_TRACING_V2=false
 ├── step_function_states.py        # ✅ Pass trace context through SF
