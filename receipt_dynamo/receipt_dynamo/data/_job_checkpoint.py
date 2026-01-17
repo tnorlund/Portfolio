@@ -189,24 +189,13 @@ class _JobCheckpoint(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        self._validate_job_id(job_id)
-        self._validate_pagination_params(
-            limit, last_evaluated_key, validate_attribute_format=True
-        )
-
-        return self._query_entities(
-            index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"JOB#{job_id}"},
-                ":sk": {"S": "CHECKPOINT#"},
-            },
+        return self._query_by_job_sk_prefix(
+            job_id=job_id,
+            sk_prefix="CHECKPOINT#",
             converter_func=item_to_job_checkpoint,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=False,  # Descending order by default
-            # (most recent first)
+            scan_index_forward=False,  # Descending order (most recent first)
         )
 
     @handle_dynamodb_errors("get_best_checkpoint")

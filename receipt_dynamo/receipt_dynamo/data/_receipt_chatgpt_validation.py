@@ -342,26 +342,12 @@ class _ReceiptChatGPTValidation(FlattenedStandardMixin):
         self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        self._validate_image_id(image_id)
 
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
-            ),
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pkVal": {"S": f"IMAGE#{image_id}"},
-                ":skPrefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                        f"VALIDATION#CHATGPT#"
-                    )
-                },
-            },
+        return self._query_by_image_sk_prefix(
+            image_id=image_id,
+            sk_prefix=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#",
             converter_func=item_to_receipt_chat_gpt_validation,
         )
-        return results
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations_by_status")
     def list_receipt_chat_gpt_validations_by_status(

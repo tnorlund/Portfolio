@@ -739,3 +739,82 @@ class FlattenedStandardMixin:
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
+
+    def _query_by_image_sk_prefix(
+        self,
+        image_id: str,
+        sk_prefix: str,
+        converter_func: Callable[[Dict[str, Any]], T],
+    ) -> List[T]:
+        """Query entities by image_id with SK prefix on main table (no pagination).
+
+        This is a common pattern for listing entities that belong to a
+        specific image using a SK prefix pattern.
+
+        Args:
+            image_id: The image ID (UUID)
+            sk_prefix: The full SK prefix to match
+            converter_func: Function to convert DynamoDB items to entities
+
+        Returns:
+            List of entities matching the query
+        """
+        self._validate_image_id(image_id)
+
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {"S": sk_prefix},
+            },
+            converter_func=converter_func,
+        )
+        return results
+
+    def _query_by_job_sk_prefix(
+        self,
+        job_id: str,
+        sk_prefix: str,
+        converter_func: Callable[[Dict[str, Any]], T],
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+        scan_index_forward: Optional[bool] = None,
+    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        """Query entities by job_id with SK prefix on main table.
+
+        This is a common pattern for listing job-related entities
+        (checkpoints, resources) that belong to a specific job.
+
+        Args:
+            job_id: The job ID (UUID)
+            sk_prefix: The SK prefix to match (e.g., "CHECKPOINT#", "RESOURCE#")
+            converter_func: Function to convert DynamoDB items to entities
+            limit: Maximum number of items to return
+            last_evaluated_key: Key for pagination
+            scan_index_forward: Sort order (True=ascending, False=descending)
+
+        Returns:
+            Tuple of (list of entities, last_evaluated_key for pagination)
+        """
+        self._validate_job_id(job_id)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
+
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{job_id}"},
+                ":sk": {"S": sk_prefix},
+            },
+            converter_func=converter_func,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=scan_index_forward,
+        )

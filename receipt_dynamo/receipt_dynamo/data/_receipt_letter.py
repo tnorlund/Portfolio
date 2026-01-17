@@ -377,28 +377,17 @@ class _ReceiptLetter(FlattenedStandardMixin):
             If parameters are invalid.
         """
         # Validate parameters
-        self._validate_image_id(image_id)
         self._validate_positive_int_id(receipt_id, "receipt_id")
         self._validate_positive_int_id(line_id, "line_id")
         self._validate_positive_int_id(word_id, "word_id")
 
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        return self._query_by_image_sk_prefix(
+            image_id=image_id,
+            sk_prefix=(
+                f"RECEIPT#{receipt_id:05d}"
+                f"#LINE#{line_id:05d}"
+                f"#WORD#{word_id:05d}"
+                "#LETTER#"
             ),
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pkVal": {"S": f"IMAGE#{image_id}"},
-                ":skPrefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}"
-                        f"#LINE#{line_id:05d}"
-                        f"#WORD#{word_id:05d}"
-                        "#LETTER#"
-                    )
-                },
-            },
             converter_func=item_to_receipt_letter,
         )
-        return results

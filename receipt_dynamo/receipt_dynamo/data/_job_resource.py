@@ -195,19 +195,9 @@ class _JobResource(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        self._validate_job_id(job_id)
-        self._validate_pagination_params(
-            limit, last_evaluated_key, validate_attribute_format=True
-        )
-
-        return self._query_entities(
-            index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"JOB#{job_id}"},
-                ":sk": {"S": "RESOURCE#"},
-            },
+        return self._query_by_job_sk_prefix(
+            job_id=job_id,
+            sk_prefix="RESOURCE#",
             converter_func=item_to_job_resource,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
