@@ -29,6 +29,10 @@ import boto3
 try:
     # Container environment
     from utils.s3_helpers import get_merchant_hash
+    from utils.tracing import (
+        flush_langsmith_traces,
+        state_trace,
+    )
 except ImportError:
     # Local/development environment
     sys.path.insert(
@@ -40,6 +44,10 @@ except ImportError:
         ),
     )
     from s3_helpers import get_merchant_hash
+    from tracing import (
+        flush_langsmith_traces,
+        state_trace,
+    )
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import ComputePatternsOutput
@@ -86,6 +94,13 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     if not merchant_name and "merchant" in event:
         merchant_name = event["merchant"].get("merchant_name")
     max_training_receipts = event.get("max_training_receipts", 50)
+    execution_arn = event.get("execution_arn", "")
+
+    # Get trace context from discover_patterns
+    trace_id = event.get("trace_id")
+    root_run_id = event.get("root_run_id")
+    root_dotted_order = event.get("root_dotted_order")
+    enable_tracing = event.get("enable_tracing", True) and trace_id is not None
 
     if not merchant_name:
         raise ValueError("merchant_name is required")
@@ -192,6 +207,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             ContentType="application/json",
         )
 
+        flush_langsmith_traces()
         return {
             "patterns_s3_key": patterns_s3_key,
             "merchant_name": merchant_name,
@@ -199,7 +215,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             "pattern_stats": None,
         }
 
-    # Compute patterns
+    # Compute patterns within state_trace to join merchant trace
     compute_start = time.time()
     logger.info("Computing merchant patterns...")
 
@@ -207,12 +223,27 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
         compute_merchant_patterns,
     )
 
-    patterns = compute_merchant_patterns(
-        other_receipt_data,
-        merchant_name,
-        max_pair_patterns=4,
-        max_relationship_dimension=3,  # Enable constellation (n-tuple) patterns
-    )
+    with state_trace(
+        execution_arn=execution_arn,
+        state_name="BuildMerchantPatterns",
+        trace_id=trace_id,
+        root_run_id=root_run_id,
+        root_dotted_order=root_dotted_order,
+        inputs={
+            "merchant_name": merchant_name,
+            "max_receipts": max_training_receipts,
+            "loaded_receipts": len(other_receipt_data),
+        },
+        metadata={"execution_id": execution_id},
+        tags=["phase-1", "geometric"],
+        enable_tracing=enable_tracing,
+    ):
+        patterns = compute_merchant_patterns(
+            other_receipt_data,
+            merchant_name,
+            max_pair_patterns=4,
+            max_relationship_dimension=3,  # Enable constellation (n-tuple) patterns
+        )
 
     compute_duration = time.time() - compute_start
     logger.info("Pattern computation completed in %.2fs", compute_duration)
@@ -260,6 +291,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             "receipt_count": patterns.receipt_count,
         }
 
+    flush_langsmith_traces()
     return {
         "patterns_s3_key": patterns_s3_key,
         "merchant_name": merchant_name,

@@ -318,6 +318,13 @@ def build_pattern_computation_states(
                             ),
                             "langchain_project.$": "$.langchain_project",
                             "execution_arn.$": "$$.Execution.Id",
+                            # Pass trace context from discover_patterns output
+                            "trace_id.$": "$.line_item_patterns.trace_id",
+                            "root_run_id.$": "$.line_item_patterns.root_run_id",
+                            "root_dotted_order.$": (
+                                "$.line_item_patterns.root_dotted_order"
+                            ),
+                            "enable_tracing.$": "$.enable_tracing",
                         },
                         "ResultPath": "$.patterns_result",
                         "Retry": retry_config,
