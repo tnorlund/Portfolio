@@ -178,7 +178,6 @@ class CompletionBatchResult(BatchResultGSIMixin):
             )
         )
 
-
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "CompletionBatchResult":
         """Converts a DynamoDB item to a CompletionBatchResult object.

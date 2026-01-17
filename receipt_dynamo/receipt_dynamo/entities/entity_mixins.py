@@ -486,9 +486,9 @@ class CDNFieldsMixin:
             "cdn_s3_key": item.get("cdn_s3_key", {}).get("S"),
             "cdn_webp_s3_key": item.get("cdn_webp_s3_key", {}).get("S"),
             "cdn_avif_s3_key": item.get("cdn_avif_s3_key", {}).get("S"),
-            "cdn_thumbnail_s3_key": item.get(
-                "cdn_thumbnail_s3_key", {}
-            ).get("S"),
+            "cdn_thumbnail_s3_key": item.get("cdn_thumbnail_s3_key", {}).get(
+                "S"
+            ),
             "cdn_thumbnail_webp_s3_key": item.get(
                 "cdn_thumbnail_webp_s3_key", {}
             ).get("S"),
@@ -496,12 +496,12 @@ class CDNFieldsMixin:
                 "cdn_thumbnail_avif_s3_key", {}
             ).get("S"),
             "cdn_small_s3_key": item.get("cdn_small_s3_key", {}).get("S"),
-            "cdn_small_webp_s3_key": item.get(
-                "cdn_small_webp_s3_key", {}
-            ).get("S"),
-            "cdn_small_avif_s3_key": item.get(
-                "cdn_small_avif_s3_key", {}
-            ).get("S"),
+            "cdn_small_webp_s3_key": item.get("cdn_small_webp_s3_key", {}).get(
+                "S"
+            ),
+            "cdn_small_avif_s3_key": item.get("cdn_small_avif_s3_key", {}).get(
+                "S"
+            ),
             "cdn_medium_s3_key": item.get("cdn_medium_s3_key", {}).get("S"),
             "cdn_medium_webp_s3_key": item.get(
                 "cdn_medium_webp_s3_key", {}

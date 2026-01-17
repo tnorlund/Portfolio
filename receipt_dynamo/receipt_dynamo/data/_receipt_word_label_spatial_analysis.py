@@ -234,9 +234,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         receipt_id: int,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[
-        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
-    ]:
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses for a specific receipt using GSI2
 
         Args:
@@ -282,9 +280,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         label: str,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[
-        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
-    ]:
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Retrieves spatial analyses by label type using GSI1
 
         This method enables cross-receipt analysis of spatial patterns for
@@ -332,9 +328,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         image_id: str,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[
-        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
-    ]:
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses for a given image
 
         Args:
@@ -381,9 +375,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> tuple[
-        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
-    ]:
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses with pagination
 
         Args:

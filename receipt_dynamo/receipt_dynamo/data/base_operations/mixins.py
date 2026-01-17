@@ -449,9 +449,7 @@ class QueryByTypeMixin:
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[
-            ..., tuple[list[Any], dict[str, Any] | None]
-        ]
+        _query_entities: Callable[..., tuple[list[Any], dict[str, Any] | None]]
         _validate_entity: Callable[..., None]
 
     @handle_dynamodb_errors("query_by_type")
@@ -518,9 +516,7 @@ class QueryByParentMixin:
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[
-            ..., tuple[list[Any], dict[str, Any] | None]
-        ]
+        _query_entities: Callable[..., tuple[list[Any], dict[str, Any] | None]]
 
     @handle_dynamodb_errors("query_by_parent")
     def _query_by_parent(

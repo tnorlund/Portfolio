@@ -210,7 +210,6 @@ class Instance:
             )
         )
 
-
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "Instance":
         """Converts a DynamoDB item to an Instance object.

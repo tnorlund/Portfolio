@@ -191,9 +191,7 @@ def _extract_image_id(item: dict[str, Any]) -> str:
     raise ValueError("Could not extract image_id from item")
 
 
-def _extract_field_category(
-    item: dict[str, Any], sk_parts: list[str]
-) -> str:
+def _extract_field_category(item: dict[str, Any], sk_parts: list[str]) -> str:
     """Extract field_category from item or SK."""
     if "field_category" in item:
         return item["field_category"]["S"]

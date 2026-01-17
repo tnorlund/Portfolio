@@ -245,7 +245,12 @@ class ReceiptLineItemAnalysis:
 
         # Add financial fields
         financial_fields = (
-            "subtotal", "tax", "total", "fees", "discounts", "tips"
+            "subtotal",
+            "tax",
+            "total",
+            "fees",
+            "discounts",
+            "tips",
         )
         for field_name in financial_fields:
             item[field_name] = self._serialize_optional_decimal(

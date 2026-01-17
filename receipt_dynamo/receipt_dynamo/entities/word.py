@@ -313,6 +313,7 @@ class Word(TextGeometryEntity):
         Raises:
             ValueError: If required fields are missing or have invalid format.
         """
+
         # Custom SK parser for LINE#{line_id:05d}#WORD#{word_id:05d} pattern
         def parse_word_sk(sk: str) -> dict[str, Any]:
             """Parse the SK to extract line_id and word_id."""

@@ -1104,11 +1104,13 @@ def _parse_processing_history(attr: Any) -> list[dict[str, Any]]:
     for entry in attr["L"]:
         if isinstance(entry, dict) and "M" in entry:
             entry_map = entry["M"]
-            result.append({
-                "event": entry_map.get("event", {}).get("S", ""),
-                "timestamp": entry_map.get("timestamp", {}).get("S", ""),
-                "details": entry_map.get("details", {}).get("S", ""),
-            })
+            result.append(
+                {
+                    "event": entry_map.get("event", {}).get("S", ""),
+                    "timestamp": entry_map.get("timestamp", {}).get("S", ""),
+                    "details": entry_map.get("details", {}).get("S", ""),
+                }
+            )
         else:
             result.append(entry)
     return result
@@ -1129,7 +1131,9 @@ def _parse_section_map(section_map: dict[str, Any]) -> dict[str, Any]:
 
     # Start/end lines - default to None so ReceiptSection can compute from line_ids
     start_line_attr = section_map.get("start_line", {}).get("N")
-    section_data["start_line"] = int(start_line_attr) if start_line_attr else None
+    section_data["start_line"] = (
+        int(start_line_attr) if start_line_attr else None
+    )
     end_line_attr = section_map.get("end_line", {}).get("N")
     section_data["end_line"] = int(end_line_attr) if end_line_attr else None
 
@@ -1164,13 +1168,17 @@ def _parse_spatial_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
     for sp in patterns_attr:
         if isinstance(sp, dict) and "M" in sp:
             sp_map = sp["M"]
-            patterns.append({
-                "pattern_type": sp_map.get("pattern_type", {}).get("S", ""),
-                "description": sp_map.get("description", {}).get("S", ""),
-                "metadata": _parse_pattern_metadata(
-                    sp_map.get("metadata", {}).get("M", {})
-                ),
-            })
+            patterns.append(
+                {
+                    "pattern_type": sp_map.get("pattern_type", {}).get(
+                        "S", ""
+                    ),
+                    "description": sp_map.get("description", {}).get("S", ""),
+                    "metadata": _parse_pattern_metadata(
+                        sp_map.get("metadata", {}).get("M", {})
+                    ),
+                }
+            )
     return patterns
 
 
@@ -1185,14 +1193,18 @@ def _parse_content_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
                 for ex in cp_map.get("examples", {}).get("L", [])
                 if isinstance(ex, dict) and "S" in ex
             ]
-            patterns.append({
-                "pattern_type": cp_map.get("pattern_type", {}).get("S", ""),
-                "description": cp_map.get("description", {}).get("S", ""),
-                "examples": examples,
-                "metadata": _parse_pattern_metadata(
-                    cp_map.get("metadata", {}).get("M", {})
-                ),
-            })
+            patterns.append(
+                {
+                    "pattern_type": cp_map.get("pattern_type", {}).get(
+                        "S", ""
+                    ),
+                    "description": cp_map.get("description", {}).get("S", ""),
+                    "examples": examples,
+                    "metadata": _parse_pattern_metadata(
+                        cp_map.get("metadata", {}).get("M", {})
+                    ),
+                }
+            )
     return patterns
 
 

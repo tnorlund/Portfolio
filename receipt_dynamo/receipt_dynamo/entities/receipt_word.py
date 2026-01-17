@@ -166,9 +166,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             "GSI4PK": {
                 "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
-            "GSI4SK": {
-                "S": f"3_WORD#{self.line_id:05d}#{self.word_id:05d}"
-            },
+            "GSI4SK": {"S": f"3_WORD#{self.line_id:05d}#{self.word_id:05d}"},
         }
 
     def _serialize_extracted_data(self) -> dict[str, Any]:
@@ -290,9 +288,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
-    REQUIRED_KEYS: ClassVar[set[str]] = (
-        ReceiptTextGeometryEntity.REQUIRED_KEYS
-    )
+    REQUIRED_KEYS: ClassVar[set[str]] = ReceiptTextGeometryEntity.REQUIRED_KEYS
 
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptWord":

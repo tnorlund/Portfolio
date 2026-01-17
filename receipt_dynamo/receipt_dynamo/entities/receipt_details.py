@@ -35,7 +35,8 @@ class ReceiptDetails:
         | list[ReceiptWord]
         | list[ReceiptLetter]
         | list[ReceiptWordLabel]
-        | "ReceiptPlace" | None,
+        | "ReceiptPlace"
+        | None,
         None,
         None,
     ]:

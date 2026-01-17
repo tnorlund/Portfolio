@@ -183,7 +183,6 @@ class InstanceJob:
             )
         )
 
-
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "InstanceJob":
         """Converts a DynamoDB item to an InstanceJob object.

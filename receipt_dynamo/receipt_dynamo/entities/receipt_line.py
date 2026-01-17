@@ -161,9 +161,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
-    REQUIRED_KEYS: ClassVar[set[str]] = (
-        ReceiptTextGeometryEntity.REQUIRED_KEYS
-    )
+    REQUIRED_KEYS: ClassVar[set[str]] = ReceiptTextGeometryEntity.REQUIRED_KEYS
 
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptLine":
@@ -179,6 +177,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         Raises:
             ValueError: If required fields are missing or have invalid format.
         """
+
         # Custom SK parser for RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
         def parse_receipt_line_sk(sk: str) -> dict[str, Any]:
             """Parse the SK to extract receipt_id and line_id."""

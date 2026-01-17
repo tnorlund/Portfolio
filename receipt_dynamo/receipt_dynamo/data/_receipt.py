@@ -241,9 +241,7 @@ class _Receipt(FlattenedStandardMixin):
             key_condition_expression="GSI4PK = :pk",
             expression_attribute_names=None,
             expression_attribute_values={
-                ":pk": {
-                    "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                },
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
             },
             converter_func=convert_item,
             limit=None,  # Get all items

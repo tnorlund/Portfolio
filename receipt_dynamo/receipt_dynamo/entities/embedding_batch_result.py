@@ -178,7 +178,6 @@ class EmbeddingBatchResult(BatchResultGSIMixin):
             )
         )
 
-
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "EmbeddingBatchResult":
         """Converts a DynamoDB item to an EmbeddingBatchResult object.

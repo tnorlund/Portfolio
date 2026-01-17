@@ -150,7 +150,6 @@ class BatchSummary:
             )
         )
 
-
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "BatchSummary":
         """Converts a DynamoDB item to a BatchSummary object.

@@ -107,9 +107,7 @@ class FlattenedStandardMixin:
         """Validate receipt_id is not None and is a positive integer."""
         self._validate_positive_int_id(receipt_id, param_name)
 
-    def _validate_positive_int_id(
-        self, value: int, param_name: str
-    ) -> None:
+    def _validate_positive_int_id(self, value: int, param_name: str) -> None:
         """Validate that value is a positive integer.
 
         This is the generic validator for ID fields like line_id, word_id,
