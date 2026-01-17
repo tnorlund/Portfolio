@@ -546,6 +546,19 @@ class LambdaFunctionsComponent(ComponentResource):
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",
+                # Chroma Cloud configuration
+                "CHROMA_CLOUD_ENABLED": (
+                    portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
+                ),
+                "CHROMA_CLOUD_API_KEY": (
+                    portfolio_config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+                ),
+                "CHROMA_CLOUD_TENANT": (
+                    portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
+                ),
+                "CHROMA_CLOUD_DATABASE": (
+                    portfolio_config.get("CHROMA_CLOUD_DATABASE") or ""
+                ),
             },
         }
 

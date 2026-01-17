@@ -21,7 +21,9 @@ Design decisions:
 """
 
 import logging
-from dataclasses import dataclass
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from receipt_chroma.compaction.models import CollectionUpdateResult
@@ -304,3 +306,219 @@ def apply_collection_updates(
         cloud_error=cloud_error,
         cloud_enabled=cloud_enabled,
     )
+
+
+@dataclass
+class BulkSyncResult:
+    """Result from bulk sync operation.
+
+    Attributes:
+        total_items: Total items in local collection
+        uploaded: Number of items successfully uploaded
+        failed_batches: Number of batches that failed after retries
+        cloud_count: Final count in cloud collection
+        error: Error message if sync failed completely
+        duration_seconds: Total sync duration
+    """
+
+    total_items: int
+    uploaded: int
+    failed_batches: int
+    cloud_count: int
+    error: Optional[str] = None
+    duration_seconds: float = 0.0
+
+    @property
+    def success(self) -> bool:
+        """Whether sync completed without errors."""
+        return self.error is None and self.failed_batches == 0
+
+
+def _upload_batch_with_retry(
+    cloud_coll: Any,
+    batch: Dict[str, Any],
+    max_retries: int,
+) -> int:
+    """Upload a single batch with exponential backoff retry.
+
+    Args:
+        cloud_coll: Cloud collection to upload to
+        batch: Batch data with ids, embeddings, metadatas, documents
+        max_retries: Maximum retry attempts
+
+    Returns:
+        Number of items uploaded
+
+    Raises:
+        Exception: If all retries fail
+    """
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            cloud_coll.upsert(
+                ids=batch["ids"],
+                embeddings=batch.get("embeddings"),
+                metadatas=batch.get("metadatas"),
+                documents=batch.get("documents"),
+            )
+            return len(batch["ids"])
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = 1.0 * (2**attempt)  # 1s, 2s, 4s
+                time.sleep(wait_time)
+
+    raise last_error  # type: ignore[misc]
+
+
+def _create_cloud_client_for_sync(
+    cloud_config: CloudConfig,
+    collection_name: str,
+) -> ChromaClient:
+    """Create a ChromaClient configured for Chroma Cloud sync.
+
+    Args:
+        cloud_config: Cloud configuration with API key, tenant, database
+        collection_name: Collection name for logging context
+
+    Returns:
+        ChromaClient configured for Chroma Cloud
+    """
+    logger.debug(
+        "Creating Chroma Cloud client for sync",
+        extra={
+            "collection": collection_name,
+            "tenant": cloud_config.tenant or "default",
+            "database": cloud_config.database or "default",
+        },
+    )
+
+    return ChromaClient(
+        cloud_api_key=cloud_config.api_key,
+        cloud_tenant=cloud_config.tenant,
+        cloud_database=cloud_config.database,
+        mode="write",
+        metadata_only=False,  # Need full data for sync
+    )
+
+
+def sync_collection_to_cloud(
+    local_client: ChromaClient,
+    collection_name: str,
+    cloud_config: CloudConfig,
+    batch_size: int = 5000,
+    max_workers: int = 4,
+    max_retries: int = 3,
+    logger: Optional[Any] = None,
+) -> BulkSyncResult:
+    """Sync a local ChromaDB collection to Chroma Cloud.
+
+    Uses parallel batch uploads for efficiency. Cloud failures are
+    non-blocking - errors are logged but don't raise exceptions.
+
+    Args:
+        local_client: ChromaClient with local snapshot (already open)
+        collection_name: Name of collection to sync (e.g., "lines", "words")
+        cloud_config: CloudConfig with API key, tenant, database
+        batch_size: Embeddings per batch (default 5000)
+        max_workers: Parallel upload threads (default 4)
+        max_retries: Retries per batch with exponential backoff
+        logger: Optional logger instance
+
+    Returns:
+        BulkSyncResult with sync statistics
+    """
+    start_time = time.time()
+    log = logger or logging.getLogger(__name__)
+
+    try:
+        # Get local collection
+        local_coll = local_client.get_collection(collection_name)
+        total_count = local_coll.count()
+
+        if total_count == 0:
+            return BulkSyncResult(
+                total_items=0,
+                uploaded=0,
+                failed_batches=0,
+                cloud_count=0,
+                duration_seconds=time.time() - start_time,
+            )
+
+        # Create cloud client
+        cloud_client = _create_cloud_client_for_sync(cloud_config, collection_name)
+
+        with cloud_client:
+            cloud_coll = cloud_client.get_collection(
+                collection_name,
+                create_if_missing=True,
+            )
+
+            # Prepare batches (paginated reads)
+            batches: List[Dict[str, Any]] = []
+            for offset in range(0, total_count, batch_size):
+                batch_data = local_coll.get(
+                    include=["embeddings", "metadatas", "documents"],
+                    limit=batch_size,
+                    offset=offset,
+                )
+                if batch_data.get("ids"):
+                    batches.append(batch_data)
+
+            log.info(
+                "Starting parallel cloud sync",
+                collection=collection_name,
+                total_items=total_count,
+                batch_count=len(batches),
+                batch_size=batch_size,
+                max_workers=max_workers,
+            )
+
+            # Parallel upload with ThreadPoolExecutor
+            uploaded = 0
+            failed_batches = 0
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        _upload_batch_with_retry,
+                        cloud_coll,
+                        batch,
+                        max_retries,
+                    ): i
+                    for i, batch in enumerate(batches)
+                }
+
+                for future in as_completed(futures):
+                    batch_idx = futures[future]
+                    try:
+                        count = future.result()
+                        uploaded += count
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        failed_batches += 1
+                        log.error(
+                            f"Batch {batch_idx} failed after {max_retries} retries",
+                            error=str(e),
+                            batch_idx=batch_idx,
+                        )
+
+            cloud_count = cloud_coll.count()
+
+        return BulkSyncResult(
+            total_items=total_count,
+            uploaded=uploaded,
+            failed_batches=failed_batches,
+            cloud_count=cloud_count,
+            duration_seconds=time.time() - start_time,
+        )
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return BulkSyncResult(
+            total_items=0,
+            uploaded=0,
+            failed_batches=0,
+            cloud_count=0,
+            error=f"{type(e).__name__}: {e}",
+            duration_seconds=time.time() - start_time,
+        )
