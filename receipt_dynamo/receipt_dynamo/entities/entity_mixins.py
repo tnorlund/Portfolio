@@ -40,20 +40,6 @@ class HasKey(Protocol):
     def key(self) -> Dict[str, Any]: ...
 
 
-class HasGeometryAttributes(Protocol):
-    """Protocol for entities with geometry attributes."""
-
-    text: str
-    bounding_box: Dict[str, float]
-    top_left: Dict[str, float]
-    top_right: Dict[str, float]
-    bottom_left: Dict[str, float]
-    bottom_right: Dict[str, float]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
-
-
 # =============================================================================
 # DynamoDB Serialization
 # =============================================================================
@@ -527,7 +513,6 @@ class CDNFieldsMixin:
 __all__ = [
     # Protocols
     "HasKey",
-    "HasGeometryAttributes",
     # Core mixins
     "SerializationMixin",
     "CDNFieldsMixin",
