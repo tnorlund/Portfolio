@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMBatchInferenceResponse
 
-Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/d68e03ead7818115f2d96c3e75e1f766f01745a8/portfolio/types/api.ts#L439)
+Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/3906764f31432eefbad9fb073c27a1e0203cc2e3/portfolio/types/api.ts#L439)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:439](https://github.com/tnorlund/Portfolio/blob/d68e03
 
 > **aggregate\_stats**: [`LayoutLMAggregateStats`](LayoutLMAggregateStats.md)
 
-Defined in: [types/api.ts:441](https://github.com/tnorlund/Portfolio/blob/d68e03ead7818115f2d96c3e75e1f766f01745a8/portfolio/types/api.ts#L441)
+Defined in: [types/api.ts:441](https://github.com/tnorlund/Portfolio/blob/3906764f31432eefbad9fb073c27a1e0203cc2e3/portfolio/types/api.ts#L441)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:441](https://github.com/tnorlund/Portfolio/blob/d68e03
 
 > **fetched\_at**: `string`
 
-Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/d68e03ead7818115f2d96c3e75e1f766f01745a8/portfolio/types/api.ts#L442)
+Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/3906764f31432eefbad9fb073c27a1e0203cc2e3/portfolio/types/api.ts#L442)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:442](https://github.com/tnorlund/Portfolio/blob/d68e03
 
 > **receipts**: [`LayoutLMReceiptInference`](LayoutLMReceiptInference.md)[]
 
-Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/d68e03ead7818115f2d96c3e75e1f766f01745a8/portfolio/types/api.ts#L440)
+Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/3906764f31432eefbad9fb073c27a1e0203cc2e3/portfolio/types/api.ts#L440)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:440](https://github.com/tnorlund/Portfolio/blob/d68e03
 
 > `optional` **legacy\_mode**: `boolean`
 
-Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/d68e03ead7818115f2d96c3e75e1f766f01745a8/portfolio/types/api.ts#L443)
+Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/3906764f31432eefbad9fb073c27a1e0203cc2e3/portfolio/types/api.ts#L443)
