@@ -594,7 +594,7 @@ Step function executions were taking 30+ minutes (was 10 minutes) due to rate li
 **Fix**: Modified `create_resilient_llm()` in `receipt_agent/utils/llm_factory.py` to skip
 the free tier entirely:
 
-```
+```text
 Old: Ollama → OpenRouter Free → OpenRouter Paid
 New: Ollama → OpenRouter Paid (free tier skipped)
 ```

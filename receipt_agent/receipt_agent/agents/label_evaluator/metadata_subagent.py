@@ -631,46 +631,66 @@ def evaluate_metadata_labels(
         merchant_name=merchant_name,
     )
 
-    # Try structured output first, fall back to text parsing
-    max_retries = 3
+    # Try structured output with retries, then fall back to text parsing
+    structured_retries = 3
+    text_retries = 2
     last_decisions = None
     num_words = len(metadata_words)
+    decisions = None
 
     # Check if LLM supports structured output
     use_structured = hasattr(llm, "with_structured_output")
 
-    for attempt in range(max_retries):
-        try:
-            if use_structured:
-                try:
-                    structured_llm = llm.with_structured_output(
-                        MetadataEvaluationResponse
-                    )
-                    response: MetadataEvaluationResponse = (
-                        structured_llm.invoke(prompt)
-                    )
-                    decisions = response.to_ordered_list(num_words)
-                    logger.debug(
-                        "Structured output succeeded with %d evaluations",
-                        len(decisions),
-                    )
-                except Exception as struct_err:
-                    # Structured output failed, fall back to text parsing
-                    logger.warning(
-                        "Structured output failed (attempt %d), falling back to text: %s",
-                        attempt + 1,
+    # Phase 1: Try structured output multiple times
+    if use_structured:
+        for attempt in range(structured_retries):
+            try:
+                structured_llm = llm.with_structured_output(
+                    MetadataEvaluationResponse
+                )
+                response: MetadataEvaluationResponse = structured_llm.invoke(
+                    prompt
+                )
+                decisions = response.to_ordered_list(num_words)
+                logger.debug(
+                    "Structured output succeeded with %d evaluations",
+                    len(decisions),
+                )
+                break  # Success, exit retry loop
+            except Exception as struct_err:
+                # Check if this is a rate limit error that should propagate
+                from receipt_agent.utils import (
+                    BothProvidersFailedError,
+                    OllamaRateLimitError,
+                )
+
+                if isinstance(
+                    struct_err,
+                    (OllamaRateLimitError, BothProvidersFailedError),
+                ):
+                    logger.error(
+                        "Metadata LLM rate limited, propagating for retry: %s",
                         struct_err,
                     )
-                    response = llm.invoke(prompt)
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
+                    raise  # Let Step Function retry handle this
+
+                logger.warning(
+                    "Structured output failed (attempt %d/%d): %s",
+                    attempt + 1,
+                    structured_retries,
+                    struct_err,
+                )
+                if attempt == structured_retries - 1:
+                    logger.info(
+                        "All %d structured output attempts failed, "
+                        "falling back to text parsing",
+                        structured_retries,
                     )
-                    decisions = parse_metadata_evaluation_response(
-                        response_text, num_words
-                    )
-            else:
+
+    # Phase 2: Fall back to text parsing if structured output failed or unavailable
+    if decisions is None:
+        for attempt in range(text_retries):
+            try:
                 response = llm.invoke(prompt)
                 response_text = (
                     response.content
@@ -681,84 +701,50 @@ def evaluate_metadata_labels(
                     response_text, num_words
                 )
 
-            last_decisions = decisions
-
-            # Check if all decisions failed to parse (indicates malformed response)
-            parse_failures = sum(
-                1
-                for d in decisions
-                if "Failed to parse" in d.get("reasoning", "")
-            )
-
-            if parse_failures == 0:
-                # Success - no parse failures
-                break
-            elif parse_failures < len(decisions):
-                # Partial success - some parsed, use what we have
-                logger.info(
-                    "Partial parse success: %d/%d parsed on attempt %d",
-                    len(decisions) - parse_failures,
-                    len(decisions),
-                    attempt + 1,
+                # Check if all decisions failed to parse
+                parse_failures = sum(
+                    1
+                    for d in decisions
+                    if "Failed to parse" in d.get("reasoning", "")
                 )
-                break
-            else:
-                # All failed to parse - retry if we have attempts left
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        "All %d decisions failed to parse on attempt %d, retrying...",
+
+                if parse_failures == 0:
+                    logger.debug(
+                        "Text parsing succeeded with %d evaluations",
                         len(decisions),
-                        attempt + 1,
                     )
+                    break
+                elif parse_failures < len(decisions):
+                    logger.info(
+                        "Partial text parse success: %d/%d parsed",
+                        len(decisions) - parse_failures,
+                        len(decisions),
+                    )
+                    break
                 else:
-                    logger.warning(
-                        "All %d decisions failed to parse after %d attempts",
-                        len(decisions),
-                        max_retries,
-                    )
-
-        except Exception as e:
-            # Check if this is a rate limit error that should trigger Step Function retry
-            from receipt_agent.utils import (
-                BothProvidersFailedError,
-                OllamaRateLimitError,
-            )
-
-            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                    if attempt < text_retries - 1:
+                        logger.warning(
+                            "All %d decisions failed text parse "
+                            "(attempt %d/%d), retrying...",
+                            len(decisions),
+                            attempt + 1,
+                            text_retries,
+                        )
+                    else:
+                        logger.warning(
+                            "All %d decisions failed text parse "
+                            "after %d attempts",
+                            len(decisions),
+                            text_retries,
+                        )
+            except Exception as e:
                 logger.error(
-                    "Metadata LLM rate limited, propagating for retry: %s", e
+                    "Text parsing failed on attempt %d: %s", attempt + 1, e
                 )
-                raise  # Let Step Function retry handle this
+                if attempt == text_retries - 1:
+                    decisions = None
 
-            logger.error(
-                "Metadata LLM call failed on attempt %d: %s", attempt + 1, e
-            )
-            if attempt == max_retries - 1:
-                # Final attempt failed - return NEEDS_REVIEW for all
-                results = []
-                for mw in metadata_words:
-                    wc = mw.word_context
-                    results.append(
-                        {
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                            "issue": {
-                                "line_id": wc.word.line_id,
-                                "word_id": wc.word.word_id,
-                                "current_label": mw.current_label,
-                                "word_text": wc.word.text,
-                            },
-                            "llm_review": {
-                                "decision": "NEEDS_REVIEW",
-                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
-                                "suggested_label": None,
-                                "confidence": "low",
-                            },
-                        }
-                    )
-                return results
-
-    # Use the last decisions we got (best effort)
+    # Use the decisions we got (best effort)
     decisions = last_decisions or [
         {
             "decision": "NEEDS_REVIEW",

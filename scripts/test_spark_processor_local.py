@@ -73,6 +73,9 @@ def read_parquet_flexible(spark, path):
 
 def parse_json_fields_flexible(df):
     """Parse JSON fields and add computed columns."""
+    # Add defensive check for extra column
+    if "extra" not in df.columns:
+        df = df.withColumn("extra", F.lit("{}"))
     return (
         df.withColumn(
             "metadata_execution_id",

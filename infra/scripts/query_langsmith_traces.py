@@ -38,29 +38,46 @@ def query_langsmith(
     }
     url = f"https://api.smith.langchain.com/api/v1/{endpoint}"
 
-    if method == "GET":
-        resp = requests.get(url, headers=headers)
-    else:
-        resp = requests.post(url, headers=headers, json=data)
-
-    return resp.json() if resp.text else {}
+    try:
+        if method == "GET":
+            resp = requests.get(url, headers=headers, timeout=(3, 10))
+        else:
+            resp = requests.post(
+                url, headers=headers, json=data, timeout=(3, 10)
+            )
+        resp.raise_for_status()
+        return resp.json() if resp.text else {}
+    except requests.exceptions.Timeout:
+        print(f"Request to {endpoint} timed out")
+        return {}
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP error querying {endpoint}: {e}")
+        return {}
+    except requests.exceptions.RequestException as e:
+        print(f"Request error querying {endpoint}: {e}")
+        return {}
 
 
 def query_trace(trace_id: str, api_key: str, tenant_id: str):
     """Query a specific trace and its children."""
     print(f"\n🔍 Querying trace: {trace_id}")
     run = query_langsmith(f"runs/{trace_id}", api_key, tenant_id)
-    print(json.dumps({
-        "id": run.get("id"),
-        "name": run.get("name"),
-        "status": run.get("status"),
-        "error": run.get("error"),
-        "start_time": run.get("start_time"),
-        "end_time": run.get("end_time"),
-        "outputs": run.get("outputs"),
-        "session_id": run.get("session_id"),
-        "session_name": run.get("session_name"),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "id": run.get("id"),
+                "name": run.get("name"),
+                "status": run.get("status"),
+                "error": run.get("error"),
+                "start_time": run.get("start_time"),
+                "end_time": run.get("end_time"),
+                "outputs": run.get("outputs"),
+                "session_id": run.get("session_id"),
+                "session_name": run.get("session_name"),
+            },
+            indent=2,
+        )
+    )
 
     # Get child runs
     print(f"\n👶 Child runs for trace {trace_id}:")
@@ -69,15 +86,26 @@ def query_trace(trace_id: str, api_key: str, tenant_id: str):
         api_key,
         tenant_id,
         method="POST",
-        data={"trace": trace_id, "limit": 30}
+        data={"trace": trace_id, "limit": 30},
     )
     for child in children.get("runs", []):
-        status_icon = "✅" if child.get("status") == "success" else "❌" if child.get("error") else "⏳"
-        print(f"  {status_icon} {child.get('name')} - {child.get('status')} (id={child.get('id')[:8]}...)")
+        status_icon = (
+            "✅"
+            if child.get("status") == "success"
+            else "❌" if child.get("error") else "⏳"
+        )
+        print(
+            f"  {status_icon} {child.get('name')} - {child.get('status')} (id={child.get('id')[:8]}...)"
+        )
 
 
-def query_project_traces(project_name: str, api_key: str, tenant_id: str,
-                         start_date: Optional[str] = None, limit: int = 10):
+def query_project_traces(
+    project_name: str,
+    api_key: str,
+    tenant_id: str,
+    start_date: Optional[str] = None,
+    limit: int = 10,
+):
     """Query traces from a specific project."""
     # Get all projects
     projects = query_langsmith("sessions?limit=50", api_key, tenant_id)
@@ -103,20 +131,24 @@ def query_project_traces(project_name: str, api_key: str, tenant_id: str,
         query_data["start_time"] = start_date
 
     runs = query_langsmith(
-        "runs/query",
-        api_key,
-        tenant_id,
-        method="POST",
-        data=query_data
+        "runs/query", api_key, tenant_id, method="POST", data=query_data
     )
 
     traces = runs.get("runs", [])
     for run in traces:
-        status_icon = "✅" if run.get("status") == "success" else "❌" if run.get("error") else "⏳"
+        status_icon = (
+            "✅"
+            if run.get("status") == "success"
+            else "❌" if run.get("error") else "⏳"
+        )
         start_time = run.get("start_time", "N/A")
         end_time = run.get("end_time", "N/A")
-        print(f"  {status_icon} {run.get('name')} - status={run.get('status')}")
-        print(f"      start={start_time[:19] if start_time != 'N/A' else 'N/A'}, end={end_time[:19] if end_time and end_time != 'N/A' else 'N/A'}")
+        print(
+            f"  {status_icon} {run.get('name')} - status={run.get('status')}"
+        )
+        print(
+            f"      start={start_time[:19] if start_time != 'N/A' else 'N/A'}, end={end_time[:19] if end_time and end_time != 'N/A' else 'N/A'}"
+        )
         print(f"      id={run.get('id')}")
         if run.get("error"):
             print(f"      Error: {run.get('error')[:100]}...")
@@ -136,7 +168,9 @@ def main():
     print("\n📁 All Projects:")
     projects = query_langsmith("sessions?limit=50", api_key, tenant_id)
     for p in projects:
-        print(f"  - {p['name']} (created: {p.get('start_time', 'N/A')[:10] if p.get('start_time') else 'N/A'})")
+        print(
+            f"  - {p['name']} (created: {p.get('start_time', 'N/A')[:10] if p.get('start_time') else 'N/A'})"
+        )
 
     # Handle command line args
     if len(sys.argv) > 1:
@@ -147,7 +181,9 @@ def main():
             # Query specific project
             project_name = arg.replace("project:", "")
             start_date = sys.argv[2] if len(sys.argv) > 2 else None
-            traces = query_project_traces(project_name, api_key, tenant_id, start_date)
+            traces = query_project_traces(
+                project_name, api_key, tenant_id, start_date
+            )
 
             # If traces found, query first one's children
             if traces:
@@ -165,7 +201,9 @@ def main():
                 project_start = p.get("start_time", "")
                 if project_start and date_str in project_start[:10]:
                     print(f"\n  Found project from that date: {p['name']}")
-                    query_project_traces(p["name"], api_key, tenant_id, limit=5)
+                    query_project_traces(
+                        p["name"], api_key, tenant_id, limit=5
+                    )
 
         else:
             # Assume it's a trace ID

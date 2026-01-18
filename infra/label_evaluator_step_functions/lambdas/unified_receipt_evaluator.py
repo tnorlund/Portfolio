@@ -172,9 +172,13 @@ async def unified_receipt_evaluator(
         image_id = receipt_obj.get("image_id")
         receipt_id = receipt_obj.get("receipt_id")
         merchant_name = receipt_obj.get("merchant_name", "unknown")
-        receipt_trace_id = ""  # Not passed in new format, trace ID generated internally
+        receipt_trace_id = (
+            ""  # Not passed in new format, trace ID generated internally
+        )
         if not image_id or receipt_id is None:
-            raise ValueError("receipt.image_id and receipt.receipt_id are required")
+            raise ValueError(
+                "receipt.image_id and receipt.receipt_id are required"
+            )
     elif data_s3_key:
         # Legacy format: will load from S3
         merchant_name = event.get("merchant_name", "unknown")
@@ -182,7 +186,9 @@ async def unified_receipt_evaluator(
         image_id = None
         receipt_id = None
     else:
-        raise ValueError("Either 'receipt' object or 'data_s3_key' is required")
+        raise ValueError(
+            "Either 'receipt' object or 'data_s3_key' is required"
+        )
 
     start_time = time.time()
 
@@ -220,7 +226,9 @@ async def unified_receipt_evaluator(
             from receipt_dynamo import DynamoClient
 
             if not dynamo_table:
-                raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+                raise ValueError(
+                    "DYNAMODB_TABLE_NAME environment variable not set"
+                )
 
             dynamo = DynamoClient(table_name=dynamo_table)
 
@@ -228,13 +236,19 @@ async def unified_receipt_evaluator(
             try:
                 place = dynamo.get_receipt_place(image_id, receipt_id)
             except Exception:
-                logger.warning("No ReceiptPlace found for %s#%s", image_id, receipt_id)
+                logger.warning(
+                    "No ReceiptPlace found for %s#%s", image_id, receipt_id
+                )
                 place = None
 
             try:
-                words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+                words = dynamo.list_receipt_words_from_receipt(
+                    image_id, receipt_id
+                )
             except Exception:
-                logger.warning("Failed to fetch words for %s#%s", image_id, receipt_id)
+                logger.warning(
+                    "Failed to fetch words for %s#%s", image_id, receipt_id
+                )
                 words = []
 
             try:
@@ -290,7 +304,9 @@ async def unified_receipt_evaluator(
                 )
             except Exception:
                 logger.exception(
-                    "Failed to upload data to s3://%s/%s", batch_bucket, data_s3_key
+                    "Failed to upload data to s3://%s/%s",
+                    batch_bucket,
+                    data_s3_key,
                 )
                 raise
 
@@ -312,7 +328,9 @@ async def unified_receipt_evaluator(
             receipt_id = target_data.get("receipt_id")
 
             if not image_id or receipt_id is None:
-                raise ValueError("image_id and receipt_id are required in data")
+                raise ValueError(
+                    "image_id and receipt_id are required in data"
+                )
 
             # Deserialize entities
             words = [deserialize_word(w) for w in target_data.get("words", [])]
@@ -346,22 +364,51 @@ async def unified_receipt_evaluator(
                     )
 
         # Write receipt lookup record (JSONL-style) for EMR viz-cache
-        if receipt_info is not None:
-            lookup_key = (
-                f"receipts_lookup/{execution_id}/{image_id}_{receipt_id}.json"
+        # Generate CDN keys - use DynamoDB values if available, otherwise construct from pattern
+        receipt_key = f"{image_id}_RECEIPT_{receipt_id:05d}"
+        if receipt_info is not None and receipt_info.cdn_s3_key:
+            # Use CDN keys from DynamoDB
+            cdn_s3_key = receipt_info.cdn_s3_key
+            cdn_webp_s3_key = receipt_info.cdn_webp_s3_key
+            cdn_avif_s3_key = receipt_info.cdn_avif_s3_key
+            cdn_medium_s3_key = receipt_info.cdn_medium_s3_key
+            cdn_medium_webp_s3_key = receipt_info.cdn_medium_webp_s3_key
+            cdn_medium_avif_s3_key = receipt_info.cdn_medium_avif_s3_key
+            width = receipt_info.width
+            height = receipt_info.height
+        else:
+            # Generate CDN keys from predictable pattern
+            cdn_s3_key = f"assets/{receipt_key}.jpg"
+            cdn_webp_s3_key = f"assets/{receipt_key}.webp"
+            cdn_avif_s3_key = f"assets/{receipt_key}.avif"
+            cdn_medium_s3_key = f"assets/{receipt_key}_medium.jpg"
+            cdn_medium_webp_s3_key = f"assets/{receipt_key}_medium.webp"
+            cdn_medium_avif_s3_key = f"assets/{receipt_key}_medium.avif"
+            # Default dimensions - will be overridden if receipt_info exists
+            width = receipt_info.width if receipt_info else 800
+            height = receipt_info.height if receipt_info else 2400
+            logger.info(
+                "Generated CDN keys for %s#%s (no DynamoDB cdn_s3_key)",
+                image_id,
+                receipt_id,
             )
-            lookup_payload = {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "cdn_s3_key": receipt_info.cdn_s3_key,
-                "cdn_webp_s3_key": receipt_info.cdn_webp_s3_key,
-                "cdn_avif_s3_key": receipt_info.cdn_avif_s3_key,
-                "cdn_medium_s3_key": receipt_info.cdn_medium_s3_key,
-                "cdn_medium_webp_s3_key": receipt_info.cdn_medium_webp_s3_key,
-                "cdn_medium_avif_s3_key": receipt_info.cdn_medium_avif_s3_key,
-                "width": receipt_info.width,
-                "height": receipt_info.height,
-            }
+
+        lookup_key = (
+            f"receipts_lookup/{execution_id}/{image_id}_{receipt_id}.json"
+        )
+        lookup_payload = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "cdn_s3_key": cdn_s3_key,
+            "cdn_webp_s3_key": cdn_webp_s3_key,
+            "cdn_avif_s3_key": cdn_avif_s3_key,
+            "cdn_medium_s3_key": cdn_medium_s3_key,
+            "cdn_medium_webp_s3_key": cdn_medium_webp_s3_key,
+            "cdn_medium_avif_s3_key": cdn_medium_avif_s3_key,
+            "width": width,
+            "height": height,
+        }
+        if lookup_payload["cdn_s3_key"]:
             try:
                 s3.put_object(
                     Bucket=batch_bucket,
@@ -370,7 +417,9 @@ async def unified_receipt_evaluator(
                     ContentType="application/json",
                 )
                 logger.info(
-                    "Saved receipt lookup to s3://%s/%s", batch_bucket, lookup_key
+                    "Saved receipt lookup to s3://%s/%s",
+                    batch_bucket,
+                    lookup_key,
                 )
             except Exception:
                 logger.exception(
@@ -731,6 +780,7 @@ async def unified_receipt_evaluator(
         geometric_duration = 0.0
 
         try:
+
             async def timed_eval(coro):
                 start = time.time()
                 result = await coro
@@ -793,16 +843,18 @@ async def unified_receipt_evaluator(
                 return result, time.time() - start
 
             # Wait for all evaluations concurrently
-            (currency_result, currency_duration), (
-                metadata_result,
-                metadata_duration,
-            ), (
-                geometric_result,
-                geometric_duration,
-            ) = (
-                await asyncio.gather(
-                    currency_task, metadata_task, run_geometric()
-                )
+            (
+                (currency_result, currency_duration),
+                (
+                    metadata_result,
+                    metadata_duration,
+                ),
+                (
+                    geometric_result,
+                    geometric_duration,
+                ),
+            ) = await asyncio.gather(
+                currency_task, metadata_task, run_geometric()
             )
 
             logger.info(
