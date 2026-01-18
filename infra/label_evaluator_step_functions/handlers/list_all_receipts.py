@@ -16,7 +16,6 @@ The two-phase architecture uses this to:
 import json
 import logging
 import os
-from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import boto3
@@ -102,14 +101,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         all_places = all_places[:limit]
         logger.info("Applied limit=%s, using %s places", limit, len(all_places))
 
-    # Count receipts per merchant and collect receipts from the selected places
-    merchant_counts: Counter = Counter()
+    # Collect receipts from the selected places, grouped by merchant
     receipts_by_merchant: dict[str, list[dict]] = {}
 
     for place in all_places:
         merchant_name = place.merchant_name
-
-        merchant_counts[merchant_name] += 1
 
         if merchant_name not in receipts_by_merchant:
             receipts_by_merchant[merchant_name] = []
@@ -122,31 +118,56 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             }
         )
 
-    # Filter merchants by minimum receipt threshold (for pattern computation only)
+    # Get unique merchants from sampled receipts
+    unique_merchants = set(receipts_by_merchant.keys())
+
+    # Query DynamoDB for TOTAL receipt count per merchant (not just sample count)
+    # This ensures merchants qualify based on their actual database size, not sample size
+    total_merchant_counts: dict[str, int] = {}
+    for merchant_name in unique_merchants:
+        total_count = 0
+        result = dynamo.get_receipt_places_by_merchant(merchant_name)
+        total_count += len(result[0])
+        while result[1]:  # Paginate to get full count
+            result = dynamo.get_receipt_places_by_merchant(
+                merchant_name, last_evaluated_key=result[1]
+            )
+            total_count += len(result[0])
+        total_merchant_counts[merchant_name] = total_count
+
+    logger.info(
+        "Queried total counts for %s merchants: %s",
+        len(unique_merchants),
+        {k: v for k, v in sorted(total_merchant_counts.items(), key=lambda x: -x[1])[:5]},
+    )
+
+    # Filter merchants by minimum receipt threshold using TOTAL counts (for pattern computation)
     qualifying_merchants: list[MerchantInfo] = []
     merchants_with_patterns: set[str] = set()
     skipped_count = 0
 
-    for merchant_name, count in sorted(
-        merchant_counts.items(), key=lambda x: -x[1]
-    ):
-        if count >= min_receipts:
+    for merchant_name in unique_merchants:
+        total_count = total_merchant_counts[merchant_name]
+        if total_count >= min_receipts:
             qualifying_merchants.append(
-                MerchantInfo(merchant_name=merchant_name, receipt_count=count)
+                MerchantInfo(merchant_name=merchant_name, receipt_count=total_count)
             )
             merchants_with_patterns.add(merchant_name)
         else:
             skipped_count += 1
             # NOTE: Don't remove receipts - they still get processed, just without patterns
 
+    # Sort qualifying merchants by receipt count (descending)
+    qualifying_merchants.sort(key=lambda x: x["receipt_count"], reverse=True)
+
     # Flatten ALL receipts into a single list, sorted by merchant for S3 cache locality
-    # Add merchant_receipt_count and has_patterns to each receipt
+    # Add merchant_receipt_count (using TOTAL count) and has_patterns to each receipt
     all_receipts = []
     for merchant_name in sorted(receipts_by_merchant.keys()):
-        receipt_count = merchant_counts[merchant_name]
+        total_count = total_merchant_counts[merchant_name]
         has_patterns = merchant_name in merchants_with_patterns
         for receipt in receipts_by_merchant[merchant_name]:
-            receipt["merchant_receipt_count"] = receipt_count
+            receipt["merchant_receipt_count"] = total_count  # Use TOTAL count
             receipt["has_patterns"] = has_patterns
         all_receipts.extend(receipts_by_merchant[merchant_name])
 
