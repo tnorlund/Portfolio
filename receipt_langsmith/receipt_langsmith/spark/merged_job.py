@@ -41,8 +41,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-from pyspark.sql import SparkSession, functions as F
-from pyspark.storagelevel import StorageLevel
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.types import (
     ArrayType,
     DoubleType,
@@ -51,6 +51,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.storagelevel import StorageLevel
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,9 +140,7 @@ def validate_args(args: argparse.Namespace) -> None:
 # =============================================================================
 
 
-def run_analytics(
-    spark: SparkSession, args: argparse.Namespace
-) -> None:
+def run_analytics(spark: SparkSession, args: argparse.Namespace) -> None:
     """Run analytics job using LangSmithSparkProcessor."""
     from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 
@@ -163,7 +162,9 @@ def run_analytics(
         )
 
         job_by_merchant = processor.compute_job_analytics_by_merchant(parsed)
-        partition_by = ["merchant_name"] if args.partition_by_merchant else None
+        partition_by = (
+            ["merchant_name"] if args.partition_by_merchant else None
+        )
         processor.write_analytics(
             job_by_merchant,
             f"{args.analytics_output}/job_analytics_by_merchant/",
@@ -314,11 +315,15 @@ def load_receipts_lookup_df(
 ) -> Any | None:
     """Load receipt lookup dataset for CDN keys."""
     if receipts_lookup_path:
-        logger.info("Reading receipts lookup dataset from %s", receipts_lookup_path)
+        logger.info(
+            "Reading receipts lookup dataset from %s", receipts_lookup_path
+        )
         return read_json_df(spark, receipts_lookup_path, schema=LOOKUP_SCHEMA)
 
     if legacy_receipts_json:
-        logger.info("Reading legacy receipts lookup from %s", legacy_receipts_json)
+        logger.info(
+            "Reading legacy receipts lookup from %s", legacy_receipts_json
+        )
         if not legacy_receipts_json.startswith("s3://"):
             raise ValueError(f"Invalid S3 path: {legacy_receipts_json}")
         s3_client = boto3.client("s3")
@@ -376,8 +381,12 @@ def build_words_with_labels(
         line_id = label.get("line_id")
         word_id = label.get("word_id")
         label_text = label.get("label")
-        if line_id is not None and word_id is not None:
-            label_lookup[(line_id, word_id)] = label_text
+        if (
+            line_id is not None
+            and word_id is not None
+            and label_text is not None
+        ):
+            label_lookup[(int(line_id), int(word_id))] = str(label_text)
 
     result = []
     for word in words:
@@ -385,9 +394,14 @@ def build_words_with_labels(
         word_id = word.get("word_id")
         bbox = word.get("bounding_box", {})
 
+        # Look up label if both IDs are present
+        word_label: str | None = None
+        if line_id is not None and word_id is not None:
+            word_label = label_lookup.get((int(line_id), int(word_id)))
+
         word_with_label = {
             "text": word.get("text", ""),
-            "label": label_lookup.get((line_id, word_id)),
+            "label": word_label,
             "line_id": line_id,
             "word_id": word_id,
             "bbox": {
@@ -437,7 +451,11 @@ def count_issues(result: dict[str, Any]) -> int:
     total += result.get("geometric_issues_found", 0)
 
     # Decision-based issues (INVALID + NEEDS_REVIEW)
-    for key in ("currency_decisions", "metadata_decisions", "financial_decisions"):
+    for key in (
+        "currency_decisions",
+        "metadata_decisions",
+        "financial_decisions",
+    ):
         decisions = result.get(key, {})
         total += decisions.get("INVALID", 0)
         total += decisions.get("NEEDS_REVIEW", 0)
@@ -560,9 +578,7 @@ def build_viz_receipt_from_row(
     }
 
 
-def write_viz_cache_parallel(
-    df: Any, bucket: str, execution_id: str
-) -> None:
+def write_viz_cache_parallel(df: Any, bucket: str, execution_id: str) -> None:
     """Write viz-cache files to S3 in parallel via Spark executors."""
     receipts_prefix = "receipts/"
 
@@ -729,9 +745,7 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
         joined.unpersist()
         return
 
-    receipts_with_issues = (
-        joined.filter(F.col("issues_found") > 0).count()
-    )
+    receipts_with_issues = joined.filter(F.col("issues_found") > 0).count()
 
     logger.info("Writing %d viz-cache receipts...", total_receipts)
     write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)

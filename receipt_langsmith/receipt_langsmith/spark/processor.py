@@ -82,9 +82,9 @@ class LangSmithSparkProcessor:
         # NOTE: Requires spark.sql.parquet.enableVectorizedReader=false and
         # spark.sql.legacy.parquet.nanosAsLong=true to handle schema differences
         # across exports (some files have timestamp[ns], others have binary)
-        df = self.spark.read.option(
-            "recursiveFileLookup", "true"
-        ).parquet(spark_path)
+        df = self.spark.read.option("recursiveFileLookup", "true").parquet(
+            spark_path
+        )
         available_columns = set(df.columns)
 
         logger.info(
