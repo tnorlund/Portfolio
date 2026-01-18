@@ -21,10 +21,18 @@ from typing import Any
 
 import boto3
 
-# Import tracing utilities - works in both container and local environments
+# Import utilities - works in both container and local environments
 try:
     # Container environment: tracing.py is in same directory
     from utils.s3_helpers import get_merchant_hash, upload_json_to_s3
+    from utils.tracing import (
+        MerchantTraceInfo,
+        TraceContext,
+        child_trace,
+        create_merchant_trace,
+        end_merchant_trace,
+        flush_langsmith_traces,
+    )
 except ImportError:
     # Local/development environment: use path relative to this file
     sys.path.insert(
@@ -36,6 +44,14 @@ except ImportError:
         ),
     )
     from s3_helpers import get_merchant_hash, upload_json_to_s3
+    from tracing import (
+        MerchantTraceInfo,
+        TraceContext,
+        child_trace,
+        create_merchant_trace,
+        end_merchant_trace,
+        flush_langsmith_traces,
+    )
 
 # Import pattern discovery from receipt_agent
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
@@ -87,14 +103,43 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "Unknown")
+    execution_arn = event.get("execution_arn", "")
+    # Tracing is always enabled
+    enable_tracing = True
+
+    # Create root merchant trace for Phase 1 (pattern computation)
+    merchant_trace = create_merchant_trace(
+        execution_arn=execution_arn,
+        merchant_name=merchant_name,
+        name="PatternComputation",
+        inputs={
+            "merchant_name": merchant_name,
+        },
+        metadata={"execution_id": execution_id, "phase": "pattern_learning"},
+        tags=["phase-1", "per-merchant"],
+        enable_tracing=enable_tracing,
+    )
+
+    trace_ctx = TraceContext(
+        run_tree=merchant_trace.run_tree,
+        headers=(
+            merchant_trace.run_tree.to_headers()
+            if merchant_trace.run_tree
+            else None
+        ),
+        trace_id=merchant_trace.trace_id,
+        root_run_id=merchant_trace.root_run_id,
+    )
 
     if not batch_bucket:
+        flush_langsmith_traces()
         return {
             "execution_id": execution_id,
             "merchant_name": merchant_name,
             "patterns_s3_key": None,
             "patterns": None,
             "error": "batch_bucket is required",
+            **merchant_trace.to_dict(),
         }
 
     merchant_hash = get_merchant_hash(merchant_name)
@@ -153,6 +198,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "patterns_s3_key": patterns_s3_key,
                 "patterns": default_patterns,
                 "error": None,
+                **merchant_trace.to_dict(),
             }
         else:
             # Build prompt
@@ -160,11 +206,20 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             prompt = build_discovery_prompt(merchant_name, receipts_data)
             prompt_duration = time.time() - prompt_start
 
-            # Call LLM for pattern discovery
+            # Call LLM for pattern discovery (with child trace)
             llm_start = time.time()
-            patterns = discover_patterns_with_llm(
-                prompt, config, trace_ctx=None
-            )
+            with child_trace(
+                "LearnLineItemPatterns",
+                trace_ctx,
+                run_type="llm",
+                inputs={
+                    "merchant_name": merchant_name,
+                    "prompt_length": len(prompt),
+                },
+            ) as llm_ctx:
+                patterns = discover_patterns_with_llm(
+                    prompt, config, trace_ctx=llm_ctx
+                )
             llm_duration = time.time() - llm_start
 
             if not patterns:
@@ -196,6 +251,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "patterns_s3_key": patterns_s3_key,
                     "patterns": default_patterns,
                     "error": "LLM discovery failed, using defaults",
+                    **merchant_trace.to_dict(),
                 }
             else:
                 # Add standard metadata
@@ -232,6 +288,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "patterns_s3_key": patterns_s3_key,
                     "patterns": patterns,
                     "error": None,
+                    **merchant_trace.to_dict(),
                 }
 
     except Exception as e:
@@ -262,6 +319,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "discovery_status": "error",
                 "error": str(e),
             },
+            **merchant_trace.to_dict(),
         }
 
+    # End the merchant trace to persist it (compute_patterns will add sibling via trace_id)
+    end_merchant_trace(
+        merchant_trace,
+        outputs={"patterns_discovered": result.get("patterns") is not None},
+    )
+    flush_langsmith_traces()
     return result

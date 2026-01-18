@@ -649,7 +649,12 @@ def build_receipt_context_prompt(
         receipt_text: Pre-assembled receipt text with highlighted words
         issues_with_context: List of issue dicts for THIS receipt, each with:
             - issue: The issue dict (line_id, word_id, current_label, etc.)
-            - similar_evidence: List of SimilarWordEvidence with reasoning
+            - similar_evidence: List of SimilarWordEvidence with reasoning (legacy)
+            OR (new targeted format):
+            - evidence_text: Pre-formatted evidence string
+            - consensus: Consensus score (-1 to 1)
+            - positive_count: Number of positive evidence items
+            - negative_count: Number of negative evidence items
         merchant_name: The merchant name
         merchant_receipt_count: Number of receipts for this merchant
         line_item_patterns: Optional line item patterns
@@ -661,212 +666,95 @@ def build_receipt_context_prompt(
     issues_text = []
     for idx, item in enumerate(issues_with_context):
         issue = item.get("issue", {})
-        similar_evidence = item.get("similar_evidence")
 
-        if similar_evidence is None:
-            logger.warning(
-                "Issue %d: similar_evidence is None (item keys: %s)",
-                idx,
-                list(item.keys()),
-            )
-            similar_evidence = []
-        elif not isinstance(similar_evidence, list):
-            logger.warning(
-                "Issue %d: similar_evidence is %s, not list. Value: %s",
-                idx,
-                type(similar_evidence).__name__,
-                str(similar_evidence)[:200],
-            )
-            similar_evidence = []
+        # Check for new targeted evidence format first
+        evidence_text = item.get("evidence_text")
 
         word_text = issue.get("word_text", "")
         current_label = issue.get("current_label") or "NONE (unlabeled)"
         issue_type = issue.get("type", "unknown")
         evaluator_reasoning = issue.get("reasoning", "No reasoning provided")
 
-        # Build similar words with reasoning (top 10)
-        similar_lines = []
-        for e_idx, e in enumerate(similar_evidence[:10]):
-            if e is None:
-                logger.warning("Issue %d: evidence[%d] is None", idx, e_idx)
-                continue
-            if not isinstance(e, dict):
+        # Use pre-formatted evidence if available (new targeted format)
+        if evidence_text is not None:
+            similar_text = evidence_text
+        else:
+            # Legacy format: build from similar_evidence list
+            similar_evidence = item.get("similar_evidence")
+
+            if similar_evidence is None:
                 logger.warning(
-                    "Issue %d: evidence[%d] is %s, not dict",
+                    "Issue %d: similar_evidence is None (item keys: %s)",
                     idx,
-                    e_idx,
-                    type(e).__name__,
+                    list(item.keys()),
                 )
-                continue
-
-            sim_score = e.get("similarity_score", 0)
-            sim_word = e.get("word_text", "")
-            is_same = "same merchant" if e.get("is_same_merchant") else "other"
-
-            # Get validation reasoning - with null safety
-            validated_info = []
-            validated_as = e.get("validated_as")
-            if validated_as is None:
-                logger.debug(
-                    "Issue %d: evidence[%d] validated_as is None", idx, e_idx
-                )
-            elif not isinstance(validated_as, list):
+                similar_evidence = []
+            elif not isinstance(similar_evidence, list):
                 logger.warning(
-                    "Issue %d: evidence[%d] validated_as is %s, not list",
+                    "Issue %d: similar_evidence is %s, not list. Value: %s",
                     idx,
-                    e_idx,
-                    type(validated_as).__name__,
+                    type(similar_evidence).__name__,
+                    str(similar_evidence)[:200],
                 )
-            elif validated_as:
-                for v in validated_as[:2]:
-                    if not isinstance(v, dict):
-                        continue
-                    label = v.get("label", "?")
-                    reasoning = (v.get("reasoning") or "no reasoning")[:80]
-                    validated_info.append(f'{label}: "{reasoning}"')
+                similar_evidence = []
 
-            invalidated_info = []
-            invalidated_as = e.get("invalidated_as")
-            if invalidated_as is None:
-                logger.debug(
-                    "Issue %d: evidence[%d] invalidated_as is None", idx, e_idx
-                )
-            elif not isinstance(invalidated_as, list):
-                logger.warning(
-                    "Issue %d: evidence[%d] invalidated_as is %s, not list",
-                    idx,
-                    e_idx,
-                    type(invalidated_as).__name__,
-                )
-            elif invalidated_as:
-                for v in invalidated_as[:1]:
-                    if not isinstance(v, dict):
-                        continue
-                    label = v.get("label", "?")
-                    reasoning = (v.get("reasoning") or "no reasoning")[:60]
-                    invalidated_info.append(f'~~{label}~~: "{reasoning}"')
-
-            # Format line
-            line = f'- "{sim_word}" ({sim_score:.0%}, {is_same})'
-            if validated_info:
-                line += f" -> {'; '.join(validated_info)}"
-            if invalidated_info:
-                line += f" | {'; '.join(invalidated_info)}"
-            similar_lines.append(line)
-
-        similar_text = (
-            "\n".join(similar_lines)
-            if similar_lines
-            else "No similar words found"
-        )
+            similar_text = _build_legacy_similar_text(similar_evidence, idx)
 
         # Build drill-down section for constellation anomalies
         drill_down_text = ""
         drill_down = issue.get("drill_down")
         if drill_down and issue_type == "constellation_anomaly":
-            culprits = [w for w in drill_down if w.get("is_culprit")]
-            non_culprits = [w for w in drill_down if not w.get("is_culprit")]
+            drill_down_text = _build_drill_down_text(drill_down)
 
-            drill_down_lines = [
-                f"\n**Drill-Down Analysis** ({len(drill_down)} words with this label):"
-            ]
+        issues_text.append(
+            f"""
+### Issue {idx}: "{word_text}" labeled as {current_label}
+**Type**: {issue_type}
+**Evaluator reasoning**: {evaluator_reasoning}
 
-            def _get_y_position(pos: Any) -> float:
-                """Extract y coordinate from various position formats."""
-                if pos is None:
-                    return 0.0
-                if isinstance(pos, (int, float)):
-                    return float(pos)
-                if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                    return float(pos[1])
-                if isinstance(pos, dict):
-                    return float(pos.get("y", 0))
-                return 0.0
-
-            if culprits:
-                drill_down_lines.append("Likely culprits (deviation > 2σ):")
-                for w in culprits[:3]:  # Top 3 culprits
-                    y_pos = _get_y_position(w.get("position"))
-                    drill_down_lines.append(
-                        f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={y_pos:.3f}"
-                    )
-
-            if non_culprits:
-                drill_down_lines.append(
-                    "Correctly positioned (for comparison):"
-                )
-                for w in non_culprits[:3]:  # Top 3 non-culprits
-                    y_pos = _get_y_position(w.get("position"))
-                    drill_down_lines.append(
-                        f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={y_pos:.3f}"
-                    )
-
-            drill_down_text = "\n".join(drill_down_lines)
-
-        issue_block = f"""
-### Issue {idx}: "{word_text}" - {current_label}
-
-**Issue Type**: {issue_type}
-**Evaluator's Concern**: {evaluator_reasoning}
-{drill_down_text}
-
-**Similar Words with Reasoning**:
+**Similar Word Evidence**:
 {similar_text}
+{drill_down_text}
 """
-        issues_text.append(issue_block)
-
-    # Sparsity note
-    sparsity_note = ""
-    if merchant_receipt_count < 10:
-        sparsity_note = (
-            f"\n**NOTE**: Only {merchant_receipt_count} receipts available "
-            f"for {merchant_name}. Evidence may be limited.\n"
         )
 
-    prompt = f"""# Receipt Label Validation
+    # Build patterns section if available
+    patterns_text = ""
+    if line_item_patterns:
+        patterns_text = _build_patterns_text(line_item_patterns)
 
-You are reviewing {len(issues_with_context)} potential labeling issues on a receipt from **{merchant_name}**.
-{sparsity_note}
-## Label Definitions
+    prompt = f"""You are reviewing flagged receipt labels for accuracy.
 
+## Merchant: {merchant_name}
+Receipts analyzed from this merchant: {merchant_receipt_count}
+{patterns_text}
+
+## Allowed Labels (CORE_LABELS)
 {CORE_LABELS}
 
-## Line Item Patterns for {merchant_name}
-
-{format_line_item_patterns(line_item_patterns)}
-
-## Full Receipt Text
-
-Words marked with [brackets] are the issues to review. Labels shown in (parentheses).
-
+## Receipt Text (flagged words in **bold**)
 ```
 {receipt_text}
 ```
 
-## Issues to Review
-
+## Flagged Issues to Review
 {"".join(issues_text)}
 
----
-
 ## Your Task
+For each issue, decide:
+- **VALID**: The current label is correct
+- **INVALID**: The label is wrong - provide the correct label
+- **NEEDS_REVIEW**: Uncertain - needs human review
 
-For EACH issue (0 to {len(issues_with_context) - 1}), analyze the receipt context and similar word evidence to determine:
+Consider:
+1. The word's position and context on the receipt
+2. Similar word evidence (consensus score indicates confidence)
+3. Patterns from other receipts of this merchant
+4. Whether the word should have no label at all (promotional text, legal disclaimers)
 
-1. **Decision**:
-   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
-   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
-   - NEEDS_REVIEW: Genuinely ambiguous, needs human review
-
-2. **Reasoning**: Brief justification referencing the receipt context and/or similar word patterns
-
-3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
-
-4. **Confidence**: low / medium / high
-
-**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
+**IMPORTANT**:
+- Use ONLY labels listed in CORE_LABELS above.
+- If the word should remain unlabeled (promo/legal/footer text), use VALID with null suggested_label.
 
 Respond with ONLY a JSON object:
 ```json
@@ -875,17 +763,124 @@ Respond with ONLY a JSON object:
     {{
       "issue_index": 0,
       "decision": "VALID | INVALID | NEEDS_REVIEW",
-      "reasoning": "Brief reasoning citing receipt context or similar patterns...",
-      "suggested_label": "LABEL_NAME or null",
+      "reasoning": "Brief reasoning...",
+      "suggested_label": "CORE_LABEL or null",
       "confidence": "low | medium | high"
     }}
   ]
 }}
 ```
 
-IMPORTANT: Provide exactly {len(issues_with_context)} reviews, one for each issue index.
+You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
 """
     return prompt
+
+
+def _build_legacy_similar_text(
+    similar_evidence: list[dict[str, Any]], idx: int
+) -> str:
+    """Build similar text from legacy similar_evidence format."""
+    similar_lines = []
+    for e_idx, e in enumerate(similar_evidence[:10]):
+        if e is None:
+            logger.warning("Issue %d: evidence[%d] is None", idx, e_idx)
+            continue
+        if not isinstance(e, dict):
+            logger.warning(
+                "Issue %d: evidence[%d] is %s, not dict",
+                idx,
+                e_idx,
+                type(e).__name__,
+            )
+            continue
+
+        sim_score = e.get("similarity_score", 0)
+        sim_word = e.get("word_text", "")
+        is_same = "same merchant" if e.get("is_same_merchant") else "other"
+
+        # Get validation reasoning - with null safety
+        validated_info = []
+        validated_as = e.get("validated_as")
+        if validated_as and isinstance(validated_as, list):
+            for v in validated_as[:2]:
+                if not isinstance(v, dict):
+                    continue
+                label = v.get("label", "?")
+                reasoning = (v.get("reasoning") or "no reasoning")[:80]
+                validated_info.append(f'{label}: "{reasoning}"')
+
+        invalidated_info = []
+        invalidated_as = e.get("invalidated_as")
+        if invalidated_as and isinstance(invalidated_as, list):
+            for v in invalidated_as[:1]:
+                if not isinstance(v, dict):
+                    continue
+                label = v.get("label", "?")
+                reasoning = (v.get("reasoning") or "no reasoning")[:60]
+                invalidated_info.append(f'~~{label}~~: "{reasoning}"')
+
+        # Format line
+        line = f'- "{sim_word}" ({sim_score:.0%}, {is_same})'
+        if validated_info:
+            line += f" -> {'; '.join(validated_info)}"
+        if invalidated_info:
+            line += f" | {'; '.join(invalidated_info)}"
+        similar_lines.append(line)
+
+    return (
+        "\n".join(similar_lines) if similar_lines else "No similar words found"
+    )
+
+
+def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
+    """Build drill-down text for constellation anomalies."""
+    culprits = [w for w in drill_down if w.get("is_culprit")]
+    non_culprits = [w for w in drill_down if not w.get("is_culprit")]
+
+    def _get_y_position(pos: Any) -> float:
+        if pos is None:
+            return 0.0
+        if isinstance(pos, (int, float)):
+            return float(pos)
+        if isinstance(pos, dict):
+            return float(pos.get("y", 0))
+        return 0.0
+
+    drill_down_lines = [
+        f"\n**Drill-Down Analysis** ({len(drill_down)} words with this label):"
+    ]
+
+    if non_culprits:
+        drill_down_lines.append(
+            f"Normal positions ({len(non_culprits)} words):"
+        )
+        for w in sorted(
+            non_culprits, key=lambda x: _get_y_position(x.get("position"))
+        )[:5]:
+            y = _get_y_position(w.get("position"))
+            drill_down_lines.append(f'  - "{w.get("text", "?")}" at y={y:.2f}')
+
+    if culprits:
+        drill_down_lines.append(f"Outlier positions ({len(culprits)} words):")
+        for w in culprits:
+            y = _get_y_position(w.get("position"))
+            deviation = w.get("deviation", 0)
+            drill_down_lines.append(
+                f'  - "{w.get("text", "?")}" at y={y:.2f} '
+                f"({deviation:.1f}σ from mean)"
+            )
+
+    return "\n".join(drill_down_lines)
+
+
+def _build_patterns_text(line_item_patterns: Optional[dict]) -> str:
+    """Build patterns section text."""
+    if not line_item_patterns:
+        return ""
+    return f"""
+## Line Item Patterns
+{format_line_item_patterns(line_item_patterns)}
+"""
 
 
 # =============================================================================

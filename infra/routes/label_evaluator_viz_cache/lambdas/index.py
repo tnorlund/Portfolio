@@ -212,7 +212,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "body": json.dumps(
                     {
                         "error": "No cached receipts found",
-                        "message": "Run the cache generator Step Function first.",
+                        "message": "Run the label evaluator with analytics enabled to generate the cache.",
                     }
                 ),
                 "headers": {

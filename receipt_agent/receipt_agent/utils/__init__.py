@@ -2,18 +2,22 @@
 
 from .chroma_helpers import (
     LabelDistributionStats,
+    LabelEvidence,
     MerchantBreakdown,
     SimilarityDistribution,
     SimilarWordEvidence,
     ValidationRecord,
     build_word_chroma_id,
+    compute_label_consensus,
     compute_label_distribution,
     compute_merchant_breakdown,
     compute_similarity_distribution,
     describe_position,
     enrich_evidence_with_dynamo_reasoning,
+    format_label_evidence_for_prompt,
     load_dual_chroma_from_s3,
     parse_chroma_id,
+    query_label_evidence,
     query_similar_words,
 )
 from .llm_factory import (
@@ -40,18 +44,22 @@ from .ollama_rate_limit import (
 __all__ = [
     # ChromaDB utilities
     "LabelDistributionStats",
+    "LabelEvidence",
     "MerchantBreakdown",
     "SimilarityDistribution",
     "SimilarWordEvidence",
     "ValidationRecord",
     "build_word_chroma_id",
+    "compute_label_consensus",
     "compute_label_distribution",
     "compute_merchant_breakdown",
     "compute_similarity_distribution",
     "describe_position",
     "enrich_evidence_with_dynamo_reasoning",
+    "format_label_evidence_for_prompt",
     "load_dual_chroma_from_s3",
     "parse_chroma_id",
+    "query_label_evidence",
     "query_similar_words",
     # LLM Factory
     "BothProvidersFailedError",

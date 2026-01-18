@@ -20,9 +20,10 @@ Architecture:
                               ▼
     ┌─────────────────────────────────────────────────────────────┐
     │                    ResilientLLM                              │
-    │   Ollama (primary) ──429──► OpenRouter (fallback)           │
+    │   Ollama (primary) ──429──► OpenRouter Paid (fallback)      │
     │   - If fallback succeeds: return response (no error)        │
     │   - If both fail with 429: raise for circuit breaker        │
+    │   (Free tier skipped to avoid rate limit cascade)           │
     └─────────────────────────────────────────────────────────────┘
 
 Usage:
@@ -47,7 +48,6 @@ Environment Variables:
     For OpenRouter (Fallback):
         OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
         OPENROUTER_API_KEY: OpenRouter API key
-        OPENROUTER_MODEL: Free model name (default: openai/gpt-oss-120b:free)
         OPENROUTER_PAID_MODEL: Paid model name (default: openai/gpt-oss-120b)
 """
 
@@ -967,9 +967,12 @@ def create_resilient_llm(
     **kwargs: Any,
 ) -> ResilientLLM:
     """
-    Create a resilient LLM with three-tier fallback.
+    Create a resilient LLM with two-tier fallback.
 
-    Fallback chain: Ollama → OpenRouter free → OpenRouter paid
+    Fallback chain: Ollama → OpenRouter paid
+
+    Note: The free tier is skipped to avoid rate limit cascades that cause
+    excessive latency when all providers are under load.
 
     Args:
         temperature: LLM temperature (default 0.0)
@@ -980,7 +983,6 @@ def create_resilient_llm(
         ResilientLLM instance with automatic failover
 
     Environment Variables:
-        OPENROUTER_MODEL: Free model (default: openai/gpt-oss-120b:free)
         OPENROUTER_PAID_MODEL: Paid model (default: openai/gpt-oss-120b)
     """
     # Tier 1: Ollama (primary)
@@ -991,44 +993,27 @@ def create_resilient_llm(
         **kwargs,
     )
 
-    # Get model names from environment
-    free_model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+    # Get paid model from environment (skip free tier entirely)
     paid_model = os.environ.get("OPENROUTER_PAID_MODEL", "openai/gpt-oss-120b")
 
-    # Tier 2: OpenRouter free model
-    fallback_free_llm = create_llm(
+    # Tier 2: OpenRouter paid model (skip free tier to avoid rate limit cascade)
+    fallback_llm = create_llm(
         provider=LLMProvider.OPENROUTER,
-        model=free_model,
+        model=paid_model,
         temperature=temperature,
         timeout=timeout,
         **kwargs,
     )
 
-    # Tier 3: OpenRouter paid model (only if different from free)
-    fallback_paid_llm = None
-    if paid_model and paid_model != free_model:
-        fallback_paid_llm = create_llm(
-            provider=LLMProvider.OPENROUTER,
-            model=paid_model,
-            temperature=temperature,
-            timeout=timeout,
-            **kwargs,
-        )
-        logger.info(
-            "Created three-tier resilient LLM: Ollama → %s → %s",
-            free_model,
-            paid_model,
-        )
-    else:
-        logger.info(
-            "Created two-tier resilient LLM: Ollama → %s (no paid fallback)",
-            free_model,
-        )
+    logger.info(
+        "Created two-tier resilient LLM: Ollama → %s (free tier skipped)",
+        paid_model,
+    )
 
     return ResilientLLM(
         primary_llm=primary_llm,
-        fallback_free_llm=fallback_free_llm,
-        fallback_paid_llm=fallback_paid_llm,
+        fallback_free_llm=fallback_llm,  # Using paid model as the fallback
+        fallback_paid_llm=None,  # No third tier needed
     )
 
 

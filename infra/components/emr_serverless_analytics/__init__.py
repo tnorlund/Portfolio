@@ -48,6 +48,9 @@ class EMRServerlessAnalytics(ComponentResource):
         *,
         langsmith_export_bucket_arn: Input[str],
         custom_image_uri: Optional[Input[str]] = None,
+        # Viz-cache integration (optional)
+        cache_bucket_arn: Optional[Input[str]] = None,
+        batch_bucket_arn: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -64,6 +67,12 @@ class EMRServerlessAnalytics(ComponentResource):
         langsmith_bucket_arn = Output.from_input(langsmith_export_bucket_arn)
         self.custom_image_uri = (
             Output.from_input(custom_image_uri) if custom_image_uri else None
+        )
+        self.cache_bucket_arn = (
+            Output.from_input(cache_bucket_arn) if cache_bucket_arn else None
+        )
+        self.batch_bucket_arn = (
+            Output.from_input(batch_bucket_arn) if batch_bucket_arn else None
         )
 
         # ============================================================
@@ -240,77 +249,106 @@ class EMRServerlessAnalytics(ComponentResource):
         )
 
         # EMR job execution policy
+        # Build list of outputs to combine (include optional buckets if provided)
+        policy_outputs = [
+            langsmith_bucket_arn,  # 0
+            self.artifacts_bucket.arn,  # 1
+            self.analytics_bucket.arn,  # 2
+        ]
+        if self.cache_bucket_arn:
+            policy_outputs.append(self.cache_bucket_arn)  # 3
+        if self.batch_bucket_arn:
+            policy_outputs.append(self.batch_bucket_arn)  # 4 (or 3 if no cache)
+
+        def build_policy(args):
+            """Build IAM policy with optional bucket permissions."""
+            statements = [
+                # Read LangSmith Parquet exports
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                    "Resource": [args[0], f"{args[0]}/*"],
+                },
+                # Read Spark job artifacts and write logs
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [args[1], f"{args[1]}/*"],
+                },
+                # Write analytics output
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [args[2], f"{args[2]}/*"],
+                },
+                # CloudWatch Logs
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:PutLogEvents",
+                        "logs:DescribeLogGroups",
+                        "logs:DescribeLogStreams",
+                    ],
+                    "Resource": [
+                        f"arn:aws:logs:{region}:{account_id}"
+                        ":log-group:/aws/emr-serverless/*",
+                        f"arn:aws:logs:{region}:{account_id}"
+                        ":log-group:/aws/emr-serverless/*:*",
+                    ],
+                },
+                # ECR access for custom images
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ecr:GetAuthorizationToken",
+                        "ecr:BatchCheckLayerAvailability",
+                        "ecr:GetDownloadUrlForLayer",
+                        "ecr:BatchGetImage",
+                    ],
+                    "Resource": "*",
+                },
+            ]
+
+            # Add cache bucket permissions if provided
+            idx = 3
+            if self.cache_bucket_arn and len(args) > idx:
+                statements.append({
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [args[idx], f"{args[idx]}/*"],
+                })
+                idx += 1
+
+            # Add batch bucket permissions if provided
+            if self.batch_bucket_arn and len(args) > idx:
+                statements.append({
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                    "Resource": [args[idx], f"{args[idx]}/*"],
+                })
+
+            return json.dumps({"Version": "2012-10-17", "Statement": statements})
+
         aws.iam.RolePolicy(
             f"{name}-emr-job-policy",
             role=self.emr_job_role.id,
-            policy=Output.all(
-                langsmith_bucket_arn,
-                self.artifacts_bucket.arn,
-                self.analytics_bucket.arn,
-            ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            # Read LangSmith Parquet exports
-                            {
-                                "Effect": "Allow",
-                                "Action": ["s3:GetObject", "s3:ListBucket"],
-                                "Resource": [args[0], f"{args[0]}/*"],
-                            },
-                            # Read Spark job artifacts and write logs
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [args[1], f"{args[1]}/*"],
-                            },
-                            # Write analytics output
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:DeleteObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [args[2], f"{args[2]}/*"],
-                            },
-                            # CloudWatch Logs
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "logs:CreateLogGroup",
-                                    "logs:CreateLogStream",
-                                    "logs:PutLogEvents",
-                                    "logs:DescribeLogGroups",
-                                    "logs:DescribeLogStreams",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:logs:{region}:{account_id}"
-                                    ":log-group:/aws/emr-serverless/*",
-                                    f"arn:aws:logs:{region}:{account_id}"
-                                    ":log-group:/aws/emr-serverless/*:*",
-                                ],
-                            },
-                            # ECR access for custom images
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "ecr:GetAuthorizationToken",
-                                    "ecr:BatchCheckLayerAvailability",
-                                    "ecr:GetDownloadUrlForLayer",
-                                    "ecr:BatchGetImage",
-                                ],
-                                "Resource": "*",
-                            },
-                        ],
-                    }
-                )
-            ),
+            policy=Output.all(*policy_outputs).apply(build_policy),
             opts=ResourceOptions(parent=self.emr_job_role),
         )
 
@@ -322,31 +360,21 @@ class EMRServerlessAnalytics(ComponentResource):
             REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
         )
 
-        # Compute content hashes to detect file changes
+        # Compute content hash to detect file changes
         def file_hash(path: Path) -> str:
             """Compute truncated MD5 hash for content change detection."""
             return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
 
-        emr_job_path = spark_scripts_dir / "emr_job.py"
-        viz_cache_path = spark_scripts_dir / "viz_cache_job.py"
+        merged_job_path = spark_scripts_dir / "merged_job.py"
 
-        # Upload emr_job.py (source_hash forces update on content change)
-        self.emr_job_script = aws.s3.BucketObjectv2(
-            f"{name}-emr-job-script",
+        # Upload merged_job.py - unified job for analytics and/or viz-cache
+        # Supports --job-type: analytics, viz-cache, or all
+        self.merged_job_script = aws.s3.BucketObjectv2(
+            f"{name}-merged-job-script",
             bucket=self.artifacts_bucket.id,
-            key="spark/emr_job.py",
-            source=FileAsset(str(emr_job_path)),
-            source_hash=file_hash(emr_job_path),
-            opts=ResourceOptions(parent=self.artifacts_bucket),
-        )
-
-        # Upload viz_cache_job.py (source_hash forces update on content change)
-        self.viz_cache_job_script = aws.s3.BucketObjectv2(
-            f"{name}-viz-cache-job-script",
-            bucket=self.artifacts_bucket.id,
-            key="spark/viz_cache_job.py",
-            source=FileAsset(str(viz_cache_path)),
-            source_hash=file_hash(viz_cache_path),
+            key="spark/merged_job.py",
+            source=FileAsset(str(merged_job_path)),
+            source_hash=file_hash(merged_job_path),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
@@ -369,6 +397,8 @@ class EMRServerlessAnalytics(ComponentResource):
 def create_emr_serverless_analytics(
     langsmith_export_bucket_arn: Input[str],
     custom_image_uri: Optional[Input[str]] = None,
+    cache_bucket_arn: Optional[Input[str]] = None,
+    batch_bucket_arn: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> EMRServerlessAnalytics:
     """Factory function to create EMR Serverless analytics infrastructure.
@@ -376,11 +406,15 @@ def create_emr_serverless_analytics(
     Args:
         langsmith_export_bucket_arn: ARN of the LangSmith export bucket
         custom_image_uri: Optional custom Docker image URI for EMR Serverless
+        cache_bucket_arn: Optional ARN of the viz-cache bucket for merged jobs
+        batch_bucket_arn: Optional ARN of the batch bucket for merged jobs
         opts: Pulumi resource options
     """
     return EMRServerlessAnalytics(
         f"emr-analytics-{stack}",
         langsmith_export_bucket_arn=langsmith_export_bucket_arn,
         custom_image_uri=custom_image_uri,
+        cache_bucket_arn=cache_bucket_arn,
+        batch_bucket_arn=batch_bucket_arn,
         opts=opts,
     )

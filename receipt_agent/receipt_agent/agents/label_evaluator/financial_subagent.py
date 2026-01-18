@@ -33,14 +33,56 @@ Output:
     ]
 """
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langsmith.run_trees import RunTree
 from pydantic import ValidationError
+
+
+@dataclass
+class TraceContext:
+    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
+
+    run_tree: RunTree | None = None
+    headers: dict | None = None
+    trace_id: str | None = None
+    root_run_id: str | None = None
+
+    def get_langchain_config(self) -> dict | None:
+        """Get a LangChain-compatible config for passing to LLM invoke calls.
+
+        Returns config that links LLM calls to this trace context in LangSmith.
+        """
+        if self.run_tree is None:
+            return None
+        try:
+            headers = (
+                self.run_tree.to_headers()
+                if hasattr(self.run_tree, "to_headers")
+                else self.headers
+            )
+            if not headers:
+                return None
+            return {
+                "callbacks": [],
+                "metadata": {
+                    "langsmith_trace_id": self.trace_id,
+                    "langsmith_parent_run_id": (
+                        self.run_tree.id if self.run_tree else None
+                    ),
+                },
+                "configurable": {"langsmith_headers": headers},
+            }
+        except Exception:
+            return None
+
+
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
     FinancialEvaluationResponse,
@@ -85,7 +127,7 @@ class MathIssue:
 # =============================================================================
 
 
-def extract_number(text: str) -> Optional[float]:
+def extract_number(text: str) -> float | None:
     """
     Extract numeric value from text, handling currency symbols and formatting.
 
@@ -175,7 +217,7 @@ def extract_financial_values(
 
 def check_grand_total_math(
     values: dict[str, list[FinancialValue]],
-) -> Optional[MathIssue]:
+) -> MathIssue | None:
     """
     Check: GRAND_TOTAL = SUBTOTAL + TAX
 
@@ -222,7 +264,7 @@ def check_grand_total_math(
 
 def check_subtotal_math(
     values: dict[str, list[FinancialValue]],
-) -> Optional[MathIssue]:
+) -> MathIssue | None:
     """
     Check: SUBTOTAL = sum(LINE_TOTAL)
 
@@ -524,6 +566,109 @@ def parse_financial_evaluation_response(
 
 
 # =============================================================================
+# Shared Helpers for Result Formatting
+# =============================================================================
+
+
+def _pad_decisions(
+    decisions: list[dict] | None,
+    num_issues: int,
+) -> list[dict]:
+    """
+    Pad decisions list to match number of issues.
+
+    If the LLM returns fewer decisions than issues, pad with NEEDS_REVIEW fallbacks.
+    If it returns more, truncate to match.
+
+    Args:
+        decisions: List of decision dicts from LLM (may be None or short)
+        num_issues: Number of issues that need decisions
+
+    Returns:
+        List of exactly num_issues decisions
+    """
+    num_decisions = len(decisions) if decisions else 0
+    if num_decisions != num_issues:
+        logger.warning(
+            "Decision count mismatch: %d issues, %d decisions",
+            num_issues,
+            num_decisions,
+        )
+        decisions = decisions or []
+        while len(decisions) < num_issues:
+            decisions.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision from LLM (count mismatch)",
+                    "suggested_label": None,
+                    "confidence": "low",
+                    "issue_type": "UNKNOWN",
+                }
+            )
+        decisions = decisions[:num_issues]
+    return decisions
+
+
+def _format_financial_results(
+    math_issues: list[MathIssue],
+    decisions: list[dict],
+    image_id: str,
+    receipt_id: int,
+) -> list[dict]:
+    """
+    Format financial validation results from issues and decisions.
+
+    Creates one result entry per involved value in each issue.
+
+    Args:
+        math_issues: List of detected math issues
+        decisions: List of LLM decisions (one per issue)
+        image_id: Receipt image ID
+        receipt_id: Receipt ID
+
+    Returns:
+        List of result dicts ready for apply_llm_decisions()
+    """
+    results = []
+    for issue, decision in zip(math_issues, decisions, strict=False):
+        for fv in issue.involved_values:
+            wc = fv.word_context
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": wc.word.line_id,
+                        "word_id": wc.word.word_id,
+                        "current_label": fv.label,
+                        "word_text": fv.word_text,
+                        "issue_type": issue.issue_type,
+                        "expected_value": issue.expected_value,
+                        "actual_value": issue.actual_value,
+                        "difference": issue.difference,
+                        "description": issue.description,
+                    },
+                    "llm_review": {
+                        "decision": decision.get("decision", "NEEDS_REVIEW"),
+                        "reasoning": decision.get("reasoning", ""),
+                        "suggested_label": decision.get("suggested_label"),
+                        "confidence": decision.get("confidence", "medium"),
+                    },
+                }
+            )
+
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        dec = r["llm_review"]["decision"]
+        if dec in decision_counts:
+            decision_counts[dec] += 1
+    logger.info("Financial validation results: %s", decision_counts)
+
+    return results
+
+
+# =============================================================================
 # Main Evaluation Function
 # =============================================================================
 
@@ -651,70 +796,12 @@ def evaluate_financial_math(
 
         # Step 3: Use decisions (either from structured or text parsing)
         # Note: LLM returns one decision per issue, but each issue has multiple values
-
-        # Handle length mismatches by padding with NEEDS_REVIEW fallback
-        num_issues = len(math_issues)
-        num_decisions = len(decisions) if decisions else 0
-        if num_decisions != num_issues:
-            logger.warning(
-                "Decision count mismatch: %d issues, %d decisions",
-                num_issues,
-                num_decisions,
-            )
-            decisions = decisions or []
-            while len(decisions) < num_issues:
-                decisions.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": "No decision from LLM (count mismatch)",
-                        "suggested_label": None,
-                        "confidence": "low",
-                        "issue_type": "UNKNOWN",
-                    }
-                )
-            decisions = decisions[:num_issues]
+        decisions = _pad_decisions(decisions, len(math_issues))
 
         # Step 4: Format output - create one result per involved value
-        results = []
-        for issue, decision in zip(math_issues, decisions, strict=False):
-            for fv in issue.involved_values:
-                wc = fv.word_context
-                results.append(
-                    {
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "issue": {
-                            "line_id": wc.word.line_id,
-                            "word_id": wc.word.word_id,
-                            "current_label": fv.label,
-                            "word_text": fv.word_text,
-                            "issue_type": issue.issue_type,
-                            # Equation breakdown for visualization
-                            "expected_value": issue.expected_value,
-                            "actual_value": issue.actual_value,
-                            "difference": issue.difference,
-                            "description": issue.description,
-                        },
-                        "llm_review": {
-                            "decision": decision.get(
-                                "decision", "NEEDS_REVIEW"
-                            ),
-                            "reasoning": decision.get("reasoning", ""),
-                            "suggested_label": decision.get("suggested_label"),
-                            "confidence": decision.get("confidence", "medium"),
-                        },
-                    }
-                )
-
-        # Log summary
-        decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        for r in results:
-            dec = r["llm_review"]["decision"]
-            if dec in decision_counts:
-                decision_counts[dec] += 1
-        logger.info("Financial validation results: %s", decision_counts)
-
-        return results
+        return _format_financial_results(
+            math_issues, decisions, image_id, receipt_id
+        )
 
     except Exception as e:
         # Check for rate limit errors
@@ -747,6 +834,203 @@ def evaluate_financial_math(
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
                             # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
+                        },
+                        "llm_review": {
+                            "decision": "NEEDS_REVIEW",
+                            "reasoning": f"LLM call failed: {e}",
+                            "suggested_label": None,
+                            "confidence": "low",
+                        },
+                    }
+                )
+        return results
+
+
+# =============================================================================
+# Async version
+# =============================================================================
+
+
+async def evaluate_financial_math_async(
+    visual_lines: list[VisualLine],
+    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str = "Unknown",
+    trace_ctx: TraceContext | None = None,
+) -> list[dict]:
+    """
+    Async version of evaluate_financial_math.
+
+    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
+    or any LLM that supports ainvoke().
+
+    Args:
+        visual_lines: Visual lines from the receipt (words with labels)
+        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
+        image_id: Image ID for output format
+        receipt_id: Receipt ID for output format
+        merchant_name: Merchant name for context
+        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
+
+    Returns:
+        List of decisions ready for apply_llm_decisions()
+    """
+    # Get LangChain config for trace linking (passed to LLM calls)
+    llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
+
+    # Step 1: Detect math issues
+    math_issues = detect_math_issues(visual_lines)
+    logger.info("Detected %d math issues", len(math_issues))
+
+    if not math_issues:
+        logger.info("No math issues found, skipping financial validation")
+        return []
+
+    for issue in math_issues:
+        logger.info("  %s: %s", issue.issue_type, issue.description)
+
+    # Step 2: Build prompt
+    prompt = build_financial_validation_prompt(
+        visual_lines=visual_lines,
+        math_issues=math_issues,
+        merchant_name=merchant_name,
+    )
+
+    # Step 3: Call LLM asynchronously
+    max_retries = 3
+    num_issues = len(math_issues)
+    use_structured = hasattr(llm, "with_structured_output")
+
+    try:
+        decisions = None
+
+        for attempt in range(max_retries):
+            try:
+                if use_structured:
+                    try:
+                        structured_llm = llm.with_structured_output(
+                            FinancialEvaluationResponse
+                        )
+                        if hasattr(structured_llm, "ainvoke"):
+                            response: FinancialEvaluationResponse = (
+                                await structured_llm.ainvoke(
+                                    prompt, config=llm_config
+                                )
+                            )
+                        else:
+                            # Run sync invoke in thread pool to avoid blocking event loop
+                            response: FinancialEvaluationResponse = (
+                                await asyncio.to_thread(
+                                    structured_llm.invoke,
+                                    prompt,
+                                    config=llm_config,
+                                )
+                            )
+                        decisions = response.to_ordered_list(num_issues)
+                        logger.debug(
+                            "Structured output succeeded with %d evaluations",
+                            len(decisions),
+                        )
+                        break
+                    except Exception as struct_err:
+                        logger.warning(
+                            "Structured output failed (attempt %d), "
+                            "falling back to text: %s",
+                            attempt + 1,
+                            struct_err,
+                        )
+
+                # Text parsing fallback
+                if hasattr(llm, "ainvoke"):
+                    response = await llm.ainvoke(prompt, config=llm_config)
+                else:
+                    # Run sync invoke in thread pool to avoid blocking event loop
+                    response = await asyncio.to_thread(
+                        llm.invoke, prompt, config=llm_config
+                    )
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_financial_evaluation_response(
+                    response_text, num_issues
+                )
+
+                parse_failures = sum(
+                    1
+                    for d in decisions
+                    if "Failed to parse" in d.get("reasoning", "")
+                )
+                if parse_failures == 0:
+                    break
+                elif parse_failures < len(decisions):
+                    logger.info(
+                        "Partial parse success: %d/%d parsed",
+                        len(decisions) - parse_failures,
+                        len(decisions),
+                    )
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "All decisions failed to parse, retrying (attempt %d)",
+                            attempt + 1,
+                        )
+                    else:
+                        logger.warning(
+                            "All decisions failed after %d attempts",
+                            max_retries,
+                        )
+
+            except Exception as inner_err:
+                if attempt == max_retries - 1:
+                    raise inner_err
+                logger.warning(
+                    "LLM invocation failed (attempt %d): %s",
+                    attempt + 1,
+                    inner_err,
+                )
+
+        # Step 4: Format output
+        decisions = _pad_decisions(decisions, len(math_issues))
+        return _format_financial_results(
+            math_issues, decisions, image_id, receipt_id
+        )
+
+    except Exception as e:
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error(
+                "Financial LLM rate limited, propagating for retry: %s", e
+            )
+            raise
+
+        logger.error("Financial LLM call failed: %s", e)
+
+        results = []
+        for issue in math_issues:
+            for fv in issue.involved_values:
+                wc = fv.word_context
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": wc.word.line_id,
+                            "word_id": wc.word.word_id,
+                            "current_label": fv.label,
+                            "word_text": fv.word_text,
+                            "issue_type": issue.issue_type,
                             "expected_value": issue.expected_value,
                             "actual_value": issue.actual_value,
                             "difference": issue.difference,

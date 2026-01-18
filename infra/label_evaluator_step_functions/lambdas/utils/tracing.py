@@ -242,6 +242,57 @@ class TraceContext:
             return self.run_tree.to_headers()
         return self.headers
 
+    def get_langchain_config(self) -> Optional[dict]:
+        """Get a LangChain-compatible config dict for passing to LLM invoke calls.
+
+        This config ensures LLM calls are properly nested under this trace context
+        in LangSmith. Pass this to llm.invoke(prompt, config=config) or
+        llm.ainvoke(prompt, config=config).
+
+        Returns:
+            Dict with 'callbacks' key containing LangSmith callback handler,
+            or None if tracing is not available.
+
+        Example:
+            config = trace_ctx.get_langchain_config()
+            if config:
+                response = llm.invoke(prompt, config=config)
+            else:
+                response = llm.invoke(prompt)
+        """
+        if self.run_tree is None:
+            return None
+
+        try:
+            # Get the headers which contain trace context info
+            headers = self.get_child_headers()
+            if not headers:
+                return None
+
+            # LangChain uses 'callbacks' in config to pass trace context
+            # The LangSmithCallbackHandler can be initialized with parent headers
+
+            # Return config that will link to this trace via headers
+            # When passed to invoke(), LangChain will use these headers
+            # NOTE: Do NOT pass run_id - it causes LangChain to reuse the parent's
+            # trace ID, resulting in "dotted_order appears more than once" errors
+            return {
+                "callbacks": [],  # LangSmith auto-traces when LANGCHAIN_TRACING_V2=true
+                "metadata": {
+                    "langsmith_trace_id": self.trace_id,
+                    "langsmith_parent_run_id": (
+                        self.run_tree.id if self.run_tree else None
+                    ),
+                },
+                # Pass headers for trace linking
+                "configurable": {
+                    "langsmith_headers": headers,
+                },
+            }
+        except Exception as e:
+            logger.warning("Failed to create LangChain config: %s", e)
+            return None
+
     def set_outputs(self, outputs: dict) -> None:
         """Set the outputs on the current run tree.
 
@@ -514,11 +565,11 @@ def resume_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            with _tracing_context(parent=child_headers):
-                yield ctx
-        else:
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=child_headers) after child_run.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if child_run is not None:
             try:
@@ -589,16 +640,14 @@ def child_trace(
             inputs=inputs or {},
             extra={"metadata": metadata or {}},
         )
+        # Post immediately after create_child to register the trace
         child.post()
 
-        # Use headers for tracing_context (consistent across all helpers)
         child_headers = child.to_headers()
         logger.info(
-            "[child_trace] Created child id=%s, trace_id=%s, headers=%s, using_tracing_context=%s",
+            "[child_trace] Created and posted child id=%s, trace_id=%s",
             child.id,
             child.trace_id,
-            list(child_headers.keys()) if child_headers else None,
-            _tracing_context is not None,
         )
         ctx = TraceContext(
             run_tree=child,
@@ -610,29 +659,128 @@ def child_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            logger.info(
-                "[child_trace] Activating tracing_context with parent=headers"
-            )
-            with _tracing_context(parent=child_headers):
-                yield ctx
-        else:
-            logger.warning(
-                "[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested"
-            )
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        yield ctx
     finally:
         if child is not None:
             try:
                 child.end()
                 child.patch()
-                logger.info(
-                    "[child_trace] Child '%s' completed and patched", name
-                )
+                logger.info("[child_trace] Child '%s' ended and patched", name)
             except Exception as e:
                 logger.warning(
                     "Failed to finalize child trace: %s", e, exc_info=True
                 )
+
+
+def start_child_trace(
+    name: str,
+    parent_ctx: TraceContext,
+    run_type: str = "chain",
+    metadata: Optional[dict] = None,
+    inputs: Optional[dict] = None,
+) -> TraceContext:
+    """Create a child trace without context manager (for async parallelism).
+
+    Use this when you need to create multiple child traces that run
+    concurrently with asyncio.gather(). Call end_child_trace() when done.
+
+    Args:
+        name: Name for this child span
+        parent_ctx: Parent TraceContext
+        run_type: Type of run
+        metadata: Optional metadata
+        inputs: Optional inputs to capture in the trace
+
+    Returns:
+        TraceContext for the child span (call end_child_trace when done)
+
+    Example:
+        # Create traces for parallel work
+        currency_ctx = start_child_trace("currency_eval", parent_ctx)
+        metadata_ctx = start_child_trace("metadata_eval", parent_ctx)
+
+        # Run async tasks with their trace contexts
+        results = await asyncio.gather(
+            evaluate_currency_async(..., trace_ctx=currency_ctx),
+            evaluate_metadata_async(..., trace_ctx=metadata_ctx),
+        )
+
+        # End the traces
+        end_child_trace(currency_ctx, outputs={"count": len(results[0])})
+        end_child_trace(metadata_ctx, outputs={"count": len(results[1])})
+    """
+    logger.info(
+        "[start_child_trace v%s] Creating child '%s' (has_langsmith=%s, parent_run_tree=%s)",
+        TRACING_VERSION,
+        name,
+        HAS_LANGSMITH,
+        parent_ctx.run_tree is not None,
+    )
+
+    if not HAS_LANGSMITH or parent_ctx.run_tree is None:
+        logger.warning(
+            "[start_child_trace] No LangSmith or no parent run_tree - returning empty context"
+        )
+        return TraceContext(headers=parent_ctx.headers)
+
+    if not hasattr(parent_ctx.run_tree, "create_child"):
+        logger.warning(
+            "[start_child_trace] Parent run_tree has no create_child method"
+        )
+        return TraceContext(headers=parent_ctx.headers)
+
+    try:
+        child = parent_ctx.run_tree.create_child(
+            name=name,
+            run_type=run_type,
+            inputs=inputs or {},
+            extra={"metadata": metadata or {}},
+        )
+        # Post immediately to register the trace
+        child.post()
+
+        child_headers = child.to_headers()
+        logger.info(
+            "[start_child_trace] Created and posted child id=%s, trace_id=%s",
+            child.id,
+            child.trace_id,
+        )
+        return TraceContext(
+            run_tree=child,
+            headers=child_headers,
+            trace_id=parent_ctx.trace_id,
+            root_run_id=parent_ctx.root_run_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to create child trace: %s", e)
+        return TraceContext(headers=parent_ctx.headers)
+
+
+def end_child_trace(
+    ctx: TraceContext,
+    outputs: Optional[dict] = None,
+) -> None:
+    """End a child trace created with start_child_trace().
+
+    Args:
+        ctx: TraceContext from start_child_trace()
+        outputs: Optional outputs to record
+    """
+    if ctx.run_tree is None:
+        return
+
+    try:
+        if outputs:
+            ctx.run_tree.outputs = outputs
+        ctx.run_tree.end()
+        ctx.run_tree.patch()
+        logger.info(
+            "[end_child_trace] Child ended and patched (id=%s)",
+            ctx.run_tree.id,
+        )
+    except Exception as e:
+        logger.warning("Failed to finalize child trace: %s", e, exc_info=True)
 
 
 def log_trace_event(
@@ -1030,7 +1178,7 @@ def end_receipt_trace(
         trace_info.run_tree.end()
         trace_info.run_tree.patch()
         logger.info(
-            "Receipt trace ended (image_id=%s, receipt_id=%s)",
+            "Receipt trace ended and patched (image_id=%s, receipt_id=%s)",
             (
                 trace_info.image_id[:8]
                 if len(trace_info.image_id) > 8
@@ -1384,11 +1532,11 @@ def receipt_state_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            with _tracing_context(parent=run_tree_headers):
-                yield ctx
-        else:
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if run_tree is not None:
             try:
@@ -1571,17 +1719,11 @@ def state_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            logger.info(
-                "[state_trace] Activating tracing_context with parent=headers"
-            )
-            with _tracing_context(parent=run_tree_headers):
-                yield ctx
-        else:
-            logger.warning(
-                "[state_trace] _tracing_context is None - nested calls may not be linked"
-            )
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if run_tree is not None:
             try:

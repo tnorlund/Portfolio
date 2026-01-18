@@ -113,7 +113,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         "image_id": "img_abc",   # Receipt identification
         "receipt_id": 1,         # Receipt identification
         "line_item_patterns_s3_key": "line_item_patterns/{merchant_hash}.json",
-        "dry_run": false,
         "trace_id": "...",       # From upstream Lambda
         "root_run_id": "..."     # From upstream Lambda
     }
@@ -154,7 +153,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     merchant_receipt_count = event.get("merchant_receipt_count", 0)
     batch_index = event.get("batch_index", 0)
     llm_batch_index = event.get("llm_batch_index", 0)
-    dry_run = event.get("dry_run", False)
 
     # Compute line_item_patterns_s3_key from merchant_name if not provided
     # This enables the two-phase architecture where receipts are processed
@@ -181,8 +179,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     root_run_id = event.get("root_run_id", "")
     root_dotted_order = event.get("root_dotted_order")
 
-    # Check if tracing is enabled
-    enable_tracing = event.get("enable_tracing", False)
+    # Tracing is always enabled
+    enable_tracing = True
 
     # Support multiple input key formats:
     # - results_s3_key: From simplified per-receipt flow (EvaluateLabels output)
@@ -729,9 +727,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     reviewed_s3_key,
                 )
 
-            # 8. Apply decisions to DynamoDB (if not dry_run)
+            # 8. Apply decisions to DynamoDB
             apply_stats = None
-            if not dry_run and dynamo_client and reviewed_issues:
+            if dynamo_client and reviewed_issues:
                 with child_trace("apply_decisions", trace_ctx):
                     logger.info(
                         "Applying %d LLM decisions to DynamoDB...",
@@ -743,8 +741,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         execution_id=execution_id,
                     )
                     logger.info("Applied decisions: %s", apply_stats)
-            elif dry_run:
-                logger.info("Skipping DynamoDB writes (dry_run=true)")
 
             # 9. Log metrics
             from utils.emf_metrics import emf_metrics
@@ -770,7 +766,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             emf_metrics.log_metrics(
                 metrics=metrics,
                 dimensions={"Merchant": merchant_name[:50]},
-                properties={"execution_id": execution_id, "dry_run": dry_run},
+                properties={"execution_id": execution_id},
                 units={"ProcessingTimeSeconds": "Seconds"},
             )
 
@@ -784,7 +780,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 "decisions": dict(decisions),
                 "reviewed_issues_s3_key": reviewed_s3_key,
                 "rate_limit_stats": rate_limit_stats,
-                "dry_run": dry_run,
                 # Full reviewed issues for visualization
                 "reviewed_issues": reviewed_issues,
             }

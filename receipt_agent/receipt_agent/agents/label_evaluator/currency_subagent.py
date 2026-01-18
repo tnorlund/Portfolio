@@ -28,14 +28,56 @@ Output:
     ]
 """
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langsmith.run_trees import RunTree
 from pydantic import ValidationError
+
+
+@dataclass
+class TraceContext:
+    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
+
+    run_tree: RunTree | None = None
+    headers: dict | None = None
+    trace_id: str | None = None
+    root_run_id: str | None = None
+
+    def get_langchain_config(self) -> dict | None:
+        """Get a LangChain-compatible config for passing to LLM invoke calls.
+
+        Returns config that links LLM calls to this trace context in LangSmith.
+        """
+        if self.run_tree is None:
+            return None
+        try:
+            headers = (
+                self.run_tree.to_headers()
+                if hasattr(self.run_tree, "to_headers")
+                else self.headers
+            )
+            if not headers:
+                return None
+            return {
+                "callbacks": [],
+                "metadata": {
+                    "langsmith_trace_id": self.trace_id,
+                    "langsmith_parent_run_id": (
+                        self.run_tree.id if self.run_tree else None
+                    ),
+                },
+                "configurable": {"langsmith_headers": headers},
+            }
+        except Exception:
+            return None
+
+
 from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
@@ -85,11 +127,11 @@ class CurrencyWord:
     """A word that is currency-related (labeled or should be labeled)."""
 
     word_context: WordContext
-    current_label: Optional[str]
+    current_label: str | None
     line_index: int
     position_zone: str  # "left", "center", "right"
     looks_like_currency: bool
-    non_currency_pattern: Optional[str]  # If it matches a non-currency pattern
+    non_currency_pattern: str | None  # If it matches a non-currency pattern
 
 
 # =============================================================================
@@ -97,7 +139,7 @@ class CurrencyWord:
 # =============================================================================
 
 
-def get_position_zone(x: float, zones: Optional[dict] = None) -> str:
+def get_position_zone(x: float, zones: dict | None = None) -> str:
     """Determine which zone (left/center/right) a word is in."""
     if zones:
         left_bounds = zones.get("left", [0, 0.33])
@@ -133,7 +175,7 @@ def looks_like_currency(text: str) -> bool:
         return False
 
 
-def get_non_currency_pattern(text: str) -> Optional[str]:
+def get_non_currency_pattern(text: str) -> str | None:
     """Check if text matches a non-currency pattern like phone, date, etc."""
     for pattern, label in NON_CURRENCY_PATTERNS:
         if pattern.match(text):
@@ -143,9 +185,9 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[
-        dict
-    ] = None,  # Reserved for future pattern-based detection
+    patterns: (
+        dict | None
+    ) = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -189,7 +231,7 @@ def identify_line_item_rows(
 def collect_currency_words(
     visual_lines: list[VisualLine],
     line_item_rows: list[LineItemRow],
-    patterns: Optional[dict] = None,
+    patterns: dict | None = None,
 ) -> list[CurrencyWord]:
     """
     Collect all words that need evaluation on line item rows.
@@ -247,7 +289,7 @@ def collect_currency_words(
 def build_currency_evaluation_prompt(
     visual_lines: list[VisualLine],
     currency_words: list[CurrencyWord],
-    patterns: Optional[dict] = None,
+    patterns: dict | None = None,
     merchant_name: str = "Unknown",
 ) -> str:
     """
@@ -432,7 +474,7 @@ def parse_currency_evaluation_response(
 
 def evaluate_currency_labels(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict],
+    patterns: dict | None,
     llm: BaseChatModel,
     image_id: str,
     receipt_id: int,
@@ -494,7 +536,245 @@ def evaluate_currency_labels(
         merchant_name=merchant_name,
     )
 
-    # Try structured output first, fall back to text parsing
+    # Try structured output with retries, then fall back to text parsing
+    structured_retries = 3
+    text_retries = 2
+    num_words = len(currency_words)
+    decisions = None
+
+    # Check if LLM supports structured output
+    use_structured = hasattr(llm, "with_structured_output")
+
+    # Phase 1: Try structured output multiple times
+    if use_structured:
+        for attempt in range(structured_retries):
+            try:
+                structured_llm = llm.with_structured_output(
+                    CurrencyEvaluationResponse
+                )
+                response: CurrencyEvaluationResponse = structured_llm.invoke(
+                    prompt
+                )
+                decisions = response.to_ordered_list(num_words)
+                logger.debug(
+                    "Structured output succeeded with %d evaluations",
+                    len(decisions),
+                )
+                break  # Success, exit retry loop
+            except Exception as struct_err:
+                # Check if this is a rate limit error that should propagate
+                from receipt_agent.utils import (
+                    BothProvidersFailedError,
+                    OllamaRateLimitError,
+                )
+
+                if isinstance(
+                    struct_err,
+                    (OllamaRateLimitError, BothProvidersFailedError),
+                ):
+                    logger.error(
+                        "Currency LLM rate limited, propagating for retry: %s",
+                        struct_err,
+                    )
+                    raise  # Let Step Function retry handle this
+
+                logger.warning(
+                    "Structured output failed (attempt %d/%d): %s",
+                    attempt + 1,
+                    structured_retries,
+                    struct_err,
+                )
+                if attempt == structured_retries - 1:
+                    logger.info(
+                        "All %d structured output attempts failed, "
+                        "falling back to text parsing",
+                        structured_retries,
+                    )
+
+    # Phase 2: Fall back to text parsing if structured output failed or unavailable
+    if decisions is None:
+        for attempt in range(text_retries):
+            try:
+                response = llm.invoke(prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_currency_evaluation_response(
+                    response_text, num_words
+                )
+
+                # Check if all decisions failed to parse
+                parse_failures = sum(
+                    1
+                    for d in decisions
+                    if "Failed to parse" in d.get("reasoning", "")
+                )
+
+                if parse_failures == 0:
+                    logger.debug(
+                        "Text parsing succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                    break
+                elif parse_failures < len(decisions):
+                    logger.info(
+                        "Partial text parse success: %d/%d parsed",
+                        len(decisions) - parse_failures,
+                        len(decisions),
+                    )
+                    break
+                else:
+                    if attempt < text_retries - 1:
+                        logger.warning(
+                            "All %d decisions failed text parse "
+                            "(attempt %d/%d), retrying...",
+                            len(decisions),
+                            attempt + 1,
+                            text_retries,
+                        )
+                    else:
+                        logger.warning(
+                            "All %d decisions failed text parse "
+                            "after %d attempts",
+                            len(decisions),
+                            text_retries,
+                        )
+            except Exception as e:
+                logger.error(
+                    "Text parsing failed on attempt %d: %s", attempt + 1, e
+                )
+                if attempt == text_retries - 1:
+                    decisions = None
+
+    # Use the decisions we got (best effort)
+    if decisions is None:
+        decisions = [
+            {
+                "decision": "NEEDS_REVIEW",
+                "reasoning": "No response received",
+                "suggested_label": None,
+                "confidence": "low",
+            }
+            for _ in currency_words
+        ]
+
+    # Step 5: Format output for apply_llm_decisions
+    # Handle length mismatches by padding with NEEDS_REVIEW fallback
+    results = []
+    num_words = len(currency_words)
+    num_decisions = len(decisions)
+    if num_decisions != num_words:
+        logger.warning(
+            "Decision count mismatch: %d words, %d decisions",
+            num_words,
+            num_decisions,
+        )
+        # Pad decisions if too few, or truncate if too many
+        while len(decisions) < num_words:
+            decisions.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision from LLM (count mismatch)",
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
+        decisions = decisions[:num_words]
+
+    for cw, decision in zip(currency_words, decisions, strict=False):
+        wc = cw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": cw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
+    # Log summary - safely handle unexpected decision values
+    decision_counts: dict[str, int] = {
+        "VALID": 0,
+        "INVALID": 0,
+        "NEEDS_REVIEW": 0,
+    }
+    for r in results:
+        decision = r.get("llm_review", {}).get("decision", "OTHER")
+        decision_counts[decision] = decision_counts.get(decision, 0) + 1
+    logger.info("Currency evaluation results: %s", decision_counts)
+
+    return results
+
+
+# =============================================================================
+# Async version
+# =============================================================================
+
+
+async def evaluate_currency_labels_async(
+    visual_lines: list[VisualLine],
+    patterns: dict | None,
+    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str = "Unknown",
+    trace_ctx: TraceContext | None = None,
+) -> list[dict]:
+    """
+    Async version of evaluate_currency_labels.
+
+    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
+    or any LLM that supports ainvoke().
+
+    Args:
+        visual_lines: Visual lines from the receipt (words with labels)
+        patterns: Line item patterns from DiscoverLineItemPatterns
+        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
+        image_id: Image ID for output format
+        receipt_id: Receipt ID for output format
+        merchant_name: Merchant name for context
+        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
+
+    Returns:
+        List of decisions ready for apply_llm_decisions()
+    """
+    # Get LangChain config for trace linking (passed to LLM calls)
+    llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
+
+    # Step 1: Identify line item rows
+    line_item_rows = identify_line_item_rows(visual_lines, patterns)
+    logger.info("Identified %s line item rows", len(line_item_rows))
+
+    if not line_item_rows:
+        logger.info("No line item rows found, skipping currency evaluation")
+        return []
+
+    # Step 2: Collect currency words to evaluate
+    currency_words = collect_currency_words(
+        visual_lines, line_item_rows, patterns
+    )
+    logger.info("Found %s currency words to evaluate", len(currency_words))
+
+    if not currency_words:
+        logger.info("No currency words found to evaluate")
+        return []
+
+    # Step 3: Build prompt
+    prompt = build_currency_evaluation_prompt(
+        visual_lines=visual_lines,
+        currency_words=currency_words,
+        patterns=patterns,
+        merchant_name=merchant_name,
+    )
+
+    # Step 4: Call LLM asynchronously
     max_retries = 3
     last_decisions = None
     num_words = len(currency_words)
@@ -509,9 +789,22 @@ def evaluate_currency_labels(
                     structured_llm = llm.with_structured_output(
                         CurrencyEvaluationResponse
                     )
-                    response: CurrencyEvaluationResponse = (
-                        structured_llm.invoke(prompt)
-                    )
+                    # Use ainvoke for async call
+                    if hasattr(structured_llm, "ainvoke"):
+                        response: CurrencyEvaluationResponse = (
+                            await structured_llm.ainvoke(
+                                prompt, config=llm_config
+                            )
+                        )
+                    else:
+                        # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
+                        response: CurrencyEvaluationResponse = (
+                            await asyncio.to_thread(
+                                structured_llm.invoke,
+                                prompt,
+                                config=llm_config,
+                            )
+                        )
                     decisions = response.to_ordered_list(num_words)
                     logger.debug(
                         "Structured output succeeded with %d evaluations",
@@ -524,7 +817,13 @@ def evaluate_currency_labels(
                         attempt + 1,
                         struct_err,
                     )
-                    response = llm.invoke(prompt)
+                    if hasattr(llm, "ainvoke"):
+                        response = await llm.ainvoke(prompt, config=llm_config)
+                    else:
+                        # Run sync invoke in thread pool to avoid blocking event loop
+                        response = await asyncio.to_thread(
+                            llm.invoke, prompt, config=llm_config
+                        )
                     response_text = (
                         response.content
                         if hasattr(response, "content")
@@ -534,7 +833,14 @@ def evaluate_currency_labels(
                         response_text, num_words
                     )
             else:
-                response = llm.invoke(prompt)
+                # Use ainvoke if available, otherwise fall back to invoke
+                if hasattr(llm, "ainvoke"):
+                    response = await llm.ainvoke(prompt, config=llm_config)
+                else:
+                    # Run sync invoke in thread pool to avoid blocking event loop
+                    response = await asyncio.to_thread(
+                        llm.invoke, prompt, config=llm_config
+                    )
                 response_text = (
                     response.content
                     if hasattr(response, "content")
@@ -546,7 +852,7 @@ def evaluate_currency_labels(
 
             last_decisions = decisions
 
-            # Check if all decisions failed to parse (indicates malformed response)
+            # Check if all decisions failed to parse
             parse_failures = sum(
                 1
                 for d in decisions
@@ -554,10 +860,8 @@ def evaluate_currency_labels(
             )
 
             if parse_failures == 0:
-                # Success - no parse failures
                 break
             elif parse_failures < len(decisions):
-                # Partial success - some parsed, use what we have
                 logger.info(
                     "Partial parse success: %d/%d parsed on attempt %d",
                     len(decisions) - parse_failures,
@@ -566,7 +870,6 @@ def evaluate_currency_labels(
                 )
                 break
             else:
-                # All failed to parse - retry if we have attempts left
                 if attempt < max_retries - 1:
                     logger.warning(
                         "All %d decisions failed to parse on attempt %d, retrying...",
@@ -581,7 +884,6 @@ def evaluate_currency_labels(
                     )
 
         except Exception as e:
-            # Check if this is a rate limit error that should trigger Step Function retry
             from receipt_agent.utils import (
                 BothProvidersFailedError,
                 OllamaRateLimitError,
@@ -591,7 +893,7 @@ def evaluate_currency_labels(
                 logger.error(
                     "Currency LLM rate limited, propagating for retry: %s", e
                 )
-                raise  # Let Step Function retry handle this
+                raise
 
             logger.error(
                 "Currency LLM call failed on attempt %d: %s", attempt + 1, e
@@ -633,7 +935,6 @@ def evaluate_currency_labels(
     ]
 
     # Step 5: Format output for apply_llm_decisions
-    # Handle length mismatches by padding with NEEDS_REVIEW fallback
     results = []
     num_words = len(currency_words)
     num_decisions = len(decisions)
@@ -643,7 +944,6 @@ def evaluate_currency_labels(
             num_words,
             num_decisions,
         )
-        # Pad decisions if too few, or truncate if too many
         while len(decisions) < num_words:
             decisions.append(
                 {
@@ -671,10 +971,15 @@ def evaluate_currency_labels(
             }
         )
 
-    # Log summary
-    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    # Log summary - safely handle unexpected decision values
+    decision_counts: dict[str, int] = {
+        "VALID": 0,
+        "INVALID": 0,
+        "NEEDS_REVIEW": 0,
+    }
     for r in results:
-        decision_counts[r["llm_review"]["decision"]] += 1
+        decision = r.get("llm_review", {}).get("decision", "OTHER")
+        decision_counts[decision] = decision_counts.get(decision, 0) + 1
     logger.info("Currency evaluation results: %s", decision_counts)
 
     return results
@@ -687,7 +992,7 @@ def evaluate_currency_labels(
 
 def evaluate_currency_labels_sync(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict],
+    patterns: dict | None,
     llm: BaseChatModel,
     image_id: str,
     receipt_id: int,

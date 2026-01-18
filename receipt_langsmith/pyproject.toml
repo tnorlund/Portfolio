@@ -23,7 +23,6 @@ dependencies = [
     "httpx>=0.25.0",
     "tenacity>=8.0.0",
     "boto3>=1.34.0",
-    "pyarrow>=14.0.0",
     "langsmith>=0.1.0",
 ]
 

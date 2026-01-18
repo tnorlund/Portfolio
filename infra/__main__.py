@@ -1296,6 +1296,14 @@ pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
+# Shared resources for label evaluator pipeline (buckets used by multiple components)
+# Creating these first breaks circular dependencies between EMR and Step Function
+from components.shared_label_evaluator_resources import (
+    create_shared_label_evaluator_resources,
+)
+
+label_evaluator_shared = create_shared_label_evaluator_resources()
+
 # NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
 # the default EMR image initially. After the CodeBuild pipeline completes, it will
 # update the EMR Application with the custom image (see emr_application_name above).
@@ -1304,27 +1312,39 @@ emr_analytics = create_emr_serverless_analytics(
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
     # Uncomment after first successful deployment:
     # custom_image_uri=emr_docker_image.image_uri,
+    # Shared buckets - grant EMR job access
+    cache_bucket_arn=label_evaluator_shared.viz_cache_bucket_arn,
+    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
 )
 pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+pulumi.export(
+    "label_evaluator_viz_cache_merged_bucket", label_evaluator_shared.viz_cache_bucket_name
+)
 
-# Label Evaluator Step Function (with LangSmith observability + EMR analytics)
+# Label Evaluator Step Function (with LangSmith observability + EMR analytics + viz-cache)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    # Increased from 3 - OpenRouter fallback handles rate limits
-    max_concurrency=8,
-    batch_size=25,  # 25 receipts per batch
     # EMR Serverless Analytics integration
     emr_application_id=emr_analytics.emr_application.id,
     emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+    # Shared resources (viz-cache bucket for EMR output, batch bucket for data)
+    cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
+    batch_bucket_name=label_evaluator_shared.batch_bucket_name,
+    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
+    # LangSmith integration
+    langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
+    langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
+    setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
+    setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
@@ -1415,34 +1435,22 @@ pulumi.export(
     timeline_cache_generator_lambda.name,
 )
 
-# Label Evaluator Visualization Cache (EMR Serverless + Step Functions)
+# Label Evaluator Visualization Cache API
+# Note: The viz-cache Step Function has been removed - viz-cache generation
+# is now handled by the Label Evaluator Step Function's merged EMR job.
 from routes.label_evaluator_viz_cache.infra import (
     create_label_evaluator_viz_cache,
 )
 
-# Note: langsmith_bulk_export is created earlier (before label_evaluator_sf)
-# to support EMR Serverless analytics integration
-
 # Create API Gateway route for label evaluator visualization
 if hasattr(api_gateway, "api"):
-    # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
+    # Create API Lambda to serve viz-cache data (reads from shared bucket)
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
-        langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-        batch_bucket=label_evaluator_sf.batch_bucket_name,
-        dynamodb_table_name=dynamodb_table.name,
-        dynamodb_table_arn=dynamodb_table.arn,
-        emr_application_id=emr_analytics.emr_application.id,
-        emr_job_role_arn=emr_analytics.emr_job_role.arn,
-        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-        label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
-        setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
-        setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
+        cache_bucket_name=label_evaluator_shared.viz_cache_bucket_name,
     )
     pulumi.export(
         "label_evaluator_viz_cache_bucket",
-        label_evaluator_viz_cache.cache_bucket.id,
+        label_evaluator_shared.viz_cache_bucket_name,
     )
 
     # Label evaluator visualization endpoint

@@ -35,12 +35,13 @@ Usage:
             raise
 """
 
+import asyncio
 import logging
 import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -320,9 +321,12 @@ class RateLimitedLLMInvoker:
     """
 
     llm: Any  # LangChain LLM instance
-    circuit_breaker: Optional[OllamaCircuitBreaker] = None
+    circuit_breaker: OllamaCircuitBreaker | None = None
     max_jitter_seconds: float = 0.25
     call_count: int = field(default=0, init=False)
+    _async_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock, init=False, repr=False
+    )
 
     def _apply_jitter(self) -> None:
         """Apply random jitter between calls to prevent thundering herd."""
@@ -331,7 +335,14 @@ class RateLimitedLLMInvoker:
             if jitter > 0:
                 time.sleep(jitter)
 
-    def invoke(self, messages: Any, config: Optional[dict] = None) -> Any:
+    async def _apply_jitter_async(self) -> None:
+        """Apply random jitter between calls (async version)."""
+        if self.call_count > 0 and self.max_jitter_seconds > 0:
+            jitter = random.uniform(0, self.max_jitter_seconds)
+            if jitter > 0:
+                await asyncio.sleep(jitter)
+
+    def invoke(self, messages: Any, config: dict | None = None) -> Any:
         """
         Invoke the LLM with rate limiting and circuit breaker protection.
 
@@ -370,7 +381,7 @@ class RateLimitedLLMInvoker:
         self,
         messages: Any,
         fallback_fn: Callable[[], Any],
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> Any:
         """
         Invoke LLM with a fallback function for non-rate-limit errors.
@@ -394,6 +405,45 @@ class RateLimitedLLMInvoker:
         except Exception as e:
             logger.warning("LLM call failed, using fallback: %s", e)
             return fallback_fn()
+
+    async def ainvoke(self, messages: Any, config: dict | None = None) -> Any:
+        """
+        Async invoke the LLM with rate limiting and circuit breaker protection.
+
+        Args:
+            messages: Messages to send to the LLM (LangChain format)
+            config: Optional LangChain config dict (for callbacks/tracing)
+
+        Returns:
+            LLM response
+
+        Raises:
+            OllamaRateLimitError: If rate limit hit or circuit breaker triggers
+        """
+        # Apply jitter and increment call_count atomically
+        async with self._async_lock:
+            await self._apply_jitter_async()
+            self.call_count += 1
+
+        try:
+            if config:
+                response = await self.llm.ainvoke(messages, config=config)
+            else:
+                response = await self.llm.ainvoke(messages)
+            if self.circuit_breaker:
+                async with self._async_lock:
+                    self.circuit_breaker.record_success()
+            return response
+
+        except OllamaRateLimitError:
+            # Already an OllamaRateLimitError, just re-raise
+            raise
+        except Exception as e:
+            if self.circuit_breaker:
+                # This may raise OllamaRateLimitError
+                async with self._async_lock:
+                    self.circuit_breaker.record_error(e)
+            raise
 
     def get_stats(self) -> dict[str, Any]:
         """Get invoker statistics."""

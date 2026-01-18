@@ -88,11 +88,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     root_run_id = event.get("root_run_id")
     image_id = event.get("image_id", "")
     receipt_id = event.get("receipt_id", 0)
-    enable_tracing = event.get("enable_tracing", True)
-
-    if not enable_tracing:
-        logger.info("Tracing disabled, skipping trace close")
-        return event
 
     if trace_id and root_run_id:
         logger.info(

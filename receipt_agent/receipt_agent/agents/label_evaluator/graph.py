@@ -1221,7 +1221,9 @@ async def run_compute_only(
         graph: Compiled compute-only workflow graph
         state: Pre-populated EvaluatorState with words, labels,
             other_receipt_data
-        config: Optional LangChain config dict (for callbacks/tracing)
+        config: Optional LangChain config dict (for callbacks/tracing).
+            If config contains 'configurable.langsmith_headers', the graph
+            trace will be nested under the parent trace.
 
     Returns:
         Evaluation result dict with issues found
@@ -1239,10 +1241,21 @@ async def run_compute_only(
                 "thread_id": f"{state.image_id}#{state.receipt_id}"
             },
         }
-        # Merge in provided config (e.g., callbacks for tracing)
-        if config:
-            invoke_config.update(config)
 
+        # Merge config options (skip langsmith_headers - tracing handled by caller)
+        if config:
+            for key, value in config.items():
+                if key == "configurable":
+                    # Merge configurable (caller values override defaults)
+                    for ck, cv in value.items():
+                        if (
+                            ck != "langsmith_headers"
+                        ):  # Skip headers - causes duplicates
+                            invoke_config["configurable"][ck] = cv
+                else:
+                    invoke_config[key] = value
+
+        # Invoke graph directly - tracing is handled by start_child_trace in caller
         final_state = await graph.ainvoke(state, config=invoke_config)
 
         # LangGraph returns a dict
