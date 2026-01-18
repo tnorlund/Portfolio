@@ -38,8 +38,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.utils import AnalysisException
 from pyspark.sql.types import (
     ArrayType,
     DoubleType,
@@ -305,6 +308,65 @@ def read_json_df(
     return reader.json(spark_path)
 
 
+def parse_s3_path(s3_path: str) -> tuple[str, str]:
+    """Parse an s3://bucket/key path into bucket and key."""
+    if not s3_path.startswith("s3://"):
+        raise ValueError(f"Invalid S3 path: {s3_path}")
+    path = s3_path[5:]
+    if "/" not in path:
+        raise ValueError(f"Invalid S3 path: {s3_path}")
+    bucket, key = path.split("/", 1)
+    if not bucket or not key:
+        raise ValueError(f"Invalid S3 path: {s3_path}")
+    return bucket, key
+
+
+def read_legacy_lookup_json(legacy_receipts_json: str) -> dict[str, Any]:
+    """Read legacy receipts lookup JSON from S3."""
+    bucket, key = parse_s3_path(legacy_receipts_json)
+    s3_client = boto3.client("s3")
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return json.loads(response["Body"].read().decode("utf-8"))
+
+
+def normalize_legacy_lookup_rows(
+    raw_lookup: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Normalize legacy lookup JSON into rows for DataFrame creation."""
+    rows = []
+    for composite_key, receipt_data in raw_lookup.items():
+        parts = composite_key.rsplit("_", 1)
+        if len(parts) != 2:
+            continue
+        image_id, receipt_id_str = parts
+        try:
+            receipt_id = int(receipt_id_str)
+        except ValueError:
+            continue
+
+        if isinstance(receipt_data, str):
+            receipt_row = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "cdn_s3_key": receipt_data,
+                "cdn_webp_s3_key": None,
+                "cdn_avif_s3_key": None,
+                "cdn_medium_s3_key": None,
+                "cdn_medium_webp_s3_key": None,
+                "cdn_medium_avif_s3_key": None,
+                "width": 800,
+                "height": 2400,
+            }
+        else:
+            receipt_row = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                **receipt_data,
+            }
+        rows.append(receipt_row)
+    return rows
+
+
 def load_receipts_lookup_df(
     spark: SparkSession,
     receipts_lookup_path: str | None,
@@ -321,46 +383,8 @@ def load_receipts_lookup_df(
         logger.info(
             "Reading legacy receipts lookup from %s", legacy_receipts_json
         )
-        if not legacy_receipts_json.startswith("s3://"):
-            raise ValueError(f"Invalid S3 path: {legacy_receipts_json}")
-        s3_client = boto3.client("s3")
-        path = legacy_receipts_json[5:]
-        bucket, key = path.split("/", 1)
-        response = s3_client.get_object(Bucket=bucket, Key=key)
-        raw_lookup = json.loads(response["Body"].read().decode("utf-8"))
-
-        rows = []
-        for composite_key, receipt_data in raw_lookup.items():
-            parts = composite_key.rsplit("_", 1)
-            if len(parts) != 2:
-                continue
-            image_id, receipt_id_str = parts
-            try:
-                receipt_id = int(receipt_id_str)
-            except ValueError:
-                continue
-
-            if isinstance(receipt_data, str):
-                receipt_row = {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "cdn_s3_key": receipt_data,
-                    "cdn_webp_s3_key": None,
-                    "cdn_avif_s3_key": None,
-                    "cdn_medium_s3_key": None,
-                    "cdn_medium_webp_s3_key": None,
-                    "cdn_medium_avif_s3_key": None,
-                    "width": 800,
-                    "height": 2400,
-                }
-            else:
-                receipt_row = {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    **receipt_data,
-                }
-            rows.append(receipt_row)
-
+        raw_lookup = read_legacy_lookup_json(legacy_receipts_json)
+        rows = normalize_legacy_lookup_rows(raw_lookup)
         if not rows:
             return None
         return spark.createDataFrame(rows, schema=LOOKUP_SCHEMA)
@@ -502,6 +526,15 @@ def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_review_block(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Build the review block only if review actually ran."""
+    review_all_decisions = row.get("review_all_decisions") or []
+    review_duration = row.get("review_duration_seconds") or 0
+    if review_all_decisions or review_duration > 0:
+        return build_decisions_block(row, "review")
+    return None
+
+
 def build_viz_receipt_from_row(
     row: dict[str, Any], execution_id: str
 ) -> dict[str, Any] | None:
@@ -512,48 +545,28 @@ def build_viz_receipt_from_row(
     if not image_id or receipt_id is None:
         return None
 
-    words_with_labels = build_words_with_labels(
-        row.get("words") or [],
-        row.get("labels") or [],
-    )
-    cdn_keys = build_cdn_keys_from_row(row)
-
-    width = row.get("width") or 800
-    height = row.get("height") or 2400
-
-    merchant_name = row.get("merchant_name") or "Unknown"
     issues_found = row.get("issues_found")
     if issues_found is None:
         issues_found = count_issues(row)
 
-    currency = build_decisions_block(row, "currency")
-    metadata = build_decisions_block(row, "metadata")
-    financial = build_decisions_block(row, "financial")
-    geometric = build_geometric_block(row)
-
-    # Only emit review data if review actually ran
-    # Check for non-empty all_decisions list or positive duration
-    review = None
-    review_all_decisions = row.get("review_all_decisions") or []
-    review_duration = row.get("review_duration_seconds") or 0
-    if review_all_decisions or review_duration > 0:
-        review = build_decisions_block(row, "review")
-
     return {
         "image_id": image_id,
         "receipt_id": receipt_id,
-        "merchant_name": merchant_name,
+        "merchant_name": row.get("merchant_name") or "Unknown",
         "execution_id": execution_id,
         "issues_found": issues_found,
-        "words": words_with_labels,
-        "geometric": geometric,
-        "currency": currency,
-        "metadata": metadata,
-        "financial": financial,
-        "review": review,
-        **cdn_keys,
-        "width": width,
-        "height": height,
+        "words": build_words_with_labels(
+            row.get("words") or [],
+            row.get("labels") or [],
+        ),
+        "geometric": build_geometric_block(row),
+        "currency": build_decisions_block(row, "currency"),
+        "metadata": build_decisions_block(row, "metadata"),
+        "financial": build_decisions_block(row, "financial"),
+        "review": build_review_block(row),
+        **build_cdn_keys_from_row(row),
+        "width": row.get("width") or 800,
+        "height": row.get("height") or 2400,
     }
 
 
@@ -580,7 +593,7 @@ def write_viz_cache_parallel(df: Any, bucket: str, execution_id: str) -> None:
                     Body=json.dumps(receipt, default=str),
                     ContentType="application/json",
                 )
-            except Exception as exc:
+            except (ClientError, BotoCoreError, TypeError, ValueError) as exc:
                 logger.warning(
                     "Failed to upload receipt %s_%s: %s",
                     receipt.get("image_id"),
@@ -760,6 +773,9 @@ def main() -> int:
 
     spark = None
 
+    # pylint: disable=broad-except
+    # Job entrypoint: ensure any unexpected failure logs clearly and exits non-zero
+    # so EMR marks the step failed and surfaces the stack trace.
     try:
         spark = SparkSession.builder.appName(
             f"MergedJob-{args.job_type}"
@@ -780,11 +796,15 @@ def main() -> int:
         logger.info("All phases complete!")
         return 0
 
+    except (Py4JJavaError, Py4JError, AnalysisException, BotoCoreError, ClientError):
+        logger.exception("Job failed")
+        return 1
     except Exception:
         logger.exception("Job failed")
         return 1
 
     finally:
+        # pylint: enable=broad-except
         if spark:
             spark.stop()
 

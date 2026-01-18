@@ -17,7 +17,15 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
-    """Lazy import for PySpark dependencies."""
+    """Lazy import for PySpark dependencies.
+
+    PySpark is an optional dependency. Imports are deferred to runtime so that
+    the package can be imported without PySpark installed. This allows Lambda
+    functions to use receipt_langsmith without installing PySpark.
+    """
+    # pylint: disable=import-outside-toplevel
+    # Lazy imports are intentional - PySpark is optional and should only be
+    # loaded when explicitly accessed, not when the package is imported.
     if name == "LangSmithSparkProcessor":
         try:
             from receipt_langsmith.spark.processor import (
@@ -43,6 +51,7 @@ def __getattr__(name: str):
                 "PySpark not available. Install with: "
                 "pip install receipt-langsmith[pyspark]"
             ) from e
+    # pylint: enable=import-outside-toplevel
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
