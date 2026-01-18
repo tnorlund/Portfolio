@@ -634,7 +634,6 @@ def evaluate_metadata_labels(
     # Try structured output with retries, then fall back to text parsing
     structured_retries = 3
     text_retries = 2
-    last_decisions = None
     num_words = len(metadata_words)
     decisions = None
 
@@ -745,15 +744,16 @@ def evaluate_metadata_labels(
                     decisions = None
 
     # Use the decisions we got (best effort)
-    decisions = last_decisions or [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": "No response received",
-            "suggested_label": None,
-            "confidence": "low",
-        }
-        for _ in metadata_words
-    ]
+    if decisions is None:
+        decisions = [
+            {
+                "decision": "NEEDS_REVIEW",
+                "reasoning": "No response received",
+                "suggested_label": None,
+                "confidence": "low",
+            }
+            for _ in metadata_words
+        ]
 
     # Step 4: Format output for apply_llm_decisions
     results = []

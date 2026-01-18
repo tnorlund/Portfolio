@@ -539,7 +539,6 @@ def evaluate_currency_labels(
     # Try structured output with retries, then fall back to text parsing
     structured_retries = 3
     text_retries = 2
-    last_decisions = None
     num_words = len(currency_words)
     decisions = None
 
@@ -649,18 +648,17 @@ def evaluate_currency_labels(
                 if attempt == text_retries - 1:
                     decisions = None
 
-    last_decisions = decisions
-
     # Use the decisions we got (best effort)
-    decisions = last_decisions or [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": "No response received",
-            "suggested_label": None,
-            "confidence": "low",
-        }
-        for _ in currency_words
-    ]
+    if decisions is None:
+        decisions = [
+            {
+                "decision": "NEEDS_REVIEW",
+                "reasoning": "No response received",
+                "suggested_label": None,
+                "confidence": "low",
+            }
+            for _ in currency_words
+        ]
 
     # Step 5: Format output for apply_llm_decisions
     # Handle length mismatches by padding with NEEDS_REVIEW fallback

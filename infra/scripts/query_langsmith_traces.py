@@ -5,9 +5,14 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 import requests
+
+# Compute infra directory relative to this script
+SCRIPT_DIR = Path(__file__).resolve().parent
+INFRA_DIR = SCRIPT_DIR.parent  # scripts/ is inside infra/
 
 
 def get_pulumi_secret(key: str, stack: str = "dev") -> str:
@@ -16,7 +21,7 @@ def get_pulumi_secret(key: str, stack: str = "dev") -> str:
         ["pulumi", "config", "get", key, "--stack", stack],
         capture_output=True,
         text=True,
-        cwd="/Users/tnorlund/portfolio_sagemaker/infra",
+        cwd=str(INFRA_DIR),
     )
     if result.returncode != 0:
         raise ValueError(f"Failed to get {key}: {result.stderr}")
@@ -110,6 +115,11 @@ def query_project_traces(
     # Get all projects
     projects = query_langsmith("sessions?limit=50", api_key, tenant_id)
 
+    # Validate response is a list
+    if not isinstance(projects, list):
+        print(f"Error: Expected list of projects, got: {type(projects)}")
+        return []
+
     project_id = None
     for p in projects:
         if p["name"] == project_name:
@@ -167,6 +177,13 @@ def main():
     # List all projects
     print("\n📁 All Projects:")
     projects = query_langsmith("sessions?limit=50", api_key, tenant_id)
+
+    # Validate response is a list
+    if not isinstance(projects, list):
+        print(f"Error: Expected list of projects, got: {type(projects)}")
+        print(f"Response: {projects}")
+        return
+
     for p in projects:
         print(
             f"  - {p['name']} (created: {p.get('start_time', 'N/A')[:10] if p.get('start_time') else 'N/A'})"
