@@ -131,6 +131,10 @@ class ChromaClient:
         embedding_function: Optional[Any] = None,
         metadata_only: bool = False,
         http_url: Optional[str] = None,
+        # Chroma Cloud parameters
+        cloud_api_key: Optional[str] = None,
+        cloud_tenant: Optional[str] = None,
+        cloud_database: Optional[str] = None,
     ):
         """
         Initialize the ChromaDB client.
@@ -143,6 +147,12 @@ class ChromaClient:
             metadata_only: If True, uses default embedding function to
                           avoid API costs
             http_url: Optional HTTP URL for remote ChromaDB server
+            cloud_api_key: Optional Chroma Cloud API key for cloud-hosted
+                          multi-tenant database
+            cloud_tenant: Optional Chroma Cloud tenant ID (defaults to
+                         "default")
+            cloud_database: Optional Chroma Cloud database name (defaults
+                           to "default")
         """
         self.persist_directory = persist_directory
         self.mode = mode.lower()
@@ -151,6 +161,13 @@ class ChromaClient:
         self._collections: Dict[str, Any] = {}
         self._http_url: Optional[str] = (http_url or "").strip() or None
         self._closed = False
+
+        # Chroma Cloud configuration
+        self._cloud_api_key: Optional[str] = (
+            cloud_api_key or ""
+        ).strip() or None
+        self._cloud_tenant: Optional[str] = cloud_tenant
+        self._cloud_database: Optional[str] = cloud_database
 
         # Configure embedding function
         if embedding_function:
@@ -201,7 +218,21 @@ class ChromaClient:
             raise RuntimeError("Cannot use closed ChromaClient")
 
         if self._client is None:
-            if self._http_url:
+            # Chroma Cloud takes precedence over other client types
+            if self._cloud_api_key:
+                # Create Chroma Cloud client for multi-tenant cloud database
+                self._client = chromadb.CloudClient(
+                    api_key=self._cloud_api_key,
+                    tenant=self._cloud_tenant or "default",
+                    database=self._cloud_database or "default",
+                )
+                logger.debug(
+                    "Created Chroma Cloud client (tenant=%s, database=%s)",
+                    self._cloud_tenant or "default",
+                    self._cloud_database or "default",
+                )
+
+            elif self._http_url:
                 # Parse host and optional port from a url or host:port
                 host = self._http_url
                 port: Optional[int] = None

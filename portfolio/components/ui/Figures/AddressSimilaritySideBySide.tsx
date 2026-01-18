@@ -192,7 +192,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
 
   if (loading) {
     // Reserve space to prevent layout shift - match final component height
-    const reservedHeight = windowWidth <= 768 ? 400 : 700;
+    const reservedHeight = windowWidth <= 768 ? 280 : 450;
     return (
       <div
         style={{
@@ -488,13 +488,13 @@ const AddressSimilaritySideBySide: React.FC = () => {
           style={{
             position: "relative",
             width: "100%",
-            height: windowWidth <= 768 ? "400px" : "700px",
+            height: windowWidth <= 768 ? "280px" : "450px",
             overflow: "visible",
           }}
         >
           {data.similar.map((similar, index) => {
             // Distribute cards evenly across the height of the container
-            const containerHeight = windowWidth <= 768 ? 400 : 700;
+            const containerHeight = windowWidth <= 768 ? 280 : 450;
 
             // Use measured container width if available, otherwise calculate responsive estimate
             const effectiveContainerWidth = containerWidth ?? (windowWidth <= 768 ? 180 : 405);

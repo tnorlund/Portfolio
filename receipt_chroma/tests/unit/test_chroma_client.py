@@ -534,3 +534,224 @@ def test_upsert_value_error_not_duplicate():
             client.upsert(
                 collection_name="test_error", ids=["id1"], documents=["doc1"]
             )
+
+
+# =============================================================================
+# Chroma Cloud Client Tests
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_cloud_client_creation():
+    """Test Chroma Cloud client creation when cloud_api_key is provided."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_cloud_client = MagicMock()
+        mock_chromadb.CloudClient.return_value = mock_cloud_client
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        client = FreshChromaClient(
+            cloud_api_key="test-api-key-123",
+            cloud_tenant="test-tenant",
+            cloud_database="test-database",
+            mode="write",
+        )
+        # Trigger client creation
+        _ = client.client
+
+        # Verify CloudClient was created with correct parameters
+        mock_chromadb.CloudClient.assert_called_once_with(
+            api_key="test-api-key-123",
+            tenant="test-tenant",
+            database="test-database",
+        )
+
+
+@pytest.mark.unit
+def test_cloud_client_default_tenant_and_database():
+    """Test Chroma Cloud uses defaults for tenant and database when not specified."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_cloud_client = MagicMock()
+        mock_chromadb.CloudClient.return_value = mock_cloud_client
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        # Only provide API key, no tenant or database
+        client = FreshChromaClient(
+            cloud_api_key="test-api-key",
+            mode="write",
+        )
+        _ = client.client
+
+        # Should use "default" for both tenant and database
+        mock_chromadb.CloudClient.assert_called_once_with(
+            api_key="test-api-key",
+            tenant="default",
+            database="default",
+        )
+
+
+@pytest.mark.unit
+def test_cloud_client_takes_precedence_over_http():
+    """Test that cloud_api_key takes precedence over http_url."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_cloud_client = MagicMock()
+        mock_chromadb.CloudClient.return_value = mock_cloud_client
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        # Provide both cloud_api_key and http_url
+        client = FreshChromaClient(
+            cloud_api_key="test-api-key",
+            http_url="http://localhost:8000",  # This should be ignored
+            mode="write",
+        )
+        _ = client.client
+
+        # CloudClient should be created, not HttpClient
+        mock_chromadb.CloudClient.assert_called_once()
+        mock_chromadb.HttpClient.assert_not_called()
+
+
+@pytest.mark.unit
+def test_cloud_client_empty_api_key_falls_through():
+    """Test that empty cloud_api_key falls through to other client types."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_http_client = MagicMock()
+        mock_chromadb.HttpClient.return_value = mock_http_client
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        # Empty API key should not trigger CloudClient
+        client = FreshChromaClient(
+            cloud_api_key="",  # Empty
+            http_url="http://localhost:8000",
+            mode="write",
+        )
+        _ = client.client
+
+        # HttpClient should be created instead
+        mock_chromadb.CloudClient.assert_not_called()
+        mock_chromadb.HttpClient.assert_called_once()
+
+
+@pytest.mark.unit
+def test_cloud_client_whitespace_api_key_falls_through():
+    """Test that whitespace-only cloud_api_key falls through."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_http_client = MagicMock()
+        mock_chromadb.HttpClient.return_value = mock_http_client
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        # Whitespace-only API key should not trigger CloudClient
+        client = FreshChromaClient(
+            cloud_api_key="   ",  # Whitespace only
+            http_url="http://localhost:8000",
+            mode="write",
+        )
+        _ = client.client
+
+        # HttpClient should be created instead
+        mock_chromadb.CloudClient.assert_not_called()
+        mock_chromadb.HttpClient.assert_called_once()
+
+
+@pytest.mark.unit
+def test_cloud_client_none_api_key_falls_through():
+    """Test that None cloud_api_key falls through to other client types."""
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
+    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
+        mock_ephemeral = MagicMock()
+        mock_chromadb.EphemeralClient.return_value = mock_ephemeral
+
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        # None API key with no other params creates EphemeralClient
+        client = FreshChromaClient(
+            cloud_api_key=None,
+            mode="write",
+        )
+        _ = client.client
+
+        # EphemeralClient should be created
+        mock_chromadb.CloudClient.assert_not_called()
+        mock_chromadb.EphemeralClient.assert_called_once()
+
+
+@pytest.mark.unit
+def test_cloud_client_stores_config():
+    """Test that cloud configuration is stored in client instance."""
+    client = ChromaClient(
+        cloud_api_key="test-key",
+        cloud_tenant="my-tenant",
+        cloud_database="my-db",
+        mode="write",
+    )
+
+    # Verify config is stored (without triggering client creation)
+    assert client._cloud_api_key == "test-key"
+    assert client._cloud_tenant == "my-tenant"
+    assert client._cloud_database == "my-db"
+
+
+@pytest.mark.unit
+def test_cloud_client_config_with_none_values():
+    """Test that None values for tenant/database are stored as-is."""
+    client = ChromaClient(
+        cloud_api_key="test-key",
+        cloud_tenant=None,
+        cloud_database=None,
+        mode="write",
+    )
+
+    assert client._cloud_api_key == "test-key"
+    assert client._cloud_tenant is None
+    assert client._cloud_database is None
