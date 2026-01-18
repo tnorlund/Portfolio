@@ -1316,9 +1316,7 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    # Increased from 3 - OpenRouter fallback handles rate limits
     max_concurrency=8,
-    batch_size=25,  # 25 receipts per batch
     # EMR Serverless Analytics integration
     emr_application_id=emr_analytics.emr_application.id,
     emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
