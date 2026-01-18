@@ -159,7 +159,15 @@ def build_input_mode_states(
 
 
 def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
-    """Build states for listing receipts."""
+    """Build states for listing receipts.
+
+    Flow:
+        HasReceipts (total_receipts > 0)
+            ├─ YES → HasMerchants (total_merchants > 0)
+            │           ├─ YES → ComputeAllPatterns → ProcessReceipts
+            │           └─ NO → SkipPatterns → ProcessReceipts
+            └─ NO → NoReceipts (end)
+    """
     retry_config = [build_retry_config(["States.TaskFailed"])]
 
     return {
@@ -176,7 +184,18 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
             },
             "ResultPath": "$.all_data",
             "Retry": retry_config,
-            "Next": "HasMerchants",
+            "Next": "HasReceipts",
+        },
+        "HasReceipts": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.all_data.total_receipts",
+                    "NumericGreaterThan": 0,
+                    "Next": "HasMerchants",
+                }
+            ],
+            "Default": "NoReceipts",
         },
         "HasMerchants": {
             "Type": "Choice",
@@ -187,11 +206,18 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
                     "Next": "ComputeAllPatterns",
                 }
             ],
-            "Default": "NoMerchants",
+            "Default": "SkipPatterns",
         },
-        "NoMerchants": {
+        "SkipPatterns": {
             "Type": "Pass",
-            "Result": {"message": "No merchants found"},
+            "Comment": "No merchants qualify for patterns, skip to receipt processing",
+            "Result": [],
+            "ResultPath": "$.pattern_results",
+            "Next": "ProcessReceipts",
+        },
+        "NoReceipts": {
+            "Type": "Pass",
+            "Result": {"message": "No receipts found"},
             "End": True,
         },
     }

@@ -122,8 +122,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             }
         )
 
-    # Filter merchants by minimum receipt threshold
+    # Filter merchants by minimum receipt threshold (for pattern computation only)
     qualifying_merchants: list[MerchantInfo] = []
+    merchants_with_patterns: set[str] = set()
     skipped_count = 0
 
     for merchant_name, count in sorted(
@@ -133,18 +134,20 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             qualifying_merchants.append(
                 MerchantInfo(merchant_name=merchant_name, receipt_count=count)
             )
+            merchants_with_patterns.add(merchant_name)
         else:
             skipped_count += 1
-            # Remove receipts for merchants that don't qualify
-            receipts_by_merchant.pop(merchant_name, None)
+            # NOTE: Don't remove receipts - they still get processed, just without patterns
 
-    # Flatten receipts into a single list, sorted by merchant for S3 cache locality
-    # Add merchant_receipt_count to each receipt now that we have final counts
+    # Flatten ALL receipts into a single list, sorted by merchant for S3 cache locality
+    # Add merchant_receipt_count and has_patterns to each receipt
     all_receipts = []
     for merchant_name in sorted(receipts_by_merchant.keys()):
         receipt_count = merchant_counts[merchant_name]
+        has_patterns = merchant_name in merchants_with_patterns
         for receipt in receipts_by_merchant[merchant_name]:
             receipt["merchant_receipt_count"] = receipt_count
+            receipt["has_patterns"] = has_patterns
         all_receipts.extend(receipts_by_merchant[merchant_name])
 
     logger.info(
