@@ -1447,32 +1447,17 @@ pulumi.export(
     timeline_cache_generator_lambda.name,
 )
 
-# Label Evaluator Visualization Cache (EMR Serverless + Step Functions)
+# Label Evaluator Visualization Cache API
+# Note: The viz-cache Step Function has been removed - viz-cache generation
+# is now handled by the Label Evaluator Step Function's merged EMR job.
 from routes.label_evaluator_viz_cache.infra import (
     create_label_evaluator_viz_cache,
 )
 
-# Note: langsmith_bulk_export is created earlier (before label_evaluator_sf)
-# to support EMR Serverless analytics integration
-
 # Create API Gateway route for label evaluator visualization
 if hasattr(api_gateway, "api"):
-    # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
-    # Use the shared viz-cache bucket (same bucket that the merged EMR job writes to)
+    # Create API Lambda to serve viz-cache data (reads from shared bucket)
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
-        langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-        batch_bucket=label_evaluator_sf.batch_bucket_name,
-        dynamodb_table_name=dynamodb_table.name,
-        dynamodb_table_arn=dynamodb_table.arn,
-        emr_application_id=emr_analytics.emr_application.id,
-        emr_job_role_arn=emr_analytics.emr_job_role.arn,
-        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-        label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
-        setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
-        setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
-        # Use shared bucket (same bucket merged EMR job writes to)
         cache_bucket_name=label_evaluator_viz_cache_bucket.id,
     )
     pulumi.export(

@@ -366,7 +366,6 @@ class EMRServerlessAnalytics(ComponentResource):
             return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
 
         emr_job_path = spark_scripts_dir / "emr_job.py"
-        viz_cache_path = spark_scripts_dir / "viz_cache_job.py"
         merged_job_path = spark_scripts_dir / "merged_job.py"
 
         # Upload emr_job.py (source_hash forces update on content change)
@@ -379,17 +378,8 @@ class EMRServerlessAnalytics(ComponentResource):
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
-        # Upload viz_cache_job.py (source_hash forces update on content change)
-        self.viz_cache_job_script = aws.s3.BucketObjectv2(
-            f"{name}-viz-cache-job-script",
-            bucket=self.artifacts_bucket.id,
-            key="spark/viz_cache_job.py",
-            source=FileAsset(str(viz_cache_path)),
-            source_hash=file_hash(viz_cache_path),
-            opts=ResourceOptions(parent=self.artifacts_bucket),
-        )
-
         # Upload merged_job.py - unified analytics + viz-cache job
+        # Note: viz_cache_job.py has been removed - merged_job.py handles both
         self.merged_job_script = aws.s3.BucketObjectv2(
             f"{name}-merged-job-script",
             bucket=self.artifacts_bucket.id,
