@@ -78,9 +78,6 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
 evaluator_config = Config("label-evaluator")
-# Note: Config not reliably read at module import time. Use explicit value.
-# To change, update this value and redeploy.
-max_concurrency_default = 8  # evaluator_config.get_int("max_concurrency") or 3
 
 
 class LabelEvaluatorStepFunction(ComponentResource):
@@ -99,7 +96,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         dynamodb_table_arn: pulumi.Input[str],
         chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
         chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
-        max_concurrency: Optional[int] = None,
         # EMR Serverless Analytics integration (optional)
         emr_application_id: Optional[pulumi.Input[str]] = None,
         emr_job_execution_role_arn: Optional[pulumi.Input[str]] = None,
@@ -113,7 +109,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         )
         stack = pulumi.get_stack()
 
-        self.max_concurrency = max_concurrency or max_concurrency_default
         self.chromadb_bucket_name = chromadb_bucket_name
         self.chromadb_bucket_arn = chromadb_bucket_arn
 
@@ -1174,7 +1169,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     ),
                     runtime=RuntimeConfig(
                         batch_bucket=args[14],
-                        max_concurrency=self.max_concurrency,
                     ),
                     emr=EmrConfig(
                         application_id=args[15] if self.emr_enabled else None,

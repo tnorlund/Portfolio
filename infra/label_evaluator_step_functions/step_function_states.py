@@ -51,7 +51,6 @@ class RuntimeConfig:
     """Runtime configuration for Step Function execution."""
 
     batch_bucket: str
-    max_concurrency: int = 8
     phase1_concurrency: int = 25
     phase2_concurrency: int = 40
 
