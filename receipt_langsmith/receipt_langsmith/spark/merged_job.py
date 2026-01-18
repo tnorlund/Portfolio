@@ -286,11 +286,22 @@ def to_s3a(path: str) -> str:
 
 
 def read_json_df(
-    spark: SparkSession, path: str, schema: StructType | None = None
+    spark: SparkSession,
+    path: str,
+    schema: StructType | None = None,
+    multi_line: bool = True,
 ) -> Any:
-    """Read JSON from S3 (prefix or file) into a DataFrame."""
+    """Read JSON from S3 (prefix or file) into a DataFrame.
+
+    Args:
+        spark: SparkSession
+        path: S3 path (s3:// or s3a://)
+        schema: Optional schema to apply
+        multi_line: If True, each file can contain a single multi-line JSON object.
+                    If False, expects JSONL format (one JSON per line).
+    """
     spark_path = to_s3a(path)
-    reader = spark.read
+    reader = spark.read.option("multiLine", str(multi_line).lower())
     if schema is not None:
         reader = reader.schema(schema)
     return reader.json(spark_path)
