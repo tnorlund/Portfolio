@@ -108,6 +108,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
         langsmith_tenant_id: Optional[pulumi.Input[str]] = None,
         setup_lambda_name: Optional[pulumi.Input[str]] = None,
         setup_lambda_arn: Optional[pulumi.Input[str]] = None,
+        # External batch bucket (optional - if not provided, creates one internally)
+        # Use this to break circular dependencies with EMR analytics
+        batch_bucket_name: Optional[pulumi.Input[str]] = None,
+        batch_bucket_arn: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -141,22 +145,45 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # ============================================================
         # S3 Bucket for batch files and results
         # ============================================================
-        is_prod = stack in ("prod", "production")
-        self.batch_bucket = Bucket(
-            f"{name}-batch-bucket",
-            force_destroy=not is_prod,
-            tags={"environment": stack, "purpose": "label-evaluator"},
-            opts=ResourceOptions(parent=self),
-        )
+        # Use external bucket if provided (to break circular dependencies with EMR)
+        # Otherwise create one internally for backward compatibility
+        self._external_batch_bucket = batch_bucket_name is not None
+        if self._external_batch_bucket:
+            # Use the externally-provided bucket
+            self._batch_bucket_name = pulumi.Output.from_input(batch_bucket_name)
+            self._batch_bucket_arn = pulumi.Output.from_input(batch_bucket_arn)
+            # Create a dummy object to satisfy attribute access patterns
+            # (lambdas reference self.batch_bucket.bucket)
 
-        BucketVersioningV2(
-            f"{name}-batch-bucket-versioning",
-            bucket=self.batch_bucket.id,
-            versioning_configuration=BucketVersioningV2VersioningConfigurationArgs(
-                status="Enabled"
-            ),
-            opts=ResourceOptions(parent=self.batch_bucket),
-        )
+            class ExternalBucketRef:
+                """Reference to an externally-created bucket."""
+
+                def __init__(self, bucket_name, bucket_arn):
+                    self.id = bucket_name
+                    self.bucket = bucket_name
+                    self.arn = bucket_arn
+
+            self.batch_bucket = ExternalBucketRef(
+                self._batch_bucket_name, self._batch_bucket_arn
+            )
+        else:
+            # Create bucket internally (original behavior)
+            is_prod = stack in ("prod", "production")
+            self.batch_bucket = Bucket(
+                f"{name}-batch-bucket",
+                force_destroy=not is_prod,
+                tags={"environment": stack, "purpose": "label-evaluator"},
+                opts=ResourceOptions(parent=self),
+            )
+
+            BucketVersioningV2(
+                f"{name}-batch-bucket-versioning",
+                bucket=self.batch_bucket.id,
+                versioning_configuration=BucketVersioningV2VersioningConfigurationArgs(
+                    status="Enabled"
+                ),
+                opts=ResourceOptions(parent=self.batch_bucket),
+            )
 
         # ============================================================
         # IAM Roles
