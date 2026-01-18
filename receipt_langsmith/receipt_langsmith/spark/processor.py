@@ -10,6 +10,7 @@ import logging
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import LongType
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ class LangSmithSparkProcessor:
         # Convert timestamp columns from nanoseconds (Long) to timestamp
         # With spark.sql.legacy.parquet.nanosAsLong=true and non-vectorized reader,
         # timestamps are read as Long (nanoseconds since epoch)
-        from pyspark.sql.types import LongType
-
         if "start_time" in available_columns and isinstance(
             df.schema["start_time"].dataType, LongType
         ):

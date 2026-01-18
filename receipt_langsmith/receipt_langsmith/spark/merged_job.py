@@ -50,6 +50,8 @@ from pyspark.sql.types import (
 )
 from pyspark.storagelevel import StorageLevel
 
+from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -139,8 +141,6 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def run_analytics(spark: SparkSession, args: argparse.Namespace) -> None:
     """Run analytics job using LangSmithSparkProcessor."""
-    from receipt_langsmith.spark.processor import LangSmithSparkProcessor
-
     processor = LangSmithSparkProcessor(spark)
 
     logger.info("Reading Parquet data from %s...", args.parquet_input)
