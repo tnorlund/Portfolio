@@ -634,12 +634,15 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         entry_args_expr = (
             f"States.Array("
             f"'--job-type', 'all', "
-            f"'--parquet-input', 's3://{langsmith_bucket}/traces/', "
+            f"'--parquet-input', States.Format('s3://{langsmith_bucket}/traces/export_id={{}}/', "
+            f"$.export_result.export_id), "
             f"'--analytics-output', States.Format('s3://{output_bucket}/analytics/{{}}', "
             f"$.summary_result.execution_id), "
             f"'--batch-bucket', '{emr.batch_bucket}', "
             f"'--cache-bucket', '{emr.cache_bucket}', "
             f"'--execution-id', $.summary_result.execution_id, "
+            f"'--receipts-lookup', States.Format('s3://{emr.batch_bucket}/receipts_lookup/{{}}/', "
+            f"$.summary_result.execution_id), "
             f"'--partition-by-merchant')"
         )
         job_name = "merged-analytics-vizcache"

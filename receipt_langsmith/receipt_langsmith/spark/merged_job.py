@@ -20,11 +20,13 @@ Usage:
         --analytics-output s3://analytics-bucket/ \\
         --batch-bucket label-evaluator-batch-bucket \\
         --cache-bucket viz-cache-bucket \\
-        --execution-id abc123
+        --execution-id abc123 \\
+        --receipts-lookup s3://label-evaluator-batch-bucket/receipts_lookup/abc123/
 
 Key Differences from viz_cache_job.py:
     - Reads words/labels from S3 JSON files (data/{execution_id}/*.json)
     - Reads evaluation results from S3 JSON (unified/{execution_id}/*.json)
+    - Reads CDN keys from receipts_lookup JSONL dataset
     - No longer depends on LangSmith Parquet exports for viz-cache
     - Analytics still uses Parquet for full trace analysis
 """
@@ -34,14 +36,21 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, functions as F
+from pyspark.storagelevel import StorageLevel
+from pyspark.sql.types import (
+    ArrayType,
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,7 +107,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--receipts-json",
-        help="S3 path to receipts-lookup.json (optional for viz-cache)",
+        help="(Legacy) S3 path to receipts-lookup.json (optional for viz-cache)",
+    )
+    parser.add_argument(
+        "--receipts-lookup",
+        help="S3 path/prefix to receipts-lookup JSONL dataset (optional)",
     )
 
     return parser.parse_args()
@@ -199,120 +212,147 @@ def run_analytics(
 
 
 # =============================================================================
-# Viz-Cache Functions (from S3 JSON files)
+# Viz-Cache Functions (Spark-based)
 # =============================================================================
 
 
-def load_receipts_lookup(
-    s3_client: Any, receipts_json_path: str | None
-) -> dict[tuple[str, int], dict[str, Any]]:
-    """Load receipt lookup from S3 JSON file if provided."""
-    if not receipts_json_path:
-        return {}
+DATA_SCHEMA = StructType(
+    [
+        StructField("image_id", StringType(), True),
+        StructField("receipt_id", IntegerType(), True),
+        StructField("merchant_name", StringType(), True),
+        StructField(
+            "words",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("text", StringType(), True),
+                        StructField("line_id", IntegerType(), True),
+                        StructField("word_id", IntegerType(), True),
+                        StructField(
+                            "bounding_box",
+                            StructType(
+                                [
+                                    StructField("x", DoubleType(), True),
+                                    StructField("y", DoubleType(), True),
+                                    StructField("width", DoubleType(), True),
+                                    StructField("height", DoubleType(), True),
+                                ]
+                            ),
+                            True,
+                        ),
+                    ]
+                )
+            ),
+            True,
+        ),
+        StructField(
+            "labels",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("line_id", IntegerType(), True),
+                        StructField("word_id", IntegerType(), True),
+                        StructField("label", StringType(), True),
+                    ]
+                )
+            ),
+            True,
+        ),
+    ]
+)
 
-    logger.info("Loading receipts lookup from %s", receipts_json_path)
+LOOKUP_SCHEMA = StructType(
+    [
+        StructField("image_id", StringType(), True),
+        StructField("receipt_id", IntegerType(), True),
+        StructField("cdn_s3_key", StringType(), True),
+        StructField("cdn_webp_s3_key", StringType(), True),
+        StructField("cdn_avif_s3_key", StringType(), True),
+        StructField("cdn_medium_s3_key", StringType(), True),
+        StructField("cdn_medium_webp_s3_key", StringType(), True),
+        StructField("cdn_medium_avif_s3_key", StringType(), True),
+        StructField("width", IntegerType(), True),
+        StructField("height", IntegerType(), True),
+    ]
+)
 
-    if not receipts_json_path.startswith("s3://"):
-        raise ValueError(f"Invalid S3 path: {receipts_json_path}")
 
-    path = receipts_json_path[5:]
-    bucket, key = path.split("/", 1)
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    raw_lookup = json.loads(response["Body"].read().decode("utf-8"))
+def to_s3a(path: str) -> str:
+    """Convert s3:// URIs to s3a:// for Spark."""
+    if path.startswith("s3://"):
+        return f"s3a://{path[5:]}"
+    return path
 
-    lookup: dict[tuple[str, int], dict[str, Any]] = {}
-    for composite_key, receipt_data in raw_lookup.items():
-        parts = composite_key.rsplit("_", 1)
-        if len(parts) == 2:
+
+def read_json_df(
+    spark: SparkSession, path: str, schema: StructType | None = None
+) -> Any:
+    """Read JSON from S3 (prefix or file) into a DataFrame."""
+    spark_path = to_s3a(path)
+    reader = spark.read
+    if schema is not None:
+        reader = reader.schema(schema)
+    return reader.json(spark_path)
+
+
+def load_receipts_lookup_df(
+    spark: SparkSession,
+    receipts_lookup_path: str | None,
+    legacy_receipts_json: str | None,
+) -> Any | None:
+    """Load receipt lookup dataset for CDN keys."""
+    if receipts_lookup_path:
+        logger.info("Reading receipts lookup dataset from %s", receipts_lookup_path)
+        return read_json_df(spark, receipts_lookup_path, schema=LOOKUP_SCHEMA)
+
+    if legacy_receipts_json:
+        logger.info("Reading legacy receipts lookup from %s", legacy_receipts_json)
+        if not legacy_receipts_json.startswith("s3://"):
+            raise ValueError(f"Invalid S3 path: {legacy_receipts_json}")
+        s3_client = boto3.client("s3")
+        path = legacy_receipts_json[5:]
+        bucket, key = path.split("/", 1)
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        raw_lookup = json.loads(response["Body"].read().decode("utf-8"))
+
+        rows = []
+        for composite_key, receipt_data in raw_lookup.items():
+            parts = composite_key.rsplit("_", 1)
+            if len(parts) != 2:
+                continue
             image_id, receipt_id_str = parts
             try:
-                if isinstance(receipt_data, str):
-                    lookup[(image_id, int(receipt_id_str))] = {
-                        "cdn_s3_key": receipt_data,
-                        "width": 800,
-                        "height": 2400,
-                    }
-                else:
-                    lookup[(image_id, int(receipt_id_str))] = receipt_data
+                receipt_id = int(receipt_id_str)
             except ValueError:
                 continue
 
-    logger.info("Loaded %d receipts from lookup", len(lookup))
-    return lookup
+            if isinstance(receipt_data, str):
+                receipt_row = {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "cdn_s3_key": receipt_data,
+                    "cdn_webp_s3_key": None,
+                    "cdn_avif_s3_key": None,
+                    "cdn_medium_s3_key": None,
+                    "cdn_medium_webp_s3_key": None,
+                    "cdn_medium_avif_s3_key": None,
+                    "width": 800,
+                    "height": 2400,
+                }
+            else:
+                receipt_row = {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    **receipt_data,
+                }
+            rows.append(receipt_row)
 
+        if not rows:
+            return None
+        return spark.createDataFrame(rows, schema=LOOKUP_SCHEMA)
 
-def list_s3_json_files(
-    s3_client: Any, bucket: str, prefix: str
-) -> list[str]:
-    """List all JSON files under an S3 prefix."""
-    keys = []
-    paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".json"):
-                keys.append(key)
-
-    return keys
-
-
-def load_receipt_data_from_s3(
-    s3_client: Any, bucket: str, execution_id: str
-) -> list[dict[str, Any]]:
-    """Load receipt data (words, labels, place) from S3 JSON files.
-
-    Reads from: data/{execution_id}/*.json
-    Each file contains: image_id, receipt_id, words, labels, place
-    """
-    prefix = f"data/{execution_id}/"
-    logger.info("Loading receipt data from s3://%s/%s", bucket, prefix)
-
-    keys = list_s3_json_files(s3_client, bucket, prefix)
-    logger.info("Found %d receipt data files", len(keys))
-
-    receipts = []
-    for key in keys:
-        try:
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            data = json.loads(response["Body"].read().decode("utf-8"))
-            receipts.append(data)
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", key, e)
-
-    return receipts
-
-
-def load_unified_results_from_s3(
-    s3_client: Any, bucket: str, execution_id: str
-) -> dict[tuple[str, int], dict[str, Any]]:
-    """Load unified evaluation results from S3 JSON files.
-
-    Reads from: unified/{execution_id}/*.json
-    Each file contains: image_id, receipt_id, merchant_name, decisions, issues, etc.
-
-    Returns:
-        Dict mapping (image_id, receipt_id) -> result data
-    """
-    prefix = f"unified/{execution_id}/"
-    logger.info("Loading unified results from s3://%s/%s", bucket, prefix)
-
-    keys = list_s3_json_files(s3_client, bucket, prefix)
-    logger.info("Found %d unified result files", len(keys))
-
-    results: dict[tuple[str, int], dict[str, Any]] = {}
-    for key in keys:
-        try:
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            data = json.loads(response["Body"].read().decode("utf-8"))
-            image_id = data.get("image_id")
-            receipt_id = data.get("receipt_id")
-            if image_id and receipt_id is not None:
-                results[(image_id, receipt_id)] = data
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", key, e)
-
-    return results
+    return None
 
 
 def build_words_with_labels(
@@ -394,35 +434,29 @@ def count_issues(result: dict[str, Any]) -> int:
     return total
 
 
-def build_viz_receipt(
-    receipt_data: dict[str, Any],
-    unified_result: dict[str, Any] | None,
-    receipt_lookup: dict[tuple[str, int], dict[str, Any]],
-    execution_id: str,
+def build_viz_receipt_from_row(
+    row: dict[str, Any], execution_id: str
 ) -> dict[str, Any] | None:
-    """Build a single viz-cache receipt entry."""
-    image_id = receipt_data.get("image_id")
-    receipt_id = receipt_data.get("receipt_id")
+    """Build a single viz-cache receipt entry from a Spark row."""
+    image_id = row.get("image_id")
+    receipt_id = row.get("receipt_id")
 
     if not image_id or receipt_id is None:
         return None
 
-    words = receipt_data.get("words", [])
-    labels = receipt_data.get("labels", [])
+    words = row.get("words") or []
+    labels = row.get("labels") or []
 
     # Build words with labels
     words_with_labels = build_words_with_labels(words, labels)
 
-    # Get CDN keys from lookup
-    lookup_data = receipt_lookup.get((image_id, receipt_id), {})
-    cdn_s3_key = lookup_data.get("cdn_s3_key")
-
+    # CDN keys (from lookup)
+    cdn_s3_key = row.get("cdn_s3_key")
     if cdn_s3_key:
         cdn_keys = generate_cdn_keys(cdn_s3_key)
-        # Override with lookup values if present
         for key in cdn_keys:
-            if lookup_data.get(key):
-                cdn_keys[key] = lookup_data[key]
+            if row.get(key):
+                cdn_keys[key] = row.get(key)
     else:
         cdn_keys = {
             "cdn_s3_key": None,
@@ -433,63 +467,68 @@ def build_viz_receipt(
             "cdn_medium_avif_s3_key": None,
         }
 
-    # Get dimensions
-    width = lookup_data.get("width", 800)
-    height = lookup_data.get("height", 2400)
+    width = row.get("width") or 800
+    height = row.get("height") or 2400
 
-    # Get merchant name and issues from unified result
-    merchant_name = "Unknown"
-    issues_found = 0
-    currency = {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}}
-    metadata = {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}}
-    financial = {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}}
-    geometric = {"issues_found": 0, "issues": []}
+    merchant_name = row.get("merchant_name") or "Unknown"
+    issues_found = row.get("issues_found")
+    if issues_found is None:
+        issues_found = count_issues(row)
 
-    if unified_result:
-        merchant_name = unified_result.get("merchant_name", "Unknown")
-        issues_found = count_issues(unified_result)
+    # Currency decisions
+    currency_decisions = row.get("currency_decisions", {})
+    currency = {
+        "decisions": {
+            "VALID": currency_decisions.get("VALID", 0),
+            "INVALID": currency_decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": currency_decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": row.get("currency_all_decisions", []),
+        "duration_seconds": row.get("currency_duration_seconds", 0),
+    }
 
-        # Currency decisions
-        currency_decisions = unified_result.get("currency_decisions", {})
-        currency = {
+    # Metadata decisions
+    metadata_decisions = row.get("metadata_decisions", {})
+    metadata = {
+        "decisions": {
+            "VALID": metadata_decisions.get("VALID", 0),
+            "INVALID": metadata_decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": metadata_decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": row.get("metadata_all_decisions", []),
+        "duration_seconds": row.get("metadata_duration_seconds", 0),
+    }
+
+    # Financial decisions
+    financial_decisions = row.get("financial_decisions", {})
+    financial = {
+        "decisions": {
+            "VALID": financial_decisions.get("VALID", 0),
+            "INVALID": financial_decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": financial_decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": row.get("financial_all_decisions", []),
+        "duration_seconds": row.get("financial_duration_seconds", 0),
+    }
+
+    # Geometric issues
+    geometric = {
+        "issues_found": row.get("geometric_issues_found", 0),
+        "issues": row.get("geometric_issues", []),
+        "duration_seconds": row.get("geometric_duration_seconds", 0),
+    }
+
+    review = None
+    if row.get("review_all_decisions") or row.get("review_decisions"):
+        review_decisions = row.get("review_decisions", {})
+        review = {
             "decisions": {
-                "VALID": currency_decisions.get("VALID", 0),
-                "INVALID": currency_decisions.get("INVALID", 0),
-                "NEEDS_REVIEW": currency_decisions.get("NEEDS_REVIEW", 0),
+                "VALID": review_decisions.get("VALID", 0),
+                "INVALID": review_decisions.get("INVALID", 0),
+                "NEEDS_REVIEW": review_decisions.get("NEEDS_REVIEW", 0),
             },
-            "all_decisions": unified_result.get("currency_all_decisions", []),
-            "duration_seconds": unified_result.get("currency_duration_seconds", 0),
-        }
-
-        # Metadata decisions
-        metadata_decisions = unified_result.get("metadata_decisions", {})
-        metadata = {
-            "decisions": {
-                "VALID": metadata_decisions.get("VALID", 0),
-                "INVALID": metadata_decisions.get("INVALID", 0),
-                "NEEDS_REVIEW": metadata_decisions.get("NEEDS_REVIEW", 0),
-            },
-            "all_decisions": unified_result.get("metadata_all_decisions", []),
-            "duration_seconds": unified_result.get("metadata_duration_seconds", 0),
-        }
-
-        # Financial decisions
-        financial_decisions = unified_result.get("financial_decisions", {})
-        financial = {
-            "decisions": {
-                "VALID": financial_decisions.get("VALID", 0),
-                "INVALID": financial_decisions.get("INVALID", 0),
-                "NEEDS_REVIEW": financial_decisions.get("NEEDS_REVIEW", 0),
-            },
-            "all_decisions": unified_result.get("financial_all_decisions", []),
-            "duration_seconds": unified_result.get("financial_duration_seconds", 0),
-        }
-
-        # Geometric issues
-        geometric = {
-            "issues_found": unified_result.get("geometric_issues_found", 0),
-            "issues": unified_result.get("geometric_issues", []),
-            "duration_seconds": unified_result.get("geometric_duration_seconds", 0),
+            "all_decisions": row.get("review_all_decisions", []),
+            "duration_seconds": row.get("review_duration_seconds", 0),
         }
 
     return {
@@ -503,67 +542,66 @@ def build_viz_receipt(
         "currency": currency,
         "metadata": metadata,
         "financial": financial,
+        "review": review,
         **cdn_keys,
         "width": width,
         "height": height,
     }
 
 
-def write_viz_cache(
+def write_viz_cache_parallel(
+    df: Any, bucket: str, execution_id: str
+) -> None:
+    """Write viz-cache files to S3 in parallel via Spark executors."""
+    receipts_prefix = "receipts/"
+
+    def upload_partition(rows):
+        s3_client = boto3.client("s3")
+        for row in rows:
+            receipt = build_viz_receipt_from_row(
+                row.asDict(recursive=True), execution_id
+            )
+            if not receipt:
+                continue
+            key = (
+                f"{receipts_prefix}receipt-{receipt['image_id']}-"
+                f"{receipt['receipt_id']}.json"
+            )
+            try:
+                s3_client.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=json.dumps(receipt, default=str),
+                    ContentType="application/json",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to upload receipt %s_%s: %s",
+                    receipt.get("image_id"),
+                    receipt.get("receipt_id"),
+                    exc,
+                )
+
+    df.foreachPartition(upload_partition)
+
+
+def write_viz_cache_metadata(
     s3_client: Any,
     bucket: str,
-    receipts: list[dict[str, Any]],
     execution_id: str,
+    total_receipts: int,
+    receipts_with_issues: int,
 ) -> None:
-    """Write viz-cache files to S3."""
+    """Write metadata.json and latest.json to S3."""
     timestamp = datetime.now(timezone.utc)
     cache_version = timestamp.strftime("%Y%m%d-%H%M%S")
     receipts_prefix = "receipts/"
 
-    logger.info(
-        "Writing %d receipt files to s3://%s/%s", len(receipts), bucket, receipts_prefix
-    )
-
-    def upload_receipt(receipt: dict[str, Any]) -> str:
-        image_id = receipt.get("image_id", "unknown")
-        receipt_id = receipt.get("receipt_id", 0)
-        key = f"{receipts_prefix}receipt-{image_id}-{receipt_id}.json"
-        s3_client.put_object(
-            Bucket=bucket,
-            Key=key,
-            Body=json.dumps(receipt, default=str),
-            ContentType="application/json",
-        )
-        return key
-
-    uploaded = 0
-    failed = 0
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(upload_receipt, r): r for r in receipts}
-        for future in as_completed(futures):
-            try:
-                future.result()
-                uploaded += 1
-                if uploaded % 50 == 0:
-                    logger.info("Uploaded %d/%d receipts", uploaded, len(receipts))
-            except Exception:
-                failed += 1
-                receipt = futures[future]
-                logger.exception(
-                    "Failed to upload %s_%s",
-                    receipt.get("image_id"),
-                    receipt.get("receipt_id"),
-                )
-
-    if failed > 0:
-        logger.warning("Completed with %d failures out of %d", failed, len(receipts))
-
-    # Write metadata.json
     metadata = {
         "version": cache_version,
         "execution_id": execution_id,
-        "total_receipts": len(receipts),
-        "receipts_with_issues": len([r for r in receipts if r["issues_found"] > 0]),
+        "total_receipts": total_receipts,
+        "receipts_with_issues": receipts_with_issues,
         "cached_at": timestamp.isoformat(),
     }
     s3_client.put_object(
@@ -573,7 +611,6 @@ def write_viz_cache(
         ContentType="application/json",
     )
 
-    # Write latest.json pointer
     latest = {
         "version": cache_version,
         "receipts_prefix": receipts_prefix,
@@ -587,52 +624,116 @@ def write_viz_cache(
         ContentType="application/json",
     )
 
-    logger.info("Viz-cache complete! Version: %s, Receipts: %d", cache_version, len(receipts))
+    logger.info(
+        "Viz-cache metadata written. Version: %s, Receipts: %d",
+        cache_version,
+        total_receipts,
+    )
 
 
-def run_viz_cache(args: argparse.Namespace) -> None:
-    """Run viz-cache generation from S3 JSON files."""
+def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
+    """Run viz-cache generation from S3 JSON files using Spark."""
     s3_client = boto3.client("s3")
 
-    # Load receipts lookup (optional)
-    receipt_lookup = load_receipts_lookup(s3_client, args.receipts_json)
+    data_path = f"s3://{args.batch_bucket}/data/{args.execution_id}/"
+    unified_path = f"s3://{args.batch_bucket}/unified/{args.execution_id}/"
 
-    # Load receipt data from S3 JSON files
-    receipt_data_list = load_receipt_data_from_s3(
-        s3_client, args.batch_bucket, args.execution_id
+    logger.info("Reading receipt data from %s", data_path)
+    data_df = read_json_df(spark, data_path, schema=DATA_SCHEMA).select(
+        "image_id",
+        "receipt_id",
+        "merchant_name",
+        "words",
+        "labels",
     )
+    data_df = data_df.withColumnRenamed("merchant_name", "data_merchant_name")
 
-    if not receipt_data_list:
+    logger.info("Reading unified results from %s", unified_path)
+    unified_df = read_json_df(spark, unified_path)
+
+    # Ensure key fields exist
+    if "merchant_name" not in unified_df.columns:
+        unified_df = unified_df.withColumn("merchant_name", F.lit(None))
+
+    def empty_decisions_struct():
+        return F.struct(
+            F.lit(0).cast("int").alias("VALID"),
+            F.lit(0).cast("int").alias("INVALID"),
+            F.lit(0).cast("int").alias("NEEDS_REVIEW"),
+        )
+
+    if "currency_decisions" not in unified_df.columns:
+        unified_df = unified_df.withColumn(
+            "currency_decisions", empty_decisions_struct()
+        )
+    if "metadata_decisions" not in unified_df.columns:
+        unified_df = unified_df.withColumn(
+            "metadata_decisions", empty_decisions_struct()
+        )
+    if "financial_decisions" not in unified_df.columns:
+        unified_df = unified_df.withColumn(
+            "financial_decisions", empty_decisions_struct()
+        )
+    if "geometric_issues_found" not in unified_df.columns:
+        unified_df = unified_df.withColumn(
+            "geometric_issues_found", F.lit(0).cast("int")
+        )
+
+    # Join receipt data with unified results
+    joined = data_df.join(unified_df, ["image_id", "receipt_id"], "left")
+    joined = joined.withColumn(
+        "merchant_name",
+        F.coalesce(F.col("merchant_name"), F.col("data_merchant_name")),
+    ).drop("data_merchant_name")
+
+    # Optional receipts lookup dataset for CDN keys
+    lookup_df = load_receipts_lookup_df(
+        spark, args.receipts_lookup, args.receipts_json
+    )
+    if lookup_df is not None:
+        joined = joined.join(lookup_df, ["image_id", "receipt_id"], "left")
+    else:
+        logger.warning(
+            "No receipts lookup provided; CDN keys may be missing in viz-cache"
+        )
+
+    def decision_issues(col_name: str) -> Any:
+        return F.coalesce(F.col(f"{col_name}.INVALID"), F.lit(0)) + F.coalesce(
+            F.col(f"{col_name}.NEEDS_REVIEW"), F.lit(0)
+        )
+
+    issues_expr = (
+        F.coalesce(F.col("geometric_issues_found"), F.lit(0))
+        + decision_issues("currency_decisions")
+        + decision_issues("metadata_decisions")
+        + decision_issues("financial_decisions")
+    )
+    joined = joined.withColumn("issues_found", issues_expr)
+
+    joined.persist(StorageLevel.DISK_ONLY)
+
+    total_receipts = joined.count()
+    if total_receipts == 0:
         logger.error("No receipt data found in data/%s/", args.execution_id)
+        joined.unpersist()
         return
 
-    # Load unified results
-    unified_results = load_unified_results_from_s3(
-        s3_client, args.batch_bucket, args.execution_id
+    receipts_with_issues = (
+        joined.filter(F.col("issues_found") > 0).count()
     )
 
-    # Build viz receipts
-    logger.info("Building viz receipts for %d receipts...", len(receipt_data_list))
-    viz_receipts = []
-    for receipt_data in receipt_data_list:
-        image_id = receipt_data.get("image_id")
-        receipt_id = receipt_data.get("receipt_id")
+    logger.info("Writing %d viz-cache receipts...", total_receipts)
+    write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)
 
-        unified_result = unified_results.get((image_id, receipt_id))
+    write_viz_cache_metadata(
+        s3_client,
+        args.cache_bucket,
+        args.execution_id,
+        total_receipts,
+        receipts_with_issues,
+    )
 
-        viz_receipt = build_viz_receipt(
-            receipt_data, unified_result, receipt_lookup, args.execution_id
-        )
-        if viz_receipt:
-            viz_receipts.append(viz_receipt)
-
-    # Sort by issues (most issues first)
-    viz_receipts.sort(key=lambda r: -r["issues_found"])
-
-    logger.info("Built %d viz receipts", len(viz_receipts))
-
-    # Write to S3
-    write_viz_cache(s3_client, args.cache_bucket, viz_receipts, args.execution_id)
+    joined.unpersist()
 
 
 # =============================================================================
@@ -656,19 +757,20 @@ def main() -> int:
     spark = None
 
     try:
+        spark = SparkSession.builder.appName(
+            f"MergedJob-{args.job_type}"
+        ).getOrCreate()
+
         # Run analytics if requested
         if args.job_type in ("analytics", "all"):
             logger.info("Starting analytics phase...")
-            spark = SparkSession.builder.appName(
-                f"MergedJob-analytics-{args.job_type}"
-            ).getOrCreate()
             run_analytics(spark, args)
             logger.info("Analytics phase complete")
 
         # Run viz-cache if requested
         if args.job_type in ("viz-cache", "all"):
             logger.info("Starting viz-cache phase...")
-            run_viz_cache(args)
+            run_viz_cache(spark, args)
             logger.info("Viz-cache phase complete")
 
         logger.info("All phases complete!")

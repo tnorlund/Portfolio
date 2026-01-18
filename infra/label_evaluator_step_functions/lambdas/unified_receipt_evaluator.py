@@ -208,6 +208,7 @@ async def unified_receipt_evaluator(
         )
 
         # 1. Load receipt data - either from DynamoDB (new) or S3 (legacy)
+        receipt_info = None
         if use_direct_fetch:
             # NEW: Fetch directly from DynamoDB
             logger.info(
@@ -223,7 +224,7 @@ async def unified_receipt_evaluator(
 
             dynamo = DynamoClient(table_name=dynamo_table)
 
-            # Fetch receipt data
+            # Fetch receipt data (place, words, labels, receipt metadata)
             try:
                 place = dynamo.get_receipt_place(image_id, receipt_id)
             except Exception:
@@ -245,6 +246,16 @@ async def unified_receipt_evaluator(
                     "Failed to fetch labels for %s#%s", image_id, receipt_id
                 )
                 labels = []
+
+            try:
+                receipt_info = dynamo.get_receipt(image_id, receipt_id)
+            except Exception:
+                logger.warning(
+                    "Failed to fetch receipt metadata for %s#%s",
+                    image_id,
+                    receipt_id,
+                )
+                receipt_info = None
 
             logger.info(
                 "Fetched %s words, %s labels for %s#%s",
@@ -318,6 +329,55 @@ async def unified_receipt_evaluator(
                 image_id,
                 receipt_id,
             )
+
+            # Attempt to fetch receipt metadata for CDN keys (if DynamoDB is available)
+            receipt_info = None
+            if dynamo_table:
+                try:
+                    from receipt_dynamo import DynamoClient
+
+                    dynamo = DynamoClient(table_name=dynamo_table)
+                    receipt_info = dynamo.get_receipt(image_id, receipt_id)
+                except Exception:
+                    logger.warning(
+                        "Failed to fetch receipt metadata for %s#%s",
+                        image_id,
+                        receipt_id,
+                    )
+
+        # Write receipt lookup record (JSONL-style) for EMR viz-cache
+        if receipt_info is not None:
+            lookup_key = (
+                f"receipts_lookup/{execution_id}/{image_id}_{receipt_id}.json"
+            )
+            lookup_payload = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "cdn_s3_key": receipt_info.cdn_s3_key,
+                "cdn_webp_s3_key": receipt_info.cdn_webp_s3_key,
+                "cdn_avif_s3_key": receipt_info.cdn_avif_s3_key,
+                "cdn_medium_s3_key": receipt_info.cdn_medium_s3_key,
+                "cdn_medium_webp_s3_key": receipt_info.cdn_medium_webp_s3_key,
+                "cdn_medium_avif_s3_key": receipt_info.cdn_medium_avif_s3_key,
+                "width": receipt_info.width,
+                "height": receipt_info.height,
+            }
+            try:
+                s3.put_object(
+                    Bucket=batch_bucket,
+                    Key=lookup_key,
+                    Body=json.dumps(lookup_payload).encode("utf-8"),
+                    ContentType="application/json",
+                )
+                logger.info(
+                    "Saved receipt lookup to s3://%s/%s", batch_bucket, lookup_key
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to upload receipt lookup to s3://%s/%s",
+                    batch_bucket,
+                    lookup_key,
+                )
 
         # 2. Create the ROOT receipt trace (one per receipt)
         # This is the parent trace that all child operations will link to
@@ -666,27 +726,39 @@ async def unified_receipt_evaluator(
         currency_result: list[dict] = []
         metadata_result: list[dict] = []
         geometric_result: dict = {"issues_found": 0}
+        currency_duration = 0.0
+        metadata_duration = 0.0
+        geometric_duration = 0.0
 
         try:
+            async def timed_eval(coro):
+                start = time.time()
+                result = await coro
+                return result, time.time() - start
+
             # Run currency and metadata concurrently (both use LLM)
-            currency_task = evaluate_currency_labels_async(
-                visual_lines=visual_lines,
-                patterns=line_item_patterns,
-                llm=llm_invoker,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                merchant_name=merchant_name,
-                trace_ctx=currency_trace_ctx,
+            currency_task = timed_eval(
+                evaluate_currency_labels_async(
+                    visual_lines=visual_lines,
+                    patterns=line_item_patterns,
+                    llm=llm_invoker,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_name=merchant_name,
+                    trace_ctx=currency_trace_ctx,
+                )
             )
 
-            metadata_task = evaluate_metadata_labels_async(
-                visual_lines=visual_lines,
-                place=place,
-                llm=llm_invoker,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                merchant_name=merchant_name,
-                trace_ctx=metadata_trace_ctx,
+            metadata_task = timed_eval(
+                evaluate_metadata_labels_async(
+                    visual_lines=visual_lines,
+                    place=place,
+                    llm=llm_invoker,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_name=merchant_name,
+                    trace_ctx=metadata_trace_ctx,
+                )
             )
 
             # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
@@ -710,16 +782,24 @@ async def unified_receipt_evaluator(
                 else None
             )
 
-            async def run_geometric() -> dict:
-                return await asyncio.to_thread(
+            async def run_geometric() -> tuple[dict, float]:
+                start = time.time()
+                result = await asyncio.to_thread(
                     run_compute_only_sync,
                     geometric_graph,
                     geometric_state,
                     geometric_config,
                 )
+                return result, time.time() - start
 
             # Wait for all evaluations concurrently
-            currency_result, metadata_result, geometric_result = (
+            (currency_result, currency_duration), (
+                metadata_result,
+                metadata_duration,
+            ), (
+                geometric_result,
+                geometric_duration,
+            ) = (
                 await asyncio.gather(
                     currency_task, metadata_task, run_geometric()
                 )
@@ -794,6 +874,7 @@ async def unified_receipt_evaluator(
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
         financial_result = None
+        financial_duration = 0.0
         if dynamo_table:
             with child_trace(
                 "phase2_financial_validation", trace_ctx
@@ -833,6 +914,7 @@ async def unified_receipt_evaluator(
                     evaluate_financial_math_async,
                 )
 
+                financial_start = time.time()
                 financial_result = await evaluate_financial_math_async(
                     visual_lines=fresh_visual_lines,
                     llm=llm_invoker,
@@ -841,6 +923,7 @@ async def unified_receipt_evaluator(
                     merchant_name=merchant_name,
                     trace_ctx=financial_ctx,
                 )
+                financial_duration = time.time() - financial_start
 
                 # Apply financial corrections
                 if financial_result:
@@ -862,10 +945,12 @@ async def unified_receipt_evaluator(
 
         # 9. Phase 3: LLM review of flagged geometric issues (if any)
         llm_review_result = None
-        issues_found = geometric_result.get("issues_found", 0)
+        review_duration = 0.0
+        geometric_issues_found = geometric_result.get("issues_found", 0)
 
-        if issues_found > 0:
+        if geometric_issues_found > 0:
             with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
+                review_start = time.time()
                 # Setup ChromaDB if available
                 chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
                 chroma_client = None
@@ -1063,6 +1148,7 @@ async def unified_receipt_evaluator(
                                     dynamo_client=dynamo_client,
                                     execution_id=execution_id,
                                 )
+                review_duration = time.time() - review_start
 
         # 10. Aggregate results
         decision_counts = {
@@ -1089,6 +1175,20 @@ async def unified_receipt_evaluator(
                 if decision in decision_counts["financial"]:
                     decision_counts["financial"][decision] += 1
 
+        review_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+        if llm_review_result:
+            for d in llm_review_result:
+                decision = d.get("llm_review", {}).get(
+                    "decision", "NEEDS_REVIEW"
+                )
+                if decision in review_counts:
+                    review_counts[decision] += 1
+
+        total_issues = geometric_issues_found
+        for key in ("currency", "metadata", "financial"):
+            total_issues += decision_counts[key].get("INVALID", 0)
+            total_issues += decision_counts[key].get("NEEDS_REVIEW", 0)
+
         # 11. Upload results to S3
         with child_trace("upload_results", trace_ctx):
             results_s3_key = (
@@ -1098,13 +1198,28 @@ async def unified_receipt_evaluator(
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "merchant_name": merchant_name,
-                "issues_found": issues_found,
+                "issues_found": total_issues,
                 "currency_words_evaluated": len(currency_result),
                 "metadata_words_evaluated": len(metadata_result),
                 "financial_values_evaluated": (
                     len(financial_result) if financial_result else 0
                 ),
                 "decisions": decision_counts,
+                "currency_decisions": decision_counts["currency"],
+                "metadata_decisions": decision_counts["metadata"],
+                "financial_decisions": decision_counts["financial"],
+                "currency_all_decisions": currency_result,
+                "metadata_all_decisions": metadata_result,
+                "financial_all_decisions": financial_result or [],
+                "currency_duration_seconds": currency_duration,
+                "metadata_duration_seconds": metadata_duration,
+                "financial_duration_seconds": financial_duration,
+                "geometric_issues_found": geometric_issues_found,
+                "geometric_issues": geometric_result.get("issues", []),
+                "geometric_duration_seconds": geometric_duration,
+                "review_decisions": review_counts,
+                "review_all_decisions": llm_review_result or [],
+                "review_duration_seconds": review_duration,
                 "applied_stats": {
                     "currency": applied_stats_currency,
                     "metadata": applied_stats_metadata,
@@ -1124,13 +1239,18 @@ async def unified_receipt_evaluator(
             "image_id": image_id,
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
-            "issues_found": issues_found,
+            "issues_found": total_issues,
             "currency_words_evaluated": len(currency_result),
             "metadata_words_evaluated": len(metadata_result),
             "financial_values_evaluated": (
                 len(financial_result) if financial_result else 0
             ),
             "decisions": decision_counts,
+            "currency_decisions": decision_counts["currency"],
+            "metadata_decisions": decision_counts["metadata"],
+            "financial_decisions": decision_counts["financial"],
+            "geometric_issues_found": geometric_issues_found,
+            "review_decisions": review_counts,
             "results_s3_key": results_s3_key,
         }
 
