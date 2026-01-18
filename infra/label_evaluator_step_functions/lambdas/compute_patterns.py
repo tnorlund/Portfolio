@@ -100,7 +100,8 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     trace_id = event.get("trace_id")
     root_run_id = event.get("root_run_id")
     root_dotted_order = event.get("root_dotted_order")
-    enable_tracing = event.get("enable_tracing", True) and trace_id is not None
+    # Tracing is always enabled when a trace_id is available
+    enable_tracing = trace_id is not None
 
     if not merchant_name:
         raise ValueError("merchant_name is required")

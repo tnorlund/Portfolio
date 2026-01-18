@@ -38,7 +38,7 @@ DEFAULT_MIN_RECEIPTS = 5
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    List all receipts across all merchants (or filtered by input).
+    List all receipts and derive merchants from the selected receipts.
 
     This handler is optimized for the two-phase Step Function architecture:
     - Returns unique merchant list for Phase 1 (pattern computation)
@@ -48,8 +48,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     {
         "execution_id": str,
         "batch_bucket": str,
-        "merchants": [{"merchant_name": str}, ...] | None,  # Optional filter
-        "limit": int | None,  # Per-merchant limit
+        "limit": int | None,  # TOTAL receipts to fetch (None = all)
         "batch_size": int,  # Receipts per batch (default 100)
         "min_receipts": int,  # Minimum receipts for pattern learning (default 5)
         "max_training_receipts": int  # Max training receipts per merchant (default 50)
@@ -76,29 +75,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     batch_size = event.get("batch_size", DEFAULT_BATCH_SIZE)
     min_receipts = event.get("min_receipts", DEFAULT_MIN_RECEIPTS)
     max_training_receipts = event.get("max_training_receipts", 50)
-    limit = event.get("limit")  # Per-merchant limit
-
-    # Optional merchant filter from input
-    merchant_filter = event.get("merchants")
-    if merchant_filter:
-        # Extract merchant names from filter
-        filter_names = {
-            m.get("merchant_name")
-            for m in merchant_filter
-            if m.get("merchant_name")
-        }
-    else:
-        filter_names = None
+    limit = event.get("limit")  # Total receipts limit (None = all)
 
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
     logger.info(
-        "Listing all receipts (batch_size=%s, min_receipts=%s, limit=%s, filter=%s)",
+        "Listing all receipts (batch_size=%s, min_receipts=%s, limit=%s)",
         batch_size,
         min_receipts,
         limit,
-        len(filter_names) if filter_names else "all",
     )
 
     # Import DynamoDB client
@@ -121,25 +107,22 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     logger.info("Found %s total receipt places", len(all_places))
 
-    # Count receipts per merchant and collect receipts
+    # Apply total limit if specified (slice the places list)
+    if limit and limit < len(all_places):
+        all_places = all_places[:limit]
+        logger.info("Applied limit=%s, using %s places", limit, len(all_places))
+
+    # Count receipts per merchant and collect receipts from the selected places
     merchant_counts: Counter = Counter()
     receipts_by_merchant: dict[str, list[dict]] = {}
 
     for place in all_places:
         merchant_name = place.merchant_name
 
-        # Apply filter if provided
-        if filter_names and merchant_name not in filter_names:
-            continue
-
         merchant_counts[merchant_name] += 1
 
         if merchant_name not in receipts_by_merchant:
             receipts_by_merchant[merchant_name] = []
-
-        # Apply per-merchant limit
-        if limit and len(receipts_by_merchant[merchant_name]) >= limit:
-            continue
 
         receipts_by_merchant[merchant_name].append(
             {
@@ -199,12 +182,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
         "batch_size": batch_size,
+        "limit": limit,
         "merchants": qualifying_merchants,
         "total_merchants": len(qualifying_merchants),
         "total_receipts": len(all_receipts),
         "total_batches": len(receipt_batches),
         "skipped_merchants": skipped_count,
-        "filter_applied": filter_names is not None,
     }
 
     manifest_key = f"manifests/{execution_id}/all_receipts.json"

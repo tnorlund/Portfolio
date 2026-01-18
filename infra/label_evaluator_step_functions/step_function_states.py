@@ -15,7 +15,6 @@ class LambdaArns:  # pylint: disable=too-many-instance-attributes
     """ARNs for all Lambda functions used in the Step Function."""
 
     list_merchants: str
-    list_receipts: str
     list_all_receipts: str
     fetch_receipt_data: str
     compute_patterns: str
@@ -111,12 +110,11 @@ def build_input_normalization_states() -> dict[str, Any]:
         },
         "SetDefaults": {
             "Type": "Pass",
-            "Result": {
-                "dry_run": False,
-                "force_rediscovery": False,
-                "enable_tracing": True,
+            "Parameters": {
                 "limit": None,
-                "langchain_project": None,
+                "langchain_project.$": (
+                    "States.Format('label-eval-{}', $$.Execution.StartTime)"
+                ),
                 "run_analytics": True,
             },
             "ResultPath": "$.defaults",
@@ -133,7 +131,7 @@ def build_input_normalization_states() -> dict[str, Any]:
                 ),
             },
             "ResultPath": "$.config",
-            "Next": "CheckInputMode",
+            "Next": "Initialize",
         },
     }
 
@@ -142,51 +140,15 @@ def build_input_mode_states(
     batch_bucket: str,
     batch_size: int,
 ) -> dict[str, Any]:
-    """Build states for checking input mode and initialization."""
+    """Build initialization state."""
     return {
-        "CheckInputMode": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.config.merged.merchant_name",
-                    "IsPresent": True,
-                    "Next": "InitializeSingleMerchant",
-                }
-            ],
-            "Default": "InitializeAllMerchants",
-        },
-        "InitializeSingleMerchant": {
+        "Initialize": {
             "Type": "Pass",
             "Parameters": {
                 "execution_id.$": "$$.Execution.Name",
                 "start_time.$": "$$.Execution.StartTime",
                 "batch_bucket": batch_bucket,
                 "batch_size": batch_size,
-                "merchant_name.$": "$.config.merged.merchant_name",
-                "dry_run.$": "$.config.merged.dry_run",
-                "force_rediscovery.$": "$.config.merged.force_rediscovery",
-                "enable_tracing.$": "$.config.merged.enable_tracing",
-                "langchain_project.$": "$.config.merged.langchain_project",
-                "run_analytics.$": "$.config.merged.run_analytics",
-                "max_training_receipts": 50,
-                "min_receipts": 5,
-                "limit.$": "$.config.merged.limit",
-                "original_input.$": "$.normalized.original_input",
-            },
-            "ResultPath": "$.init",
-            "Next": "ListAllReceiptsSingleMerchant",
-        },
-        "InitializeAllMerchants": {
-            "Type": "Pass",
-            "Parameters": {
-                "execution_id.$": "$$.Execution.Name",
-                "start_time.$": "$$.Execution.StartTime",
-                "batch_bucket": batch_bucket,
-                "batch_size": batch_size,
-                "merchant_name": None,
-                "dry_run.$": "$.config.merged.dry_run",
-                "force_rediscovery.$": "$.config.merged.force_rediscovery",
-                "enable_tracing.$": "$.config.merged.enable_tracing",
                 "langchain_project.$": "$.config.merged.langchain_project",
                 "run_analytics.$": "$.config.merged.run_analytics",
                 "max_training_receipts": 50,
@@ -201,27 +163,10 @@ def build_input_mode_states(
 
 
 def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
-    """Build states for listing receipts (single and all merchants)."""
+    """Build states for listing receipts."""
     retry_config = [build_retry_config(["States.TaskFailed"])]
 
     return {
-        "ListAllReceiptsSingleMerchant": {
-            "Type": "Task",
-            "Resource": list_all_receipts_arn,
-            "TimeoutSeconds": 300,
-            "Parameters": {
-                "execution_id.$": "$.init.execution_id",
-                "batch_bucket.$": "$.init.batch_bucket",
-                "batch_size.$": "$.init.batch_size",
-                "min_receipts.$": "$.init.min_receipts",
-                "max_training_receipts.$": "$.init.max_training_receipts",
-                "limit.$": "$.init.limit",
-                "merchants": [{"merchant_name.$": "$.init.merchant_name"}],
-            },
-            "ResultPath": "$.all_data",
-            "Retry": retry_config,
-            "Next": "HasMerchants",
-        },
         "ListAllReceipts": {
             "Type": "Task",
             "Resource": list_all_receipts_arn,
@@ -280,8 +225,6 @@ def build_pattern_computation_states(
                 "execution_id.$": "$.init.execution_id",
                 "batch_bucket.$": "$.init.batch_bucket",
                 "max_training_receipts.$": "$.init.max_training_receipts",
-                "force_rediscovery.$": "$.init.force_rediscovery",
-                "enable_tracing.$": "$.init.enable_tracing",
                 "langchain_project.$": "$.init.langchain_project",
             },
             "ItemProcessor": {
@@ -296,8 +239,6 @@ def build_pattern_computation_states(
                             "execution_id.$": "$.execution_id",
                             "batch_bucket.$": "$.batch_bucket",
                             "merchant_name.$": "$.merchant.merchant_name",
-                            "force_rediscovery.$": "$.force_rediscovery",
-                            "enable_tracing.$": "$.enable_tracing",
                             "langchain_project.$": "$.langchain_project",
                             "execution_arn.$": "$$.Execution.Id",
                         },
@@ -324,7 +265,6 @@ def build_pattern_computation_states(
                             "root_dotted_order.$": (
                                 "$.line_item_patterns.root_dotted_order"
                             ),
-                            "enable_tracing.$": "$.enable_tracing",
                         },
                         "ResultPath": "$.patterns_result",
                         "Retry": retry_config,
@@ -414,8 +354,6 @@ def build_receipt_processing_states(
                     "merchant_name.$": "$.receipt.merchant_name",
                     "execution_id.$": "$.execution_id",
                     "batch_bucket.$": "$.batch_bucket",
-                    "dry_run.$": "$.dry_run",
-                    "enable_tracing.$": "$.enable_tracing",
                     "langchain_project.$": "$.langchain_project",
                     "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                     "execution_arn.$": "$$.Execution.Id",
@@ -448,8 +386,6 @@ def build_receipt_processing_states(
                 "batch_index.$": "$$.Map.Item.Index",
                 "execution_id.$": "$.init.execution_id",
                 "batch_bucket.$": "$.init.batch_bucket",
-                "dry_run.$": "$.init.dry_run",
-                "enable_tracing.$": "$.init.enable_tracing",
                 "langchain_project.$": "$.init.langchain_project",
             },
             "ItemProcessor": {
@@ -466,8 +402,6 @@ def build_receipt_processing_states(
                             "batch_index.$": "$.batch_index",
                             "execution_id.$": "$.execution_id",
                             "batch_bucket.$": "$.batch_bucket",
-                            "dry_run.$": "$.dry_run",
-                            "enable_tracing.$": "$.enable_tracing",
                             "langchain_project.$": "$.langchain_project",
                         },
                         "ItemProcessor": receipt_processor,
@@ -551,17 +485,12 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
     if not emr.enabled:
         return {}
 
-    # Build SparkSubmitParameters as multi-line for readability
+    # Build SparkSubmitParameters - uses Python from custom Docker image
+    # (no venv archive needed, image has receipt_langsmith + Python 3.12 built-in)
     artifacts_bucket = emr.spark_artifacts_bucket
     spark_submit_params = (
-        f"--conf spark.archives="
-        f"s3://{artifacts_bucket}/spark/spark_env.tar.gz#environment "
-        "--conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON="
-        "./environment/bin/python "
-        "--conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON="
-        "./environment/bin/python "
-        "--conf spark.executorEnv.PYSPARK_PYTHON="
-        "./environment/bin/python "
+        "--conf spark.sql.legacy.parquet.nanosAsLong=true "
+        "--conf spark.sql.parquet.enableVectorizedReader=false "
         "--conf spark.dynamicAllocation.enabled=false "
         "--conf spark.executor.cores=2 "
         "--conf spark.executor.memory=4g "
@@ -570,18 +499,17 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         "--conf spark.driver.memory=4g"
     )
 
-    # Build entry point arguments with proper formatting
+    # Build entry point arguments using States.Array for dynamic evaluation
     output_bucket = emr.analytics_output_bucket
-    entry_args = [
-        "--input",
-        f"s3://{emr.langsmith_export_bucket}/traces/",
-        "--output.$",
-        f"States.Format('s3://{output_bucket}/analytics/{{}}', "
-        "$.summary_result.execution_id)",
-        "--job-type",
-        "all",
-        "--partition-by-merchant",
-    ]
+    langsmith_bucket = emr.langsmith_export_bucket
+    entry_args_expr = (
+        f"States.Array("
+        f"'--input', 's3://{langsmith_bucket}/traces/', "
+        f"'--output', States.Format('s3://{output_bucket}/analytics/{{}}', "
+        f"$.summary_result.execution_id), "
+        f"'--job-type', 'all', "
+        f"'--partition-by-merchant')"
+    )
 
     return {
         "RunSparkAnalytics": {
@@ -599,7 +527,7 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
                         "EntryPoint": (
                             f"s3://{artifacts_bucket}/spark/emr_job.py"
                         ),
-                        "EntryPointArguments": entry_args,
+                        "EntryPointArguments.$": entry_args_expr,
                         "SparkSubmitParameters": spark_submit_params,
                     }
                 },

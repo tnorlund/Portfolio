@@ -88,7 +88,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "merchant_name": "Wild Fork",
-        "dry_run": false,
         "receipt_trace_id": "..."
     }
 
@@ -119,11 +118,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "unknown")
-    dry_run = event.get("dry_run", False)
 
     # Receipt-level trace_id from FetchReceiptData
     receipt_trace_id = event.get("receipt_trace_id", "")
-    enable_tracing = event.get("enable_tracing", True)
+    # Tracing is always enabled
+    enable_tracing = True
 
     if not data_s3_key:
         raise ValueError("data_s3_key is required")
@@ -149,7 +148,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         inputs={
             "data_s3_key": data_s3_key,
             "merchant_name": merchant_name,
-            "dry_run": dry_run,
         },
         metadata={
             "merchant_name": merchant_name,
@@ -304,9 +302,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             logger.info("Decisions: %s", decision_counts)
             logger.info("Issue types: %s", issue_types)
 
-            # 5. Apply decisions to DynamoDB (if not dry run)
+            # 5. Apply decisions to DynamoDB
             applied_stats = None
-            if not dry_run and decisions:
+            if decisions:
                 # Filter to only INVALID decisions
                 invalid_decisions = [
                     d
@@ -348,7 +346,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "issue_types": list(issue_types),
                     "all_decisions": decisions,
                     "applied_stats": applied_stats,
-                    "dry_run": dry_run,
                     "duration_seconds": time.time() - start_time,
                 }
 

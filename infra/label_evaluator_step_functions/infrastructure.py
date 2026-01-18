@@ -387,41 +387,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             ),
         )
 
-        # list_receipts Lambda
-        list_receipts_lambda = Function(
-            f"{name}-list-receipts",
-            name=f"{name}-list-receipts",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="list_receipts.handler",
-            code=AssetArchive(
-                {
-                    "list_receipts.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "list_receipts.py")
-                    ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
-                }
-            ),
-            timeout=300,
-            memory_size=512,
-            layers=[dynamo_layer.arn] if dynamo_layer else [],
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                    **tracing_env,
-                }
-            ),
-            opts=ResourceOptions(
-                parent=self,
-                ignore_changes=["layers"],
-            ),
-        )
-
         # list_all_receipts Lambda (for flattened two-phase architecture)
         list_all_receipts_lambda = Function(
             f"{name}-list-all-receipts",
@@ -1005,7 +970,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             role=sfn_role.id,
             policy=Output.all(
                 list_merchants_lambda.arn,
-                list_receipts_lambda.arn,
                 list_all_receipts_lambda.arn,
                 fetch_receipt_data_lambda.arn,
                 compute_patterns_lambda.arn,
@@ -1159,7 +1123,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # Build Output.all with optional EMR parameters
         base_outputs = [
             list_merchants_lambda.arn,
-            list_receipts_lambda.arn,
             list_all_receipts_lambda.arn,
             fetch_receipt_data_lambda.arn,
             compute_patterns_lambda.arn,
@@ -1198,39 +1161,38 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 lambda args: create_step_function_definition(
                     lambdas=LambdaArns(
                         list_merchants=args[0],
-                        list_receipts=args[1],
-                        list_all_receipts=args[2],
-                        fetch_receipt_data=args[3],
-                        compute_patterns=args[4],
-                        evaluate_labels=args[5],
-                        evaluate_currency=args[6],
-                        evaluate_metadata=args[7],
-                        evaluate_financial=args[8],
-                        close_trace=args[9],
-                        aggregate_results=args[10],
-                        final_aggregate=args[11],
-                        discover_patterns=args[12],
-                        llm_review=args[13],
-                        unified_evaluator=args[14],
+                        list_all_receipts=args[1],
+                        fetch_receipt_data=args[2],
+                        compute_patterns=args[3],
+                        evaluate_labels=args[4],
+                        evaluate_currency=args[5],
+                        evaluate_metadata=args[6],
+                        evaluate_financial=args[7],
+                        close_trace=args[8],
+                        aggregate_results=args[9],
+                        final_aggregate=args[10],
+                        discover_patterns=args[11],
+                        llm_review=args[12],
+                        unified_evaluator=args[13],
                     ),
                     runtime=RuntimeConfig(
-                        batch_bucket=args[15],
+                        batch_bucket=args[14],
                         max_concurrency=self.max_concurrency,
                         batch_size=self.batch_size,
                     ),
                     emr=EmrConfig(
-                        application_id=args[16] if self.emr_enabled else None,
+                        application_id=args[15] if self.emr_enabled else None,
                         job_execution_role_arn=(
-                            args[17] if self.emr_enabled else None
+                            args[16] if self.emr_enabled else None
                         ),
                         langsmith_export_bucket=(
-                            args[18] if self.emr_enabled else None
+                            args[17] if self.emr_enabled else None
                         ),
                         analytics_output_bucket=(
-                            args[19] if self.emr_enabled else None
+                            args[18] if self.emr_enabled else None
                         ),
                         spark_artifacts_bucket=(
-                            args[20] if self.emr_enabled else None
+                            args[19] if self.emr_enabled else None
                         ),
                     ),
                 )
@@ -1250,7 +1212,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "state_machine_arn": self.state_machine.arn,
                 "batch_bucket_name": self.batch_bucket.bucket,
                 "list_merchants_lambda_arn": list_merchants_lambda.arn,
-                "list_receipts_lambda_arn": list_receipts_lambda.arn,
                 "list_all_receipts_lambda_arn": list_all_receipts_lambda.arn,
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
                 "evaluate_currency_lambda_arn": evaluate_currency_lambda.arn,

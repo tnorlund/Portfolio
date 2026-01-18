@@ -212,7 +212,6 @@ class AggregateResultsInput(TypedDict, total=False):
     batch_bucket: str
     process_results: list  # Nested batch results
     merchant_name: str
-    dry_run: bool
 
 
 class LLMReviewInput(TypedDict):

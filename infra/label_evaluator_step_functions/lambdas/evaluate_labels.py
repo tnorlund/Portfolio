@@ -112,7 +112,6 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         "execution_arn": "arn:aws:states:...",
         "batch_bucket": "bucket-name",
         "merchant_name": "Costco",
-        "enable_tracing": true,
         "receipt_trace_id": "..."  # From FetchReceiptData (for verification)
     }
 
@@ -170,8 +169,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 line_item_patterns_s3_key,
             )
 
-    # Check if tracing is enabled
-    enable_tracing = event.get("enable_tracing", True)
+    # Tracing is always enabled
+    enable_tracing = True
 
     if not data_s3_key:
         raise ValueError("data_s3_key is required")

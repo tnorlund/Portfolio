@@ -104,8 +104,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "Unknown")
     execution_arn = event.get("execution_arn", "")
-    enable_tracing = event.get("enable_tracing", True)
-    force_rediscovery = event.get("force_rediscovery", False)
+    # Tracing is always enabled
+    enable_tracing = True
 
     # Create root merchant trace for Phase 1 (pattern computation)
     merchant_trace = create_merchant_trace(
@@ -114,7 +114,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         name="PatternComputation",
         inputs={
             "merchant_name": merchant_name,
-            "force_rediscovery": force_rediscovery,
         },
         metadata={"execution_id": execution_id, "phase": "pattern_learning"},
         tags=["phase-1", "per-merchant"],

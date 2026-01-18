@@ -105,10 +105,9 @@ async def unified_receipt_evaluator(
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "merchant_name": "Wild Fork",
-        "dry_run": false,
-        "enable_tracing": true,
         "receipt_trace_id": "...",
-        "execution_arn": "arn:aws:states:..."
+        "execution_arn": "arn:aws:states:...",
+        "langchain_project": "label-eval-{timestamp}"
     }
 
     Output:
@@ -140,9 +139,7 @@ async def unified_receipt_evaluator(
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "unknown")
-    dry_run = event.get("dry_run", False)
     receipt_trace_id = event.get("receipt_trace_id", "")
-    enable_tracing = event.get("enable_tracing", True)
 
     if not data_s3_key:
         raise ValueError("data_s3_key is required")
@@ -221,7 +218,6 @@ async def unified_receipt_evaluator(
             inputs={
                 "data_s3_key": data_s3_key,
                 "merchant_name": merchant_name,
-                "dry_run": dry_run,
                 "word_count": len(words),
                 "label_count": len(labels),
             },
@@ -230,7 +226,7 @@ async def unified_receipt_evaluator(
                 "execution_id": execution_id,
             },
             tags=["unified-evaluation", "llm", "per-receipt"],
-            enable_tracing=enable_tracing,
+            enable_tracing=True,
         )
 
         # Verify trace ID matches what FetchReceiptData generated
@@ -647,7 +643,7 @@ async def unified_receipt_evaluator(
         applied_stats_currency = None
         applied_stats_metadata = None
 
-        if not dry_run and dynamo_table:
+        if dynamo_table:
             with child_trace("apply_phase1_corrections", trace_ctx):
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
@@ -684,7 +680,6 @@ async def unified_receipt_evaluator(
                         )
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
-        # Always run evaluation for diagnostics; only skip writes in dry_run mode
         financial_result = None
         if dynamo_table:
             with child_trace(
@@ -734,8 +729,8 @@ async def unified_receipt_evaluator(
                     trace_ctx=financial_ctx,
                 )
 
-                # Apply financial corrections (only when not dry_run)
-                if not dry_run and financial_result:
+                # Apply financial corrections
+                if financial_result:
                     from receipt_agent.agents.label_evaluator.llm_review import (
                         apply_llm_decisions,
                     )
@@ -939,7 +934,7 @@ async def unified_receipt_evaluator(
                             )
 
                         # Apply LLM review decisions
-                        if not dry_run and dynamo_table:
+                        if dynamo_table:
                             invalid_reviewed = [
                                 d
                                 for d in llm_review_result
@@ -1001,7 +996,6 @@ async def unified_receipt_evaluator(
                     "currency": applied_stats_currency,
                     "metadata": applied_stats_metadata,
                 },
-                "dry_run": dry_run,
                 "duration_seconds": time.time() - start_time,
             }
 
