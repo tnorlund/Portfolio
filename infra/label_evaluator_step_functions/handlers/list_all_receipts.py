@@ -16,6 +16,7 @@ The two-phase architecture uses this to:
 import json
 import logging
 import os
+import random
 from typing import TYPE_CHECKING, Any
 
 import boto3
@@ -94,12 +95,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         result = dynamo.list_receipt_places(last_evaluated_key=result[1])
         all_places.extend(result[0])
 
-    logger.info("Found %s total receipt places", len(all_places))
+    total_places = len(all_places)
+    logger.info("Found %s total receipt places", total_places)
 
-    # Apply total limit if specified (slice the places list)
-    if limit and limit < len(all_places):
-        all_places = all_places[:limit]
-        logger.info("Applied limit=%s, using %s places", limit, len(all_places))
+    # Apply total limit if specified (randomly sample from all places)
+    if limit and limit < total_places:
+        all_places = random.sample(all_places, limit)
+        logger.info("Randomly sampled %s places from %s total", limit, total_places)
 
     # Collect receipts from the selected places, grouped by merchant
     receipts_by_merchant: dict[str, list[dict]] = {}
