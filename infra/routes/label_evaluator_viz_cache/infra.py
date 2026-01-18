@@ -57,6 +57,8 @@ class LabelEvaluatorVizCache(ComponentResource):
         label_evaluator_sf_arn: Input[str],
         setup_lambda_name: Input[str],
         setup_lambda_arn: Input[str],
+        # Optional: use existing cache bucket instead of creating new one
+        cache_bucket_name: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -90,19 +92,25 @@ class LabelEvaluatorVizCache(ComponentResource):
         setup_lambda_arn_output = Output.from_input(setup_lambda_arn)
 
         # ============================================================
-        # S3 Cache Bucket
+        # S3 Cache Bucket (use existing or create new)
         # ============================================================
-        self.cache_bucket = aws.s3.Bucket(
-            f"{name}-cache-bucket",
-            acl="private",
-            tags={
-                "Name": f"{name}-cache-bucket",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-        cache_bucket_output = self.cache_bucket.id
+        if cache_bucket_name is not None:
+            # Use existing bucket - just store the name
+            cache_bucket_output = Output.from_input(cache_bucket_name)
+            self.cache_bucket = None  # No bucket resource to manage
+        else:
+            # Create new bucket
+            self.cache_bucket = aws.s3.Bucket(
+                f"{name}-cache-bucket",
+                acl="private",
+                tags={
+                    "Name": f"{name}-cache-bucket",
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                opts=ResourceOptions(parent=self),
+            )
+            cache_bucket_output = self.cache_bucket.id
 
         # ============================================================
         # IAM Role for API Lambda
@@ -1264,16 +1272,21 @@ def handler(event, context):
         # ============================================================
         # Exports
         # ============================================================
-        self.register_outputs(
-            {
-                "cache_bucket_id": self.cache_bucket.id,
-                "cache_bucket_arn": self.cache_bucket.arn,
-                "api_lambda_arn": self.api_lambda.arn,
-                "api_lambda_name": self.api_lambda.name,
-                "step_function_arn": self.step_function.arn,
-                "eventbridge_rule_arn": self.eventbridge_rule.arn,
-            }
-        )
+        # Store cache bucket name for external access
+        self.cache_bucket_name = cache_bucket_output
+
+        outputs = {
+            "api_lambda_arn": self.api_lambda.arn,
+            "api_lambda_name": self.api_lambda.name,
+            "step_function_arn": self.step_function.arn,
+            "eventbridge_rule_arn": self.eventbridge_rule.arn,
+        }
+        # Only add bucket outputs if we created the bucket
+        if self.cache_bucket is not None:
+            outputs["cache_bucket_id"] = self.cache_bucket.id
+            outputs["cache_bucket_arn"] = self.cache_bucket.arn
+
+        self.register_outputs(outputs)
 
 
 def create_label_evaluator_viz_cache(
@@ -1289,9 +1302,17 @@ def create_label_evaluator_viz_cache(
     label_evaluator_sf_arn: Input[str],
     setup_lambda_name: Input[str],
     setup_lambda_arn: Input[str],
+    cache_bucket_name: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> LabelEvaluatorVizCache:
-    """Factory function to create label evaluator viz cache infrastructure."""
+    """Factory function to create label evaluator viz cache infrastructure.
+
+    Args:
+        cache_bucket_name: Optional existing bucket name to use for cache.
+            If provided, the API Lambda will read from this bucket instead
+            of creating a new one. Use this to share the bucket with the
+            merged EMR job that writes viz-cache output.
+    """
     return LabelEvaluatorVizCache(
         f"label-evaluator-viz-cache-{pulumi.get_stack()}",
         langsmith_export_bucket=langsmith_export_bucket,
@@ -1306,5 +1327,6 @@ def create_label_evaluator_viz_cache(
         label_evaluator_sf_arn=label_evaluator_sf_arn,
         setup_lambda_name=setup_lambda_name,
         setup_lambda_arn=setup_lambda_arn,
+        cache_bucket_name=cache_bucket_name,
         opts=opts,
     )

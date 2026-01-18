@@ -16,8 +16,8 @@ class LambdaArns:  # pylint: disable=too-many-instance-attributes
 
     list_merchants: str
     list_all_receipts: str
-    fetch_receipt_data: str
-    compute_patterns: str
+    fetch_receipt_data: str  # Legacy - kept for backwards compatibility
+    compute_patterns: str  # Legacy - kept for backwards compatibility
     evaluate_labels: str
     evaluate_currency: str
     evaluate_metadata: str
@@ -25,9 +25,11 @@ class LambdaArns:  # pylint: disable=too-many-instance-attributes
     close_trace: str
     aggregate_results: str
     final_aggregate: str
-    discover_patterns: str
+    discover_patterns: str  # Legacy - kept for backwards compatibility
     llm_review: str
     unified_evaluator: str
+    # New combined Lambda
+    unified_pattern_builder: str = ""  # Combines discover_patterns + compute_patterns
 
 
 @dataclass
@@ -240,16 +242,25 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
 
 
 def build_pattern_computation_states(
-    discover_patterns_arn: str,
-    compute_patterns_arn: str,
+    unified_pattern_builder_arn: str,
     phase1_concurrency: int,
 ) -> dict[str, Any]:
-    """Build Phase 1 pattern computation states."""
+    """Build Phase 1 pattern computation states using unified pattern builder.
+
+    The unified pattern builder combines LearnLineItemPatterns (LLM discovery)
+    and BuildMerchantPatterns (geometric computation) into a single Lambda.
+    """
     retry_config = [
         build_retry_config(
             ["States.TaskFailed"],
             interval_seconds=5,
-        )
+        ),
+        build_retry_config(
+            ["OllamaRateLimitError"],
+            interval_seconds=30,
+            max_attempts=5,
+            backoff_rate=2.0,
+        ),
     ]
 
     return {
@@ -266,44 +277,21 @@ def build_pattern_computation_states(
             },
             "ItemProcessor": {
                 "ProcessorConfig": {"Mode": "INLINE"},
-                "StartAt": "LearnLineItemPatterns",
+                "StartAt": "UnifiedPatternBuilder",
                 "States": {
-                    "LearnLineItemPatterns": {
+                    "UnifiedPatternBuilder": {
                         "Type": "Task",
-                        "Resource": discover_patterns_arn,
-                        "TimeoutSeconds": 600,
+                        "Resource": unified_pattern_builder_arn,
+                        "TimeoutSeconds": 900,  # 15 minutes (Lambda max)
                         "Parameters": {
                             "execution_id.$": "$.execution_id",
                             "batch_bucket.$": "$.batch_bucket",
                             "merchant_name.$": "$.merchant.merchant_name",
+                            "max_training_receipts.$": "$.max_training_receipts",
                             "langchain_project.$": "$.langchain_project",
                             "execution_arn.$": "$$.Execution.Id",
                         },
-                        "ResultPath": "$.line_item_patterns",
-                        "Retry": retry_config,
-                        "Next": "BuildMerchantPatterns",
-                    },
-                    "BuildMerchantPatterns": {
-                        "Type": "Task",
-                        "Resource": compute_patterns_arn,
-                        "TimeoutSeconds": 600,
-                        "Parameters": {
-                            "execution_id.$": "$.execution_id",
-                            "batch_bucket.$": "$.batch_bucket",
-                            "merchant.$": "$.merchant",
-                            "max_training_receipts.$": (
-                                "$.max_training_receipts"
-                            ),
-                            "langchain_project.$": "$.langchain_project",
-                            "execution_arn.$": "$$.Execution.Id",
-                            # Pass trace context from discover_patterns output
-                            "trace_id.$": "$.line_item_patterns.trace_id",
-                            "root_run_id.$": "$.line_item_patterns.root_run_id",
-                            "root_dotted_order.$": (
-                                "$.line_item_patterns.root_dotted_order"
-                            ),
-                        },
-                        "ResultPath": "$.patterns_result",
+                        "ResultPath": "$.pattern_result",
                         "Retry": retry_config,
                         "Next": "ReturnPatternResult",
                     },
@@ -311,12 +299,11 @@ def build_pattern_computation_states(
                         "Type": "Pass",
                         "Parameters": {
                             "merchant_name.$": "$.merchant.merchant_name",
-                            "patterns_s3_key.$": (
-                                "$.patterns_result.patterns_s3_key"
-                            ),
+                            "patterns_s3_key.$": "$.pattern_result.patterns_s3_key",
                             "line_item_patterns_s3_key.$": (
-                                "$.line_item_patterns.patterns_s3_key"
+                                "$.pattern_result.line_item_patterns_s3_key"
                             ),
+                            "receipt_count.$": "$.pattern_result.receipt_count",
                             "status": "patterns_computed",
                         },
                         "End": True,
@@ -357,7 +344,17 @@ def build_receipt_processing_states(
     lambdas: LambdaArns,
     phase2_concurrency: int,
 ) -> dict[str, Any]:
-    """Build Phase 2 receipt processing states using unified evaluator."""
+    """Build Phase 2 receipt processing states using unified evaluator.
+
+    The unified evaluator now handles:
+    1. Fetching receipt data directly from DynamoDB
+    2. Writing receipt data to S3 for the EMR job
+    3. Running all evaluation phases
+    4. Writing results to S3
+
+    This eliminates the previous LoadReceiptData step, reducing Lambda
+    invocations and S3 round-trips.
+    """
     # Single Map over all receipts with MaxConcurrency
     return {
         "ProcessReceipts": {
@@ -373,38 +370,19 @@ def build_receipt_processing_states(
             },
             "ItemProcessor": {
                 "ProcessorConfig": {"Mode": "INLINE"},
-                "StartAt": "LoadReceiptData",
+                "StartAt": "UnifiedReceiptEvaluator",
                 "States": {
-                    "LoadReceiptData": {
-                        "Type": "Task",
-                        "Resource": lambdas.fetch_receipt_data,
-                        "TimeoutSeconds": 60,
-                        "Parameters": {
-                            "receipt.$": "$.receipt",
-                            "execution_id.$": "$.execution_id",
-                            "batch_bucket.$": "$.batch_bucket",
-                            "execution_arn.$": "$$.Execution.Id",
-                        },
-                        "ResultPath": "$.receipt_data",
-                        "Retry": [
-                            build_retry_config(
-                                ["States.TaskFailed"],
-                                interval_seconds=1,
-                            )
-                        ],
-                        "Next": "UnifiedReceiptEvaluator",
-                    },
                     "UnifiedReceiptEvaluator": {
                         "Type": "Task",
                         "Resource": lambdas.unified_evaluator,
                         "TimeoutSeconds": 900,  # 15 minutes for all evaluations
                         "Parameters": {
-                            "data_s3_key.$": "$.receipt_data.data_s3_key",
-                            "merchant_name.$": "$.receipt.merchant_name",
+                            # Pass receipt object directly (new format)
+                            # Lambda will fetch from DynamoDB and write to S3
+                            "receipt.$": "$.receipt",
                             "execution_id.$": "$.execution_id",
                             "batch_bucket.$": "$.batch_bucket",
                             "langchain_project.$": "$.langchain_project",
-                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                             "execution_arn.$": "$$.Execution.Id",
                         },
                         "ResultPath": "$.evaluation_result",
@@ -803,11 +781,10 @@ def create_step_function_definition(
     # List receipts (single merchant and all merchants)
     states.update(build_list_receipts_states(lambdas.list_all_receipts))
 
-    # Phase 1: Pattern computation
+    # Phase 1: Pattern computation (unified pattern builder)
     states.update(
         build_pattern_computation_states(
-            lambdas.discover_patterns,
-            lambdas.compute_patterns,
+            lambdas.unified_pattern_builder,
             runtime.phase1_concurrency,
         )
     )

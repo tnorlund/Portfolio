@@ -1458,6 +1458,7 @@ from routes.label_evaluator_viz_cache.infra import (
 # Create API Gateway route for label evaluator visualization
 if hasattr(api_gateway, "api"):
     # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
+    # Use the shared viz-cache bucket (same bucket that the merged EMR job writes to)
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
         langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
         langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
@@ -1471,10 +1472,12 @@ if hasattr(api_gateway, "api"):
         label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
         setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
         setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
+        # Use shared bucket (same bucket merged EMR job writes to)
+        cache_bucket_name=label_evaluator_viz_cache_bucket.id,
     )
     pulumi.export(
         "label_evaluator_viz_cache_bucket",
-        label_evaluator_viz_cache.cache_bucket.id,
+        label_evaluator_viz_cache.cache_bucket_name,
     )
 
     # Label evaluator visualization endpoint

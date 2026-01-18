@@ -1,7 +1,6 @@
-# Unified Receipt Evaluator Container Lambda
-# Multi-stage build with LangSmith tracing support
-# Consolidates currency, metadata, financial, and LLM review evaluations
-# Build: 2026-01-17 - Skip OpenRouter free tier in ResilientLLM
+# Unified Pattern Builder Container Lambda
+# Combines LearnLineItemPatterns (LLM discovery) and BuildMerchantPatterns (geometric computation)
+# into a single Lambda to reduce cold starts and simplify the Step Function
 
 # Stage 1: Build and install dependencies (cached layer)
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
@@ -21,7 +20,7 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # 2. receipt_dynamo_stream (depends on receipt_dynamo)
 # 3. receipt_chroma (depends on receipt_dynamo_stream)
 # 4. receipt_places (depends on receipt_dynamo)
-# 5. receipt_agent (depends on all above, brings langchain-ollama and langsmith)
+# 5. receipt_agent (depends on all above, brings httpx and langsmith)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_dynamo_stream && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
@@ -35,10 +34,10 @@ FROM dependencies
 # Copy the tracing utilities
 COPY infra/label_evaluator_step_functions/lambdas/utils/tracing.py ${LAMBDA_TASK_ROOT}/tracing.py
 
-# Copy the unified handler
-COPY infra/label_evaluator_step_functions/lambdas/unified_receipt_evaluator.py ${LAMBDA_TASK_ROOT}/handler.py
+# Copy the unified pattern builder handler
+COPY infra/label_evaluator_step_functions/lambdas/unified_pattern_builder.py ${LAMBDA_TASK_ROOT}/handler.py
 
-# Copy utils module
+# Copy utils module (for s3_helpers)
 COPY infra/label_evaluator_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
 
 # Ensure files are readable

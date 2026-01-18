@@ -1,18 +1,30 @@
 """Unified receipt evaluator with concurrent LLM calls.
 
 This handler consolidates all receipt evaluation steps into a single Lambda:
+- Step 0: Fetch receipt data from DynamoDB and write to S3 (for EMR job)
 - Phase 1 (concurrent): Currency, Metadata, and Geometric evaluations
 - Phase 2 (sequential): Financial validation (needs corrected labels)
 - Phase 3 (conditional): LLM review of flagged issues
 
 Uses asyncio.gather() for true concurrent LLM calls, eliminating Step Function
 orchestration overhead and reducing cold starts from 5 lambdas to 1.
+
+This handler replaces the previous two-step flow:
+- LoadReceiptData (fetch from DynamoDB, write to S3)
+- UnifiedReceiptEvaluator (read from S3, evaluate)
+
+Now combined into a single Lambda that:
+1. Fetches directly from DynamoDB
+2. Writes to S3 for the EMR job (data/{execution_id}/*.json)
+3. Runs all evaluations
+4. Writes results to S3 (unified/{execution_id}/*.json)
 """
 
 # pylint: disable=import-outside-toplevel,wrong-import-position
 # Lambda handlers delay imports until runtime for cold start optimization
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -99,7 +111,16 @@ async def unified_receipt_evaluator(
     """
     Unified receipt evaluation with concurrent LLM calls.
 
-    Input:
+    Input (new format - direct receipt info):
+    {
+        "receipt": {"image_id": "img1", "receipt_id": 1, "merchant_name": "Wild Fork"},
+        "execution_id": "abc123",
+        "batch_bucket": "bucket-name",
+        "execution_arn": "arn:aws:states:...",
+        "langchain_project": "label-eval-{timestamp}"
+    }
+
+    Input (legacy format - S3 key):
     {
         "data_s3_key": "data/{exec}/{image_id}_{receipt_id}.json",
         "execution_id": "abc123",
@@ -134,23 +155,38 @@ async def unified_receipt_evaluator(
         os.environ["LANGCHAIN_PROJECT"] = langchain_project
         logger.info("LangSmith project set to: %s", langchain_project)
 
-    data_s3_key = event.get("data_s3_key")
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
-    merchant_name = event.get("merchant_name", "unknown")
-    receipt_trace_id = event.get("receipt_trace_id", "")
 
-    if not data_s3_key:
-        raise ValueError("data_s3_key is required")
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
+    # Determine input mode: new format (receipt object) or legacy format (data_s3_key)
+    receipt_obj = event.get("receipt")
+    data_s3_key = event.get("data_s3_key")
+    use_direct_fetch = receipt_obj is not None
+
+    if use_direct_fetch:
+        # New format: fetch from DynamoDB directly
+        image_id = receipt_obj.get("image_id")
+        receipt_id = receipt_obj.get("receipt_id")
+        merchant_name = receipt_obj.get("merchant_name", "unknown")
+        receipt_trace_id = ""  # Not passed in new format, trace ID generated internally
+        if not image_id or receipt_id is None:
+            raise ValueError("receipt.image_id and receipt.receipt_id are required")
+    elif data_s3_key:
+        # Legacy format: will load from S3
+        merchant_name = event.get("merchant_name", "unknown")
+        receipt_trace_id = event.get("receipt_trace_id", "")
+        image_id = None
+        receipt_id = None
+    else:
+        raise ValueError("Either 'receipt' object or 'data_s3_key' is required")
+
     start_time = time.time()
 
-    # Initialize for error handling
-    image_id = None
-    receipt_id = None
+    # Initialize for error handling (image_id/receipt_id already set above for direct fetch)
     result = None
     receipt_trace = None  # Will hold the ReceiptTraceInfo
 
@@ -162,6 +198,7 @@ async def unified_receipt_evaluator(
             deserialize_place,
             deserialize_word,
             serialize_label,
+            serialize_place,
             serialize_word,
         )
 
@@ -170,41 +207,117 @@ async def unified_receipt_evaluator(
             "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
         )
 
-        # 1. Load receipt data from S3 FIRST (before creating trace)
-        # We need image_id and receipt_id to create the deterministic trace ID
-        logger.info(
-            "Loading receipt data from s3://%s/%s",
-            batch_bucket,
-            data_s3_key,
-        )
-        target_data = load_json_from_s3(
-            s3, batch_bucket, data_s3_key, logger=logger
-        )
+        # 1. Load receipt data - either from DynamoDB (new) or S3 (legacy)
+        if use_direct_fetch:
+            # NEW: Fetch directly from DynamoDB
+            logger.info(
+                "Fetching receipt data from DynamoDB for %s#%s",
+                image_id,
+                receipt_id,
+            )
 
-        if target_data is None:
-            raise ValueError(f"Receipt data not found at {data_s3_key}")
+            from receipt_dynamo import DynamoClient
 
-        image_id = target_data.get("image_id")
-        receipt_id = target_data.get("receipt_id")
+            if not dynamo_table:
+                raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
 
-        if not image_id or receipt_id is None:
-            raise ValueError("image_id and receipt_id are required in data")
+            dynamo = DynamoClient(table_name=dynamo_table)
 
-        # Deserialize entities
-        words = [deserialize_word(w) for w in target_data.get("words", [])]
-        labels = [
-            deserialize_label(label_data)
-            for label_data in target_data.get("labels", [])
-        ]
-        place = deserialize_place(target_data.get("place"))
+            # Fetch receipt data
+            try:
+                place = dynamo.get_receipt_place(image_id, receipt_id)
+            except Exception:
+                logger.warning("No ReceiptPlace found for %s#%s", image_id, receipt_id)
+                place = None
 
-        logger.info(
-            "Loaded %s words, %s labels for %s#%s",
-            len(words),
-            len(labels),
-            image_id,
-            receipt_id,
-        )
+            try:
+                words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+            except Exception:
+                logger.warning("Failed to fetch words for %s#%s", image_id, receipt_id)
+                words = []
+
+            try:
+                labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+                    image_id, receipt_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to fetch labels for %s#%s", image_id, receipt_id
+                )
+                labels = []
+
+            logger.info(
+                "Fetched %s words, %s labels for %s#%s",
+                len(words),
+                len(labels),
+                image_id,
+                receipt_id,
+            )
+
+            # Write receipt data to S3 for EMR job (same format as old LoadReceiptData)
+            data_s3_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
+            receipt_data_for_s3 = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
+                "place": serialize_place(place) if place else None,
+                "words": [serialize_word(w) for w in words],
+                "labels": [serialize_label(label) for label in labels],
+            }
+
+            try:
+                s3.put_object(
+                    Bucket=batch_bucket,
+                    Key=data_s3_key,
+                    Body=json.dumps(receipt_data_for_s3).encode("utf-8"),
+                    ContentType="application/json",
+                )
+                logger.info(
+                    "Saved receipt data to s3://%s/%s (for EMR job)",
+                    batch_bucket,
+                    data_s3_key,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to upload data to s3://%s/%s", batch_bucket, data_s3_key
+                )
+                raise
+
+        else:
+            # LEGACY: Load from S3 (for backwards compatibility)
+            logger.info(
+                "Loading receipt data from s3://%s/%s",
+                batch_bucket,
+                data_s3_key,
+            )
+            target_data = load_json_from_s3(
+                s3, batch_bucket, data_s3_key, logger=logger
+            )
+
+            if target_data is None:
+                raise ValueError(f"Receipt data not found at {data_s3_key}")
+
+            image_id = target_data.get("image_id")
+            receipt_id = target_data.get("receipt_id")
+
+            if not image_id or receipt_id is None:
+                raise ValueError("image_id and receipt_id are required in data")
+
+            # Deserialize entities
+            words = [deserialize_word(w) for w in target_data.get("words", [])]
+            labels = [
+                deserialize_label(label_data)
+                for label_data in target_data.get("labels", [])
+            ]
+            place = deserialize_place(target_data.get("place"))
+
+            logger.info(
+                "Loaded %s words, %s labels for %s#%s",
+                len(words),
+                len(labels),
+                image_id,
+                receipt_id,
+            )
 
         # 2. Create the ROOT receipt trace (one per receipt)
         # This is the parent trace that all child operations will link to

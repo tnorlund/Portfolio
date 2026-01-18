@@ -973,6 +973,58 @@ class LabelEvaluatorStepFunction(ComponentResource):
         unified_evaluator_lambda = unified_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: unified_pattern_builder (NEW)
+        # Combines LearnLineItemPatterns and BuildMerchantPatterns
+        # Reduces cold starts by running both in a single Lambda
+        # ============================================================
+        unified_pattern_builder_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 900,  # 15 minutes (Lambda max), Step Function handles longer waits
+            "memory_size": 10240,  # Same as compute_patterns
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
+                **tracing_env,
+            },
+        }
+
+        unified_pattern_builder_docker_image = CodeBuildDockerImage(
+            f"{name}-upb-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.unified_pattern_builder"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-unified-pattern-builder",
+            lambda_config=unified_pattern_builder_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        unified_pattern_builder_lambda = (
+            unified_pattern_builder_docker_image.lambda_function
+        )
+
+        # ============================================================
         # LangSmith Export Lambdas (for viz-cache integration)
         # ============================================================
         trigger_export_lambda = None
@@ -1356,6 +1408,7 @@ def handler(event, context):
             discover_patterns_lambda.arn,
             llm_review_lambda.arn,
             unified_evaluator_lambda.arn,
+            unified_pattern_builder_lambda.arn,  # NEW: combined pattern builder
         ]
 
         if trigger_export_lambda and check_export_lambda:
@@ -1503,52 +1556,53 @@ def handler(event, context):
         )
 
         # Build Output.all with optional EMR and viz-cache parameters
-        # Base Lambda ARNs (indices 0-13)
+        # Base Lambda ARNs (indices 0-14)
         base_outputs = [
-            list_merchants_lambda.arn,
-            list_all_receipts_lambda.arn,
-            fetch_receipt_data_lambda.arn,
-            compute_patterns_lambda.arn,
-            evaluate_labels_lambda.arn,
-            evaluate_currency_lambda.arn,
-            evaluate_metadata_lambda.arn,
-            evaluate_financial_lambda.arn,
-            close_trace_lambda.arn,
-            aggregate_results_lambda.arn,
-            final_aggregate_lambda.arn,
-            discover_patterns_lambda.arn,
-            llm_review_lambda.arn,
-            unified_evaluator_lambda.arn,
-            self.batch_bucket.bucket,  # index 14
+            list_merchants_lambda.arn,  # 0
+            list_all_receipts_lambda.arn,  # 1
+            fetch_receipt_data_lambda.arn,  # 2
+            compute_patterns_lambda.arn,  # 3
+            evaluate_labels_lambda.arn,  # 4
+            evaluate_currency_lambda.arn,  # 5
+            evaluate_metadata_lambda.arn,  # 6
+            evaluate_financial_lambda.arn,  # 7
+            close_trace_lambda.arn,  # 8
+            aggregate_results_lambda.arn,  # 9
+            final_aggregate_lambda.arn,  # 10
+            discover_patterns_lambda.arn,  # 11
+            llm_review_lambda.arn,  # 12
+            unified_evaluator_lambda.arn,  # 13
+            unified_pattern_builder_lambda.arn,  # 14 - NEW
+            self.batch_bucket.bucket,  # 15
         ]
 
-        # Add EMR outputs if enabled (indices 15-19)
+        # Add EMR outputs if enabled (indices 16-20)
         if self.emr_enabled:
             base_outputs.extend(
                 [
-                    self.emr_application_id,  # 15
-                    self.emr_job_execution_role_arn,  # 16
-                    self.langsmith_export_bucket,  # 17
-                    self.analytics_output_bucket,  # 18
-                    self.spark_artifacts_bucket,  # 19
+                    self.emr_application_id,  # 16
+                    self.emr_job_execution_role_arn,  # 17
+                    self.langsmith_export_bucket,  # 18
+                    self.analytics_output_bucket,  # 19
+                    self.spark_artifacts_bucket,  # 20
                 ]
             )
 
-        # Add viz-cache outputs if enabled (indices 20-22)
+        # Add viz-cache outputs if enabled (indices 21-23)
         if self.viz_cache_enabled and trigger_export_lambda and check_export_lambda:
             base_outputs.extend(
                 [
-                    self.cache_bucket,  # 20
-                    trigger_export_lambda.arn,  # 21
-                    check_export_lambda.arn,  # 22
+                    self.cache_bucket,  # 21
+                    trigger_export_lambda.arn,  # 22
+                    check_export_lambda.arn,  # 23
                 ]
             )
 
         # Helper to safely get EMR and viz-cache params
         def build_emr_config(args):
             """Build EmrConfig with optional viz-cache params."""
-            emr_base_idx = 15
-            viz_base_idx = 20
+            emr_base_idx = 16  # After batch_bucket at 15
+            viz_base_idx = 21  # After EMR params
 
             config = EmrConfig(
                 application_id=args[emr_base_idx] if self.emr_enabled else None,
@@ -1569,7 +1623,7 @@ def handler(event, context):
             # Add viz-cache params if enabled
             if self.viz_cache_enabled and len(args) > viz_base_idx:
                 config.cache_bucket = args[viz_base_idx]
-                config.batch_bucket = args[14]  # batch_bucket from base
+                config.batch_bucket = args[15]  # batch_bucket from base
                 config.trigger_export_lambda_arn = args[viz_base_idx + 1]
                 config.check_export_lambda_arn = args[viz_base_idx + 2]
 
@@ -1598,9 +1652,10 @@ def handler(event, context):
                         discover_patterns=args[11],
                         llm_review=args[12],
                         unified_evaluator=args[13],
+                        unified_pattern_builder=args[14],  # NEW
                     ),
                     runtime=RuntimeConfig(
-                        batch_bucket=args[14],
+                        batch_bucket=args[15],  # Updated index
                     ),
                     emr=build_emr_config(args),
                 )
@@ -1631,5 +1686,8 @@ def handler(event, context):
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
                 "discover_patterns_lambda_arn": discover_patterns_lambda.arn,
                 "unified_evaluator_lambda_arn": unified_evaluator_lambda.arn,
+                "unified_pattern_builder_lambda_arn": (
+                    unified_pattern_builder_lambda.arn
+                ),
             }
         )
