@@ -360,26 +360,15 @@ class EMRServerlessAnalytics(ComponentResource):
             REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
         )
 
-        # Compute content hashes to detect file changes
+        # Compute content hash to detect file changes
         def file_hash(path: Path) -> str:
             """Compute truncated MD5 hash for content change detection."""
             return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
 
-        emr_job_path = spark_scripts_dir / "emr_job.py"
         merged_job_path = spark_scripts_dir / "merged_job.py"
 
-        # Upload emr_job.py (source_hash forces update on content change)
-        self.emr_job_script = aws.s3.BucketObjectv2(
-            f"{name}-emr-job-script",
-            bucket=self.artifacts_bucket.id,
-            key="spark/emr_job.py",
-            source=FileAsset(str(emr_job_path)),
-            source_hash=file_hash(emr_job_path),
-            opts=ResourceOptions(parent=self.artifacts_bucket),
-        )
-
-        # Upload merged_job.py - unified analytics + viz-cache job
-        # Note: viz_cache_job.py has been removed - merged_job.py handles both
+        # Upload merged_job.py - unified job for analytics and/or viz-cache
+        # Supports --job-type: analytics, viz-cache, or all
         self.merged_job_script = aws.s3.BucketObjectv2(
             f"{name}-merged-job-script",
             bucket=self.artifacts_bucket.id,

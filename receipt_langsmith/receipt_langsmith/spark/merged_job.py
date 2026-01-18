@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""EMR Serverless job entry point for combined analytics and viz-cache generation.
+"""EMR Serverless job entry point for analytics and viz-cache generation.
 
-This unified job merges analytics (from LangSmith Parquet exports) and viz-cache
-(from S3 JSON files) into a single EMR job, eliminating the need for separate
-workflows and reducing LangSmith export polling overhead.
+This unified job handles both analytics (from LangSmith Parquet exports) and
+viz-cache (from S3 JSON files), eliminating the need for separate job scripts.
 
 Job Types:
-    analytics: Run only analytics (same as emr_job.py)
+    analytics: Run only analytics (computes job/receipt/step metrics)
     viz-cache: Run only viz-cache generation (reads from S3 JSON files)
     all: Run both analytics and viz-cache
 
@@ -23,12 +22,10 @@ Usage:
         --execution-id abc123 \\
         --receipts-lookup s3://label-evaluator-batch-bucket/receipts_lookup/abc123/
 
-Key Differences from viz_cache_job.py:
-    - Reads words/labels from S3 JSON files (data/{execution_id}/*.json)
-    - Reads evaluation results from S3 JSON (unified/{execution_id}/*.json)
-    - Reads CDN keys from receipts_lookup JSONL dataset
-    - No longer depends on LangSmith Parquet exports for viz-cache
-    - Analytics still uses Parquet for full trace analysis
+Data Sources:
+    - Analytics: LangSmith Parquet exports (full trace analysis)
+    - Viz-cache: S3 JSON files (data/{execution_id}/*.json, unified/{execution_id}/*.json)
+    - CDN keys: receipts_lookup JSONL dataset
 """
 
 from __future__ import annotations
@@ -136,7 +133,7 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 # =============================================================================
-# Analytics Functions (from emr_job.py)
+# Analytics Functions
 # =============================================================================
 
 
@@ -547,8 +544,12 @@ def build_viz_receipt_from_row(
         "duration_seconds": row.get("geometric_duration_seconds", 0),
     }
 
+    # Only emit review data if review actually ran
+    # Check for non-empty all_decisions list or positive duration
     review = None
-    if row.get("review_all_decisions") or row.get("review_decisions"):
+    review_all_decisions = row.get("review_all_decisions") or []
+    review_duration = row.get("review_duration_seconds") or 0
+    if review_all_decisions or review_duration > 0:
         review_decisions = row.get("review_decisions", {})
         review = {
             "decisions": {
@@ -556,8 +557,8 @@ def build_viz_receipt_from_row(
                 "INVALID": review_decisions.get("INVALID", 0),
                 "NEEDS_REVIEW": review_decisions.get("NEEDS_REVIEW", 0),
             },
-            "all_decisions": row.get("review_all_decisions", []),
-            "duration_seconds": row.get("review_duration_seconds", 0),
+            "all_decisions": review_all_decisions,
+            "duration_seconds": review_duration,
         }
 
     return {

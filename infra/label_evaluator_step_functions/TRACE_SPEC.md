@@ -525,7 +525,7 @@ infra/label_evaluator_step_functions/
 
 receipt_langsmith/receipt_langsmith/spark/
 ├── processor.py                   # ✅ Added compute_job_analytics(), updated step names
-└── emr_job.py                     # (no changes needed - processor handles both job types)
+└── merged_job.py                  # Unified analytics + viz-cache job (--job-type: analytics/viz-cache/all)
 
 scripts/
 └── test_spark_processor_local.py  # ✅ Local PySpark test script for development

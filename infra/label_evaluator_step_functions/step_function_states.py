@@ -647,14 +647,14 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         )
         job_name = "merged-analytics-vizcache"
     else:
-        # Use emr_job.py for analytics only
-        entry_point = f"s3://{artifacts_bucket}/spark/emr_job.py"
+        # Use merged_job.py with analytics only (no viz-cache)
+        entry_point = f"s3://{artifacts_bucket}/spark/merged_job.py"
         entry_args_expr = (
             f"States.Array("
-            f"'--input', 's3://{langsmith_bucket}/traces/', "
-            f"'--output', States.Format('s3://{output_bucket}/analytics/{{}}', "
+            f"'--job-type', 'analytics', "
+            f"'--parquet-input', 's3://{langsmith_bucket}/traces/', "
+            f"'--analytics-output', States.Format('s3://{output_bucket}/analytics/{{}}', "
             f"$.summary_result.execution_id), "
-            f"'--job-type', 'all', "
             f"'--partition-by-merchant')"
         )
         job_name = "analytics"
