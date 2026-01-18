@@ -39,11 +39,27 @@ class EmrConfig:
     langsmith_export_bucket: Optional[str] = None
     analytics_output_bucket: Optional[str] = None
     spark_artifacts_bucket: Optional[str] = None
+    # Viz-cache integration
+    cache_bucket: Optional[str] = None
+    batch_bucket: Optional[str] = None
+    # LangSmith export Lambda ARNs (for triggering export from SF)
+    trigger_export_lambda_arn: Optional[str] = None
+    check_export_lambda_arn: Optional[str] = None
 
     @property
     def enabled(self) -> bool:
         """Check if EMR is configured."""
         return self.application_id is not None
+
+    @property
+    def viz_cache_enabled(self) -> bool:
+        """Check if viz-cache integration is configured."""
+        return (
+            self.enabled
+            and self.cache_bucket is not None
+            and self.trigger_export_lambda_arn is not None
+            and self.check_export_lambda_arn is not None
+        )
 
 
 @dataclass
@@ -435,10 +451,27 @@ def build_summarize_states(final_aggregate_arn: str) -> dict[str, Any]:
     }
 
 
-def build_analytics_decision_states(emr_enabled: bool) -> dict[str, Any]:
-    """Build states for deciding whether to run analytics."""
+def build_analytics_decision_states(
+    emr_enabled: bool, viz_cache_enabled: bool = False
+) -> dict[str, Any]:
+    """Build states for deciding whether to run analytics.
+
+    Args:
+        emr_enabled: Whether EMR analytics is enabled.
+        viz_cache_enabled: Whether viz-cache integration is enabled.
+            If True, routes through LangSmith export polling before EMR job.
+    """
     emr_next = "CheckEMREnabled" if emr_enabled else "SkipAnalytics"
-    run_next = "RunSparkAnalytics" if emr_enabled else "SkipAnalytics"
+
+    # Determine the next state after CheckEMREnabled
+    if viz_cache_enabled:
+        # Route through LangSmith export polling first
+        run_next = "InitializeExportRetryCount"
+    elif emr_enabled:
+        # Direct to analytics job
+        run_next = "RunSparkAnalytics"
+    else:
+        run_next = "SkipAnalytics"
 
     return {
         "CheckRunAnalytics": {
@@ -479,6 +512,115 @@ def build_analytics_decision_states(emr_enabled: bool) -> dict[str, Any]:
     }
 
 
+def build_langsmith_export_states(emr: EmrConfig) -> dict[str, Any]:
+    """Build LangSmith export polling states if viz-cache is configured."""
+    if not emr.viz_cache_enabled:
+        return {}
+
+    return {
+        "InitializeExportRetryCount": {
+            "Type": "Pass",
+            "Result": 0,
+            "ResultPath": "$.export_retry_count",
+            "Next": "TriggerLangSmithExport",
+        },
+        "TriggerLangSmithExport": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": emr.trigger_export_lambda_arn,
+                "Payload": {
+                    "langchain_project.$": "$.init.langchain_project",
+                },
+            },
+            "ResultSelector": {
+                "export_id.$": "$.Payload.export_id",
+                "status.$": "$.Payload.status",
+            },
+            "ResultPath": "$.export_result",
+            "Retry": [
+                build_retry_config(
+                    ["States.TaskFailed"],
+                    interval_seconds=5,
+                )
+            ],
+            "Next": "WaitForExport",
+        },
+        "WaitForExport": {
+            "Type": "Wait",
+            "Seconds": 60,
+            "Next": "CheckExportStatus",
+        },
+        "CheckExportStatus": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": emr.check_export_lambda_arn,
+                "Payload": {
+                    "export_id.$": "$.export_result.export_id",
+                },
+            },
+            "ResultSelector": {
+                "export_id.$": "$.Payload.export_id",
+                "status.$": "$.Payload.status",
+            },
+            "ResultPath": "$.check_result",
+            "Retry": [
+                build_retry_config(
+                    ["States.TaskFailed"],
+                    interval_seconds=5,
+                )
+            ],
+            "Next": "IncrementExportRetryCount",
+        },
+        "IncrementExportRetryCount": {
+            "Type": "Pass",
+            "Parameters": {
+                "value.$": "States.MathAdd($.export_retry_count, 1)",
+            },
+            "ResultPath": "$.export_retry_obj",
+            "Next": "UpdateExportRetryCount",
+        },
+        "UpdateExportRetryCount": {
+            "Type": "Pass",
+            "InputPath": "$.export_retry_obj.value",
+            "ResultPath": "$.export_retry_count",
+            "Next": "IsExportComplete",
+        },
+        "IsExportComplete": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.check_result.status",
+                    "StringEquals": "completed",
+                    "Next": "RunMergedSparkJob",
+                },
+                {
+                    "Variable": "$.check_result.status",
+                    "StringEquals": "failed",
+                    "Next": "ExportFailed",
+                },
+                {
+                    "Variable": "$.export_retry_count",
+                    "NumericGreaterThanEquals": 30,
+                    "Next": "ExportTimeout",
+                },
+            ],
+            "Default": "WaitForExport",
+        },
+        "ExportTimeout": {
+            "Type": "Fail",
+            "Error": "ExportTimeout",
+            "Cause": "LangSmith export did not complete within 30 minutes",
+        },
+        "ExportFailed": {
+            "Type": "Fail",
+            "Error": "ExportFailed",
+            "Cause": "LangSmith export failed",
+        },
+    }
+
+
 def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
     """Build EMR Serverless analytics states if EMR is configured."""
     if not emr.enabled:
@@ -498,97 +640,129 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         "--conf spark.driver.memory=4g"
     )
 
-    # Build entry point arguments using States.Array for dynamic evaluation
     output_bucket = emr.analytics_output_bucket
     langsmith_bucket = emr.langsmith_export_bucket
-    entry_args_expr = (
-        f"States.Array("
-        f"'--input', 's3://{langsmith_bucket}/traces/', "
-        f"'--output', States.Format('s3://{output_bucket}/analytics/{{}}', "
-        f"$.summary_result.execution_id), "
-        f"'--job-type', 'all', "
-        f"'--partition-by-merchant')"
-    )
 
-    return {
-        "RunSparkAnalytics": {
-            "Type": "Task",
-            "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
-            "Parameters": {
-                "ApplicationId": emr.application_id,
-                "ExecutionRoleArn": emr.job_execution_role_arn,
-                "Name.$": (
-                    "States.Format('analytics-{}', "
-                    "$.summary_result.execution_id)"
-                ),
-                "JobDriver": {
-                    "SparkSubmit": {
-                        "EntryPoint": (
-                            f"s3://{artifacts_bucket}/spark/emr_job.py"
-                        ),
-                        "EntryPointArguments.$": entry_args_expr,
-                        "SparkSubmitParameters": spark_submit_params,
-                    }
-                },
-                "ConfigurationOverrides": {
-                    "MonitoringConfiguration": {
-                        "S3MonitoringConfiguration": {
-                            "LogUri": (
-                                f"s3://{emr.analytics_output_bucket}/logs/"
-                            ),
-                        }
-                    }
-                },
-            },
-            "ResultPath": "$.spark_result",
-            "TimeoutSeconds": 1800,
-            "Retry": [
-                build_retry_config(
-                    ["States.TaskFailed"],
-                    interval_seconds=30,
-                )
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": ["States.ALL"],
-                    "ResultPath": "$.spark_error",
-                    "Next": "AnalyticsFailed",
+    states: dict[str, Any] = {}
+
+    # Add LangSmith export states if viz-cache is enabled
+    states.update(build_langsmith_export_states(emr))
+
+    # Determine the entry point and arguments based on viz-cache config
+    if emr.viz_cache_enabled:
+        # Use merged_job.py with both analytics and viz-cache
+        entry_point = f"s3://{artifacts_bucket}/spark/merged_job.py"
+        # Build entry point arguments for merged job
+        entry_args_expr = (
+            f"States.Array("
+            f"'--job-type', 'all', "
+            f"'--parquet-input', 's3://{langsmith_bucket}/traces/', "
+            f"'--analytics-output', States.Format('s3://{output_bucket}/analytics/{{}}', "
+            f"$.summary_result.execution_id), "
+            f"'--batch-bucket', '{emr.batch_bucket}', "
+            f"'--cache-bucket', '{emr.cache_bucket}', "
+            f"'--execution-id', $.summary_result.execution_id, "
+            f"'--partition-by-merchant')"
+        )
+        job_name = "merged-analytics-vizcache"
+    else:
+        # Use emr_job.py for analytics only
+        entry_point = f"s3://{artifacts_bucket}/spark/emr_job.py"
+        entry_args_expr = (
+            f"States.Array("
+            f"'--input', 's3://{langsmith_bucket}/traces/', "
+            f"'--output', States.Format('s3://{output_bucket}/analytics/{{}}', "
+            f"$.summary_result.execution_id), "
+            f"'--job-type', 'all', "
+            f"'--partition-by-merchant')"
+        )
+        job_name = "analytics"
+
+    # Job state name depends on viz-cache config
+    job_state_name = "RunMergedSparkJob" if emr.viz_cache_enabled else "RunSparkAnalytics"
+
+    states[job_state_name] = {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
+        "Parameters": {
+            "ApplicationId": emr.application_id,
+            "ExecutionRoleArn": emr.job_execution_role_arn,
+            "Name.$": (
+                f"States.Format('{job_name}-{{}}', "
+                f"$.summary_result.execution_id)"
+            ),
+            "JobDriver": {
+                "SparkSubmit": {
+                    "EntryPoint": entry_point,
+                    "EntryPointArguments.$": entry_args_expr,
+                    "SparkSubmitParameters": spark_submit_params,
                 }
-            ],
-            "Next": "AnalyticsComplete",
-        },
-        "AnalyticsComplete": {
-            "Type": "Pass",
-            "Parameters": {
-                "status.$": "$.summary_result.status",
-                "execution_id.$": "$.summary_result.execution_id",
-                "total_merchants.$": "$.summary_result.total_merchants",
-                "total_receipts.$": "$.summary_result.total_receipts",
-                "total_issues.$": "$.summary_result.total_issues",
-                "analytics_status": "completed",
-                "analytics_job_id.$": "$.spark_result.JobRunId",
-                "analytics_output": (
-                    f"s3://{emr.analytics_output_bucket}/analytics/"
-                ),
-                "langchain_project.$": "$.init.langchain_project",
             },
-            "End": True,
-        },
-        "AnalyticsFailed": {
-            "Type": "Pass",
-            "Parameters": {
-                "status.$": "$.summary_result.status",
-                "execution_id.$": "$.summary_result.execution_id",
-                "total_merchants.$": "$.summary_result.total_merchants",
-                "total_receipts.$": "$.summary_result.total_receipts",
-                "total_issues.$": "$.summary_result.total_issues",
-                "analytics_status": "failed",
-                "analytics_error.$": "$.spark_error.Error",
-                "langchain_project.$": "$.init.langchain_project",
+            "ConfigurationOverrides": {
+                "MonitoringConfiguration": {
+                    "S3MonitoringConfiguration": {
+                        "LogUri": (
+                            f"s3://{emr.analytics_output_bucket}/logs/"
+                        ),
+                    }
+                }
             },
-            "End": True,
         },
+        "ResultPath": "$.spark_result",
+        "TimeoutSeconds": 1800,
+        "Retry": [
+            build_retry_config(
+                ["States.TaskFailed"],
+                interval_seconds=30,
+            )
+        ],
+        "Catch": [
+            {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.spark_error",
+                "Next": "AnalyticsFailed",
+            }
+        ],
+        "Next": "AnalyticsComplete",
     }
+
+    states["AnalyticsComplete"] = {
+        "Type": "Pass",
+        "Parameters": {
+            "status.$": "$.summary_result.status",
+            "execution_id.$": "$.summary_result.execution_id",
+            "total_merchants.$": "$.summary_result.total_merchants",
+            "total_receipts.$": "$.summary_result.total_receipts",
+            "total_issues.$": "$.summary_result.total_issues",
+            "analytics_status": "completed",
+            "analytics_job_id.$": "$.spark_result.JobRunId",
+            "analytics_output": (
+                f"s3://{emr.analytics_output_bucket}/analytics/"
+            ),
+            "viz_cache_output": (
+                f"s3://{emr.cache_bucket}/" if emr.viz_cache_enabled else None
+            ),
+            "langchain_project.$": "$.init.langchain_project",
+        },
+        "End": True,
+    }
+
+    states["AnalyticsFailed"] = {
+        "Type": "Pass",
+        "Parameters": {
+            "status.$": "$.summary_result.status",
+            "execution_id.$": "$.summary_result.execution_id",
+            "total_merchants.$": "$.summary_result.total_merchants",
+            "total_receipts.$": "$.summary_result.total_receipts",
+            "total_issues.$": "$.summary_result.total_issues",
+            "analytics_status": "failed",
+            "analytics_error.$": "$.spark_error.Error",
+            "langchain_project.$": "$.init.langchain_project",
+        },
+        "End": True,
+    }
+
+    return states
 
 
 def create_step_function_definition(
@@ -650,7 +824,9 @@ def create_step_function_definition(
     states.update(build_summarize_states(lambdas.final_aggregate))
 
     # Analytics decision states
-    states.update(build_analytics_decision_states(emr.enabled))
+    states.update(
+        build_analytics_decision_states(emr.enabled, emr.viz_cache_enabled)
+    )
 
     # EMR states (if enabled)
     states.update(build_emr_states(emr))

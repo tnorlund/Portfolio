@@ -76,15 +76,24 @@ class LangSmithSparkProcessor:
             else path
         )
 
-        # Read all columns first, then select/add needed ones
-        df = self.spark.read.parquet(spark_path)
+        # Read all parquet files recursively
+        # Use recursiveFileLookup=true to handle mixed partition/non-partition
+        # directory structures (e.g., traces/export_id=X/.../runs/year=Y/...)
+        # NOTE: Requires spark.sql.parquet.enableVectorizedReader=false and
+        # spark.sql.legacy.parquet.nanosAsLong=true to handle schema differences
+        # across exports (some files have timestamp[ns], others have binary)
+        df = self.spark.read.option(
+            "recursiveFileLookup", "true"
+        ).parquet(spark_path)
         available_columns = set(df.columns)
 
         logger.info(
             "Available columns in parquet: %s", sorted(available_columns)
         )
 
-        # If timestamps are read as Long (nanoseconds), convert to timestamp
+        # Convert timestamp columns from nanoseconds (Long) to timestamp
+        # With spark.sql.legacy.parquet.nanosAsLong=true and non-vectorized reader,
+        # timestamps are read as Long (nanoseconds since epoch)
         from pyspark.sql.types import LongType
 
         if "start_time" in available_columns and isinstance(
@@ -309,20 +318,30 @@ class LangSmithSparkProcessor:
         )
 
         # Join with receipt metadata
+        # Select only needed columns from receipts to avoid duplicate columns
+        # (receipts has total_tokens from original df, trace_stats has aggregated total_tokens)
+        receipts_subset = receipts.select(
+            "trace_id",
+            F.col("metadata_merchant_name").alias("merchant_name"),
+            F.col("metadata_image_id").alias("image_id"),
+            F.col("metadata_receipt_id").alias("receipt_id"),
+            F.col("metadata_execution_id").alias("execution_id"),
+            "status",
+        )
         result = (
-            receipts.join(trace_stats, "trace_id", "left")
+            receipts_subset.join(trace_stats, "trace_id", "left")
             .select(
-                F.col("metadata_merchant_name").alias("merchant_name"),
-                F.col("metadata_image_id").alias("image_id"),
-                F.col("metadata_receipt_id").alias("receipt_id"),
-                F.col("metadata_execution_id").alias("execution_id"),
+                "merchant_name",
+                "image_id",
+                "receipt_id",
+                "execution_id",
                 "total_duration_ms",
                 "total_tokens",
                 "prompt_tokens",
                 "completion_tokens",
                 "run_count",
                 "llm_run_count",
-                F.col("status"),
+                "status",
             )
             .dropDuplicates(["image_id", "receipt_id", "execution_id"])
         )
@@ -700,3 +719,53 @@ class LangSmithSparkProcessor:
 
         logger.info("Extracted %d receipt evaluation traces", len(result))
         return result
+
+    def read_receipt_data_files(
+        self, batch_bucket: str, execution_id: str
+    ) -> DataFrame:
+        """Read receipt data files (words, labels, place) from S3 JSON files.
+
+        Reads from: s3://{batch_bucket}/data/{execution_id}/*.json
+        Each file contains: image_id, receipt_id, words, labels, place
+
+        This is an alternative to reading from LangSmith Parquet exports,
+        reading directly from the receipt data files stored during evaluation.
+
+        Args:
+            batch_bucket: S3 bucket containing batch files.
+            execution_id: Execution ID to filter files.
+
+        Returns:
+            DataFrame with receipt data (image_id, receipt_id, words, labels, place).
+        """
+        path = f"s3a://{batch_bucket}/data/{execution_id}/"
+        logger.info("Reading receipt data from: %s", path)
+
+        df = self.spark.read.json(path)
+        logger.info("Read %d receipt data files", df.count())
+        return df
+
+    def read_unified_results(
+        self, batch_bucket: str, execution_id: str
+    ) -> DataFrame:
+        """Read unified evaluation results from S3 JSON files.
+
+        Reads from: s3://{batch_bucket}/unified/{execution_id}/*.json
+        Each file contains: image_id, receipt_id, merchant_name, decisions, etc.
+
+        These files contain the merged results from all evaluators
+        (currency, metadata, financial, geometric).
+
+        Args:
+            batch_bucket: S3 bucket containing batch files.
+            execution_id: Execution ID to filter files.
+
+        Returns:
+            DataFrame with unified results.
+        """
+        path = f"s3a://{batch_bucket}/unified/{execution_id}/"
+        logger.info("Reading unified results from: %s", path)
+
+        df = self.spark.read.json(path)
+        logger.info("Read %d unified result files", df.count())
+        return df

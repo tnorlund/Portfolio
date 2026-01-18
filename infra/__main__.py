@@ -1296,6 +1296,30 @@ pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
+# Create viz-cache bucket for merged EMR job output (needs to be before emr_analytics)
+# This bucket is used by both LabelEvaluatorStepFunction (EMR job writes)
+# and the viz-cache API (reads cached visualization data)
+label_evaluator_viz_cache_bucket = aws.s3.Bucket(
+    f"label-eval-viz-cache-{stack}",
+    force_destroy=True,
+    tags={
+        "Name": f"label-eval-viz-cache-{stack}",
+        "Purpose": "Label evaluator visualization cache",
+        "Environment": stack,
+        "ManagedBy": "Pulumi",
+    },
+)
+
+aws.s3.BucketPublicAccessBlock(
+    f"label-eval-viz-cache-pab-{stack}",
+    bucket=label_evaluator_viz_cache_bucket.id,
+    block_public_acls=True,
+    block_public_policy=True,
+    ignore_public_acls=True,
+    restrict_public_buckets=True,
+    opts=ResourceOptions(parent=label_evaluator_viz_cache_bucket),
+)
+
 # NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
 # the default EMR image initially. After the CodeBuild pipeline completes, it will
 # update the EMR Application with the custom image (see emr_application_name above).
@@ -1304,12 +1328,17 @@ emr_analytics = create_emr_serverless_analytics(
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
     # Uncomment after first successful deployment:
     # custom_image_uri=emr_docker_image.image_uri,
+    # Viz-cache integration - grant EMR job access to cache bucket
+    cache_bucket_arn=label_evaluator_viz_cache_bucket.arn,
 )
 pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+pulumi.export(
+    "label_evaluator_viz_cache_merged_bucket", label_evaluator_viz_cache_bucket.id
+)
 
-# Label Evaluator Step Function (with LangSmith observability + EMR analytics)
+# Label Evaluator Step Function (with LangSmith observability + EMR analytics + viz-cache)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
     dynamodb_table_name=dynamodb_table.name,
@@ -1322,6 +1351,12 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+    # Viz-cache integration (merged EMR job writes viz-cache output)
+    cache_bucket=label_evaluator_viz_cache_bucket.id,
+    langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
+    langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
+    setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
+    setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)

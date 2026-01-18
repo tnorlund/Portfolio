@@ -102,6 +102,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         langsmith_export_bucket: Optional[pulumi.Input[str]] = None,
         analytics_output_bucket: Optional[pulumi.Input[str]] = None,
         spark_artifacts_bucket: Optional[pulumi.Input[str]] = None,
+        # Viz-cache integration (optional, enables merged analytics+viz-cache)
+        cache_bucket: Optional[pulumi.Input[str]] = None,
+        langsmith_api_key: Optional[pulumi.Input[str]] = None,
+        langsmith_tenant_id: Optional[pulumi.Input[str]] = None,
+        setup_lambda_name: Optional[pulumi.Input[str]] = None,
+        setup_lambda_arn: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -118,6 +124,18 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.emr_job_execution_role_arn = emr_job_execution_role_arn
         self.langsmith_export_bucket = langsmith_export_bucket
         self.analytics_output_bucket = analytics_output_bucket
+
+        # Viz-cache config (enables merged EMR job)
+        self.viz_cache_enabled = (
+            cache_bucket is not None
+            and langsmith_api_key is not None
+            and setup_lambda_arn is not None
+        )
+        self.cache_bucket = cache_bucket
+        self.langsmith_api_key = langsmith_api_key
+        self.langsmith_tenant_id = langsmith_tenant_id
+        self.setup_lambda_name = setup_lambda_name
+        self.setup_lambda_arn = setup_lambda_arn
         self.spark_artifacts_bucket = spark_artifacts_bucket
 
         # ============================================================
@@ -955,27 +973,399 @@ class LabelEvaluatorStepFunction(ComponentResource):
         unified_evaluator_lambda = unified_docker_image.lambda_function
 
         # ============================================================
+        # LangSmith Export Lambdas (for viz-cache integration)
+        # ============================================================
+        trigger_export_lambda = None
+        check_export_lambda = None
+
+        if self.viz_cache_enabled:
+            import pulumi_aws as aws
+            from pulumi import StringAsset
+
+            region = aws.get_region().name
+            account_id = aws.get_caller_identity().account_id
+
+            # Trigger Export Lambda Role
+            trigger_export_role = Role(
+                f"{name}-trigger-export-role",
+                name=f"{name}-trigger-export-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            RolePolicyAttachment(
+                f"{name}-trigger-export-basic-exec",
+                role=trigger_export_role.name,
+                policy_arn=(
+                    "arn:aws:iam::aws:policy/service-role/"
+                    "AWSLambdaBasicExecutionRole"
+                ),
+                opts=ResourceOptions(parent=trigger_export_role),
+            )
+
+            # SSM access for destination_id
+            RolePolicy(
+                f"{name}-trigger-export-ssm-policy",
+                role=trigger_export_role.id,
+                policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ssm:GetParameter",
+                                    "ssm:DeleteParameter",
+                                ],
+                                "Resource": (
+                                    f"arn:aws:ssm:{region}:{account_id}"
+                                    f":parameter/langsmith/{stack}/*"
+                                ),
+                            }
+                        ],
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Permission to invoke setup lambda
+            RolePolicy(
+                f"{name}-trigger-export-invoke-setup-policy",
+                role=trigger_export_role.id,
+                policy=Output.from_input(self.setup_lambda_arn).apply(
+                    lambda arn: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["lambda:InvokeFunction"],
+                                    "Resource": arn,
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            trigger_export_code = '''
+import json
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+
+import boto3
+import urllib3
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+LANGSMITH_API_URL = "https://api.smith.langchain.com"
+
+
+def _ensure_destination_exists(ssm, http, headers, stack, setup_lambda_name):
+    """Ensure destination exists in LangSmith, create if needed."""
+    param_name = f"/langsmith/{stack}/destination_id"
+    lambda_client = boto3.client("lambda")
+
+    destination_id = None
+    try:
+        response = ssm.get_parameter(Name=param_name)
+        destination_id = response["Parameter"]["Value"]
+        logger.info("Found destination_id in SSM: %s", destination_id)
+    except ssm.exceptions.ParameterNotFound:
+        logger.info("No destination_id in SSM, will create new one")
+
+    if destination_id:
+        response = http.request(
+            "GET",
+            f"{LANGSMITH_API_URL}/api/v1/bulk-export-destinations/{destination_id}",
+            headers=headers,
+        )
+        if response.status == 200:
+            logger.info("Destination verified: %s", destination_id)
+            return destination_id
+        else:
+            logger.warning("Destination %s not found, will recreate", destination_id)
+            try:
+                ssm.delete_parameter(Name=param_name)
+            except Exception:
+                pass
+
+    logger.info("Invoking setup lambda: %s", setup_lambda_name)
+    response = lambda_client.invoke(
+        FunctionName=setup_lambda_name,
+        InvocationType="RequestResponse",
+        Payload=json.dumps({"prefix": "traces"}),
+    )
+
+    result = json.loads(response["Payload"].read().decode())
+    if result.get("statusCode") != 200:
+        raise Exception(f"Setup lambda failed: {result}")
+
+    destination_id = result.get("destination_id")
+    if not destination_id:
+        raise Exception(f"No destination_id returned: {result}")
+
+    logger.info("Created destination: %s", destination_id)
+    return destination_id
+
+
+def handler(event, context):
+    """Trigger LangSmith bulk export."""
+    logger.info("Event: %s", json.dumps(event))
+
+    langchain_project = event.get("langchain_project", "label-evaluator")
+    api_key = os.environ["LANGCHAIN_API_KEY"]
+    tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
+    stack = os.environ.get("STACK", "dev")
+    setup_lambda_name = os.environ.get("SETUP_LAMBDA_NAME")
+
+    ssm = boto3.client("ssm")
+    http = urllib3.PoolManager()
+
+    headers = {"x-api-key": api_key}
+    if tenant_id:
+        headers["x-tenant-id"] = tenant_id
+
+    destination_id = _ensure_destination_exists(
+        ssm, http, headers, stack, setup_lambda_name
+    )
+
+    # Get project_id
+    response = http.request(
+        "GET", f"{LANGSMITH_API_URL}/api/v1/sessions", headers=headers
+    )
+    if response.status != 200:
+        raise Exception(f"Failed to list projects: {response.data.decode()}")
+
+    projects = json.loads(response.data.decode("utf-8"))
+    project_id = None
+    for proj in projects:
+        if proj.get("name") == langchain_project:
+            project_id = proj.get("id")
+            break
+
+    if not project_id:
+        raise Exception(f"Project not found: {langchain_project}")
+
+    # Trigger export
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(days=1)
+
+    export_body = {
+        "bulk_export_destination_id": destination_id,
+        "session_id": project_id,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+    }
+
+    post_headers = dict(headers)
+    post_headers["Content-Type"] = "application/json"
+
+    response = http.request(
+        "POST",
+        f"{LANGSMITH_API_URL}/api/v1/bulk-exports",
+        headers=post_headers,
+        body=json.dumps(export_body),
+    )
+
+    if response.status not in (200, 201, 202):
+        raise Exception(f"Failed to trigger export: {response.data.decode()}")
+
+    result = json.loads(response.data.decode("utf-8"))
+    export_id = result.get("id")
+    logger.info("Triggered export: %s", export_id)
+
+    return {"export_id": export_id, "status": result.get("status", "pending")}
+'''
+
+            trigger_export_lambda = Function(
+                f"{name}-trigger-export",
+                name=f"{name}-trigger-export",
+                role=trigger_export_role.arn,
+                runtime="python3.12",
+                architectures=["arm64"],
+                handler="index.handler",
+                code=AssetArchive(
+                    {"index.py": StringAsset(trigger_export_code)}
+                ),
+                timeout=30,
+                memory_size=128,
+                tags={"environment": stack},
+                environment=FunctionEnvironmentArgs(
+                    variables={
+                        "LANGCHAIN_API_KEY": self.langsmith_api_key,
+                        "LANGSMITH_TENANT_ID": self.langsmith_tenant_id or "",
+                        "SETUP_LAMBDA_NAME": self.setup_lambda_name,
+                        "STACK": stack,
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            LogGroup(
+                f"{name}-trigger-export-logs",
+                name=trigger_export_lambda.name.apply(
+                    lambda n: f"/aws/lambda/{n}"
+                ),
+                retention_in_days=14,
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Check Export Lambda Role
+            check_export_role = Role(
+                f"{name}-check-export-role",
+                name=f"{name}-check-export-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            RolePolicyAttachment(
+                f"{name}-check-export-basic-exec",
+                role=check_export_role.name,
+                policy_arn=(
+                    "arn:aws:iam::aws:policy/service-role/"
+                    "AWSLambdaBasicExecutionRole"
+                ),
+                opts=ResourceOptions(parent=check_export_role),
+            )
+
+            check_export_code = '''
+import json
+import logging
+import os
+
+import urllib3
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+LANGSMITH_API_URL = "https://api.smith.langchain.com"
+
+
+def handler(event, context):
+    """Check LangSmith export status."""
+    logger.info("Event: %s", json.dumps(event))
+
+    export_id = event.get("export_id")
+    if not export_id:
+        raise ValueError("export_id is required")
+
+    api_key = os.environ["LANGCHAIN_API_KEY"]
+    http = urllib3.PoolManager()
+
+    response = http.request(
+        "GET",
+        f"{LANGSMITH_API_URL}/api/v1/bulk-exports/{export_id}",
+        headers={"x-api-key": api_key},
+    )
+
+    if response.status != 200:
+        logger.error("Failed to check status: %s", response.data.decode())
+        return {"status": "error", "export_id": export_id}
+
+    result = json.loads(response.data.decode("utf-8"))
+    status = result.get("status", "unknown")
+
+    # Normalize status
+    if status in ("Complete", "Completed"):
+        status = "completed"
+    elif status in ("Failed", "Cancelled"):
+        status = "failed"
+    elif status in ("Pending", "Running", "InProgress"):
+        status = "pending"
+
+    logger.info("Export %s status: %s", export_id, status)
+    return {"export_id": export_id, "status": status}
+'''
+
+            check_export_lambda = Function(
+                f"{name}-check-export",
+                name=f"{name}-check-export",
+                role=check_export_role.arn,
+                runtime="python3.12",
+                architectures=["arm64"],
+                handler="index.handler",
+                code=AssetArchive(
+                    {"index.py": StringAsset(check_export_code)}
+                ),
+                timeout=30,
+                memory_size=128,
+                tags={"environment": stack},
+                environment=FunctionEnvironmentArgs(
+                    variables={
+                        "LANGCHAIN_API_KEY": self.langsmith_api_key,
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            LogGroup(
+                f"{name}-check-export-logs",
+                name=check_export_lambda.name.apply(
+                    lambda n: f"/aws/lambda/{n}"
+                ),
+                retention_in_days=14,
+                opts=ResourceOptions(parent=self),
+            )
+
+        # Store Lambda references for use in step function
+        self.trigger_export_lambda = trigger_export_lambda
+        self.check_export_lambda = check_export_lambda
+
+        # ============================================================
         # Step Function role policies
         # ============================================================
+        # Build list of Lambda ARNs (including export lambdas if enabled)
+        lambda_arn_list = [
+            list_merchants_lambda.arn,
+            list_all_receipts_lambda.arn,
+            fetch_receipt_data_lambda.arn,
+            compute_patterns_lambda.arn,
+            evaluate_labels_lambda.arn,
+            evaluate_currency_lambda.arn,
+            evaluate_metadata_lambda.arn,
+            evaluate_financial_lambda.arn,
+            close_trace_lambda.arn,
+            aggregate_results_lambda.arn,
+            final_aggregate_lambda.arn,
+            discover_patterns_lambda.arn,
+            llm_review_lambda.arn,
+            unified_evaluator_lambda.arn,
+        ]
+
+        if trigger_export_lambda and check_export_lambda:
+            lambda_arn_list.append(trigger_export_lambda.arn)
+            lambda_arn_list.append(check_export_lambda.arn)
+
         RolePolicy(
             f"{name}-sfn-lambda-policy",
             role=sfn_role.id,
-            policy=Output.all(
-                list_merchants_lambda.arn,
-                list_all_receipts_lambda.arn,
-                fetch_receipt_data_lambda.arn,
-                compute_patterns_lambda.arn,
-                evaluate_labels_lambda.arn,
-                evaluate_currency_lambda.arn,
-                evaluate_metadata_lambda.arn,
-                evaluate_financial_lambda.arn,
-                close_trace_lambda.arn,
-                aggregate_results_lambda.arn,
-                final_aggregate_lambda.arn,
-                discover_patterns_lambda.arn,
-                llm_review_lambda.arn,
-                unified_evaluator_lambda.arn,
-            ).apply(
+            policy=Output.all(*lambda_arn_list).apply(
                 lambda arns: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -1112,7 +1502,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             )
         )
 
-        # Build Output.all with optional EMR parameters
+        # Build Output.all with optional EMR and viz-cache parameters
+        # Base Lambda ARNs (indices 0-13)
         base_outputs = [
             list_merchants_lambda.arn,
             list_all_receipts_lambda.arn,
@@ -1128,20 +1519,61 @@ class LabelEvaluatorStepFunction(ComponentResource):
             discover_patterns_lambda.arn,
             llm_review_lambda.arn,
             unified_evaluator_lambda.arn,
-            self.batch_bucket.bucket,
+            self.batch_bucket.bucket,  # index 14
         ]
 
-        # Add EMR outputs if enabled
+        # Add EMR outputs if enabled (indices 15-19)
         if self.emr_enabled:
             base_outputs.extend(
                 [
-                    self.emr_application_id,
-                    self.emr_job_execution_role_arn,
-                    self.langsmith_export_bucket,
-                    self.analytics_output_bucket,
-                    self.spark_artifacts_bucket,
+                    self.emr_application_id,  # 15
+                    self.emr_job_execution_role_arn,  # 16
+                    self.langsmith_export_bucket,  # 17
+                    self.analytics_output_bucket,  # 18
+                    self.spark_artifacts_bucket,  # 19
                 ]
             )
+
+        # Add viz-cache outputs if enabled (indices 20-22)
+        if self.viz_cache_enabled and trigger_export_lambda and check_export_lambda:
+            base_outputs.extend(
+                [
+                    self.cache_bucket,  # 20
+                    trigger_export_lambda.arn,  # 21
+                    check_export_lambda.arn,  # 22
+                ]
+            )
+
+        # Helper to safely get EMR and viz-cache params
+        def build_emr_config(args):
+            """Build EmrConfig with optional viz-cache params."""
+            emr_base_idx = 15
+            viz_base_idx = 20
+
+            config = EmrConfig(
+                application_id=args[emr_base_idx] if self.emr_enabled else None,
+                job_execution_role_arn=(
+                    args[emr_base_idx + 1] if self.emr_enabled else None
+                ),
+                langsmith_export_bucket=(
+                    args[emr_base_idx + 2] if self.emr_enabled else None
+                ),
+                analytics_output_bucket=(
+                    args[emr_base_idx + 3] if self.emr_enabled else None
+                ),
+                spark_artifacts_bucket=(
+                    args[emr_base_idx + 4] if self.emr_enabled else None
+                ),
+            )
+
+            # Add viz-cache params if enabled
+            if self.viz_cache_enabled and len(args) > viz_base_idx:
+                config.cache_bucket = args[viz_base_idx]
+                config.batch_bucket = args[14]  # batch_bucket from base
+                config.trigger_export_lambda_arn = args[viz_base_idx + 1]
+                config.check_export_lambda_arn = args[viz_base_idx + 2]
+
+            return config
 
         self.state_machine = StateMachine(
             f"{name}-sf",
@@ -1170,21 +1602,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     runtime=RuntimeConfig(
                         batch_bucket=args[14],
                     ),
-                    emr=EmrConfig(
-                        application_id=args[15] if self.emr_enabled else None,
-                        job_execution_role_arn=(
-                            args[16] if self.emr_enabled else None
-                        ),
-                        langsmith_export_bucket=(
-                            args[17] if self.emr_enabled else None
-                        ),
-                        analytics_output_bucket=(
-                            args[18] if self.emr_enabled else None
-                        ),
-                        spark_artifacts_bucket=(
-                            args[19] if self.emr_enabled else None
-                        ),
-                    ),
+                    emr=build_emr_config(args),
                 )
             ),
             logging_configuration=logging_config,
