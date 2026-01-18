@@ -173,7 +173,6 @@ class ListReceiptsInput(TypedDict, total=False):
 
     execution_id: str
     batch_bucket: str
-    batch_size: int
     merchant_name: str  # Required
     limit: int
     max_training_receipts: int
@@ -248,14 +247,14 @@ class ListMerchantsOutput(TypedDict):
 
 
 class ListReceiptsOutput(TypedDict):
-    """Output from list_receipts Lambda."""
+    """Output from list_all_receipts Lambda."""
 
     manifest_s3_key: str | None
     total_receipts: int
-    total_batches: int
-    merchant_name: str
+    total_merchants: int
     max_training_receipts: int
-    receipt_batches: list[list[ReceiptRef]]
+    receipts: list[ReceiptRef]
+    merchants: list[MerchantInfo]
 
 
 class FetchReceiptDataOutput(TypedDict):

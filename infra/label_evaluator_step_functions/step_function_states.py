@@ -52,9 +52,8 @@ class RuntimeConfig:
 
     batch_bucket: str
     max_concurrency: int = 8
-    batch_size: int = 10
     phase1_concurrency: int = 25
-    phase2_concurrency: int = 4
+    phase2_concurrency: int = 40
 
 
 def build_retry_config(
@@ -138,7 +137,6 @@ def build_input_normalization_states() -> dict[str, Any]:
 
 def build_input_mode_states(
     batch_bucket: str,
-    batch_size: int,
 ) -> dict[str, Any]:
     """Build initialization state."""
     return {
@@ -148,7 +146,6 @@ def build_input_mode_states(
                 "execution_id.$": "$$.Execution.Name",
                 "start_time.$": "$$.Execution.StartTime",
                 "batch_bucket": batch_bucket,
-                "batch_size": batch_size,
                 "langchain_project.$": "$.config.merged.langchain_project",
                 "run_analytics.$": "$.config.merged.run_analytics",
                 "max_training_receipts": 50,
@@ -174,7 +171,6 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
             "Parameters": {
                 "execution_id.$": "$.init.execution_id",
                 "batch_bucket.$": "$.init.batch_bucket",
-                "batch_size.$": "$.init.batch_size",
                 "min_receipts.$": "$.init.min_receipts",
                 "max_training_receipts.$": "$.init.max_training_receipts",
                 "limit.$": "$.init.limit",
@@ -287,7 +283,7 @@ def build_pattern_computation_states(
                 },
             },
             "ResultPath": "$.pattern_results",
-            "Next": "ProcessReceiptBatches",
+            "Next": "ProcessReceipts",
         },
     }
 
@@ -321,95 +317,73 @@ def build_receipt_processing_states(
     phase2_concurrency: int,
 ) -> dict[str, Any]:
     """Build Phase 2 receipt processing states using unified evaluator."""
-    # Simplified receipt processor using unified handler
-    receipt_processor = {
-        "ProcessorConfig": {"Mode": "INLINE"},
-        "StartAt": "LoadReceiptData",
-        "States": {
-            "LoadReceiptData": {
-                "Type": "Task",
-                "Resource": lambdas.fetch_receipt_data,
-                "TimeoutSeconds": 60,
-                "Parameters": {
-                    "receipt.$": "$.receipt",
-                    "execution_id.$": "$.execution_id",
-                    "batch_bucket.$": "$.batch_bucket",
-                    "execution_arn.$": "$$.Execution.Id",
-                },
-                "ResultPath": "$.receipt_data",
-                "Retry": [
-                    build_retry_config(
-                        ["States.TaskFailed"],
-                        interval_seconds=1,
-                    )
-                ],
-                "Next": "UnifiedReceiptEvaluator",
-            },
-            "UnifiedReceiptEvaluator": {
-                "Type": "Task",
-                "Resource": lambdas.unified_evaluator,
-                "TimeoutSeconds": 900,  # 15 minutes to cover all evaluations
-                "Parameters": {
-                    "data_s3_key.$": "$.receipt_data.data_s3_key",
-                    "merchant_name.$": "$.receipt.merchant_name",
-                    "execution_id.$": "$.execution_id",
-                    "batch_bucket.$": "$.batch_bucket",
-                    "langchain_project.$": "$.langchain_project",
-                    "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
-                    "execution_arn.$": "$$.Execution.Id",
-                },
-                "ResultPath": "$.evaluation_result",
-                "Retry": build_llm_retry_config(),
-                "Next": "ReturnResult",
-            },
-            "ReturnResult": {
-                "Type": "Pass",
-                "Parameters": {
-                    "status.$": "$.evaluation_result.status",
-                    "image_id.$": "$.evaluation_result.image_id",
-                    "receipt_id.$": "$.evaluation_result.receipt_id",
-                    "merchant_name.$": "$.receipt.merchant_name",
-                    "issues_found.$": "$.evaluation_result.issues_found",
-                },
-                "End": True,
-            },
-        },
-    }
-
+    # Single Map over all receipts with MaxConcurrency
     return {
-        "ProcessReceiptBatches": {
+        "ProcessReceipts": {
             "Type": "Map",
-            "ItemsPath": "$.all_data.receipt_batches",
-            "MaxConcurrency": 0,
+            "ItemsPath": "$.all_data.receipts",
+            "MaxConcurrency": phase2_concurrency,
             "Parameters": {
-                "batch.$": "$$.Map.Item.Value",
-                "batch_index.$": "$$.Map.Item.Index",
+                "receipt.$": "$$.Map.Item.Value",
+                "receipt_index.$": "$$.Map.Item.Index",
                 "execution_id.$": "$.init.execution_id",
                 "batch_bucket.$": "$.init.batch_bucket",
                 "langchain_project.$": "$.init.langchain_project",
             },
             "ItemProcessor": {
                 "ProcessorConfig": {"Mode": "INLINE"},
-                "StartAt": "ProcessReceipts",
+                "StartAt": "LoadReceiptData",
                 "States": {
-                    "ProcessReceipts": {
-                        "Type": "Map",
-                        "ItemsPath": "$.batch",
-                        "MaxConcurrency": phase2_concurrency,
+                    "LoadReceiptData": {
+                        "Type": "Task",
+                        "Resource": lambdas.fetch_receipt_data,
+                        "TimeoutSeconds": 60,
                         "Parameters": {
-                            "receipt.$": "$$.Map.Item.Value",
-                            "receipt_index.$": "$$.Map.Item.Index",
-                            "batch_index.$": "$.batch_index",
+                            "receipt.$": "$.receipt",
+                            "execution_id.$": "$.execution_id",
+                            "batch_bucket.$": "$.batch_bucket",
+                            "execution_arn.$": "$$.Execution.Id",
+                        },
+                        "ResultPath": "$.receipt_data",
+                        "Retry": [
+                            build_retry_config(
+                                ["States.TaskFailed"],
+                                interval_seconds=1,
+                            )
+                        ],
+                        "Next": "UnifiedReceiptEvaluator",
+                    },
+                    "UnifiedReceiptEvaluator": {
+                        "Type": "Task",
+                        "Resource": lambdas.unified_evaluator,
+                        "TimeoutSeconds": 900,  # 15 minutes for all evaluations
+                        "Parameters": {
+                            "data_s3_key.$": "$.receipt_data.data_s3_key",
+                            "merchant_name.$": "$.receipt.merchant_name",
                             "execution_id.$": "$.execution_id",
                             "batch_bucket.$": "$.batch_bucket",
                             "langchain_project.$": "$.langchain_project",
+                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                            "execution_arn.$": "$$.Execution.Id",
                         },
-                        "ItemProcessor": receipt_processor,
+                        "ResultPath": "$.evaluation_result",
+                        "Retry": build_llm_retry_config(),
+                        "Next": "ReturnResult",
+                    },
+                    "ReturnResult": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "status.$": "$.evaluation_result.status",
+                            "image_id.$": "$.evaluation_result.image_id",
+                            "receipt_id.$": "$.evaluation_result.receipt_id",
+                            "merchant_name.$": "$.receipt.merchant_name",
+                            "issues_found.$": "$.evaluation_result.issues_found",
+                        },
                         "End": True,
                     },
                 },
             },
-            "ResultPath": "$.batch_results",
+            "ResultPath": "$.receipt_results",
             "Next": "SummarizeExecutionResults",
         },
     }
@@ -425,7 +399,7 @@ def build_summarize_states(final_aggregate_arn: str) -> dict[str, Any]:
             "Parameters": {
                 "execution_id.$": "$.init.execution_id",
                 "batch_bucket.$": "$.init.batch_bucket",
-                "all_batch_results.$": "$.batch_results",
+                "receipt_results.$": "$.receipt_results",
                 "pattern_results.$": "$.pattern_results",
                 "total_merchants.$": "$.all_data.total_merchants",
                 "total_receipts.$": "$.all_data.total_receipts",
@@ -601,11 +575,10 @@ def create_step_function_definition(
     Create Step Function definition with two-phase flattened architecture.
 
     TWO-PHASE ARCHITECTURE:
-    Phase 1: Compute all merchant patterns in parallel (25 concurrent)
-    Phase 2: Process all receipts in parallel (16 concurrent per batch)
+    Phase 1: Compute all merchant patterns in parallel (MaxConcurrency)
+    Phase 2: Process all receipts in parallel (single Map with MaxConcurrency)
 
-    This eliminates the nested Map bottleneck where small merchants wait
-    for large merchants to finish pattern computation.
+    Both phases use simple Map states with MaxConcurrency - no nested batching.
 
     Args:
         lambdas: Lambda function ARNs
@@ -625,7 +598,6 @@ def create_step_function_definition(
     states.update(
         build_input_mode_states(
             runtime.batch_bucket,
-            runtime.batch_size,
         )
     )
 

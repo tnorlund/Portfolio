@@ -3,7 +3,7 @@
 This handler combines the functionality of list_merchants and list_receipts:
 1. Queries all merchants (or filtered list)
 2. Gets all receipts for those merchants
-3. Returns a flat batched list of receipts + unique merchant list
+3. Returns a flat list of receipts + unique merchant list
 
 The two-phase architecture uses this to:
 - Phase 1: Compute patterns for all merchants in parallel
@@ -29,9 +29,6 @@ logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
 
-# Default batch size for receipt batches (stay under Step Functions 256KB limit)
-DEFAULT_BATCH_SIZE = 100
-
 # Default minimum receipts for pattern learning
 DEFAULT_MIN_RECEIPTS = 5
 
@@ -42,14 +39,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     This handler is optimized for the two-phase Step Function architecture:
     - Returns unique merchant list for Phase 1 (pattern computation)
-    - Returns batched receipt list for Phase 2 (receipt processing)
+    - Returns flat receipt list for Phase 2 (receipt processing)
 
     Input:
     {
         "execution_id": str,
         "batch_bucket": str,
         "limit": int | None,  # TOTAL receipts to fetch (None = all)
-        "batch_size": int,  # Receipts per batch (default 100)
         "min_receipts": int,  # Minimum receipts for pattern learning (default 5)
         "max_training_receipts": int  # Max training receipts per merchant (default 50)
     }
@@ -57,13 +53,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     Output:
     {
         "merchants": [{"merchant_name": str, "receipt_count": int}, ...],
-        "receipt_batches": [
-            [{"image_id": str, "receipt_id": int, "merchant_name": str}, ...],
-            ...
-        ],
+        "receipts": [{"image_id": str, "receipt_id": int, "merchant_name": str}, ...],
         "total_merchants": int,
         "total_receipts": int,
-        "total_batches": int,
         "max_training_receipts": int,
         "manifest_s3_key": str
     }
@@ -72,7 +64,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
-    batch_size = event.get("batch_size", DEFAULT_BATCH_SIZE)
     min_receipts = event.get("min_receipts", DEFAULT_MIN_RECEIPTS)
     max_training_receipts = event.get("max_training_receipts", 50)
     limit = event.get("limit")  # Total receipts limit (None = all)
@@ -81,8 +72,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         raise ValueError("batch_bucket is required")
 
     logger.info(
-        "Listing all receipts (batch_size=%s, min_receipts=%s, limit=%s)",
-        batch_size,
+        "Listing all receipts (min_receipts=%s, limit=%s)",
         min_receipts,
         limit,
     )
@@ -165,28 +155,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         skipped_count,
     )
 
-    # Split into batches for Step Functions state size safety
-    receipt_batches = []
-    for i in range(0, len(all_receipts), batch_size):
-        receipt_batches.append(all_receipts[i : i + batch_size])
-
-    logger.info(
-        "Created %s receipt batches of size %s",
-        len(receipt_batches),
-        batch_size,
-    )
-
     # Upload manifest to S3 for reference
     manifest = {
         "execution_id": execution_id,
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
-        "batch_size": batch_size,
         "limit": limit,
         "merchants": qualifying_merchants,
         "total_merchants": len(qualifying_merchants),
         "total_receipts": len(all_receipts),
-        "total_batches": len(receipt_batches),
         "skipped_merchants": skipped_count,
     }
 
@@ -207,10 +184,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     return {
         "merchants": qualifying_merchants,
-        "receipt_batches": receipt_batches,
+        "receipts": all_receipts,
         "total_merchants": len(qualifying_merchants),
         "total_receipts": len(all_receipts),
-        "total_batches": len(receipt_batches),
         "max_training_receipts": max_training_receipts,
         "min_receipts": min_receipts,
         "manifest_s3_key": manifest_key,
