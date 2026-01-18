@@ -460,6 +460,48 @@ def count_issues(result: dict[str, Any]) -> int:
     return total
 
 
+def build_cdn_keys_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Build CDN keys from a unified row, honoring overrides."""
+    cdn_s3_key = row.get("cdn_s3_key")
+    if cdn_s3_key:
+        cdn_keys = generate_cdn_keys(cdn_s3_key)
+        for key in cdn_keys:
+            if row.get(key):
+                cdn_keys[key] = row.get(key)
+        return cdn_keys
+    return {
+        "cdn_s3_key": None,
+        "cdn_webp_s3_key": None,
+        "cdn_avif_s3_key": None,
+        "cdn_medium_s3_key": None,
+        "cdn_medium_webp_s3_key": None,
+        "cdn_medium_avif_s3_key": None,
+    }
+
+
+def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
+    """Build a decisions block for a given prefix (currency/metadata/etc.)."""
+    decisions = row.get(f"{prefix}_decisions", {})
+    return {
+        "decisions": {
+            "VALID": decisions.get("VALID", 0),
+            "INVALID": decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": row.get(f"{prefix}_all_decisions", []),
+        "duration_seconds": row.get(f"{prefix}_duration_seconds", 0),
+    }
+
+
+def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
+    """Build the geometric issues block."""
+    return {
+        "issues_found": row.get("geometric_issues_found", 0),
+        "issues": row.get("geometric_issues", []),
+        "duration_seconds": row.get("geometric_duration_seconds", 0),
+    }
+
+
 def build_viz_receipt_from_row(
     row: dict[str, Any], execution_id: str
 ) -> dict[str, Any] | None:
@@ -470,28 +512,11 @@ def build_viz_receipt_from_row(
     if not image_id or receipt_id is None:
         return None
 
-    words = row.get("words") or []
-    labels = row.get("labels") or []
-
-    # Build words with labels
-    words_with_labels = build_words_with_labels(words, labels)
-
-    # CDN keys (from lookup)
-    cdn_s3_key = row.get("cdn_s3_key")
-    if cdn_s3_key:
-        cdn_keys = generate_cdn_keys(cdn_s3_key)
-        for key in cdn_keys:
-            if row.get(key):
-                cdn_keys[key] = row.get(key)
-    else:
-        cdn_keys = {
-            "cdn_s3_key": None,
-            "cdn_webp_s3_key": None,
-            "cdn_avif_s3_key": None,
-            "cdn_medium_s3_key": None,
-            "cdn_medium_webp_s3_key": None,
-            "cdn_medium_avif_s3_key": None,
-        }
+    words_with_labels = build_words_with_labels(
+        row.get("words") or [],
+        row.get("labels") or [],
+    )
+    cdn_keys = build_cdn_keys_from_row(row)
 
     width = row.get("width") or 800
     height = row.get("height") or 2400
@@ -501,48 +526,10 @@ def build_viz_receipt_from_row(
     if issues_found is None:
         issues_found = count_issues(row)
 
-    # Currency decisions
-    currency_decisions = row.get("currency_decisions", {})
-    currency = {
-        "decisions": {
-            "VALID": currency_decisions.get("VALID", 0),
-            "INVALID": currency_decisions.get("INVALID", 0),
-            "NEEDS_REVIEW": currency_decisions.get("NEEDS_REVIEW", 0),
-        },
-        "all_decisions": row.get("currency_all_decisions", []),
-        "duration_seconds": row.get("currency_duration_seconds", 0),
-    }
-
-    # Metadata decisions
-    metadata_decisions = row.get("metadata_decisions", {})
-    metadata = {
-        "decisions": {
-            "VALID": metadata_decisions.get("VALID", 0),
-            "INVALID": metadata_decisions.get("INVALID", 0),
-            "NEEDS_REVIEW": metadata_decisions.get("NEEDS_REVIEW", 0),
-        },
-        "all_decisions": row.get("metadata_all_decisions", []),
-        "duration_seconds": row.get("metadata_duration_seconds", 0),
-    }
-
-    # Financial decisions
-    financial_decisions = row.get("financial_decisions", {})
-    financial = {
-        "decisions": {
-            "VALID": financial_decisions.get("VALID", 0),
-            "INVALID": financial_decisions.get("INVALID", 0),
-            "NEEDS_REVIEW": financial_decisions.get("NEEDS_REVIEW", 0),
-        },
-        "all_decisions": row.get("financial_all_decisions", []),
-        "duration_seconds": row.get("financial_duration_seconds", 0),
-    }
-
-    # Geometric issues
-    geometric = {
-        "issues_found": row.get("geometric_issues_found", 0),
-        "issues": row.get("geometric_issues", []),
-        "duration_seconds": row.get("geometric_duration_seconds", 0),
-    }
+    currency = build_decisions_block(row, "currency")
+    metadata = build_decisions_block(row, "metadata")
+    financial = build_decisions_block(row, "financial")
+    geometric = build_geometric_block(row)
 
     # Only emit review data if review actually ran
     # Check for non-empty all_decisions list or positive duration
@@ -550,16 +537,7 @@ def build_viz_receipt_from_row(
     review_all_decisions = row.get("review_all_decisions") or []
     review_duration = row.get("review_duration_seconds") or 0
     if review_all_decisions or review_duration > 0:
-        review_decisions = row.get("review_decisions", {})
-        review = {
-            "decisions": {
-                "VALID": review_decisions.get("VALID", 0),
-                "INVALID": review_decisions.get("INVALID", 0),
-                "NEEDS_REVIEW": review_decisions.get("NEEDS_REVIEW", 0),
-            },
-            "all_decisions": review_all_decisions,
-            "duration_seconds": review_duration,
-        }
+        review = build_decisions_block(row, "review")
 
     return {
         "image_id": image_id,

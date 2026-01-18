@@ -12,7 +12,6 @@ This package provides:
    - Bulk export manager for triggering and monitoring exports
 
 3. **Parsers** (`parsers/`):
-   - Typed Parquet reader for bulk exports
    - Trace tree builder for parent-child hierarchy reconstruction
    - JSON field parsing utilities
 
@@ -29,7 +28,6 @@ Example:
     ```python
     from receipt_langsmith import (
         LangSmithClient,
-        ParquetReader,
         TraceTreeBuilder,
     )
 
@@ -37,17 +35,14 @@ Example:
     client = LangSmithClient()
     projects = client.list_projects()
 
-    # Parquet parsing
-    reader = ParquetReader(bucket="my-export-bucket")
-    traces = reader.read_all_traces()
-
-    # Build trace trees
+    # Build trace trees from API traces
+    traces = client.list_runs(project_name="my-project")
     builder = TraceTreeBuilder(traces)
     roots = builder.get_root_runs(name_filter="ReceiptEvaluation")
     ```
 """
 
-__version__ = "0.2.1"  # Bump to force EMR image rebuild with processor.py fix
+__version__ = "0.3.0"  # Remove pyarrow dependency, cleanup dead code
 
 # Client (always available)
 from receipt_langsmith.client import (
@@ -116,30 +111,10 @@ from receipt_langsmith.entities import (  # Base; Validation agent; Label evalua
     VizCacheReceipt,
     WordWithLabel,
 )
-from receipt_langsmith.parquet_reader import (
-    find_receipts_with_anomalies_from_parquet,
-    find_receipts_with_decisions_from_parquet,
-    find_visualization_receipts_from_parquet,
-    read_traces_from_parquet,
-)
 
 # Parsers (always available)
 from receipt_langsmith.parsers import (
-    ParquetReader,
-    TraceIndex,
     TraceTreeBuilder,
-    build_evaluator_result,
-    build_geometric_from_trace,
-    build_geometric_result,
-    build_receipt_identifier,
-    count_decisions,
-    extract_metadata,
-    get_decisions_from_trace,
-    get_duration_seconds,
-    get_relative_timing,
-    is_all_needs_review,
-    load_s3_result,
-    parse_datetime,
     parse_extra,
     parse_json,
 )
@@ -256,33 +231,16 @@ __all__ = [
     "BulkExportResponse",
     "Project",
     # Parsers
-    "ParquetReader",
     "TraceTreeBuilder",
-    "TraceIndex",
     "parse_json",
     "parse_extra",
-    # Trace helpers
-    "extract_metadata",
-    "build_receipt_identifier",
-    "count_decisions",
-    "is_all_needs_review",
-    "parse_datetime",
-    "get_duration_seconds",
-    "get_relative_timing",
-    "load_s3_result",
-    "build_evaluator_result",
-    "build_geometric_result",
-    "build_geometric_from_trace",
-    "get_decisions_from_trace",
     # Legacy API-based queries (backward compatibility)
     "get_langsmith_client",
     "query_recent_receipt_traces",
     "get_child_traces",
     "find_receipts_with_anomalies",
     "find_receipts_with_llm_decisions",
-    # Legacy Parquet-based queries (backward compatibility)
-    "read_traces_from_parquet",
-    "find_receipts_with_decisions_from_parquet",
-    "find_receipts_with_anomalies_from_parquet",
-    "find_visualization_receipts_from_parquet",
+    # PySpark (lazy loaded)
+    "LangSmithSparkProcessor",
+    "LANGSMITH_PARQUET_SCHEMA",
 ]
