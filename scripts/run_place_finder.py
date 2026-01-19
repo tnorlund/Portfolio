@@ -204,7 +204,7 @@ async def run_place_finder_for_receipt(
     logger.info(f"Merchant Name: {result.get('merchant_name')}")
     logger.info(f"Address: {result.get('address')}")
     logger.info(f"Phone: {result.get('phone_number')}")
-    logger.info(f"Confidence: {result.get('confidence', 0):.2%}")
+    logger.info(f"Confidence: {result.get('confidence') or 0:.2%}")
     logger.info(f"Reasoning: {result.get('reasoning', 'N/A')}")
     logger.info("=" * 60)
 

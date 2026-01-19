@@ -393,9 +393,17 @@ class LLMInvoker:
     call_count: int = field(default=0, init=False)
     consecutive_errors: int = field(default=0, init=False)
     total_errors: int = field(default=0, init=False)
-    _async_lock: asyncio.Lock = field(
-        default_factory=asyncio.Lock, init=False, repr=False
-    )
+    _async_lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
+
+    def _get_async_lock(self) -> asyncio.Lock:
+        """Get or create the async lock (lazy initialization).
+
+        This avoids DeprecationWarning in Python 3.10+ by creating
+        the lock inside an async context rather than at instantiation time.
+        """
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
 
     def _apply_jitter(self) -> None:
         """Apply random jitter between calls to prevent thundering herd."""
@@ -510,7 +518,7 @@ class LLMInvoker:
         last_error = None
 
         for attempt in range(self.max_retries):
-            async with self._async_lock:
+            async with self._get_async_lock():
                 await self._apply_jitter_async()
                 self.call_count += 1
 
@@ -525,12 +533,12 @@ class LLMInvoker:
                     raise EmptyResponseError("OpenRouter", "Empty response received")
 
                 # Success - reset consecutive errors
-                async with self._async_lock:
+                async with self._get_async_lock():
                     self.consecutive_errors = 0
                 return response
 
             except EmptyResponseError:
-                async with self._async_lock:
+                async with self._get_async_lock():
                     self.consecutive_errors += 1
                     self.total_errors += 1
                 last_error = LLMRateLimitError(
@@ -546,7 +554,7 @@ class LLMInvoker:
 
             except Exception as e:
                 if is_retriable_error(e):
-                    async with self._async_lock:
+                    async with self._get_async_lock():
                         self.consecutive_errors += 1
                         self.total_errors += 1
                     last_error = LLMRateLimitError(
