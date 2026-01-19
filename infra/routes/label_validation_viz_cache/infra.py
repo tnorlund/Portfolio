@@ -50,6 +50,7 @@ class LabelValidationVizCache(ComponentResource):
         langsmith_export_bucket: Input[str],
         langsmith_api_key: Input[str],
         langsmith_tenant_id: Input[str],
+        langsmith_project_name: Input[str],
         dynamodb_table_name: Input[str],
         dynamodb_table_arn: Input[str],
         emr_application_id: Input[str],
@@ -73,6 +74,7 @@ class LabelValidationVizCache(ComponentResource):
         langsmith_export_bucket_output = Output.from_input(langsmith_export_bucket)
         langsmith_api_key_output = Output.from_input(langsmith_api_key)
         langsmith_tenant_id_output = Output.from_input(langsmith_tenant_id)
+        langsmith_project_name_output = Output.from_input(langsmith_project_name)
         dynamodb_table_name_output = Output.from_input(dynamodb_table_name)
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
         emr_application_id_output = Output.from_input(emr_application_id)
@@ -530,8 +532,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
-# Project name for label validation traces
-DEFAULT_PROJECT = "receipt-validation-jan-18-test"
 
 
 def _ensure_destination_exists(setup_lambda_name):
@@ -563,7 +563,9 @@ def handler(event, context):
     """Trigger LangSmith bulk export for the configured project."""
     logger.info("Received event: %s", json.dumps(event))
 
-    langchain_project = event.get("langchain_project", DEFAULT_PROJECT)
+    langchain_project = event.get("langchain_project") or os.environ.get("LANGSMITH_PROJECT_NAME")
+    if not langchain_project:
+        raise ValueError("langchain_project must be provided in event or LANGSMITH_PROJECT_NAME env var")
     api_key = os.environ["LANGCHAIN_API_KEY"]
     tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
     setup_lambda_name = os.environ.get("SETUP_LAMBDA_NAME")
@@ -647,6 +649,7 @@ def handler(event, context):
                 variables={
                     "LANGCHAIN_API_KEY": langsmith_api_key_output,
                     "LANGSMITH_TENANT_ID": langsmith_tenant_id_output,
+                    "LANGSMITH_PROJECT_NAME": langsmith_project_name_output,
                     "SETUP_LAMBDA_NAME": setup_lambda_name_output,
                     "STACK": stack,
                 }
@@ -933,6 +936,7 @@ def handler(event, context):
             spark_artifacts_bucket_output,
             langsmith_export_bucket_output,
             cache_bucket_output,
+            langsmith_project_name_output,
         ).apply(
             lambda args: json.dumps(
                 {
@@ -951,7 +955,7 @@ def handler(event, context):
                             "Type": "Task",
                             "Resource": args[1],
                             "Parameters": {
-                                "langchain_project": "receipt-validation-jan-18-test",
+                                "langchain_project": args[8],
                             },
                             "ResultPath": "$.export_result",
                             "Next": "InitializePollCount",
@@ -1100,6 +1104,7 @@ def create_label_validation_viz_cache(
     langsmith_export_bucket: Input[str],
     langsmith_api_key: Input[str],
     langsmith_tenant_id: Input[str],
+    langsmith_project_name: Input[str],
     dynamodb_table_name: Input[str],
     dynamodb_table_arn: Input[str],
     emr_application_id: Input[str],
@@ -1116,6 +1121,7 @@ def create_label_validation_viz_cache(
         langsmith_export_bucket: S3 bucket for LangSmith Parquet exports.
         langsmith_api_key: LangSmith API key.
         langsmith_tenant_id: LangSmith tenant ID.
+        langsmith_project_name: LangSmith project name for label validation traces.
         dynamodb_table_name: DynamoDB table name.
         dynamodb_table_arn: DynamoDB table ARN.
         emr_application_id: EMR Serverless application ID.
@@ -1133,6 +1139,7 @@ def create_label_validation_viz_cache(
         langsmith_export_bucket=langsmith_export_bucket,
         langsmith_api_key=langsmith_api_key,
         langsmith_tenant_id=langsmith_tenant_id,
+        langsmith_project_name=langsmith_project_name,
         dynamodb_table_name=dynamodb_table_name,
         dynamodb_table_arn=dynamodb_table_arn,
         emr_application_id=emr_application_id,

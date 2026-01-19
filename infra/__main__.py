@@ -1285,10 +1285,14 @@ pulumi.export(
     "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
 )
 
+# Receipt Label Validation project name - single source of truth
+# This project name is used for both LangSmith export and viz cache generation
+label_validation_project_name = f"receipt-validation-{stack}"
+
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
     f"label-validation-export-{stack}",
-    project_name="receipt-validation-jan-18-test",
+    project_name=label_validation_project_name,
 )
 pulumi.export(
     "label_validation_export_bucket", label_validation_export.export_bucket.id
@@ -1299,6 +1303,7 @@ pulumi.export(
 pulumi.export(
     "label_validation_trigger_lambda", label_validation_export.trigger_lambda.name
 )
+pulumi.export("label_validation_project_name", label_validation_project_name)
 
 # EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
 from components.emr_serverless_docker_image import (
@@ -1505,7 +1510,7 @@ if hasattr(api_gateway, "api"):
         ),
     )
 
-    # Label Validation Visualization Cache (LangSmith receipt-validation-jan-12 traces)
+    # Label Validation Visualization Cache (uses label_validation_project_name)
     from routes.label_validation_viz_cache import create_label_validation_viz_cache
 
     label_validation_viz_cache = create_label_validation_viz_cache(
@@ -1513,6 +1518,7 @@ if hasattr(api_gateway, "api"):
         langsmith_export_bucket=label_validation_export.export_bucket.id,
         langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
         langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
+        langsmith_project_name=label_validation_project_name,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
         emr_application_id=emr_analytics.emr_application.id,
