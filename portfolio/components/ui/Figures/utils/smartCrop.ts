@@ -118,21 +118,21 @@ export function computeSmartCropViewBox(
   // First, clamp the position to ensure the crop box doesn't go outside image bounds
   cropX = Math.max(0, Math.min(cropX, imageWidth - cropWidth));
   cropY = Math.max(0, Math.min(cropY, imageHeight - cropHeight));
-  
+
   // Check available space after position clamping
   const maxWidth = imageWidth - cropX;
   const maxHeight = imageHeight - cropY;
-  
+
   // If the crop box exceeds available space, scale both dimensions proportionally
   // to maintain the 3:4 aspect ratio
   if (cropWidth > maxWidth || cropHeight > maxHeight) {
     const scaleX = maxWidth / cropWidth;
     const scaleY = maxHeight / cropHeight;
     const scale = Math.min(scaleX, scaleY); // Use the more restrictive scale to ensure both fit
-    
+
     cropWidth = cropWidth * scale;
     cropHeight = cropHeight * scale;
-    
+
     // Re-clamp position after scaling (in case scaling made the box smaller and we can adjust)
     cropX = Math.max(0, Math.min(cropX, imageWidth - cropWidth));
     cropY = Math.max(0, Math.min(cropY, imageHeight - cropHeight));

@@ -30,21 +30,10 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
   fullImageWidth,
   fullImageHeight,
 }) => {
-  // Transform normalized coordinates to SVG coordinates
-  // If cropped, coordinates are relative to crop region; otherwise relative to full image
-  const transformX = (normX: number) => {
-    if (cropInfo) {
-      return normX * fullImageWidth - cropInfo.x;
-    }
-    return normX * svgWidth;
-  };
-
-  const transformY = (normY: number) => {
-    if (cropInfo) {
-      return (1 - normY) * fullImageHeight - cropInfo.y;
-    }
-    return (1 - normY) * svgHeight;
-  };
+  // Transform normalized coordinates to SVG pixel coordinates
+  // The viewBox handles the crop offset, so we just convert to full image coordinates
+  const transformX = (normX: number) => normX * fullImageWidth;
+  const transformY = (normY: number) => (1 - normY) * fullImageHeight;
 
   // Compute the receipt bounding box corners.
   const x1 = transformX(receipt.top_left.x);
@@ -185,7 +174,7 @@ const ImageBoundingBox: React.FC = () => {
   }
 
   return (
-    <div ref={ref}>
+    <div ref={ref} style={{ width: "100%" }}>
       <ReceiptBoundingBoxFrame
         lines={lines}
         receipts={receipts}
@@ -198,34 +187,31 @@ const ImageBoundingBox: React.FC = () => {
             ? `${cropInfo.x} ${cropInfo.y} ${cropInfo.width} ${cropInfo.height}`
             : `0 0 ${fullImageWidth} ${fullImageHeight}`;
 
-          // Transform function for normalized coordinates
-          const transformX = (normX: number) => {
-            if (cropInfo) {
-              return normX * fullImageWidth - cropInfo.x;
-            }
-            return normX * fullImageWidth;
-          };
-
-          const transformY = (normY: number) => {
-            if (cropInfo) {
-              return (1 - normY) * fullImageHeight - cropInfo.y;
-            }
-            return (1 - normY) * fullImageHeight;
-          };
+          // Transform normalized coordinates to SVG pixel coordinates
+          // The viewBox handles the crop offset, so we just convert to full image coordinates
+          const transformX = (normX: number) => normX * fullImageWidth;
+          const transformY = (normY: number) => (1 - normY) * fullImageHeight;
 
           return imageDetails && formatSupport ? (
             <svg
               key={resetKey}
               onClick={() => setResetKey((k) => k + 1)}
               viewBox={viewBox}
-              style={{ width: "100%", height: "100%", display: "block" }}
-              preserveAspectRatio="xMidYMid meet"
+              style={{ 
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%", 
+                height: "100%", 
+                display: "block",
+              }}
+              preserveAspectRatio="xMidYMid slice"
             >
-              {/* Image positioned to account for crop */}
+              {/* Full image - viewBox handles the cropping */}
               <image
                 href={cdnUrl}
-                x={cropInfo ? -cropInfo.x : 0}
-                y={cropInfo ? -cropInfo.y : 0}
+                x={0}
+                y={0}
                 width={fullImageWidth}
                 height={fullImageHeight}
               />
@@ -284,17 +270,22 @@ const ImageBoundingBox: React.FC = () => {
                 ))}
             </svg>
           ) : (
-            // While loading, show a "Loading" message centered in the reserved space.
+            // Loading placeholder - fills the frame completely
             <div
               style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-                width: "100%",
-                height: "100%",
               }}
             >
-              Loading...
+              <span style={{ color: "var(--text-color)", fontSize: "0.9rem", opacity: 0.5 }}>
+                Loading...
+              </span>
             </div>
           );
         }}

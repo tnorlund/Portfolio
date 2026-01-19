@@ -27,21 +27,12 @@ const AnimatedLineBox = ({
   fullImageWidth,
   fullImageHeight,
 }: AnimatedLineBoxProps) => {
-  // Transform normalized coordinates to SVG coordinates
-  // If cropped, coordinates are relative to crop region; otherwise relative to full image
-  const transformX = (normX: number) => {
-    if (cropInfo && fullImageWidth) {
-      return normX * fullImageWidth - cropInfo.x;
-    }
-    return normX * svgWidth;
-  };
-
-  const transformY = (normY: number) => {
-    if (cropInfo && fullImageHeight) {
-      return (1 - normY) * fullImageHeight - cropInfo.y;
-    }
-    return (1 - normY) * svgHeight;
-  };
+  // Transform normalized coordinates to SVG pixel coordinates
+  // The viewBox handles the crop offset, so we just convert to full image coordinates
+  const imgWidth = fullImageWidth ?? svgWidth;
+  const imgHeight = fullImageHeight ?? svgHeight;
+  const transformX = (normX: number) => normX * imgWidth;
+  const transformY = (normY: number) => (1 - normY) * imgHeight;
 
   // Convert normalized coordinates to absolute pixel values.
   const x1 = transformX(line.top_left.x);
@@ -66,8 +57,10 @@ const AnimatedLineBox = ({
     config: { duration: 800 },
   });
 
-  // Animate the centroid marker.
-  const midY = cropInfo ? cropInfo.height / 2 : svgHeight / 2;
+  // Animate the centroid marker - midY is the center of the visible area
+  const midY = cropInfo 
+    ? cropInfo.y + cropInfo.height / 2  // Center of crop region in full image coords
+    : imgHeight / 2;
   const centroidSpring = useSpring({
     from: { opacity: 0, cy: centroidY },
     to: async next => {

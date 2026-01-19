@@ -17,7 +17,7 @@ import styles from "./ReceiptBoundingBoxGrid.module.css";
  */
 const ReceiptBoundingBoxGrid: React.FC = () => {
   return (
-    <div className={styles.grid}>
+    <div className={styles.grid} data-testid="receipt-bounding-box-grid">
       <div className={styles.gridCell}>
         <ClientOnly>
           <ZDepthConstrainedParametric />
@@ -28,10 +28,10 @@ const ReceiptBoundingBoxGrid: React.FC = () => {
           <ZDepthUnconstrainedParametric />
         </ClientOnly>
       </div>
-      <div className={styles.gridCell}>
+      <div className={styles.gridCell} data-testid="scan-receipt-cell">
         <ScanReceiptBoundingBox />
       </div>
-      <div className={styles.gridCell}>
+      <div className={styles.gridCell} data-testid="photo-receipt-cell">
         <PhotoReceiptBoundingBox />
       </div>
     </div>

@@ -11,11 +11,8 @@ interface ReceiptBoundingBoxFrameProps {
 }
 
 /**
- * Shared frame component that enforces a 3:4 aspect ratio by smart-cropping
- * around receipt content. Ensures all words and receipt polygons remain visible.
- *
- * Provides crop info to children via render prop so they can adjust their SVG
- * viewBox and transform coordinates accordingly.
+ * Shared frame component that enforces a 3:4 aspect ratio.
+ * Uses the padding-top trick for reliable aspect ratio across all browsers.
  */
 const ReceiptBoundingBoxFrame: React.FC<ReceiptBoundingBoxFrameProps> = ({
   children,
@@ -25,7 +22,7 @@ const ReceiptBoundingBoxFrame: React.FC<ReceiptBoundingBoxFrameProps> = ({
   imageHeight,
 }) => {
   const maxDisplayWidth = 520;
-  const targetAspectRatio = 3 / 4;
+  const targetAspectRatio = 3 / 4; // width / height
 
   // Compute smart crop region if we have content
   const cropInfo = useMemo(() => {
@@ -35,24 +32,29 @@ const ReceiptBoundingBoxFrame: React.FC<ReceiptBoundingBoxFrameProps> = ({
     return null;
   }, [lines, receipts, imageWidth, imageHeight]);
 
-  const aspectRatio = cropInfo ? targetAspectRatio : imageWidth / imageHeight;
+  // Padding-top percentage for aspect ratio: (height / width) * 100 = (1 / aspectRatio) * 100
+  const paddingTopPercent = (1 / targetAspectRatio) * 100;
 
   return (
     <div
       style={{
-        display: "flex",
-        justifyContent: "center",
-        minHeight: 0,
-        alignItems: "center",
+        position: "relative",
+        width: "100%",
+        maxWidth: maxDisplayWidth,
+        paddingTop: `${paddingTopPercent}%`,
+        borderRadius: "15px",
+        overflow: "hidden",
+        backgroundColor: "var(--code-background)",
       }}
     >
+      {/* Content fills the container */}
       <div
         style={{
-          width: "100%",
-          maxWidth: maxDisplayWidth,
-          aspectRatio: `${aspectRatio}`,
-          borderRadius: "15px",
-          overflow: "hidden",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
         }}
       >
         {children(cropInfo, imageWidth, imageHeight)}
