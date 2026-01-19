@@ -699,7 +699,7 @@ def _call_llm_with_tracing(
         return _call_llm_direct(config, llm_inputs)
 
     with child_trace(
-        "openrouter_pattern_discovery",
+        "llm_pattern_discovery",
         trace_ctx,
         run_type="llm",
         metadata={

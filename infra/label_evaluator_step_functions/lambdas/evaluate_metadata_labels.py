@@ -239,12 +239,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             ):
                 from receipt_agent.utils import create_production_invoker
 
-                # create_production_invoker() creates:
-                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
-                # - RateLimitedLLMInvoker: jitter + circuit breaker
-                # Environment variables used:
-                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL
-                # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+                # create_production_invoker() creates an LLM invoker with:
+                # - OpenRouter as the LLM provider
+                # - Jitter and retry logic for rate limits
+                # Environment variables: OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
                 llm_invoker = create_production_invoker(
                     temperature=0.0,
                     timeout=120,

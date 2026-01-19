@@ -94,12 +94,6 @@ class LLMRateLimitError(Exception):
         self.total_errors = total_errors
 
 
-# Backward compatibility aliases
-OllamaRateLimitError = LLMRateLimitError
-AllProvidersFailedError = LLMRateLimitError
-BothProvidersFailedError = LLMRateLimitError
-
-
 class EmptyResponseError(Exception):
     """
     Raised when the LLM returns an empty response.
@@ -826,82 +820,3 @@ class ResilientLLM(LLMInvoker):
         }
 
 
-# Deprecated: Provider enum kept for backward compatibility
-class LLMProvider:
-    """Deprecated: OpenRouter is the only supported provider."""
-
-    OLLAMA = "ollama"
-    OPENROUTER = "openrouter"
-
-
-def get_default_provider() -> str:
-    """Deprecated: Returns 'openrouter' (the only supported provider)."""
-    return "openrouter"
-
-
-# =============================================================================
-# Circuit Breaker (Backward Compatibility)
-# =============================================================================
-
-
-@dataclass
-class OllamaCircuitBreaker:
-    """
-    Deprecated: Circuit breaker kept for backward compatibility.
-
-    The retry logic is now built into LLMInvoker, so this class just
-    tracks errors for compatibility with existing code.
-    """
-
-    threshold: int = 5
-    consecutive_errors: int = field(default=0, init=False)
-    total_rate_limit_errors: int = field(default=0, init=False)
-    total_server_errors: int = field(default=0, init=False)
-    total_timeout_errors: int = field(default=0, init=False)
-    triggered: bool = field(default=False, init=False)
-
-    def record_success(self) -> None:
-        """Record a successful API call."""
-        self.consecutive_errors = 0
-        self.triggered = False
-
-    def record_error(self, error: Exception) -> None:
-        """Record an API error."""
-        if is_rate_limit_error(error):
-            self.consecutive_errors += 1
-            self.total_rate_limit_errors += 1
-
-            if self.consecutive_errors >= self.threshold:
-                self.triggered = True
-                raise LLMRateLimitError(
-                    f"Circuit breaker triggered after {self.consecutive_errors} errors",
-                    consecutive_errors=self.consecutive_errors,
-                    total_errors=self.total_rate_limit_errors,
-                ) from error
-
-            raise LLMRateLimitError(
-                str(error),
-                consecutive_errors=self.consecutive_errors,
-                total_errors=self.total_rate_limit_errors,
-            ) from error
-
-        elif is_service_error(error):
-            self.total_server_errors += 1
-
-        elif is_timeout_error(error):
-            self.total_timeout_errors += 1
-            raise error
-
-        else:
-            self.consecutive_errors = 0
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get circuit breaker statistics."""
-        return {
-            "threshold": self.threshold,
-            "consecutive_errors": self.consecutive_errors,
-            "total_rate_limit_errors": self.total_rate_limit_errors,
-            "total_server_errors": self.total_server_errors,
-            "total_timeout_errors": self.total_timeout_errors,
-            "triggered": self.triggered,
-        }

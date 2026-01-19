@@ -22,11 +22,8 @@ from receipt_agent.state.models import (
 )
 from receipt_agent.utils.llm_factory import (
     LLMRateLimitError,
-    OllamaCircuitBreaker,
-    OllamaRateLimitError,
-    RateLimitedLLMInvoker,
     is_rate_limit_error,
-    is_server_error,
+    is_service_error,
     is_timeout_error,
 )
 
@@ -48,12 +45,9 @@ __all__ = [
     "create_dynamo_client",
     "create_embed_fn",
     "create_places_api",
-    # Rate limit utilities
+    # LLM utilities
     "LLMRateLimitError",
-    "OllamaRateLimitError",  # Backward compat alias for LLMRateLimitError
-    "OllamaCircuitBreaker",
-    "RateLimitedLLMInvoker",
     "is_rate_limit_error",
-    "is_server_error",
+    "is_service_error",
     "is_timeout_error",
 ]

@@ -18,10 +18,8 @@ from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.subagents.cove_text_consistency.state import (
     CoveTextConsistencyState,
 )
-from receipt_agent.utils.agent_common import (
-    create_agent_node_with_retry,
-    create_ollama_llm,
-)
+from receipt_agent.utils.agent_common import create_agent_node_with_retry
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 from receipt_agent.utils.receipt_fetching import (
     fetch_receipt_details_with_fallback,
 )
@@ -1091,8 +1089,8 @@ def create_cove_text_consistency_graph(
         receipts=receipts,
     )
 
-    # Create LLM with tools bound using shared utility
-    llm = create_ollama_llm(settings=settings, temperature=0.0)
+    # Create LLM with tools bound
+    llm = create_llm_from_settings(settings=settings, temperature=0.0)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility

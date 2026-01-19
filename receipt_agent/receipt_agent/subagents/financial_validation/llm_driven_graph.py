@@ -100,10 +100,8 @@ from receipt_agent.subagents.financial_validation.state import (
     FinancialValidationState,
 )
 from receipt_agent.subagents.financial_validation.utils import extract_number
-from receipt_agent.utils.agent_common import (
-    create_agent_node_with_retry,
-    create_ollama_llm,
-)
+from receipt_agent.utils.agent_common import create_agent_node_with_retry
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -1043,8 +1041,8 @@ def create_llm_driven_financial_graph(
     if settings is None:
         settings = get_settings()
 
-    # Use the same LLM creation as main harmonizer (inherits proper auth)
-    llm = create_ollama_llm(settings)
+    # Create LLM
+    llm = create_llm_from_settings(settings=settings)
 
     # Create shared tool state that can be updated between runs
     shared_tool_state = {

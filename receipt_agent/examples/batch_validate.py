@@ -307,12 +307,14 @@ def setup_environment():
     else:
         print("⚠️  LangSmith API key not found - tracing disabled")
 
-    ollama_key = secrets.get("portfolio:OLLAMA_API_KEY", "")
-    if ollama_key:
-        os.environ["RECEIPT_AGENT_OLLAMA_API_KEY"] = ollama_key
-        print("✅ Ollama API key loaded")
+    openrouter_key = secrets.get("portfolio:OPENROUTER_API_KEY", "")
+    if openrouter_key:
+        os.environ["OPENROUTER_API_KEY"] = openrouter_key
+        os.environ["OPENROUTER_BASE_URL"] = "https://openrouter.ai/api/v1"
+        os.environ["OPENROUTER_MODEL"] = "openai/gpt-oss-120b"
+        print("✅ OpenRouter API key loaded")
     else:
-        print("⚠️  Ollama API key not found")
+        print("⚠️  OpenRouter API key not found")
 
     # Set receipt_places table name too
     os.environ["RECEIPT_PLACES_TABLE_NAME"] = env.get(

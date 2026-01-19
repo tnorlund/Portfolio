@@ -51,7 +51,7 @@ except ImportError:
 # Load secrets
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
-ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.get_secret("GOOGLE_PLACES_API_KEY")  # Optional
 
@@ -342,27 +342,24 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         # ============================================================
         # Container Lambda: harmonize_metadata
         # ============================================================
-        # Note: receipt_agent uses RECEIPT_AGENT_* prefixed env vars
-        # via pydantic-settings. See receipt_agent/config/settings.py
         harmonize_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 minutes
             "memory_size": 3072,  # 3 GB for LLM agent
             "tags": {"environment": stack},
-            "ephemeral_storage": 10240,  # 10 GB /tmp (may be needed for large data processing and ChromaDB snapshots)
+            "ephemeral_storage": 10240,  # 10 GB /tmp for ChromaDB snapshots
             "environment": {
-                # Lambda-specific
                 "BATCH_BUCKET": self.batch_bucket.bucket,
-                # ChromaDB (for metadata finder sub-agent)
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # ChromaDB for metadata finder sub-agent
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
-                # receipt_agent Settings (RECEIPT_AGENT_* prefix)
-                "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
-                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
-                "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
-                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
-                # ChromaDB directory (will be set when downloading snapshots)
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                # OpenAI (embeddings)
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                # OpenRouter (LLM)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 # Google Places (optional, but enabled by default)
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "RECEIPT_PLACES_TABLE_NAME": dynamodb_table_name,

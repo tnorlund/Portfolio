@@ -33,16 +33,10 @@ from .llm_factory import (
     is_service_error,
     is_timeout_error,
     is_retriable_error,
-    # Backward compatibility aliases
-    OllamaRateLimitError,  # alias for LLMRateLimitError
-    AllProvidersFailedError,  # alias for LLMRateLimitError
-    BothProvidersFailedError,  # alias for LLMRateLimitError
+    # Backward compatibility aliases (kept for existing code)
     RateLimitedLLMInvoker,  # alias for LLMInvoker
-    ResilientLLM,  # deprecated class
-    OllamaCircuitBreaker,  # deprecated class
-    LLMProvider,  # deprecated enum
+    ResilientLLM,  # alias for LLMInvoker
     create_resilient_llm,  # alias for create_llm_invoker
-    get_default_provider,  # deprecated function
     is_fallback_error,  # alias for is_retriable_error
     is_server_error,  # alias for is_service_error
 )
@@ -79,16 +73,10 @@ __all__ = [
     "is_service_error",
     "is_timeout_error",
     "is_retriable_error",
-    # LLM Factory - Backward Compatibility
-    "OllamaRateLimitError",
-    "AllProvidersFailedError",
-    "BothProvidersFailedError",
+    # LLM Factory - Backward Compatibility Aliases
     "RateLimitedLLMInvoker",
     "ResilientLLM",
-    "OllamaCircuitBreaker",
-    "LLMProvider",
     "create_resilient_llm",
-    "get_default_provider",
     "is_fallback_error",
     "is_server_error",
 ]

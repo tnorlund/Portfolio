@@ -366,7 +366,8 @@ class LangSmithSparkProcessor:
             "PatternComputation",
             "LearnLineItemPatterns",
             "BuildMerchantPatterns",
-            "ollama_pattern_discovery",
+            "llm_pattern_discovery",  # Current trace name (provider-agnostic)
+            "ollama_pattern_discovery",  # Legacy trace name (historical data)
             # Phase 2 - Root trace (both architectures)
             "ReceiptEvaluation",
             # Phase 2 - Old multi-Lambda architecture

@@ -1076,7 +1076,7 @@ def invoke_with_structured_output(
     token generation level.
 
     Args:
-        llm: LangChain LLM instance (ChatOllama, ChatOpenAI, etc.)
+        llm: LangChain LLM instance (ChatOpenAI configured for OpenRouter)
         prompt: The review prompt
         expected_count: Expected number of reviews
         run_name: Name for tracing

@@ -19,15 +19,9 @@ from receipt_agent.utils.llm_factory import (
     is_retriable_error,
     is_timeout_error,
     # Backward compatibility aliases
-    OllamaRateLimitError,
-    BothProvidersFailedError,
-    AllProvidersFailedError,
     RateLimitedLLMInvoker,
     ResilientLLM,
-    OllamaCircuitBreaker,
-    LLMProvider,
     create_resilient_llm,
-    get_default_provider,
     is_fallback_error,
 )
 
@@ -56,30 +50,13 @@ class TestLLMRateLimitError:
 class TestBackwardCompatibilityAliases:
     """Tests for backward compatibility aliases."""
 
-    def test_ollama_rate_limit_error_alias(self):
-        """Test OllamaRateLimitError is alias for LLMRateLimitError."""
-        assert OllamaRateLimitError is LLMRateLimitError
-
-    def test_both_providers_failed_error_alias(self):
-        """Test BothProvidersFailedError is alias for LLMRateLimitError."""
-        assert BothProvidersFailedError is LLMRateLimitError
-
-    def test_all_providers_failed_error_alias(self):
-        """Test AllProvidersFailedError is alias for LLMRateLimitError."""
-        assert AllProvidersFailedError is LLMRateLimitError
-
     def test_rate_limited_invoker_alias(self):
         """Test RateLimitedLLMInvoker is alias for LLMInvoker."""
         assert RateLimitedLLMInvoker is LLMInvoker
 
-    def test_llm_provider_class(self):
-        """Test LLMProvider class exists with string values."""
-        assert LLMProvider.OLLAMA == "ollama"
-        assert LLMProvider.OPENROUTER == "openrouter"
-
-    def test_get_default_provider_returns_openrouter(self):
-        """Test get_default_provider returns openrouter."""
-        assert get_default_provider() == "openrouter"
+    def test_resilient_llm_alias(self):
+        """Test ResilientLLM is alias for LLMInvoker."""
+        assert ResilientLLM is LLMInvoker
 
     def test_is_fallback_error_alias(self):
         """Test is_fallback_error is alias for is_retriable_error."""
@@ -533,64 +510,6 @@ class TestResilientLLMBackwardCompat:
         assert "both_failed" in stats
         assert "fallback_rate" in stats
         assert "overall_success_rate" in stats
-
-
-class TestOllamaCircuitBreakerBackwardCompat:
-    """Tests for OllamaCircuitBreaker backward compatibility class."""
-
-    def test_record_success(self):
-        """Test recording a successful call."""
-        breaker = OllamaCircuitBreaker(threshold=3)
-        breaker.consecutive_errors = 2
-
-        breaker.record_success()
-
-        assert breaker.consecutive_errors == 0
-        assert not breaker.triggered
-
-    def test_record_rate_limit_error(self):
-        """Test recording a rate limit error."""
-        breaker = OllamaCircuitBreaker(threshold=3)
-
-        with pytest.raises(LLMRateLimitError):
-            breaker.record_error(Exception("429 Rate Limit"))
-
-        assert breaker.consecutive_errors == 1
-        assert breaker.total_rate_limit_errors == 1
-        assert not breaker.triggered
-
-    def test_circuit_breaker_triggers(self):
-        """Test that circuit breaker triggers after threshold."""
-        breaker = OllamaCircuitBreaker(threshold=2)
-
-        with pytest.raises(LLMRateLimitError):
-            breaker.record_error(Exception("429"))
-
-        with pytest.raises(LLMRateLimitError):
-            breaker.record_error(Exception("429"))
-
-        assert breaker.consecutive_errors == 2
-        assert breaker.triggered
-
-    def test_non_rate_limit_error_resets(self):
-        """Test that non-rate-limit errors reset consecutive count."""
-        breaker = OllamaCircuitBreaker(threshold=3)
-        breaker.consecutive_errors = 2
-
-        # Record a non-rate-limit, non-service error
-        breaker.record_error(Exception("Invalid API key"))
-
-        assert breaker.consecutive_errors == 0
-
-    def test_get_stats(self):
-        """Test get_stats returns circuit breaker statistics."""
-        breaker = OllamaCircuitBreaker(threshold=5)
-
-        stats = breaker.get_stats()
-        assert stats["threshold"] == 5
-        assert stats["consecutive_errors"] == 0
-        assert stats["total_rate_limit_errors"] == 0
-        assert stats["triggered"] is False
 
 
 class TestEmptyResponseError:

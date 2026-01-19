@@ -23,10 +23,8 @@ from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.subagents.place_finder.state import (
     ReceiptPlaceFinderState,
 )
-from receipt_agent.utils.agent_common import (
-    create_agent_node_with_retry,
-    create_ollama_llm,
-)
+from receipt_agent.utils.agent_common import create_agent_node_with_retry
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 
 
 # Helper function for building line IDs (matches agentic.py)
@@ -357,8 +355,8 @@ def create_receipt_place_finder_graph(
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
-    # Create LLM with tools bound using shared utility
-    llm = create_ollama_llm(settings=settings, temperature=0.0)
+    # Create LLM with tools bound
+    llm = create_llm_from_settings(settings=settings, temperature=0.0)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility
