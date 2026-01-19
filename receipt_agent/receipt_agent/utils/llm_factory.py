@@ -194,7 +194,8 @@ def is_retriable_error(error: Exception) -> bool:
     """
     Check if an error should trigger a retry.
 
-    This is the union of rate limit errors and service errors.
+    This is the union of rate limit errors, service errors, and timeout errors.
+    Timeouts are transient and should be retried.
 
     Args:
         error: The exception to check
@@ -202,7 +203,11 @@ def is_retriable_error(error: Exception) -> bool:
     Returns:
         True if this error should trigger a retry
     """
-    return is_rate_limit_error(error) or is_service_error(error)
+    return (
+        is_rate_limit_error(error)
+        or is_service_error(error)
+        or is_timeout_error(error)
+    )
 
 
 # Backward compatibility alias
