@@ -621,7 +621,7 @@ def create_enhanced_financial_validation_graph(
     if settings is None:
         settings = get_settings()
 
-    llm = create_llm_from_settings(settings=settings)
+    llm = create_llm_from_settings()
 
     # Create shared tool state that can be updated between runs
     shared_tool_state = {

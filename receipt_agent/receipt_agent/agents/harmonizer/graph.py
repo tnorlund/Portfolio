@@ -1880,7 +1880,7 @@ def create_harmonizer_graph(
     )
 
     # Create LLM with tools
-    llm = create_llm_from_settings(settings=settings, temperature=0.0)
+    llm = create_llm_from_settings(temperature=0.0)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility

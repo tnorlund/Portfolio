@@ -348,7 +348,7 @@ def create_financial_validation_graph(
     if settings is None:
         settings = get_settings()
 
-    llm = create_llm_from_settings(settings=settings)
+    llm = create_llm_from_settings()
 
     state_holder = {"receipt": {}, "result": {}}
 

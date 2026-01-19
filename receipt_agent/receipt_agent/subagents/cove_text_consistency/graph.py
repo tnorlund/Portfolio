@@ -1090,7 +1090,7 @@ def create_cove_text_consistency_graph(
     )
 
     # Create LLM with tools bound
-    llm = create_llm_from_settings(settings=settings, temperature=0.0)
+    llm = create_llm_from_settings(temperature=0.0)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility

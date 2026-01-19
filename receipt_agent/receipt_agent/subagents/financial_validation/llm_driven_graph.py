@@ -1042,7 +1042,7 @@ def create_llm_driven_financial_graph(
         settings = get_settings()
 
     # Create LLM
-    llm = create_llm_from_settings(settings=settings)
+    llm = create_llm_from_settings()
 
     # Create shared tool state that can be updated between runs
     shared_tool_state = {
