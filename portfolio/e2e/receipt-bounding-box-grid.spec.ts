@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 /**
  * Tests for ReceiptBoundingBoxGrid component to ensure:
@@ -11,7 +11,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to receipt page
     await page.goto('/receipt');
-    
+
     // Wait for page to be ready
     await expect(page.locator('h1', { hasText: 'Introduction' })).toBeVisible({ timeout: 15000 });
   });
@@ -28,7 +28,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     // Find the two bounding box containers (bottom row of grid)
     const scanCell = page.locator('[data-testid="scan-receipt-cell"]');
     const photoCell = page.locator('[data-testid="photo-receipt-cell"]');
-    
+
     // Wait for cells to be visible (they might be hidden until intersection observer triggers)
     await expect(scanCell).toBeVisible({ timeout: 10000 });
     await expect(photoCell).toBeVisible({ timeout: 10000 });
@@ -69,7 +69,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     // Structure: gridCell > div (ReceiptBoundingBoxFrame) > div (aspect ratio container) > svg
     const scanFrame = scanCell.locator('div').first().locator('div').first();
     const photoFrame = photoCell.locator('div').first().locator('div').first();
-    
+
     await expect(scanFrame).toBeAttached({ timeout: 10000 });
     await expect(photoFrame).toBeAttached({ timeout: 10000 });
 
@@ -117,7 +117,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     // Find the grid
     const grid = page.locator('[data-testid="receipt-bounding-box-grid"]');
     await expect(grid).toBeVisible();
-    
+
     // Scroll to the grid to ensure it's in view
     await grid.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
@@ -137,7 +137,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
       // Verify grid didn't shift position
       expect(finalGridBox.x).toBeCloseTo(initialGridBox.x, 0);
       expect(finalGridBox.y).toBeCloseTo(initialGridBox.y, 0);
-      
+
       // Verify grid size didn't change
       expect(finalGridBox.width).toBeCloseTo(initialGridBox.width, 1);
       expect(finalGridBox.height).toBeCloseTo(initialGridBox.height, 1);
@@ -149,10 +149,10 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     const grid = page.locator('[data-testid="receipt-bounding-box-grid"]');
     await grid.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1000); // Wait for intersection observer
-    
+
     const scanCell = page.locator('[data-testid="scan-receipt-cell"]');
     const photoCell = page.locator('[data-testid="photo-receipt-cell"]');
-    
+
     // Wait for SVG content to load
     await scanCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
     await photoCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
@@ -167,7 +167,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     // Wait for frames to be visible and have dimensions
     await expect(scanFrame).toBeVisible({ timeout: 10000 });
     await expect(photoFrame).toBeVisible({ timeout: 10000 });
-    
+
     // Wait a bit more for layout to stabilize
     await page.waitForTimeout(1000);
 

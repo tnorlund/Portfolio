@@ -58,7 +58,7 @@ const AnimatedLineBox = ({
   });
 
   // Animate the centroid marker - midY is the center of the visible area
-  const midY = cropInfo 
+  const midY = cropInfo
     ? cropInfo.y + cropInfo.height / 2  // Center of crop region in full image coords
     : imgHeight / 2;
   const centroidSpring = useSpring({
