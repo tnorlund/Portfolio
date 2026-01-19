@@ -50,6 +50,7 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
+from receipt_agent.constants import CORE_LABELS
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
     LLMBatchValidator,
@@ -538,34 +539,51 @@ def _run_words_pipeline_worker(
                                     # so we must mark old label INVALID and create new one
                                     from datetime import datetime, timezone
 
-                                    # 1. Mark old label as INVALID (audit trail)
-                                    label.validation_status = (
-                                        ValidationStatus.INVALID.value
-                                    )
-                                    label.label_proposed_by = "llm_invalid"
-                                    label.reasoning = (
-                                        f"Corrected to {llm_result.label}. "
-                                        f"{llm_result.reasoning or ''}"
-                                    )
-                                    dynamo.update_receipt_word_label(label)
+                                    # Only create corrected label if it's a valid CORE_LABEL
+                                    # This enforces the constraint that only CORE_LABELS
+                                    # are persisted to DynamoDB
+                                    if llm_result.label in CORE_LABELS:
+                                        # 1. Mark old label as INVALID (audit trail)
+                                        label.validation_status = (
+                                            ValidationStatus.INVALID.value
+                                        )
+                                        label.label_proposed_by = "llm_invalid"
+                                        label.reasoning = (
+                                            f"Corrected to {llm_result.label}. "
+                                            f"{llm_result.reasoning or ''}"
+                                        )
+                                        dynamo.update_receipt_word_label(label)
 
-                                    # 2. Create new label with corrected value
-                                    new_label = ReceiptWordLabel(
-                                        image_id=image_id,
-                                        receipt_id=receipt_id,
-                                        line_id=label.line_id,
-                                        word_id=label.word_id,
-                                        label=llm_result.label,
-                                        reasoning=llm_result.reasoning,
-                                        timestamp_added=datetime.now(
-                                            timezone.utc
-                                        ),
-                                        validation_status=ValidationStatus.VALID.value,
-                                        label_proposed_by=f"llm_corrected:{label.label}",
-                                        label_consolidated_from=label.label,
-                                    )
-                                    dynamo.add_receipt_word_label(new_label)
-                                    llm_validated += 1
+                                        # 2. Create new label with corrected value
+                                        new_label = ReceiptWordLabel(
+                                            image_id=image_id,
+                                            receipt_id=receipt_id,
+                                            line_id=label.line_id,
+                                            word_id=label.word_id,
+                                            label=llm_result.label,
+                                            reasoning=llm_result.reasoning,
+                                            timestamp_added=datetime.now(
+                                                timezone.utc
+                                            ),
+                                            validation_status=ValidationStatus.VALID.value,
+                                            label_proposed_by=f"llm_corrected:{label.label}",
+                                            label_consolidated_from=label.label,
+                                        )
+                                        dynamo.add_receipt_word_label(new_label)
+                                        llm_validated += 1
+                                    else:
+                                        # LLM returned invalid label (AMOUNT, TIP, etc.)
+                                        # Mark as NEEDS_REVIEW for human intervention
+                                        label.validation_status = (
+                                            ValidationStatus.NEEDS_REVIEW.value
+                                        )
+                                        label.label_proposed_by = "llm_invalid_label"
+                                        label.reasoning = (
+                                            f"LLM suggested '{llm_result.label}' but it's not "
+                                            f"a valid CORE_LABEL. {llm_result.reasoning or ''}"
+                                        )
+                                        dynamo.update_receipt_word_label(label)
+                                        llm_validated += 1
                                 else:
                                     # INVALID but same label - just mark as invalid
                                     label.validation_status = (
