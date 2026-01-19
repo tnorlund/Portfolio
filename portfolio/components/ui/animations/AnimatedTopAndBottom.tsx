@@ -1,6 +1,7 @@
 import React from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Line, Point } from "../../../types/api";
+import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 interface AnimatedTopAndBottomProps {
   topLine: Line | null;
@@ -10,6 +11,9 @@ interface AnimatedTopAndBottomProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  cropInfo?: CropViewBox | null;
+  fullImageWidth?: number;
+  fullImageHeight?: number;
 }
 
 /**
@@ -28,11 +32,29 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
   svgWidth,
   svgHeight,
   delay,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }) => {
+  // Transform normalized coordinates to SVG coordinates
+  const transformX = (normX: number) => {
+    if (cropInfo && fullImageWidth) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  };
+  
+  const transformY = (normY: number) => {
+    if (cropInfo && fullImageHeight) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  };
+
   // Convert line corners to SVG coordinates
   const toSvg = (p: Point) => ({
-    x: p.x * svgWidth,
-    y: (1 - p.y) * svgHeight,
+    x: transformX(p.x),
+    y: transformY(p.y),
   });
 
   // Compute polygon strings and key corners only when lines exist

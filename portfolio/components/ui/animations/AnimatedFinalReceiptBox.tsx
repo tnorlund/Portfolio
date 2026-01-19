@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback } from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Point } from "../../../types/api";
+import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 interface AnimatedFinalReceiptBoxProps {
   finalReceiptBox: Point[];
@@ -12,6 +13,9 @@ interface AnimatedFinalReceiptBoxProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  cropInfo?: CropViewBox | null;
+  fullImageWidth?: number;
+  fullImageHeight?: number;
 }
 
 /**
@@ -32,14 +36,32 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
   svgWidth,
   svgHeight,
   delay,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }) => {
+  // Transform normalized coordinates to SVG coordinates
+  const transformX = useCallback((normX: number) => {
+    if (cropInfo && fullImageWidth) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  }, [cropInfo, fullImageWidth, svgWidth]);
+  
+  const transformY = useCallback((normY: number) => {
+    if (cropInfo && fullImageHeight) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  }, [cropInfo, fullImageHeight, svgHeight]);
+
   // Helper to convert normalized coords to SVG coords
   const toSvg = useCallback(
     (p: Point) => ({
-      x: p.x * svgWidth,
-      y: (1 - p.y) * svgHeight,
+      x: transformX(p.x),
+      y: transformY(p.y),
     }),
-    [svgWidth, svgHeight]
+    [transformX, transformY]
   );
 
   // Memoize corner calculations
@@ -53,13 +75,13 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     return finalReceiptBox.length === 4
       ? finalReceiptBox.map((corner: Point, index: number) => ({
           ...corner,
-          svgX: corner.x * svgWidth,
-          svgY: (1 - corner.y) * svgHeight,
+          svgX: transformX(corner.x),
+          svgY: transformY(corner.y),
           label: cornerLabels[index],
           index,
         }))
       : [];
-  }, [finalReceiptBox, svgWidth, svgHeight]);
+  }, [finalReceiptBox, transformX, transformY]);
 
   // Create visual boundary lines for animation
   const boundaryLines = useMemo(() => {

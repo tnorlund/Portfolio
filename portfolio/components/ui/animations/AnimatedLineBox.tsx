@@ -1,4 +1,5 @@
 import { useSpring, animated } from "@react-spring/web";
+import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 export interface Line {
   top_left: { x: number; y: number };
@@ -12,6 +13,9 @@ export interface AnimatedLineBoxProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  cropInfo?: CropViewBox | null;
+  fullImageWidth?: number;
+  fullImageHeight?: number;
 }
 
 const AnimatedLineBox = ({
@@ -19,16 +23,35 @@ const AnimatedLineBox = ({
   svgWidth,
   svgHeight,
   delay,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }: AnimatedLineBoxProps) => {
+  // Transform normalized coordinates to SVG coordinates
+  // If cropped, coordinates are relative to crop region; otherwise relative to full image
+  const transformX = (normX: number) => {
+    if (cropInfo && fullImageWidth) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  };
+  
+  const transformY = (normY: number) => {
+    if (cropInfo && fullImageHeight) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  };
+
   // Convert normalized coordinates to absolute pixel values.
-  const x1 = line.top_left.x * svgWidth;
-  const y1 = (1 - line.top_left.y) * svgHeight;
-  const x2 = line.top_right.x * svgWidth;
-  const y2 = (1 - line.top_right.y) * svgHeight;
-  const x3 = line.bottom_right.x * svgWidth;
-  const y3 = (1 - line.bottom_right.y) * svgHeight;
-  const x4 = line.bottom_left.x * svgWidth;
-  const y4 = (1 - line.bottom_left.y) * svgHeight;
+  const x1 = transformX(line.top_left.x);
+  const y1 = transformY(line.top_left.y);
+  const x2 = transformX(line.top_right.x);
+  const y2 = transformY(line.top_right.y);
+  const x3 = transformX(line.bottom_right.x);
+  const y3 = transformY(line.bottom_right.y);
+  const x4 = transformX(line.bottom_left.x);
+  const y4 = transformY(line.bottom_left.y);
   const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
 
   // Compute the polygon's centroid.
@@ -44,11 +67,12 @@ const AnimatedLineBox = ({
   });
 
   // Animate the centroid marker.
+  const midY = cropInfo ? cropInfo.height / 2 : svgHeight / 2;
   const centroidSpring = useSpring({
     from: { opacity: 0, cy: centroidY },
     to: async next => {
       await next({ opacity: 1, cy: centroidY, config: { duration: 300 } });
-      await next({ cy: svgHeight / 2, config: { duration: 800 } });
+      await next({ cy: midY, config: { duration: 800 } });
     },
     delay: delay + 30,
   });

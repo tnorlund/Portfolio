@@ -17,17 +17,14 @@ import {
   LabelWordCloud,
   LayoutLMInferenceVisualization,
   PageCurlLetter,
-  PhotoReceiptBoundingBox,
   PrecisionRecallDartboard,
   QuestionMarquee,
+  ReceiptBoundingBoxGrid,
   ReceiptStack,
-  ScanReceiptBoundingBox,
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   UploadDiagram,
   WordSimilarity,
-  ZDepthConstrainedParametric,
-  ZDepthUnconstrainedParametric
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
@@ -298,24 +295,7 @@ M1LK 2%           1    $4.4g`}</code>
         paper with words on it out of the image.
       </p>
 
-      <div className={styles.figureGrid2x2}>
-        <div className={styles.figureGridCell}>
-          <ClientOnly>
-            <ZDepthConstrainedParametric />
-          </ClientOnly>
-        </div>
-        <div className={styles.figureGridCell}>
-          <ClientOnly>
-            <ZDepthUnconstrainedParametric />
-          </ClientOnly>
-        </div>
-        <div className={styles.figureGridCell}>
-          <ScanReceiptBoundingBox />
-        </div>
-        <div className={styles.figureGridCell}>
-          <PhotoReceiptBoundingBox />
-        </div>
-      </div>
+      <ReceiptBoundingBoxGrid />
 
       <p>
         This flattened receipt is now as clean as it can be.

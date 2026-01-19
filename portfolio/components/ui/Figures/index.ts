@@ -24,6 +24,7 @@ export {
 } from "./IsometricPlane";
 export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";
+export { default as ReceiptBoundingBoxGrid } from "./ReceiptBoundingBoxGrid";
 export { default as ReceiptStack } from "./ReceiptStack";
 export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
 export { default as UploadDiagram } from "./UploadDiagram";

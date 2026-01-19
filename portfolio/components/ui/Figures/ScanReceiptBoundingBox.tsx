@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 
 import { useSpring, useTransition, animated } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
+import ReceiptBoundingBoxFrame from "./ReceiptBoundingBoxFrame";
+import type { CropViewBox } from "./utils/smartCrop";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -14,6 +16,9 @@ interface AnimatedReceiptProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  cropInfo: CropViewBox | null;
+  fullImageWidth: number;
+  fullImageHeight: number;
 }
 
 const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
@@ -21,16 +26,35 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
   svgWidth,
   svgHeight,
   delay,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }) => {
+  // Transform normalized coordinates to SVG coordinates
+  // If cropped, coordinates are relative to crop region; otherwise relative to full image
+  const transformX = (normX: number) => {
+    if (cropInfo) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  };
+  
+  const transformY = (normY: number) => {
+    if (cropInfo) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  };
+
   // Compute the receipt bounding box corners.
-  const x1 = receipt.top_left.x * svgWidth;
-  const y1 = (1 - receipt.top_left.y) * svgHeight;
-  const x2 = receipt.top_right.x * svgWidth;
-  const y2 = (1 - receipt.top_right.y) * svgHeight;
-  const x3 = receipt.bottom_right.x * svgWidth;
-  const y3 = (1 - receipt.bottom_right.y) * svgHeight;
-  const x4 = receipt.bottom_left.x * svgWidth;
-  const y4 = (1 - receipt.bottom_left.y) * svgHeight;
+  const x1 = transformX(receipt.top_left.x);
+  const y1 = transformY(receipt.top_left.y);
+  const x2 = transformX(receipt.top_right.x);
+  const y2 = transformY(receipt.top_right.y);
+  const x3 = transformX(receipt.bottom_right.x);
+  const y3 = transformY(receipt.bottom_right.y);
+  const x4 = transformX(receipt.bottom_left.x);
+  const y4 = transformY(receipt.bottom_left.y);
   const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
 
   // Compute the centroid of the receipt bounding box.
@@ -140,11 +164,6 @@ const ImageBoundingBox: React.FC = () => {
   const svgWidth = firstImage ? firstImage.width : defaultSvgWidth;
   const svgHeight = firstImage ? firstImage.height : defaultSvgHeight;
 
-  // Responsive sizing: let the container dictate the rendered size while preserving aspect ratio.
-  // This avoids hard-capping the figure at 400px and makes it scale naturally in a 2-col grid.
-  const maxDisplayWidth = 520;
-  const aspectRatio = svgWidth / svgHeight;
-
   useEffect(() => {
     if (!inView) {
       setResetKey(k => k + 1);
@@ -168,49 +187,60 @@ const ImageBoundingBox: React.FC = () => {
 
   return (
     <div ref={ref}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          minHeight: 0,
-          alignItems: "center",
-        }}
+      <ReceiptBoundingBoxFrame
+        lines={lines}
+        receipts={receipts}
+        imageWidth={svgWidth}
+        imageHeight={svgHeight}
       >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: maxDisplayWidth,
-            aspectRatio: `${aspectRatio}`,
-            borderRadius: "15px",
-            overflow: "hidden",
-          }}
-        >
-          {imageDetails && formatSupport ? (
+        {(cropInfo, fullImageWidth, fullImageHeight) => {
+          // Use crop viewBox if available, otherwise use full image
+          const viewBox = cropInfo
+            ? `${cropInfo.x} ${cropInfo.y} ${cropInfo.width} ${cropInfo.height}`
+            : `0 0 ${fullImageWidth} ${fullImageHeight}`;
+
+          // Transform function for normalized coordinates
+          const transformX = (normX: number) => {
+            if (cropInfo) {
+              return normX * fullImageWidth - cropInfo.x;
+            }
+            return normX * fullImageWidth;
+          };
+          
+          const transformY = (normY: number) => {
+            if (cropInfo) {
+              return (1 - normY) * fullImageHeight - cropInfo.y;
+            }
+            return (1 - normY) * fullImageHeight;
+          };
+
+          return imageDetails && formatSupport ? (
             <svg
               key={resetKey}
               onClick={() => setResetKey((k) => k + 1)}
-              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+              viewBox={viewBox}
               style={{ width: "100%", height: "100%", display: "block" }}
               preserveAspectRatio="xMidYMid meet"
             >
+              {/* Image positioned to account for crop */}
               <image
                 href={cdnUrl}
-                x="0"
-                y="0"
-                width={svgWidth}
-                height={svgHeight}
+                x={cropInfo ? -cropInfo.x : 0}
+                y={cropInfo ? -cropInfo.y : 0}
+                width={fullImageWidth}
+                height={fullImageHeight}
               />
 
               {/* Render animated word bounding boxes (via transition) */}
               {lineTransitions((style, line) => {
-                const x1 = line.top_left.x * svgWidth;
-                const y1 = (1 - line.top_left.y) * svgHeight;
-                const x2 = line.top_right.x * svgWidth;
-                const y2 = (1 - line.top_right.y) * svgHeight;
-                const x3 = line.bottom_right.x * svgWidth;
-                const y3 = (1 - line.bottom_right.y) * svgHeight;
-                const x4 = line.bottom_left.x * svgWidth;
-                const y4 = (1 - line.bottom_left.y) * svgHeight;
+                const x1 = transformX(line.top_left.x);
+                const y1 = transformY(line.top_left.y);
+                const x2 = transformX(line.top_right.x);
+                const y2 = transformY(line.top_right.y);
+                const x3 = transformX(line.bottom_right.x);
+                const y3 = transformY(line.bottom_right.y);
+                const x4 = transformX(line.bottom_left.x);
+                const y4 = transformY(line.bottom_left.y);
                 const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
                 return (
                   <animated.polygon
@@ -230,9 +260,12 @@ const ImageBoundingBox: React.FC = () => {
                   <AnimatedLineBox
                     key={`${line.line_id}`}
                     line={line}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
+                    svgWidth={cropInfo ? cropInfo.width : fullImageWidth}
+                    svgHeight={cropInfo ? cropInfo.height : fullImageHeight}
                     delay={index * 30}
+                    cropInfo={cropInfo}
+                    fullImageWidth={fullImageWidth}
+                    fullImageHeight={fullImageHeight}
                   />
                 ))}
 
@@ -242,9 +275,12 @@ const ImageBoundingBox: React.FC = () => {
                   <AnimatedReceipt
                     key={`receipt-${receipt.receipt_id}`}
                     receipt={receipt}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
+                    svgWidth={cropInfo ? cropInfo.width : fullImageWidth}
+                    svgHeight={cropInfo ? cropInfo.height : fullImageHeight}
                     delay={totalDelayForLines + index * 100}
+                    cropInfo={cropInfo}
+                    fullImageWidth={fullImageWidth}
+                    fullImageHeight={fullImageHeight}
                   />
                 ))}
             </svg>
@@ -261,9 +297,9 @@ const ImageBoundingBox: React.FC = () => {
             >
               Loading...
             </div>
-          )}
-        </div>
-      </div>
+          );
+        }}
+      </ReceiptBoundingBoxFrame>
     </div>
   );
 };

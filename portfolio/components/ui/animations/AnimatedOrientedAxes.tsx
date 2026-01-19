@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { Point } from "../../../types/api";
+import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 interface AnimatedOrientedAxesProps {
   hull: Point[];
@@ -10,6 +11,9 @@ interface AnimatedOrientedAxesProps {
   svgWidth: number;
   svgHeight: number;
   delay: number;
+  cropInfo?: CropViewBox | null;
+  fullImageWidth?: number;
+  fullImageHeight?: number;
 }
 
 /**
@@ -29,6 +33,9 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
   svgWidth,
   svgHeight,
   delay,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }) => {
   const [visibleElements, setVisibleElements] = useState(0);
 
@@ -55,8 +62,23 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
 
   if (hull.length === 0) return null;
 
-  const centroidX = centroid.x * svgWidth;
-  const centroidY = (1 - centroid.y) * svgHeight;
+  // Transform normalized coordinates to SVG coordinates
+  const transformX = (normX: number) => {
+    if (cropInfo && fullImageWidth) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  };
+  
+  const transformY = (normY: number) => {
+    if (cropInfo && fullImageHeight) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  };
+
+  const centroidX = transformX(centroid.x);
+  const centroidY = transformY(centroid.y);
 
   // Primary axis: along text line direction (GREEN)
   const primaryAxisAngle = avgAngleRad;
@@ -140,8 +162,8 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
       {visibleElements >= 3 && leftmostHullPoint && rightmostHullPoint && (
         <>
           <circle
-            cx={leftmostHullPoint.x * svgWidth}
-            cy={(1 - leftmostHullPoint.y) * svgHeight}
+            cx={transformX(leftmostHullPoint.x)}
+            cy={transformY(leftmostHullPoint.y)}
             r={10}
             fill="var(--color-green)"
             stroke="white"
@@ -149,8 +171,8 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
             opacity={0.9}
           />
           <circle
-            cx={rightmostHullPoint.x * svgWidth}
-            cy={(1 - rightmostHullPoint.y) * svgHeight}
+            cx={transformX(rightmostHullPoint.x)}
+            cy={transformY(rightmostHullPoint.y)}
             r={10}
             fill="var(--color-green)"
             stroke="white"

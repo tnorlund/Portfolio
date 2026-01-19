@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { Point } from "../../../types/api";
+import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 interface AnimatedConvexHullProps {
   hullPoints: Point[];
@@ -7,6 +8,9 @@ interface AnimatedConvexHullProps {
   svgHeight: number;
   delay: number;
   showIndices?: boolean;
+  cropInfo?: CropViewBox | null;
+  fullImageWidth?: number;
+  fullImageHeight?: number;
 }
 
 const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
@@ -15,6 +19,9 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
   svgHeight,
   delay,
   showIndices,
+  cropInfo,
+  fullImageWidth,
+  fullImageHeight,
 }) => {
   const [visiblePoints, setVisiblePoints] = useState(0);
 
@@ -41,9 +48,24 @@ const AnimatedConvexHull: React.FC<AnimatedConvexHullProps> = ({
 
   if (hullPoints.length === 0) return null;
 
+  // Transform normalized coordinates to SVG coordinates
+  const transformX = (normX: number) => {
+    if (cropInfo && fullImageWidth) {
+      return normX * fullImageWidth - cropInfo.x;
+    }
+    return normX * svgWidth;
+  };
+  
+  const transformY = (normY: number) => {
+    if (cropInfo && fullImageHeight) {
+      return (1 - normY) * fullImageHeight - cropInfo.y;
+    }
+    return (1 - normY) * svgHeight;
+  };
+
   const svgPoints = hullPoints.map((point) => ({
-    x: point.x * svgWidth,
-    y: (1 - point.y) * svgHeight,
+    x: transformX(point.x),
+    y: transformY(point.y),
   }));
 
   const visibleSvgPoints = svgPoints.slice(0, visiblePoints);
