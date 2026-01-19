@@ -47,7 +47,7 @@ except ImportError:
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain-ollama)
+# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 

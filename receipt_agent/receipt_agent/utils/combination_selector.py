@@ -471,13 +471,11 @@ class ReceiptCombinationSelector:
             )
             if table:
                 os.environ.setdefault("DYNAMODB_TABLE_NAME", table)
-            ollama_key = secrets.get("OLLAMA_API_KEY") or secrets.get(
-                "portfolio:OLLAMA_API_KEY"
+            openrouter_key = secrets.get("OPENROUTER_API_KEY") or secrets.get(
+                "portfolio:OPENROUTER_API_KEY"
             )
-            if ollama_key:
-                os.environ.setdefault(
-                    "RECEIPT_AGENT_OLLAMA_API_KEY", ollama_key
-                )
+            if openrouter_key:
+                os.environ.setdefault("OPENROUTER_API_KEY", openrouter_key)
             langchain_key = secrets.get("LANGCHAIN_API_KEY") or secrets.get(
                 "portfolio:LANGCHAIN_API_KEY"
             )

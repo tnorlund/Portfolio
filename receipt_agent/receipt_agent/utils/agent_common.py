@@ -129,7 +129,7 @@ def create_agent_node_with_retry(
                         "connection" if is_connection_error else "server"
                     )
                     logger.warning(
-                        f"Ollama {error_type} error in {agent_name} "
+                        f"LLM {error_type} error in {agent_name} "
                         f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
                         f"Retrying in {wait_time:.1f}s..."
                     )
@@ -141,7 +141,7 @@ def create_agent_node_with_retry(
                     # Not retryable or max retries reached
                     if attempt >= max_retries - 1:
                         logger.exception(
-                            f"Ollama LLM call failed after {max_retries} attempts "
+                            f"LLM call failed after {max_retries} attempts "
                             f"in {agent_name}: {error_str}"
                         )
                     raise RuntimeError(

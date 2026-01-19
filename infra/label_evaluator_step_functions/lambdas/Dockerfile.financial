@@ -20,7 +20,7 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # 2. receipt_dynamo_stream (depends on receipt_dynamo)
 # 3. receipt_chroma (depends on receipt_dynamo_stream)
 # 4. receipt_places (depends on receipt_dynamo)
-# 5. receipt_agent (depends on all above, brings langchain-ollama and langsmith)
+# 5. receipt_agent (depends on all above, brings langchain-openai and langsmith)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_dynamo_stream && \
     pip install --no-cache-dir /tmp/receipt_chroma && \

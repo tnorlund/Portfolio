@@ -242,7 +242,7 @@ The `receipt_agent` validation workflow follows this access pattern:
    └── [If miss] DynamoDB: add_places_cache (1 WCU)
 
 5. make_decision
-   └── Ollama Cloud: LLM inference (per-token)
+   └── OpenRouter: LLM inference (per-token)
 ```
 
 ---
@@ -258,7 +258,7 @@ The `receipt_agent` validation workflow follows this access pattern:
 | ChromaDB | 0 | 0 | Local storage only |
 | Places API (cached) | $0 | $0.034 | With good cache |
 | Places API (uncached) | $0.034 | $0.083 | Cold start |
-| Ollama Cloud | ~$0.001 | ~$0.01 | Per-token |
+| OpenRouter | ~$0.001 | ~$0.01 | Per-token |
 
 ### Batch Validation (100 receipts)
 
