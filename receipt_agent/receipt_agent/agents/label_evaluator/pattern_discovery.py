@@ -144,19 +144,6 @@ class PatternDiscoveryConfig:
     max_lines_per_receipt: int = 80
     focus_on_line_items: bool = True  # Smart line selection
 
-    # Backward compatibility aliases
-    @property
-    def ollama_api_key(self) -> str:
-        return self.openrouter_api_key
-
-    @property
-    def ollama_base_url(self) -> str:
-        return self.openrouter_base_url
-
-    @property
-    def ollama_model(self) -> str:
-        return self.openrouter_model
-
     @classmethod
     def from_env(cls) -> "PatternDiscoveryConfig":
         """Create config from environment variables.

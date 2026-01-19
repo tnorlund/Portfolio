@@ -240,7 +240,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "load_receipts_duration_seconds": round(load_duration, 3),
                     "build_prompt_duration_seconds": round(prompt_duration, 3),
                     "llm_call_duration_seconds": round(llm_duration, 3),
-                    "llm_model": config.ollama_model,
+                    "llm_model": config.openrouter_model,
                 }
                 upload_json_to_s3(
                     s3, batch_bucket, patterns_s3_key, default_patterns
@@ -269,7 +269,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "load_receipts_duration_seconds": round(load_duration, 3),
                     "build_prompt_duration_seconds": round(prompt_duration, 3),
                     "llm_call_duration_seconds": round(llm_duration, 3),
-                    "llm_model": config.ollama_model,
+                    "llm_model": config.openrouter_model,
                     "sample_receipt_count": len(receipts_data),
                 }
 
