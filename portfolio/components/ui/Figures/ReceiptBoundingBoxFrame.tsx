@@ -1,11 +1,11 @@
 import React, { useMemo } from "react";
-import type { Line, Receipt } from "../../../types/api";
-import { computeSmartCropViewBox, type CropViewBox } from "./utils/smartCrop";
+import type { Line } from "../../../types/api";
+import { computeSmartCropViewBox, type CropViewBox, type ReceiptPolygon } from "./utils/smartCrop";
 
 interface ReceiptBoundingBoxFrameProps {
   children: (cropInfo: CropViewBox | null, fullImageWidth: number, fullImageHeight: number) => React.ReactNode;
   lines: Line[];
-  receipts: Receipt[];
+  receipts: ReceiptPolygon[];
   imageWidth: number;
   imageHeight: number;
 }

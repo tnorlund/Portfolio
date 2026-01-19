@@ -8,18 +8,29 @@ export interface CropViewBox {
 }
 
 /**
+ * Represents a receipt polygon with just the corner points.
+ * Used for both full Receipt objects and computed receipt polygons.
+ */
+export interface ReceiptPolygon {
+  top_left: Point;
+  top_right: Point;
+  bottom_left: Point;
+  bottom_right: Point;
+}
+
+/**
  * Computes a 3:4 aspect ratio crop viewBox that contains all receipt content
  * (lines and receipt polygons) while ensuring no content is clipped.
  *
  * @param lines - Array of OCR lines with normalized coordinates (y=0 at bottom)
- * @param receipts - Array of receipt polygons with normalized coordinates (y=0 at bottom)
+ * @param receipts - Array of receipt polygons (full Receipt objects or simplified polygons) with normalized coordinates (y=0 at bottom)
  * @param imageWidth - Full image width in pixels
  * @param imageHeight - Full image height in pixels
  * @returns Crop viewBox object or null if no content
  */
 export function computeSmartCropViewBox(
   lines: Line[],
-  receipts: Receipt[],
+  receipts: ReceiptPolygon[],
   imageWidth: number,
   imageHeight: number
 ): CropViewBox | null {
