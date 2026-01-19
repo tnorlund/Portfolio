@@ -9,7 +9,6 @@ export { default as TerraformLogo } from "./TerraformLogo";
 export { default as HuggingFaceLogo } from "./HuggingFaceLogo";
 export { default as PyTorchLogo } from "./PyTorchLogo";
 export { default as NextJSLogo } from "./NextJSLogo";
-export { default as OllamaLogo } from "./ollamaLogo";
 export { default as LangChainLogo } from "./LangChainLogo";
 export { default as LangSmithLogo } from "./LangSmithLogo";
 export { default as DockerLogo } from "./DockerLogo";

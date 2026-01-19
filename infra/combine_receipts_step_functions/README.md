@@ -116,7 +116,7 @@ Done
 - DynamoDB table with receipt data
 - S3 buckets: batch bucket, ChromaDB bucket, raw image bucket, site bucket
 - OpenAI API key (for embeddings)
-- Ollama API key (for LLM analysis)
+- OpenRouter API key (for LLM analysis)
 - LangSmith API key (optional, for tracing)
 
 ## Deployment

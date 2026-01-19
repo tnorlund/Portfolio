@@ -147,7 +147,7 @@ class PlaceValidatorAgent:
         logger.info(
             "PlaceValidatorAgent initialized",
             mode=mode,
-            ollama_model=self._settings.ollama_model,
+            llm_model=self._settings.openrouter_model,
             tracing_enabled=enable_tracing,
         )
 

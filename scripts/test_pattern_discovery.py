@@ -42,15 +42,15 @@ def load_config(env: str = "dev"):
 
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
-        "ollama_api_key": secrets.get("portfolio:OLLAMA_API_KEY"),
+        "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
         "openai_api_key": secrets.get("portfolio:OPENAI_API_KEY"),
         "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
     }
 
     # Set environment variables for the pattern discovery module
-    if config["ollama_api_key"]:
-        os.environ["OLLAMA_API_KEY"] = config["ollama_api_key"]
+    if config["openrouter_api_key"]:
+        os.environ["OPENROUTER_API_KEY"] = config["openrouter_api_key"]
     if config["langchain_api_key"]:
         os.environ["LANGCHAIN_API_KEY"] = config["langchain_api_key"]
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
@@ -58,9 +58,9 @@ def load_config(env: str = "dev"):
     if config["openai_api_key"]:
         os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
 
-    # Default Ollama settings (same as Lambda)
-    os.environ.setdefault("OLLAMA_BASE_URL", "https://ollama.com")
-    os.environ.setdefault("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+    # Default OpenRouter settings
+    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config
 
@@ -117,8 +117,8 @@ def main():
     logger.info("Using DynamoDB table: %s", config["dynamodb_table_name"])
 
     # Check for required config
-    if not args.prompt_only and not config["ollama_api_key"]:
-        logger.error("OLLAMA_API_KEY not found in Pulumi secrets")
+    if not args.prompt_only and not config["openrouter_api_key"]:
+        logger.error("OPENROUTER_API_KEY not found in Pulumi secrets")
         sys.exit(1)
 
     # Import directly to avoid chromadb import chain issues with Python 3.14

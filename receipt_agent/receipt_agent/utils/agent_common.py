@@ -1,56 +1,20 @@
 """
 Common utilities for agent workflows.
 
-This module provides shared functionality for creating LLM instances and
-agent nodes with retry logic, eliminating code duplication across workflows.
+This module provides shared functionality for creating agent nodes
+with retry logic, eliminating code duplication across workflows.
 """
 
 import logging
 import random
 import time
-import warnings
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional
-
-from receipt_agent.config.settings import Settings
-from receipt_agent.utils.llm_factory import create_llm_from_settings
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
-
-
-def create_ollama_llm(
-    settings: Optional[
-        Settings
-    ] = None,  # noqa: ARG001 - kept for backwards compat
-    temperature: float = 0.0,
-    timeout: int = 120,
-) -> "BaseChatModel":
-    """
-    Create an LLM instance with standard configuration.
-
-    DEPRECATED: Use create_llm() or create_llm_from_settings() from
-    receipt_agent.utils.llm_factory instead. This function is kept for
-    backwards compatibility and now delegates to the factory.
-
-    Args:
-        settings: Ignored. Kept for backwards compatibility.
-        temperature: LLM temperature (default 0.0 for deterministic)
-        timeout: Request timeout in seconds
-
-    Returns:
-        Configured LLM instance (ChatOllama or ChatOpenAI depending on provider)
-    """
-    warnings.warn(
-        "create_ollama_llm is deprecated. Use create_llm() or "
-        "create_llm_from_settings() from receipt_agent.utils.llm_factory instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # Delegate to the factory function which handles all provider logic
-    return create_llm_from_settings(temperature=temperature, timeout=timeout)
 
 
 def create_agent_node_with_retry(
@@ -108,7 +72,7 @@ def create_agent_node_with_retry(
                     or "rate_limit" in error_str.lower()
                     or "too many concurrent requests" in error_str.lower()
                     or "too many requests" in error_str.lower()
-                    or "OllamaRateLimitError" in error_str
+                    or "LLMRateLimitError" in error_str
                 )
 
                 if is_rate_limit:
@@ -165,7 +129,7 @@ def create_agent_node_with_retry(
                         "connection" if is_connection_error else "server"
                     )
                     logger.warning(
-                        f"Ollama {error_type} error in {agent_name} "
+                        f"LLM {error_type} error in {agent_name} "
                         f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
                         f"Retrying in {wait_time:.1f}s..."
                     )
@@ -177,7 +141,7 @@ def create_agent_node_with_retry(
                     # Not retryable or max retries reached
                     if attempt >= max_retries - 1:
                         logger.exception(
-                            f"Ollama LLM call failed after {max_retries} attempts "
+                            f"LLM call failed after {max_retries} attempts "
                             f"in {agent_name}: {error_str}"
                         )
                     raise RuntimeError(

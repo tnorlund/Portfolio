@@ -21,24 +21,23 @@ from .chroma_helpers import (
     query_similar_words,
 )
 from .llm_factory import (
-    BothProvidersFailedError,
+    # Primary exports
+    LLMRateLimitError,
+    LLMInvoker,
     EmptyResponseError,
-    LLMProvider,
-    ResilientLLM,
     create_llm,
+    create_llm_invoker,
     create_llm_from_settings,
     create_production_invoker,
-    create_resilient_llm,
-    get_default_provider,
-    is_fallback_error,
-)
-from .ollama_rate_limit import (
-    OllamaCircuitBreaker,
-    OllamaRateLimitError,
-    RateLimitedLLMInvoker,
     is_rate_limit_error,
-    is_server_error,
+    is_service_error,
     is_timeout_error,
+    is_retriable_error,
+    # Backward compatibility aliases (kept for existing code)
+    RateLimitedLLMInvoker,  # alias for LLMInvoker
+    create_resilient_llm,  # alias for create_llm_invoker
+    is_fallback_error,  # alias for is_retriable_error
+    is_server_error,  # alias for is_service_error
 )
 
 __all__ = [
@@ -61,22 +60,21 @@ __all__ = [
     "parse_chroma_id",
     "query_label_evidence",
     "query_similar_words",
-    # LLM Factory
-    "BothProvidersFailedError",
+    # LLM Factory - Primary
+    "LLMRateLimitError",
+    "LLMInvoker",
     "EmptyResponseError",
-    "LLMProvider",
-    "ResilientLLM",
     "create_llm",
+    "create_llm_invoker",
     "create_llm_from_settings",
     "create_production_invoker",
-    "create_resilient_llm",
-    "get_default_provider",
-    "is_fallback_error",
-    # Rate limit utilities
-    "OllamaCircuitBreaker",
-    "OllamaRateLimitError",
-    "RateLimitedLLMInvoker",
     "is_rate_limit_error",
-    "is_server_error",
+    "is_service_error",
     "is_timeout_error",
+    "is_retriable_error",
+    # LLM Factory - Backward Compatibility Aliases
+    "RateLimitedLLMInvoker",
+    "create_resilient_llm",
+    "is_fallback_error",
+    "is_server_error",
 ]

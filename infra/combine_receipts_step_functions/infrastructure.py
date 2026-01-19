@@ -52,7 +52,7 @@ except ImportError:
 # Load secrets
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
-ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Combine receipts specific config
@@ -406,9 +406,10 @@ class CombineReceiptsStepFunction(ComponentResource):
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
-                "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
-                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter LLM provider
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",

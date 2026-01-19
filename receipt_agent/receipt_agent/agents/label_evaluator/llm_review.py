@@ -27,10 +27,7 @@ from receipt_agent.prompts.label_evaluator import (
     parse_batched_llm_response,
     parse_llm_response,
 )
-from receipt_agent.utils import (
-    BothProvidersFailedError,
-    OllamaRateLimitError,
-)
+from receipt_agent.utils import LLMRateLimitError
 from receipt_agent.utils.chroma_helpers import (
     SimilarWordEvidence,
     compute_label_distribution,
@@ -53,7 +50,7 @@ from .word_context import get_same_line_words
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from receipt_agent.utils.ollama_rate_limit import RateLimitedLLMInvoker
+    from receipt_agent.utils.llm_factory import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
 
@@ -651,7 +648,7 @@ def review_single_issue(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "LLM review rate limited, propagating for retry: %s", e
             )
@@ -739,7 +736,7 @@ def review_issues_batch(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Batched LLM review rate limited, propagating for retry: %s", e
             )
@@ -832,7 +829,7 @@ def review_issues_with_receipt_context(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Receipt context LLM review rate limited, propagating for retry: %s",
                 e,

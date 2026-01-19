@@ -10,8 +10,9 @@ import logging
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
+
+from receipt_agent.utils.llm_factory import create_llm
 from langgraph.prebuilt import ToolNode
 
 from receipt_agent.agents.receipt_grouping.state import GroupingState
@@ -135,18 +136,11 @@ def create_receipt_grouping_graph(
         dynamo_client=dynamo_client,
     )
 
-    # Create LLM with tools bound
-    api_key = settings.ollama_api_key.get_secret_value()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": 120,
-        },
+    # Create LLM with tools bound (uses OpenRouter)
+    llm = create_llm(
+        model=settings.openrouter_model,
         temperature=0.0,
+        timeout=120,
     ).bind_tools(tools)
 
     # Define the agent node (calls LLM)

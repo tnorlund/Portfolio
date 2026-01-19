@@ -805,12 +805,9 @@ def evaluate_financial_math(
 
     except Exception as e:
         # Check for rate limit errors
-        from receipt_agent.utils import (
-            BothProvidersFailedError,
-            OllamaRateLimitError,
-        )
+        from receipt_agent.utils import LLMRateLimitError
 
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Financial LLM rate limited, propagating for retry: %s", e
             )
@@ -1004,12 +1001,9 @@ async def evaluate_financial_math_async(
         )
 
     except Exception as e:
-        from receipt_agent.utils import (
-            BothProvidersFailedError,
-            OllamaRateLimitError,
-        )
+        from receipt_agent.utils import LLMRateLimitError
 
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Financial LLM rate limited, propagating for retry: %s", e
             )

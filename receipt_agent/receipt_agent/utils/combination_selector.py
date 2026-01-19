@@ -14,7 +14,7 @@ import os
 import sys
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from langchain_ollama import ChatOllama
+from receipt_agent.utils.llm_factory import create_llm
 
 # Optional LangSmith tracing (graceful if not installed)
 try:
@@ -471,13 +471,11 @@ class ReceiptCombinationSelector:
             )
             if table:
                 os.environ.setdefault("DYNAMODB_TABLE_NAME", table)
-            ollama_key = secrets.get("OLLAMA_API_KEY") or secrets.get(
-                "portfolio:OLLAMA_API_KEY"
+            openrouter_key = secrets.get("OPENROUTER_API_KEY") or secrets.get(
+                "portfolio:OPENROUTER_API_KEY"
             )
-            if ollama_key:
-                os.environ.setdefault(
-                    "RECEIPT_AGENT_OLLAMA_API_KEY", ollama_key
-                )
+            if openrouter_key:
+                os.environ.setdefault("OPENROUTER_API_KEY", openrouter_key)
             langchain_key = secrets.get("LANGCHAIN_API_KEY") or secrets.get(
                 "portfolio:LANGCHAIN_API_KEY"
             )
@@ -486,21 +484,15 @@ class ReceiptCombinationSelector:
         except Exception:
             pass
 
-        # Use provided client or default Ollama client.
+        # Use provided client or default OpenRouter client.
         settings = get_settings()
         if llm_client:
             self.llm = llm_client
         else:
-            api_key = settings.ollama_api_key.get_secret_value() or ""
-            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            self.llm = ChatOllama(
-                base_url=settings.ollama_base_url,
-                model=settings.ollama_model,
+            self.llm = create_llm(
+                model=settings.openrouter_model,
                 temperature=0,
-                client_kwargs={
-                    "headers": headers,
-                    "timeout": 120,
-                },
+                timeout=120,
             )
 
     def build_candidates(

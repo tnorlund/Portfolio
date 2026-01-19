@@ -1,90 +1,119 @@
 """
-LLM Factory - Resilient LLM creation with automatic failover.
+LLM Factory - OpenRouter-only LLM creation with retry logic.
 
-This module provides a unified interface for creating LLM instances that can work
-with multiple providers (Ollama Cloud, OpenRouter) with automatic fallback when
-the primary provider fails due to rate limits or concurrency errors.
+This module provides a unified interface for creating LLM instances that work
+with OpenRouter as the single provider, with built-in retry logic for handling
+transient errors.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────┐
     │              Step Function Retry Layer                       │
-    │   (OllamaRateLimitError → 30s backoff, 5 attempts)          │
+    │   (LLMRateLimitError → 30s backoff, 5 attempts)             │
     └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
     ┌─────────────────────────────────────────────────────────────┐
-    │              RateLimitedLLMInvoker                           │
-    │   (jitter between calls + circuit breaker integration)       │
+    │                    LLMInvoker                               │
+    │   Jitter + retry on 429/5xx → raise LLMRateLimitError       │
     └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
     ┌─────────────────────────────────────────────────────────────┐
-    │                    ResilientLLM                              │
-    │   Ollama (primary) ──429──► OpenRouter Paid (fallback)      │
-    │   - If fallback succeeds: return response (no error)        │
-    │   - If both fail with 429: raise for circuit breaker        │
-    │   (Free tier skipped to avoid rate limit cascade)           │
+    │                  ChatOpenAI (OpenRouter)                     │
+    │   Single provider - paid tier only                          │
     └─────────────────────────────────────────────────────────────┘
 
 Usage:
-    # For Lambda handlers - full production stack
-    from receipt_agent.utils.llm_factory import create_production_invoker
+    # For Lambda handlers - with jitter and retry
+    from receipt_agent.utils.llm_factory import create_llm_invoker
 
-    invoker = create_production_invoker()
+    invoker = create_llm_invoker()
     response = invoker.invoke(messages)
 
-    # For simple scripts - just resilient LLM
-    from receipt_agent.utils.llm_factory import create_resilient_llm
+    # For simple scripts - just the LLM
+    from receipt_agent.utils.llm_factory import create_llm
 
-    llm = create_resilient_llm()
+    llm = create_llm()
     response = llm.invoke(messages)
 
 Environment Variables:
-    For Ollama (Primary):
-        OLLAMA_BASE_URL: Ollama API URL (default: https://ollama.com)
-        OLLAMA_API_KEY: Ollama API key
-        OLLAMA_MODEL: Model name (default: gpt-oss:120b-cloud)
-
-    For OpenRouter (Fallback):
-        OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
-        OPENROUTER_API_KEY: OpenRouter API key
-        OPENROUTER_PAID_MODEL: Paid model name (default: openai/gpt-oss-120b)
+    OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
+    OPENROUTER_API_KEY: OpenRouter API key (required)
+    OPENROUTER_MODEL: Model name (default: openai/gpt-oss-120b)
 """
 
+import asyncio
 import logging
 import os
+import random
+import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
-    from receipt_agent.utils.ollama_rate_limit import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
 
 
-class LLMProvider(str, Enum):
-    """Supported LLM providers."""
-
-    OLLAMA = "ollama"
-    OPENROUTER = "openrouter"
+# =============================================================================
+# Custom Exceptions
+# =============================================================================
 
 
-# Model name mappings between providers
-# Ollama uses "gpt-oss:120b-cloud" format, OpenRouter uses "openai/gpt-oss-120b:free"
-MODEL_MAPPINGS = {
-    # Ollama -> OpenRouter
-    "gpt-oss:120b-cloud": "openai/gpt-oss-120b:free",
-    "gpt-oss:20b-cloud": "openai/gpt-oss-20b:free",
-}
+class LLMRateLimitError(Exception):
+    """
+    Raised when OpenRouter returns rate limit or server errors after retries.
 
-# Reverse mappings
-REVERSE_MODEL_MAPPINGS = {v: k for k, v in MODEL_MAPPINGS.items()}
+    This exception is caught by AWS Step Functions retry logic, which applies
+    a longer delay (30s) and more retry attempts (5) compared to standard errors.
 
+    The Step Function ASL should include:
+    ```json
+    {
+        "Retry": [
+            {
+                "ErrorEquals": ["LLMRateLimitError"],
+                "IntervalSeconds": 30,
+                "MaxAttempts": 5,
+                "BackoffRate": 1.5
+            }
+        ]
+    }
+    ```
+    """
+
+    def __init__(
+        self,
+        message: str,
+        consecutive_errors: int = 0,
+        total_errors: int = 0,
+    ):
+        super().__init__(message)
+        self.consecutive_errors = consecutive_errors
+        self.total_errors = total_errors
+
+
+class EmptyResponseError(Exception):
+    """
+    Raised when the LLM returns an empty response.
+
+    This can happen when providers are under heavy load and return
+    successful HTTP responses but with empty content.
+    """
+
+    def __init__(
+        self, provider: str = "OpenRouter", message: str = "LLM returned empty response"
+    ):
+        super().__init__(f"{provider}: {message}")
+        self.provider = provider
+
+
+# =============================================================================
+# Error Detection Functions
+# =============================================================================
 
 # Error patterns that indicate rate limiting / capacity issues
-# These trigger fallback to OpenRouter
 RATE_LIMIT_PATTERNS = [
     "429",
     "rate limit",
@@ -102,6 +131,10 @@ SERVICE_ERROR_PATTERNS = [
     "service unavailable",
     "502",
     "bad gateway",
+    "500",
+    "internal server error",
+    "504",
+    "gateway timeout",
 ]
 
 
@@ -109,15 +142,16 @@ def is_rate_limit_error(error: Exception) -> bool:
     """
     Check if an error is specifically a rate limit error.
 
-    These errors indicate the API is rejecting requests due to quota/concurrency
-    limits and should trigger immediate fallback to another provider.
-
     Args:
         error: The exception to check
 
     Returns:
         True if this is a rate limit error
     """
+    # Check for our custom error types
+    if isinstance(error, LLMRateLimitError):
+        return True
+
     error_str = str(error).lower()
     return any(pattern in error_str for pattern in RATE_LIMIT_PATTERNS)
 
@@ -125,9 +159,6 @@ def is_rate_limit_error(error: Exception) -> bool:
 def is_service_error(error: Exception) -> bool:
     """
     Check if an error is a temporary service error.
-
-    These errors indicate the service is temporarily unavailable and may
-    resolve with retry or fallback.
 
     Args:
         error: The exception to check
@@ -139,46 +170,51 @@ def is_service_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in SERVICE_ERROR_PATTERNS)
 
 
-def is_fallback_error(error: Exception) -> bool:
+def is_timeout_error(error: Exception) -> bool:
     """
-    Check if an error should trigger fallback to OpenRouter.
-
-    This is the union of rate limit errors and service errors.
+    Check if an exception is a timeout error.
 
     Args:
         error: The exception to check
 
     Returns:
-        True if this error should trigger fallback
+        True if this appears to be a timeout error
     """
-    return is_rate_limit_error(error) or is_service_error(error)
+    error_str = str(error).lower()
+    return "timeout" in error_str or "timed out" in error_str
 
 
-def get_default_provider() -> LLMProvider:
-    """Get the default LLM provider from environment.
-
-    Checks both LLM_PROVIDER and RECEIPT_AGENT_LLM_PROVIDER for compatibility
-    with both direct environment variable usage and pydantic-settings.
+def is_retriable_error(error: Exception) -> bool:
     """
-    provider_str = (
-        os.environ.get("LLM_PROVIDER")
-        or os.environ.get("RECEIPT_AGENT_LLM_PROVIDER", "ollama")
-    ).lower()
-    try:
-        return LLMProvider(provider_str)
-    except ValueError:
-        logger.warning(
-            "Invalid LLM_PROVIDER '%s', defaulting to 'ollama'", provider_str
-        )
-        return LLMProvider.OLLAMA
+    Check if an error should trigger a retry.
+
+    This is the union of rate limit errors, service errors, and timeout errors.
+    Timeouts are transient and should be retried.
+
+    Args:
+        error: The exception to check
+
+    Returns:
+        True if this error should trigger a retry
+    """
+    return (
+        is_rate_limit_error(error)
+        or is_service_error(error)
+        or is_timeout_error(error)
+    )
+
+
+# Backward compatibility alias
+is_fallback_error = is_retriable_error
+is_server_error = is_service_error
 
 
 # =============================================================================
-# Provider-Specific LLM Creation
+# LLM Creation
 # =============================================================================
 
 
-def _create_ollama_llm(
+def create_llm(
     model: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -186,64 +222,29 @@ def _create_ollama_llm(
     timeout: int = 120,
     **kwargs: Any,
 ) -> "BaseChatModel":
-    """Create a ChatOllama instance."""
-    from langchain_ollama import ChatOllama
+    """
+    Create a ChatOpenAI instance configured for OpenRouter.
 
-    _model = (
-        model
-        or os.environ.get("OLLAMA_MODEL")
-        or os.environ.get("RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud")
-    )
-    _base_url = (
-        base_url
-        or os.environ.get("OLLAMA_BASE_URL")
-        or os.environ.get(
-            "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
-        )
-    )
-    _api_key = (
-        api_key
-        or os.environ.get("OLLAMA_API_KEY")
-        or os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY", "")
-    )
+    Args:
+        model: Model name (default from OPENROUTER_MODEL env var)
+        base_url: API URL (default from OPENROUTER_BASE_URL env var)
+        api_key: API key (default from OPENROUTER_API_KEY env var)
+        temperature: LLM temperature (default 0.0)
+        timeout: Request timeout in seconds (default 120)
+        **kwargs: Additional arguments passed to ChatOpenAI
 
-    client_kwargs = kwargs.pop("client_kwargs", {})
-    if _api_key:
-        headers = client_kwargs.get("headers", {})
-        headers["Authorization"] = f"Bearer {_api_key}"
-        client_kwargs["headers"] = headers
-    client_kwargs.setdefault("timeout", timeout)
+    Returns:
+        Configured ChatOpenAI instance for OpenRouter
 
-    logger.debug(
-        "Creating Ollama LLM: model=%s, base_url=%s", _model, _base_url
-    )
-
-    return ChatOllama(
-        model=_model,
-        base_url=_base_url,
-        temperature=temperature,
-        client_kwargs=client_kwargs,
-        **kwargs,
-    )
-
-
-def _create_openrouter_llm(
-    model: Optional[str] = None,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-    temperature: float = 0.0,
-    timeout: int = 120,
-    **kwargs: Any,
-) -> "BaseChatModel":
-    """Create a ChatOpenAI instance configured for OpenRouter."""
+    Raises:
+        ValueError: If OpenRouter API key is not provided
+    """
     from langchain_openai import ChatOpenAI
 
     _model = (
         model
         or os.environ.get("OPENROUTER_MODEL")
-        or os.environ.get(
-            "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b:free"
-        )
+        or os.environ.get("RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b")
     )
     _base_url = (
         base_url
@@ -264,22 +265,10 @@ def _create_openrouter_llm(
             "RECEIPT_AGENT_OPENROUTER_API_KEY environment variable."
         )
 
-    # Map Ollama model names to OpenRouter equivalents
-    if _model in MODEL_MAPPINGS:
-        mapped_model = MODEL_MAPPINGS[_model]
-        logger.debug(
-            "Mapped model %s -> %s for OpenRouter", _model, mapped_model
-        )
-        _model = mapped_model
-
-    logger.debug(
-        "Creating OpenRouter LLM: model=%s, base_url=%s", _model, _base_url
-    )
+    logger.debug("Creating OpenRouter LLM: model=%s, base_url=%s", _model, _base_url)
 
     default_headers = kwargs.pop("default_headers", {})
-    default_headers.setdefault(
-        "HTTP-Referer", "https://github.com/tnorlund/Portfolio"
-    )
+    default_headers.setdefault("HTTP-Referer", "https://github.com/tnorlund/Portfolio")
     default_headers.setdefault("X-Title", "Receipt Agent")
 
     return ChatOpenAI(
@@ -293,65 +282,6 @@ def _create_openrouter_llm(
     )
 
 
-def create_llm(
-    provider: LLMProvider | str | None = None,
-    model: str | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
-    temperature: float = 0.0,
-    timeout: int = 120,
-    **kwargs: Any,
-) -> "BaseChatModel":
-    """
-    Create an LLM instance for the specified provider.
-
-    Args:
-        provider: LLM provider (default from LLM_PROVIDER env var)
-        model: Model name (default from provider-specific env vars)
-        base_url: API URL (default from provider-specific env vars)
-        api_key: API key (default from provider-specific env vars)
-        temperature: LLM temperature (default 0.0)
-        timeout: Request timeout in seconds (default 120)
-        **kwargs: Additional arguments passed to the underlying LLM class
-
-    Returns:
-        Configured LLM instance (ChatOllama or ChatOpenAI)
-    """
-    if provider is None:
-        _provider = get_default_provider()
-    elif isinstance(provider, str):
-        try:
-            _provider = LLMProvider(provider.lower())
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid provider '{provider}'. Must be one of: "
-                f"{[p.value for p in LLMProvider]}"
-            ) from e
-    else:
-        _provider = provider
-
-    if _provider == LLMProvider.OLLAMA:
-        return _create_ollama_llm(
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            temperature=temperature,
-            timeout=timeout,
-            **kwargs,
-        )
-    elif _provider == LLMProvider.OPENROUTER:
-        return _create_openrouter_llm(
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            temperature=temperature,
-            timeout=timeout,
-            **kwargs,
-        )
-    else:
-        raise ValueError(f"Unsupported provider: {_provider}")
-
-
 def create_llm_from_settings(
     temperature: float = 0.0,
     timeout: int = 120,
@@ -361,81 +291,20 @@ def create_llm_from_settings(
     from receipt_agent.config.settings import get_settings
 
     settings = get_settings()
-    provider = get_default_provider()
 
-    if provider == LLMProvider.OLLAMA:
-        return create_llm(
-            provider=provider,
-            model=settings.ollama_model,
-            base_url=settings.ollama_base_url,
-            api_key=settings.ollama_api_key.get_secret_value(),
-            temperature=temperature,
-            timeout=timeout,
-            **kwargs,
-        )
-    elif provider == LLMProvider.OPENROUTER:
-        return create_llm(
-            provider=provider,
-            model=settings.openrouter_model,
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key.get_secret_value(),
-            temperature=temperature,
-            timeout=timeout,
-            **kwargs,
-        )
-    else:
-        raise ValueError(f"Unsupported provider: {provider}")
+    return create_llm(
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        temperature=temperature,
+        timeout=timeout,
+        **kwargs,
+    )
 
 
 # =============================================================================
-# Resilient LLM with Automatic Fallback
+# Empty Response Detection
 # =============================================================================
-
-
-class EmptyResponseError(Exception):
-    """
-    Raised when the LLM returns an empty response.
-
-    This can happen when providers are under heavy load and return
-    successful HTTP responses but with empty content.
-    """
-
-    def __init__(
-        self, provider: str, message: str = "LLM returned empty response"
-    ):
-        super().__init__(f"{provider}: {message}")
-        self.provider = provider
-
-
-class AllProvidersFailedError(Exception):
-    """
-    Raised when all LLM providers (Ollama, OpenRouter free, OpenRouter paid) fail.
-
-    This error is designed to be caught by the circuit breaker and Step Function
-    retry logic. It preserves information about all failures for debugging.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        errors: list[Exception],
-    ):
-        super().__init__(message)
-        self.errors = errors
-
-    @property
-    def primary_error(self) -> Exception:
-        """Backward compatibility: return first error."""
-        return self.errors[0] if self.errors else Exception("Unknown error")
-
-    @property
-    def fallback_error(self) -> Exception:
-        """Backward compatibility: return second error."""
-        return self.errors[1] if len(self.errors) > 1 else self.primary_error
-
-
-# Backward compatibility alias
-BothProvidersFailedError = AllProvidersFailedError
 
 
 def _is_empty_response(response: Any) -> bool:
@@ -443,11 +312,7 @@ def _is_empty_response(response: Any) -> bool:
     Check if an LLM response is empty or invalid.
 
     Empty responses can occur when providers are under load and return
-    HTTP 200 but with no actual content. This can manifest as:
-    - None response
-    - Empty string content ("")
-    - Empty list content ([])
-    - Whitespace-only content
+    HTTP 200 but with no actual content.
 
     Args:
         response: The LLM response object
@@ -475,114 +340,88 @@ def _is_empty_response(response: Any) -> bool:
     if isinstance(content, str) and not content.strip():
         return True
 
-    # Empty list (multimodal content blocks)
-    if isinstance(content, list) and len(content) == 0:
-        return True
-
-    # List with only empty/whitespace content (handles both strings and dicts)
+    # List content (multimodal content blocks)
     if isinstance(content, list):
-
-        def _is_empty_item(item: Any) -> bool:
-            """Check if a content block item is empty."""
-            if isinstance(item, str):
-                return not item.strip()
-            if isinstance(item, dict):
-                # Multimodal dict blocks may have "text" or "content" keys
-                text = item.get("text") or item.get("content") or ""
-                if isinstance(text, str):
-                    return not text.strip()
-                # Recursively check nested content
-                return _is_empty_item(text)
-            return False
-
-        all_empty = all(_is_empty_item(item) for item in content)
+        # Empty list
+        if len(content) == 0:
+            return True
+        # List with all empty text blocks
+        # e.g., [{"type": "text", "text": ""}] or [{"text": ""}]
+        all_empty = True
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text", "")
+                if isinstance(text, str) and text.strip():
+                    all_empty = False
+                    break
+            elif isinstance(block, str) and block.strip():
+                all_empty = False
+                break
         if all_empty:
             return True
 
     return False
 
 
+# =============================================================================
+# LLM Invoker with Jitter and Retry
+# =============================================================================
+
+
 @dataclass
-class ResilientLLM:
+class LLMInvoker:
     """
-    LLM wrapper with automatic fallback: Ollama → OpenRouter free → OpenRouter paid.
+    LLM wrapper with jitter and retry logic.
 
-    This class integrates with the existing rate limiting infrastructure:
-    - If Ollama fails with rate limit → try OpenRouter free model
-    - If OpenRouter free fails with rate limit → try OpenRouter paid model
-    - If paid succeeds → return response (circuit breaker sees success)
-    - If all three fail → raise AllProvidersFailedError
-      (which triggers circuit breaker / Step Function retry)
+    Provides:
+    - Random jitter between calls to prevent thundering herd
+    - Automatic retry on transient errors (429, 5xx)
+    - Empty response detection
 
-    Usage:
-        llm = ResilientLLM(
-            primary_llm=create_llm(provider=LLMProvider.OLLAMA),
-            fallback_free_llm=create_llm(provider=LLMProvider.OPENROUTER, model="...free"),
-            fallback_paid_llm=create_llm(provider=LLMProvider.OPENROUTER, model="...paid"),
-        )
-        response = llm.invoke(messages)
+    Attributes:
+        llm: The LangChain LLM instance
+        max_jitter_seconds: Maximum random jitter between calls (default 0.25s)
+        max_retries: Maximum retry attempts (default 3)
+        call_count: Number of calls made
+        consecutive_errors: Current consecutive error count
+        total_errors: Total errors encountered
     """
 
-    primary_llm: Any  # BaseChatModel - Ollama
-    fallback_free_llm: Any  # BaseChatModel - OpenRouter free model
-    fallback_paid_llm: Optional[Any] = (
-        None  # BaseChatModel - OpenRouter paid model
-    )
+    llm: Any  # BaseChatModel
+    max_jitter_seconds: float = 0.25
+    max_retries: int = 3
+    call_count: int = field(default=0, init=False)
+    consecutive_errors: int = field(default=0, init=False)
+    total_errors: int = field(default=0, init=False)
+    _async_lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
 
-    # Backward compatibility: accept fallback_llm as alias for fallback_free_llm
-    fallback_llm: Any = field(default=None, repr=False)
+    def _get_async_lock(self) -> asyncio.Lock:
+        """Get or create the async lock (lazy initialization).
 
-    # Statistics
-    primary_calls: int = field(default=0, init=False)
-    primary_successes: int = field(default=0, init=False)
-    fallback_free_calls: int = field(default=0, init=False)
-    fallback_free_successes: int = field(default=0, init=False)
-    fallback_paid_calls: int = field(default=0, init=False)
-    fallback_paid_successes: int = field(default=0, init=False)
-    all_failed: int = field(default=0, init=False)
-
-    def __post_init__(self):
-        """Handle backward compatibility for fallback_llm parameter."""
-        if self.fallback_llm is not None and self.fallback_free_llm is None:
-            self.fallback_free_llm = self.fallback_llm
-        elif (
-            self.fallback_llm is not None
-            and self.fallback_free_llm is not None
-        ):
-            logger.warning(
-                "Both fallback_llm and fallback_free_llm provided; "
-                "fallback_llm is ignored"
-            )
-        elif self.fallback_free_llm is None:
-            raise ValueError("fallback_free_llm is required")
-
-    # Backward compatibility aliases
-    @property
-    def fallback_calls(self) -> int:
-        return self.fallback_free_calls
-
-    @property
-    def fallback_successes(self) -> int:
-        return self.fallback_free_successes
-
-    @property
-    def both_failed(self) -> int:
-        return self.all_failed
-
-    def invoke(
-        self,
-        messages: Any,
-        config: Optional[dict] = None,
-        **kwargs: Any,
-    ) -> Any:
+        This avoids DeprecationWarning in Python 3.10+ by creating
+        the lock inside an async context rather than at instantiation time.
         """
-        Invoke the LLM with automatic fallback through three tiers.
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
 
-        Fallback chain: Ollama → OpenRouter free → OpenRouter paid
+    def _apply_jitter(self) -> None:
+        """Apply random jitter between calls to prevent thundering herd."""
+        if self.call_count > 0 and self.max_jitter_seconds > 0:
+            jitter = random.uniform(0, self.max_jitter_seconds)
+            if jitter > 0:
+                time.sleep(jitter)
 
-        Empty responses are treated as failures and trigger fallback to the
-        next provider. This handles cases where providers return HTTP 200
-        but with empty content under heavy load.
+    async def _apply_jitter_async(self) -> None:
+        """Apply random jitter between calls (async version)."""
+        if self.call_count > 0 and self.max_jitter_seconds > 0:
+            jitter = random.uniform(0, self.max_jitter_seconds)
+            if jitter > 0:
+                await asyncio.sleep(jitter)
+
+    def invoke(self, messages: Any, config: Optional[dict] = None, **kwargs) -> Any:
+        """
+        Invoke the LLM with retry logic.
 
         Args:
             messages: Messages to send to the LLM (LangChain format)
@@ -593,322 +432,161 @@ class ResilientLLM:
             LLM response
 
         Raises:
-            AllProvidersFailedError: If all providers fail with rate limits
-            Exception: If primary fails with non-rate-limit error
+            LLMRateLimitError: If rate limit hit after all retries
         """
-        errors: list[Exception] = []
-        self.primary_calls += 1
+        last_error = None
 
-        # Tier 1: Try primary (Ollama) first
-        try:
-            if config:
-                response = self.primary_llm.invoke(
-                    messages, config=config, **kwargs
+        for attempt in range(self.max_retries):
+            self._apply_jitter()
+            self.call_count += 1
+
+            try:
+                if config:
+                    response = self.llm.invoke(messages, config=config, **kwargs)
+                else:
+                    response = self.llm.invoke(messages, **kwargs)
+
+                # Check for empty response
+                if _is_empty_response(response):
+                    raise EmptyResponseError("OpenRouter", "Empty response received")
+
+                # Success - reset consecutive errors
+                self.consecutive_errors = 0
+                return response
+
+            except EmptyResponseError:
+                self.consecutive_errors += 1
+                self.total_errors += 1
+                last_error = LLMRateLimitError(
+                    "Empty response received",
+                    consecutive_errors=self.consecutive_errors,
+                    total_errors=self.total_errors,
                 )
-            else:
-                response = self.primary_llm.invoke(messages, **kwargs)
-
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError("Ollama", "Empty response received")
-
-            self.primary_successes += 1
-            return response
-
-        except Exception as primary_error:
-            errors.append(primary_error)
-
-            # Check if this is a fallback-worthy error (includes empty response)
-            is_empty = isinstance(primary_error, EmptyResponseError)
-            if not is_empty and not is_fallback_error(primary_error):
                 logger.warning(
-                    "Ollama failed with non-fallback error: %s",
-                    str(primary_error)[:200],
-                )
-                raise
-
-            if is_empty:
-                logger.warning(
-                    "Ollama returned empty response, trying OpenRouter free"
-                )
-            else:
-                logger.info(
-                    "Ollama rate limited, trying OpenRouter free: %s",
-                    str(primary_error)[:100],
+                    "Empty response on attempt %d/%d",
+                    attempt + 1,
+                    self.max_retries,
                 )
 
-        # Tier 2: Try OpenRouter free model
-        self.fallback_free_calls += 1
-        try:
-            if config:
-                response = self.fallback_free_llm.invoke(
-                    messages, config=config, **kwargs
-                )
-            else:
-                response = self.fallback_free_llm.invoke(messages, **kwargs)
+            except Exception as e:
+                if is_retriable_error(e):
+                    self.consecutive_errors += 1
+                    self.total_errors += 1
+                    last_error = LLMRateLimitError(
+                        str(e),
+                        consecutive_errors=self.consecutive_errors,
+                        total_errors=self.total_errors,
+                    )
+                    logger.warning(
+                        "Retriable error on attempt %d/%d: %s",
+                        attempt + 1,
+                        self.max_retries,
+                        str(e)[:100],
+                    )
+                else:
+                    # Non-retriable error, raise immediately
+                    raise
 
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError(
-                    "OpenRouter free", "Empty response received"
-                )
-
-            self.fallback_free_successes += 1
-            logger.info("OpenRouter free fallback succeeded")
-            return response
-
-        except Exception as free_error:
-            errors.append(free_error)
-
-            is_empty = isinstance(free_error, EmptyResponseError)
-            if not is_empty and not is_fallback_error(free_error):
-                logger.error(
-                    "OpenRouter free failed with non-fallback error: %s",
-                    str(free_error)[:200],
-                )
-                raise
-
-            # Check if we have a paid fallback
-            if self.fallback_paid_llm is None:
-                self.all_failed += 1
-                logger.error(
-                    "Both Ollama and OpenRouter free failed (no paid fallback). "
-                    "Ollama: %s, OpenRouter: %s",
-                    str(errors[0])[:100],
-                    str(free_error)[:100],
-                )
-                raise AllProvidersFailedError(
-                    "Ollama and OpenRouter free failed",
-                    errors=errors,
-                ) from free_error
-
-            if is_empty:
-                logger.warning(
-                    "OpenRouter free returned empty response, trying OpenRouter paid"
-                )
-            else:
-                logger.info(
-                    "OpenRouter free rate limited, trying OpenRouter paid: %s",
-                    str(free_error)[:100],
-                )
-
-        # Tier 3: Try OpenRouter paid model
-        self.fallback_paid_calls += 1
-        try:
-            if config:
-                response = self.fallback_paid_llm.invoke(
-                    messages, config=config, **kwargs
-                )
-            else:
-                response = self.fallback_paid_llm.invoke(messages, **kwargs)
-
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError(
-                    "OpenRouter paid", "Empty response received"
-                )
-
-            self.fallback_paid_successes += 1
-            logger.info("OpenRouter paid fallback succeeded")
-            return response
-
-        except Exception as paid_error:
-            errors.append(paid_error)
-            self.all_failed += 1
-
-            logger.error(
-                "All providers failed. Ollama: %s, Free: %s, Paid: %s",
-                str(errors[0])[:80],
-                str(errors[1])[:80],
-                str(paid_error)[:80],
-            )
-            raise AllProvidersFailedError(
-                "All LLM providers failed (Ollama, OpenRouter free, OpenRouter paid)",
-                errors=errors,
-            ) from paid_error
+        # All retries exhausted
+        logger.error(
+            "All %d retries exhausted, raising LLMRateLimitError",
+            self.max_retries,
+        )
+        raise last_error or LLMRateLimitError(
+            "All retries exhausted",
+            consecutive_errors=self.consecutive_errors,
+            total_errors=self.total_errors,
+        )
 
     async def ainvoke(
-        self,
-        messages: Any,
-        config: Optional[dict] = None,
-        **kwargs: Any,
+        self, messages: Any, config: Optional[dict] = None, **kwargs
     ) -> Any:
         """
-        Async invoke with automatic fallback through three tiers.
+        Async invoke the LLM with retry logic.
 
-        Fallback chain: Ollama → OpenRouter free → OpenRouter paid
+        Args:
+            messages: Messages to send to the LLM (LangChain format)
+            config: Optional LangChain config dict (for callbacks/tracing)
+            **kwargs: Additional arguments passed to the LLM
 
-        Empty responses are treated as failures and trigger fallback.
+        Returns:
+            LLM response
+
+        Raises:
+            LLMRateLimitError: If rate limit hit after all retries
         """
-        errors: list[Exception] = []
-        self.primary_calls += 1
+        last_error = None
 
-        # Tier 1: Try primary (Ollama) first
-        try:
-            if config:
-                response = await self.primary_llm.ainvoke(
-                    messages, config=config, **kwargs
+        for attempt in range(self.max_retries):
+            # Apply jitter outside the lock to avoid blocking other coroutines
+            await self._apply_jitter_async()
+            async with self._get_async_lock():
+                self.call_count += 1
+
+            try:
+                if config:
+                    response = await self.llm.ainvoke(messages, config=config, **kwargs)
+                else:
+                    response = await self.llm.ainvoke(messages, **kwargs)
+
+                # Check for empty response
+                if _is_empty_response(response):
+                    raise EmptyResponseError("OpenRouter", "Empty response received")
+
+                # Success - reset consecutive errors
+                async with self._get_async_lock():
+                    self.consecutive_errors = 0
+                return response
+
+            except EmptyResponseError:
+                async with self._get_async_lock():
+                    self.consecutive_errors += 1
+                    self.total_errors += 1
+                last_error = LLMRateLimitError(
+                    "Empty response received",
+                    consecutive_errors=self.consecutive_errors,
+                    total_errors=self.total_errors,
                 )
-            else:
-                response = await self.primary_llm.ainvoke(messages, **kwargs)
-
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError("Ollama", "Empty response received")
-
-            self.primary_successes += 1
-            return response
-
-        except Exception as primary_error:
-            errors.append(primary_error)
-
-            is_empty = isinstance(primary_error, EmptyResponseError)
-            if not is_empty and not is_fallback_error(primary_error):
                 logger.warning(
-                    "Ollama failed with non-fallback error: %s",
-                    str(primary_error)[:200],
-                )
-                raise
-
-            if is_empty:
-                logger.warning(
-                    "Ollama returned empty response, trying OpenRouter free"
-                )
-            else:
-                logger.info(
-                    "Ollama rate limited, trying OpenRouter free: %s",
-                    str(primary_error)[:100],
+                    "Empty response on attempt %d/%d",
+                    attempt + 1,
+                    self.max_retries,
                 )
 
-        # Tier 2: Try OpenRouter free model
-        self.fallback_free_calls += 1
-        try:
-            if config:
-                response = await self.fallback_free_llm.ainvoke(
-                    messages, config=config, **kwargs
-                )
-            else:
-                response = await self.fallback_free_llm.ainvoke(
-                    messages, **kwargs
-                )
+            except Exception as e:
+                if is_retriable_error(e):
+                    async with self._get_async_lock():
+                        self.consecutive_errors += 1
+                        self.total_errors += 1
+                    last_error = LLMRateLimitError(
+                        str(e),
+                        consecutive_errors=self.consecutive_errors,
+                        total_errors=self.total_errors,
+                    )
+                    logger.warning(
+                        "Retriable error on attempt %d/%d: %s",
+                        attempt + 1,
+                        self.max_retries,
+                        str(e)[:100],
+                    )
+                else:
+                    # Non-retriable error, raise immediately
+                    raise
 
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError(
-                    "OpenRouter free", "Empty response received"
-                )
-
-            self.fallback_free_successes += 1
-            logger.info("OpenRouter free fallback succeeded")
-            return response
-
-        except Exception as free_error:
-            errors.append(free_error)
-
-            is_empty = isinstance(free_error, EmptyResponseError)
-            if not is_empty and not is_fallback_error(free_error):
-                logger.error(
-                    "OpenRouter free failed with non-fallback error: %s",
-                    str(free_error)[:200],
-                )
-                raise
-
-            # Check if we have a paid fallback
-            if self.fallback_paid_llm is None:
-                self.all_failed += 1
-                logger.error(
-                    "Both Ollama and OpenRouter free failed (no paid fallback). "
-                    "Ollama: %s, OpenRouter: %s",
-                    str(errors[0])[:100],
-                    str(free_error)[:100],
-                )
-                raise AllProvidersFailedError(
-                    "Ollama and OpenRouter free failed",
-                    errors=errors,
-                ) from free_error
-
-            if is_empty:
-                logger.warning(
-                    "OpenRouter free returned empty response, trying OpenRouter paid"
-                )
-            else:
-                logger.info(
-                    "OpenRouter free rate limited, trying OpenRouter paid: %s",
-                    str(free_error)[:100],
-                )
-
-        # Tier 3: Try OpenRouter paid model
-        self.fallback_paid_calls += 1
-        try:
-            if config:
-                response = await self.fallback_paid_llm.ainvoke(
-                    messages, config=config, **kwargs
-                )
-            else:
-                response = await self.fallback_paid_llm.ainvoke(
-                    messages, **kwargs
-                )
-
-            # Check for empty response
-            if _is_empty_response(response):
-                raise EmptyResponseError(
-                    "OpenRouter paid", "Empty response received"
-                )
-
-            self.fallback_paid_successes += 1
-            logger.info("OpenRouter paid fallback succeeded")
-            return response
-
-        except Exception as paid_error:
-            errors.append(paid_error)
-            self.all_failed += 1
-
-            logger.error(
-                "All providers failed. Ollama: %s, Free: %s, Paid: %s",
-                str(errors[0])[:80],
-                str(errors[1])[:80],
-                str(paid_error)[:80],
-            )
-            raise AllProvidersFailedError(
-                "All LLM providers failed (Ollama, OpenRouter free, OpenRouter paid)",
-                errors=errors,
-            ) from paid_error
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get statistics on LLM usage across all three tiers."""
-        total = self.primary_calls
-        total_successes = (
-            self.primary_successes
-            + self.fallback_free_successes
-            + self.fallback_paid_successes
+        # All retries exhausted
+        logger.error(
+            "All %d retries exhausted, raising LLMRateLimitError",
+            self.max_retries,
         )
-        return {
-            "primary_calls": self.primary_calls,
-            "primary_successes": self.primary_successes,
-            "fallback_free_calls": self.fallback_free_calls,
-            "fallback_free_successes": self.fallback_free_successes,
-            "fallback_paid_calls": self.fallback_paid_calls,
-            "fallback_paid_successes": self.fallback_paid_successes,
-            "all_failed": self.all_failed,
-            # Backward compatibility
-            "fallback_calls": self.fallback_free_calls,
-            "fallback_successes": self.fallback_free_successes,
-            "both_failed": self.all_failed,
-            # Computed rates
-            "fallback_rate": (
-                self.fallback_free_calls / total if total > 0 else 0.0
-            ),
-            "paid_fallback_rate": (
-                self.fallback_paid_calls / total if total > 0 else 0.0
-            ),
-            "overall_success_rate": (
-                total_successes / total if total > 0 else 1.0
-            ),
-        }
+        raise last_error or LLMRateLimitError(
+            "All retries exhausted",
+            consecutive_errors=self.consecutive_errors,
+            total_errors=self.total_errors,
+        )
 
-    def with_structured_output(self, schema: type) -> "ResilientLLM":
+    def with_structured_output(self, schema: type) -> "LLMInvoker":
         """
-        Create a new ResilientLLM with structured output for all providers.
+        Create a new LLMInvoker with structured output.
 
         Uses LangChain's with_structured_output() to enforce JSON schema at
         the API level (via function calling or JSON mode).
@@ -917,7 +595,7 @@ class ResilientLLM:
             schema: A Pydantic model class defining the expected output structure
 
         Returns:
-            New ResilientLLM instance with structured output enabled on all providers
+            New LLMInvoker instance with structured output enabled
 
         Example:
             from pydantic import BaseModel
@@ -926,162 +604,138 @@ class ResilientLLM:
                 decision: str
                 reasoning: str
 
-            structured_llm = resilient_llm.with_structured_output(ReviewResponse)
-            response = structured_llm.invoke(messages)  # Returns ReviewResponse object
+            structured_invoker = invoker.with_structured_output(ReviewResponse)
+            response = structured_invoker.invoke(messages)  # Returns ReviewResponse
         """
+        if hasattr(self.llm, "with_structured_output"):
+            structured_llm = self.llm.with_structured_output(schema)
+        else:
+            logger.warning(
+                "LLM %s does not support with_structured_output",
+                type(self.llm).__name__,
+            )
+            structured_llm = self.llm
 
-        def wrap_with_structured(llm: Any, name: str) -> Any:
-            """Wrap an LLM with structured output if supported."""
-            if llm is None:
-                return None
-            if hasattr(llm, "with_structured_output"):
-                try:
-                    return llm.with_structured_output(schema)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to enable structured output for %s: %s",
-                        name,
-                        e,
-                    )
-                    return llm
-            else:
-                logger.debug(
-                    "%s does not support with_structured_output", name
-                )
-                return llm
-
-        return ResilientLLM(
-            primary_llm=wrap_with_structured(self.primary_llm, "primary"),
-            fallback_free_llm=wrap_with_structured(
-                self.fallback_free_llm, "fallback_free"
-            ),
-            fallback_paid_llm=wrap_with_structured(
-                self.fallback_paid_llm, "fallback_paid"
-            ),
+        return LLMInvoker(
+            llm=structured_llm,
+            max_jitter_seconds=self.max_jitter_seconds,
+            max_retries=self.max_retries,
         )
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get invoker statistics."""
+        return {
+            "call_count": self.call_count,
+            "consecutive_errors": self.consecutive_errors,
+            "total_errors": self.total_errors,
+            "max_jitter_seconds": self.max_jitter_seconds,
+            "max_retries": self.max_retries,
+        }
+
+
+# Backward compatibility alias
+RateLimitedLLMInvoker = LLMInvoker
+
+
+# =============================================================================
+# Factory Functions
+# =============================================================================
+
+
+def create_llm_invoker(
+    model: Optional[str] = None,
+    temperature: float = 0.0,
+    timeout: int = 120,
+    max_jitter_seconds: float = 0.25,
+    max_retries: int = 3,
+    **kwargs: Any,
+) -> LLMInvoker:
+    """
+    Create an LLM invoker with jitter and retry logic.
+
+    This is the recommended way to create an LLM for production use.
+
+    Args:
+        model: Model name (default from OPENROUTER_MODEL env var)
+        temperature: LLM temperature (default 0.0)
+        timeout: Request timeout in seconds (default 120)
+        max_jitter_seconds: Max random delay between calls (default 0.25s)
+        max_retries: Max retry attempts (default 3)
+        **kwargs: Additional arguments passed to create_llm()
+
+    Returns:
+        Configured LLMInvoker
+    """
+    llm = create_llm(
+        model=model,
+        temperature=temperature,
+        timeout=timeout,
+        **kwargs,
+    )
+
+    return LLMInvoker(
+        llm=llm,
+        max_jitter_seconds=max_jitter_seconds,
+        max_retries=max_retries,
+    )
+
+
+# Backward compatibility aliases
+def create_production_invoker(
+    temperature: float = 0.0,
+    timeout: int = 120,
+    circuit_breaker_threshold: int = 5,  # Ignored - kept for API compatibility
+    max_jitter_seconds: float = 0.25,
+    **kwargs: Any,
+) -> LLMInvoker:
+    """
+    Create a production-ready LLM invoker.
+
+    This is an alias for create_llm_invoker() for backward compatibility.
+
+    Args:
+        temperature: LLM temperature (default 0.0)
+        timeout: Request timeout in seconds (default 120)
+        circuit_breaker_threshold: Ignored (kept for API compatibility)
+        max_jitter_seconds: Max random delay between calls (default 0.25s)
+        **kwargs: Additional arguments passed to create_llm()
+
+    Returns:
+        Configured LLMInvoker
+    """
+    _ = circuit_breaker_threshold  # Ignored
+    return create_llm_invoker(
+        temperature=temperature,
+        timeout=timeout,
+        max_jitter_seconds=max_jitter_seconds,
+        **kwargs,
+    )
 
 
 def create_resilient_llm(
     temperature: float = 0.0,
     timeout: int = 120,
     **kwargs: Any,
-) -> ResilientLLM:
+) -> LLMInvoker:
     """
-    Create a resilient LLM with two-tier fallback.
+    Create an LLM invoker with retry logic.
 
-    Fallback chain: Ollama → OpenRouter paid
-
-    Note: The free tier is skipped to avoid rate limit cascades that cause
-    excessive latency when all providers are under load.
+    This is an alias for create_llm_invoker() for backward compatibility.
 
     Args:
         temperature: LLM temperature (default 0.0)
         timeout: Request timeout in seconds (default 120)
-        **kwargs: Additional arguments passed to all LLMs
+        **kwargs: Additional arguments passed to create_llm()
 
     Returns:
-        ResilientLLM instance with automatic failover
-
-    Environment Variables:
-        OPENROUTER_PAID_MODEL: Paid model (default: openai/gpt-oss-120b)
+        Configured LLMInvoker
     """
-    # Tier 1: Ollama (primary)
-    primary_llm = create_llm(
-        provider=LLMProvider.OLLAMA,
+    return create_llm_invoker(
         temperature=temperature,
         timeout=timeout,
         **kwargs,
     )
 
-    # Get paid model from environment (skip free tier entirely)
-    paid_model = os.environ.get("OPENROUTER_PAID_MODEL", "openai/gpt-oss-120b")
-
-    # Tier 2: OpenRouter paid model (skip free tier to avoid rate limit cascade)
-    fallback_llm = create_llm(
-        provider=LLMProvider.OPENROUTER,
-        model=paid_model,
-        temperature=temperature,
-        timeout=timeout,
-        **kwargs,
-    )
-
-    logger.info(
-        "Created two-tier resilient LLM: Ollama → %s (free tier skipped)",
-        paid_model,
-    )
-
-    return ResilientLLM(
-        primary_llm=primary_llm,
-        fallback_free_llm=fallback_llm,  # Using paid model as the fallback
-        fallback_paid_llm=None,  # No third tier needed
-    )
 
 
-# =============================================================================
-# Production Invoker - Full Stack Integration
-# =============================================================================
 
-
-def create_production_invoker(
-    temperature: float = 0.0,
-    timeout: int = 120,
-    circuit_breaker_threshold: int = 5,
-    max_jitter_seconds: float = 0.25,
-    **kwargs: Any,
-) -> "RateLimitedLLMInvoker":
-    """
-    Create a production-ready LLM invoker with full resilience stack.
-
-    This combines:
-    1. ResilientLLM: Automatic Ollama → OpenRouter fallback
-    2. RateLimitedLLMInvoker: Jitter between calls + circuit breaker
-    3. OllamaCircuitBreaker: Tracks consecutive failures
-
-    The stack works as follows:
-    - Each invoke() adds random jitter to prevent thundering herd
-    - Tries Ollama first; if rate limited, tries OpenRouter
-    - If both fail, circuit breaker counts the failure
-    - After N consecutive failures, raises OllamaRateLimitError
-    - Step Function catches this and retries with 30s backoff
-
-    Args:
-        temperature: LLM temperature (default 0.0)
-        timeout: Request timeout in seconds (default 120)
-        circuit_breaker_threshold: Failures before circuit trips (default 5)
-        max_jitter_seconds: Max random delay between calls (default 0.25s)
-        **kwargs: Additional arguments passed to LLMs
-
-    Returns:
-        Configured RateLimitedLLMInvoker with ResilientLLM
-
-    Example:
-        invoker = create_production_invoker()
-
-        for issue in issues:
-            try:
-                response = invoker.invoke(prompt)
-            except OllamaRateLimitError:
-                # Circuit breaker tripped - let Step Function retry
-                raise
-    """
-    from receipt_agent.utils.ollama_rate_limit import (
-        OllamaCircuitBreaker,
-        RateLimitedLLMInvoker,
-    )
-
-    # Create the resilient LLM (Ollama + OpenRouter fallback)
-    resilient_llm = create_resilient_llm(
-        temperature=temperature,
-        timeout=timeout,
-        **kwargs,
-    )
-
-    # Create circuit breaker
-    circuit_breaker = OllamaCircuitBreaker(threshold=circuit_breaker_threshold)
-
-    # Wrap in rate-limited invoker
-    return RateLimitedLLMInvoker(
-        llm=resilient_llm,
-        circuit_breaker=circuit_breaker,
-        max_jitter_seconds=max_jitter_seconds,
-    )

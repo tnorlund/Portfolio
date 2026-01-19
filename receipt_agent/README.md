@@ -16,7 +16,7 @@
 - 🏪 **Merchant Validation**: Cross-reference validation against other receipts
 - 🌍 **Google Places Verification**: Optional verification against Google Places API
 - 📈 **LangSmith Tracing**: Full observability with LangSmith integration
-- ☁️ **Ollama Cloud**: Uses Ollama Cloud for LLM reasoning
+- ☁️ **OpenRouter**: Uses OpenRouter for LLM reasoning
 - 🔧 **Typed State**: Pydantic models for type-safe state management
 
 ## Installation
@@ -93,10 +93,10 @@ places = create_places_api(
 Configure via environment variables (prefix: `RECEIPT_AGENT_`):
 
 ```bash
-# LLM Configuration (Ollama Cloud)
-export RECEIPT_AGENT_OLLAMA_BASE_URL="https://ollama.com"
-export RECEIPT_AGENT_OLLAMA_API_KEY="your-ollama-key"
-export RECEIPT_AGENT_OLLAMA_MODEL="gpt-oss:120b-cloud"
+# LLM Configuration (OpenRouter)
+export OPENROUTER_API_KEY="your-openrouter-key"
+export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+export OPENROUTER_MODEL="openai/gpt-oss-120b"
 
 # Embeddings (OpenAI)
 export RECEIPT_AGENT_OPENAI_API_KEY="your-openai-key"
@@ -341,7 +341,7 @@ See [docs/ACCESS_PATTERNS.md](docs/ACCESS_PATTERNS.md) for detailed cost analysi
 ## Dependencies
 
 - `langgraph>=0.2.0` - Workflow orchestration
-- `langchain-ollama>=0.2.0` - Ollama Cloud integration
+- `langchain-openai>=0.2.0` - OpenRouter integration (OpenAI-compatible API)
 - `langsmith>=0.1.0` - Tracing and observability
 - `chromadb>=0.5.0` - Vector similarity search
 - `pydantic>=2.0.0` - State models
