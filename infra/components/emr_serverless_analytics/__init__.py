@@ -184,8 +184,8 @@ class EMRServerlessAnalytics(ComponentResource):
                 ),
             ],
             "maximum_capacity": aws.emrserverless.ApplicationMaximumCapacityArgs(
-                cpu="16 vCPU",
-                memory="64 GB",
+                cpu="32 vCPU",
+                memory="128 GB",
             ),
             "auto_start_configuration": aws.emrserverless.ApplicationAutoStartConfigurationArgs(
                 enabled=True,
