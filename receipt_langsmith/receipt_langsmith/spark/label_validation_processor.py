@@ -71,6 +71,8 @@ class LabelValidationSparkProcessor:
         """Read Parquet files from S3 or local path.
 
         Uses native Spark distributed reading for scalability.
+        Handles flexible schema - adds missing columns with nulls when they
+        don't exist in the source parquet (e.g., trace_id, token columns).
 
         Args:
             path: S3 URI or local path to Parquet files.
@@ -85,7 +87,49 @@ class LabelValidationSparkProcessor:
             path.replace("s3://", "s3a://") if path.startswith("s3://") else path
         )
 
-        # Columns we need for analytics
+        # Read with recursive lookup to handle nested directory structures
+        df = self.spark.read.option("recursiveFileLookup", "true").parquet(spark_path)
+        available_columns = set(df.columns)
+
+        logger.info("Available columns in parquet: %s", sorted(available_columns))
+
+        # Import LongType for timestamp conversion check
+        from pyspark.sql.types import LongType
+
+        # Convert timestamp columns from nanoseconds (Long) to timestamp
+        if "start_time" in available_columns and isinstance(
+            df.schema["start_time"].dataType, LongType
+        ):
+            df = df.withColumn(
+                "start_time",
+                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
+            ).withColumn(
+                "end_time",
+                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
+            )
+
+        # Add missing columns with appropriate defaults
+        # trace_id: use 'id' if trace_id doesn't exist (for root traces)
+        if "trace_id" not in available_columns:
+            df = df.withColumn("trace_id", F.col("id"))
+
+        # Token columns: add as null if missing
+        if "total_tokens" not in available_columns:
+            df = df.withColumn("total_tokens", F.lit(None).cast("long"))
+        if "prompt_tokens" not in available_columns:
+            df = df.withColumn("prompt_tokens", F.lit(None).cast("long"))
+        if "completion_tokens" not in available_columns:
+            df = df.withColumn("completion_tokens", F.lit(None).cast("long"))
+
+        # parent_run_id: add as null if missing
+        if "parent_run_id" not in available_columns:
+            df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
+
+        # inputs: add as null if missing
+        if "inputs" not in available_columns:
+            df = df.withColumn("inputs", F.lit(None).cast("string"))
+
+        # Select the columns we need for analytics
         needed_columns = [
             "id",
             "trace_id",
@@ -103,19 +147,7 @@ class LabelValidationSparkProcessor:
             "completion_tokens",
         ]
 
-        df = self.spark.read.parquet(spark_path).select(*needed_columns)
-
-        # If timestamps are read as Long (nanoseconds), convert to timestamp
-        from pyspark.sql.types import LongType
-
-        if isinstance(df.schema["start_time"].dataType, LongType):
-            df = df.withColumn(
-                "start_time",
-                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-            ).withColumn(
-                "end_time",
-                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-            )
+        df = df.select(*needed_columns)
 
         logger.info("Read Parquet with %d partitions", df.rdd.getNumPartitions())
         return df

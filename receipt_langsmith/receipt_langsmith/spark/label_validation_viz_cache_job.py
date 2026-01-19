@@ -220,9 +220,42 @@ def read_traces(spark: SparkSession, parquet_files: list[str]) -> Any:
     """Read traces from Parquet files.
 
     Returns DataFrame with columns needed for label validation analysis.
+    Handles flexible schema - adds missing columns with nulls.
     """
     logger.info("Reading %d parquet files...", len(parquet_files))
 
+    # Read all columns first to check what's available
+    df = spark.read.parquet(*parquet_files)
+    available_columns = set(df.columns)
+
+    logger.info("Available columns in parquet: %s", sorted(available_columns))
+
+    # Convert timestamps if needed (before adding synthetic columns)
+    if "start_time" in available_columns and isinstance(
+        df.schema["start_time"].dataType, LongType
+    ):
+        df = df.withColumn(
+            "start_time",
+            (F.col("start_time") / 1_000_000_000).cast("timestamp"),
+        ).withColumn(
+            "end_time",
+            (F.col("end_time") / 1_000_000_000).cast("timestamp"),
+        )
+
+    # Add missing columns with appropriate defaults
+    # trace_id: use 'id' if trace_id doesn't exist (for root traces)
+    if "trace_id" not in available_columns:
+        df = df.withColumn("trace_id", F.col("id"))
+
+    # parent_run_id: add as null if missing
+    if "parent_run_id" not in available_columns:
+        df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
+
+    # inputs: add as null if missing
+    if "inputs" not in available_columns:
+        df = df.withColumn("inputs", F.lit(None).cast("string"))
+
+    # Select the columns we need for analysis
     needed_columns = [
         "id",
         "trace_id",
@@ -237,17 +270,7 @@ def read_traces(spark: SparkSession, parquet_files: list[str]) -> Any:
         "outputs",
     ]
 
-    df = spark.read.parquet(*parquet_files).select(*needed_columns)
-
-    # Convert timestamps if needed
-    if isinstance(df.schema["start_time"].dataType, LongType):
-        df = df.withColumn(
-            "start_time",
-            (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-        ).withColumn(
-            "end_time",
-            (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-        )
+    df = df.select(*needed_columns)
 
     logger.info("Read %d traces", df.count())
     return df
