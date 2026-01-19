@@ -112,11 +112,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         if since_date.tzinfo is None:
             since_date = since_date.replace(tzinfo=timezone.utc)
 
+        def _to_utc(dt: datetime) -> datetime:
+            """Normalize datetime to UTC, handling naive timestamps as UTC."""
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
         # Filter receipts by timestamp
         before_count = len(all_places)
         all_places = [
             p for p in all_places
-            if p.timestamp and p.timestamp >= since_date
+            if p.timestamp and _to_utc(p.timestamp) >= since_date
         ]
         after_count = len(all_places)
         logger.info(
