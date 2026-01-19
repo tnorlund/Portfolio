@@ -523,24 +523,59 @@ def _run_words_pipeline_worker(
                                 "VALID",
                                 "INVALID",
                             ):
-                                label.validation_status = (
-                                    ValidationStatus.VALID.value
-                                    if llm_result.decision == "VALID"
-                                    else ValidationStatus.INVALID.value
-                                )
-                                label.label_proposed_by = (
-                                    f"llm_{llm_result.decision.lower()}"
-                                )
-                                # Update label if LLM provided a corrected one
-                                if (
-                                    llm_result.decision == "INVALID"
-                                    and llm_result.label != label.label
-                                ):
-                                    label.label = llm_result.label
-                                if llm_result.reasoning:
-                                    label.reasoning = llm_result.reasoning
-                                dynamo.update_receipt_word_label(label)
-                                llm_validated += 1
+                                if llm_result.decision == "VALID":
+                                    # VALID: just update status on existing label
+                                    label.validation_status = (
+                                        ValidationStatus.VALID.value
+                                    )
+                                    label.label_proposed_by = "llm_valid"
+                                    if llm_result.reasoning:
+                                        label.reasoning = llm_result.reasoning
+                                    dynamo.update_receipt_word_label(label)
+                                    llm_validated += 1
+                                elif llm_result.label != label.label:
+                                    # INVALID with correction: label value is part of SK,
+                                    # so we must mark old label INVALID and create new one
+                                    from datetime import datetime, timezone
+
+                                    # 1. Mark old label as INVALID (audit trail)
+                                    label.validation_status = (
+                                        ValidationStatus.INVALID.value
+                                    )
+                                    label.label_proposed_by = "llm_invalid"
+                                    label.reasoning = (
+                                        f"Corrected to {llm_result.label}. "
+                                        f"{llm_result.reasoning or ''}"
+                                    )
+                                    dynamo.update_receipt_word_label(label)
+
+                                    # 2. Create new label with corrected value
+                                    new_label = ReceiptWordLabel(
+                                        image_id=image_id,
+                                        receipt_id=receipt_id,
+                                        line_id=label.line_id,
+                                        word_id=label.word_id,
+                                        label=llm_result.label,
+                                        reasoning=llm_result.reasoning,
+                                        timestamp_added=datetime.now(
+                                            timezone.utc
+                                        ),
+                                        validation_status=ValidationStatus.VALID.value,
+                                        label_proposed_by=f"llm_corrected:{label.label}",
+                                        label_consolidated_from=label.label,
+                                    )
+                                    dynamo.add_receipt_word_label(new_label)
+                                    llm_validated += 1
+                                else:
+                                    # INVALID but same label - just mark as invalid
+                                    label.validation_status = (
+                                        ValidationStatus.INVALID.value
+                                    )
+                                    label.label_proposed_by = "llm_invalid"
+                                    if llm_result.reasoning:
+                                        label.reasoning = llm_result.reasoning
+                                    dynamo.update_receipt_word_label(label)
+                                    llm_validated += 1
                     except Exception as e:
                         import logging
 
