@@ -8,6 +8,7 @@ Combines:
 
 Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
 Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
+Updated: 2026-01-18 - Force rebuild with latest receipt_chroma and receipt_upload packages
 """
 
 import json

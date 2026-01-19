@@ -1,6 +1,8 @@
 """
 Merchant-resolving embedding processor for unified upload container.
 
+Updated: 2026-01-18 - Force rebuild with latest parallel pipelines implementation
+
 This processor uses PARALLEL PIPELINES for optimal performance:
 
 Phase 1: Download + Embed (4 concurrent ops)
