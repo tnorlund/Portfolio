@@ -137,22 +137,37 @@ class LabelExamples:
 class PatternDiscoveryConfig:
     """Configuration for pattern discovery."""
 
-    ollama_api_key: str = ""
-    ollama_base_url: str = "https://ollama.com"
-    ollama_model: str = "gpt-oss:120b-cloud"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "openai/gpt-oss-120b"
     max_receipts: int = 3
     max_lines_per_receipt: int = 80
     focus_on_line_items: bool = True  # Smart line selection
+
+    # Backward compatibility aliases
+    @property
+    def ollama_api_key(self) -> str:
+        return self.openrouter_api_key
+
+    @property
+    def ollama_base_url(self) -> str:
+        return self.openrouter_base_url
+
+    @property
+    def ollama_model(self) -> str:
+        return self.openrouter_model
 
     @classmethod
     def from_env(cls) -> "PatternDiscoveryConfig":
         """Create config from environment variables."""
         return cls(
-            ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
-            ollama_base_url=os.environ.get(
-                "OLLAMA_BASE_URL", "https://ollama.com"
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+            openrouter_base_url=os.environ.get(
+                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
             ),
-            ollama_model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
+            openrouter_model=os.environ.get(
+                "OPENROUTER_MODEL", "openai/gpt-oss-120b"
+            ),
         )
 
 
@@ -608,12 +623,12 @@ def discover_patterns_with_llm(
     if config is None:
         config = PatternDiscoveryConfig.from_env()
 
-    if not config.ollama_api_key:
-        logger.error("OLLAMA_API_KEY not set")
+    if not config.openrouter_api_key:
+        logger.error("OPENROUTER_API_KEY not set")
         return None
 
     llm_inputs = {
-        "model": config.ollama_model,
+        "model": config.openrouter_model,
         "messages": [
             {
                 "role": "system",
@@ -647,22 +662,22 @@ def _call_llm_direct(
     """Make LLM call without tracing."""
     with httpx.Client(timeout=120.0) as client:
         response = client.post(
-            f"{config.ollama_base_url}/api/chat",
+            f"{config.openrouter_base_url}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.ollama_api_key}",
+                "Authorization": f"Bearer {config.openrouter_api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": config.ollama_model,
+                "model": config.openrouter_model,
                 "messages": llm_inputs["messages"],
-                "stream": False,
-                "options": {"temperature": 0.1},
+                "temperature": 0.1,
             },
         )
         response.raise_for_status()
         result = response.json()
 
-    content = result.get("message", {}).get("content", "")
+    # OpenRouter uses OpenAI-compatible response format
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
     return _parse_llm_response(content)
 
 
@@ -682,33 +697,33 @@ def _call_llm_with_tracing(
         return _call_llm_direct(config, llm_inputs)
 
     with child_trace(
-        "ollama_pattern_discovery",
+        "openrouter_pattern_discovery",
         trace_ctx,
         run_type="llm",
         metadata={
-            "model": config.ollama_model,
+            "model": config.openrouter_model,
             "prompt_length": len(prompt),
         },
         inputs=llm_inputs,
     ) as llm_trace_ctx:
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
-                f"{config.ollama_base_url}/api/chat",
+                f"{config.openrouter_base_url}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {config.ollama_api_key}",
+                    "Authorization": f"Bearer {config.openrouter_api_key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": config.ollama_model,
+                    "model": config.openrouter_model,
                     "messages": llm_inputs["messages"],
-                    "stream": False,
-                    "options": {"temperature": 0.1},
+                    "temperature": 0.1,
                 },
             )
             response.raise_for_status()
             result = response.json()
 
-        content = result.get("message", {}).get("content", "")
+        # OpenRouter uses OpenAI-compatible response format
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Capture raw output in trace
         llm_trace_ctx.set_outputs(
@@ -717,7 +732,7 @@ def _call_llm_with_tracing(
                     content[:2000] if len(content) > 2000 else content
                 ),
                 "model": result.get("model"),
-                "done_reason": result.get("done_reason"),
+                "finish_reason": result.get("choices", [{}])[0].get("finish_reason"),
             }
         )
 
