@@ -127,8 +127,14 @@ async def run_place_finder_for_receipt(
                     "merchant_name": existing_place.merchant_name,
                     "place_id": existing_place.place_id,
                 }
-        except Exception:
-            pass  # No existing place, continue processing
+        except Exception as exc:
+            logger.debug(
+                "Failed to check existing place for %s#%s; continuing: %s",
+                image_id,
+                receipt_id,
+                exc,
+            )
+            # No existing place (or check failed), continue processing
 
     from receipt_agent.config.settings import get_settings
     from receipt_agent.clients.factory import create_places_client, create_embed_fn
