@@ -223,8 +223,8 @@ test.describe("ReceiptBoundingBoxGrid", () => {
     const initialGridBox = await grid.boundingBox();
     expect(initialGridBox).not.toBeNull();
 
-    // Wait for content to load
-    await page.waitForSelector("svg", { timeout: 10000 });
+    // Wait for content to load (scoped to grid to avoid matching unrelated SVGs)
+    await grid.locator("svg").first().waitFor({ timeout: 10000, state: "attached" });
 
     // Get grid position and size after loading
     const finalGridBox = await grid.boundingBox();
