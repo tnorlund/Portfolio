@@ -22,14 +22,15 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, ValidationError
-
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
 
 logger = logging.getLogger(__name__)
 
 # Enable Langsmith tracing if API key is set
-if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
+if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get(
+    "LANGCHAIN_TRACING_V2"
+):
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 
@@ -191,12 +192,16 @@ def convert_structured_response(
             final_label = label["label"]
             if decision_str == "INVALID":
                 decision_str = "NEEDS_REVIEW"
-                reasoning = f"Invalid label '{llm_decision.label}'. {reasoning}"
+                reasoning = (
+                    f"Invalid label '{llm_decision.label}'. {reasoning}"
+                )
 
         # If INVALID but label unchanged, mark as NEEDS_REVIEW
         if decision_str == "INVALID" and final_label == label["label"]:
             decision_str = "NEEDS_REVIEW"
-            reasoning = f"INVALID decision without a corrected label. {reasoning}"
+            reasoning = (
+                f"INVALID decision without a corrected label. {reasoning}"
+            )
 
         results.append(
             LLMValidationResult(
@@ -327,7 +332,7 @@ def _format_receipt_text(
 
 
 def _compute_currency_context(words: List[Dict[str, Any]]) -> str:
-    """Extract currency amounts and compute mathematical hints."""
+    """Extract currency amounts and compute mathematical hints for AMOUNT reclassification."""
     # Simple currency pattern
     currency_pattern = re.compile(r"^\$?\d+\.\d{2}$")
 
@@ -344,16 +349,60 @@ def _compute_currency_context(words: List[Dict[str, Any]]) -> str:
     if not amounts:
         return "No currency amounts detected."
 
-    # Sort by value descending
-    amounts.sort(key=lambda x: -x[1])
+    # Sort by line_id to preserve receipt order
+    amounts_by_line = sorted(amounts, key=lambda x: x[2])
+
+    # Sort by value descending for analysis
+    amounts_by_value = sorted(amounts, key=lambda x: -x[1])
 
     lines = ["Currency amounts found (largest first):"]
-    for text, value, line_id in amounts[:10]:
+    for text, value, line_id in amounts_by_value[:10]:
         lines.append(f"  - {text} (line {line_id})")
 
-    # Add sum hint
-    total = sum(a[1] for a in amounts)
-    lines.append(f"\nSum of all amounts: ${total:.2f}")
+    # Identify likely GRAND_TOTAL (largest amount)
+    if amounts_by_value:
+        largest = amounts_by_value[0]
+        lines.append(
+            f"\n**Likely GRAND_TOTAL**: {largest[0]} (largest amount, line {largest[2]})"
+        )
+
+    # Try to find SUBTOTAL + TAX = GRAND_TOTAL pattern
+    if len(amounts_by_value) >= 3:
+        grand_total_val = amounts_by_value[0][1]
+        # Look for two amounts that sum to the grand total
+        for i, (text_a, val_a, line_a) in enumerate(amounts_by_value[1:], 1):
+            for text_b, val_b, line_b in amounts_by_value[i + 1 :]:
+                if (
+                    abs(val_a + val_b - grand_total_val) < 0.02
+                ):  # Within 2 cents
+                    # The larger of the two is likely SUBTOTAL, smaller is TAX
+                    if val_a > val_b:
+                        lines.append(
+                            f"**Math hint**: {text_a} (SUBTOTAL?) + {text_b} (TAX?) = {amounts_by_value[0][0]} (GRAND_TOTAL)"
+                        )
+                    else:
+                        lines.append(
+                            f"**Math hint**: {text_b} (SUBTOTAL?) + {text_a} (TAX?) = {amounts_by_value[0][0]} (GRAND_TOTAL)"
+                        )
+                    break
+            else:
+                continue
+            break
+
+    # Identify likely LINE_TOTALs (smaller amounts that appear before totals)
+    if len(amounts_by_value) > 3:
+        # Amounts in the middle are likely LINE_TOTALs
+        line_totals = [
+            (text, val, line_id)
+            for text, val, line_id in amounts_by_line
+            if val
+            < amounts_by_value[0][1] * 0.5  # Less than half of grand total
+        ]
+        if line_totals:
+            sum_line_totals = sum(lt[1] for lt in line_totals)
+            lines.append(
+                f"\n**Potential LINE_TOTALs**: {len(line_totals)} smaller amounts summing to ${sum_line_totals:.2f}"
+            )
 
     return "\n".join(lines)
 
@@ -427,6 +476,23 @@ For each pending label [0] through [{len(pending_labels) - 1}], provide a decisi
 - **VALID**: The predicted label is correct
 - **INVALID**: The predicted label is wrong - you must provide the correct label
 - **NEEDS_REVIEW**: You cannot decide confidently
+
+### AMOUNT Label Reclassification
+
+**IMPORTANT**: "AMOUNT" is NOT a valid label. If you see a word labeled as "AMOUNT", you MUST reclassify it to one of these specific types:
+
+- **LINE_TOTAL**: Price for a single item line (quantity × unit price). Usually appears next to product names in the middle of the receipt.
+- **SUBTOTAL**: Sum of all line totals before tax. Usually labeled "Subtotal" and appears after all items but before tax.
+- **TAX**: Sales tax, VAT, or other tax amounts. Usually labeled "Tax" and appears after subtotal.
+- **GRAND_TOTAL**: Final amount due after all taxes and discounts. Usually the largest amount, appears at the bottom, often labeled "Total" or "Amount Due".
+
+**How to classify AMOUNT labels:**
+1. **Position**: LINE_TOTALs appear with items (middle), SUBTOTAL/TAX/GRAND_TOTAL appear at bottom
+2. **Math**: Sum of LINE_TOTALs ≈ SUBTOTAL, SUBTOTAL + TAX ≈ GRAND_TOTAL
+3. **Keywords**: Look for "Subtotal", "Tax", "Total", "Due" near the amount
+4. **Largest amount**: The largest dollar amount is usually GRAND_TOTAL
+
+### General Validation Rules
 
 Consider:
 1. Position on receipt (header labels at top, totals at bottom)
@@ -608,11 +674,15 @@ def parse_validation_response(
             # If decision was INVALID but label is invalid, mark as NEEDS_REVIEW
             if decision == "INVALID":
                 decision = "NEEDS_REVIEW"
-                reasoning = f"Invalid label '{llm_result.get('label')}'. {reasoning}"
+                reasoning = (
+                    f"Invalid label '{llm_result.get('label')}'. {reasoning}"
+                )
 
         if decision == "INVALID" and final_label == label["label"]:
             decision = "NEEDS_REVIEW"
-            reasoning = f"INVALID decision without a corrected label. {reasoning}"
+            reasoning = (
+                f"INVALID decision without a corrected label. {reasoning}"
+            )
 
         results.append(
             LLMValidationResult(
@@ -652,7 +722,9 @@ class LLMBatchValidator:
             timeout=timeout,
         )
         # Wrap with structured output for type-safe responses
-        self.structured_llm = base_llm.with_structured_output(LabelValidationResponse)
+        self.structured_llm = base_llm.with_structured_output(
+            LabelValidationResponse
+        )
         self._call_count = 0
         self._success_count = 0
 
@@ -682,7 +754,9 @@ class LLMBatchValidator:
             merchant: Optional[str],
         ) -> dict:
             """Traced LLM call - captures prompt and structured response."""
-            response = self.structured_llm.invoke([HumanMessage(content=prompt)])
+            response = self.structured_llm.invoke(
+                [HumanMessage(content=prompt)]
+            )
             return {
                 "prompt": prompt,
                 "response": response,
