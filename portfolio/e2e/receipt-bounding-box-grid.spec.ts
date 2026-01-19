@@ -1,22 +1,89 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
+
+import {
+  mockPhotoCachedResponse,
+  mockScanCachedResponse,
+} from "./fixtures/image-details";
 
 /**
  * Tests for ReceiptBoundingBoxGrid component to ensure:
  * - Loading and loaded states have the same dimensions
  * - No layout shift occurs when data loads
  * - Both bounding box figures maintain consistent 3:4 aspect ratio
+ *
+ * These tests use mocked API responses to avoid hitting real infrastructure.
  */
 
-test.describe('ReceiptBoundingBoxGrid', () => {
+test.describe("ReceiptBoundingBoxGrid", () => {
   test.beforeEach(async ({ page }) => {
+    // Mock the image details cache API
+    await page.route("**/api/image_details_cache*", async (route) => {
+      const url = route.request().url();
+      if (url.includes("image_type=scan")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockScanCachedResponse),
+        });
+      } else if (url.includes("image_type=photo")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockPhotoCachedResponse),
+        });
+      } else {
+        // Default to scan
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockScanCachedResponse),
+        });
+      }
+    });
+
+    // Mock random image details API (fallback)
+    await page.route("**/api/random_image_details*", async (route) => {
+      const url = route.request().url();
+      if (url.includes("image_type=photo")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockPhotoCachedResponse.images[0]),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockScanCachedResponse.images[0]),
+        });
+      }
+    });
+
+    // Mock CDN image requests with a placeholder
+    await page.route("**/cdn/**", async (route) => {
+      // Return a simple placeholder image
+      await route.fulfill({
+        status: 200,
+        contentType: "image/svg+xml",
+        body: Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+            <rect width="300" height="400" fill="#e8e8e8"/>
+            <text x="150" y="200" text-anchor="middle" fill="#666" font-family="sans-serif" font-size="12">Mock Receipt</text>
+          </svg>`
+        ),
+      });
+    });
+
     // Navigate to receipt page
-    await page.goto('/receipt');
+    await page.goto("/receipt");
 
     // Wait for page to be ready
-    await expect(page.locator('h1', { hasText: 'Introduction' })).toBeVisible({ timeout: 15000 });
+    await expect(
+      page.locator("h1", { hasText: "Introduction" })
+    ).toBeVisible({ timeout: 15000 });
   });
 
-  test('loading and loaded states have same dimensions', async ({ page }) => {
+  test("loading and loaded states have same dimensions", async ({ page }) => {
     // Find the grid container
     const grid = page.locator('[data-testid="receipt-bounding-box-grid"]');
     await expect(grid).toBeVisible();
@@ -38,12 +105,26 @@ test.describe('ReceiptBoundingBoxGrid', () => {
 
     // Get dimensions of containers during loading state
     // Structure: gridCell > div (ReceiptBoundingBoxFrame outer) > div (aspect ratio container)
-    const scanContainerLoading = scanCell.locator('div').first().locator('div').first();
-    const photoContainerLoading = photoCell.locator('div').first().locator('div').first();
+    const scanContainerLoading = scanCell
+      .locator("div")
+      .first()
+      .locator("div")
+      .first();
+    const photoContainerLoading = photoCell
+      .locator("div")
+      .first()
+      .locator("div")
+      .first();
 
-    // Check if loading state is visible (might be very brief)
-    const scanLoadingVisible = await scanContainerLoading.locator('text=Loading').isVisible().catch(() => false);
-    const photoLoadingVisible = await photoContainerLoading.locator('text=Loading').isVisible().catch(() => false);
+    // Check if loading state is visible (might be very brief with mocked responses)
+    const scanLoadingVisible = await scanContainerLoading
+      .locator("text=Loading")
+      .isVisible()
+      .catch(() => false);
+    const photoLoadingVisible = await photoContainerLoading
+      .locator("text=Loading")
+      .isVisible()
+      .catch(() => false);
 
     if (scanLoadingVisible || photoLoadingVisible) {
       // Get dimensions during loading
@@ -51,9 +132,12 @@ test.describe('ReceiptBoundingBoxGrid', () => {
       const photoLoadingBox = await photoContainerLoading.boundingBox();
 
       if (scanLoadingBox && photoLoadingBox) {
-        console.log('Loading state dimensions:', {
+        console.log("Loading state dimensions:", {
           scan: { width: scanLoadingBox.width, height: scanLoadingBox.height },
-          photo: { width: photoLoadingBox.width, height: photoLoadingBox.height },
+          photo: {
+            width: photoLoadingBox.width,
+            height: photoLoadingBox.height,
+          },
         });
 
         // Verify they have the same width (should be in a 2-column grid)
@@ -62,13 +146,19 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     }
 
     // Wait for content to load - look for SVG elements within the cells
-    await scanCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
-    await photoCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
+    await scanCell
+      .locator("svg")
+      .first()
+      .waitFor({ timeout: 15000, state: "attached" });
+    await photoCell
+      .locator("svg")
+      .first()
+      .waitFor({ timeout: 15000, state: "attached" });
 
     // Get dimensions after loading - get the frame containers (divs with aspect ratio)
     // Structure: gridCell > div (ReceiptBoundingBoxFrame) > div (aspect ratio container) > svg
-    const scanFrame = scanCell.locator('div').first().locator('div').first();
-    const photoFrame = photoCell.locator('div').first().locator('div').first();
+    const scanFrame = scanCell.locator("div").first().locator("div").first();
+    const photoFrame = photoCell.locator("div").first().locator("div").first();
 
     await expect(scanFrame).toBeAttached({ timeout: 10000 });
     await expect(photoFrame).toBeAttached({ timeout: 10000 });
@@ -80,7 +170,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     expect(photoLoadedBox).not.toBeNull();
 
     if (scanLoadedBox && photoLoadedBox) {
-      console.log('Loaded state dimensions:', {
+      console.log("Loaded state dimensions:", {
         scan: { width: scanLoadedBox.width, height: scanLoadedBox.height },
         photo: { width: photoLoadedBox.width, height: photoLoadedBox.height },
       });
@@ -93,7 +183,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
       const scanAspectRatio = scanLoadedBox.width / scanLoadedBox.height;
       const photoAspectRatio = photoLoadedBox.width / photoLoadedBox.height;
 
-      console.log('Aspect ratios:', {
+      console.log("Aspect ratios:", {
         scan: scanAspectRatio,
         photo: photoAspectRatio,
         expected: 0.75,
@@ -104,16 +194,23 @@ test.describe('ReceiptBoundingBoxGrid', () => {
 
       // If we captured loading dimensions, verify they match loaded dimensions
       if (scanLoadingVisible || photoLoadingVisible) {
-        const scanContainerLoadingBox = await scanContainerLoading.boundingBox();
+        const scanContainerLoadingBox =
+          await scanContainerLoading.boundingBox();
         if (scanContainerLoadingBox) {
-          expect(scanLoadedBox.width).toBeCloseTo(scanContainerLoadingBox.width, 1);
-          expect(scanLoadedBox.height).toBeCloseTo(scanContainerLoadingBox.height, 1);
+          expect(scanLoadedBox.width).toBeCloseTo(
+            scanContainerLoadingBox.width,
+            1
+          );
+          expect(scanLoadedBox.height).toBeCloseTo(
+            scanContainerLoadingBox.height,
+            1
+          );
         }
       }
     }
   });
 
-  test('no layout shift when data loads', async ({ page }) => {
+  test("no layout shift when data loads", async ({ page }) => {
     // Find the grid
     const grid = page.locator('[data-testid="receipt-bounding-box-grid"]');
     await expect(grid).toBeVisible();
@@ -127,7 +224,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     expect(initialGridBox).not.toBeNull();
 
     // Wait for content to load
-    await page.waitForSelector('svg', { timeout: 10000 });
+    await page.waitForSelector("svg", { timeout: 10000 });
 
     // Get grid position and size after loading
     const finalGridBox = await grid.boundingBox();
@@ -144,7 +241,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     }
   });
 
-  test('both bounding boxes maintain 3:4 aspect ratio', async ({ page }) => {
+  test("both bounding boxes maintain 3:4 aspect ratio", async ({ page }) => {
     // Scroll to the grid first
     const grid = page.locator('[data-testid="receipt-bounding-box-grid"]');
     await grid.scrollIntoViewIfNeeded();
@@ -154,12 +251,18 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     const photoCell = page.locator('[data-testid="photo-receipt-cell"]');
 
     // Wait for SVG content to load
-    await scanCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
-    await photoCell.locator('svg').first().waitFor({ timeout: 15000, state: 'attached' });
+    await scanCell
+      .locator("svg")
+      .first()
+      .waitFor({ timeout: 15000, state: "attached" });
+    await photoCell
+      .locator("svg")
+      .first()
+      .waitFor({ timeout: 15000, state: "attached" });
 
     // Get the frame containers - structure: gridCell > div (ReceiptBoundingBoxFrame outer) > div (aspect ratio container)
-    const scanFrame = scanCell.locator('div').first().locator('div').first();
-    const photoFrame = photoCell.locator('div').first().locator('div').first();
+    const scanFrame = scanCell.locator("div").first().locator("div").first();
+    const photoFrame = photoCell.locator("div").first().locator("div").first();
 
     // Wait a moment for frames to render
     await page.waitForTimeout(500);
@@ -174,7 +277,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
     const scanFrameBox = await scanFrame.boundingBox();
     const photoFrameBox = await photoFrame.boundingBox();
 
-    console.log('Frame bounding boxes:', {
+    console.log("Frame bounding boxes:", {
       scan: scanFrameBox,
       photo: photoFrameBox,
     });
@@ -186,7 +289,7 @@ test.describe('ReceiptBoundingBoxGrid', () => {
       const scanAspectRatio = scanFrameBox.width / scanFrameBox.height;
       const photoAspectRatio = photoFrameBox.width / photoFrameBox.height;
 
-      console.log('Aspect ratios:', {
+      console.log("Aspect ratios:", {
         scan: scanAspectRatio,
         photo: photoAspectRatio,
         expected: 0.75,
@@ -201,4 +304,5 @@ test.describe('ReceiptBoundingBoxGrid', () => {
       expect(scanFrameBox.height).toBeCloseTo(photoFrameBox.height, 1);
     }
   });
+
 });
