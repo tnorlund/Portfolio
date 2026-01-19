@@ -31,7 +31,7 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
-ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 
@@ -459,8 +459,10 @@ class UploadImages(ComponentResource):
                 # receipt_places config for PlacesClient cache
                 "RECEIPT_PLACES_TABLE_NAME": dynamodb_table.name,
                 "RECEIPT_PLACES_AWS_REGION": current_region.region,
-                # LangGraph validation with Ollama
-                "OLLAMA_API_KEY": ollama_api_key,
+                # OpenRouter LLM provider
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
@@ -666,8 +668,10 @@ class UploadImages(ComponentResource):
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
-                # LangGraph validation with Ollama
-                "OLLAMA_API_KEY": ollama_api_key,
+                # OpenRouter LLM provider
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)

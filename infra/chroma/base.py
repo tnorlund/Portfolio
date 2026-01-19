@@ -7,7 +7,7 @@ from pulumi import Config
 config = Config("portfolio")
 # Optional API keys; may be absent in some stacks
 openai_api_key = config.get_secret("OPENAI_API_KEY")
-ollama_api_key = config.get_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.get_secret("OPENROUTER_API_KEY")
 langsmith_api_key = config.get_secret("LANGCHAIN_API_KEY")
 stack = pulumi.get_stack()
 
@@ -31,7 +31,7 @@ from dynamo_db import dynamodb_table  # type: ignore[import-not-found]
 __all__ = [
     "config",
     "openai_api_key",
-    "ollama_api_key",
+    "openrouter_api_key",
     "langsmith_api_key",
     "stack",
     "dynamo_layer",

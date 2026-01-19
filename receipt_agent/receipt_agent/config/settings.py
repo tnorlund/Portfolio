@@ -7,7 +7,7 @@ Uses pydantic-settings for environment variable management with validation.
 from functools import lru_cache
 from typing import Literal, Optional
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,47 +23,37 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
-    # LLM Provider Selection
-    # ==========================================================================
-    llm_provider: Literal["ollama", "openrouter"] = Field(
-        default="ollama",
-        description="LLM provider to use: 'ollama' for Ollama Cloud, 'openrouter' for OpenRouter",
-        alias="LLM_PROVIDER",
-    )
-
-    # ==========================================================================
-    # Ollama Cloud Configuration
-    # ==========================================================================
-    ollama_base_url: str = Field(
-        default="https://ollama.com",
-        description="Base URL for Ollama Cloud API",
-    )
-    ollama_api_key: SecretStr = Field(
-        default=SecretStr(""),
-        description="API key for Ollama Cloud",
-    )
-    ollama_model: str = Field(
-        default="gpt-oss:120b-cloud",
-        description="Model to use for agent reasoning (OpenAI OSS 120B cloud model). Note: Tier configuration (low/medium/high) may need to be specified separately or via model name format - verify with Ollama Cloud docs.",
-    )
-
-    # ==========================================================================
-    # OpenRouter Configuration
+    # OpenRouter Configuration (Primary LLM Provider)
     # ==========================================================================
     openrouter_base_url: str = Field(
         default="https://openrouter.ai/api/v1",
         description="Base URL for OpenRouter API (OpenAI-compatible)",
+        validation_alias=AliasChoices(
+            "OPENROUTER_BASE_URL",
+            "RECEIPT_AGENT_OPENROUTER_BASE_URL",
+        ),
     )
     openrouter_api_key: SecretStr = Field(
         default=SecretStr(""),
-        description="API key for OpenRouter",
+        description="API key for OpenRouter (required)",
+        validation_alias=AliasChoices(
+            "OPENROUTER_API_KEY",
+            "RECEIPT_AGENT_OPENROUTER_API_KEY",
+        ),
     )
     openrouter_model: str = Field(
-        default="openai/gpt-oss-120b:free",
-        description="Model to use on OpenRouter. Default is the free GPT-OSS-120B model. See https://openrouter.ai/models for available models.",
+        default="openai/gpt-oss-120b",
+        description="Model to use on OpenRouter. Default is GPT-OSS-120B paid tier. "
+        "See https://openrouter.ai/models for available models.",
+        validation_alias=AliasChoices(
+            "OPENROUTER_MODEL",
+            "RECEIPT_AGENT_OPENROUTER_MODEL",
+        ),
     )
 
-    # Alternative: OpenAI for embeddings
+    # ==========================================================================
+    # OpenAI Configuration (Embeddings)
+    # ==========================================================================
     openai_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="OpenAI API key for embeddings",
@@ -73,7 +63,9 @@ class Settings(BaseSettings):
         description="OpenAI embedding model",
     )
 
+    # ==========================================================================
     # ChromaDB Configuration
+    # ==========================================================================
     chroma_persist_directory: Optional[str] = Field(
         default=None,
         description="Local ChromaDB persistence directory",
@@ -83,7 +75,9 @@ class Settings(BaseSettings):
         description="ChromaDB HTTP server URL",
     )
 
+    # ==========================================================================
     # DynamoDB Configuration
+    # ==========================================================================
     dynamo_table_name: str = Field(
         default="receipts",
         description="DynamoDB table name",
@@ -93,13 +87,17 @@ class Settings(BaseSettings):
         description="AWS region for DynamoDB",
     )
 
+    # ==========================================================================
     # Google Places API
+    # ==========================================================================
     google_places_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="Google Places API key for verification",
     )
 
+    # ==========================================================================
     # LangSmith Configuration
+    # ==========================================================================
     langsmith_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="LangSmith API key for tracing",
@@ -116,7 +114,9 @@ class Settings(BaseSettings):
         alias="LANGCHAIN_TRACING_V2",
     )
 
+    # ==========================================================================
     # Agent Configuration
+    # ==========================================================================
     max_iterations: int = Field(
         default=10,
         description="Maximum agent iterations",

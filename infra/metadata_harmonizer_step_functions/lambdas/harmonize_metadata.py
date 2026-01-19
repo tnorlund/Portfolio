@@ -12,21 +12,15 @@ Dependencies (via pyproject.toml):
 - receipt_places: PlacesClient (optional, for Google Places validation)
 
 Environment Variables (set by infrastructure.py):
-- Lambda-specific:
-  - BATCH_BUCKET: S3 bucket for batch files (not used, but kept for consistency)
-- receipt_agent Settings (RECEIPT_AGENT_* prefix):
-  - RECEIPT_AGENT_DYNAMO_TABLE_NAME: DynamoDB table name
-  - RECEIPT_AGENT_OPENAI_API_KEY: OpenAI API key (for agent LLM)
-  - RECEIPT_AGENT_OLLAMA_API_KEY: Ollama API key (for agent LLM)
-  - RECEIPT_AGENT_OLLAMA_BASE_URL: Ollama API base URL
-  - RECEIPT_AGENT_OLLAMA_MODEL: Ollama model name
-- Google Places (optional):
-  - GOOGLE_PLACES_API_KEY: Google Places API key for validation
-- LangSmith tracing:
-  - LANGCHAIN_API_KEY: LangSmith API key
-  - LANGCHAIN_TRACING_V2: Enable tracing
-  - LANGCHAIN_ENDPOINT: LangSmith endpoint
-  - LANGCHAIN_PROJECT: LangSmith project name
+- DYNAMODB_TABLE_NAME: DynamoDB table name
+- BATCH_BUCKET: S3 bucket for batch files
+- CHROMADB_BUCKET: S3 bucket for ChromaDB snapshots
+- OPENROUTER_API_KEY: OpenRouter API key (LLM)
+- OPENROUTER_BASE_URL: OpenRouter API base URL
+- OPENROUTER_MODEL: OpenRouter model name
+- RECEIPT_AGENT_OPENAI_API_KEY: OpenAI API key (embeddings)
+- GOOGLE_PLACES_API_KEY: Google Places API key (optional)
+- LANGCHAIN_API_KEY: LangSmith API key (tracing)
 """
 
 import asyncio
@@ -53,14 +47,12 @@ except ImportError:
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain-ollama)
+# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Constants
-_MISSING_TABLE_NAME_ERROR = (
-    "DYNAMODB_TABLE_NAME or RECEIPT_AGENT_DYNAMO_TABLE_NAME not set"
-)
+_MISSING_TABLE_NAME_ERROR = "DYNAMODB_TABLE_NAME not set"
 
 
 def flush_langsmith_traces():
@@ -416,13 +408,15 @@ async def process_place_id_batch(
             llm_calls_failed += 1
 
             # Track error types (matching pattern from label-validation-agent)
-            is_rate_limit = (
+            # Use isinstance for type-based detection of LLMRateLimitError
+            from receipt_agent.utils.llm_factory import LLMRateLimitError
+
+            is_rate_limit = isinstance(e, LLMRateLimitError) or (
                 "429" in error_str
                 or "rate limit" in error_str.lower()
                 or "rate_limit" in error_str.lower()
                 or "too many concurrent requests" in error_str.lower()
                 or "too many requests" in error_str.lower()
-                or "OllamaRateLimitError" in error_str
             )
 
             if is_rate_limit:
@@ -738,9 +732,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         }
 
     # Create clients
-    table_name = os.environ.get(
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME") or os.environ.get(
         "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
-    ) or os.environ.get("DYNAMODB_TABLE_NAME")
+    )
     if not table_name:
         raise ValueError(_MISSING_TABLE_NAME_ERROR)
 

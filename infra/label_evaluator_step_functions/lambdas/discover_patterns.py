@@ -240,7 +240,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "load_receipts_duration_seconds": round(load_duration, 3),
                     "build_prompt_duration_seconds": round(prompt_duration, 3),
                     "llm_call_duration_seconds": round(llm_duration, 3),
-                    "llm_model": config.ollama_model,
+                    "llm_model": config.openrouter_model,
                 }
                 upload_json_to_s3(
                     s3, batch_bucket, patterns_s3_key, default_patterns
@@ -269,7 +269,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "load_receipts_duration_seconds": round(load_duration, 3),
                     "build_prompt_duration_seconds": round(prompt_duration, 3),
                     "llm_call_duration_seconds": round(llm_duration, 3),
-                    "llm_model": config.ollama_model,
+                    "llm_model": config.openrouter_model,
                     "sample_receipt_count": len(receipts_data),
                 }
 
@@ -293,16 +293,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     except Exception as e:
         # Re-raise rate limit errors for Step Function retry
-        from receipt_agent.utils.llm_factory import AllProvidersFailedError
-        from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
+        from receipt_agent.utils.llm_factory import LLMRateLimitError
 
-        if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Rate limit error, propagating for Step Function retry: %s", e
             )
-            raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+            raise
 
-        logger.error("Error discovering patterns: %s", e, exc_info=True)
+        logger.exception("Error discovering patterns: %s", e)
         # Add timing metadata even on error
         discovery_end_time = datetime.now(timezone.utc).isoformat()
         discovery_duration = time.time() - discovery_start

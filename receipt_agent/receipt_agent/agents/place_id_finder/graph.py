@@ -20,7 +20,6 @@ from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
@@ -31,10 +30,8 @@ from receipt_agent.agents.agentic.tools import (
 )
 from receipt_agent.agents.place_id_finder.state import PlaceIdFinderState
 from receipt_agent.config.settings import Settings, get_settings
-from receipt_agent.utils.agent_common import (
-    create_agent_node_with_retry,
-    create_ollama_llm,
-)
+from receipt_agent.utils.agent_common import create_agent_node_with_retry
+from receipt_agent.utils.llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -300,8 +297,14 @@ def create_place_id_finder_graph(
     submit_tool = create_place_id_submission_tool(state_holder)
     tools.append(submit_tool)
 
-    # Create LLM with tools bound
-    llm = create_ollama_llm(settings).bind_tools(tools)
+    # Create LLM with tools bound (uses OpenRouter)
+    llm = create_llm(
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        temperature=0.0,
+        timeout=120,
+    ).bind_tools(tools)
 
     # Create agent node with retry logic and robust logging
     agent_node = create_agent_node_with_retry(

@@ -9,8 +9,9 @@ import logging
 from functools import partial
 from typing import Any, Callable, Optional
 
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
+
+from receipt_agent.utils.llm_factory import create_llm
 from langgraph.graph import END, StateGraph
 
 from receipt_agent.config.settings import Settings, get_settings
@@ -93,25 +94,13 @@ def create_validation_graph(
     if settings is None:
         settings = get_settings()
 
-    # Initialize LLM for decision making
-    # Get API key for authentication
-    api_key = settings.ollama_api_key.get_secret_value()
-    if not api_key:
-        logger.warning(
-            "Ollama API key not set - LLM calls will fail. "
-            "Set RECEIPT_AGENT_OLLAMA_API_KEY"
-        )
-
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": 120,  # 2 minute timeout for reliability
-        },
+    # Initialize LLM for decision making (uses OpenRouter)
+    llm = create_llm(
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
         temperature=0.1,  # Low temperature for consistent reasoning
+        timeout=120,
     )
 
     # Create graph with state schema

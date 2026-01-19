@@ -1,12 +1,16 @@
 """
-Quick integration test for constellation anomaly detection with Ollama LLM.
+Quick integration test for constellation anomaly detection with LLM.
 
 This test:
 1. Limits pattern learning to 20 receipts (fast)
 2. Tests constellation anomaly detection
-3. Uses Ollama for LLM validation of flagged issues
+3. Uses OpenRouter LLM for validation of flagged issues
 
-Run: python receipt_agent/tests/integration/test_constellation_ollama.py
+Run: python receipt_agent/tests/integration/test_constellation_llm.py
+
+Environment variables required:
+- DYNAMODB_TABLE_NAME: DynamoDB table name
+- OPENROUTER_API_KEY: OpenRouter API key
 """
 
 # pylint: disable=import-outside-toplevel
@@ -14,6 +18,7 @@ Run: python receipt_agent/tests/integration/test_constellation_ollama.py
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -30,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_test():
-    """Run constellation anomaly detection test with Ollama."""
+    """Run constellation anomaly detection test with OpenRouter LLM."""
     # Import after path setup
     from receipt_dynamo import DynamoClient
 
@@ -53,8 +58,6 @@ async def run_test():
     try:
         # Initialize DynamoDB client (use Pulumi stack output for table name)
         # Get table name from environment or use dev default
-        import os
-
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
             raise RuntimeError(
@@ -62,6 +65,37 @@ async def run_test():
             )
         dynamo = DynamoClient(table_name=table_name)
         logger.info("Using DynamoDB table: %s", table_name)
+
+        # Check for OpenRouter API key
+        openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_api_key:
+            try:
+                from receipt_dynamo.data._pulumi import (
+                    load_secrets as load_pulumi_secrets,
+                )
+
+                pulumi_secrets = load_pulumi_secrets(
+                    "dev"
+                ) or load_pulumi_secrets("prod")
+                if pulumi_secrets:
+                    openrouter_api_key = pulumi_secrets.get(
+                        "portfolio:OPENROUTER_API_KEY"
+                    ) or pulumi_secrets.get("OPENROUTER_API_KEY")
+                    if openrouter_api_key:
+                        os.environ["OPENROUTER_API_KEY"] = openrouter_api_key
+                        logger.info(
+                            "Loaded OpenRouter API key from Pulumi secrets"
+                        )
+            except Exception as e:
+                logger.debug(
+                    "Could not load OpenRouter API key from Pulumi: %s",
+                    e,
+                )
+
+        if not openrouter_api_key:
+            raise RuntimeError(
+                "OPENROUTER_API_KEY not set - cannot use LLM"
+            )
 
         # Find a Sprouts receipt with actual data
         logger.info("Finding a Sprouts receipt with words/labels...")
@@ -105,60 +139,18 @@ async def run_test():
             len(labels),
         )
 
-        # Create graph and run evaluation with Ollama Cloud
+        # Create graph and run evaluation
         from receipt_agent.config.settings import get_settings
 
         settings = get_settings()
 
-        logger.info("Creating label evaluator graph with Ollama Cloud LLM...")
-        logger.info("  Ollama base URL: %s", settings.ollama_base_url)
-        logger.info("  Ollama model: gpt-oss:20b-cloud")
+        logger.info("Creating label evaluator graph with OpenRouter LLM...")
+        logger.info("  OpenRouter model: %s", settings.openrouter_model)
 
-        # Get API key from settings or Pulumi secrets
-        ollama_api_key = (
-            settings.ollama_api_key.get_secret_value()
-            if settings.ollama_api_key
-            else None
-        )
-        if not ollama_api_key:
-            try:
-                from receipt_dynamo.data._pulumi import (
-                    load_secrets as load_pulumi_secrets,
-                )
-
-                pulumi_secrets = load_pulumi_secrets(
-                    "dev"
-                ) or load_pulumi_secrets("prod")
-                if pulumi_secrets:
-                    ollama_api_key = (
-                        pulumi_secrets.get("portfolio:OLLAMA_API_KEY")
-                        or pulumi_secrets.get("OLLAMA_API_KEY")
-                        or pulumi_secrets.get("RECEIPT_AGENT_OLLAMA_API_KEY")
-                    )
-                    if ollama_api_key:
-                        logger.info(
-                            "Loaded Ollama API key from Pulumi secrets"
-                        )
-            except Exception as e:
-                logger.debug(
-                    "Could not load Ollama API key from Pulumi: %s",
-                    e,
-                )
-
-        if not ollama_api_key:
-            raise RuntimeError(
-                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama Cloud"
-            )
-
-        graph = create_label_evaluator_graph(
-            dynamo,
-            llm_model="gpt-oss:20b-cloud",
-            ollama_base_url=settings.ollama_base_url,
-            ollama_api_key=ollama_api_key,
-        )
+        graph = create_label_evaluator_graph(dynamo)
 
         # Run WITH LLM review (skip_llm_review=False)
-        logger.info("Running label evaluation with Ollama LLM review...")
+        logger.info("Running label evaluation with LLM review...")
         result = await run_label_evaluator(
             graph,
             image_id,

@@ -282,7 +282,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
                 logger.info("Built %s visual lines", len(visual_lines))
 
-            # 4. Create LLM instance with automatic Ollama → OpenRouter fallback
+            # 4. Create LLM instance via OpenRouter
             with child_trace(
                 "llm_currency_evaluation",
                 trace_ctx,
@@ -294,12 +294,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             ):
                 from receipt_agent.utils import create_production_invoker
 
-                # create_production_invoker() creates:
-                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
-                # - RateLimitedLLMInvoker: jitter + circuit breaker
-                # Environment variables used:
-                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL
-                # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+                # create_production_invoker() creates an LLM invoker with:
+                # - OpenRouter as the LLM provider
+                # - Jitter and retry logic for rate limits
+                # Environment variables: OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
                 llm_invoker = create_production_invoker(
                     temperature=0.0,
                     timeout=120,
@@ -421,20 +419,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         except Exception as e:
             # Re-raise rate limit errors for Step Function retry
-            from receipt_agent.utils.llm_factory import AllProvidersFailedError
-            from receipt_agent.utils.ollama_rate_limit import (
-                OllamaRateLimitError,
-            )
+            from receipt_agent.utils.llm_factory import LLMRateLimitError
 
-            if isinstance(e, AllProvidersFailedError):
-                logger.error(
-                    "All providers failed, propagating for Step Function retry: %s",
-                    e,
-                )
-                flush_langsmith_traces()
-                raise
-
-            if isinstance(e, OllamaRateLimitError):
+            if isinstance(e, LLMRateLimitError):
                 logger.error(
                     "Rate limit error, propagating for Step Function retry: %s",
                     e,

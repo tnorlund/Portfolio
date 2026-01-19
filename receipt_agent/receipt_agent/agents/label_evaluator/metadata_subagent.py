@@ -658,15 +658,9 @@ def evaluate_metadata_labels(
                 break  # Success, exit retry loop
             except Exception as struct_err:
                 # Check if this is a rate limit error that should propagate
-                from receipt_agent.utils import (
-                    BothProvidersFailedError,
-                    OllamaRateLimitError,
-                )
+                from receipt_agent.utils import LLMRateLimitError
 
-                if isinstance(
-                    struct_err,
-                    (OllamaRateLimitError, BothProvidersFailedError),
-                ):
+                if isinstance(struct_err, LLMRateLimitError):
                     logger.error(
                         "Metadata LLM rate limited, propagating for retry: %s",
                         struct_err,
@@ -948,12 +942,9 @@ async def evaluate_metadata_labels_async(
                     )
 
         except Exception as e:
-            from receipt_agent.utils import (
-                BothProvidersFailedError,
-                OllamaRateLimitError,
-            )
+            from receipt_agent.utils import LLMRateLimitError
 
-            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            if isinstance(e, LLMRateLimitError):
                 logger.error(
                     "Metadata LLM rate limited, propagating for retry: %s", e
                 )

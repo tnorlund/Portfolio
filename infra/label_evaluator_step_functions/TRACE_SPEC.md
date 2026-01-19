@@ -587,17 +587,9 @@ logger.info("Receipt trace ended and patched (image_id=%s, receipt_id=%s)", ...)
 ### 6.4 Additional Fix: Skip OpenRouter Free Tier
 
 Step function executions were taking 30+ minutes (was 10 minutes) due to rate limit cascades:
-- Ollama: 429 (too many concurrent requests)
-- OpenRouter Free: 429 (rate limit exceeded)
-- OpenRouter Paid: response length limit exceeded
+- OpenRouter: 429 (rate limit exceeded)
 
-**Fix**: Modified `create_resilient_llm()` in `receipt_agent/utils/llm_factory.py` to skip
-the free tier entirely:
-
-```text
-Old: Ollama → OpenRouter Free → OpenRouter Paid
-New: Ollama → OpenRouter Paid (free tier skipped)
-```
+**Fix**: Simplified LLM factory to use OpenRouter directly with retry logic.
 
 ### 6.5 Verification Test
 

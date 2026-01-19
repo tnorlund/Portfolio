@@ -49,10 +49,8 @@ from receipt_agent.utils.address_validation import (
     is_address_like,
     is_clean_address,
 )
-from receipt_agent.utils.agent_common import (
-    create_agent_node_with_retry,
-    create_ollama_llm,
-)
+from receipt_agent.utils.agent_common import create_agent_node_with_retry
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 from receipt_agent.utils.receipt_fetching import (
     fetch_receipt_details_with_fallback,
@@ -1881,8 +1879,8 @@ def create_harmonizer_graph(
         chromadb_bucket=chromadb_bucket,
     )
 
-    # Create LLM with tools using shared utility
-    llm = create_ollama_llm(settings=settings, temperature=0.0)
+    # Create LLM with tools
+    llm = create_llm_from_settings(temperature=0.0)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility

@@ -42,8 +42,9 @@ Pulumi config keys (under `metadata-harmonizer` namespace):
 
 The container Lambda requires:
 - `RECEIPT_AGENT_DYNAMO_TABLE_NAME`: DynamoDB table name
-- `RECEIPT_AGENT_OPENAI_API_KEY`: OpenAI API key (for agent LLM)
-- `RECEIPT_AGENT_OLLAMA_API_KEY`: Ollama API key (for agent LLM)
+- `OPENROUTER_API_KEY`: OpenRouter API key (for LLM)
+- `OPENROUTER_BASE_URL`: OpenRouter base URL
+- `OPENROUTER_MODEL`: OpenRouter model (e.g., `openai/gpt-oss-120b`)
 - `GOOGLE_PLACES_API_KEY`: Google Places API key (optional, but recommended)
 - `LANGCHAIN_API_KEY`: LangSmith API key (for tracing)
 

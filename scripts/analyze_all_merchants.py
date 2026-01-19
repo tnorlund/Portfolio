@@ -70,23 +70,23 @@ def load_config(env: str = "dev"):
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
         "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
         "openai_api_key": secrets.get("portfolio:OPENAI_API_KEY"),
-        "ollama_api_key": secrets.get("portfolio:OLLAMA_API_KEY"),
+        "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
     }
 
     # Set environment variables
     if config["openai_api_key"]:
         os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
-    if config["ollama_api_key"]:
-        os.environ["OLLAMA_API_KEY"] = config["ollama_api_key"]
+    if config["openrouter_api_key"]:
+        os.environ["OPENROUTER_API_KEY"] = config["openrouter_api_key"]
     if config["langchain_api_key"]:
         os.environ["LANGCHAIN_API_KEY"] = config["langchain_api_key"]
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_PROJECT"] = "merchant-analysis"
 
-    # Default Ollama settings
-    os.environ.setdefault("OLLAMA_BASE_URL", "https://ollama.com")
-    os.environ.setdefault("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+    # Default OpenRouter settings
+    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config
 
@@ -253,9 +253,9 @@ def main():
         logger.error("Could not load dynamodb_table_name from Pulumi outputs")
         sys.exit(1)
 
-    if not args.no_llm and not config["ollama_api_key"]:
+    if not args.no_llm and not config["openrouter_api_key"]:
         logger.error(
-            "OLLAMA_API_KEY not found. Use --no-llm to skip LLM calls."
+            "OPENROUTER_API_KEY not found. Use --no-llm to skip LLM calls."
         )
         sys.exit(1)
 

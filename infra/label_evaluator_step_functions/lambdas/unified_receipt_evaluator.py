@@ -1307,12 +1307,9 @@ async def unified_receipt_evaluator(
         }
 
     except Exception as e:
-        from receipt_agent.utils.llm_factory import AllProvidersFailedError
-        from receipt_agent.utils.ollama_rate_limit import (
-            OllamaRateLimitError,
-        )
+        from receipt_agent.utils.llm_factory import LLMRateLimitError
 
-        if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+        if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Rate limit error, propagating for Step Function retry: %s",
                 e,

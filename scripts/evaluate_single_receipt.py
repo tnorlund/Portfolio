@@ -39,26 +39,21 @@ def load_config() -> dict:
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
         "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
-        "ollama_api_key": secrets.get("portfolio:OLLAMA_API_KEY"),
+        "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
     }
 
     # Set environment variables
-    if config["ollama_api_key"]:
-        os.environ["OLLAMA_API_KEY"] = config["ollama_api_key"]
-        os.environ["RECEIPT_AGENT_OLLAMA_API_KEY"] = config["ollama_api_key"]
+    if config["openrouter_api_key"]:
+        os.environ["OPENROUTER_API_KEY"] = config["openrouter_api_key"]
 
     if config["langchain_api_key"]:
         os.environ["LANGCHAIN_API_KEY"] = config["langchain_api_key"]
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_PROJECT"] = "label-evaluator-dev"
 
-    os.environ.setdefault("OLLAMA_BASE_URL", "https://ollama.com")
-    os.environ.setdefault("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-    os.environ.setdefault(
-        "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
-    )
-    os.environ.setdefault("RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud")
+    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config
 
@@ -93,8 +88,9 @@ def main():
         sys.exit(1)
 
     # Import after setting env vars
-    from langchain_ollama import ChatOllama
     from receipt_dynamo import DynamoClient
+
+    from receipt_agent.utils.llm_factory import create_llm
 
     from receipt_agent.agents.label_evaluator import (  # Pattern discovery; Patterns; Evaluation; LLM Review
         EvaluatorState,
@@ -244,14 +240,7 @@ def main():
 
         try:
             # Create LLM for review
-            llm = ChatOllama(
-                model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
-                base_url=os.environ.get(
-                    "OLLAMA_BASE_URL", "https://ollama.com"
-                ),
-                api_key=os.environ.get("OLLAMA_API_KEY", ""),
-                temperature=0.0,
-            )
+            llm = create_llm(temperature=0.0)
 
             # Serialize words and labels to dicts
             words_dicts = [w.to_dict() for w in words]

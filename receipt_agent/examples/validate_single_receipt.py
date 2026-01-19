@@ -40,7 +40,7 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
     logger = logging.getLogger(__name__)
 
     settings = get_settings()
-    logger.info(f"Using Ollama model: {settings.ollama_model}")
+    logger.info(f"Using LLM model: {settings.openrouter_model}")
 
     # Import the actual clients
     try:

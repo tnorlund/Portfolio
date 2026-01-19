@@ -45,7 +45,7 @@ In the worst case (defaults):
   - **Concurrent LLMReview Lambdas:** 3 * 10 * 5 = 150
   - **Concurrent LLM calls:** 150 * 3 = 450
 
-This concurrency is enough to trigger Ollama rate limits. The Step Function
+This concurrency is enough to trigger OpenRouter rate limits. The Step Function
 itself retries LLMReview on task failure, while the LLMReview Lambda also
 retries 429s internally. That combination increases pressure when bursts
 occur.

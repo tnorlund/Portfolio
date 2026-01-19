@@ -622,20 +622,21 @@ class LambdaFunctionsComponent(ComponentResource):
                     "GOOGLE_PLACES_API_KEY"
                 )
                 or "",
-                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY")
-                or "",
                 "LANGCHAIN_API_KEY": portfolio_config.get_secret(
                     "LANGCHAIN_API_KEY"
                 )
                 or "",
+                # OpenRouter LLM provider
+                "OPENROUTER_API_KEY": portfolio_config.get_secret(
+                    "OPENROUTER_API_KEY"
+                )
+                or "",
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 # receipt_agent expects RECEIPT_AGENT_* but we mirror base vars too
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY": portfolio_config.get_secret(
                     "GOOGLE_PLACES_API_KEY"
-                )
-                or "",
-                "RECEIPT_AGENT_OLLAMA_API_KEY": portfolio_config.get_secret(
-                    "OLLAMA_API_KEY"
                 )
                 or "",
                 "RECEIPT_AGENT_LANGCHAIN_API_KEY": portfolio_config.get_secret(
