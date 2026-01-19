@@ -49,7 +49,10 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
   // Compute the centroid of the receipt bounding box.
   const centroidX = (x1 + x2 + x3 + x4) / 4;
   const centroidY = (y1 + y2 + y3 + y4) / 4;
-  const midY = svgHeight / 2;
+  // midY is the center of the visible area (crop region or full image)
+  const midY = cropInfo
+    ? cropInfo.y + cropInfo.height / 2  // Center of crop region in full image coords
+    : fullImageHeight / 2;
 
   // Animate the receipt bounding box to fade in.
   const boxSpring = useSpring({
