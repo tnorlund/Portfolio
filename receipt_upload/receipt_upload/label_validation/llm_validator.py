@@ -45,6 +45,12 @@ DecisionType = Literal["VALID", "INVALID", "NEEDS_REVIEW"]
 ConfidenceType = Literal["high", "medium", "low"]
 
 # Valid label types from CORE_LABELS
+# Note: Some extra labels are included so Pydantic parsing succeeds if LLM
+# returns them. These are NOT valid final labels:
+#   - AMOUNT: Merged label that needs reclassification
+#   - TIP: LLM sometimes returns this for gratuity amounts
+#   - NEEDS_REVIEW: LLM incorrectly uses this as a label (should be decision)
+# convert_structured_response() handles these by marking them NEEDS_REVIEW.
 LabelType = Literal[
     "MERCHANT_NAME",
     "STORE_HOURS",
@@ -67,6 +73,10 @@ LabelType = Literal[
     "CHANGE",
     "CASH_BACK",
     "REFUND",
+    # Invalid labels that LLM sometimes returns - handled in post-processing
+    "AMOUNT",
+    "TIP",
+    "NEEDS_REVIEW",
 ]
 
 
