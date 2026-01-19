@@ -21,6 +21,7 @@ from receipt_agent.state.models import (
     VerificationStep,
 )
 from receipt_agent.utils.llm_factory import (
+    LLMRateLimitError,
     OllamaCircuitBreaker,
     OllamaRateLimitError,
     RateLimitedLLMInvoker,
@@ -48,7 +49,8 @@ __all__ = [
     "create_embed_fn",
     "create_places_api",
     # Rate limit utilities
-    "OllamaRateLimitError",
+    "LLMRateLimitError",
+    "OllamaRateLimitError",  # Backward compat alias for LLMRateLimitError
     "OllamaCircuitBreaker",
     "RateLimitedLLMInvoker",
     "is_rate_limit_error",

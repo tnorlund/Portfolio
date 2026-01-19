@@ -346,9 +346,25 @@ def _is_empty_response(response: Any) -> bool:
     if isinstance(content, str) and not content.strip():
         return True
 
-    # Empty list (multimodal content blocks)
-    if isinstance(content, list) and len(content) == 0:
-        return True
+    # List content (multimodal content blocks)
+    if isinstance(content, list):
+        # Empty list
+        if len(content) == 0:
+            return True
+        # List with all empty text blocks
+        # e.g., [{"type": "text", "text": ""}] or [{"text": ""}]
+        all_empty = True
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text", "")
+                if isinstance(text, str) and text.strip():
+                    all_empty = False
+                    break
+            elif isinstance(block, str) and block.strip():
+                all_empty = False
+                break
+        if all_empty:
+            return True
 
     return False
 
