@@ -1,22 +1,21 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 
-import { useTransition, animated } from "@react-spring/web";
+import { animated, useTransition } from "@react-spring/web";
+import useImageDetails from "../../../hooks/useImageDetails";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
+import useReceiptClustering from "../../../hooks/useReceiptClustering";
+import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
+import { getBestImageUrl } from "../../../utils/imageFormat";
+import { estimateReceiptPolygonFromLines } from "../../../utils/receipt";
 import {
   AnimatedConvexHull,
+  AnimatedFinalReceiptBox,
   AnimatedHullCentroid,
   AnimatedOrientedAxes,
   AnimatedTopAndBottom,
-  AnimatedFinalReceiptBox,
 } from "../animations";
-import { getBestImageUrl } from "../../../utils/imageFormat";
-import useImageDetails from "../../../hooks/useImageDetails";
-import { estimateReceiptPolygonFromLines } from "../../../utils/receipt";
-import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
-import useReceiptClustering from "../../../hooks/useReceiptClustering";
 import { getAnimationConfig } from "./animationConfig";
 import ReceiptBoundingBoxFrame from "./ReceiptBoundingBoxFrame";
-import type { CropViewBox } from "./utils/smartCrop";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -110,12 +109,11 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     firstImage && formatSupport && isClient
       ? getBestImageUrl(firstImage, formatSupport, "medium")
       : firstImage
-      ? `${
-          isDevelopment
-            ? "https://dev.tylernorlund.com"
-            : "https://www.tylernorlund.com"
+        ? `${isDevelopment
+          ? "https://dev.tylernorlund.com"
+          : "https://www.tylernorlund.com"
         }/${firstImage.cdn_s3_key}`
-      : "";
+        : "";
 
   // When imageDetails is loaded, compute these values
   const svgWidth = firstImage ? firstImage.width : defaultSvgWidth;
@@ -167,7 +165,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
             }
             return normX * fullImageWidth;
           };
-          
+
           const transformY = (normY: number) => {
             if (cropInfo) {
               return (1 - normY) * fullImageHeight - cropInfo.y;

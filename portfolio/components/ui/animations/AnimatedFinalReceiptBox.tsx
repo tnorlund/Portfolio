@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback } from "react";
-import { useTransition, animated } from "@react-spring/web";
+import { animated, useTransition } from "@react-spring/web";
+import React, { useCallback, useMemo } from "react";
 import type { Point } from "../../../types/api";
 import type { CropViewBox } from "../Figures/utils/smartCrop";
 
@@ -47,7 +47,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     }
     return normX * svgWidth;
   }, [cropInfo, fullImageWidth, svgWidth]);
-  
+
   const transformY = useCallback((normY: number) => {
     if (cropInfo && fullImageHeight) {
       return (1 - normY) * fullImageHeight - cropInfo.y;
@@ -74,12 +74,12 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     ];
     return finalReceiptBox.length === 4
       ? finalReceiptBox.map((corner: Point, index: number) => ({
-          ...corner,
-          svgX: transformX(corner.x),
-          svgY: transformY(corner.y),
-          label: cornerLabels[index],
-          index,
-        }))
+        ...corner,
+        svgX: transformX(corner.x),
+        svgY: transformY(corner.y),
+        label: cornerLabels[index],
+        index,
+      }))
       : [];
   }, [finalReceiptBox, transformX, transformY]);
 

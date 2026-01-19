@@ -13,7 +13,7 @@ interface ReceiptBoundingBoxFrameProps {
 /**
  * Shared frame component that enforces a 3:4 aspect ratio by smart-cropping
  * around receipt content. Ensures all words and receipt polygons remain visible.
- * 
+ *
  * Provides crop info to children via render prop so they can adjust their SVG
  * viewBox and transform coordinates accordingly.
  */

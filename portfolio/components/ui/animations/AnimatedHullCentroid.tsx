@@ -1,5 +1,5 @@
-import React from "react";
 import { animated, useSpring } from "@react-spring/web";
+import React from "react";
 import type { Point } from "../../../types/api";
 import type { CropViewBox } from "../Figures/utils/smartCrop";
 
@@ -36,7 +36,7 @@ const AnimatedHullCentroid: React.FC<AnimatedHullCentroidProps> = ({
     }
     return normX * svgWidth;
   };
-  
+
   const transformY = (normY: number) => {
     if (cropInfo && fullImageHeight) {
       return (1 - normY) * fullImageHeight - cropInfo.y;

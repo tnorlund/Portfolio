@@ -1,5 +1,5 @@
+import { animated, useTransition } from "@react-spring/web";
 import React from "react";
-import { useTransition, animated } from "@react-spring/web";
 import type { Line, Point } from "../../../types/api";
 import type { CropViewBox } from "../Figures/utils/smartCrop";
 
@@ -43,7 +43,7 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
     }
     return normX * svgWidth;
   };
-  
+
   const transformY = (normY: number) => {
     if (cropInfo && fullImageHeight) {
       return (1 - normY) * fullImageHeight - cropInfo.y;

@@ -1,4 +1,4 @@
-import type { Line, Receipt, Point } from "../../../../types/api";
+import type { Line, Point, Receipt } from "../../../../types/api";
 
 export interface CropViewBox {
   x: number;
@@ -25,7 +25,7 @@ export function computeSmartCropViewBox(
 ): CropViewBox | null {
   // Collect all corner points from lines
   const allPoints: Point[] = [];
-  
+
   lines.forEach((line) => {
     allPoints.push(
       line.top_left,

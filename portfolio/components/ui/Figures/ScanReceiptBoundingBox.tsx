@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 
-import { useSpring, useTransition, animated } from "@react-spring/web";
-import useOptimizedInView from "../../../hooks/useOptimizedInView";
-import AnimatedLineBox from "../animations/AnimatedLineBox";
-import { getBestImageUrl } from "../../../utils/imageFormat";
+import { animated, useSpring, useTransition } from "@react-spring/web";
 import useImageDetails from "../../../hooks/useImageDetails";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
+import { getBestImageUrl } from "../../../utils/imageFormat";
+import AnimatedLineBox from "../animations/AnimatedLineBox";
 import ReceiptBoundingBoxFrame from "./ReceiptBoundingBoxFrame";
 import type { CropViewBox } from "./utils/smartCrop";
 
@@ -38,7 +38,7 @@ const AnimatedReceipt: React.FC<AnimatedReceiptProps> = ({
     }
     return normX * svgWidth;
   };
-  
+
   const transformY = (normY: number) => {
     if (cropInfo) {
       return (1 - normY) * fullImageHeight - cropInfo.y;
@@ -151,12 +151,11 @@ const ImageBoundingBox: React.FC = () => {
     firstImage && formatSupport && isClient
       ? getBestImageUrl(firstImage, formatSupport, 'medium')
       : firstImage
-      ? `${
-          isDevelopment
-            ? "https://dev.tylernorlund.com"
-            : "https://www.tylernorlund.com"
+        ? `${isDevelopment
+          ? "https://dev.tylernorlund.com"
+          : "https://www.tylernorlund.com"
         }/${firstImage.cdn_s3_key}`
-      : "";
+        : "";
 
 
   // When imageDetails is loaded, compute these values;
@@ -206,7 +205,7 @@ const ImageBoundingBox: React.FC = () => {
             }
             return normX * fullImageWidth;
           };
-          
+
           const transformY = (normY: number) => {
             if (cropInfo) {
               return (1 - normY) * fullImageHeight - cropInfo.y;

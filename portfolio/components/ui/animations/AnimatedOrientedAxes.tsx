@@ -69,7 +69,7 @@ const AnimatedOrientedAxes: React.FC<AnimatedOrientedAxesProps> = ({
     }
     return normX * svgWidth;
   };
-  
+
   const transformY = (normY: number) => {
     if (cropInfo && fullImageHeight) {
       return (1 - normY) * fullImageHeight - cropInfo.y;

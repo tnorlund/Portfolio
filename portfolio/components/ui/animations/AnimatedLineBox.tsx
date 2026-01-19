@@ -1,4 +1,4 @@
-import { useSpring, animated } from "@react-spring/web";
+import { animated, useSpring } from "@react-spring/web";
 import type { CropViewBox } from "../Figures/utils/smartCrop";
 
 export interface Line {
@@ -35,7 +35,7 @@ const AnimatedLineBox = ({
     }
     return normX * svgWidth;
   };
-  
+
   const transformY = (normY: number) => {
     if (cropInfo && fullImageHeight) {
       return (1 - normY) * fullImageHeight - cropInfo.y;
