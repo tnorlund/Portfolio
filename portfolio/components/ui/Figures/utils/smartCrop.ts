@@ -133,6 +133,12 @@ export function computeSmartCropViewBox(
     cropWidth = cropWidth * scale;
     cropHeight = cropHeight * scale;
 
+    // If scaling would clip the padded content, skip cropping entirely
+    // and fall back to showing the full image
+    if (cropWidth < paddedWidth || cropHeight < paddedHeight) {
+      return null;
+    }
+
     // Re-clamp position after scaling (in case scaling made the box smaller and we can adjust)
     cropX = Math.max(0, Math.min(cropX, imageWidth - cropWidth));
     cropY = Math.max(0, Math.min(cropY, imageHeight - cropHeight));
