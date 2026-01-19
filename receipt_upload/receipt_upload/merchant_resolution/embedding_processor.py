@@ -26,12 +26,11 @@ Tracing:
 
 import logging
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple, Type
-
 import shutil
 import tempfile
 import uuid
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_chroma import (
@@ -47,9 +46,13 @@ from receipt_chroma import (
     upsert_lines_local,
     upsert_words_local,
 )
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+
 from receipt_upload.label_validation import (
-    LLMBatchValidator,
     LightweightLabelValidator,
+    LLMBatchValidator,
 )
 from receipt_upload.label_validation.langsmith_logging import (
     log_label_validation,
@@ -59,10 +62,6 @@ from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
 )
-
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -145,9 +144,14 @@ def _run_lines_pipeline_worker(
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
-    from receipt_chroma import ChromaClient, build_lines_payload, upload_lines_delta
+    from receipt_chroma import (
+        ChromaClient,
+        build_lines_payload,
+        upload_lines_delta,
+    )
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         MerchantResult,
@@ -180,6 +184,7 @@ def _run_lines_pipeline_worker(
             if google_places_api_key:
                 try:
                     from receipt_places import PlacesClient
+
                     places_client = PlacesClient(api_key=google_places_api_key)
                 except ImportError:
                     pass
@@ -211,6 +216,7 @@ def _run_lines_pipeline_worker(
 
             # Upload delta to S3
             import boto3
+
             s3_client = boto3.client("s3")
             prefix = upload_lines_delta(
                 line_payload=line_payload,
@@ -252,15 +258,22 @@ def _run_lines_pipeline_worker(
     # background thread for sending traces to LangSmith
     if langsmith_headers:
         try:
-            from langsmith import Client, tracing_context
             import logging
             import os
+
+            from langsmith import Client, tracing_context
+
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
-            log.info("[LINES_WORKER] Setting up tracing: project=%s, headers=%s",
-                     project, list(langsmith_headers.keys()))
+            project = os.environ.get(
+                "LANGCHAIN_PROJECT", "receipt-label-validation"
+            )
+            log.info(
+                "[LINES_WORKER] Setting up tracing: project=%s, headers=%s",
+                project,
+                list(langsmith_headers.keys()),
+            )
 
             # Pass headers directly to tracing_context with explicit project and enabled
             with tracing_context(
@@ -277,7 +290,10 @@ def _run_lines_pipeline_worker(
             return result
         except Exception as e:
             import logging
-            logging.getLogger(__name__).exception("[LINES_WORKER] ERROR in tracing: %s", e)
+
+            logging.getLogger(__name__).exception(
+                "[LINES_WORKER] ERROR in tracing: %s", e
+            )
     return _do_lines_work()
 
 
@@ -303,13 +319,18 @@ def _run_words_pipeline_worker(
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
-    from receipt_chroma import ChromaClient, build_words_payload, upload_words_delta
+    from receipt_chroma import (
+        ChromaClient,
+        build_words_payload,
+        upload_words_delta,
+    )
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
     from receipt_upload.label_validation import (
-        LLMBatchValidator,
         LightweightLabelValidator,
+        LLMBatchValidator,
     )
 
     def _do_words_work() -> Dict[str, Any]:
@@ -336,7 +357,8 @@ def _run_words_pipeline_worker(
             validation_stats: Dict[str, Any] = {}
 
             pending_labels = [
-                wl for wl in word_labels
+                wl
+                for wl in word_labels
                 if wl.validation_status == ValidationStatus.PENDING.value
             ]
 
@@ -357,8 +379,12 @@ def _run_words_pipeline_worker(
                     nonlocal chroma_validated
                     for label in pending_labels:
                         word = next(
-                            (w for w in words
-                             if w.line_id == label.line_id and w.word_id == label.word_id),
+                            (
+                                w
+                                for w in words
+                                if w.line_id == label.line_id
+                                and w.word_id == label.word_id
+                            ),
                             None,
                         )
                         if not word:
@@ -372,14 +398,20 @@ def _run_words_pipeline_worker(
                             predicted_label=label.label,
                         )
 
-                        if result.decision in (ValidationDecision.AUTO_VALIDATE, ValidationDecision.AUTO_INVALID):
+                        if result.decision in (
+                            ValidationDecision.AUTO_VALIDATE,
+                            ValidationDecision.AUTO_INVALID,
+                        ):
                             # Update the label object with validation results
                             label.validation_status = (
                                 ValidationStatus.VALID.value
-                                if result.decision == ValidationDecision.AUTO_VALIDATE
+                                if result.decision
+                                == ValidationDecision.AUTO_VALIDATE
                                 else ValidationStatus.INVALID.value
                             )
-                            label.label_proposed_by = f"chroma_{result.decision.value}"
+                            label.label_proposed_by = (
+                                f"chroma_{result.decision.value}"
+                            )
                             dynamo.update_receipt_word_label(label)
                             chroma_validated += 1
                         else:
@@ -387,9 +419,13 @@ def _run_words_pipeline_worker(
 
                 # Apply traceable decorator if available
                 try:
-                    from langsmith.run_helpers import traceable
                     import os
-                    project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+
+                    from langsmith.run_helpers import traceable
+
+                    project = os.environ.get(
+                        "LANGCHAIN_PROJECT", "receipt-label-validation"
+                    )
                     traced_loop = traceable(
                         name="chroma_label_validation",
                         project_name=project,
@@ -409,15 +445,25 @@ def _run_words_pipeline_worker(
                     # Build words context for LLM
                     llm_words_context = []
                     for w in words:
-                        x_center = (w.x_min + w.x_max) / 2 if hasattr(w, 'x_min') else 0
-                        y_center = (w.y_min + w.y_max) / 2 if hasattr(w, 'y_min') else 0
-                        llm_words_context.append({
-                            "text": w.text,
-                            "line_id": w.line_id,
-                            "word_id": w.word_id,
-                            "x": x_center,
-                            "y": y_center,
-                        })
+                        x_center = (
+                            (w.x_min + w.x_max) / 2
+                            if hasattr(w, "x_min")
+                            else 0
+                        )
+                        y_center = (
+                            (w.y_min + w.y_max) / 2
+                            if hasattr(w, "y_min")
+                            else 0
+                        )
+                        llm_words_context.append(
+                            {
+                                "text": w.text,
+                                "line_id": w.line_id,
+                                "word_id": w.word_id,
+                                "x": x_center,
+                                "y": y_center,
+                            }
+                        )
 
                     # Build pending_labels_data and similar_evidence
                     pending_labels_data = []
@@ -425,12 +471,14 @@ def _run_words_pipeline_worker(
 
                     for word, label in llm_needed:
                         word_id_str = f"{label.line_id}_{label.word_id}"
-                        pending_labels_data.append({
-                            "line_id": label.line_id,
-                            "word_id": label.word_id,
-                            "label": label.label,
-                            "word_text": word.text,
-                        })
+                        pending_labels_data.append(
+                            {
+                                "line_id": label.line_id,
+                                "word_id": label.word_id,
+                                "label": label.label,
+                                "word_text": word.text,
+                            }
+                        )
 
                         # Get similar evidence for this word
                         try:
@@ -438,7 +486,9 @@ def _run_words_pipeline_worker(
                                 f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                                 f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
                             )
-                            embedding = word_embedding_cache.get((label.line_id, label.word_id))
+                            embedding = word_embedding_cache.get(
+                                (label.line_id, label.word_id)
+                            )
                             if embedding:
                                 similar = lightweight_validator._query_similar_for_label(
                                     embedding=embedding,
@@ -454,7 +504,9 @@ def _run_words_pipeline_worker(
 
                     # Call LLM validator
                     try:
-                        llm_validator = LLMBatchValidator(temperature=0.0, timeout=120)
+                        llm_validator = LLMBatchValidator(
+                            temperature=0.0, timeout=120
+                        )
                         llm_results = llm_validator.validate_receipt_labels(
                             pending_labels=pending_labels_data,
                             words=llm_words_context,
@@ -467,20 +519,34 @@ def _run_words_pipeline_worker(
                         for word, label in llm_needed:
                             word_id_str = f"{label.line_id}_{label.word_id}"
                             llm_result = result_lookup.get(word_id_str)
-                            if llm_result and llm_result.decision in ("VALID", "INVALID"):
+                            if llm_result and llm_result.decision in (
+                                "VALID",
+                                "INVALID",
+                            ):
                                 label.validation_status = (
                                     ValidationStatus.VALID.value
                                     if llm_result.decision == "VALID"
                                     else ValidationStatus.INVALID.value
                                 )
-                                label.label_proposed_by = f"llm_{llm_result.decision.lower()}"
+                                label.label_proposed_by = (
+                                    f"llm_{llm_result.decision.lower()}"
+                                )
+                                # Update label if LLM provided a corrected one
+                                if (
+                                    llm_result.decision == "INVALID"
+                                    and llm_result.label != label.label
+                                ):
+                                    label.label = llm_result.label
                                 if llm_result.reasoning:
                                     label.reasoning = llm_result.reasoning
                                 dynamo.update_receipt_word_label(label)
                                 llm_validated += 1
                     except Exception as e:
                         import logging
-                        logging.getLogger(__name__).warning(f"LLM validation failed: {e}")
+
+                        logging.getLogger(__name__).warning(
+                            f"LLM validation failed: {e}"
+                        )
 
                 validation_stats = {
                     "pending_labels": len(pending_labels),
@@ -501,6 +567,7 @@ def _run_words_pipeline_worker(
 
             # Upload delta to S3
             import boto3
+
             s3_client = boto3.client("s3")
             prefix = upload_words_delta(
                 word_payload=word_payload,
@@ -523,15 +590,22 @@ def _run_words_pipeline_worker(
     # background thread for sending traces to LangSmith
     if langsmith_headers:
         try:
-            from langsmith import Client, tracing_context
             import logging
             import os
+
+            from langsmith import Client, tracing_context
+
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
-            log.info("[WORDS_WORKER] Setting up tracing: project=%s, headers=%s",
-                     project, list(langsmith_headers.keys()))
+            project = os.environ.get(
+                "LANGCHAIN_PROJECT", "receipt-label-validation"
+            )
+            log.info(
+                "[WORDS_WORKER] Setting up tracing: project=%s, headers=%s",
+                project,
+                list(langsmith_headers.keys()),
+            )
 
             # Pass headers directly to tracing_context with explicit project and enabled
             with tracing_context(
@@ -548,7 +622,10 @@ def _run_words_pipeline_worker(
             return result
         except Exception as e:
             import logging
-            logging.getLogger(__name__).exception("[WORDS_WORKER] ERROR in tracing: %s", e)
+
+            logging.getLogger(__name__).exception(
+                "[WORDS_WORKER] ERROR in tracing: %s", e
+            )
     return _do_words_work()
 
 
@@ -705,9 +782,7 @@ class MerchantResolvingEmbeddingProcessor:
         # Get existing receipt place for merchant context
         receipt_place = None
         try:
-            receipt_place = self.dynamo.get_receipt_place(
-                image_id, receipt_id
-            )
+            receipt_place = self.dynamo.get_receipt_place(image_id, receipt_id)
         except Exception as e:
             _log(f"Could not fetch receipt place: {e}")
 
@@ -723,20 +798,28 @@ class MerchantResolvingEmbeddingProcessor:
         # =====================================================================
         try:
             from openai import OpenAI
-            openai_client = OpenAI()
-            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
-            local_lines_dir, local_words_dir, line_embeddings_list, word_embeddings_list = (
-                download_and_embed_parallel(
-                    receipt_lines=lines,
-                    receipt_words=words,
-                    chromadb_bucket=self.chromadb_bucket,
-                    s3_client=self.s3_client,
-                    openai_client=openai_client,
-                    model=model,
-                )
+            openai_client = OpenAI()
+            model = os.environ.get(
+                "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
             )
-            _log("Phase 1 complete: downloaded snapshots and generated embeddings")
+
+            (
+                local_lines_dir,
+                local_words_dir,
+                line_embeddings_list,
+                word_embeddings_list,
+            ) = download_and_embed_parallel(
+                receipt_lines=lines,
+                receipt_words=words,
+                chromadb_bucket=self.chromadb_bucket,
+                s3_client=self.s3_client,
+                openai_client=openai_client,
+                model=model,
+            )
+            _log(
+                "Phase 1 complete: downloaded snapshots and generated embeddings"
+            )
         except Exception as e:
             _log(f"ERROR: Failed to download/embed: {e}")
             logger.exception("Download/embed failed")
@@ -766,11 +849,14 @@ class MerchantResolvingEmbeddingProcessor:
 
             # Convert entities to dicts for pickling (required for multiprocessing)
             from dataclasses import asdict
+
             lines_data = [asdict(ln) for ln in lines]
             words_data = [asdict(w) for w in words]
             word_labels_data = [asdict(wl) for wl in word_labels]
 
-            _log(f"Serialized {len(lines_data)} lines, {len(words_data)} words, {len(word_labels_data)} labels")
+            _log(
+                f"Serialized {len(lines_data)} lines, {len(words_data)} words, {len(word_labels_data)} labels"
+            )
 
             # Get table name from dynamo client
             table_name = self.dynamo.table_name
@@ -779,12 +865,17 @@ class MerchantResolvingEmbeddingProcessor:
             langsmith_headers: Optional[Dict[str, str]] = None
             try:
                 from langsmith import get_current_run_tree
+
                 current_run = get_current_run_tree()
                 if current_run:
                     langsmith_headers = current_run.to_headers()
-                    _log(f"LangSmith trace context captured: run_id={current_run.id}, headers={list(langsmith_headers.keys())}")
+                    _log(
+                        f"LangSmith trace context captured: run_id={current_run.id}, headers={list(langsmith_headers.keys())}"
+                    )
                 else:
-                    _log("WARNING: get_current_run_tree() returned None - no parent trace context")
+                    _log(
+                        "WARNING: get_current_run_tree() returned None - no parent trace context"
+                    )
             except Exception as e:
                 _log(f"Could not capture LangSmith context: {e}")
 
@@ -792,7 +883,9 @@ class MerchantResolvingEmbeddingProcessor:
             executor_class = _get_phase2_executor_class()
             executor_name = executor_class.__name__
             with executor_class(max_workers=2) as executor:
-                _log(f"Submitting lines and words pipelines to {executor_name}")
+                _log(
+                    f"Submitting lines and words pipelines to {executor_name}"
+                )
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
@@ -839,7 +932,9 @@ class MerchantResolvingEmbeddingProcessor:
                     # Reconstruct MerchantResult from serializable dict
                     if lines_result.get("success"):
                         # Import here to avoid circular import
-                        from receipt_upload.merchant_resolution.resolver import SimilarityMatch
+                        from receipt_upload.merchant_resolution.resolver import (
+                            SimilarityMatch,
+                        )
 
                         similarity_matches = None
                         if lines_result.get("similarity_matches"):
@@ -849,9 +944,15 @@ class MerchantResolvingEmbeddingProcessor:
                                     receipt_id=m["receipt_id"],
                                     merchant_name=m.get("merchant_name"),
                                     normalized_phone=m.get("normalized_phone"),
-                                    normalized_address=m.get("normalized_address"),
-                                    embedding_similarity=m["embedding_similarity"],
-                                    metadata_boost=m.get("metadata_boost", 0.0),
+                                    normalized_address=m.get(
+                                        "normalized_address"
+                                    ),
+                                    embedding_similarity=m[
+                                        "embedding_similarity"
+                                    ],
+                                    metadata_boost=m.get(
+                                        "metadata_boost", 0.0
+                                    ),
                                     place_id=m.get("place_id"),
                                 )
                                 for m in lines_result["similarity_matches"]
@@ -860,12 +961,18 @@ class MerchantResolvingEmbeddingProcessor:
                         merchant_result = MerchantResult(
                             merchant_name=lines_result.get("merchant_name"),
                             place_id=lines_result.get("place_id"),
-                            resolution_tier=lines_result.get("resolution_tier"),
+                            resolution_tier=lines_result.get(
+                                "resolution_tier"
+                            ),
                             confidence=lines_result.get("confidence"),
                             phone=lines_result.get("phone"),
                             address=lines_result.get("address"),
-                            source_image_id=lines_result.get("source_image_id"),
-                            source_receipt_id=lines_result.get("source_receipt_id"),
+                            source_image_id=lines_result.get(
+                                "source_image_id"
+                            ),
+                            source_receipt_id=lines_result.get(
+                                "source_receipt_id"
+                            ),
                             similarity_matches=similarity_matches,
                         )
                 except Exception as e:
@@ -879,7 +986,8 @@ class MerchantResolvingEmbeddingProcessor:
                     words_prefix = words_result.get("words_prefix")
                     if words_result.get("success"):
                         validation_stats = {
-                            k: v for k, v in words_result.items()
+                            k: v
+                            for k, v in words_result.items()
                             if k not in ("success", "words_prefix")
                         }
                 except Exception as e:
@@ -904,7 +1012,9 @@ class MerchantResolvingEmbeddingProcessor:
                 )
                 _log(f"Phase 3 complete: created compaction run {run_id}")
             else:
-                _log("WARNING: Skipping compaction run - missing delta prefixes")
+                _log(
+                    "WARNING: Skipping compaction run - missing delta prefixes"
+                )
                 compaction_run = None
 
             # =================================================================
@@ -1024,7 +1134,9 @@ class MerchantResolvingEmbeddingProcessor:
 
                 if merchant_result.merchant_name:
                     if not place.merchant_name:
-                        updates["merchant_name"] = merchant_result.merchant_name
+                        updates["merchant_name"] = (
+                            merchant_result.merchant_name
+                        )
 
                 if merchant_result.address:
                     if not place.formatted_address:
@@ -1040,9 +1152,7 @@ class MerchantResolvingEmbeddingProcessor:
                         receipt_id=receipt_id,
                         **updates,
                     )
-                    _log(
-                        f"Updated receipt place with: {list(updates.keys())}"
-                    )
+                    _log(f"Updated receipt place with: {list(updates.keys())}")
             else:
                 # Create new receipt place if none exists
                 # Only create if we have both place_id AND merchant_name
@@ -1107,22 +1217,30 @@ class MerchantResolvingEmbeddingProcessor:
         Returns:
             Dict with validation statistics
         """
-        from receipt_upload.label_validation.validator import ValidationDecision
+        from receipt_upload.label_validation.validator import (
+            ValidationDecision,
+        )
 
         if not word_labels:
-            return {"labels_validated": 0, "labels_corrected": 0, "chroma_validated": 0}
+            return {
+                "labels_validated": 0,
+                "labels_corrected": 0,
+                "chroma_validated": 0,
+            }
 
         # Filter to only PENDING labels, excluding "O" (no-label) which don't need validation
         pending_label_entities = [
             label
             for label in word_labels
             if label.validation_status == ValidationStatus.PENDING.value
-            and label.label != "O"  # Skip "O" labels - they're background/no-label
+            and label.label
+            != "O"  # Skip "O" labels - they're background/no-label
         ]
 
         # Count "O" labels for logging
         o_label_count = sum(
-            1 for label in word_labels
+            1
+            for label in word_labels
             if label.validation_status == ValidationStatus.PENDING.value
             and label.label == "O"
         )
@@ -1131,9 +1249,15 @@ class MerchantResolvingEmbeddingProcessor:
 
         if not pending_label_entities:
             _log("No pending labels to validate (after filtering 'O' labels)")
-            return {"labels_validated": 0, "labels_corrected": 0, "chroma_validated": 0}
+            return {
+                "labels_validated": 0,
+                "labels_corrected": 0,
+                "chroma_validated": 0,
+            }
 
-        _log(f"Validating {len(pending_label_entities)} pending labels (ChromaDB first, then LLM)")
+        _log(
+            f"Validating {len(pending_label_entities)} pending labels (ChromaDB first, then LLM)"
+        )
 
         # Build word lookup by (line_id, word_id)
         word_lookup: Dict[tuple, ReceiptWord] = {}
@@ -1203,9 +1327,7 @@ class MerchantResolvingEmbeddingProcessor:
                 elif result.decision == ValidationDecision.AUTO_INVALID:
                     # Strong evidence AGAINST the prediction - mark as invalid
                     label.validation_status = ValidationStatus.INVALID.value
-                    label.label_proposed_by = (
-                        f"chroma-invalidated:{label.label_proposed_by or 'auto'}"
-                    )
+                    label.label_proposed_by = f"chroma-invalidated:{label.label_proposed_by or 'auto'}"
                     label.reasoning = result.reason
                     self.dynamo.update_receipt_word_label(label)
 
@@ -1250,17 +1372,21 @@ class MerchantResolvingEmbeddingProcessor:
 
                 elif result.decision == ValidationDecision.NEEDS_REVIEW:
                     # ChromaDB found disagreement - needs LLM to decide
-                    chroma_needs_review.append({
-                        "label": label,
-                        "chroma_result": result,
-                    })
+                    chroma_needs_review.append(
+                        {
+                            "label": label,
+                            "chroma_result": result,
+                        }
+                    )
                     labels_needing_llm.append(label)
 
                 else:  # KEEP_PENDING - not enough data
                     labels_needing_llm.append(label)
 
             except Exception as e:
-                _log(f"WARNING: ChromaDB validation failed for {label.line_id}_{label.word_id}: {e}")
+                _log(
+                    f"WARNING: ChromaDB validation failed for {label.line_id}_{label.word_id}: {e}"
+                )
                 labels_needing_llm.append(label)
 
         _log(
@@ -1270,7 +1396,9 @@ class MerchantResolvingEmbeddingProcessor:
 
         # Create lookup for chroma results (for labels that had NEEDS_REVIEW)
         chroma_results_lookup = {
-            (item["label"].line_id, item["label"].word_id): item["chroma_result"]
+            (item["label"].line_id, item["label"].word_id): item[
+                "chroma_result"
+            ]
             for item in chroma_needs_review
         }
 
@@ -1292,34 +1420,38 @@ class MerchantResolvingEmbeddingProcessor:
         words_data = []
         for word in words:
             x_center, y_center = word.calculate_centroid()
-            words_data.append({
-                "text": word.text,
-                "line_id": word.line_id,
-                "word_id": word.word_id,
-                "x": x_center,
-                "y": y_center,
-            })
+            words_data.append(
+                {
+                    "text": word.text,
+                    "line_id": word.line_id,
+                    "word_id": word.word_id,
+                    "x": x_center,
+                    "y": y_center,
+                }
+            )
 
         # Build pending labels list with word text
         pending_labels_data = []
         for label in labels_needing_llm:
             word = word_lookup.get((label.line_id, label.word_id))
             word_text = word.text if word else ""
-            pending_labels_data.append({
-                "line_id": label.line_id,
-                "word_id": label.word_id,
-                "label": label.label,
-                "word_text": word_text,
-                "entity": label,  # Keep reference for updating
-            })
+            pending_labels_data.append(
+                {
+                    "line_id": label.line_id,
+                    "word_id": label.word_id,
+                    "label": label.label,
+                    "word_text": word_text,
+                    "entity": label,  # Keep reference for updating
+                }
+            )
 
         # Query similar words for LLM evidence
         similar_evidence: Dict[str, List[Dict]] = {}
         for label_data in pending_labels_data:
             word_id_str = f"{label_data['line_id']}_{label_data['word_id']}"
             try:
-                line_id_val: int = int(label_data['line_id'])
-                word_id_val: int = int(label_data['word_id'])
+                line_id_val: int = int(label_data["line_id"])
+                word_id_val: int = int(label_data["word_id"])
                 chroma_id = (
                     f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                     f"#LINE#{line_id_val:05d}#WORD#{word_id_val:05d}"
@@ -1338,7 +1470,9 @@ class MerchantResolvingEmbeddingProcessor:
                 else:
                     similar_evidence[word_id_str] = []
             except Exception as e:
-                _log(f"WARNING: Failed to get similar words for {word_id_str}: {e}")
+                _log(
+                    f"WARNING: Failed to get similar words for {word_id_str}: {e}"
+                )
                 similar_evidence[word_id_str] = []
 
         # Call LLM to validate remaining labels
@@ -1380,7 +1514,9 @@ class MerchantResolvingEmbeddingProcessor:
             try:
                 # Map LLM confidence to numeric value
                 confidence_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
-                confidence_score = confidence_map.get(llm_result.confidence, 0.7)
+                confidence_score = confidence_map.get(
+                    llm_result.confidence, 0.7
+                )
 
                 # Normalize decision: CORRECT/CORRECTED -> INVALID
                 decision = llm_result.decision.upper()
@@ -1393,7 +1529,9 @@ class MerchantResolvingEmbeddingProcessor:
                 chroma_result = chroma_results_lookup.get(
                     (label_entity.line_id, label_entity.word_id)
                 )
-                chroma_suggested = chroma_result.suggested_label if chroma_result else None
+                chroma_suggested = (
+                    chroma_result.suggested_label if chroma_result else None
+                )
                 chroma_scores = None
                 if chroma_result and chroma_result.label_scores:
                     chroma_scores = [
@@ -1408,10 +1546,10 @@ class MerchantResolvingEmbeddingProcessor:
 
                 if decision == "VALID":
                     # Keep original label, mark as validated
-                    label_entity.validation_status = ValidationStatus.VALID.value
-                    label_entity.label_proposed_by = (
-                        f"llm-validated:{label_entity.label_proposed_by or 'auto'}"
+                    label_entity.validation_status = (
+                        ValidationStatus.VALID.value
                     )
+                    label_entity.label_proposed_by = f"llm-validated:{label_entity.label_proposed_by or 'auto'}"
                     label_entity.reasoning = llm_result.reasoning
                     self.dynamo.update_receipt_word_label(label_entity)
                     validated_count += 1
@@ -1437,10 +1575,10 @@ class MerchantResolvingEmbeddingProcessor:
 
                 elif decision == "NEEDS_REVIEW":
                     # LLM couldn't decide - mark for human review
-                    label_entity.validation_status = ValidationStatus.NEEDS_REVIEW.value
-                    label_entity.label_proposed_by = (
-                        f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
+                    label_entity.validation_status = (
+                        ValidationStatus.NEEDS_REVIEW.value
                     )
+                    label_entity.label_proposed_by = f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
                     label_entity.reasoning = llm_result.reasoning
                     self.dynamo.update_receipt_word_label(label_entity)
 
@@ -1474,7 +1612,9 @@ class MerchantResolvingEmbeddingProcessor:
                         from datetime import datetime, timezone
 
                         # 1. Mark old label as INVALID (audit trail)
-                        label_entity.validation_status = ValidationStatus.INVALID.value
+                        label_entity.validation_status = (
+                            ValidationStatus.INVALID.value
+                        )
                         label_entity.reasoning = (
                             f"Invalidated by LLM - corrected to {llm_result.label}. "
                             f"{llm_result.reasoning}"
@@ -1521,10 +1661,10 @@ class MerchantResolvingEmbeddingProcessor:
                         )
                     else:
                         # Same label, just validate it
-                        label_entity.validation_status = ValidationStatus.VALID.value
-                        label_entity.label_proposed_by = (
-                            f"llm-validated:{label_entity.label_proposed_by or 'auto'}"
+                        label_entity.validation_status = (
+                            ValidationStatus.VALID.value
                         )
+                        label_entity.label_proposed_by = f"llm-validated:{label_entity.label_proposed_by or 'auto'}"
                         label_entity.reasoning = llm_result.reasoning
                         self.dynamo.update_receipt_word_label(label_entity)
                         validated_count += 1
@@ -1549,13 +1689,11 @@ class MerchantResolvingEmbeddingProcessor:
                         )
 
                 else:
-                    label_entity.validation_status = ValidationStatus.NEEDS_REVIEW.value
-                    label_entity.label_proposed_by = (
-                        f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
+                    label_entity.validation_status = (
+                        ValidationStatus.NEEDS_REVIEW.value
                     )
-                    label_entity.reasoning = (
-                        f"Unrecognized decision '{decision}'. {llm_result.reasoning}"
-                    )
+                    label_entity.label_proposed_by = f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
+                    label_entity.reasoning = f"Unrecognized decision '{decision}'. {llm_result.reasoning}"
                     self.dynamo.update_receipt_word_label(label_entity)
 
                     log_label_validation(
@@ -1577,9 +1715,7 @@ class MerchantResolvingEmbeddingProcessor:
                     )
 
             except Exception as e:
-                _log(
-                    f"WARNING: Failed to update label {word_id}: {e}"
-                )
+                _log(f"WARNING: Failed to update label {word_id}: {e}")
 
         total_validated = chroma_validated_count + validated_count
         _log(

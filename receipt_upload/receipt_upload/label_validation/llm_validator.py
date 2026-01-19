@@ -196,6 +196,11 @@ def convert_structured_response(
                     f"Invalid label '{llm_decision.label}'. {reasoning}"
                 )
 
+        # AMOUNT is not a valid CORE_LABEL - force NEEDS_REVIEW if it persists
+        if final_label == "AMOUNT":
+            decision_str = "NEEDS_REVIEW"
+            reasoning = f"AMOUNT requires reclassification to LINE_TOTAL/SUBTOTAL/TAX/GRAND_TOTAL. {reasoning}"
+
         # If INVALID but label unchanged, mark as NEEDS_REVIEW
         if decision_str == "INVALID" and final_label == label["label"]:
             decision_str = "NEEDS_REVIEW"
@@ -839,13 +844,21 @@ class LLMBatchValidator:
         except ValidationError as e:
             logger.error("LLM structured output validation failed: %s", e)
             # Return fallback results - mark all as NEEDS_REVIEW
+            # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB
             return [
                 LLMValidationResult(
                     word_id=f"{label['line_id']}_{label['word_id']}",
                     decision="NEEDS_REVIEW",
                     label=label["label"],
                     confidence="low",
-                    reasoning=f"Structured output validation failed: {str(e)[:100]}",
+                    reasoning=(
+                        f"Structured output validation failed: {str(e)[:100]}"
+                        + (
+                            " - AMOUNT requires reclassification"
+                            if label["label"] == "AMOUNT"
+                            else ""
+                        )
+                    ),
                 )
                 for label in pending_labels
             ]
@@ -853,13 +866,21 @@ class LLMBatchValidator:
         except Exception as e:
             logger.error("LLM validation failed: %s", e)
             # Return fallback results - mark all as NEEDS_REVIEW
+            # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB
             return [
                 LLMValidationResult(
                     word_id=f"{label['line_id']}_{label['word_id']}",
                     decision="NEEDS_REVIEW",
                     label=label["label"],
                     confidence="low",
-                    reasoning=f"LLM call failed: {str(e)[:100]}",
+                    reasoning=(
+                        f"LLM call failed: {str(e)[:100]}"
+                        + (
+                            " - AMOUNT requires reclassification"
+                            if label["label"] == "AMOUNT"
+                            else ""
+                        )
+                    ),
                 )
                 for label in pending_labels
             ]
