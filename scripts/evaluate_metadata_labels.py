@@ -51,7 +51,7 @@ def main():
     logger.info("Loading configuration...")
 
     # Import after path setup
-    from langchain_ollama import ChatOllama
+    from receipt_agent.utils.llm_factory import create_llm
     from receipt_agent.agents.label_evaluator.llm_review import (
         apply_llm_decisions,
     )
@@ -67,13 +67,6 @@ def main():
     # Get configuration from environment
     table_name = os.environ.get(
         "RECEIPT_AGENT_DYNAMO_TABLE_NAME", "ReceiptsTable-dc5be22"
-    )
-    ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY", "")
-    ollama_base_url = os.environ.get(
-        "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
-    )
-    ollama_model = os.environ.get(
-        "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
     )
 
     # Initialize clients
@@ -124,12 +117,7 @@ def main():
     logger.info("Step 2: Evaluating metadata labels with LLM...")
 
     # Create LLM
-    llm = ChatOllama(
-        model=ollama_model,
-        base_url=ollama_base_url,
-        api_key=ollama_api_key,
-        temperature=0.0,
-    )
+    llm = create_llm(temperature=0.0)
 
     # Run evaluation
     decisions = evaluate_metadata_labels(
