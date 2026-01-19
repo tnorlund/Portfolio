@@ -38,14 +38,8 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
-# Optional: langchain_ollama for Ollama Cloud
-try:
-    from langchain_ollama import ChatOllama
-
-    HAS_OLLAMA = True
-except ImportError:
-    HAS_OLLAMA = False
-    ChatOllama = None  # type: ignore
+# LLM factory for creating OpenRouter-based LLMs
+from receipt_agent.utils.llm_factory import create_llm
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
@@ -107,8 +101,8 @@ def create_label_evaluator_graph(
     dynamo_client: Any,
     llm_model: str | None = None,
     llm: Any = None,
-    ollama_base_url: str = "https://ollama.com",
-    ollama_api_key: str | None = None,
+    ollama_base_url: str | None = None,  # Deprecated, ignored
+    ollama_api_key: str | None = None,  # Deprecated, ignored
     chroma_client: Any = None,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
@@ -118,12 +112,11 @@ def create_label_evaluator_graph(
 
     Args:
         dynamo_client: DynamoDB client for fetching receipt data
-        llm_model: Model to use for LLM review. Default: "gpt-oss:20b-cloud"
+        llm_model: Model to use for LLM review (uses OPENROUTER_MODEL env var by default)
         llm: Optional pre-configured LLM instance. If provided, ignores other
             LLM settings.
-        ollama_base_url: Base URL for Ollama Cloud API (default:
-            https://ollama.com)
-        ollama_api_key: API key for Ollama Cloud (required for cloud usage)
+        ollama_base_url: Deprecated, ignored. Use OPENROUTER_BASE_URL env var.
+        ollama_api_key: Deprecated, ignored. Use OPENROUTER_API_KEY env var.
         chroma_client: Optional ChromaDB client for similar word lookup.
             Words' existing embeddings are retrieved by ID, so no embed_fn is
             needed.
@@ -135,9 +128,16 @@ def create_label_evaluator_graph(
     Returns:
         Compiled LangGraph workflow
     """
-    # Set default model
-    if llm_model is None:
-        llm_model = "gpt-oss:20b-cloud"
+    # Warn about deprecated parameters
+    if ollama_base_url is not None or ollama_api_key is not None:
+        import warnings
+        warnings.warn(
+            "ollama_base_url and ollama_api_key are deprecated. "
+            "Use OPENROUTER_BASE_URL and OPENROUTER_API_KEY env vars instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     # Store clients and configuration in closure for node access
     _dynamo_client = dynamo_client
     _chroma_client = chroma_client
@@ -152,28 +152,18 @@ def create_label_evaluator_graph(
             "ChromaDB not configured - similar word lookup will be skipped"
         )
 
-    # Initialize LLM for review (uses Ollama)
+    # Initialize LLM for review (uses OpenRouter)
     if llm is not None:
         _llm = llm
-    elif HAS_OLLAMA and ChatOllama is not None:
-        client_kwargs: dict[str, Any] = {"timeout": 120}
-        if ollama_api_key:
-            client_kwargs["headers"] = {
-                "Authorization": f"Bearer {ollama_api_key}"
-            }
-        _llm = ChatOllama(
-            base_url=ollama_base_url,
-            model=llm_model,
-            client_kwargs=client_kwargs,
-            temperature=0,
-        )
-        logger.info("Using Ollama LLM: %s at %s", llm_model, ollama_base_url)
     else:
-        _llm = None
-        logger.warning(
-            "langchain_ollama not installed. LLM review will be skipped. "
-            "Install with: pip install langchain-ollama"
-        )
+        try:
+            _llm = create_llm(model=llm_model, temperature=0, timeout=120)
+            logger.info("Using OpenRouter LLM: %s", llm_model or "default model")
+        except ValueError as e:
+            _llm = None
+            logger.warning(
+                "LLM not available: %s. LLM review will be skipped.", e
+            )
 
     def load_receipt_data(state: EvaluatorState) -> dict:
         """Load words, labels, and place data for the receipt being
