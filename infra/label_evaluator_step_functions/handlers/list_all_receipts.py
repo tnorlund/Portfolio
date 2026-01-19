@@ -133,9 +133,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
 
     # Apply total limit if specified (randomly sample from all places)
-    if limit and limit < len(all_places):
+    filtered_total = len(all_places)
+    if limit and limit < filtered_total:
         all_places = random.sample(all_places, limit)
-        logger.info("Randomly sampled %s places from %s total", limit, total_places)
+        logger.info("Randomly sampled %s places from %s total", limit, filtered_total)
 
     # Collect receipts from the selected places, grouped by merchant
     receipts_by_merchant: dict[str, list[dict]] = {}
