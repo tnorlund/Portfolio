@@ -422,7 +422,7 @@ async def process_place_id_batch(
                 or "rate_limit" in error_str.lower()
                 or "too many concurrent requests" in error_str.lower()
                 or "too many requests" in error_str.lower()
-                or "OllamaRateLimitError" in error_str
+                or "LLMRateLimitError" in error_str
             )
 
             if is_rate_limit:

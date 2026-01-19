@@ -772,7 +772,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                                     },
                                     {
                                         "ErrorEquals": [
-                                            "OllamaRateLimitError"
+                                            "LLMRateLimitError"
                                         ],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,

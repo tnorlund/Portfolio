@@ -98,7 +98,7 @@ def build_llm_retry_config() -> list[dict[str, Any]]:
             backoff_rate=1.0,
         ),
         build_retry_config(
-            ["OllamaRateLimitError"],
+            ["LLMRateLimitError"],
             interval_seconds=30,
             max_attempts=5,
             backoff_rate=2.0,
@@ -256,7 +256,7 @@ def build_pattern_computation_states(
             interval_seconds=5,
         ),
         build_retry_config(
-            ["OllamaRateLimitError"],
+            ["LLMRateLimitError"],
             interval_seconds=30,
             max_attempts=5,
             backoff_rate=2.0,

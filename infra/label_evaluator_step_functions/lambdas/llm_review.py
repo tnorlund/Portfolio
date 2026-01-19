@@ -48,7 +48,7 @@ except ImportError:
 
     _tracing_import_source = "local"
 
-from receipt_agent import OllamaRateLimitError
+from receipt_agent import LLMRateLimitError
 from receipt_agent.agents.label_evaluator import apply_llm_decisions
 
 if TYPE_CHECKING:
@@ -333,15 +333,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 except Exception as e:
                     logger.warning("Could not initialize DynamoDB: %s", e)
 
-            # 5. Setup LLM with automatic Ollama → OpenRouter fallback
+            # 5. Setup LLM (OpenRouter)
             with child_trace("setup_llm", trace_ctx):
                 from receipt_agent.utils import create_production_invoker
 
-                # create_production_invoker() creates:
-                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
-                # - RateLimitedLLMInvoker: jitter + circuit breaker
+                # create_production_invoker() creates an LLM invoker with:
+                # - Jitter + retry logic for rate limits
                 # Environment variables used:
-                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL (or RECEIPT_AGENT_* variants)
                 # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
                 llm_invoker = create_production_invoker(
                     temperature=0.0,
@@ -350,12 +348,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     max_jitter_seconds=max_jitter_seconds,
                 )
 
-                ollama_model = os.environ.get(
-                    "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
+                llm_model = os.environ.get(
+                    "OPENROUTER_MODEL", "openai/gpt-oss-120b"
                 )
                 logger.info(
-                    "LLM initialized with fallback: %s → OpenRouter (max jitter: %ss)",
-                    ollama_model,
+                    "LLM initialized: %s (max jitter: %ss)",
+                    llm_model,
                     max_jitter_seconds,
                 )
 
@@ -647,7 +645,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                 }
                             )
 
-                    except OllamaRateLimitError:
+                    except LLMRateLimitError:
                         logger.warning(
                             "Rate limit hit after %d/%d issues. Saving partial progress.",
                             len(reviewed_issues),
@@ -790,14 +788,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
         except Exception as e:
             # Re-raise rate limit errors for Step Function retry
-            from receipt_agent.utils.llm_factory import AllProvidersFailedError
-
-            if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+            if isinstance(e, LLMRateLimitError):
                 logger.error(
                     "Rate limit error, propagating for Step Function retry: %s",
                     e,
                 )
-                raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+                raise
 
             logger.error("Error in LLM review batch: %s", e, exc_info=True)
 
