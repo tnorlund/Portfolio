@@ -300,6 +300,8 @@ def create_place_id_finder_graph(
     # Create LLM with tools bound (uses OpenRouter)
     llm = create_llm(
         model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
         temperature=0.0,
         timeout=120,
     ).bind_tools(tools)

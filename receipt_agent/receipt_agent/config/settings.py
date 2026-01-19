@@ -7,7 +7,7 @@ Uses pydantic-settings for environment variable management with validation.
 from functools import lru_cache
 from typing import Literal, Optional
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,15 +28,27 @@ class Settings(BaseSettings):
     openrouter_base_url: str = Field(
         default="https://openrouter.ai/api/v1",
         description="Base URL for OpenRouter API (OpenAI-compatible)",
+        validation_alias=AliasChoices(
+            "OPENROUTER_BASE_URL",
+            "RECEIPT_AGENT_OPENROUTER_BASE_URL",
+        ),
     )
     openrouter_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="API key for OpenRouter (required)",
+        validation_alias=AliasChoices(
+            "OPENROUTER_API_KEY",
+            "RECEIPT_AGENT_OPENROUTER_API_KEY",
+        ),
     )
     openrouter_model: str = Field(
         default="openai/gpt-oss-120b",
         description="Model to use on OpenRouter. Default is GPT-OSS-120B paid tier. "
         "See https://openrouter.ai/models for available models.",
+        validation_alias=AliasChoices(
+            "OPENROUTER_MODEL",
+            "RECEIPT_AGENT_OPENROUTER_MODEL",
+        ),
     )
 
     # ==========================================================================

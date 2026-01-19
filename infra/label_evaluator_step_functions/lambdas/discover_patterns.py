@@ -301,7 +301,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             )
             raise
 
-        logger.error("Error discovering patterns: %s", e, exc_info=True)
+        logger.exception("Error discovering patterns: %s", e)
         # Add timing metadata even on error
         discovery_end_time = datetime.now(timezone.utc).isoformat()
         discovery_duration = time.time() - discovery_start

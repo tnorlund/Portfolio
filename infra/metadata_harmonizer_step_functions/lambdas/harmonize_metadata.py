@@ -408,13 +408,15 @@ async def process_place_id_batch(
             llm_calls_failed += 1
 
             # Track error types (matching pattern from label-validation-agent)
-            is_rate_limit = (
+            # Use isinstance for type-based detection of LLMRateLimitError
+            from receipt_agent.utils.llm_factory import LLMRateLimitError
+
+            is_rate_limit = isinstance(e, LLMRateLimitError) or (
                 "429" in error_str
                 or "rate limit" in error_str.lower()
                 or "rate_limit" in error_str.lower()
                 or "too many concurrent requests" in error_str.lower()
                 or "too many requests" in error_str.lower()
-                or "LLMRateLimitError" in error_str
             )
 
             if is_rate_limit:

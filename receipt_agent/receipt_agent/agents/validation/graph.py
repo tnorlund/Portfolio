@@ -97,6 +97,8 @@ def create_validation_graph(
     # Initialize LLM for decision making (uses OpenRouter)
     llm = create_llm(
         model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
         temperature=0.1,  # Low temperature for consistent reasoning
         timeout=120,
     )

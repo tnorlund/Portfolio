@@ -518,8 +518,9 @@ class LLMInvoker:
         last_error = None
 
         for attempt in range(self.max_retries):
+            # Apply jitter outside the lock to avoid blocking other coroutines
+            await self._apply_jitter_async()
             async with self._get_async_lock():
-                await self._apply_jitter_async()
                 self.call_count += 1
 
             try:
