@@ -35,7 +35,6 @@ from .llm_factory import (
     is_retriable_error,
     # Backward compatibility aliases (kept for existing code)
     RateLimitedLLMInvoker,  # alias for LLMInvoker
-    ResilientLLM,  # alias for LLMInvoker
     create_resilient_llm,  # alias for create_llm_invoker
     is_fallback_error,  # alias for is_retriable_error
     is_server_error,  # alias for is_service_error
@@ -75,7 +74,6 @@ __all__ = [
     "is_retriable_error",
     # LLM Factory - Backward Compatibility Aliases
     "RateLimitedLLMInvoker",
-    "ResilientLLM",
     "create_resilient_llm",
     "is_fallback_error",
     "is_server_error",

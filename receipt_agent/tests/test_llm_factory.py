@@ -20,7 +20,6 @@ from receipt_agent.utils.llm_factory import (
     is_timeout_error,
     # Backward compatibility aliases
     RateLimitedLLMInvoker,
-    ResilientLLM,
     create_resilient_llm,
     is_fallback_error,
 )
@@ -53,10 +52,6 @@ class TestBackwardCompatibilityAliases:
     def test_rate_limited_invoker_alias(self):
         """Test RateLimitedLLMInvoker is alias for LLMInvoker."""
         assert RateLimitedLLMInvoker is LLMInvoker
-
-    def test_resilient_llm_alias(self):
-        """Test ResilientLLM is alias for LLMInvoker."""
-        assert ResilientLLM is LLMInvoker
 
     def test_is_fallback_error_alias(self):
         """Test is_fallback_error is alias for is_retriable_error."""
@@ -454,62 +449,6 @@ class TestCreateResilientLLM:
             temperature=0.5,
             timeout=60,
         )
-
-
-class TestResilientLLMBackwardCompat:
-    """Tests for ResilientLLM backward compatibility class."""
-
-    def test_primary_success(self):
-        """Test that successful primary call works."""
-        mock_llm = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = "response"
-        mock_llm.invoke.return_value = mock_response
-
-        resilient = ResilientLLM(primary_llm=mock_llm)
-        response = resilient.invoke("test message")
-
-        assert response == mock_response
-        assert resilient.primary_calls == 1
-        assert resilient.primary_successes == 1
-
-    def test_fallback_llm_ignored(self):
-        """Test that fallback_llm parameter is accepted but ignored."""
-        mock_primary = MagicMock()
-        mock_fallback = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = "response"
-        mock_primary.invoke.return_value = mock_response
-
-        # Should not raise even though fallback is provided
-        resilient = ResilientLLM(
-            primary_llm=mock_primary,
-            fallback_llm=mock_fallback,
-        )
-        response = resilient.invoke("test")
-
-        assert response == mock_response
-        mock_fallback.invoke.assert_not_called()
-
-    def test_stats_backward_compat(self):
-        """Test that get_stats returns backward-compatible keys."""
-        mock_llm = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = "response"
-        mock_llm.invoke.return_value = mock_response
-
-        resilient = ResilientLLM(primary_llm=mock_llm)
-        resilient.invoke("test")
-
-        stats = resilient.get_stats()
-        # Check backward-compatible keys exist
-        assert "primary_calls" in stats
-        assert "primary_successes" in stats
-        assert "fallback_calls" in stats
-        assert "fallback_successes" in stats
-        assert "both_failed" in stats
-        assert "fallback_rate" in stats
-        assert "overall_success_rate" in stats
 
 
 class TestEmptyResponseError:
