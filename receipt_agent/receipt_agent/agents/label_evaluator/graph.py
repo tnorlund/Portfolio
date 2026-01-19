@@ -101,8 +101,6 @@ def create_label_evaluator_graph(
     dynamo_client: Any,
     llm_model: str | None = None,
     llm: Any = None,
-    ollama_base_url: str | None = None,  # Deprecated, ignored
-    ollama_api_key: str | None = None,  # Deprecated, ignored
     chroma_client: Any = None,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
@@ -115,8 +113,6 @@ def create_label_evaluator_graph(
         llm_model: Model to use for LLM review (uses OPENROUTER_MODEL env var by default)
         llm: Optional pre-configured LLM instance. If provided, ignores other
             LLM settings.
-        ollama_base_url: Deprecated, ignored. Use OPENROUTER_BASE_URL env var.
-        ollama_api_key: Deprecated, ignored. Use OPENROUTER_API_KEY env var.
         chroma_client: Optional ChromaDB client for similar word lookup.
             Words' existing embeddings are retrieved by ID, so no embed_fn is
             needed.
@@ -128,16 +124,6 @@ def create_label_evaluator_graph(
     Returns:
         Compiled LangGraph workflow
     """
-    # Warn about deprecated parameters
-    if ollama_base_url is not None or ollama_api_key is not None:
-        import warnings
-        warnings.warn(
-            "ollama_base_url and ollama_api_key are deprecated. "
-            "Use OPENROUTER_BASE_URL and OPENROUTER_API_KEY env vars instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
     # Store clients and configuration in closure for node access
     _dynamo_client = dynamo_client
     _chroma_client = chroma_client
