@@ -53,7 +53,7 @@ from .word_context import get_same_line_words
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from receipt_agent.utils.ollama_rate_limit import RateLimitedLLMInvoker
+    from receipt_agent.utils.llm_factory import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
 

@@ -421,20 +421,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         except Exception as e:
             # Re-raise rate limit errors for Step Function retry
-            from receipt_agent.utils.llm_factory import AllProvidersFailedError
-            from receipt_agent.utils.ollama_rate_limit import (
-                OllamaRateLimitError,
-            )
+            from receipt_agent.utils.llm_factory import LLMRateLimitError
 
-            if isinstance(e, AllProvidersFailedError):
-                logger.error(
-                    "All providers failed, propagating for Step Function retry: %s",
-                    e,
-                )
-                flush_langsmith_traces()
-                raise
-
-            if isinstance(e, OllamaRateLimitError):
+            if isinstance(e, LLMRateLimitError):
                 logger.error(
                     "Rate limit error, propagating for Step Function retry: %s",
                     e,

@@ -20,7 +20,7 @@ from receipt_agent.state.models import (
     ValidationStatus,
     VerificationStep,
 )
-from receipt_agent.utils.ollama_rate_limit import (
+from receipt_agent.utils.llm_factory import (
     OllamaCircuitBreaker,
     OllamaRateLimitError,
     RateLimitedLLMInvoker,
