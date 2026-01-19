@@ -650,7 +650,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         # ============================================================
         # Container Lambda: discover_patterns (LLM)
-        # Uses httpx for Ollama API calls - requires container for dependencies
+        # Uses httpx for OpenRouter API calls - requires container for dependencies
         # ============================================================
         discover_patterns_config = {
             "role_arn": lambda_role.arn,

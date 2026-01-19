@@ -226,7 +226,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
                 logger.info("Built %s visual lines", len(visual_lines))
 
-            # 3. Create LLM instance with automatic Ollama → OpenRouter fallback
+            # 3. Create LLM instance via OpenRouter
             with child_trace(
                 "llm_metadata_evaluation",
                 trace_ctx,
