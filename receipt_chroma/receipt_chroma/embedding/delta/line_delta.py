@@ -18,6 +18,7 @@ from receipt_chroma.embedding.formatting.line_format import (
 from receipt_chroma.embedding.metadata.line_metadata import (
     create_row_metadata,
     enrich_row_metadata_with_anchors,
+    enrich_row_metadata_with_labels,
 )
 
 
@@ -150,6 +151,9 @@ def save_line_embeddings_as_delta(
         row_line_ids = {line.line_id for line in target_row}
         row_words = [w for w in words if w.line_id in row_line_ids]
 
+        # Get labels for this receipt
+        labels = receipt_details.get("labels", [])
+
         if not place.merchant_name:
             raise ValueError(
                 f"No merchant name available for image_id={image_id}, "
@@ -166,6 +170,11 @@ def save_line_embeddings_as_delta(
 
         # Anchor-only enrichment: attach anchor fields from all words in row
         row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
+
+        # Label enrichment: aggregate VALID labels from all words in row
+        row_metadata = enrich_row_metadata_with_labels(
+            row_metadata, row_words, labels
+        )
 
         # Document is the formatted visual row text
         document = format_visual_row(target_row)

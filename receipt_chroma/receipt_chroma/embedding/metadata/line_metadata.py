@@ -18,7 +18,8 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
     normalize_url,
 )
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
 class LineMetadata(TypedDict, total=False):
@@ -261,3 +262,44 @@ def enrich_row_metadata_with_anchors(
     """
     # Reuse the existing enrichment logic
     return enrich_line_metadata_with_anchors(metadata, list(row_words))
+
+
+def enrich_row_metadata_with_labels(
+    metadata: LineMetadata,
+    row_words: Sequence[ReceiptWord],
+    all_labels: Sequence[ReceiptWordLabel],
+) -> LineMetadata:
+    """Enrich row metadata with aggregated label fields from all words in the row.
+
+    Aggregates VALID labels from all words in the visual row into boolean
+    metadata fields. For example, if any word in the row has a VALID
+    PRODUCT_NAME label, the row metadata will have `label_PRODUCT_NAME: True`.
+
+    This enables efficient ChromaDB metadata filtering for RAG queries:
+        collection.query(where={"label_PRODUCT_NAME": True})
+
+    Args:
+        metadata: Base metadata dictionary to enrich
+        row_words: List of ReceiptWord entities for all lines in the row
+        all_labels: List of all ReceiptWordLabel entities for the receipt
+
+    Returns:
+        Enriched metadata dictionary with label_* boolean fields
+    """
+    # Build set of (line_id, word_id) for words in this row
+    row_word_keys = {(w.line_id, w.word_id) for w in row_words}
+
+    # Filter labels to only those belonging to words in this row
+    row_labels = [
+        lbl for lbl in all_labels
+        if (lbl.line_id, lbl.word_id) in row_word_keys
+    ]
+
+    # Aggregate VALID labels into boolean fields
+    # Only VALID labels are included (not PENDING or INVALID)
+    for lbl in row_labels:
+        if lbl.validation_status == ValidationStatus.VALID.value:
+            field_name = f"label_{lbl.label}"
+            metadata[field_name] = True  # type: ignore[literal-required]
+
+    return metadata  # type: ignore[return-value]
