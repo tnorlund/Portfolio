@@ -64,7 +64,9 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
-        from langsmith.run_helpers import traceable  # pylint: disable=import-outside-toplevel
+        from langsmith.run_helpers import (
+            traceable,
+        )  # pylint: disable=import-outside-toplevel
 
         return traceable
     except ImportError:
@@ -86,11 +88,15 @@ def _get_context_thread_pool_executor():
     trace nesting. Falls back to ThreadPoolExecutor if langsmith not installed.
     """
     try:
-        from langsmith.utils import ContextThreadPoolExecutor  # pylint: disable=import-outside-toplevel
+        from langsmith.utils import (
+            ContextThreadPoolExecutor,
+        )  # pylint: disable=import-outside-toplevel
 
         return ContextThreadPoolExecutor
     except ImportError:
-        from concurrent.futures import ThreadPoolExecutor  # pylint: disable=import-outside-toplevel
+        from concurrent.futures import (
+            ThreadPoolExecutor,
+        )  # pylint: disable=import-outside-toplevel
 
         return ThreadPoolExecutor
 
@@ -179,7 +185,9 @@ def _embed_lines(
         formatted_texts = [
             format_line_context_embedding_input(ln, lines) for ln in lines
         ]
-        return embed_texts(client=client, texts=formatted_texts, model=embedding_model)
+        return embed_texts(
+            client=client, texts=formatted_texts, model=embedding_model
+        )
 
     return _traced_embed(openai_client, receipt_lines, model)
 
@@ -204,7 +212,9 @@ def _embed_words(
             format_word_context_embedding_input(w, words, context_size=2)
             for w in words
         ]
-        return embed_texts(client=client, texts=formatted_texts, model=embedding_model)
+        return embed_texts(
+            client=client, texts=formatted_texts, model=embedding_model
+        )
 
     return _traced_embed(openai_client, receipt_words, model)
 
@@ -470,7 +480,12 @@ def _build_payloads_traced(
     word_embeddings_list: list[list[float]],
     word_labels: list[ReceiptWordLabel] | None,
     merchant_name: str | None,
-) -> tuple[dict[str, Any], dict[str, Any], dict[int, list[float]], dict[tuple[int, int], list[float]]]:
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[int, list[float]],
+    dict[tuple[int, int], list[float]],
+]:
     """Build embedding payloads with tracing."""
     traceable = _get_traceable()
 
@@ -483,10 +498,17 @@ def _build_payloads_traced(
             "num_words": len(receipt_words),
         },
     )
-    def _traced_build() -> tuple[dict[str, Any], dict[str, Any], dict[int, list[float]], dict[tuple[int, int], list[float]]]:
+    def _traced_build() -> tuple[
+        dict[str, Any],
+        dict[str, Any],
+        dict[int, list[float]],
+        dict[tuple[int, int], list[float]],
+    ]:
         line_records = [
             LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+            for ln, emb in zip(
+                receipt_lines, line_embeddings_list, strict=True
+            )
         ]
         line_payload = build_line_payload(
             line_records,
@@ -497,7 +519,9 @@ def _build_payloads_traced(
 
         line_embedding_cache: dict[int, list[float]] = {
             ln.line_id: emb
-            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+            for ln, emb in zip(
+                receipt_lines, line_embeddings_list, strict=True
+            )
         }
 
         word_records = [
@@ -516,7 +540,12 @@ def _build_payloads_traced(
             for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
         }
 
-        return line_payload, word_payload, line_embedding_cache, word_embedding_cache
+        return (
+            line_payload,
+            word_payload,
+            line_embedding_cache,
+            word_embedding_cache,
+        )
 
     return _traced_build()
 
@@ -651,7 +680,9 @@ def _build_lines_payload_traced(
     def _traced_build() -> tuple[dict[str, Any], dict[int, list[float]]]:
         line_records = [
             LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+            for ln, emb in zip(
+                receipt_lines, line_embeddings_list, strict=True
+            )
         ]
         line_payload = build_line_payload(
             line_records,
@@ -661,7 +692,9 @@ def _build_lines_payload_traced(
         )
         line_embedding_cache: dict[int, list[float]] = {
             ln.line_id: emb
-            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+            for ln, emb in zip(
+                receipt_lines, line_embeddings_list, strict=True
+            )
         }
         return line_payload, line_embedding_cache
 
@@ -683,7 +716,9 @@ def _build_words_payload_traced(
         tags=["embedding", "payload", "words"],
         metadata={"num_words": len(receipt_words)},
     )
-    def _traced_build() -> tuple[dict[str, Any], dict[tuple[int, int], list[float]]]:
+    def _traced_build() -> (
+        tuple[dict[str, Any], dict[tuple[int, int], list[float]]]
+    ):
         word_records = [
             WordEmbeddingRecord(word=w, embedding=emb)
             for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
@@ -791,8 +826,13 @@ def _upload_lines_delta_traced(
                 s3_client=s3_client,
             )
             if lines_upload.get("status") != "uploaded":
-                raise RuntimeError(f"Failed to upload lines delta: {lines_upload}")
-            logger.info("Uploaded lines delta to S3: %s", lines_upload.get("object_key"))
+                raise RuntimeError(
+                    f"Failed to upload lines delta: {lines_upload}"
+                )
+            logger.info(
+                "Uploaded lines delta to S3: %s",
+                lines_upload.get("object_key"),
+            )
             return lines_prefix
         finally:
             shutil.rmtree(delta_lines_dir, ignore_errors=True)
@@ -838,8 +878,13 @@ def _upload_words_delta_traced(
                 s3_client=s3_client,
             )
             if words_upload.get("status") != "uploaded":
-                raise RuntimeError(f"Failed to upload words delta: {words_upload}")
-            logger.info("Uploaded words delta to S3: %s", words_upload.get("object_key"))
+                raise RuntimeError(
+                    f"Failed to upload words delta: {words_upload}"
+                )
+            logger.info(
+                "Uploaded words delta to S3: %s",
+                words_upload.get("object_key"),
+            )
             return words_prefix
         finally:
             shutil.rmtree(delta_words_dir, ignore_errors=True)
@@ -980,15 +1025,18 @@ def create_embeddings_and_compaction_run(
     logger.info(
         "Starting parallel download + embedding (4 concurrent operations)"
     )
-    local_lines_dir, local_words_dir, line_embeddings_list, word_embeddings_list = (
-        _download_and_embed_parallel(
-            receipt_lines=receipt_lines,
-            receipt_words=receipt_words,
-            chromadb_bucket=config.chromadb_bucket,
-            s3_client=s3_client,
-            openai_client=openai_client,
-            model=model,
-        )
+    (
+        local_lines_dir,
+        local_words_dir,
+        line_embeddings_list,
+        word_embeddings_list,
+    ) = _download_and_embed_parallel(
+        receipt_lines=receipt_lines,
+        receipt_words=receipt_words,
+        chromadb_bucket=config.chromadb_bucket,
+        s3_client=s3_client,
+        openai_client=openai_client,
+        model=model,
     )
     logger.info(
         "Parallel operations complete: lines_dir=%s, words_dir=%s",
@@ -998,15 +1046,18 @@ def create_embeddings_and_compaction_run(
 
     try:
         # Step 2: Build payloads from embeddings (TRACED)
-        line_payload, word_payload, line_embedding_cache, word_embedding_cache = (
-            _build_payloads_traced(
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-                line_embeddings_list=line_embeddings_list,
-                word_embeddings_list=word_embeddings_list,
-                word_labels=config.receipt_word_labels,
-                merchant_name=merchant_name,
-            )
+        (
+            line_payload,
+            word_payload,
+            line_embedding_cache,
+            word_embedding_cache,
+        ) = _build_payloads_traced(
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
+            line_embeddings_list=line_embeddings_list,
+            word_embeddings_list=word_embeddings_list,
+            word_labels=config.receipt_word_labels,
+            merchant_name=merchant_name,
         )
 
         # Step 3: Create local ChromaClients and upsert (TRACED)
