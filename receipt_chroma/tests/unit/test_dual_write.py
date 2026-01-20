@@ -4,6 +4,7 @@ Tests the BulkSyncResult dataclass and sync_collection_to_cloud function
 using mocked cloud clients.
 """
 
+import os
 import tempfile
 import time
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,15 @@ from receipt_chroma.compaction.dual_write import (
     _upload_batch_with_retry,
     sync_collection_to_cloud,
 )
+
+# Environment variables to clear during tests to prevent cloud auth
+CHROMA_ENV_VARS = [
+    "CHROMA_API_KEY",
+    "CHROMA_CLOUD_API_KEY",
+    "CHROMA_CLOUD_TENANT",
+    "CHROMA_CLOUD_DATABASE",
+    "CHROMA_CLOUD_ENABLED",
+]
 
 # =============================================================================
 # BulkSyncResult Tests
@@ -194,49 +204,43 @@ class TestSyncCollectionToCloud:
         assert result.cloud_count == 0
         assert result.error is None
 
-    def test_sync_single_batch(
-        self, temp_chromadb_dir, cloud_config, mock_logger
-    ):
+    def test_sync_single_batch(self, cloud_config, mock_logger):
         """Single batch uploads correctly."""
-        with ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            metadata_only=True,
-        ) as local_client:
-            # Add test data
-            local_client.upsert(
-                collection_name="test_collection",
-                ids=["id1", "id2", "id3"],
-                embeddings=[[0.1] * 384, [0.2] * 384, [0.3] * 384],
-                metadatas=[{"text": "a"}, {"text": "b"}, {"text": "c"}],
+        # Create mock local client and collection
+        mock_local_client = MagicMock()
+        mock_local_coll = MagicMock()
+        mock_local_coll.count.return_value = 3
+        mock_local_coll.get.return_value = {
+            "ids": ["id1", "id2", "id3"],
+            "embeddings": [[0.1] * 384, [0.2] * 384, [0.3] * 384],
+            "metadatas": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            "documents": None,
+        }
+        mock_local_client.get_collection.return_value = mock_local_coll
+
+        # Mock cloud client
+        with patch(
+            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+        ) as mock_create:
+            mock_cloud_client = MagicMock()
+            mock_cloud_client.__enter__ = MagicMock(
+                return_value=mock_cloud_client
             )
+            mock_cloud_client.__exit__ = MagicMock(return_value=False)
 
-            # Mock the cloud client creation (also mock CloudClient as safety net)
-            with (
-                patch(
-                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-                ) as mock_create,
-                patch("chromadb.CloudClient"),
-            ):
-                mock_cloud_client = MagicMock()
-                mock_cloud_client.__enter__ = MagicMock(
-                    return_value=mock_cloud_client
-                )
-                mock_cloud_client.__exit__ = MagicMock(return_value=False)
+            mock_cloud_coll = MagicMock()
+            mock_cloud_coll.count.return_value = 3
+            mock_cloud_client.get_collection.return_value = mock_cloud_coll
 
-                mock_cloud_coll = MagicMock()
-                mock_cloud_coll.count.return_value = 3
-                mock_cloud_client.get_collection.return_value = mock_cloud_coll
+            mock_create.return_value = mock_cloud_client
 
-                mock_create.return_value = mock_cloud_client
-
-                result = sync_collection_to_cloud(
-                    local_client=local_client,
-                    collection_name="test_collection",
-                    cloud_config=cloud_config,
-                    batch_size=5000,
-                    logger=mock_logger,
-                )
+            result = sync_collection_to_cloud(
+                local_client=mock_local_client,
+                collection_name="test_collection",
+                cloud_config=cloud_config,
+                batch_size=5000,
+                logger=mock_logger,
+            )
 
         assert result.success is True
         assert result.total_items == 3
@@ -244,53 +248,69 @@ class TestSyncCollectionToCloud:
         assert result.failed_batches == 0
         assert result.cloud_count == 3
 
-    def test_sync_multiple_batches_parallel(
-        self, temp_chromadb_dir, cloud_config, mock_logger
-    ):
+    def test_sync_multiple_batches_parallel(self, cloud_config, mock_logger):
         """Multiple batches upload in parallel."""
-        with ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            metadata_only=True,
-        ) as local_client:
-            # Add enough data for multiple batches (batch_size=2 for testing)
-            ids = [f"id{i}" for i in range(6)]
-            embeddings = [[0.1 * i] * 384 for i in range(6)]
-            metadatas = [{"idx": i} for i in range(6)]
+        # Create mock local client and collection
+        mock_local_client = MagicMock()
+        mock_local_coll = MagicMock()
+        mock_local_coll.count.return_value = 6
 
-            local_client.upsert(
-                collection_name="test_collection",
-                ids=ids,
-                embeddings=embeddings,
-                metadatas=metadatas,
+        # Simulate paginated reads with batch_size=2
+        # First call: offset=0, limit=2 -> ids 0,1
+        # Second call: offset=2, limit=2 -> ids 2,3
+        # Third call: offset=4, limit=2 -> ids 4,5
+        # Fourth call: offset=6, limit=2 -> empty
+        mock_local_coll.get.side_effect = [
+            {
+                "ids": ["id0", "id1"],
+                "embeddings": [[0.0] * 384, [0.1] * 384],
+                "metadatas": [{"idx": 0}, {"idx": 1}],
+                "documents": None,
+            },
+            {
+                "ids": ["id2", "id3"],
+                "embeddings": [[0.2] * 384, [0.3] * 384],
+                "metadatas": [{"idx": 2}, {"idx": 3}],
+                "documents": None,
+            },
+            {
+                "ids": ["id4", "id5"],
+                "embeddings": [[0.4] * 384, [0.5] * 384],
+                "metadatas": [{"idx": 4}, {"idx": 5}],
+                "documents": None,
+            },
+            {
+                "ids": [],
+                "embeddings": [],
+                "metadatas": [],
+                "documents": None,
+            },
+        ]
+        mock_local_client.get_collection.return_value = mock_local_coll
+
+        with patch(
+            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+        ) as mock_create:
+            mock_cloud_client = MagicMock()
+            mock_cloud_client.__enter__ = MagicMock(
+                return_value=mock_cloud_client
             )
+            mock_cloud_client.__exit__ = MagicMock(return_value=False)
 
-            with (
-                patch(
-                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-                ) as mock_create,
-                patch("chromadb.CloudClient"),
-            ):
-                mock_cloud_client = MagicMock()
-                mock_cloud_client.__enter__ = MagicMock(
-                    return_value=mock_cloud_client
-                )
-                mock_cloud_client.__exit__ = MagicMock(return_value=False)
+            mock_cloud_coll = MagicMock()
+            mock_cloud_coll.count.return_value = 6
+            mock_cloud_client.get_collection.return_value = mock_cloud_coll
 
-                mock_cloud_coll = MagicMock()
-                mock_cloud_coll.count.return_value = 6
-                mock_cloud_client.get_collection.return_value = mock_cloud_coll
+            mock_create.return_value = mock_cloud_client
 
-                mock_create.return_value = mock_cloud_client
-
-                result = sync_collection_to_cloud(
-                    local_client=local_client,
-                    collection_name="test_collection",
-                    cloud_config=cloud_config,
-                    batch_size=2,  # Small batch size to create multiple batches
-                    max_workers=2,
-                    logger=mock_logger,
-                )
+            result = sync_collection_to_cloud(
+                local_client=mock_local_client,
+                collection_name="test_collection",
+                cloud_config=cloud_config,
+                batch_size=2,  # Small batch size to create multiple batches
+                max_workers=2,
+                logger=mock_logger,
+            )
 
         assert result.success is True
         assert result.total_items == 6
@@ -300,61 +320,69 @@ class TestSyncCollectionToCloud:
         assert mock_cloud_coll.upsert.call_count == 3
 
     def test_sync_partial_failure_non_blocking(
-        self, temp_chromadb_dir, cloud_config, mock_logger
+        self, cloud_config, mock_logger
     ):
         """Some batch failures don't block others."""
-        with ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            metadata_only=True,
-        ) as local_client:
-            # Add data for 2 batches
-            ids = [f"id{i}" for i in range(4)]
-            embeddings = [[0.1 * i] * 384 for i in range(4)]
-            metadatas = [{"idx": i} for i in range(4)]
+        # Create mock local client and collection
+        mock_local_client = MagicMock()
+        mock_local_coll = MagicMock()
+        mock_local_coll.count.return_value = 4
 
-            local_client.upsert(
-                collection_name="test_collection",
-                ids=ids,
-                embeddings=embeddings,
-                metadatas=metadatas,
+        # Simulate paginated reads with batch_size=2
+        mock_local_coll.get.side_effect = [
+            {
+                "ids": ["id0", "id1"],
+                "embeddings": [[0.0] * 384, [0.1] * 384],
+                "metadatas": [{"idx": 0}, {"idx": 1}],
+                "documents": None,
+            },
+            {
+                "ids": ["id2", "id3"],
+                "embeddings": [[0.2] * 384, [0.3] * 384],
+                "metadatas": [{"idx": 2}, {"idx": 3}],
+                "documents": None,
+            },
+            {
+                "ids": [],
+                "embeddings": [],
+                "metadatas": [],
+                "documents": None,
+            },
+        ]
+        mock_local_client.get_collection.return_value = mock_local_coll
+
+        with patch(
+            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+        ) as mock_create:
+            mock_cloud_client = MagicMock()
+            mock_cloud_client.__enter__ = MagicMock(
+                return_value=mock_cloud_client
             )
+            mock_cloud_client.__exit__ = MagicMock(return_value=False)
 
-            with (
-                patch(
-                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-                ) as mock_create,
-                patch("chromadb.CloudClient"),
-            ):
-                mock_cloud_client = MagicMock()
-                mock_cloud_client.__enter__ = MagicMock(
-                    return_value=mock_cloud_client
+            mock_cloud_coll = MagicMock()
+            # First batch succeeds, second fails
+            mock_cloud_coll.upsert.side_effect = [
+                None,  # Batch 1 succeeds
+                Exception("Network error"),  # Batch 2 fails
+                Exception("Network error"),  # Retry 1
+                Exception("Network error"),  # Retry 2
+            ]
+            mock_cloud_coll.count.return_value = 2
+            mock_cloud_client.get_collection.return_value = mock_cloud_coll
+
+            mock_create.return_value = mock_cloud_client
+
+            with patch("receipt_chroma.compaction.dual_write.time.sleep"):
+                result = sync_collection_to_cloud(
+                    local_client=mock_local_client,
+                    collection_name="test_collection",
+                    cloud_config=cloud_config,
+                    batch_size=2,
+                    max_workers=1,  # Sequential for predictable ordering
+                    max_retries=3,
+                    logger=mock_logger,
                 )
-                mock_cloud_client.__exit__ = MagicMock(return_value=False)
-
-                mock_cloud_coll = MagicMock()
-                # First batch succeeds, second fails
-                mock_cloud_coll.upsert.side_effect = [
-                    None,  # Batch 1 succeeds
-                    Exception("Network error"),  # Batch 2 fails
-                    Exception("Network error"),  # Retry 1
-                    Exception("Network error"),  # Retry 2
-                ]
-                mock_cloud_coll.count.return_value = 2
-                mock_cloud_client.get_collection.return_value = mock_cloud_coll
-
-                mock_create.return_value = mock_cloud_client
-
-                with patch("receipt_chroma.compaction.dual_write.time.sleep"):
-                    result = sync_collection_to_cloud(
-                        local_client=local_client,
-                        collection_name="test_collection",
-                        cloud_config=cloud_config,
-                        batch_size=2,
-                        max_workers=1,  # Sequential for predictable ordering
-                        max_retries=3,
-                        logger=mock_logger,
-                    )
 
         # Partial failure - not full success
         assert result.success is False
