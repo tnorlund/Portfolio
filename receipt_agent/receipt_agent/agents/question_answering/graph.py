@@ -43,6 +43,12 @@ SYSTEM_PROMPT = """You are a receipt analysis assistant. Your job is to answer q
   - Labels include: TAX, SUBTOTAL, GRAND_TOTAL, LINE_TOTAL, UNIT_PRICE, MERCHANT_NAME, etc.
 
 ### Detail Tools
+- `get_full_receipt`: Get complete receipt with formatted text and all labeled words
+  - Uses efficient GSI4 query to get all data in one call
+  - Returns receipt text as visual lines with word labels (e.g., "MILK[PRODUCT_NAME] 5.99[LINE_TOTAL]")
+  - Includes all labeled amounts (TAX, SUBTOTAL, GRAND_TOTAL, etc.)
+  - **Use this first** when you need to understand a receipt's contents
+
 - `get_receipt_with_price`: Get a receipt and find the price for a specific line item
   - Use this after finding matching lines to get the actual price/amount
 
@@ -58,28 +64,15 @@ SYSTEM_PROMPT = """You are a receipt analysis assistant. Your job is to answer q
 
 ## Strategy
 
-1. **Understand the question**: What is being asked?
-   - Spending amount? → Need to find and sum prices
-   - List of receipts? → Need to find matching receipts
-   - Count? → Need to count unique receipts
+1. **Search**: Use `search_lines_by_text` to find matching receipts
+2. **Get details**: Use `get_full_receipt` to see receipt with labeled amounts
+3. **Submit**: ALWAYS call `submit_answer` at the end
 
-2. **Search for relevant data**:
-   - For products: Use `search_lines_by_text` with the product name
-   - For labeled amounts: Use `search_words_by_label` with the label
+## CRITICAL: You MUST call submit_answer
 
-3. **Get details and prices**:
-   - For each matching receipt, use `get_receipt_with_price` to find the actual amount
-   - For tax/totals, use `get_labeled_amounts`
-
-4. **Calculate and answer**:
-   - Sum amounts if asking "how much"
-   - Count receipts if asking "how many"
-   - List merchants/items if asking "show me"
-
-5. **Submit answer**:
-   - ALWAYS call `submit_answer` with your final answer
-   - Be specific about amounts and counts
-   - Include evidence
+- Every response MUST end with calling `submit_answer`
+- If you can't find data, call submit_answer("I couldn't find that information")
+- Never end without calling submit_answer
 
 ## Example Questions and Approaches
 
@@ -158,7 +151,30 @@ def create_qa_graph(
     def agent_node(state: QuestionAnsweringState) -> dict:
         """Call the LLM to decide next action."""
         messages = state.messages
-        response = llm.invoke(messages)
+
+        # Retry up to 3 times if we get an empty response
+        max_retries = 3
+        for attempt in range(max_retries):
+            response = llm.invoke(messages)
+
+            # Check if response is valid (has content or tool_calls)
+            has_content = bool(getattr(response, "content", None))
+            has_tool_calls = bool(getattr(response, "tool_calls", None))
+
+            if has_content or has_tool_calls:
+                break
+
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Empty response from LLM (attempt %d/%d), retrying...",
+                    attempt + 1,
+                    max_retries,
+                )
+            else:
+                logger.warning(
+                    "Empty response from LLM after %d attempts",
+                    max_retries,
+                )
 
         # Log tool calls for debugging
         if hasattr(response, "tool_calls") and response.tool_calls:
@@ -172,19 +188,67 @@ def create_qa_graph(
     # Define tool node
     tool_node = ToolNode(tools)
 
+    # Track iterations to prevent infinite loops (stored in state_holder for reset)
+    state_holder["iteration_count"] = 0
+    state_holder["max_iterations"] = 15
+
     # Define routing function
     def should_continue(state: QuestionAnsweringState) -> str:
         """Check if we should continue or end."""
+        state_holder["iteration_count"] += 1
+        logger.debug(
+            "should_continue: iteration=%d, messages=%d",
+            state_holder["iteration_count"],
+            len(state.messages) if state.messages else 0,
+        )
+
         # Check if answer was submitted
         if state_holder.get("answer") is not None:
+            logger.debug("Answer already submitted, ending")
             return "end"
 
         # Check last message for tool calls
         if state.messages:
             last_message = state.messages[-1]
+            logger.debug(
+                "Last message type: %s, has tool_calls: %s, has content: %s",
+                type(last_message).__name__,
+                bool(getattr(last_message, "tool_calls", None)),
+                bool(getattr(last_message, "content", None)),
+            )
+
             if isinstance(last_message, AIMessage):
                 if last_message.tool_calls:
-                    return "tools"
+                    # Check for submit_answer in tool calls
+                    for tc in last_message.tool_calls:
+                        if tc.get("name") == "submit_answer":
+                            logger.debug("Found submit_answer in tool calls")
+                            return "tools"
+                    # Other tool calls - continue if under limit
+                    if state_holder["iteration_count"] < state_holder["max_iterations"]:
+                        return "tools"
+                    else:
+                        logger.warning(
+                            "Max iterations reached (%d), ending without answer",
+                            state_holder["max_iterations"],
+                        )
+                        return "end"
+                else:
+                    # No tool calls - LLM responded with text
+                    # Extract answer from content if present
+                    if last_message.content:
+                        logger.info(
+                            "Extracting answer from LLM response (no submit_answer call): %s",
+                            str(last_message.content)[:100],
+                        )
+                        state_holder["answer"] = {
+                            "answer": str(last_message.content),
+                            "total_amount": None,
+                            "receipt_count": 0,
+                            "evidence": [],
+                        }
+                    else:
+                        logger.warning("AIMessage has no content and no tool_calls")
 
         return "end"
 
@@ -241,6 +305,7 @@ async def answer_question(
     # Reset state
     state_holder["context"] = QuestionContext(question=question)
     state_holder["answer"] = None
+    state_holder["iteration_count"] = 0
 
     # Create initial state
     initial_state = QuestionAnsweringState(

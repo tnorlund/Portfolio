@@ -429,6 +429,169 @@ def create_qa_tools(
             return {"error": str(e)}
 
     @tool
+    def get_full_receipt(
+        image_id: str,
+        receipt_id: int,
+    ) -> dict:
+        """Get full receipt details with formatted text and labeled amounts.
+
+        Uses efficient GSI4 query to get all receipt data in one call.
+        Returns receipt text formatted as visual lines with word labels.
+
+        Args:
+            image_id: The image ID
+            receipt_id: The receipt ID
+
+        Returns:
+            Dict with:
+            - merchant: Merchant name
+            - formatted_text: Receipt text as visual lines
+            - labeled_words: Words grouped by label type
+            - amounts: All currency amounts with labels
+        """
+        try:
+            # Use GSI4 query for efficient single-call retrieval
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+
+            # Get merchant info
+            merchant = "Unknown"
+            if details.place:
+                merchant = details.place.merchant_name
+
+            # Build label lookup for words
+            labels_by_word: dict[tuple[int, int], list] = {}
+            for label in details.labels:
+                key = (label.line_id, label.word_id)
+                if key not in labels_by_word:
+                    labels_by_word[key] = []
+                labels_by_word[key].append(label)
+
+            # Get valid label for each word (most recent VALID)
+            def get_valid_label(line_id: int, word_id: int) -> Optional[str]:
+                history = labels_by_word.get((line_id, word_id), [])
+                valid = [lbl for lbl in history if lbl.validation_status == "VALID"]
+                if valid:
+                    valid.sort(
+                        key=lambda lbl: str(lbl.timestamp_added), reverse=True
+                    )
+                    return valid[0].label
+                return None
+
+            # Format words with labels into visual lines
+            # Sort words by y-coordinate (top to bottom)
+            word_contexts = []
+            for word in details.words:
+                centroid = word.calculate_centroid()
+                label = get_valid_label(word.line_id, word.word_id)
+                word_contexts.append({
+                    "word": word,
+                    "label": label,
+                    "y": centroid[1],
+                    "x": centroid[0],
+                    "text": word.text,
+                })
+
+            # Sort by y descending (top first)
+            sorted_words = sorted(word_contexts, key=lambda w: -w["y"])
+
+            # Group into visual lines using y-proximity
+            if not sorted_words:
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "merchant": merchant,
+                    "formatted_text": "",
+                    "labeled_words": {},
+                    "amounts": [],
+                }
+
+            # Calculate y-tolerance from median word height
+            heights = [
+                w["word"].bounding_box.get("height", 0.02)
+                for w in sorted_words
+                if w["word"].bounding_box.get("height")
+            ]
+            y_tolerance = max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
+
+            visual_lines = []
+            current_line = [sorted_words[0]]
+            current_y = sorted_words[0]["y"]
+
+            for w in sorted_words[1:]:
+                if abs(w["y"] - current_y) <= y_tolerance:
+                    current_line.append(w)
+                    current_y = sum(c["y"] for c in current_line) / len(current_line)
+                else:
+                    # Sort left-to-right and save
+                    current_line.sort(key=lambda c: c["x"])
+                    visual_lines.append(current_line)
+                    current_line = [w]
+                    current_y = w["y"]
+
+            # Don't forget last line
+            current_line.sort(key=lambda c: c["x"])
+            visual_lines.append(current_line)
+
+            # Format visual lines as text with labels
+            formatted_lines = []
+            for line in visual_lines:
+                line_parts = []
+                for w in line:
+                    if w["label"]:
+                        line_parts.append(f"{w['text']}[{w['label']}]")
+                    else:
+                        line_parts.append(w["text"])
+                formatted_lines.append(" ".join(line_parts))
+
+            formatted_text = "\n".join(formatted_lines)
+
+            # Group labeled words by label type
+            labeled_words: dict[str, list[dict]] = {}
+            for w in sorted_words:
+                if w["label"]:
+                    if w["label"] not in labeled_words:
+                        labeled_words[w["label"]] = []
+                    labeled_words[w["label"]].append({
+                        "text": w["text"],
+                        "line_id": w["word"].line_id,
+                        "word_id": w["word"].word_id,
+                    })
+
+            # Extract all currency amounts
+            amounts = []
+            currency_labels = ["TAX", "SUBTOTAL", "GRAND_TOTAL", "LINE_TOTAL", "UNIT_PRICE", "TENDER", "CHANGE"]
+            for label_type in currency_labels:
+                if label_type in labeled_words:
+                    for w in labeled_words[label_type]:
+                        text = w["text"]
+                        try:
+                            amount = float(text.replace("$", "").replace(",", ""))
+                            amounts.append({
+                                "label": label_type,
+                                "text": text,
+                                "amount": amount,
+                            })
+                        except (ValueError, AttributeError):
+                            amounts.append({
+                                "label": label_type,
+                                "text": text,
+                                "amount": None,
+                            })
+
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant": merchant,
+                "formatted_text": formatted_text,
+                "labeled_words": labeled_words,
+                "amounts": amounts,
+            }
+
+        except Exception as e:
+            logger.error("Error getting full receipt: %s", e)
+            return {"error": str(e)}
+
+    @tool
     def submit_answer(
         answer: str,
         total_amount: Optional[float] = None,
@@ -463,6 +626,7 @@ def create_qa_tools(
         search_words_by_label,
         get_receipt_with_price,
         get_labeled_amounts,
+        get_full_receipt,
         submit_answer,
     ]
 

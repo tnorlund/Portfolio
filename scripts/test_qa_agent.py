@@ -39,7 +39,8 @@ from receipt_agent.clients.factory import (
     create_dynamo_client,
     create_embed_fn,
 )
-from receipt_dynamo.data._pulumi import load_env
+from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 # Configure logging
 logging.basicConfig(
@@ -93,44 +94,84 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Load environment config and secrets
+    logger.info("Loading %s environment config...", args.env.upper())
+    config = load_env(env=args.env)
+    secrets = load_secrets(env=args.env)
+
+    # Merge secrets into config (normalize keys: portfolio:KEY -> key)
+    for key, value in secrets.items():
+        # Remove 'portfolio:' prefix and convert to snake_case
+        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        config[normalized_key] = value
+
+    # Set API keys from secrets if not already in environment
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        openrouter_key = config.get("openrouter_api_key")
+        if openrouter_key:
+            os.environ["OPENROUTER_API_KEY"] = openrouter_key
+            logger.info("Loaded OPENROUTER_API_KEY from Pulumi secrets")
+
+    if not os.environ.get("RECEIPT_AGENT_OPENAI_API_KEY"):
+        openai_key = config.get("openai_api_key")
+        if openai_key:
+            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = openai_key
+            logger.info("Loaded OPENAI_API_KEY from Pulumi secrets")
+
     # Check for OpenRouter API key
     if not os.environ.get("OPENROUTER_API_KEY"):
         logger.error(
-            "OPENROUTER_API_KEY environment variable is required. "
+            "OPENROUTER_API_KEY not found in environment or Pulumi secrets. "
             "Get one at https://openrouter.ai/"
         )
         sys.exit(1)
-
-    # Load environment config
-    logger.info("Loading %s environment config...", args.env.upper())
-    config = load_env(env=args.env)
 
     # Create clients
     logger.info("Creating clients...")
     dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
 
-    # Set up ChromaDB paths from config
-    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = config.get(
-        "chroma_lines_directory", "/tmp/chroma_lines"
-    )
-    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = config.get(
-        "chroma_words_directory", "/tmp/chroma_words"
-    )
+    # Check for Chroma Cloud config first
+    chroma_cloud_api_key = config.get("chroma_cloud_api_key")
+    chroma_cloud_tenant = config.get("chroma_cloud_tenant")
+    chroma_cloud_database = config.get("chroma_cloud_database")
+    chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
 
-    try:
-        chroma_client = create_chroma_client(mode="read")
-    except Exception as e:
-        logger.error(
-            "Failed to create ChromaDB client. Make sure you have downloaded "
-            "the ChromaDB snapshots. Error: %s",
-            e,
+    if chroma_cloud_enabled and chroma_cloud_api_key:
+        logger.info("Using Chroma Cloud: tenant=%s, database=%s",
+                    chroma_cloud_tenant, chroma_cloud_database)
+        try:
+            chroma_client = ChromaClient(
+                cloud_api_key=chroma_cloud_api_key,
+                cloud_tenant=chroma_cloud_tenant,
+                cloud_database=chroma_cloud_database,
+                mode="read",
+            )
+        except Exception as e:
+            logger.error("Failed to create Chroma Cloud client: %s", e)
+            sys.exit(1)
+    else:
+        # Fall back to local ChromaDB paths
+        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = config.get(
+            "chroma_lines_directory", "/tmp/chroma_lines"
         )
-        logger.info(
-            "Tip: Download snapshots with: "
-            "aws s3 sync s3://<bucket>/lines/snapshot/ /tmp/chroma_lines/ && "
-            "aws s3 sync s3://<bucket>/words/snapshot/ /tmp/chroma_words/"
+        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = config.get(
+            "chroma_words_directory", "/tmp/chroma_words"
         )
-        sys.exit(1)
+
+        try:
+            chroma_client = create_chroma_client(mode="read")
+        except Exception as e:
+            logger.error(
+                "Failed to create ChromaDB client. Make sure you have downloaded "
+                "the ChromaDB snapshots. Error: %s",
+                e,
+            )
+            logger.info(
+                "Tip: Download snapshots with: "
+                "aws s3 sync s3://<bucket>/lines/snapshot/ /tmp/chroma_lines/ && "
+                "aws s3 sync s3://<bucket>/words/snapshot/ /tmp/chroma_words/"
+            )
+            sys.exit(1)
 
     embed_fn = create_embed_fn()
 
