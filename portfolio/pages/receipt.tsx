@@ -14,12 +14,8 @@ import {
   DynamoStreamAnimation,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
-  LabelValidationVisualization,
   LabelWordCloud,
-  LayoutLMBatchVisualization,
   LayoutLMInferenceVisualization,
-  LockingSwimlane,
-  MerchantCount,
   PageCurlLetter,
   PrecisionRecallDartboard,
   QuestionMarquee,
@@ -374,22 +370,6 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LabelEvaluatorVisualization />
       </ClientOnly>
-
-      <h2>Fast Label Validation</h2>
-
-      <p>
-        Before the full label evaluation pipeline runs, a fast two-tier
-        validation system processes each receipt. First, ChromaDB consensus
-        checks each word against similar receipts from the same merchant. Words
-        that pass this fast check are marked as valid. Only words that fail
-        the consensus check escalate to an LLM for correction or review.
-      </p>
-
-      <ClientOnly>
-        <LabelValidationVisualization />
-      </ClientOnly>
-
-      <h1>What I Learned</h1>
 
       <p>
         This works, kind of. AI isn't consistent. It would call the price of
