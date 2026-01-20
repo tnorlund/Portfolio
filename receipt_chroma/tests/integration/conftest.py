@@ -32,20 +32,6 @@ after each test to clear this corruption, allowing subsequent tests to create
 new clients successfully.
 """
 
-# IMPORTANT: Clear Chroma Cloud env vars BEFORE importing chromadb
-# ChromaDB checks credentials at import time, so this must happen first
-import os
-
-_CHROMA_ENV_VARS = [
-    "CHROMA_API_KEY",
-    "CHROMA_CLOUD_API_KEY",
-    "CHROMA_CLOUD_TENANT",
-    "CHROMA_CLOUD_DATABASE",
-    "CHROMA_CLOUD_ENABLED",
-]
-for _var in _CHROMA_ENV_VARS:
-    os.environ.pop(_var, None)
-
 import gc
 import sys
 import tempfile

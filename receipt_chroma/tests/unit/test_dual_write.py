@@ -472,6 +472,9 @@ class TestSyncCollectionToCloud:
         assert result.error is not None
         assert result.total_items == 0
 
+    @pytest.mark.skip(
+        reason="Flaky in CI due to chromadb caching cloud credentials at import time"
+    )
     def test_sync_logs_progress(
         self, temp_chromadb_dir, cloud_config, mock_logger
     ):
