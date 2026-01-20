@@ -33,12 +33,41 @@ new clients successfully.
 """
 
 import gc
+import os
 import sys
 import tempfile
 
 import boto3
 import pytest
 from moto import mock_aws
+
+# Environment variables to clear during tests to prevent cloud auth
+CHROMA_ENV_VARS = [
+    "CHROMA_API_KEY",
+    "CHROMA_CLOUD_API_KEY",
+    "CHROMA_CLOUD_TENANT",
+    "CHROMA_CLOUD_DATABASE",
+    "CHROMA_CLOUD_ENABLED",
+]
+
+
+@pytest.fixture(autouse=True)
+def clear_chroma_cloud_env_vars():
+    """Clear Chroma Cloud env vars to prevent real auth in CI.
+
+    This autouse fixture runs before every integration test to ensure
+    CI environment variables don't cause ChromaDB to attempt real
+    cloud authentication.
+    """
+    saved = {}
+    for var in CHROMA_ENV_VARS:
+        if var in os.environ:
+            saved[var] = os.environ.pop(var)
+    yield
+    # Restore after test
+    for var, value in saved.items():
+        os.environ[var] = value
+
 
 from receipt_chroma import ChromaClient
 from receipt_dynamo import DynamoClient
