@@ -4,7 +4,20 @@ Tests the BulkSyncResult dataclass and sync_collection_to_cloud function
 using mocked cloud clients.
 """
 
+# IMPORTANT: Clear Chroma Cloud env vars BEFORE importing chromadb
+# ChromaDB may check credentials at import time
 import os
+
+_CHROMA_ENV_VARS = [
+    "CHROMA_API_KEY",
+    "CHROMA_CLOUD_API_KEY",
+    "CHROMA_CLOUD_TENANT",
+    "CHROMA_CLOUD_DATABASE",
+    "CHROMA_CLOUD_ENABLED",
+]
+for _var in _CHROMA_ENV_VARS:
+    os.environ.pop(_var, None)
+
 import tempfile
 import time
 from unittest.mock import MagicMock, patch
@@ -18,15 +31,6 @@ from receipt_chroma.compaction.dual_write import (
     _upload_batch_with_retry,
     sync_collection_to_cloud,
 )
-
-# Environment variables to clear during tests to prevent cloud auth
-CHROMA_ENV_VARS = [
-    "CHROMA_API_KEY",
-    "CHROMA_CLOUD_API_KEY",
-    "CHROMA_CLOUD_TENANT",
-    "CHROMA_CLOUD_DATABASE",
-    "CHROMA_CLOUD_ENABLED",
-]
 
 # =============================================================================
 # BulkSyncResult Tests
@@ -150,18 +154,6 @@ class TestUploadBatchWithRetry:
 
 class TestSyncCollectionToCloud:
     """Tests for sync_collection_to_cloud function."""
-
-    @pytest.fixture(autouse=True)
-    def clear_chroma_env_vars(self):
-        """Clear Chroma Cloud env vars to prevent real auth in CI."""
-        saved = {}
-        for var in CHROMA_ENV_VARS:
-            if var in os.environ:
-                saved[var] = os.environ.pop(var)
-        yield
-        # Restore after test
-        for var, value in saved.items():
-            os.environ[var] = value
 
     @pytest.fixture
     def temp_chromadb_dir(self):
