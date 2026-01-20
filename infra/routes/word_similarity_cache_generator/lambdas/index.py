@@ -468,8 +468,8 @@ def handler(_event, _context):
     temp_dir = tempfile.mkdtemp()
 
     try:
-        # Use larger connection pool to match parallel workers (25) + headroom for retries
-        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=50)
+        # Use larger connection pool to match parallel workers (50) + headroom for retries
+        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=100)
 
         # Step 1: Fetch lines (Cloud or S3)
         if CHROMA_CLOUD_ENABLED:
@@ -559,7 +559,7 @@ def handler(_event, _context):
                 return None
 
         results = []
-        max_workers = 25
+        max_workers = 50
         timing.parallel_workers = max_workers
 
         logger.info("Fetching receipt details with %d parallel workers", max_workers)
