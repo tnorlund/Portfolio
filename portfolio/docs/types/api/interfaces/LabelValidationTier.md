@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationTier
 
-Defined in: [types/api.ts:586](https://github.com/tnorlund/Portfolio/blob/7018217244ea6dae5f35b4e4d9f662b531b8abe7/portfolio/types/api.ts#L586)
+Defined in: [types/api.ts:586](https://github.com/tnorlund/Portfolio/blob/cbdeee77317af288175ce6ab1eb946c92002b9e8/portfolio/types/api.ts#L586)
 
 Validation tier results (ChromaDB or LLM).
 Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
@@ -17,7 +17,7 @@ Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:590](https://github.com/tnorlund/Portfolio/blob/7018217244ea6dae5f35b4e4d9f662b531b8abe7/portfolio/types/api.ts#L590)
+Defined in: [types/api.ts:590](https://github.com/tnorlund/Portfolio/blob/cbdeee77317af288175ce6ab1eb946c92002b9e8/portfolio/types/api.ts#L590)
 
 #### INVALID
 
@@ -41,7 +41,7 @@ Defined in: [types/api.ts:590](https://github.com/tnorlund/Portfolio/blob/701821
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:588](https://github.com/tnorlund/Portfolio/blob/7018217244ea6dae5f35b4e4d9f662b531b8abe7/portfolio/types/api.ts#L588)
+Defined in: [types/api.ts:588](https://github.com/tnorlund/Portfolio/blob/cbdeee77317af288175ce6ab1eb946c92002b9e8/portfolio/types/api.ts#L588)
 
 ***
 
@@ -49,7 +49,7 @@ Defined in: [types/api.ts:588](https://github.com/tnorlund/Portfolio/blob/701821
 
 > **tier**: `"chroma"` \| `"llm"`
 
-Defined in: [types/api.ts:587](https://github.com/tnorlund/Portfolio/blob/7018217244ea6dae5f35b4e4d9f662b531b8abe7/portfolio/types/api.ts#L587)
+Defined in: [types/api.ts:587](https://github.com/tnorlund/Portfolio/blob/cbdeee77317af288175ce6ab1eb946c92002b9e8/portfolio/types/api.ts#L587)
 
 ***
 
@@ -57,4 +57,4 @@ Defined in: [types/api.ts:587](https://github.com/tnorlund/Portfolio/blob/701821
 
 > **words\_count**: `number`
 
-Defined in: [types/api.ts:589](https://github.com/tnorlund/Portfolio/blob/7018217244ea6dae5f35b4e4d9f662b531b8abe7/portfolio/types/api.ts#L589)
+Defined in: [types/api.ts:589](https://github.com/tnorlund/Portfolio/blob/cbdeee77317af288175ce6ab1eb946c92002b9e8/portfolio/types/api.ts#L589)
