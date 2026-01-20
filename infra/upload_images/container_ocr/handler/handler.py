@@ -5,6 +5,10 @@ validation.
 Combines:
 1. OCR parsing and storage (from process_ocr_results.py)
 2. Merchant validation and embedding (from embed_from_ndjson)
+
+Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
+Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
+Updated: 2026-01-18 - Force rebuild with latest receipt_chroma and receipt_upload packages
 """
 
 import json
@@ -14,6 +18,7 @@ import sys
 import time
 from typing import Any, Dict, cast
 
+from receipt_upload.label_validation.langsmith_logging import flush_traces
 from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
 )
@@ -162,6 +167,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             serialized[key] = value
         serializable_results.append(serialized)
 
+    # Flush Langsmith traces before Lambda terminates
+    # This ensures all validation/merchant resolution decisions are logged
+    flush_traces()
+
     return {
         "statusCode": 200,
         "body": json.dumps(
@@ -259,8 +268,6 @@ def _process_single_record(
                 chroma_http_endpoint=os.environ.get("CHROMA_HTTP_ENDPOINT"),
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
-                lines_queue_url=os.environ.get("CHROMADB_LINES_QUEUE_URL"),
-                words_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
             )
 
             # Process each receipt for merchant resolution and embeddings

@@ -554,3 +554,94 @@ export interface LabelEvaluatorResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// ============================================================================
+// Label Validation Visualization Types (receipt-label-validation project)
+// ============================================================================
+
+/**
+ * Individual word validation result from the label validation pipeline.
+ * Each word is validated by ChromaDB consensus (Tier 1) or LLM (Tier 2).
+ */
+export interface LabelValidationWord {
+  text: string;
+  line_id: number;
+  word_id: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  label: string;
+  validation_status?: "NONE" | "PENDING" | "VALID" | "INVALID" | "NEEDS_REVIEW";
+  validation_source: "chroma" | "llm" | null;
+  decision: "VALID" | "INVALID" | "CORRECTED" | "NEEDS_REVIEW" | null;
+}
+
+/**
+ * Validation tier results (ChromaDB or LLM).
+ * Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
+ */
+export interface LabelValidationTier {
+  tier: "chroma" | "llm";
+  duration_seconds: number;
+  words_count: number;
+  decisions: {
+    VALID: number;
+    INVALID: number;
+    NEEDS_REVIEW: number;
+    UNKNOWN?: number;
+  };
+}
+
+/**
+ * Receipt with label validation results.
+ * Contains words with their validation decisions and CDN image keys.
+ */
+export interface LabelValidationReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string | null;
+  words: LabelValidationWord[];
+  chroma: LabelValidationTier;
+  llm: LabelValidationTier | null;
+  step_timings?: Record<
+    string,
+    { duration_ms: number; duration_seconds: number }
+  >;
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * Aggregate statistics for the label validation visualization.
+ */
+export interface LabelValidationAggregateStats {
+  avg_chroma_rate: number;
+  avg_confidence: number;
+  total_receipts: number;
+  total_valid: number;
+  total_invalid: number;
+  total_needs_review: number;
+}
+
+/**
+ * API response for the label validation visualization endpoint.
+ */
+export interface LabelValidationResponse {
+  receipts: LabelValidationReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: LabelValidationAggregateStats;
+  cached_at?: string;
+  fetched_at?: string;
+}

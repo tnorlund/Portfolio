@@ -33,11 +33,13 @@ classifiers = [
 ]
 dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
+  "receipt-dynamo-stream",  # Local package for DynamoDB stream parsing (transitive from receipt-chroma)
   "receipt-chroma",  # Local package for ChromaDB embedding operations
   "receipt-places",  # Local package for Google Places API
   "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
   "boto3>=1.26.0",
+  "langsmith>=0.1.0",  # For Langsmith tracing
 ]
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
 

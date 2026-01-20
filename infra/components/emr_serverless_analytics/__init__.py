@@ -184,8 +184,8 @@ class EMRServerlessAnalytics(ComponentResource):
                 ),
             ],
             "maximum_capacity": aws.emrserverless.ApplicationMaximumCapacityArgs(
-                cpu="16 vCPU",
-                memory="64 GB",
+                cpu="32 vCPU",
+                memory="128 GB",
             ),
             "auto_start_configuration": aws.emrserverless.ApplicationAutoStartConfigurationArgs(
                 enabled=True,
@@ -366,6 +366,9 @@ class EMRServerlessAnalytics(ComponentResource):
             return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
 
         merged_job_path = spark_scripts_dir / "merged_job.py"
+        label_validation_viz_cache_path = (
+            spark_scripts_dir / "label_validation_viz_cache_job.py"
+        )
 
         # Upload merged_job.py - unified job for analytics and/or viz-cache
         # Supports --job-type: analytics, viz-cache, or all
@@ -375,6 +378,16 @@ class EMRServerlessAnalytics(ComponentResource):
             key="spark/merged_job.py",
             source=FileAsset(str(merged_job_path)),
             source_hash=file_hash(merged_job_path),
+            opts=ResourceOptions(parent=self.artifacts_bucket),
+        )
+
+        # Upload label_validation_viz_cache_job.py
+        self.label_validation_viz_cache_job_script = aws.s3.BucketObjectv2(
+            f"{name}-label-validation-viz-cache-job-script",
+            bucket=self.artifacts_bucket.id,
+            key="spark/label_validation_viz_cache_job.py",
+            source=FileAsset(str(label_validation_viz_cache_path)),
+            source_hash=file_hash(label_validation_viz_cache_path),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 

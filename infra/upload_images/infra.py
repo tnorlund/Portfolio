@@ -3,21 +3,18 @@
 # pylint: disable=line-too-long
 
 import json
-import os
 from typing import cast
 
 import pulumi
 import pulumi_aws as aws
 from pulumi import (
-    AssetArchive,
     ComponentResource,
     Config,
-    FileAsset,
     Output,
     ResourceOptions,
 )
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
-from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.lambda_ import Function
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.sqs import Queue
 
@@ -36,14 +33,8 @@ validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 
-code = AssetArchive(
-    {
-        "lambda.py": FileAsset(
-            os.path.join(os.path.dirname(__file__), "lambda.py")
-        )
-    }
-)
 stack = pulumi.get_stack()
 
 BASE_DOMAIN = "tylernorlund.com"
@@ -71,6 +62,7 @@ class UploadImages(ComponentResource):
         _ecs_service_arn: pulumi.Input[str] | None = None,
         _nat_instance_id: pulumi.Input[str] | None = None,
         efs_access_point_arn: pulumi.Input[str] | None = None,
+        label_validation_project_name: pulumi.Input[str] | None = None,
         opts: ResourceOptions | None = None,
     ):  # pylint: disable=too-many-positional-arguments
         super().__init__(
@@ -473,6 +465,11 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
+                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
+                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
+                "LANGCHAIN_PROJECT": label_validation_project_name or "receipt-validation",
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "LANGCHAIN_LABEL_PROJECT": label_validation_project_name or "receipt-validation",
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": (
                     "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
@@ -677,6 +674,9 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "LANGCHAIN_API_KEY": langchain_api_key,
+                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
+                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
+                "OPENROUTER_API_KEY": openrouter_api_key,
                 # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
                 "CHROMA_ROOT": (
                     "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"

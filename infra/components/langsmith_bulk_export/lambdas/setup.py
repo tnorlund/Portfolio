@@ -88,7 +88,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
     bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
-    prefix = event.get("prefix", "traces/")
+    # Note: prefix should NOT have trailing slash - LangSmith adds the path separator
+    prefix = event.get("prefix", "traces")
     skip_ssm = event.get("skip_ssm", False)
 
     if not api_key:
@@ -115,8 +116,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     logger.info("Retrieved S3 credentials from Secrets Manager")
 
     # Check if destination already exists
+    # Use SSM_PREFIX env var for unique parameter paths per component
     ssm = boto3.client("ssm")
-    param_name = f"/langsmith/{stack}/destination_id"
+    ssm_prefix = os.environ.get("SSM_PREFIX", "default")
+    param_name = f"/langsmith/{stack}/{ssm_prefix}/destination_id"
 
     try:
         existing = ssm.get_parameter(Name=param_name)

@@ -1,0 +1,451 @@
+/* Container - matches global .container max-width */
+.container {
+  width: 100%;
+  max-width: 1024px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--background-color);
+  border-radius: 12px;
+}
+
+/* Main Layout - Three Columns */
+.mainWrapper {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+}
+
+/* Receipt Queue - Left Column */
+.receiptQueue {
+  width: 280px;
+  height: 400px;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.queuedReceipt {
+  position: absolute;
+  width: 100px;
+  border: 1px solid #ccc;
+  background: var(--background-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: top 0.4s ease, left 0.4s ease, opacity 0.4s ease, transform 0.4s ease;
+  overflow: hidden;
+}
+
+.queuedReceipt.flyingOut {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Flying receipt - animates from queue to center */
+.flyingReceipt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.flyingReceiptImage {
+  display: block;
+  max-height: 500px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Center Column - contains active receipt */
+.centerColumn {
+  flex: 1;
+  max-width: 350px;
+  min-width: 0;
+  position: relative;
+  height: 500px;
+  z-index: 2;
+}
+
+/* Receipt container for transitions */
+.receiptContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fadeOut {
+  animation: fadeOut 0.4s ease-out forwards;
+}
+
+.fadeIn {
+  animation: fadeIn 0.4s ease-in forwards;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Next receipt overlaps current during mobile crossfade */
+.nextReceipt {
+  display: none;
+}
+
+/* Flying receipt container - visible on desktop */
+.flyingReceiptContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Receipt Viewer */
+.receiptViewer {
+  width: 100%;
+  height: 100%;
+}
+
+.receiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptImageInner {
+  position: relative;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  max-height: 500px;
+}
+
+.receiptImage {
+  display: block;
+  max-height: 500px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+}
+
+.svgOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+}
+
+/* Validation Legend - Right Column */
+.validationLegend {
+  width: 280px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  flex-shrink: 0;
+}
+
+/* Tier Bar */
+.tierBar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.tierBar.active {
+  opacity: 1;
+}
+
+.tierBar.complete {
+  opacity: 0.8;
+}
+
+.tierBar.waiting {
+  opacity: 0.4;
+}
+
+.tierHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progressCircleWrapper {
+  flex-shrink: 0;
+}
+
+.progressCircle {
+  display: block;
+}
+
+.tierNameWrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.tierName {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.tierWordCount {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.tierMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.durationBadge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.6;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+.waitingBadge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.decisionBadges {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+}
+
+
+/* Decision Tallies */
+.decisionTallies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.decisionTally {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tallyLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.7;
+  min-width: 42px;
+}
+
+.tallyIcons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 1;
+}
+
+.tallyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tallyMore {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.5;
+  margin-left: 2px;
+}
+
+
+.decisionIconSvg,
+.emptyIconSvg {
+  display: block;
+}
+
+
+/* Loading / Error states */
+.loading,
+.error,
+.receiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--color-red);
+  opacity: 1;
+}
+
+/* Decision Indicator Circles on Receipt */
+.decisionIndicator {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: popIn 0.25s ease-out forwards;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Tablet Responsive - Hide Queue */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .mainWrapper {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .receiptQueue {
+    display: none;
+  }
+
+  .centerColumn {
+    width: 100%;
+    max-width: 100%;
+    height: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .receiptViewer {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageWrapper {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageInner {
+    max-height: 380px;
+    position: relative;
+  }
+
+  .receiptImage {
+    max-height: 380px;
+  }
+
+  .svgOverlay {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* Hide flying receipt on mobile, use crossfade instead */
+  .flyingReceiptContainer {
+    display: none;
+  }
+
+  .flyingReceipt {
+    display: none;
+  }
+
+  /* Show crossfade next receipt on mobile */
+  .nextReceipt {
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .validationLegend {
+    width: 100%;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0;
+    align-items: center;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  .centerColumn {
+    height: 320px;
+  }
+
+  .receiptImageInner {
+    max-height: 300px;
+  }
+
+  .receiptImage {
+    max-height: 300px;
+  }
+
+  .tierName {
+    font-size: 0.8rem;
+  }
+
+  .badge {
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.65rem;
+  }
+}

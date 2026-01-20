@@ -3,6 +3,10 @@
 This module provides PySpark-based analytics for large-scale
 LangSmith trace processing on EMR Serverless.
 
+Includes processors for:
+- LangSmithSparkProcessor: Analytics for label-evaluator-dev project
+- LabelValidationSparkProcessor: Analytics for receipt-label-validation project
+
 Note: This module requires the [pyspark] optional dependency.
 Install with: pip install receipt-langsmith[pyspark]
 """
@@ -12,8 +16,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from receipt_langsmith.spark.label_validation_processor import (
+        LabelValidationSparkProcessor,
+    )
     from receipt_langsmith.spark.processor import LangSmithSparkProcessor
-    from receipt_langsmith.spark.schemas import LANGSMITH_PARQUET_SCHEMA
+    from receipt_langsmith.spark.schemas import (
+        LABEL_VALIDATION_DECISION_SCHEMA,
+        LABEL_VALIDATION_RECEIPT_SCHEMA,
+        LABEL_VALIDATION_STEP_TIMING_SCHEMA,
+        LANGSMITH_PARQUET_SCHEMA,
+        MERCHANT_RESOLUTION_SCHEMA,
+    )
 
 
 def __getattr__(name: str):
@@ -39,13 +52,33 @@ def __getattr__(name: str):
                 "pip install receipt-langsmith[pyspark]"
             ) from e
 
-    if name == "LANGSMITH_PARQUET_SCHEMA":
+    if name == "LabelValidationSparkProcessor":
         try:
-            from receipt_langsmith.spark.schemas import (
-                LANGSMITH_PARQUET_SCHEMA,
+            from receipt_langsmith.spark.label_validation_processor import (
+                LabelValidationSparkProcessor,
             )
 
-            return LANGSMITH_PARQUET_SCHEMA
+            return LabelValidationSparkProcessor
+        except ImportError as e:
+            raise ImportError(
+                "PySpark not available. Install with: "
+                "pip install receipt-langsmith[pyspark]"
+            ) from e
+
+    # Schema lazy imports
+    schema_names = [
+        "LANGSMITH_PARQUET_SCHEMA",
+        "LABEL_VALIDATION_RECEIPT_SCHEMA",
+        "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
+        "LABEL_VALIDATION_DECISION_SCHEMA",
+        "MERCHANT_RESOLUTION_SCHEMA",
+    ]
+
+    if name in schema_names:
+        try:
+            from receipt_langsmith.spark import schemas
+
+            return getattr(schemas, name)
         except ImportError as e:
             raise ImportError(
                 "PySpark not available. Install with: "
@@ -57,6 +90,13 @@ def __getattr__(name: str):
 
 
 __all__ = [
+    # Processors
     "LangSmithSparkProcessor",
+    "LabelValidationSparkProcessor",
+    # Schemas
     "LANGSMITH_PARQUET_SCHEMA",
+    "LABEL_VALIDATION_RECEIPT_SCHEMA",
+    "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
+    "LABEL_VALIDATION_DECISION_SCHEMA",
+    "MERCHANT_RESOLUTION_SCHEMA",
 ]

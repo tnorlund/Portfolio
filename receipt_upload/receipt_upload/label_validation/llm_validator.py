@@ -1,0 +1,904 @@
+"""LLM-based label validation using Ollama with OpenRouter fallback.
+
+This module provides receipt-aware batch validation of pending labels using
+the same LLM infrastructure as the label evaluator (gpt-oss:120b-cloud).
+
+The LLM sees:
+1. Full receipt text with pending labels highlighted
+2. Similar validated words from ChromaDB
+3. Merchant context
+4. Mathematical relationships between currency amounts
+
+Uses structured outputs with Pydantic models to ensure type-safe responses.
+Uses LANGCHAIN_PROJECT env var for LangSmith project configuration.
+"""
+
+import json
+import logging
+import os
+import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field, ValidationError
+from receipt_agent.constants import CORE_LABELS
+from receipt_agent.utils.llm_factory import create_resilient_llm
+
+logger = logging.getLogger(__name__)
+
+# Enable Langsmith tracing if API key is set
+if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get(
+    "LANGCHAIN_TRACING_V2"
+):
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+
+
+# =============================================================================
+# Structured Output Models (Pydantic)
+# =============================================================================
+
+# Decision type aligned with ValidationStatus enum
+DecisionType = Literal["VALID", "INVALID", "NEEDS_REVIEW"]
+
+# Confidence levels
+ConfidenceType = Literal["high", "medium", "low"]
+
+# Valid label types from CORE_LABELS
+# Note: Some extra labels are included so Pydantic parsing succeeds if LLM
+# returns them. These are NOT valid final labels:
+#   - AMOUNT: Merged label that needs reclassification
+#   - TIP: LLM sometimes returns this for gratuity amounts
+#   - NEEDS_REVIEW: LLM incorrectly uses this as a label (should be decision)
+# convert_structured_response() handles these by marking them NEEDS_REVIEW.
+LabelType = Literal[
+    "MERCHANT_NAME",
+    "STORE_HOURS",
+    "PHONE_NUMBER",
+    "WEBSITE",
+    "LOYALTY_ID",
+    "ADDRESS_LINE",
+    "DATE",
+    "TIME",
+    "PAYMENT_METHOD",
+    "COUPON",
+    "DISCOUNT",
+    "PRODUCT_NAME",
+    "QUANTITY",
+    "UNIT_PRICE",
+    "LINE_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "GRAND_TOTAL",
+    "CHANGE",
+    "CASH_BACK",
+    "REFUND",
+    # Invalid labels that LLM sometimes returns - handled in post-processing
+    "AMOUNT",
+    "TIP",
+    "NEEDS_REVIEW",
+]
+
+
+class LabelDecision(BaseModel):
+    """A single label validation decision from the LLM."""
+
+    index: int = Field(
+        description="The index of the pending label being validated (0-indexed)"
+    )
+    decision: DecisionType = Field(
+        description="VALID if label is correct, INVALID if wrong (provide correct label), NEEDS_REVIEW if uncertain"
+    )
+    label: LabelType = Field(
+        description="The correct label - same as predicted if VALID, corrected label if INVALID"
+    )
+    confidence: ConfidenceType = Field(
+        description="Confidence level: high (>90%), medium (70-90%), low (<70%)"
+    )
+    reasoning: str = Field(
+        description="Brief explanation for the decision based on receipt context and evidence"
+    )
+
+
+class LabelValidationResponse(BaseModel):
+    """Structured response containing all label validation decisions."""
+
+    decisions: List[LabelDecision] = Field(
+        description="List of validation decisions, one per pending label"
+    )
+
+
+@dataclass
+class LLMValidationResult:
+    """Result of LLM validation for a single label."""
+
+    word_id: str
+    decision: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
+    label: str  # Final label (original if VALID, corrected if INVALID)
+    confidence: str  # "high", "medium", "low"
+    reasoning: str
+
+
+def convert_structured_response(
+    response: LabelValidationResponse,
+    pending_labels: List[Dict[str, Any]],
+) -> List[LLMValidationResult]:
+    """
+    Convert structured LLM response to LLMValidationResult list.
+
+    Args:
+        response: Pydantic model with validated decisions
+        pending_labels: Original pending labels for word_id mapping
+
+    Returns:
+        List of LLMValidationResult objects
+
+    Note:
+        - Missing indexes are marked as NEEDS_REVIEW
+        - Out-of-range and duplicate indexes are dropped
+        - Validates label is in CORE_LABELS
+    """
+    results = []
+    num_labels = len(pending_labels)
+
+    # Build result lookup with robust index handling
+    result_by_index: Dict[int, LabelDecision] = {}
+    seen_indexes: set = set()
+
+    for decision in response.decisions:
+        idx = decision.index
+
+        # Check range
+        if idx < 0 or idx >= num_labels:
+            logger.warning(
+                "Index %d out of range [0, %d), skipping",
+                idx,
+                num_labels,
+            )
+            continue
+
+        # Check duplicates
+        if idx in seen_indexes:
+            logger.warning("Duplicate index %d, keeping first", idx)
+            continue
+
+        seen_indexes.add(idx)
+        result_by_index[idx] = decision
+
+    # Process each pending label
+    for idx, label in enumerate(pending_labels):
+        word_id = f"{label['line_id']}_{label['word_id']}"
+        llm_decision = result_by_index.get(idx)
+
+        if llm_decision is None:
+            # Missing result - mark as NEEDS_REVIEW
+            logger.warning(
+                "No LLM result for index %d (word_id=%s), marking NEEDS_REVIEW",
+                idx,
+                word_id,
+            )
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning="LLM did not return a decision for this word",
+                )
+            )
+            continue
+
+        final_label = llm_decision.label
+        decision_str = llm_decision.decision
+        confidence = llm_decision.confidence
+        reasoning = llm_decision.reasoning
+
+        if final_label not in CORE_LABELS:
+            logger.warning(
+                "LLM returned invalid label '%s', keeping original '%s'",
+                final_label,
+                label["label"],
+            )
+            final_label = label["label"]
+            if decision_str == "INVALID":
+                decision_str = "NEEDS_REVIEW"
+                reasoning = (
+                    f"Invalid label '{llm_decision.label}'. {reasoning}"
+                )
+
+        # AMOUNT is not a valid CORE_LABEL - force NEEDS_REVIEW if it persists
+        if final_label == "AMOUNT":
+            decision_str = "NEEDS_REVIEW"
+            reasoning = f"AMOUNT requires reclassification to LINE_TOTAL/SUBTOTAL/TAX/GRAND_TOTAL. {reasoning}"
+
+        # If INVALID but label unchanged, mark as NEEDS_REVIEW
+        if decision_str == "INVALID" and final_label == label["label"]:
+            decision_str = "NEEDS_REVIEW"
+            reasoning = (
+                f"INVALID decision without a corrected label. {reasoning}"
+            )
+
+        results.append(
+            LLMValidationResult(
+                word_id=word_id,
+                decision=decision_str,
+                label=final_label,
+                confidence=confidence,
+                reasoning=reasoning,
+            )
+        )
+
+    return results
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _get_traceable():
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable
+
+        return traceable
+    except ImportError:
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+
+            return wrapper
+
+        return noop_decorator
+
+
+def _get_label_validation_project() -> str:
+    """Get the Langsmith project name for label validation from env var."""
+    return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+
+
+def _build_core_labels_prompt() -> str:
+    """Build the label definitions section."""
+    lines = []
+    for label, description in CORE_LABELS.items():
+        lines.append(f"- **{label}**: {description}")
+    return "\n".join(lines)
+
+
+def _format_similar_evidence(
+    similar_words: List[Dict[str, Any]],
+    max_words: int = 5,
+) -> str:
+    """Format similar word evidence for prompt."""
+    if not similar_words:
+        return "No similar validated words found."
+
+    lines = []
+    for word in similar_words[:max_words]:
+        text = word.get("text", word.get("word_text", ""))
+        similarity = word.get("similarity", word.get("similarity_score", 0))
+        valid_labels = word.get("valid_labels", [])
+        merchant = word.get("merchant_name", "Unknown")
+        is_same = word.get("is_same_merchant", False)
+
+        merchant_note = "(SAME MERCHANT)" if is_same else ""
+        labels_str = ", ".join(valid_labels) if valid_labels else "none"
+
+        lines.append(
+            f'  - "{text}" → {labels_str} ({similarity:.0%} similar) '
+            f"{merchant} {merchant_note}"
+        )
+
+    return "\n".join(lines)
+
+
+def _format_receipt_text(
+    words: List[Dict[str, Any]],
+    pending_labels: List[Dict[str, Any]],
+) -> Tuple[str, Dict[str, int]]:
+    """
+    Format receipt text with pending labels highlighted.
+
+    Returns:
+        Tuple of (formatted text, word_id to issue_index mapping)
+    """
+    # Create a set of pending word IDs for quick lookup
+    pending_word_ids = {}
+    for idx, label in enumerate(pending_labels):
+        word_id = f"{label['line_id']}_{label['word_id']}"
+        pending_word_ids[word_id] = (idx, label["label"])
+
+    # Group words by line
+    lines_dict: Dict[int, List[Dict]] = {}
+    for word in words:
+        line_id = word.get("line_id", 0)
+        if line_id not in lines_dict:
+            lines_dict[line_id] = []
+        lines_dict[line_id].append(word)
+
+    # Sort lines by y position (top to bottom)
+    sorted_lines = sorted(lines_dict.items(), key=lambda x: x[0])
+
+    # Format each line
+    output_lines = []
+    word_to_index = {}
+
+    for line_id, line_words in sorted_lines:
+        # Sort words by x position (left to right)
+        line_words.sort(key=lambda w: w.get("x", 0))
+
+        formatted_words = []
+        for word in line_words:
+            text = word.get("text", "")
+            w_id = f"{word.get('line_id', 0)}_{word.get('word_id', 0)}"
+
+            if w_id in pending_word_ids:
+                idx, pred_label = pending_word_ids[w_id]
+                word_to_index[w_id] = idx
+                # Highlight pending labels with brackets and index
+                formatted_words.append(f"[{idx}:{text}]({pred_label}?)")
+            else:
+                formatted_words.append(text)
+
+        output_lines.append(" ".join(formatted_words))
+
+    return "\n".join(output_lines), word_to_index
+
+
+def _compute_currency_context(words: List[Dict[str, Any]]) -> str:
+    """Extract currency amounts and compute mathematical hints for AMOUNT reclassification."""
+    # Simple currency pattern
+    currency_pattern = re.compile(r"^\$?\d+\.\d{2}$")
+
+    amounts = []
+    for word in words:
+        text = word.get("text", "").replace(",", "")
+        if currency_pattern.match(text):
+            try:
+                value = float(text.replace("$", ""))
+                amounts.append((text, value, word.get("line_id", 0)))
+            except ValueError:
+                pass
+
+    if not amounts:
+        return "No currency amounts detected."
+
+    # Sort by line_id to preserve receipt order
+    amounts_by_line = sorted(amounts, key=lambda x: x[2])
+
+    # Sort by value descending for analysis
+    amounts_by_value = sorted(amounts, key=lambda x: -x[1])
+
+    lines = ["Currency amounts found (largest first):"]
+    for text, value, line_id in amounts_by_value[:10]:
+        lines.append(f"  - {text} (line {line_id})")
+
+    # Identify likely GRAND_TOTAL (largest amount)
+    if amounts_by_value:
+        largest = amounts_by_value[0]
+        lines.append(
+            f"\n**Likely GRAND_TOTAL**: {largest[0]} (largest amount, line {largest[2]})"
+        )
+
+    # Try to find SUBTOTAL + TAX = GRAND_TOTAL pattern
+    if len(amounts_by_value) >= 3:
+        grand_total_val = amounts_by_value[0][1]
+        # Look for two amounts that sum to the grand total
+        for i, (text_a, val_a, line_a) in enumerate(amounts_by_value[1:], 1):
+            for text_b, val_b, line_b in amounts_by_value[i + 1 :]:
+                if (
+                    abs(val_a + val_b - grand_total_val) < 0.02
+                ):  # Within 2 cents
+                    # The larger of the two is likely SUBTOTAL, smaller is TAX
+                    if val_a > val_b:
+                        lines.append(
+                            f"**Math hint**: {text_a} (SUBTOTAL?) + {text_b} (TAX?) = {amounts_by_value[0][0]} (GRAND_TOTAL)"
+                        )
+                    else:
+                        lines.append(
+                            f"**Math hint**: {text_b} (SUBTOTAL?) + {text_a} (TAX?) = {amounts_by_value[0][0]} (GRAND_TOTAL)"
+                        )
+                    break
+            else:
+                continue
+            break
+
+    # Identify likely LINE_TOTALs (smaller amounts that appear before totals)
+    if len(amounts_by_value) > 3:
+        # Amounts in the middle are likely LINE_TOTALs
+        line_totals = [
+            (text, val, line_id)
+            for text, val, line_id in amounts_by_line
+            if val
+            < amounts_by_value[0][1] * 0.5  # Less than half of grand total
+        ]
+        if line_totals:
+            sum_line_totals = sum(lt[1] for lt in line_totals)
+            lines.append(
+                f"\n**Potential LINE_TOTALs**: {len(line_totals)} smaller amounts summing to ${sum_line_totals:.2f}"
+            )
+
+    return "\n".join(lines)
+
+
+def build_validation_prompt(
+    pending_labels: List[Dict[str, Any]],
+    words: List[Dict[str, Any]],
+    similar_evidence: Dict[str, List[Dict[str, Any]]],
+    merchant_name: Optional[str],
+) -> str:
+    """
+    Build the receipt-aware batch validation prompt.
+
+    Args:
+        pending_labels: List of pending labels to validate
+        words: All words in the receipt (with text, line_id, word_id, x, y)
+        similar_evidence: Dict mapping word_id to list of similar validated words
+        merchant_name: Merchant name for context
+
+    Returns:
+        Formatted prompt string
+    """
+    # Format receipt text with highlights
+    receipt_text, word_to_index = _format_receipt_text(words, pending_labels)
+
+    # Build prompt sections
+    prompt = f"""# Receipt Label Validation
+
+You are validating predicted labels for a receipt from **{merchant_name or "Unknown Merchant"}**.
+
+## Label Definitions
+
+{_build_core_labels_prompt()}
+
+## Receipt Text
+
+Words marked with [N:text](LABEL?) are pending validation.
+N is the issue index, text is the word, LABEL is the predicted label.
+
+```
+{receipt_text}
+```
+
+## Similar Word Evidence
+
+For each pending label, here are similar words that have been validated:
+
+"""
+
+    # Add evidence for each pending label
+    for idx, label in enumerate(pending_labels):
+        word_id = f"{label['line_id']}_{label['word_id']}"
+        word_text = label.get("word_text", "")
+        predicted = label["label"]
+        evidence = similar_evidence.get(word_id, [])
+
+        prompt += f"""
+### [{idx}] "{word_text}" - Predicted: {predicted}
+{_format_similar_evidence(evidence)}
+"""
+
+    # Add currency context
+    prompt += f"""
+## Currency Analysis
+
+{_compute_currency_context(words)}
+
+## Your Task
+
+For each pending label [0] through [{len(pending_labels) - 1}], provide a decision:
+- **VALID**: The predicted label is correct
+- **INVALID**: The predicted label is wrong - you must provide the correct label
+- **NEEDS_REVIEW**: You cannot decide confidently
+
+### AMOUNT Label Reclassification
+
+**IMPORTANT**: "AMOUNT" is NOT a valid label. If you see a word labeled as "AMOUNT", you MUST reclassify it to one of these specific types:
+
+- **LINE_TOTAL**: Price for a single item line (quantity × unit price). Usually appears next to product names in the middle of the receipt.
+- **SUBTOTAL**: Sum of all line totals before tax. Usually labeled "Subtotal" and appears after all items but before tax.
+- **TAX**: Sales tax, VAT, or other tax amounts. Usually labeled "Tax" and appears after subtotal.
+- **GRAND_TOTAL**: Final amount due after all taxes and discounts. Usually the largest amount, appears at the bottom, often labeled "Total" or "Amount Due".
+
+**How to classify AMOUNT labels:**
+1. **Position**: LINE_TOTALs appear with items (middle), SUBTOTAL/TAX/GRAND_TOTAL appear at bottom
+2. **Math**: Sum of LINE_TOTALs ≈ SUBTOTAL, SUBTOTAL + TAX ≈ GRAND_TOTAL
+3. **Keywords**: Look for "Subtotal", "Tax", "Total", "Due" near the amount
+4. **Largest amount**: The largest dollar amount is usually GRAND_TOTAL
+
+### General Validation Rules
+
+Consider:
+1. Position on receipt (header labels at top, totals at bottom)
+2. Similar word evidence (how were similar words labeled?)
+3. Mathematical consistency (do amounts add up correctly?)
+4. Merchant patterns (same merchant evidence is most reliable)
+
+## Required Output Format
+
+You MUST respond with a JSON object containing a "decisions" array:
+```json
+{{
+  "decisions": [
+    {{"index": 0, "decision": "VALID", "label": "MERCHANT_NAME", "confidence": "high", "reasoning": "..."}},
+    {{"index": 1, "decision": "INVALID", "label": "LINE_TOTAL", "confidence": "medium", "reasoning": "..."}}
+  ]
+}}
+```
+
+Field requirements:
+- index: integer matching the pending label number [0-{len(pending_labels) - 1}]
+- decision: one of "VALID", "INVALID", or "NEEDS_REVIEW"
+- label: one of the valid labels from definitions above
+- confidence: one of "high", "medium", or "low"
+- reasoning: brief explanation string
+
+IMPORTANT:
+- Use ONLY labels from the definitions above
+- Every pending label MUST have a decision
+- Base reasoning on the evidence provided
+"""
+
+    return prompt
+
+
+def parse_validation_response(
+    response_text: str,
+    pending_labels: List[Dict[str, Any]],
+) -> List[LLMValidationResult]:
+    """
+    Parse the LLM response into validation results.
+
+    Args:
+        response_text: Raw LLM response
+        pending_labels: Original pending labels for fallback
+
+    Returns:
+        List of LLMValidationResult objects
+
+    Note:
+        - Missing labels are marked as NEEDS_REVIEW (not auto-VALID)
+        - Out-of-range and duplicate indexes are dropped
+        - CORRECT and CORRECTED are normalized to INVALID
+    """
+    results = []
+    num_labels = len(pending_labels)
+
+    # Try to extract JSON from response
+    json_match = re.search(r"\[[\s\S]*\]", response_text)
+    if not json_match:
+        logger.warning("No JSON array found in LLM response")
+        # Fallback: mark all as NEEDS_REVIEW (not auto-VALID)
+        for label in pending_labels:
+            word_id = f"{label['line_id']}_{label['word_id']}"
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning="LLM response parsing failed - no JSON found",
+                )
+            )
+        return results
+
+    try:
+        parsed = json.loads(json_match.group())
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse LLM JSON: %s", e)
+        # Fallback: mark all as NEEDS_REVIEW
+        for label in pending_labels:
+            word_id = f"{label['line_id']}_{label['word_id']}"
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning=f"LLM response parsing failed: {str(e)[:50]}",
+                )
+            )
+        return results
+
+    # Build result lookup with robust index handling
+    # - Coerce index to int
+    # - Drop out-of-range indexes
+    # - Drop duplicate indexes (keep first)
+    result_by_index: Dict[int, Dict[str, Any]] = {}
+    seen_indexes: set = set()
+
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+
+        # Coerce index to int
+        raw_index = item.get("index")
+        try:
+            idx = int(raw_index) if raw_index is not None else -1
+        except (ValueError, TypeError):
+            logger.warning("Invalid index value: %r, skipping", raw_index)
+            continue
+
+        # Check range
+        if idx < 0 or idx >= num_labels:
+            logger.warning(
+                "Index %d out of range [0, %d), skipping",
+                idx,
+                num_labels,
+            )
+            continue
+
+        # Check duplicates
+        if idx in seen_indexes:
+            logger.warning("Duplicate index %d, keeping first", idx)
+            continue
+
+        seen_indexes.add(idx)
+        result_by_index[idx] = item
+
+    # Process each pending label
+    for idx, label in enumerate(pending_labels):
+        word_id = f"{label['line_id']}_{label['word_id']}"
+        llm_result = result_by_index.get(idx)
+
+        if llm_result is None:
+            # Missing result - mark as NEEDS_REVIEW, not auto-VALID
+            logger.warning(
+                "No LLM result for index %d (word_id=%s), marking NEEDS_REVIEW",
+                idx,
+                word_id,
+            )
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning="LLM did not return a decision for this word",
+                )
+            )
+            continue
+
+        # Normalize decision: CORRECT/CORRECTED -> INVALID
+        decision = llm_result.get("decision", "").upper()
+        if decision in ("CORRECT", "CORRECTED"):
+            decision = "INVALID"
+        elif decision in ("NEEDS REVIEW",):
+            decision = "NEEDS_REVIEW"
+        elif decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
+            logger.warning(
+                "Unknown decision '%s' for index %d, treating as NEEDS_REVIEW",
+                decision,
+                idx,
+            )
+            decision = "NEEDS_REVIEW"
+
+        final_label = llm_result.get("label", label["label"])
+        confidence = llm_result.get("confidence", "medium")
+        reasoning = llm_result.get("reasoning", "")
+
+        # Validate label is in CORE_LABELS
+        if final_label not in CORE_LABELS:
+            logger.warning(
+                "LLM returned invalid label '%s', keeping original '%s'",
+                final_label,
+                label["label"],
+            )
+            final_label = label["label"]
+            # If decision was INVALID but label is invalid, mark as NEEDS_REVIEW
+            if decision == "INVALID":
+                decision = "NEEDS_REVIEW"
+                reasoning = (
+                    f"Invalid label '{llm_result.get('label')}'. {reasoning}"
+                )
+
+        if decision == "INVALID" and final_label == label["label"]:
+            decision = "NEEDS_REVIEW"
+            reasoning = (
+                f"INVALID decision without a corrected label. {reasoning}"
+            )
+
+        results.append(
+            LLMValidationResult(
+                word_id=word_id,
+                decision=decision,
+                label=final_label,
+                confidence=confidence,
+                reasoning=reasoning,
+            )
+        )
+
+    return results
+
+
+class LLMBatchValidator:
+    """
+    Validates all pending labels for a receipt using LLM with structured output.
+
+    Uses the same Ollama + OpenRouter fallback pattern as the label evaluator.
+    Structured output via Pydantic ensures type-safe responses.
+    """
+
+    def __init__(
+        self,
+        temperature: float = 0.0,
+        timeout: int = 120,
+    ):
+        """
+        Initialize the LLM validator.
+
+        Args:
+            temperature: LLM temperature (0.0 for deterministic)
+            timeout: Request timeout in seconds
+        """
+        base_llm = create_resilient_llm(
+            temperature=temperature,
+            timeout=timeout,
+        )
+        # Wrap with structured output for type-safe responses
+        self.structured_llm = base_llm.with_structured_output(
+            LabelValidationResponse
+        )
+        self._call_count = 0
+        self._success_count = 0
+
+    def _call_llm_with_tracing(
+        self,
+        prompt: str,
+        pending_labels: List[Dict[str, Any]],
+        merchant_name: Optional[str] = None,
+    ) -> LabelValidationResponse:
+        """Call LLM with Langsmith tracing and structured output.
+
+        This method is traced to capture the full prompt and response
+        in Langsmith for debugging and improvement.
+
+        Returns:
+            LabelValidationResponse: Pydantic model with validated decisions
+        """
+        traceable = _get_traceable()
+
+        @traceable(
+            project_name=_get_label_validation_project(),
+            name="llm_batch_validation",
+        )
+        def _traced_llm_call(
+            prompt: str,
+            label_count: int,
+            merchant: Optional[str],
+        ) -> dict:
+            """Traced LLM call - captures prompt and structured response."""
+            response = self.structured_llm.invoke(
+                [HumanMessage(content=prompt)]
+            )
+            return {
+                "prompt": prompt,
+                "response": response,
+                "label_count": label_count,
+                "merchant": merchant,
+            }
+
+        result = _traced_llm_call(
+            prompt=prompt,
+            label_count=len(pending_labels),
+            merchant=merchant_name,
+        )
+        return result["response"]
+
+    def validate_receipt_labels(
+        self,
+        pending_labels: List[Dict[str, Any]],
+        words: List[Dict[str, Any]],
+        similar_evidence: Dict[str, List[Dict[str, Any]]],
+        merchant_name: Optional[str] = None,
+    ) -> List[LLMValidationResult]:
+        """
+        Validate all pending labels for a receipt in one LLM call.
+
+        Uses structured output with Pydantic schema to ensure valid responses.
+
+        Args:
+            pending_labels: List of pending labels with:
+                - line_id, word_id, label, word_text
+            words: All words in the receipt with:
+                - text, line_id, word_id, x, y
+            similar_evidence: Dict mapping word_id to list of similar words
+            merchant_name: Merchant name for context
+
+        Returns:
+            List of LLMValidationResult objects
+        """
+        if not pending_labels:
+            return []
+
+        self._call_count += 1
+
+        # Build prompt
+        prompt = build_validation_prompt(
+            pending_labels=pending_labels,
+            words=words,
+            similar_evidence=similar_evidence,
+            merchant_name=merchant_name,
+        )
+
+        logger.info(
+            "Validating %d pending labels for %s",
+            len(pending_labels),
+            merchant_name or "unknown merchant",
+        )
+
+        try:
+            # Call LLM with structured output
+            response = self._call_llm_with_tracing(
+                prompt=prompt,
+                pending_labels=pending_labels,
+                merchant_name=merchant_name,
+            )
+
+            # Convert structured response to results
+            results = convert_structured_response(response, pending_labels)
+            self._success_count += 1
+
+            # Log summary
+            valid_count = sum(1 for r in results if r.decision == "VALID")
+            invalid_count = sum(1 for r in results if r.decision == "INVALID")
+            logger.info(
+                "LLM validation complete: %d VALID, %d INVALID",
+                valid_count,
+                invalid_count,
+            )
+
+            return results
+
+        except ValidationError as e:
+            logger.error("LLM structured output validation failed: %s", e)
+            # Return fallback results - mark all as NEEDS_REVIEW
+            # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB
+            return [
+                LLMValidationResult(
+                    word_id=f"{label['line_id']}_{label['word_id']}",
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning=(
+                        f"Structured output validation failed: {str(e)[:100]}"
+                        + (
+                            " - AMOUNT requires reclassification"
+                            if label["label"] == "AMOUNT"
+                            else ""
+                        )
+                    ),
+                )
+                for label in pending_labels
+            ]
+
+        except Exception as e:
+            logger.error("LLM validation failed: %s", e)
+            # Return fallback results - mark all as NEEDS_REVIEW
+            # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB
+            return [
+                LLMValidationResult(
+                    word_id=f"{label['line_id']}_{label['word_id']}",
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning=(
+                        f"LLM call failed: {str(e)[:100]}"
+                        + (
+                            " - AMOUNT requires reclassification"
+                            if label["label"] == "AMOUNT"
+                            else ""
+                        )
+                    ),
+                )
+                for label in pending_labels
+            ]
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get LLM call statistics."""
+        return {
+            "call_count": self._call_count,
+            "success_count": self._success_count,
+            "llm_stats": self.structured_llm.get_stats(),
+        }

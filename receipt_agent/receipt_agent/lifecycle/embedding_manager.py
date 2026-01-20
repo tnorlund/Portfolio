@@ -23,9 +23,11 @@ from receipt_dynamo.entities import (
 
 try:
     from receipt_chroma.embedding.orchestration import (
+        EmbeddingConfig,
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 except ImportError:  # pragma: no cover
+    EmbeddingConfig = None
     chroma_create_embeddings = None
 
 logger = logging.getLogger(__name__)
@@ -113,15 +115,18 @@ def create_embeddings_and_compaction_run(
         # Use real client if add_to_dynamo, otherwise no-op client
         dynamo_for_chroma = client if add_to_dynamo else _NoOpDynamoClient()
 
-        result = chroma_create_embeddings(
-            receipt_lines=receipt_lines,
-            receipt_words=receipt_words,
+        config = EmbeddingConfig(
             image_id=image_id,
             receipt_id=receipt_id,
             chromadb_bucket=chromadb_bucket,
             dynamo_client=dynamo_for_chroma,
             receipt_word_labels=receipt_word_labels,
             merchant_name=merchant_name,
+        )
+        result = chroma_create_embeddings(
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
+            config=config,
         )
 
         # Extract CompactionRun before closing

@@ -518,6 +518,8 @@ layers_to_build = [
         "description": "DynamoDB layer for receipt-dynamo",
         "python_versions": ["3.12"],
     },
+    # TODO: Remove this layer - upload lambda is now container-based (PackageType: Image)
+    # and no other lambdas use this layer. The CodeBuild project can also be removed.
     {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",

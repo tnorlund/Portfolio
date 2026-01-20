@@ -30,6 +30,7 @@ dependencies = [
 # PySpark variant for EMR Serverless processing
 pyspark = [
     "pyspark>=3.5.0",
+    "pyarrow>=14.0.0",  # Required by parsers/parquet.py
 ]
 
 # Full variant includes everything (pyspark for EMR)
