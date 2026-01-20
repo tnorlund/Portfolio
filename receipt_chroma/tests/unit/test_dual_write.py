@@ -212,10 +212,11 @@ class TestSyncCollectionToCloud:
             )
 
             # Mock the cloud client creation (also mock CloudClient as safety net)
-            with patch(
-                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-            ) as mock_create, patch(
-                "chromadb.CloudClient"
+            with (
+                patch(
+                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+                ) as mock_create,
+                patch("chromadb.CloudClient"),
             ):
                 mock_cloud_client = MagicMock()
                 mock_cloud_client.__enter__ = MagicMock(
@@ -264,10 +265,11 @@ class TestSyncCollectionToCloud:
                 metadatas=metadatas,
             )
 
-            with patch(
-                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-            ) as mock_create, patch(
-                "chromadb.CloudClient"
+            with (
+                patch(
+                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+                ) as mock_create,
+                patch("chromadb.CloudClient"),
             ):
                 mock_cloud_client = MagicMock()
                 mock_cloud_client.__enter__ = MagicMock(
@@ -318,10 +320,11 @@ class TestSyncCollectionToCloud:
                 metadatas=metadatas,
             )
 
-            with patch(
-                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-            ) as mock_create, patch(
-                "chromadb.CloudClient"
+            with (
+                patch(
+                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+                ) as mock_create,
+                patch("chromadb.CloudClient"),
             ):
                 mock_cloud_client = MagicMock()
                 mock_cloud_client.__enter__ = MagicMock(
@@ -376,10 +379,11 @@ class TestSyncCollectionToCloud:
                 metadatas=[{"text": "a"}],
             )
 
-            with patch(
-                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-            ) as mock_create, patch(
-                "chromadb.CloudClient"
+            with (
+                patch(
+                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+                ) as mock_create,
+                patch("chromadb.CloudClient"),
             ):
                 mock_create.side_effect = Exception("Connection refused")
 
@@ -433,10 +437,11 @@ class TestSyncCollectionToCloud:
                 metadatas=[{"text": "a"}, {"text": "b"}],
             )
 
-            with patch(
-                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-            ) as mock_create, patch(
-                "chromadb.CloudClient"
+            with (
+                patch(
+                    "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+                ) as mock_create,
+                patch("chromadb.CloudClient"),
             ):
                 mock_cloud_client = MagicMock()
                 mock_cloud_client.__enter__ = MagicMock(
