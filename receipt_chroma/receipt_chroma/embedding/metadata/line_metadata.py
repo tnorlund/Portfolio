@@ -11,7 +11,7 @@ first (leftmost) line in the row.
 """
 
 from collections.abc import Sequence
-from typing import Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 from receipt_chroma.embedding.utils.normalize import (
     build_full_address_from_words,
