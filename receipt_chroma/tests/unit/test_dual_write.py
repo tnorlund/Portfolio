@@ -151,6 +151,18 @@ class TestUploadBatchWithRetry:
 class TestSyncCollectionToCloud:
     """Tests for sync_collection_to_cloud function."""
 
+    @pytest.fixture(autouse=True)
+    def clear_chroma_env_vars(self):
+        """Clear Chroma Cloud env vars to prevent real auth in CI."""
+        saved = {}
+        for var in CHROMA_ENV_VARS:
+            if var in os.environ:
+                saved[var] = os.environ.pop(var)
+        yield
+        # Restore after test
+        for var, value in saved.items():
+            os.environ[var] = value
+
     @pytest.fixture
     def temp_chromadb_dir(self):
         """Create a temporary directory for ChromaDB persistence."""
