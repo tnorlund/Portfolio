@@ -272,7 +272,12 @@ export interface MilkReceiptData {
 }
 
 export interface MilkSimilarityTiming {
-  s3_download_ms: number;
+  // S3 mode (legacy) - present when use_chroma_cloud is false
+  s3_download_ms?: number;
+  // Chroma Cloud mode - present when use_chroma_cloud is true
+  cloud_connect_ms?: number;
+  use_chroma_cloud?: boolean;
+  // Common fields
   chromadb_init_ms: number;
   chromadb_fetch_all_ms: number;
   filter_lines_ms: number;

@@ -2889,7 +2889,7 @@ def perform_final_merge(
                 local_client=chroma_client,
                 collection_name=sync_collection_name,
                 cloud_config=cloud_config,
-                batch_size=5000,
+                batch_size=250,  # Within Chroma Cloud quota limit (300)
                 max_workers=4,
                 logger=logger,
             )

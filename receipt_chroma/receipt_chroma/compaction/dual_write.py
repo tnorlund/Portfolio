@@ -407,7 +407,7 @@ def sync_collection_to_cloud(
     local_client: ChromaClient,
     collection_name: str,
     cloud_config: CloudConfig,
-    batch_size: int = 5000,
+    batch_size: int = 250,
     max_workers: int = 4,
     max_retries: int = 3,
     logger: Optional[Any] = None,
@@ -421,7 +421,7 @@ def sync_collection_to_cloud(
         local_client: ChromaClient with local snapshot (already open)
         collection_name: Name of collection to sync (e.g., "lines", "words")
         cloud_config: CloudConfig with API key, tenant, database
-        batch_size: Embeddings per batch (default 5000)
+        batch_size: Embeddings per batch (default 250, within Cloud quota)
         max_workers: Parallel upload threads (default 4)
         max_retries: Retries per batch with exponential backoff
         logger: Optional logger instance

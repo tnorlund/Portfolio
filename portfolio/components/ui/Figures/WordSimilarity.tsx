@@ -729,19 +729,25 @@ const TimingBreakdown: React.FC<{
   };
 
   // Build timing steps using CSS color variables
-  const steps: Array<{ name: string; ms: number; color: string }> = [
-    { name: "S3 Download", ms: timing.s3_download_ms, color: "var(--color-green)" },
-    { name: "ChromaDB Init", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
-    { name: "ChromaDB Fetch", ms: timing.chromadb_fetch_all_ms, color: "var(--color-purple)" },
-    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "var(--color-yellow)" },
-    { name: "DynamoDB Queries", ms: timing.dynamo_fetch_total_ms, color: "var(--color-orange)" },
-  ];
+  const steps: Array<{ name: string; ms: number; color: string }> = [];
 
-  // Calculate "other" time (upload, processing, etc.)
+  // Only show S3 Download for legacy S3 mode
+  if (!timing.use_chroma_cloud && timing.s3_download_ms !== undefined) {
+    steps.push({ name: "S3 Download", ms: timing.s3_download_ms, color: "var(--color-green)" });
+  }
+
+  steps.push(
+    { name: "Chroma Init", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
+    { name: "Chroma Fetch", ms: timing.chromadb_fetch_all_ms, color: "var(--color-purple)" },
+    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "var(--color-yellow)" },
+    { name: "Fetch Receipts", ms: timing.dynamo_fetch_total_ms, color: "var(--color-orange)" },
+  );
+
+  // Calculate remaining time (finalization, upload, processing)
   const accountedTime = steps.reduce((sum, step) => sum + step.ms, 0);
   const otherTime = timing.total_ms - accountedTime;
   if (otherTime > 0) {
-    steps.push({ name: "Other", ms: otherTime, color: "var(--color-red)" });
+    steps.push({ name: "Finalize", ms: otherTime, color: "var(--color-red)" });
   }
 
   // Calculate cumulative percentages for each step

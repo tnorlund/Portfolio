@@ -48,3 +48,4 @@ config:
     secure: AAABAOP8c/tGBBkG7zeelX1jYME2xValrcE1NLmxVTylK+sPeV4cDVoqON7xl60brrqqCVXUdagUUJiuZSpeXlJ5aece8Pc+exbXFNRqCQ==
   portfolio:CHROMA_CLOUD_TENANT: cf5b7019-a74c-4416-96cc-9578906bfc52
   portfolio:CHROMA_CLOUD_DATABASE: receipt_dev
+  portfolio:CHROMA_CLOUD_ENABLED: "true"
