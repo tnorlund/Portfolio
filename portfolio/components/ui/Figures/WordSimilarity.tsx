@@ -413,6 +413,7 @@ const WordSimilarity: React.FC = () => {
   const containerHeight = windowWidth <= 768 ? 400 : 600;
 
   return (
+    <>
     <div
       style={{
         display: "flex",
@@ -647,13 +648,15 @@ const WordSimilarity: React.FC = () => {
         <TimingBreakdown timing={data.timing} windowWidth={windowWidth} />
       )}
 
-      {/* Commentary */}
-      {data.commentary && (
-        <p style={{ margin: "1rem 0 0 0", fontStyle: "italic" }}>
-          {data.commentary}
-        </p>
-      )}
     </div>
+
+    {/* Commentary - rendered outside the constrained container to match page flow */}
+    {data.commentary && (
+      <p style={{ marginTop: "2rem" }}>
+        {data.commentary}
+      </p>
+    )}
+  </>
   );
 };
 
