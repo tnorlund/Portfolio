@@ -643,3 +643,69 @@ class _ReceiptWordLabel(
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
+
+    @handle_dynamodb_errors("list_receipt_word_labels_for_lines")
+    def list_receipt_word_labels_for_lines(
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_ids: list[int],
+    ) -> list[ReceiptWordLabel]:
+        """Lists all receipt word labels for words in the specified lines.
+
+        This is useful for aggregating labels across a visual row, which may
+        contain multiple ReceiptLine entities when Apple Vision OCR splits
+        rows.
+
+        Args:
+            image_id (str): The image ID
+            receipt_id (int): The receipt ID
+            line_ids (list[int]): List of line IDs to get labels for
+
+        Returns:
+            list[ReceiptWordLabel]: All word labels for words in the
+                specified lines
+
+        Raises:
+            EntityValidationError: If parameters are invalid
+        """
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+
+        if not isinstance(line_ids, list):
+            raise EntityValidationError("line_ids must be a list")
+        if not line_ids:
+            return []
+        for line_id in line_ids:
+            self._validate_positive_int_id(line_id, "line_id")
+
+        all_labels: list[ReceiptWordLabel] = []
+
+        # Query each line's labels (DynamoDB doesn't support OR in key
+        # conditions)
+        for line_id in line_ids:
+            results, _ = self._query_entities(
+                index_name=None,
+                key_condition_expression=(
+                    "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+                ),
+                expression_attribute_names={
+                    "#pk": "PK",
+                    "#sk": "SK",
+                    "#type": "TYPE",
+                },
+                expression_attribute_values={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                    },
+                    ":type": {"S": "RECEIPT_WORD_LABEL"},
+                },
+                converter_func=item_to_receipt_word_label,
+                filter_expression="#type = :type",
+                limit=None,
+                last_evaluated_key=None,
+            )
+            all_labels.extend(results)
+
+        return all_labels

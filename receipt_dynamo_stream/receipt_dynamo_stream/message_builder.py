@@ -285,6 +285,12 @@ def _extract_receipt_place(
 def _extract_receipt_word_label(
     entity: ReceiptWordLabel,
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    """Extract word label data and target both WORDS and LINES collections.
+
+    Label changes affect:
+    - WORDS: Direct label metadata updates on word embeddings
+    - LINES: Label aggregation on row-based line embeddings
+    """
     return {
         "entity_type": "RECEIPT_WORD_LABEL",
         "image_id": entity.image_id,
@@ -292,7 +298,7 @@ def _extract_receipt_word_label(
         "line_id": entity.line_id,
         "word_id": entity.word_id,
         "label": entity.label,
-    }, [ChromaDBCollection.WORDS]
+    }, [ChromaDBCollection.WORDS, ChromaDBCollection.LINES]
 
 
 def _extract_receipt(

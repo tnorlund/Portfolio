@@ -8,13 +8,18 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, cast
 
 from receipt_chroma.embedding.formatting.line_format import (
+    LineLike,
     format_line_context_embedding_input,
+    get_primary_line_id,
+    group_lines_into_visual_rows,
     parse_prev_next_from_formatted,
 )
 from receipt_chroma.embedding.formatting.word_format import get_word_neighbors
 from receipt_chroma.embedding.metadata.line_metadata import (
     create_line_metadata,
+    create_row_metadata,
     enrich_line_metadata_with_anchors,
+    enrich_row_metadata_with_anchors,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
     WordMetadata,
@@ -70,6 +75,43 @@ class WordEmbeddingRecord:
     def document(self) -> str:
         """Document text for Chroma."""
         return self.word.text
+
+
+@dataclass(frozen=True)
+class RowEmbeddingRecord:
+    """Embedding + entity payload for a visual row (one or more lines).
+
+    A visual row may contain multiple ReceiptLine entities when Apple Vision
+    OCR splits a row (e.g., product name on left, price on right).
+    """
+
+    row_lines: tuple[ReceiptLine, ...]  # Lines in the row, sorted left-to-right
+    embedding: List[float]
+    batch_id: Optional[str] = None
+
+    @property
+    def primary_line(self) -> ReceiptLine:
+        """The first (leftmost) line in the row, used as the primary."""
+        return self.row_lines[0]
+
+    @property
+    def chroma_id(self) -> str:
+        """Stable Chroma document id using the primary line's ID."""
+        return (
+            f"IMAGE#{self.primary_line.image_id}"
+            f"#RECEIPT#{self.primary_line.receipt_id:05d}"
+            f"#LINE#{self.primary_line.line_id:05d}"
+        )
+
+    @property
+    def document(self) -> str:
+        """Combined text from all lines in the row."""
+        return " ".join(line.text for line in self.row_lines)
+
+    @property
+    def line_ids(self) -> List[int]:
+        """All line IDs in the visual row."""
+        return [line.line_id for line in self.row_lines]
 
 
 def build_line_payload(
@@ -183,3 +225,72 @@ def build_word_payload(
         "documents": documents,
         "metadatas": metadatas,
     }
+
+
+def build_row_payload(
+    records: Iterable[RowEmbeddingRecord],
+    all_words: List[ReceiptWord],
+    merchant_name: Optional[str] = None,
+) -> Dict[str, List]:
+    """Create Chroma-ready payloads for row-based line embeddings.
+
+    Row-based embeddings group lines by visual row and include context from
+    adjacent rows. This handles Apple Vision OCR splitting rows into separate
+    ReceiptLine entities.
+
+    Args:
+        records: Row embedding records to build payloads for
+        all_words: All words in the receipt (for anchor enrichment)
+        merchant_name: Optional merchant name
+
+    Returns:
+        Dict with ids, embeddings, documents, metadatas lists for Chroma upsert
+    """
+    ids: List[str] = []
+    embeddings: List[List[float]] = []
+    documents: List[str] = []
+    metadatas: List[Dict[str, Any]] = []
+
+    for record in records:
+        # Get all words for lines in this row
+        row_line_ids = set(record.line_ids)
+        row_words = [w for w in all_words if w.line_id in row_line_ids]
+
+        # Create row metadata
+        row_metadata = create_row_metadata(
+            row_lines=list(record.row_lines),
+            merchant_name=merchant_name,
+            source="openai_embedding_batch",
+        )
+
+        # Enrich with anchors from all words in the row
+        row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
+
+        ids.append(record.chroma_id)
+        embeddings.append(record.embedding)
+        documents.append(record.document)
+        metadatas.append(dict(row_metadata))
+
+    return {
+        "ids": ids,
+        "embeddings": embeddings,
+        "documents": documents,
+        "metadatas": metadatas,
+    }
+
+
+def build_rows_from_lines(
+    lines: List[ReceiptLine],
+) -> List[List[ReceiptLine]]:
+    """Group lines into visual rows for embedding.
+
+    Utility function to convert a flat list of ReceiptLine entities into
+    visual rows for the row-based embedding approach.
+
+    Args:
+        lines: All lines in a receipt
+
+    Returns:
+        List of visual rows, each row being a list of lines sorted left-to-right
+    """
+    return group_lines_into_visual_rows(lines)

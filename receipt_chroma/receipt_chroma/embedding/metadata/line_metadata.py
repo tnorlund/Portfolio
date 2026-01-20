@@ -2,9 +2,16 @@
 
 This module provides functions for creating and enriching line metadata
 that will be stored in ChromaDB.
+
+Row-based approach (v2):
+Visual rows may contain multiple ReceiptLine entities when Apple Vision OCR
+splits a row (e.g., product name on left, price on right). The row_line_ids
+field tracks all line IDs in a visual row, while the primary line_id is the
+first (leftmost) line in the row.
 """
 
-from typing import List, Optional, TypedDict
+from collections.abc import Sequence
+from typing import Optional, TypedDict
 
 from receipt_chroma.embedding.utils.normalize import (
     build_full_address_from_words,
@@ -15,7 +22,16 @@ from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 
 class LineMetadata(TypedDict, total=False):
-    """Metadata structure for line embeddings in ChromaDB."""
+    """Metadata structure for line embeddings in ChromaDB.
+
+    For row-based embeddings (v2):
+    - line_id: Primary line ID (first/leftmost line in visual row)
+    - row_line_ids: JSON string of all line IDs in the visual row
+    - text: Combined text of all lines in the visual row
+
+    Legacy fields (for backward compatibility):
+    - prev_line, next_line: Legacy context fields
+    """
 
     image_id: str
     receipt_id: int
@@ -27,8 +43,8 @@ class LineMetadata(TypedDict, total=False):
     y: float
     width: float
     height: float
-    prev_line: str
-    next_line: str
+    prev_line: str  # Legacy
+    next_line: str  # Legacy
     merchant_name: str
     source: str
     section_label: str  # Optional
@@ -38,6 +54,8 @@ class LineMetadata(TypedDict, total=False):
     normalized_phone_10: str  # Optional, only if anchors exist
     normalized_full_address: str  # Optional, only if anchors exist
     normalized_url: str  # Optional, only if anchors exist
+    # Row-based fields (v2)
+    row_line_ids: str  # JSON array of line IDs in the visual row
 
 
 def create_line_metadata(
@@ -148,3 +166,98 @@ def enrich_line_metadata_with_anchors(
 
     return metadata  # type: ignore[return-value]
     # Dict operations return Dict[str, Any], but structure matches TypedDict
+
+
+def create_row_metadata(
+    row_lines: Sequence[ReceiptLine],
+    merchant_name: Optional[str] = None,
+    source: str = "openai_embedding_batch",
+) -> LineMetadata:
+    """Create metadata for a visual row embedding.
+
+    For row-based embeddings, the metadata includes:
+    - Primary identifiers from the first (leftmost) line
+    - Combined text from all lines in the row
+    - row_line_ids tracking all line IDs in the visual row
+
+    Args:
+        row_lines: Lines in the visual row, sorted left-to-right
+        merchant_name: Optional merchant name
+        source: Source identifier (default: "openai_embedding_batch")
+
+    Returns:
+        Dictionary of metadata for ChromaDB
+
+    Raises:
+        ValueError: If row_lines is empty
+    """
+    import json
+
+    if not row_lines:
+        raise ValueError("Cannot create metadata for empty row")
+
+    # Primary line is the first (leftmost) line
+    primary_line = row_lines[0]
+
+    # Combine text from all lines in the row
+    combined_text = " ".join(line.text for line in row_lines)
+
+    # Calculate bounding box spanning all lines
+    min_x = min(line.bounding_box["x"] for line in row_lines)
+    max_x = max(
+        line.bounding_box["x"] + line.bounding_box["width"] for line in row_lines
+    )
+    min_y = min(line.bounding_box["y"] for line in row_lines)
+    max_y = max(
+        line.bounding_box["y"] + line.bounding_box["height"] for line in row_lines
+    )
+
+    # Calculate average confidence
+    avg_confidence = sum(line.confidence for line in row_lines) / len(row_lines)
+
+    # Standardize merchant name format
+    if merchant_name:
+        merchant_name = merchant_name.strip().title()
+
+    # Collect all line IDs
+    line_ids = [line.line_id for line in row_lines]
+
+    metadata: LineMetadata = {
+        "image_id": primary_line.image_id,
+        "receipt_id": primary_line.receipt_id,
+        "line_id": primary_line.line_id,  # Primary line ID
+        "text": combined_text,
+        "confidence": avg_confidence,
+        "avg_word_confidence": avg_confidence,
+        "x": min_x,
+        "y": min_y,
+        "width": max_x - min_x,
+        "height": max_y - min_y,
+        "source": source,
+        "row_line_ids": json.dumps(line_ids),
+    }
+
+    if merchant_name:
+        metadata["merchant_name"] = merchant_name
+
+    return metadata
+
+
+def enrich_row_metadata_with_anchors(
+    metadata: LineMetadata,
+    row_words: Sequence[ReceiptWord],
+) -> LineMetadata:
+    """Enrich row metadata with anchor fields from all words in the row.
+
+    Similar to enrich_line_metadata_with_anchors but operates on all words
+    across all lines in the visual row.
+
+    Args:
+        metadata: Base metadata dictionary to enrich
+        row_words: List of ReceiptWord entities for all lines in the row
+
+    Returns:
+        Enriched metadata dictionary
+    """
+    # Reuse the existing enrichment logic
+    return enrich_line_metadata_with_anchors(metadata, list(row_words))
