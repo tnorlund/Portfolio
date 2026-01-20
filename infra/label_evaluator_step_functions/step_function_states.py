@@ -128,6 +128,7 @@ def build_input_normalization_states() -> dict[str, Any]:
             "Type": "Pass",
             "Parameters": {
                 "limit": None,
+                "since_date": None,
                 "langchain_project.$": (
                     "States.Format('label-eval-{}', $$.Execution.StartTime)"
                 ),
@@ -168,6 +169,7 @@ def build_input_mode_states(
                 "max_training_receipts": 50,
                 "min_receipts": 5,
                 "limit.$": "$.config.merged.limit",
+                "since_date.$": "$.config.merged.since_date",
                 "original_input.$": "$.normalized.original_input",
             },
             "ResultPath": "$.init",
@@ -199,6 +201,7 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
                 "min_receipts.$": "$.init.min_receipts",
                 "max_training_receipts.$": "$.init.max_training_receipts",
                 "limit.$": "$.init.limit",
+                "since_date.$": "$.init.since_date",
             },
             "ResultPath": "$.all_data",
             "Retry": retry_config,

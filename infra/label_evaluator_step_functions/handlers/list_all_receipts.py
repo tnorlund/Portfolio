@@ -46,9 +46,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": str,
         "batch_bucket": str,
         "limit": int | None,  # TOTAL receipts to fetch (None = all)
+        "since_date": str | None,  # ISO date string (e.g., "2025-01-15") to filter by timestamp
         "min_receipts": int,  # Minimum receipts for pattern learning (default 5)
         "max_training_receipts": int  # Max training receipts per merchant (default 50)
     }
+
+    Note: since_date filtering is applied BEFORE limit sampling. Receipts with
+    timestamp=None are excluded when since_date is specified.
 
     Output:
     {
@@ -98,10 +102,41 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     total_places = len(all_places)
     logger.info("Found %s total receipt places", total_places)
 
+    # Filter by since_date if provided (before applying limit)
+    since_date_str = event.get("since_date")
+    if since_date_str:
+        from datetime import datetime, timezone
+
+        # Parse ISO date string to datetime (start of day UTC)
+        since_date = datetime.fromisoformat(since_date_str.replace("Z", "+00:00"))
+        if since_date.tzinfo is None:
+            since_date = since_date.replace(tzinfo=timezone.utc)
+
+        def _to_utc(dt: datetime) -> datetime:
+            """Normalize datetime to UTC, handling naive timestamps as UTC."""
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
+        # Filter receipts by timestamp
+        before_count = len(all_places)
+        all_places = [
+            p for p in all_places
+            if p.timestamp and _to_utc(p.timestamp) >= since_date
+        ]
+        after_count = len(all_places)
+        logger.info(
+            "Filtered by since_date=%s: %d -> %d receipts",
+            since_date_str,
+            before_count,
+            after_count,
+        )
+
     # Apply total limit if specified (randomly sample from all places)
-    if limit and limit < total_places:
+    filtered_total = len(all_places)
+    if limit and limit < filtered_total:
         all_places = random.sample(all_places, limit)
-        logger.info("Randomly sampled %s places from %s total", limit, total_places)
+        logger.info("Randomly sampled %s places from %s total", limit, filtered_total)
 
     # Collect receipts from the selected places, grouped by merchant
     receipts_by_merchant: dict[str, list[dict]] = {}
@@ -184,6 +219,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Upload manifest to S3 for reference
     manifest = {
         "execution_id": execution_id,
+        "since_date": since_date_str,
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
         "limit": limit,
