@@ -616,6 +616,27 @@ def handler(_event, _context):
 
         # Step 6: Build response
         timing.total = time.time() - total_start
+
+        # Calculate grand total
+        grand_total = sum(row["total"] or 0 for row in summary_table)
+
+        # Generate commentary based on the grand total
+        def dollars_to_words(amount: float) -> str:
+            """Convert dollar amount to approximate words."""
+            if amount < 100:
+                return f"{int(amount)} dollars"
+            elif amount < 1000:
+                hundreds = int(amount // 100) * 100
+                return f"{hundreds} dollars"
+            else:
+                thousands = int(amount // 1000)
+                return f"{thousands} thousand dollars"
+
+        commentary = (
+            f"${grand_total:.2f}. That's... significantly more than I expected. "
+            f'I knew I liked milk, but I didn\'t think I "{dollars_to_words(grand_total)} a year" liked milk.'
+        )
+
         response_data = {
             "query_word": TARGET_WORD,
             "total_receipts": len(results),
@@ -624,6 +645,8 @@ def handler(_event, _context):
             "receipts": results,
             "cached_at": datetime.now(timezone.utc).isoformat(),
             "timing": timing.to_dict(),
+            "grand_total": round(grand_total, 2),
+            "commentary": commentary,
         }
 
         # Step 7: Upload to S3

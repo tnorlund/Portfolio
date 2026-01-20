@@ -307,6 +307,8 @@ export interface MilkSimilarityResponse {
   receipts: MilkReceiptData[];
   cached_at: string;
   timing?: MilkSimilarityTiming;
+  grand_total?: number;
+  commentary?: string;
 }
 
 export interface TrainingMetricsEpoch {

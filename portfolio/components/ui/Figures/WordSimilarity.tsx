@@ -646,6 +646,13 @@ const WordSimilarity: React.FC = () => {
       {data.timing && (
         <TimingBreakdown timing={data.timing} windowWidth={windowWidth} />
       )}
+
+      {/* Commentary */}
+      {data.commentary && (
+        <p style={{ margin: "1rem 0 0 0", fontStyle: "italic" }}>
+          {data.commentary}
+        </p>
+      )}
     </div>
   );
 };

@@ -473,11 +473,6 @@ M1LK 2%           1    $4.4g`}</code>
         <WordSimilarity />
       </ClientOnly>
 
-      <p>
-        $843.87. That's... significantly more than I expected. I knew I liked
-        milk, but I didn't think I "eight hundred dollars a year" liked milk.
-      </p>
-
       <h1>So Now What?</h1>
 
       <p>
