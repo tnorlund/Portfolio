@@ -21,6 +21,8 @@ from typing import Optional
 import boto3
 import chromadb
 
+from receipt_chroma.compaction.dual_write import CloudConfig
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
 
@@ -33,6 +35,9 @@ CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
 CACHE_KEY = "word-similarity-cache/milk.json"
 TARGET_WORD = "MILK"
+
+# Chroma Cloud configuration (optional - falls back to S3 if not set)
+CHROMA_CLOUD_ENABLED = os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
 
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
@@ -80,7 +85,8 @@ s3_client = boto3.client("s3")
 class TimingStats:
     """Track timing for each step of the pipeline."""
 
-    s3_download: float = 0.0
+    s3_download: float = 0.0  # Only used when not using Chroma Cloud
+    cloud_connect: float = 0.0  # Only used when using Chroma Cloud
     chromadb_init: float = 0.0
     chromadb_fetch_all: float = 0.0
     filter_lines: float = 0.0
@@ -89,18 +95,24 @@ class TimingStats:
     visual_line_assembly: list = field(default_factory=list)
     total: float = 0.0
     parallel_workers: int = 0
+    use_chroma_cloud: bool = False
 
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
         result = {
-            "s3_download_ms": round(self.s3_download * 1000, 1),
             "chromadb_init_ms": round(self.chromadb_init * 1000, 1),
             "chromadb_fetch_all_ms": round(self.chromadb_fetch_all * 1000, 1),
             "filter_lines_ms": round(self.filter_lines * 1000, 1),
             "dynamo_fetch_total_ms": round(self.dynamo_fetch_total * 1000, 1),
             "total_ms": round(self.total * 1000, 1),
             "parallel_workers": self.parallel_workers,
+            "use_chroma_cloud": self.use_chroma_cloud,
         }
+        # Include S3 download time only if used (non-cloud mode)
+        if not self.use_chroma_cloud:
+            result["s3_download_ms"] = round(self.s3_download * 1000, 1)
+        else:
+            result["cloud_connect_ms"] = round(self.cloud_connect * 1000, 1)
 
         # Add DynamoDB breakdown if available
         if self.dynamo_fetch_details:
@@ -363,50 +375,113 @@ def line_to_dict(line):
     }
 
 
+def _fetch_lines_from_cloud(timing: TimingStats) -> list:
+    """Fetch milk lines from Chroma Cloud with server-side filtering."""
+    cloud_config = CloudConfig.from_env()
+    if not cloud_config:
+        raise ValueError("Chroma Cloud config not available")
+
+    timing.use_chroma_cloud = True
+    step_start = time.time()
+
+    # Connect to Chroma Cloud
+    chroma_client = ChromaClient(
+        cloud_api_key=cloud_config.api_key,
+        cloud_tenant=cloud_config.tenant,
+        cloud_database=cloud_config.database,
+        mode="read",
+        metadata_only=True,
+    )
+    timing.cloud_connect = time.time() - step_start
+    logger.info("Connected to Chroma Cloud (%.2fs)", timing.cloud_connect)
+
+    with chroma_client:
+        # Get the lines collection
+        step_start = time.time()
+        lines_collection = chroma_client.get_collection("lines")
+        timing.chromadb_init = time.time() - step_start
+
+        # Server-side filter for lines containing TARGET_WORD
+        step_start = time.time()
+        milk_lines = lines_collection.get(
+            where_document={"$contains": TARGET_WORD},
+            include=["metadatas"],
+        )
+        timing.chromadb_fetch_all = time.time() - step_start
+        logger.info(
+            "Fetched %d lines containing '%s' from Chroma Cloud (%.2fs)",
+            len(milk_lines["ids"]),
+            TARGET_WORD,
+            timing.chromadb_fetch_all,
+        )
+
+    return milk_lines
+
+
+def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
+    """Fetch lines from S3 snapshot (fallback mode)."""
+    timing.use_chroma_cloud = False
+
+    # Step 1: Download ChromaDB lines snapshot
+    logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)
+    step_start = time.time()
+    download_result = download_snapshot_atomic(
+        bucket=CHROMADB_BUCKET,
+        collection="lines",
+        local_path=temp_dir,
+        verify_integrity=True,
+    )
+    timing.s3_download = time.time() - step_start
+
+    if download_result.get("status") != "downloaded":
+        raise ValueError(f"Failed to download snapshot: {download_result}")
+
+    logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
+
+    # Step 2: Initialize local ChromaDB
+    step_start = time.time()
+    client = chromadb.PersistentClient(path=temp_dir)
+    lines_collection = client.get_collection("lines")
+    timing.chromadb_init = time.time() - step_start
+
+    step_start = time.time()
+    all_lines = lines_collection.get(include=["metadatas"])
+    timing.chromadb_fetch_all = time.time() - step_start
+    logger.info(
+        "Fetched %d lines from local ChromaDB (%.2fs)",
+        len(all_lines["ids"]),
+        timing.chromadb_fetch_all,
+    )
+
+    return all_lines
+
+
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate word similarity cache."""
-    logger.info("Starting milk product cache generation")
+    logger.info(
+        "Starting milk product cache generation (Chroma Cloud: %s)",
+        CHROMA_CLOUD_ENABLED,
+    )
 
     timing = TimingStats()
     total_start = time.time()
     temp_dir = tempfile.mkdtemp()
 
     try:
-        # Use larger connection pool to match parallel workers (25) + headroom for retries
-        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=50)
+        # Use larger connection pool to match parallel workers (50) + headroom for retries
+        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=100)
 
-        # Step 1: Download ChromaDB lines snapshot
-        logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)
-        step_start = time.time()
-        download_result = download_snapshot_atomic(
-            bucket=CHROMADB_BUCKET,
-            collection="lines",
-            local_path=temp_dir,
-            verify_integrity=True,
-        )
-        timing.s3_download = time.time() - step_start
+        # Step 1: Fetch lines (Cloud or S3)
+        if CHROMA_CLOUD_ENABLED:
+            try:
+                all_lines = _fetch_lines_from_cloud(timing)
+            except Exception as e:
+                logger.warning("Chroma Cloud failed, falling back to S3: %s", e)
+                all_lines = _fetch_lines_from_s3(timing, temp_dir)
+        else:
+            all_lines = _fetch_lines_from_s3(timing, temp_dir)
 
-        if download_result.get("status") != "downloaded":
-            logger.error("Failed to download snapshot: %s", download_result)
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Failed to download ChromaDB lines snapshot"}),
-            }
-
-        logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
-
-        # Step 2: Search for MILK lines
-        step_start = time.time()
-        client = chromadb.PersistentClient(path=temp_dir)
-        lines_collection = client.get_collection("lines")
-        timing.chromadb_init = time.time() - step_start
-
-        step_start = time.time()
-        all_lines = lines_collection.get(include=["metadatas"])
-        timing.chromadb_fetch_all = time.time() - step_start
-        logger.info("Fetched %d lines from ChromaDB (%.2fs)", len(all_lines["ids"]), timing.chromadb_fetch_all)
-
-        # Filter for dairy milk
+        # Step 2: Filter for dairy milk (in-memory)
         step_start = time.time()
         matching_lines = []
         for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
@@ -484,7 +559,7 @@ def handler(_event, _context):
                 return None
 
         results = []
-        max_workers = 25
+        max_workers = 50
         timing.parallel_workers = max_workers
 
         logger.info("Fetching receipt details with %d parallel workers", max_workers)

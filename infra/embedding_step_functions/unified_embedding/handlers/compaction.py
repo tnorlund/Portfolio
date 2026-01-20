@@ -17,6 +17,10 @@ import boto3
 from chromadb.errors import NotFoundError
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.compaction.dual_write import (
+    CloudConfig,
+    sync_collection_to_cloud,
+)
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
@@ -2868,6 +2872,43 @@ def perform_final_merge(
                 # Pre-downloaded directories are cleaned up by the caller (final_merge_handler)
                 if not use_predownloaded:
                     shutil.rmtree(chunk_temp, ignore_errors=True)
+
+        # Sync to Chroma Cloud (if enabled)
+        cloud_config = CloudConfig.from_env()
+        cloud_sync_result = None
+
+        if cloud_config:
+            sync_collection_name = database_name or "words"
+            logger.info(
+                "Syncing collection to Chroma Cloud",
+                collection=sync_collection_name,
+                total_embeddings=total_embeddings,
+            )
+
+            cloud_sync_result = sync_collection_to_cloud(
+                local_client=chroma_client,
+                collection_name=sync_collection_name,
+                cloud_config=cloud_config,
+                batch_size=250,  # Within Chroma Cloud quota limit (300)
+                max_workers=4,
+                logger=logger,
+            )
+
+            if cloud_sync_result.success:
+                logger.info(
+                    "Cloud sync completed",
+                    collection=sync_collection_name,
+                    uploaded=cloud_sync_result.uploaded,
+                    cloud_count=cloud_sync_result.cloud_count,
+                    duration_seconds=cloud_sync_result.duration_seconds,
+                )
+            else:
+                logger.error(
+                    "Cloud sync failed (non-blocking)",
+                    collection=sync_collection_name,
+                    error=cloud_sync_result.error,
+                    failed_batches=cloud_sync_result.failed_batches,
+                )
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
         close_chromadb_client(chroma_client, collection_name="final_merge")

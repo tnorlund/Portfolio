@@ -22,6 +22,9 @@ DYNAMODB_TABLE_NAME = dynamodb_table.name
 stack = pulumi.get_stack()
 is_production = stack == "prod"
 
+# Load portfolio config for Chroma Cloud settings
+portfolio_config = pulumi.Config("portfolio")
+
 
 class WordSimilarityCacheGenerator(ComponentResource):
     """Container-based Lambda for generating word similarity cache from ChromaDB."""
@@ -220,6 +223,19 @@ class WordSimilarityCacheGenerator(ComponentResource):
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
                     "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
+                    # Chroma Cloud config for faster queries (skip S3 download)
+                    "CHROMA_CLOUD_ENABLED": (
+                        portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
+                    ),
+                    "CHROMA_CLOUD_API_KEY": (
+                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+                    ),
+                    "CHROMA_CLOUD_TENANT": (
+                        portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
+                    ),
+                    "CHROMA_CLOUD_DATABASE": (
+                        portfolio_config.get("CHROMA_CLOUD_DATABASE") or ""
+                    ),
                 },
             },
             platform="linux/arm64",
