@@ -18,7 +18,6 @@ from receipt_chroma.compaction.dual_write import (
     sync_collection_to_cloud,
 )
 
-
 # =============================================================================
 # BulkSyncResult Tests
 # =============================================================================
@@ -172,10 +171,14 @@ class TestSyncCollectionToCloud:
     ):
         """Empty collection returns success with zero counts."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             # Create empty collection
-            local_client.get_collection("test_collection", create_if_missing=True)
+            local_client.get_collection(
+                "test_collection", create_if_missing=True
+            )
 
             result = sync_collection_to_cloud(
                 local_client=local_client,
@@ -196,7 +199,9 @@ class TestSyncCollectionToCloud:
     ):
         """Single batch uploads correctly."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             # Add test data
             local_client.upsert(
@@ -241,7 +246,9 @@ class TestSyncCollectionToCloud:
     ):
         """Multiple batches upload in parallel."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             # Add enough data for multiple batches (batch_size=2 for testing)
             ids = [f"id{i}" for i in range(6)]
@@ -291,7 +298,9 @@ class TestSyncCollectionToCloud:
     ):
         """Some batch failures don't block others."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             # Add data for 2 batches
             ids = [f"id{i}" for i in range(4)]
@@ -327,9 +336,7 @@ class TestSyncCollectionToCloud:
 
                 mock_create.return_value = mock_cloud_client
 
-                with patch(
-                    "receipt_chroma.compaction.dual_write.time.sleep"
-                ):
+                with patch("receipt_chroma.compaction.dual_write.time.sleep"):
                     result = sync_collection_to_cloud(
                         local_client=local_client,
                         collection_name="test_collection",
@@ -352,7 +359,9 @@ class TestSyncCollectionToCloud:
     ):
         """Cloud connection error returns result with error."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             local_client.upsert(
                 collection_name="test_collection",
@@ -384,7 +393,9 @@ class TestSyncCollectionToCloud:
     ):
         """Collection not found returns result with error."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             # Don't create collection - try to sync non-existent collection
             result = sync_collection_to_cloud(
@@ -403,7 +414,9 @@ class TestSyncCollectionToCloud:
     ):
         """Sync logs progress information."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
             local_client.upsert(
                 collection_name="test_collection",
@@ -438,7 +451,8 @@ class TestSyncCollectionToCloud:
         mock_logger.info.assert_called()
         # Find the "Starting parallel cloud sync" log call
         info_calls = [
-            call for call in mock_logger.info.call_args_list
+            call
+            for call in mock_logger.info.call_args_list
             if "Starting parallel cloud sync" in str(call)
         ]
         assert len(info_calls) == 1
@@ -448,9 +462,13 @@ class TestSyncCollectionToCloud:
     ):
         """Sync duration is tracked in result."""
         with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
+            persist_directory=temp_chromadb_dir,
+            mode="write",
+            metadata_only=True,
         ) as local_client:
-            local_client.get_collection("test_collection", create_if_missing=True)
+            local_client.get_collection(
+                "test_collection", create_if_missing=True
+            )
 
             result = sync_collection_to_cloud(
                 local_client=local_client,

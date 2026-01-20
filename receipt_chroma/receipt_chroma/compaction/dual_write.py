@@ -447,7 +447,9 @@ def sync_collection_to_cloud(
             )
 
         # Create cloud client
-        cloud_client = _create_cloud_client_for_sync(cloud_config, collection_name)
+        cloud_client = _create_cloud_client_for_sync(
+            cloud_config, collection_name
+        )
 
         with cloud_client:
             cloud_coll = cloud_client.get_collection(
@@ -495,7 +497,9 @@ def sync_collection_to_cloud(
                     try:
                         count = future.result()
                         uploaded += count
-                    except Exception as e:  # pylint: disable=broad-exception-caught
+                    except (
+                        Exception
+                    ) as e:  # pylint: disable=broad-exception-caught
                         failed_batches += 1
                         log.error(
                             f"Batch {batch_idx} failed after {max_retries} retries",
