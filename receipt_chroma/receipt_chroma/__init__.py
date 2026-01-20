@@ -20,16 +20,33 @@ from receipt_chroma.embedding.delta import (
 from receipt_chroma.embedding.orchestration import (
     EmbeddingConfig,
     EmbeddingResult,
-    create_embeddings_and_compaction_run,
-    # Parallel pipeline helpers
-    _build_lines_payload_traced as build_lines_payload,
+)
+from receipt_chroma.embedding.orchestration import (
+    _build_lines_payload_traced as build_lines_payload,  # Parallel pipeline helpers
+)
+from receipt_chroma.embedding.orchestration import (
     _build_words_payload_traced as build_words_payload,
+)
+from receipt_chroma.embedding.orchestration import (
     _create_compaction_run_traced as create_compaction_run,
+)
+from receipt_chroma.embedding.orchestration import (
     _download_and_embed_parallel as download_and_embed_parallel,
+)
+from receipt_chroma.embedding.orchestration import (
     _upload_lines_delta_traced as upload_lines_delta,
+)
+from receipt_chroma.embedding.orchestration import (
     _upload_words_delta_traced as upload_words_delta,
+)
+from receipt_chroma.embedding.orchestration import (
     _upsert_lines_local_traced as upsert_lines_local,
+)
+from receipt_chroma.embedding.orchestration import (
     _upsert_words_local_traced as upsert_words_local,
+)
+from receipt_chroma.embedding.orchestration import (
+    create_embeddings_and_compaction_run,
 )
 from receipt_chroma.lock_manager import LockManager
 

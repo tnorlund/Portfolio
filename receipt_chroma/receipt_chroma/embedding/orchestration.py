@@ -64,9 +64,9 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
-        from langsmith.run_helpers import (
+        from langsmith.run_helpers import (  # pylint: disable=import-outside-toplevel
             traceable,
-        )  # pylint: disable=import-outside-toplevel
+        )
 
         return traceable
     except ImportError:
@@ -88,15 +88,15 @@ def _get_context_thread_pool_executor():
     trace nesting. Falls back to ThreadPoolExecutor if langsmith not installed.
     """
     try:
-        from langsmith.utils import (
+        from langsmith.utils import (  # pylint: disable=import-outside-toplevel
             ContextThreadPoolExecutor,
-        )  # pylint: disable=import-outside-toplevel
+        )
 
         return ContextThreadPoolExecutor
     except ImportError:
-        from concurrent.futures import (
+        from concurrent.futures import (  # pylint: disable=import-outside-toplevel
             ThreadPoolExecutor,
-        )  # pylint: disable=import-outside-toplevel
+        )
 
         return ThreadPoolExecutor
 
