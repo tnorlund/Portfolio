@@ -88,7 +88,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
     bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
-    prefix = event.get("prefix", "traces/")
+    # Note: prefix should NOT have trailing slash - LangSmith adds the path separator
+    prefix = event.get("prefix", "traces")
     skip_ssm = event.get("skip_ssm", False)
 
     if not api_key:

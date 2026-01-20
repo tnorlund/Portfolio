@@ -134,67 +134,71 @@ def load_receipts_from_s3(
 def find_latest_export_prefix(
     s3_client: Any, bucket: str, preferred_export_id: str | None = None
 ) -> str | None:
-    """Find the latest LangSmith export prefix in the bucket."""
-    logger.info("Finding latest export in s3://%s/traces/", bucket)
+    """Find the latest LangSmith export prefix in the bucket.
 
-    try:
-        response = s3_client.list_objects_v2(
-            Bucket=bucket, Prefix="traces/", Delimiter="/"
+    Searches both traces/ and traces// paths since LangSmith exports
+    may use either path structure depending on API version.
+    """
+    # Search both standard and double-slash paths
+    # LangSmith API sometimes uses traces// instead of traces/
+    search_prefixes = ["traces/", "traces//"]
+    all_exports: dict[str, str] = {}  # export_id -> actual_prefix
+
+    for search_prefix in search_prefixes:
+        logger.info("Finding exports in s3://%s/%s", bucket, search_prefix)
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=search_prefix, Delimiter="/"
+            )
+            prefixes = response.get("CommonPrefixes", [])
+            for p in prefixes:
+                prefix = p["Prefix"]
+                if "export_id=" in prefix:
+                    export_id = prefix.split("export_id=")[1].rstrip("/")
+                    if export_id and export_id not in all_exports:
+                        all_exports[export_id] = prefix
+                        logger.info("Found export: %s at %s", export_id, prefix)
+        except Exception:
+            logger.warning("Failed to search %s", search_prefix)
+
+    if not all_exports:
+        logger.warning("No export folders found in traces/ or traces//")
+        return None
+
+    export_ids = list(all_exports.keys())
+    logger.info("Found %d exports: %s", len(export_ids), export_ids[:5])
+
+    # Check preferred export first
+    if preferred_export_id and preferred_export_id in all_exports:
+        check_prefix = all_exports[preferred_export_id]
+        resp = s3_client.list_objects_v2(
+            Bucket=bucket, Prefix=check_prefix, MaxKeys=1
         )
-        prefixes = response.get("CommonPrefixes", [])
-        if not prefixes:
-            logger.warning("No export folders found in traces/")
-            return None
+        if resp.get("Contents"):
+            logger.info("Using preferred export: %s at %s", preferred_export_id, check_prefix)
+            return check_prefix
 
-        export_ids = []
-        for p in prefixes:
-            prefix = p["Prefix"]
-            if "export_id=" in prefix:
-                export_id = prefix.split("export_id=")[1].rstrip("/")
-                if export_id:
-                    export_ids.append(export_id)
+    # Find most recent export
+    latest_export = None
+    latest_time = None
+    latest_prefix = None
+    for export_id, prefix in all_exports.items():
+        resp = s3_client.list_objects_v2(
+            Bucket=bucket, Prefix=prefix, MaxKeys=1
+        )
+        if resp.get("Contents"):
+            mod_time = resp["Contents"][0].get("LastModified")
+            if latest_time is None or mod_time > latest_time:
+                latest_time = mod_time
+                latest_export = export_id
+                latest_prefix = prefix
 
-        if not export_ids:
-            logger.warning("No valid export IDs found")
-            return None
+    if latest_export and latest_prefix:
+        logger.info("Found latest export: %s (modified: %s)", latest_prefix, latest_time)
+        return latest_prefix
 
-        logger.info("Found %d exports: %s", len(export_ids), export_ids[:5])
-
-        # Check preferred export first
-        if preferred_export_id and preferred_export_id in export_ids:
-            check_prefix = f"traces/export_id={preferred_export_id}/"
-            resp = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=check_prefix, MaxKeys=1
-            )
-            if resp.get("Contents"):
-                logger.info("Using preferred export: %s", preferred_export_id)
-                return check_prefix
-
-        # Find most recent export
-        latest_export = None
-        latest_time = None
-        for export_id in export_ids:
-            check_prefix = f"traces/export_id={export_id}/"
-            resp = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=check_prefix, MaxKeys=1
-            )
-            if resp.get("Contents"):
-                mod_time = resp["Contents"][0].get("LastModified")
-                if latest_time is None or mod_time > latest_time:
-                    latest_time = mod_time
-                    latest_export = export_id
-
-        if latest_export:
-            prefix = f"traces/export_id={latest_export}/"
-            logger.info("Found latest export: %s (modified: %s)", prefix, latest_time)
-            return prefix
-
-        logger.warning("No exports with data found")
-        return None
-
-    except Exception:
-        logger.exception("Failed to find latest export")
-        return None
+    logger.warning("No exports with data found")
+    return None
 
 
 def list_parquet_files(s3_client: Any, bucket: str, prefix: str) -> list[str]:
@@ -417,10 +421,14 @@ def build_viz_receipt(
 
     for trace in validation_traces:
         name = trace.get("name", "")
-        outputs = trace.get("outputs", {})
-        duration = trace.get("duration_ms", 0.0)
+        # Handle None outputs explicitly (can occur when trace is incomplete or outputs not captured)
+        outputs = trace.get("outputs") or {}
+        # Handle None duration explicitly (can occur when trace is incomplete)
+        duration = trace.get("duration_ms") or 0.0
 
-        if name == "label_validation_chroma":
+        # Support both trace name conventions:
+        # - label_validation_chroma (old) and chroma_label_validation (new)
+        if name in ("label_validation_chroma", "chroma_label_validation"):
             chroma_duration_ms += duration
             # Handle both single validation and batch outputs
             if "validations" in outputs:

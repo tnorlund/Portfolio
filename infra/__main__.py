@@ -54,6 +54,10 @@ from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from upload_images import UploadImages
 
+# Receipt Label Validation project name - single source of truth
+# This project name is used for LangSmith tracing, bulk export, and viz cache generation
+label_validation_project_name = f"receipt-validation-v1-{pulumi.get_stack()}"
+
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
 # from instance_registry import InstanceRegistry
@@ -453,6 +457,7 @@ upload_images = UploadImages(
         if chromadb_infrastructure.efs
         else None
     ),
+    label_validation_project_name=label_validation_project_name,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
@@ -1284,10 +1289,6 @@ pulumi.export(
 pulumi.export(
     "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
 )
-
-# Receipt Label Validation project name - single source of truth
-# This project name is used for both LangSmith export and viz cache generation
-label_validation_project_name = f"receipt-validation-{stack}"
 
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
