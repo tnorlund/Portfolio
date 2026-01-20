@@ -152,10 +152,7 @@ def create_simplified_qa_tools(
                 # Generate embedding for the query
                 query_embeddings = _embed_fn([query])
                 if not query_embeddings or not query_embeddings[0]:
-                    return {
-                        "error": "Failed to generate query embedding",
-                        "results": [],
-                    }
+                    return {"error": "Failed to generate query embedding", "results": []}
 
                 # Perform similarity search
                 results = lines_collection.query(
@@ -266,13 +263,9 @@ def create_simplified_qa_tools(
 
             def get_valid_label(line_id: int, word_id: int) -> Optional[str]:
                 history = labels_by_word.get((line_id, word_id), [])
-                valid = [
-                    lb for lb in history if lb.validation_status == "VALID"
-                ]
+                valid = [lb for lb in history if lb.validation_status == "VALID"]
                 if valid:
-                    valid.sort(
-                        key=lambda lb: str(lb.timestamp_added), reverse=True
-                    )
+                    valid.sort(key=lambda lb: str(lb.timestamp_added), reverse=True)
                     return valid[0].label
                 return None
 
@@ -281,17 +274,15 @@ def create_simplified_qa_tools(
             for word in details.words:
                 centroid = word.calculate_centroid()
                 label = get_valid_label(word.line_id, word.word_id)
-                word_contexts.append(
-                    {
-                        "word": word,
-                        "label": label,
-                        "y": centroid[1],
-                        "x": centroid[0],
-                        "text": word.text,
-                        "line_id": word.line_id,
-                        "word_id": word.word_id,
-                    }
-                )
+                word_contexts.append({
+                    "word": word,
+                    "label": label,
+                    "y": centroid[1],
+                    "x": centroid[0],
+                    "text": word.text,
+                    "line_id": word.line_id,
+                    "word_id": word.word_id,
+                })
 
             if not word_contexts:
                 return {
@@ -312,9 +303,7 @@ def create_simplified_qa_tools(
                 if w["word"].bounding_box.get("height")
             ]
             y_tolerance = (
-                max(0.01, statistics.median(heights) * 0.75)
-                if heights
-                else 0.015
+                max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
             )
 
             visual_lines = []
@@ -324,9 +313,7 @@ def create_simplified_qa_tools(
             for w in sorted_words[1:]:
                 if abs(w["y"] - current_y) <= y_tolerance:
                     current_line.append(w)
-                    current_y = sum(c["y"] for c in current_line) / len(
-                        current_line
-                    )
+                    current_y = sum(c["y"] for c in current_line) / len(current_line)
                 else:
                     current_line.sort(key=lambda c: c["x"])
                     visual_lines.append(current_line)
@@ -361,16 +348,12 @@ def create_simplified_qa_tools(
             for w in sorted_words:
                 if w["label"] in currency_labels:
                     try:
-                        amount = float(
-                            w["text"].replace("$", "").replace(",", "")
-                        )
-                        amounts.append(
-                            {
-                                "label": w["label"],
-                                "text": w["text"],
-                                "amount": amount,
-                            }
-                        )
+                        amount = float(w["text"].replace("$", "").replace(",", ""))
+                        amounts.append({
+                            "label": w["label"],
+                            "text": w["text"],
+                            "amount": amount,
+                        })
                     except ValueError:
                         pass
 
