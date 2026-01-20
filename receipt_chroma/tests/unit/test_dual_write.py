@@ -222,10 +222,14 @@ class TestSyncCollectionToCloud:
         }
         mock_local_client.get_collection.return_value = mock_local_coll
 
-        # Mock cloud client
-        with patch(
-            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-        ) as mock_create:
+        # Mock cloud client - patch both the helper function AND chromadb.CloudClient
+        # as safety net in case CI env vars cause chromadb to attempt real auth
+        with (
+            patch(
+                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+            ) as mock_create,
+            patch("chromadb.CloudClient"),
+        ):
             mock_cloud_client = MagicMock()
             mock_cloud_client.__enter__ = MagicMock(
                 return_value=mock_cloud_client
@@ -292,9 +296,12 @@ class TestSyncCollectionToCloud:
         ]
         mock_local_client.get_collection.return_value = mock_local_coll
 
-        with patch(
-            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-        ) as mock_create:
+        with (
+            patch(
+                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+            ) as mock_create,
+            patch("chromadb.CloudClient"),
+        ):
             mock_cloud_client = MagicMock()
             mock_cloud_client.__enter__ = MagicMock(
                 return_value=mock_cloud_client
@@ -355,9 +362,13 @@ class TestSyncCollectionToCloud:
         ]
         mock_local_client.get_collection.return_value = mock_local_coll
 
-        with patch(
-            "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
-        ) as mock_create:
+        with (
+            patch(
+                "receipt_chroma.compaction.dual_write._create_cloud_client_for_sync"
+            ) as mock_create,
+            patch("chromadb.CloudClient"),
+            patch("receipt_chroma.compaction.dual_write.time.sleep"),
+        ):
             mock_cloud_client = MagicMock()
             mock_cloud_client.__enter__ = MagicMock(
                 return_value=mock_cloud_client
@@ -377,16 +388,15 @@ class TestSyncCollectionToCloud:
 
             mock_create.return_value = mock_cloud_client
 
-            with patch("receipt_chroma.compaction.dual_write.time.sleep"):
-                result = sync_collection_to_cloud(
-                    local_client=mock_local_client,
-                    collection_name="test_collection",
-                    cloud_config=cloud_config,
-                    batch_size=2,
-                    max_workers=1,  # Sequential for predictable ordering
-                    max_retries=3,
-                    logger=mock_logger,
-                )
+            result = sync_collection_to_cloud(
+                local_client=mock_local_client,
+                collection_name="test_collection",
+                cloud_config=cloud_config,
+                batch_size=2,
+                max_workers=1,  # Sequential for predictable ordering
+                max_retries=3,
+                logger=mock_logger,
+            )
 
         # Partial failure - not full success
         assert result.success is False
