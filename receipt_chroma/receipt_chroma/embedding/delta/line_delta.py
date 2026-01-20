@@ -2,18 +2,22 @@
 
 This module provides functionality for saving line embedding results
 as ChromaDB delta files for compaction.
+
+Supports row-based embeddings where multiple ReceiptLine entities that appear
+on the same visual row are grouped into a single embedding.
 """
 
 from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 from receipt_chroma.embedding.formatting.line_format import (
-    format_line_context_embedding_input,
-    parse_prev_next_from_formatted,
+    format_visual_row,
+    get_primary_line_id,
+    group_lines_into_visual_rows,
 )
 from receipt_chroma.embedding.metadata.line_metadata import (
-    create_line_metadata,
-    enrich_line_metadata_with_anchors,
+    create_row_metadata,
+    enrich_row_metadata_with_anchors,
 )
 
 
@@ -73,14 +77,16 @@ def save_line_embeddings_as_delta(
     sqs_queue_url: Optional[str] = None,
 ) -> dict:
     """
-    Save line embedding results as a delta file to S3 for ChromaDB compaction.
+    Save row-based line embedding results as a delta file to S3.
 
-    This replaces the direct Pinecone upsert with a delta file that will be
-    processed later by the compaction job.
+    With row-based embeddings, each result's custom_id contains the primary
+    (leftmost) line's ID. This function finds all lines in that visual row
+    and creates metadata for the entire row.
 
     Args:
         results: The list of embedding results, each containing:
-            - custom_id (str)
+            - custom_id (str) - format: IMAGE#X#RECEIPT#Y#LINE#Z where Z is
+              the primary line_id of a visual row
             - embedding (List[float])
         descriptions: A nested dict of receipt details keyed by
             image_id and receipt_id.
@@ -101,12 +107,29 @@ def save_line_embeddings_as_delta(
     metadatas = []
     documents = []
 
+    # Cache visual rows per receipt to avoid recomputing
+    visual_rows_cache: Dict[tuple, Dict[int, list]] = {}
+
+    def get_visual_rows_map(
+        image_id: str, receipt_id: int, lines: list
+    ) -> Dict[int, list]:
+        """Get mapping of primary_line_id -> visual row for a receipt."""
+        cache_key = (image_id, receipt_id)
+        if cache_key not in visual_rows_cache:
+            visual_rows = group_lines_into_visual_rows(lines)
+            visual_rows_cache[cache_key] = {
+                get_primary_line_id(row): row
+                for row in visual_rows
+                if row
+            }
+        return visual_rows_cache[cache_key]
+
     for result in results:
         # Parse metadata from custom_id
         meta = _parse_metadata_from_line_id(result["custom_id"])
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
-        line_id = meta["line_id"]
+        primary_line_id = meta["line_id"]
 
         # Get receipt details
         receipt_details = descriptions[image_id][receipt_id]
@@ -114,27 +137,18 @@ def save_line_embeddings_as_delta(
         words = receipt_details["words"]
         place = receipt_details["place"]
 
-        # Find the target line
-        target_line = next((l for l in lines if l.line_id == line_id), None)
-        if not target_line:
+        # Get visual rows and find the target row
+        rows_map = get_visual_rows_map(image_id, receipt_id, lines)
+        target_row = rows_map.get(primary_line_id)
+        if not target_row:
             raise ValueError(
-                f"No ReceiptLine found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}"
+                f"No visual row found with primary_line_id={primary_line_id} "
+                f"for image_id={image_id}, receipt_id={receipt_id}"
             )
 
-        # Get line words for confidence calculation
-        line_words = [w for w in words if w.line_id == line_id]
-        avg_confidence = (
-            sum(w.confidence for w in line_words) / len(line_words)
-            if line_words
-            else target_line.confidence
-        )
-
-        # Get line context
-        embedding_input = format_line_context_embedding_input(
-            target_line, lines
-        )
-        prev_line, next_line = parse_prev_next_from_formatted(embedding_input)
+        # Get all words for lines in this row
+        row_line_ids = {line.line_id for line in target_row}
+        row_words = [w for w in words if w.line_id in row_line_ids]
 
         if not place.merchant_name:
             raise ValueError(
@@ -143,29 +157,24 @@ def save_line_embeddings_as_delta(
             )
         merchant_name = place.merchant_name
 
-        # Build metadata for ChromaDB using consolidated metadata creation
-        section_label = getattr(target_line, "section_label", None) or None
-        line_metadata = create_line_metadata(
-            line=target_line,
-            prev_line=prev_line,
-            next_line=next_line,
+        # Build row metadata for ChromaDB
+        row_metadata = create_row_metadata(
+            row_lines=target_row,
             merchant_name=merchant_name,
-            avg_word_confidence=avg_confidence,
-            section_label=section_label,
             source="openai_embedding_batch",
         )
 
-        # Anchor-only enrichment for lines: attach fields only if this line
-        # has anchor words
-        line_metadata = enrich_line_metadata_with_anchors(
-            line_metadata, line_words
-        )
+        # Anchor-only enrichment: attach anchor fields from all words in row
+        row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
+
+        # Document is the formatted visual row text
+        document = format_visual_row(target_row)
 
         # Add to delta arrays
         ids.append(result["custom_id"])
         embeddings.append(result["embedding"])
-        metadatas.append(line_metadata)
-        documents.append(target_line.text)
+        metadatas.append(row_metadata)
+        documents.append(document)
 
     # Produce the delta file
     delta_result = produce_embedding_delta(
@@ -174,8 +183,7 @@ def save_line_embeddings_as_delta(
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        collection_name="lines",  # Must match ChromaDBCollection.LINES and
-        # database_name
+        collection_name="lines",  # Must match ChromaDBCollection.LINES
         database_name="lines",  # Separate database for line embeddings
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,

@@ -25,6 +25,10 @@ from receipt_agent.subagents.place_finder import (
 )
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_line_embeddings_as_delta
+from receipt_chroma.embedding.formatting.line_format import (
+    group_lines_into_visual_rows,
+    get_primary_line_id,
+)
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
     get_openai_batch_status,
@@ -34,7 +38,9 @@ from receipt_chroma.embedding.openai import (
 )
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
+    RowEmbeddingRecord,
     build_line_payload,
+    build_row_payload,
 )
 from receipt_chroma.s3 import download_snapshot_atomic
 from utils.circuit_breaker import (  # pylint: disable=import-error
@@ -134,9 +140,17 @@ async def _ensure_receipt_place_async(
         receipt_id=receipt_id,
     )
 
-    line_records: List[LineEmbeddingRecord] = []
+    row_records: List[RowEmbeddingRecord] = []
     if line_results:
-        lines_by_id = {line.line_id: line for line in receipt_details.lines}
+        # Group lines into visual rows for row-based embedding records
+        visual_rows = group_lines_into_visual_rows(receipt_details.lines)
+        # Build a mapping from primary_line_id to the full row
+        primary_to_row = {
+            get_primary_line_id(row): row
+            for row in visual_rows
+            if row
+        }
+
         for result in line_results:
             try:
                 meta = parse_line_custom_id(result["custom_id"])
@@ -154,26 +168,28 @@ async def _ensure_receipt_place_async(
             ):
                 continue
 
-            target_line = lines_by_id.get(meta["line_id"])
-            if not target_line:
+            # The line_id in custom_id is the primary line of a visual row
+            primary_line_id = meta["line_id"]
+            target_row = primary_to_row.get(primary_line_id)
+            if not target_row:
                 logger.warning(
-                    "Line not found for embedding result",
+                    "Visual row not found for primary line_id",
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    line_id=meta["line_id"],
+                    primary_line_id=primary_line_id,
                 )
                 continue
 
-            line_records.append(
-                LineEmbeddingRecord(
-                    line=target_line,
+            row_records.append(
+                RowEmbeddingRecord(
+                    row_lines=tuple(target_row),
                     embedding=result.get("embedding") or [],
                     batch_id=batch_id,
                 )
             )
 
     line_embeddings_map = {
-        record.chroma_id: record.embedding for record in line_records
+        record.chroma_id: record.embedding for record in row_records
     } or None
 
     chroma_root = Path("/tmp/chroma/place_finder")
@@ -218,9 +234,8 @@ async def _ensure_receipt_place_async(
 
     chroma_client = DualChromaClient(lines_client, words_client, logger)
     try:
-        payload = build_line_payload(
-            records=line_records,
-            all_lines=receipt_details.lines,
+        payload = build_row_payload(
+            records=row_records,
             all_words=receipt_details.words,
             merchant_name=None,
         )
@@ -585,7 +600,11 @@ def _handle_internal_core(
         descriptions: dict[str, dict[int, dict]],
     ) -> None:
         """
-        Update the embedding status of the lines to SUCCESS.
+        Update the embedding status of ALL lines in each visual row to SUCCESS.
+
+        With row-based embeddings, each result's custom_id contains the primary
+        (leftmost) line's ID. We need to update ALL lines in that visual row,
+        not just the primary line.
 
         Args:
             results: The list of embedding results.
@@ -593,6 +612,19 @@ def _handle_internal_core(
         """
         # Group lines by receipt for efficient updates
         lines_by_receipt: dict[str, dict[int, list]] = {}
+
+        # Cache visual rows per receipt to avoid recomputing
+        visual_rows_cache: dict[tuple[str, int], list[list]] = {}
+
+        def get_visual_rows(image_id: str, receipt_id: int) -> list[list]:
+            """Get visual rows for a receipt, computing once and caching."""
+            cache_key = (image_id, receipt_id)
+            if cache_key not in visual_rows_cache:
+                receipt_lines = descriptions[image_id][receipt_id]["lines"]
+                visual_rows_cache[cache_key] = group_lines_into_visual_rows(
+                    receipt_lines
+                )
+            return visual_rows_cache[cache_key]
 
         for result in results:
             try:
@@ -606,31 +638,40 @@ def _handle_internal_core(
                 continue
             image_id = meta["image_id"]
             receipt_id = meta["receipt_id"]
-            line_id = meta["line_id"]
+            primary_line_id = meta["line_id"]
 
-            # Get the lines for this receipt from descriptions
-            receipt_lines = descriptions[image_id][receipt_id]["lines"]
+            # Get visual rows for this receipt
+            visual_rows = get_visual_rows(image_id, receipt_id)
 
-            # Find the target line by direct line_id match
-            target_line = next(
-                (line for line in receipt_lines if line.line_id == line_id),
-                None,
-            )
+            # Find the visual row containing this primary line
+            target_row = None
+            for row in visual_rows:
+                if row and get_primary_line_id(row) == primary_line_id:
+                    target_row = row
+                    break
 
-            if target_line:
+            if target_row:
                 # Initialize the receipt dict if needed
                 if image_id not in lines_by_receipt:
                     lines_by_receipt[image_id] = {}
                 if receipt_id not in lines_by_receipt[image_id]:
                     lines_by_receipt[image_id][receipt_id] = []
 
-                # Update the embedding status to SUCCESS
-                target_line.embedding_status = EmbeddingStatus.SUCCESS.value
-                lines_by_receipt[image_id][receipt_id].append(target_line)
+                # Update embedding status for ALL lines in the visual row
+                for line in target_row:
+                    line.embedding_status = EmbeddingStatus.SUCCESS.value
+                    lines_by_receipt[image_id][receipt_id].append(line)
+
+                logger.debug(
+                    "Marked visual row lines as SUCCESS",
+                    primary_line_id=primary_line_id,
+                    row_line_count=len(target_row),
+                    row_line_ids=[l.line_id for l in target_row],
+                )
             else:
                 raise ValueError(
-                    f"No line found with ID {line_id} in receipt {receipt_id} "
-                    f"from image {image_id}"
+                    f"No visual row found with primary line_id {primary_line_id} "
+                    f"in receipt {receipt_id} from image {image_id}"
                 )
 
         # Update lines individually to avoid transaction conflicts when multiple
