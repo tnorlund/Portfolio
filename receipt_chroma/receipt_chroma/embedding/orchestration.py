@@ -29,6 +29,8 @@ from openai import OpenAI
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
+    get_row_embedding_inputs,
+    group_lines_into_visual_rows,
 )
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
@@ -36,8 +38,10 @@ from receipt_chroma.embedding.formatting.word_format import (
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
+    RowEmbeddingRecord,
     WordEmbeddingRecord,
     build_line_payload,
+    build_row_payload,
     build_word_payload,
 )
 from receipt_chroma.s3.helpers import upload_delta_tarball
@@ -192,6 +196,47 @@ def _embed_lines(
     return _traced_embed(openai_client, receipt_lines, model)
 
 
+def _embed_rows(
+    openai_client: OpenAI,
+    receipt_lines: list[ReceiptLine],
+    model: str,
+) -> tuple[list[list[float]], list[list[int]]]:
+    """Generate embeddings for visual rows via OpenAI (traced).
+
+    Groups lines into visual rows and generates one embedding per row.
+    Returns both embeddings and the line_ids for each row.
+
+    Args:
+        openai_client: OpenAI client
+        receipt_lines: All lines in the receipt
+        model: Embedding model name
+
+    Returns:
+        Tuple of (row_embeddings, row_line_ids_list) where:
+        - row_embeddings: List of embedding vectors, one per visual row
+        - row_line_ids_list: List of line_id lists, one per visual row
+    """
+    traceable = _get_traceable()
+
+    @traceable(
+        name="openai_embed_rows",
+        project_name="receipt-label-validation",
+        metadata={"line_count": len(receipt_lines), "model": model},
+    )
+    def _traced_embed(
+        client: OpenAI, lines: list[ReceiptLine], embedding_model: str
+    ) -> tuple[list[list[float]], list[list[int]]]:
+        row_inputs = get_row_embedding_inputs(lines)
+        formatted_texts = [text for text, _ in row_inputs]
+        row_line_ids_list = [line_ids for _, line_ids in row_inputs]
+        embeddings = embed_texts(
+            client=client, texts=formatted_texts, model=embedding_model
+        )
+        return embeddings, row_line_ids_list
+
+    return _traced_embed(openai_client, receipt_lines, model)
+
+
 def _embed_words(
     openai_client: OpenAI,
     receipt_words: list[ReceiptWord],
@@ -226,7 +271,7 @@ def _download_and_embed_parallel(
     s3_client: "S3Client",
     openai_client: OpenAI,
     model: str,
-) -> tuple[str, str, list[list[float]], list[list[float]]]:
+) -> tuple[str, str, list[list[float]], list[list[int]], list[list[float]]]:
     """
     Run all 4 I/O operations in parallel.
 
@@ -234,7 +279,8 @@ def _download_and_embed_parallel(
     propagate trace context to child threads, enabling proper trace nesting.
 
     Returns:
-        Tuple of (lines_dir, words_dir, line_embeddings, word_embeddings)
+        Tuple of (lines_dir, words_dir, row_embeddings, row_line_ids_list,
+        word_embeddings)
     """
     thread_pool_class = _get_context_thread_pool_executor()
 
@@ -251,11 +297,11 @@ def _download_and_embed_parallel(
                 s3_client,
             ): "download_words",
             executor.submit(
-                _embed_lines,
+                _embed_rows,
                 openai_client,
                 receipt_lines,
                 model,
-            ): "embed_lines",
+            ): "embed_rows",
             executor.submit(
                 _embed_words,
                 openai_client,
@@ -274,10 +320,14 @@ def _download_and_embed_parallel(
                 logger.error("Parallel task failed: %s - %s", task_name, e)
                 raise
 
+    # _embed_rows returns (embeddings, line_ids_list)
+    row_embeddings, row_line_ids_list = results["embed_rows"]
+
     return (
         results["download_lines"]["local_path"],
         results["download_words"]["local_path"],
-        results["embed_lines"],
+        row_embeddings,
+        row_line_ids_list,
         results["embed_words"],
     )
 
@@ -476,7 +526,8 @@ def _get_project_name() -> str:
 def _build_payloads_traced(
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
-    line_embeddings_list: list[list[float]],
+    row_embeddings: list[list[float]],
+    row_line_ids_list: list[list[int]],
     word_embeddings_list: list[list[float]],
     word_labels: list[ReceiptWordLabel] | None,
     merchant_name: str | None,
@@ -486,7 +537,11 @@ def _build_payloads_traced(
     dict[int, list[float]],
     dict[tuple[int, int], list[float]],
 ]:
-    """Build embedding payloads with tracing."""
+    """Build embedding payloads with tracing.
+
+    Uses row-based line embeddings where all lines in a visual row share
+    the same embedding vector.
+    """
     traceable = _get_traceable()
 
     @traceable(
@@ -495,6 +550,7 @@ def _build_payloads_traced(
         tags=["embedding", "payload"],
         metadata={
             "num_lines": len(receipt_lines),
+            "num_rows": len(row_embeddings),
             "num_words": len(receipt_words),
         },
     )
@@ -504,25 +560,29 @@ def _build_payloads_traced(
         dict[int, list[float]],
         dict[tuple[int, int], list[float]],
     ]:
-        line_records = [
-            LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(
-                receipt_lines, line_embeddings_list, strict=True
-            )
+        # Group lines into visual rows
+        visual_rows = group_lines_into_visual_rows(receipt_lines)
+
+        # Create RowEmbeddingRecord objects
+        row_records = [
+            RowEmbeddingRecord(row_lines=tuple(row), embedding=emb)
+            for row, emb in zip(visual_rows, row_embeddings, strict=True)
         ]
-        line_payload = build_line_payload(
-            line_records,
-            receipt_lines,
+
+        # Build payload using row-based function
+        line_payload = build_row_payload(
+            row_records,
             receipt_words,
             merchant_name=merchant_name,
         )
 
-        line_embedding_cache: dict[int, list[float]] = {
-            ln.line_id: emb
-            for ln, emb in zip(
-                receipt_lines, line_embeddings_list, strict=True
-            )
-        }
+        # Build cache: all lines in a row share the same embedding
+        line_embedding_cache: dict[int, list[float]] = {}
+        for row_line_ids, emb in zip(
+            row_line_ids_list, row_embeddings, strict=True
+        ):
+            for line_id in row_line_ids:
+                line_embedding_cache[line_id] = emb
 
         word_records = [
             WordEmbeddingRecord(word=w, embedding=emb)
@@ -665,37 +725,51 @@ def _create_compaction_run_traced(
 def _build_lines_payload_traced(
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
-    line_embeddings_list: list[list[float]],
+    row_embeddings: list[list[float]],
+    row_line_ids_list: list[list[int]],
     merchant_name: str | None,
 ) -> tuple[dict[str, Any], dict[int, list[float]]]:
-    """Build just lines payload with tracing."""
+    """Build just lines payload with tracing.
+
+    Uses row-based embeddings where all lines in a visual row share
+    the same embedding vector.
+    """
     traceable = _get_traceable()
 
     @traceable(
         name="build_lines_payload",
         project_name=_get_project_name(),
         tags=["embedding", "payload", "lines"],
-        metadata={"num_lines": len(receipt_lines)},
+        metadata={
+            "num_lines": len(receipt_lines),
+            "num_rows": len(row_embeddings),
+        },
     )
     def _traced_build() -> tuple[dict[str, Any], dict[int, list[float]]]:
-        line_records = [
-            LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(
-                receipt_lines, line_embeddings_list, strict=True
-            )
+        # Group lines into visual rows
+        visual_rows = group_lines_into_visual_rows(receipt_lines)
+
+        # Create RowEmbeddingRecord objects
+        row_records = [
+            RowEmbeddingRecord(row_lines=tuple(row), embedding=emb)
+            for row, emb in zip(visual_rows, row_embeddings, strict=True)
         ]
-        line_payload = build_line_payload(
-            line_records,
-            receipt_lines,
+
+        # Build payload using row-based function
+        line_payload = build_row_payload(
+            row_records,
             receipt_words,
             merchant_name=merchant_name,
         )
-        line_embedding_cache: dict[int, list[float]] = {
-            ln.line_id: emb
-            for ln, emb in zip(
-                receipt_lines, line_embeddings_list, strict=True
-            )
-        }
+
+        # Build cache: all lines in a row share the same embedding
+        line_embedding_cache: dict[int, list[float]] = {}
+        for row_line_ids, emb in zip(
+            row_line_ids_list, row_embeddings, strict=True
+        ):
+            for line_id in row_line_ids:
+                line_embedding_cache[line_id] = emb
+
         return line_payload, line_embedding_cache
 
     return _traced_build()
@@ -1028,7 +1102,8 @@ def create_embeddings_and_compaction_run(
     (
         local_lines_dir,
         local_words_dir,
-        line_embeddings_list,
+        row_embeddings,
+        row_line_ids_list,
         word_embeddings_list,
     ) = _download_and_embed_parallel(
         receipt_lines=receipt_lines,
@@ -1039,9 +1114,12 @@ def create_embeddings_and_compaction_run(
         model=model,
     )
     logger.info(
-        "Parallel operations complete: lines_dir=%s, words_dir=%s",
+        "Parallel operations complete: lines_dir=%s, words_dir=%s, "
+        "row_count=%d, word_count=%d",
         local_lines_dir,
         local_words_dir,
+        len(row_embeddings),
+        len(word_embeddings_list),
     )
 
     try:
@@ -1054,7 +1132,8 @@ def create_embeddings_and_compaction_run(
         ) = _build_payloads_traced(
             receipt_lines=receipt_lines,
             receipt_words=receipt_words,
-            line_embeddings_list=line_embeddings_list,
+            row_embeddings=row_embeddings,
+            row_line_ids_list=row_line_ids_list,
             word_embeddings_list=word_embeddings_list,
             word_labels=config.receipt_word_labels,
             merchant_name=merchant_name,

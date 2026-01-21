@@ -126,7 +126,8 @@ def _run_lines_pipeline_worker(
     local_lines_dir: str,
     lines_data: List[Dict[str, Any]],
     words_data: List[Dict[str, Any]],
-    line_embeddings_list: List[List[float]],
+    row_embeddings: List[List[float]],
+    row_line_ids_list: List[List[int]],
     image_id: str,
     receipt_id: int,
     run_id: str,
@@ -142,14 +143,20 @@ def _run_lines_pipeline_worker(
     Returns serializable dict with results.
 
     Args:
+        row_embeddings: Embeddings for each visual row
+        row_line_ids_list: List of line_ids for each visual row
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
     from receipt_chroma import (
         ChromaClient,
-        build_lines_payload,
+        build_row_payload,
         upload_lines_delta,
     )
+    from receipt_chroma.embedding.formatting.line_format import (
+        group_lines_into_visual_rows,
+    )
+    from receipt_chroma.embedding.records import RowEmbeddingRecord
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
@@ -171,11 +178,13 @@ def _run_lines_pipeline_worker(
         )
 
         try:
-            # Build embedding cache
-            line_embedding_cache: Dict[int, List[float]] = {
-                ln.line_id: emb
-                for ln, emb in zip(lines, line_embeddings_list, strict=True)
-            }
+            # Build embedding cache: all lines in a row share the same embedding
+            line_embedding_cache: Dict[int, List[float]] = {}
+            for row_line_ids, emb in zip(
+                row_line_ids_list, row_embeddings, strict=True
+            ):
+                for line_id in row_line_ids:
+                    line_embedding_cache[line_id] = emb
 
             # Create resolver and run merchant resolution
             dynamo = DynamoClient(table_name)
@@ -204,11 +213,19 @@ def _run_lines_pipeline_worker(
                 line_embeddings=line_embedding_cache,
             )
 
-            # Build lines payload with resolved merchant name
-            line_payload, _ = build_lines_payload(
-                receipt_lines=lines,
-                receipt_words=words,
-                line_embeddings_list=line_embeddings_list,
+            # Group lines into visual rows
+            visual_rows = group_lines_into_visual_rows(lines)
+
+            # Create RowEmbeddingRecord objects
+            row_records = [
+                RowEmbeddingRecord(row_lines=tuple(row), embedding=emb)
+                for row, emb in zip(visual_rows, row_embeddings, strict=True)
+            ]
+
+            # Build row payload with resolved merchant name
+            line_payload = build_row_payload(
+                row_records,
+                words,
                 merchant_name=merchant_result.merchant_name,
             )
 
@@ -860,7 +877,8 @@ class MerchantResolvingEmbeddingProcessor:
             (
                 local_lines_dir,
                 local_words_dir,
-                line_embeddings_list,
+                row_embeddings,
+                row_line_ids_list,
                 word_embeddings_list,
             ) = download_and_embed_parallel(
                 receipt_lines=lines,
@@ -871,7 +889,8 @@ class MerchantResolvingEmbeddingProcessor:
                 model=model,
             )
             _log(
-                "Phase 1 complete: downloaded snapshots and generated embeddings"
+                f"Phase 1 complete: downloaded snapshots and generated embeddings "
+                f"(rows={len(row_embeddings)}, words={len(word_embeddings_list)})"
             )
         except Exception as e:
             _log(f"ERROR: Failed to download/embed: {e}")
@@ -945,7 +964,8 @@ class MerchantResolvingEmbeddingProcessor:
                     local_lines_dir=local_lines_dir,
                     lines_data=lines_data,
                     words_data=words_data,
-                    line_embeddings_list=line_embeddings_list,
+                    row_embeddings=row_embeddings,
+                    row_line_ids_list=row_line_ids_list,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     run_id=run_id,

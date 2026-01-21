@@ -24,6 +24,9 @@ from receipt_chroma.embedding.orchestration import (
 from receipt_chroma.embedding.orchestration import (
     _build_lines_payload_traced as build_lines_payload,  # Parallel pipeline helpers
 )
+from receipt_chroma.embedding.records import (
+    build_row_payload,  # Row-based line embeddings
+)
 from receipt_chroma.embedding.orchestration import (
     _build_words_payload_traced as build_words_payload,
 )
@@ -74,6 +77,7 @@ __all__ = [
     "StorageMode",
     # Parallel pipeline helpers
     "build_lines_payload",
+    "build_row_payload",
     "build_words_payload",
     "create_compaction_run",
     "create_embeddings_and_compaction_run",
