@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "boto3",
+    "boto3>=1.34.0,<1.42.0",
     "chromadb>=1.3.5",
     "openai>=2.8.1,<3.0.0",
     "receipt-dynamo",

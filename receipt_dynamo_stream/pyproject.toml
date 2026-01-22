@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "boto3>=1.34.0",
+    "boto3>=1.34.0,<1.42.0",
     "receipt-dynamo>=0.3.0",
 ]
 keywords = ["dynamodb", "receipts", "aws", "streams", "chroma"]

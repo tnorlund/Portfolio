@@ -13,22 +13,6 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
-import utils.logging  # pylint: disable=import-error
-from openai import OpenAI
-from receipt_chroma.embedding.formatting.line_format import (
-    get_primary_line_id,
-    get_row_embedding_inputs,
-    group_lines_into_visual_rows,
-)
-from receipt_chroma.embedding.openai import (
-    add_batch_summary,
-    create_batch_summary,
-    submit_openai_batch,
-    upload_to_openai,
-)
-
-from receipt_dynamo.data.dynamo_client import DynamoClient
-
 from embedding_ingest import (  # pylint: disable=import-error
     deserialize_receipt_lines,
     download_serialized_file,
@@ -36,6 +20,19 @@ from embedding_ingest import (  # pylint: disable=import-error
     set_pending_and_update_lines,
     write_ndjson,
 )
+from openai import OpenAI
+from receipt_chroma.embedding.formatting.line_format import (
+    get_row_embedding_inputs,
+)
+from receipt_chroma.embedding.openai import (
+    add_batch_summary,
+    create_batch_summary,
+    submit_openai_batch,
+    upload_to_openai,
+)
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
+import utils.logging  # pylint: disable=import-error
 from utils.env_vars import get_required_env  # pylint: disable=import-error
 
 get_logger = utils.logging.get_logger
@@ -99,15 +96,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Group all lines into visual rows and generate row-based embedding inputs
         # Each row includes context from rows above and below
         row_inputs = get_row_embedding_inputs(all_lines_in_receipt)
-        visual_rows = group_lines_into_visual_rows(all_lines_in_receipt)
-
-        # Create a mapping from primary_line_id to row's line_ids
-        # This helps the polling handler know which lines belong to each row
-        primary_to_row_line_ids = {}
-        for row in visual_rows:
-            if row:
-                primary_id = get_primary_line_id(row)
-                primary_to_row_line_ids[primary_id] = [line.line_id for line in row]
 
         # Format rows with context for embedding
         # Only create entries for rows that contain at least one line needing embedding

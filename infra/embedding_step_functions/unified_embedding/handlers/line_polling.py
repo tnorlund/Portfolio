@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
-import utils.logging  # pylint: disable=import-error
 from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_client,
@@ -26,8 +25,8 @@ from receipt_agent.subagents.place_finder import (
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_line_embeddings_as_delta
 from receipt_chroma.embedding.formatting.line_format import (
-    group_lines_into_visual_rows,
     get_primary_line_id,
+    group_lines_into_visual_rows,
 )
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
@@ -43,6 +42,12 @@ from receipt_chroma.embedding.records import (
     build_row_payload,
 )
 from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
@@ -73,11 +78,6 @@ from utils.tracing import (  # pylint: disable=import-error
     trace_openai_batch_poll,
     tracer,
 )
-
-from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -146,9 +146,7 @@ async def _ensure_receipt_place_async(
         visual_rows = group_lines_into_visual_rows(receipt_details.lines)
         # Build a mapping from primary_line_id to the full row
         primary_to_row = {
-            get_primary_line_id(row): row
-            for row in visual_rows
-            if row
+            get_primary_line_id(row): row for row in visual_rows if row
         }
 
         for result in line_results:
@@ -666,7 +664,7 @@ def _handle_internal_core(
                     "Marked visual row lines as SUCCESS",
                     primary_line_id=primary_line_id,
                     row_line_count=len(target_row),
-                    row_line_ids=[l.line_id for l in target_row],
+                    row_line_ids=[line.line_id for line in target_row],
                 )
             else:
                 raise ValueError(
@@ -771,9 +769,7 @@ def _handle_internal_core(
         # Ensure receipt_place exists for all receipts (create if missing using Places API)
         # This is required because get_receipt_descriptions requires receipt_place
         # and embeddings need metadata to work properly
-        with operation_with_timeout(
-            "ensure_receipt_place", max_duration=120
-        ):
+        with operation_with_timeout("ensure_receipt_place", max_duration=120):
             unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_places = []
             for receipt_id, image_id in unique_receipts:
@@ -787,9 +783,7 @@ def _handle_internal_core(
                     )
                     # Verify place was created (or already existed)
                     try:
-                        dynamo_client.get_receipt_place(
-                            image_id, receipt_id
-                        )
+                        dynamo_client.get_receipt_place(image_id, receipt_id)
                         logger.debug(
                             "Verified receipt_place exists",
                             image_id=image_id,

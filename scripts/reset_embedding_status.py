@@ -78,17 +78,26 @@ def delete_all_batch_summaries(
         batch_summaries = [
             bs for bs in batch_summaries if bs.batch_type == "LINE_EMBEDDING"
         ]
-        logger.info(f"Found {len(batch_summaries)} LINE_EMBEDDING BatchSummary records")
+        logger.info(
+            f"Found {len(batch_summaries)} LINE_EMBEDDING BatchSummary records"
+        )
     elif collection == "words":
         batch_summaries = [
             bs for bs in batch_summaries if bs.batch_type == "WORD_EMBEDDING"
         ]
-        logger.info(f"Found {len(batch_summaries)} WORD_EMBEDDING BatchSummary records")
+        logger.info(
+            f"Found {len(batch_summaries)} WORD_EMBEDDING BatchSummary records"
+        )
     else:
-        logger.info(f"Found {len(batch_summaries)} BatchSummary records (all types)")
+        logger.info(
+            f"Found {len(batch_summaries)} BatchSummary records (all types)"
+        )
 
     if dry_run:
-        logger.info("[DRY RUN] Would delete %d BatchSummary records", len(batch_summaries))
+        logger.info(
+            "[DRY RUN] Would delete %d BatchSummary records",
+            len(batch_summaries),
+        )
         return len(batch_summaries)
 
     # Delete in chunks of 25 (DynamoDB transaction limit)
@@ -99,7 +108,9 @@ def delete_all_batch_summaries(
             dynamo.delete_batch_summaries(chunk)
             deleted += len(chunk)
             if deleted % 100 == 0 or deleted == len(batch_summaries):
-                logger.info(f"Deleted {deleted}/{len(batch_summaries)} BatchSummary records")
+                logger.info(
+                    f"Deleted {deleted}/{len(batch_summaries)} BatchSummary records"
+                )
         except Exception:
             logger.exception("Error deleting batch summaries chunk")
             # Try one by one
@@ -132,7 +143,9 @@ def reset_embedding_status(
     images = []
     last_key = None
     while True:
-        batch, last_key = dynamo.list_images(limit=100, last_evaluated_key=last_key)
+        batch, last_key = dynamo.list_images(
+            limit=100, last_evaluated_key=last_key
+        )
         images.extend(batch)
         if last_key is None:
             break
@@ -149,7 +162,7 @@ def reset_embedding_status(
     reset_words = collection in ("words", "both")
     reset_lines = collection in ("lines", "both")
 
-    def process_image(img, idx):
+    def process_image(img):
         """Process a single image - thread-safe."""
         local_stats = {"words_reset": 0, "lines_reset": 0, "errors": []}
 
@@ -177,8 +190,12 @@ def reset_embedding_status(
                             dynamo.update_receipt_words(chunk)
                         local_stats["words_reset"] += len(words_to_update)
                     except Exception:
-                        logger.exception("Error updating words for %s", img.image_id)
-                        local_stats["errors"].append(f"update_words:{img.image_id}")
+                        logger.exception(
+                            "Error updating words for %s", img.image_id
+                        )
+                        local_stats["errors"].append(
+                            f"update_words:{img.image_id}"
+                        )
 
         # Reset ReceiptLines to NONE (if requested)
         if reset_lines:
@@ -197,8 +214,12 @@ def reset_embedding_status(
                             dynamo.update_receipt_lines(chunk)
                         local_stats["lines_reset"] += len(lines_to_update)
                     except Exception:
-                        logger.exception("Error updating lines for %s", img.image_id)
-                        local_stats["errors"].append(f"update_lines:{img.image_id}")
+                        logger.exception(
+                            "Error updating lines for %s", img.image_id
+                        )
+                        local_stats["errors"].append(
+                            f"update_lines:{img.image_id}"
+                        )
 
         return local_stats
 
@@ -208,7 +229,7 @@ def reset_embedding_status(
         completed = 0
         with ThreadPoolExecutor(max_workers=parallel) as executor:
             futures = {
-                executor.submit(process_image, img, idx): idx
+                executor.submit(process_image, img): idx
                 for idx, img in enumerate(images)
             }
             for future in as_completed(futures):
@@ -221,9 +242,13 @@ def reset_embedding_status(
                     if completed % 50 == 0 or completed == len(images):
                         progress_parts = []
                         if reset_words:
-                            progress_parts.append(f"words: {stats['words_reset']}")
+                            progress_parts.append(
+                                f"words: {stats['words_reset']}"
+                            )
                         if reset_lines:
-                            progress_parts.append(f"lines: {stats['lines_reset']}")
+                            progress_parts.append(
+                                f"lines: {stats['lines_reset']}"
+                            )
                         logger.info(
                             "Completed %d/%d images (%s)",
                             completed,
@@ -245,7 +270,7 @@ def reset_embedding_status(
                     len(images),
                     ", ".join(progress_parts),
                 )
-            local_stats = process_image(img, idx)
+            local_stats = process_image(img)
             stats["words_reset"] += local_stats["words_reset"]
             stats["lines_reset"] += local_stats["lines_reset"]
             stats["errors"].extend(local_stats["errors"])
@@ -302,9 +327,7 @@ def clear_chromadb_snapshots(
                 # Delete in batches of 1000 (S3 limit)
                 for i in range(0, len(objects_to_delete), 1000):
                     batch = objects_to_delete[i : i + 1000]
-                    s3.delete_objects(
-                        Bucket=bucket, Delete={"Objects": batch}
-                    )
+                    s3.delete_objects(Bucket=bucket, Delete={"Objects": batch})
                     stats[f"{coll}_deleted"] += len(batch)
                     logger.info(
                         "Deleted %d/%d objects for %s",
@@ -424,7 +447,9 @@ def main():
     if args.clear_snapshots:
         logger.info("")
         logger.info("=" * 60)
-        logger.info(f"Step 3: Clear {collection_label} ChromaDB snapshots from S3")
+        logger.info(
+            f"Step 3: Clear {collection_label} ChromaDB snapshots from S3"
+        )
         logger.info("=" * 60)
         bucket = config.get("chromadb_bucket_name") or config.get(
             "embedding_chromadb_bucket_name"
@@ -471,7 +496,9 @@ def main():
             logger.warning("  ... and %d more", len(all_errors) - 10)
 
     if args.dry_run:
-        logger.info("[DRY RUN] No changes were made. Use --no-dry-run to apply changes.")
+        logger.info(
+            "[DRY RUN] No changes were made. Use --no-dry-run to apply changes."
+        )
 
 
 if __name__ == "__main__":

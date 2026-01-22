@@ -79,8 +79,8 @@ def list_collections(client) -> list:
     try:
         collections = client.list_collections()
         return [c.name for c in collections]
-    except Exception as e:
-        logger.error("Error listing collections: %s", e)
+    except Exception:
+        logger.exception("Error listing collections")
         return []
 
 
@@ -138,8 +138,8 @@ def delete_collection(
         logger.info("Successfully deleted collection '%s'", collection_name)
         return True
 
-    except Exception as e:
-        logger.exception("Error deleting collection '%s': %s", collection_name, e)
+    except Exception:
+        logger.exception("Error deleting collection '%s'", collection_name)
         return False
 
 

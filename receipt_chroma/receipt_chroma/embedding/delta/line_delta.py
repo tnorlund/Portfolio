@@ -119,9 +119,7 @@ def save_line_embeddings_as_delta(
         if cache_key not in visual_rows_cache:
             visual_rows = group_lines_into_visual_rows(lines)
             visual_rows_cache[cache_key] = {
-                get_primary_line_id(row): row
-                for row in visual_rows
-                if row
+                get_primary_line_id(row): row for row in visual_rows if row
             }
         return visual_rows_cache[cache_key]
 
@@ -154,7 +152,7 @@ def save_line_embeddings_as_delta(
         # Get labels for this receipt
         labels = receipt_details.get("labels", [])
 
-        if not place.merchant_name:
+        if not place or not place.merchant_name:
             raise ValueError(
                 f"No merchant name available for image_id={image_id}, "
                 f"receipt_id={receipt_id}"
@@ -169,7 +167,9 @@ def save_line_embeddings_as_delta(
         )
 
         # Anchor-only enrichment: attach anchor fields from all words in row
-        row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
+        row_metadata = enrich_row_metadata_with_anchors(
+            row_metadata, row_words
+        )
 
         # Label enrichment: aggregate VALID labels from all words in row
         row_metadata = enrich_row_metadata_with_labels(
