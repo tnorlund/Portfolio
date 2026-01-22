@@ -122,7 +122,7 @@ async function measureDiagramPerformance(
 
   const scriptingTime = metricsMap.get("ScriptDuration") ?? 0;
   const renderingTime = metricsMap.get("LayoutDuration") ?? 0;
-  const paintingTime = metricsMap.get("RecalcStyleDuration") ?? 0;
+  const paintingTime = metricsMap.get("PaintDuration") ?? metricsMap.get("RecalcStyleDuration") ?? 0;
   const totalTime = metricsMap.get("TaskDuration") ?? 0;
 
   await client.send("Performance.disable");
@@ -142,12 +142,13 @@ async function measureDiagramPerformance(
 }
 
 /**
- * Scrolls to make all three diagram components visible in the viewport
+ * Scrolls to make diagram components visible in the viewport.
+ * Selects the middle diagram to maximize visibility of surrounding diagrams.
+ * @returns true if diagrams were found and scrolled to, false otherwise
  */
-async function scrollToDiagrams(page: Page): Promise<void> {
-  // Find the StreamBitsRoutingDiagram which is in the middle
-  // We'll scroll to a position that shows all three diagrams
-  await page.evaluate(() => {
+async function scrollToDiagrams(page: Page): Promise<boolean> {
+  // Find diagram SVGs and scroll to the middle one
+  const found = await page.evaluate(() => {
     // Find SVGs that are part of the diagrams
     const svgs = document.querySelectorAll("svg");
     const diagramSvgs = Array.from(svgs).filter((svg) => {
@@ -159,14 +160,20 @@ async function scrollToDiagrams(page: Page): Promise<void> {
       );
     });
 
-    if (diagramSvgs.length > 0) {
-      // Scroll to the first diagram
-      diagramSvgs[0].scrollIntoView({ block: "center", behavior: "instant" });
+    if (diagramSvgs.length === 0) {
+      return false;
     }
+
+    // Scroll to the middle diagram to maximize visibility of all diagrams
+    const middleIndex = Math.floor(diagramSvgs.length / 2);
+    diagramSvgs[middleIndex].scrollIntoView({ block: "center", behavior: "instant" });
+    return true;
   });
 
   // Give time for scroll to complete
   await page.waitForTimeout(100);
+
+  return found;
 }
 
 /**
@@ -206,7 +213,8 @@ test.describe("Diagram Performance Tests", () => {
     await page.waitForTimeout(1000);
 
     // Scroll to make diagrams visible
-    await scrollToDiagrams(page);
+    const foundDiagrams = await scrollToDiagrams(page);
+    expect(foundDiagrams).toBe(true);
 
     // Wait for diagrams to start animating
     await page.waitForTimeout(500);
@@ -255,7 +263,8 @@ test.describe("Diagram Performance Tests", () => {
     });
 
     // Measure performance at the diagram section
-    await scrollToDiagrams(page);
+    const foundDiagrams = await scrollToDiagrams(page);
+    expect(foundDiagrams).toBe(true);
     const metrics = await measureDiagramPerformance(page, 3000);
 
     console.log("\n" + formatMetrics(metrics, "SCROLL + ANIMATE PERFORMANCE"));
@@ -353,7 +362,8 @@ test.describe("Diagram Performance Tests", () => {
       return 0;
     });
 
-    await scrollToDiagrams(page);
+    const foundDiagrams = await scrollToDiagrams(page);
+    expect(foundDiagrams).toBe(true);
 
     // Wait for several animation cycles
     await page.waitForTimeout(5000);
