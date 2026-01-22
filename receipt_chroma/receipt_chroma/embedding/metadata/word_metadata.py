@@ -22,6 +22,9 @@ from receipt_chroma.embedding.utils.normalize import (
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
+# Chroma Cloud limits metadata key names to 36 bytes
+_MAX_METADATA_KEY_BYTES = 36
+
 
 def _label_field_name(label: str) -> str:
     """Generate the metadata field name for a label.
@@ -175,8 +178,17 @@ def enrich_word_metadata_with_labels(
 
     # Set boolean fields for each label
     # True = validated, False = invalid, absent = not evaluated
+    # Only VALID/INVALID labels with valid names are included:
+    # - Must be in CORE_LABELS (not garbage/notes)
+    # - Must fit within Chroma Cloud's 36-byte key limit
     for lbl in word_labels:
+        # Skip garbage labels (notes, values stored as label names)
+        if lbl.label not in CORE_LABELS:
+            continue
         field_name = _label_field_name(lbl.label)
+        # Defensive check for Chroma Cloud quota
+        if len(field_name.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+            continue
         if lbl.validation_status == ValidationStatus.VALID.value:
             metadata[field_name] = True  # type: ignore[literal-required]
         elif lbl.validation_status == ValidationStatus.INVALID.value:

@@ -102,8 +102,9 @@ class DockerImageComponent(ComponentResource):
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
                 "receipt_agent",
+                "receipt_chroma",
                 "receipt_places",
-            ],  # Include receipt_agent and receipt_places for metadata finder
+            ],  # Include packages used by embedding lambdas
             lambda_function_name=None,  # Lambdas created separately
             lambda_config=None,
             platform="linux/arm64",

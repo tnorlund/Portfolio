@@ -48,6 +48,9 @@ from receipt_chroma.embedding.orchestration import (
 from receipt_chroma.embedding.orchestration import (
     create_embeddings_and_compaction_run,
 )
+from receipt_chroma.embedding.records import (
+    build_row_payload,  # Row-based line embeddings
+)
 from receipt_chroma.lock_manager import LockManager
 
 # S3 operations are available via receipt_chroma.s3 submodule
@@ -74,6 +77,7 @@ __all__ = [
     "StorageMode",
     # Parallel pipeline helpers
     "build_lines_payload",
+    "build_row_payload",
     "build_words_payload",
     "create_compaction_run",
     "create_embeddings_and_compaction_run",
