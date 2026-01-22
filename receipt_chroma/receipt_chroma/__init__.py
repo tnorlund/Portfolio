@@ -24,9 +24,6 @@ from receipt_chroma.embedding.orchestration import (
 from receipt_chroma.embedding.orchestration import (
     _build_lines_payload_traced as build_lines_payload,  # Parallel pipeline helpers
 )
-from receipt_chroma.embedding.records import (
-    build_row_payload,  # Row-based line embeddings
-)
 from receipt_chroma.embedding.orchestration import (
     _build_words_payload_traced as build_words_payload,
 )
@@ -50,6 +47,9 @@ from receipt_chroma.embedding.orchestration import (
 )
 from receipt_chroma.embedding.orchestration import (
     create_embeddings_and_compaction_run,
+)
+from receipt_chroma.embedding.records import (
+    build_row_payload,  # Row-based line embeddings
 )
 from receipt_chroma.lock_manager import LockManager
 

@@ -210,9 +210,10 @@ def test_build_messages_from_records_with_remove() -> None:
     record = _create_word_label_remove_record()
     messages = build_messages_from_records([record])
 
-    assert len(messages) == 1
-    assert messages[0].entity_type == "RECEIPT_WORD_LABEL"
-    assert messages[0].event_name == "REMOVE"
+    # Word label changes target both WORDS and LINES collections
+    assert len(messages) == 2
+    assert all(msg.entity_type == "RECEIPT_WORD_LABEL" for msg in messages)
+    assert all(msg.event_name == "REMOVE" for msg in messages)
 
 
 def test_build_messages_from_records_with_completion() -> None:
@@ -423,7 +424,11 @@ def test_build_entity_change_message_word_label_remove() -> None:
     assert message is not None
     assert message.entity_type == "RECEIPT_WORD_LABEL"
     assert message.event_name == "REMOVE"
-    assert message.collections == (ChromaDBCollection.WORDS,)
+    # Word labels affect both WORDS and LINES collections
+    assert message.collections == (
+        ChromaDBCollection.WORDS,
+        ChromaDBCollection.LINES,
+    )
 
 
 def test_build_entity_change_message_no_relevant_changes() -> None:
@@ -487,7 +492,8 @@ def test_extract_entity_data_receipt_word_label() -> None:
     assert data["line_id"] == 1
     assert data["word_id"] == 1
     assert data["label"] == "TOTAL"
-    assert collections == [ChromaDBCollection.WORDS]
+    # Word labels affect both WORDS and LINES collections
+    assert collections == [ChromaDBCollection.WORDS, ChromaDBCollection.LINES]
 
 
 def test_extract_entity_data_none_entity() -> None:
