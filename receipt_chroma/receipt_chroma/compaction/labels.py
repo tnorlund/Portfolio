@@ -192,11 +192,11 @@ def _apply_line_label_updates(
         messages_by_receipt.setdefault(key, []).append(update_msg)
 
     # Process each receipt's label updates
-    for (image_id, receipt_id), receipt_messages in messages_by_receipt.items():
+    for (
+        image_id,
+        receipt_id,
+    ), receipt_messages in messages_by_receipt.items():
         try:
-            # Find all line embeddings for this receipt to identify visual rows
-            receipt_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#"
-
             # Query all line embeddings for this receipt
             existing_results = collection_obj.get(
                 where={"image_id": image_id, "receipt_id": receipt_id},
@@ -211,11 +211,31 @@ def _apply_line_label_updates(
                 )
                 continue
 
+            # Query all labels for this receipt ONCE (instead of per-line queries)
+            receipt_labels = []
+            if dynamo_client:
+                try:
+                    receipt_labels, _ = (
+                        dynamo_client.list_receipt_word_labels_for_receipt(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch receipt labels",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        error=str(e),
+                    )
+
             # Build a mapping of line_id -> row chromadb_id
             # Parse row_line_ids to find which row each line belongs to
             line_to_row_id: dict[int, str] = {}
+            row_metadata: dict[str, dict] = {}  # chromadb_id -> metadata
             for idx, chromadb_id in enumerate(existing_results["ids"]):
                 metadata = existing_results["metadatas"][idx]
+                row_metadata[chromadb_id] = metadata
                 row_line_ids_str = metadata.get("row_line_ids", "[]")
                 try:
                     row_line_ids = json.loads(row_line_ids_str)
@@ -248,24 +268,14 @@ def _apply_line_label_updates(
             # Update each affected row's label metadata
             for row_chromadb_id in affected_rows:
                 try:
-                    # Get all word labels for this receipt from DynamoDB
-                    # to aggregate labels for the row
-                    if dynamo_client:
-                        updated_count = _update_row_labels(
-                            collection=collection_obj,
-                            chromadb_id=row_chromadb_id,
-                            dynamo_client=dynamo_client,
-                            logger=logger,
-                            metrics=metrics,
-                        )
-                    else:
-                        # Without DynamoDB client, we can't aggregate labels
-                        logger.warning(
-                            "DynamoDB client not available for row label "
-                            "aggregation",
-                            chromadb_id=row_chromadb_id,
-                        )
-                        updated_count = 0
+                    updated_count = _update_row_labels(
+                        collection=collection_obj,
+                        chromadb_id=row_chromadb_id,
+                        metadata=row_metadata[row_chromadb_id],
+                        receipt_labels=receipt_labels,
+                        logger=logger,
+                        metrics=metrics,
+                    )
 
                     results.append(
                         LabelUpdateResult(
@@ -313,34 +323,27 @@ def _apply_line_label_updates(
 def _update_row_labels(
     collection: Any,
     chromadb_id: str,
-    dynamo_client: DynamoClient,
+    metadata: dict,
+    receipt_labels: List[Any],
     logger: Any,
     metrics: Any = None,
 ) -> int:
     """Update a row embedding's label metadata by aggregating word labels.
 
-    Queries DynamoDB for all word labels in the row's lines and updates
+    Filters pre-fetched receipt labels to those in this row's lines and updates
     the embedding's metadata with boolean label flags.
 
     Args:
         collection: ChromaDB collection object
         chromadb_id: The row's ChromaDB ID
-        dynamo_client: DynamoDB client for querying labels
+        metadata: The row's existing metadata (already fetched by caller)
+        receipt_labels: All labels for the receipt (pre-fetched, filtered here)
         logger: Logger instance
         metrics: Optional metrics collector
 
     Returns:
         Number of records updated (0 or 1)
     """
-    # Get existing metadata to find row_line_ids
-    existing = collection.get(ids=[chromadb_id], include=["metadatas"])
-    if not existing["ids"]:
-        logger.debug("Row embedding not found", chromadb_id=chromadb_id)
-        return 0
-
-    metadata = existing["metadatas"][0]
-    image_id = metadata.get("image_id")
-    receipt_id = metadata.get("receipt_id")
     row_line_ids_str = metadata.get("row_line_ids", "[]")
 
     try:
@@ -354,27 +357,17 @@ def _update_row_labels(
         logger.debug("No line IDs for row", chromadb_id=chromadb_id)
         return 0
 
-    # Query all word labels for lines in this row
-    # Note: This requires a helper in receipt_dynamo to list labels by line IDs
-    try:
-        all_labels = dynamo_client.list_receipt_word_labels_for_lines(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_ids=row_line_ids,
-        )
-    except AttributeError:
-        # Method doesn't exist yet - fall back to empty labels
-        logger.warning(
-            "DynamoClient missing list_receipt_word_labels_for_lines method",
-            chromadb_id=chromadb_id,
-        )
-        all_labels = []
+    # Convert to set for O(1) lookup
+    row_line_ids_set = set(row_line_ids)
 
-    # Aggregate labels into boolean flags
-    # Only include VALID labels
+    # Filter receipt labels to only those in this row's lines
+    # Aggregate into boolean flags (only VALID labels)
     label_flags: dict[str, bool] = {}
-    for label_entity in all_labels:
-        if label_entity.validation_status == "VALID":
+    for label_entity in receipt_labels:
+        if (
+            label_entity.line_id in row_line_ids_set
+            and label_entity.validation_status == "VALID"
+        ):
             label_key = f"label_{label_entity.label}"
             label_flags[label_key] = True
 
