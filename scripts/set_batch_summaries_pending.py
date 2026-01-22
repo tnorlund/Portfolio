@@ -7,8 +7,16 @@ in DynamoDB to PENDING. This is useful when you need to re-trigger polling
 for batches that are already complete in OpenAI but stale in DynamoDB.
 
 Usage:
+    # Update all batches
     python scripts/set_batch_summaries_pending.py --env prod --dry-run
     python scripts/set_batch_summaries_pending.py --env prod --no-dry-run
+
+    # Update only LINE_EMBEDDING batches
+    python scripts/set_batch_summaries_pending.py --env prod --batch-type LINE_EMBEDDING --dry-run
+    python scripts/set_batch_summaries_pending.py --env prod --batch-type LINE_EMBEDDING --no-dry-run
+
+    # Update only WORD_EMBEDDING batches
+    python scripts/set_batch_summaries_pending.py --env prod --batch-type WORD_EMBEDDING --no-dry-run
 """
 
 import argparse
@@ -39,6 +47,7 @@ def set_all_batch_summaries_to_pending(
     dynamo: DynamoClient,
     dry_run: bool = True,
     target_statuses: list[str] | None = None,
+    batch_type: str | None = None,
 ) -> dict:
     """
     Set all batch summaries to PENDING status.
@@ -48,6 +57,8 @@ def set_all_batch_summaries_to_pending(
         dry_run: If True, don't actually update (default True)
         target_statuses: Only update batches with these statuses.
                         If None, update all non-PENDING batches.
+        batch_type: Only update batches of this type (LINE_EMBEDDING or
+                   WORD_EMBEDDING). If None, update all batch types.
 
     Returns:
         dict with stats about the operation
@@ -67,6 +78,13 @@ def set_all_batch_summaries_to_pending(
 
     logger.info(f"Found {len(batch_summaries)} BatchSummary records total")
 
+    # Filter by batch_type if specified
+    if batch_type:
+        batch_summaries = [
+            bs for bs in batch_summaries if bs.batch_type == batch_type
+        ]
+        logger.info(f"Filtered to {len(batch_summaries)} {batch_type} batches")
+
     # Count by current status
     status_counts = {}
     for bs in batch_summaries:
@@ -78,10 +96,14 @@ def set_all_batch_summaries_to_pending(
 
     # Filter to only update non-PENDING batches (or specific statuses)
     if target_statuses:
-        to_update = [bs for bs in batch_summaries if bs.status in target_statuses]
+        to_update = [
+            bs for bs in batch_summaries if bs.status in target_statuses
+        ]
     else:
         to_update = [
-            bs for bs in batch_summaries if bs.status != BatchStatus.PENDING.value
+            bs
+            for bs in batch_summaries
+            if bs.status != BatchStatus.PENDING.value
         ]
 
     logger.info(f"Will update {len(to_update)} batches to PENDING")
@@ -95,7 +117,9 @@ def set_all_batch_summaries_to_pending(
         }
 
     if dry_run:
-        logger.info("[DRY RUN] Would update %d batches to PENDING", len(to_update))
+        logger.info(
+            "[DRY RUN] Would update %d batches to PENDING", len(to_update)
+        )
         # Show sample of what would be updated
         for bs in to_update[:5]:
             logger.info(
@@ -123,7 +147,9 @@ def set_all_batch_summaries_to_pending(
         try:
             dynamo.update_batch_summaries(chunk)
             updated += len(chunk)
-            logger.info(f"Updated {updated}/{len(to_update)} batches to PENDING")
+            logger.info(
+                f"Updated {updated}/{len(to_update)} batches to PENDING"
+            )
         except Exception as e:
             logger.error(f"Error updating batch summaries chunk: {e}")
             # Try one by one for this chunk
@@ -173,12 +199,22 @@ def main():
         help="Only update batches with this status (can be repeated). "
         "If not specified, updates all non-PENDING batches.",
     )
+    parser.add_argument(
+        "--batch-type",
+        type=str,
+        choices=["LINE_EMBEDDING", "WORD_EMBEDDING"],
+        dest="batch_type",
+        help="Only update batches of this type. "
+        "If not specified, updates all batch types.",
+    )
 
     args = parser.parse_args()
 
     mode = "DRY RUN" if args.dry_run else "LIVE"
     logger.info("Mode: %s", mode)
     logger.info("Environment: %s", args.env.upper())
+    if args.batch_type:
+        logger.info("Batch type filter: %s", args.batch_type)
 
     if not args.dry_run:
         logger.warning(
@@ -201,6 +237,7 @@ def main():
         dynamo,
         dry_run=args.dry_run,
         target_statuses=args.statuses,
+        batch_type=args.batch_type,
     )
 
     logger.info("")
