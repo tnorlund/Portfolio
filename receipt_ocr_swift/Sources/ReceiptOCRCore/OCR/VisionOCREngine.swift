@@ -545,6 +545,197 @@ public struct VisionOCREngine: OCREngineProtocol {
         guard let nsImage = NSImage(contentsOf: url) else { return nil }
         return nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
+
+    // MARK: - Concurrent Processing
+
+    /// Process multiple images concurrently for better performance.
+    ///
+    /// This method processes images in parallel using Swift concurrency, which can
+    /// significantly speed up batch processing on multi-core machines.
+    ///
+    /// - Parameters:
+    ///   - images: Array of image URLs to process
+    ///   - outputDirectory: Directory to write output JSON and receipt images
+    ///   - maxConcurrency: Maximum number of images to process in parallel (default: 4)
+    /// - Returns: Array of output JSON file URLs in the same order as input images
+    public func processParallel(
+        images: [URL],
+        outputDirectory: URL,
+        maxConcurrency: Int = 4
+    ) async throws -> [URL] {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        // Process images concurrently with limited parallelism
+        return try await withThrowingTaskGroup(of: (Int, URL).self) { group in
+            var results: [(Int, URL)] = []
+            var nextIndex = 0
+
+            // Add initial batch of tasks
+            for i in 0..<min(maxConcurrency, images.count) {
+                let imageURL = images[i]
+                let index = i
+                group.addTask {
+                    let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory)
+                    return (index, outputURL)
+                }
+                nextIndex = i + 1
+            }
+
+            // Process results and add new tasks as slots become available
+            for try await result in group {
+                results.append(result)
+
+                // Add next task if there are more images
+                if nextIndex < images.count {
+                    let imageURL = images[nextIndex]
+                    let index = nextIndex
+                    group.addTask {
+                        let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory)
+                        return (index, outputURL)
+                    }
+                    nextIndex += 1
+                }
+            }
+
+            // Sort by original index and return URLs
+            return results.sorted { $0.0 < $1.0 }.map { $0.1 }
+        }
+    }
+
+    /// Process a single image (async wrapper for concurrent use).
+    private func processSingleImage(_ imageURL: URL, outputDirectory: URL) async throws -> URL {
+        // Vision OCR is thread-safe, but we use Task to allow for suspension points
+        return try await Task {
+            try self.processSingleImageSync(imageURL, outputDirectory: outputDirectory)
+        }.value
+    }
+
+    /// Process a single image synchronously.
+    /// Extracted from process() for reuse in both sequential and concurrent paths.
+    private func processSingleImageSync(_ imageURL: URL, outputDirectory: URL) throws -> URL {
+        let ocrLines = try performOCRSync(from: imageURL)
+        var mutableLines = ocrLines
+        var aggregatedText = ""
+        var wordMappings: [WordMapping] = []
+        var currentLocation = 0
+
+        for (lineIndex, line) in mutableLines.enumerated() {
+            for (wordIndex, word) in line.words.enumerated() {
+                let nsWord = word.text as NSString
+                let range = NSRange(location: currentLocation, length: nsWord.length)
+                wordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
+                aggregatedText.append(word.text)
+                aggregatedText.append(" ")
+                currentLocation += nsWord.length + 1
+            }
+        }
+        performNLExtraction(on: aggregatedText, mutableLines: &mutableLines, wordMappings: wordMappings)
+
+        // Perform classification and clustering if enabled
+        var classification: ClassificationResult?
+        var clustering: ClusteringResult?
+        var receiptOutputs: [ReceiptOutput]?
+
+        if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+            classification = classifier.classify(
+                lines: mutableLines,
+                imageWidth: imageDimensions.width,
+                imageHeight: imageDimensions.height
+            )
+
+            if let classResult = classification {
+                switch classResult.imageType {
+                case .native:
+                    clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                case .photo:
+                    let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                    let eps = avgDiagonal * 2
+                    clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                case .scan:
+                    clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                }
+
+                if classResult.imageType != .native,
+                   let clusterResult = clustering,
+                   let cgImage = loadCGImage(from: imageURL) {
+                    let receiptProcessor = ReceiptProcessor()
+                    let processedReceipts = receiptProcessor.process(
+                        image: cgImage,
+                        lines: mutableLines,
+                        classification: classResult,
+                        clustering: clusterResult
+                    )
+
+                    let imageBaseName = imageURL.deletingPathExtension().lastPathComponent
+                    var outputs: [ReceiptOutput] = []
+
+                    for receipt in processedReceipts {
+                        let receiptFileName = "\(imageBaseName)_RECEIPT_\(String(format: "%05d", receipt.clusterId)).png"
+                        let receiptURL = outputDirectory.appendingPathComponent(receiptFileName)
+
+                        do {
+                            try saveImageToPNG(receipt.warpedImage, to: receiptURL)
+                            var receiptLines = try performOCRSync(from: receipt.warpedImage)
+
+                            var receiptAggregatedText = ""
+                            var receiptWordMappings: [WordMapping] = []
+                            var receiptCurrentLocation = 0
+                            for (lineIndex, line) in receiptLines.enumerated() {
+                                for (wordIndex, word) in line.words.enumerated() {
+                                    let nsWord = word.text as NSString
+                                    let range = NSRange(location: receiptCurrentLocation, length: nsWord.length)
+                                    receiptWordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
+                                    receiptAggregatedText.append(word.text)
+                                    receiptAggregatedText.append(" ")
+                                    receiptCurrentLocation += nsWord.length + 1
+                                }
+                            }
+                            performNLExtraction(on: receiptAggregatedText, mutableLines: &receiptLines, wordMappings: receiptWordMappings)
+
+                            var layoutlmPredictions: [LinePrediction]?
+                            if let inference = layoutLMInference, !receiptLines.isEmpty {
+                                do {
+                                    layoutlmPredictions = try inference.predict(lines: receiptLines)
+                                } catch {
+                                    print("Warning: LayoutLM inference failed for receipt \(receipt.clusterId): \(error)")
+                                }
+                            }
+
+                            let output = ReceiptOutput(
+                                from: receipt,
+                                s3Key: receiptFileName,
+                                lines: receiptLines,
+                                layoutlmPredictions: layoutlmPredictions
+                            )
+                            outputs.append(output)
+                        } catch {
+                            print("Failed to process receipt \(receiptFileName): \(error)")
+                        }
+                    }
+
+                    if !outputs.isEmpty {
+                        receiptOutputs = outputs
+                    }
+                }
+            }
+        }
+
+        let result = ImageResult(
+            imagePath: imageURL.path,
+            lines: mutableLines,
+            classification: classification,
+            clustering: clustering,
+            receipts: receiptOutputs
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let jsonData = try encoder.encode(result)
+        let outName = imageURL.deletingPathExtension().lastPathComponent + ".json"
+        let outURL = outputDirectory.appendingPathComponent(outName)
+        try jsonData.write(to: outURL)
+        return outURL
+    }
 }
 #endif
 

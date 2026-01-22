@@ -3,6 +3,15 @@ import Logging
 
 public protocol OCREngineProtocol {
     func process(images: [URL], outputDirectory: URL) throws -> [URL]
+    func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int) async throws -> [URL]
+}
+
+// Default implementation for processParallel that falls back to sequential
+extension OCREngineProtocol {
+    public func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int) async throws -> [URL] {
+        // Default: fall back to sequential processing
+        return try process(images: images, outputDirectory: outputDirectory)
+    }
 }
 
 public struct StubOCREngine: OCREngineProtocol {
@@ -229,9 +238,9 @@ public final class OCRWorker {
             contexts.append(Context(message: msg, imageId: imageId, jobId: jobId, s3Bucket: job.s3Bucket))
         }
 
-        // Run OCR engine
-        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path)")
-        let ocrResults = try ocr.process(images: imageURLs, outputDirectory: tempDir)
+        // Run OCR engine with parallel processing
+        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true")
+        let ocrResults = try await ocr.processParallel(images: imageURLs, outputDirectory: tempDir, maxConcurrency: 4)
 
         // Upload results, write routing decision, send result message, update job
         let now = Date()
@@ -240,54 +249,69 @@ public final class OCRWorker {
             let jsonData = try Data(contentsOf: resultURL)
             let receipts = parseReceiptsFromJSON(jsonData)
 
-            // Upload receipt images to S3
-            var uploadedReceiptKeys: [String] = []
-            for receipt in receipts {
-                let receiptLocalURL = tempDir.appendingPathComponent(receipt.localFileName)
-                let receiptS3Key = "receipts/\(ctx.imageId)/\(receipt.localFileName)"
+            // Upload receipt images to S3 concurrently
+            let uploadedReceiptKeys = await withTaskGroup(of: String?.self) { group in
+                for receipt in receipts {
+                    let receiptLocalURL = tempDir.appendingPathComponent(receipt.localFileName)
+                    let receiptS3Key = "receipts/\(ctx.imageId)/\(receipt.localFileName)"
 
-                if FileManager.default.fileExists(atPath: receiptLocalURL.path) {
-                    logger.debug("upload_receipt bucket=\(ctx.s3Bucket) key=\(receiptS3Key)")
-                    do {
-                        try await Retry.withBackoff { try await self.s3.uploadFile(url: receiptLocalURL, bucket: ctx.s3Bucket, key: receiptS3Key) }
-                        uploadedReceiptKeys.append(receiptS3Key)
-                    } catch {
-                        logger.warning("failed_upload_receipt key=\(receiptS3Key) error=\(error)")
+                    group.addTask {
+                        guard FileManager.default.fileExists(atPath: receiptLocalURL.path) else {
+                            self.logger.warning("receipt_file_missing path=\(receiptLocalURL.path)")
+                            return nil
+                        }
+                        self.logger.debug("upload_receipt bucket=\(ctx.s3Bucket) key=\(receiptS3Key)")
+                        do {
+                            try await Retry.withBackoff { try await self.s3.uploadFile(url: receiptLocalURL, bucket: ctx.s3Bucket, key: receiptS3Key) }
+                            return receiptS3Key
+                        } catch {
+                            self.logger.warning("failed_upload_receipt key=\(receiptS3Key) error=\(error)")
+                            return nil
+                        }
                     }
-                } else {
-                    logger.warning("receipt_file_missing path=\(receiptLocalURL.path)")
                 }
+                // Collect successful uploads
+                var keys: [String] = []
+                for await key in group {
+                    if let k = key { keys.append(k) }
+                }
+                return keys
             }
             logger.info("receipts_uploaded count=\(uploadedReceiptKeys.count) image_id=\(ctx.imageId)")
 
-            // Upload LayoutLM predicted labels to DynamoDB as PENDING
+            // Upload LayoutLM predicted labels to DynamoDB as PENDING (concurrently)
             #if os(macOS)
-            for receipt in receipts {
-                if let predictions = receipt.layoutLMPredictions, !predictions.isEmpty {
-                    // Convert parsed predictions to LinePrediction format for ReceiptWordLabel
-                    let linePredictions = predictions.map { pred in
-                        LinePrediction(
-                            tokens: pred.tokens,
-                            labels: pred.labels,
-                            confidences: pred.confidences,
-                            allProbabilities: nil
+            await withTaskGroup(of: Void.self) { group in
+                for receipt in receipts {
+                    guard let predictions = receipt.layoutLMPredictions, !predictions.isEmpty else { continue }
+                    let receiptId = receipt.clusterId
+                    let imageId = ctx.imageId
+
+                    group.addTask {
+                        // Convert parsed predictions to LinePrediction format for ReceiptWordLabel
+                        let linePredictions = predictions.map { pred in
+                            LinePrediction(
+                                tokens: pred.tokens,
+                                labels: pred.labels,
+                                confidences: pred.confidences,
+                                allProbabilities: nil
+                            )
+                        }
+
+                        let labels = ReceiptWordLabel.fromLinePredictions(
+                            predictions: linePredictions,
+                            imageId: imageId,
+                            receiptId: receiptId
                         )
-                    }
 
-                    let labels = ReceiptWordLabel.fromLinePredictions(
-                        predictions: linePredictions,
-                        imageId: ctx.imageId,
-                        receiptId: receipt.clusterId
-                    )
-
-                    if !labels.isEmpty {
-                        logger.info("upload_labels image_id=\(ctx.imageId) receipt_id=\(receipt.clusterId) count=\(labels.count)")
+                        guard !labels.isEmpty else { return }
+                        self.logger.info("upload_labels image_id=\(imageId) receipt_id=\(receiptId) count=\(labels.count)")
                         do {
                             try await Retry.withBackoff {
                                 try await self.dynamo.addReceiptWordLabels(labels)
                             }
                         } catch {
-                            logger.warning("failed_upload_labels image_id=\(ctx.imageId) receipt_id=\(receipt.clusterId) error=\(error)")
+                            self.logger.warning("failed_upload_labels image_id=\(imageId) receipt_id=\(receiptId) error=\(error)")
                         }
                     }
                 }

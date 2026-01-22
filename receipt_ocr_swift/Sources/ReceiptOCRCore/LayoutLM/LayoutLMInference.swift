@@ -96,36 +96,261 @@ public class LayoutLMInference {
 
     // MARK: - Prediction
 
-    /// Predict labels for words in OCR lines.
+    /// Predict labels for words in OCR lines using batched inference.
     ///
-    /// This matches the Python inference behavior:
-    /// 1. Extract words from lines
-    /// 2. Compute per-receipt bbox extents
-    /// 3. Tokenize with word ID tracking
-    /// 4. Normalize bboxes to [0, 1000]
-    /// 5. Run CoreML prediction
-    /// 6. Aggregate subtoken logits by word (average)
-    /// 7. Apply softmax and argmax
+    /// This optimized version packs multiple lines into single CoreML calls
+    /// to reduce inference overhead. Lines are greedily packed into sequences
+    /// that fit within the 512 token limit.
     ///
     /// - Parameter lines: Array of OCR lines from receipt
     /// - Returns: Array of LinePrediction results
     public func predict(lines: [Line]) throws -> [LinePrediction] {
-        var results: [LinePrediction] = []
+        guard !lines.isEmpty else { return [] }
 
         // Compute bbox extents for the entire receipt
         let (maxX, maxY) = BboxNormalizer.computeExtents(lines: lines)
 
+        // Pre-process all lines: extract words, normalize bboxes, pre-tokenize
+        var lineData: [(words: [String], bboxes: [[Int32]], tokenCount: Int)] = []
+
         for line in lines {
-            let prediction = try predictLine(
-                words: line.words,
-                maxX: maxX,
-                maxY: maxY
-            )
-            results.append(prediction)
+            if line.words.isEmpty {
+                lineData.append((words: [], bboxes: [], tokenCount: 0))
+                continue
+            }
+
+            let (texts, wordBboxes) = BboxNormalizer.normalizeWords(line.words, maxX: maxX, maxY: maxY)
+            // Pre-tokenize to get token count (without [CLS], [SEP], padding)
+            let tokenCount = countTokens(words: texts)
+            lineData.append((words: texts, bboxes: wordBboxes, tokenCount: tokenCount))
         }
 
-        return results
+        // Pack lines into batches that fit within maxSeqLength
+        // Reserve 2 tokens for [CLS] and [SEP]
+        let maxTokensPerBatch = maxSeqLength - 2
+        var batches: [[(lineIndex: Int, words: [String], bboxes: [[Int32]])]] = []
+        var currentBatch: [(lineIndex: Int, words: [String], bboxes: [[Int32]])] = []
+        var currentTokenCount = 0
+
+        for (lineIndex, data) in lineData.enumerated() {
+            // Skip empty lines - they'll get empty predictions
+            if data.words.isEmpty {
+                continue
+            }
+
+            // If this line alone exceeds limit, it needs its own batch (will be truncated)
+            if data.tokenCount > maxTokensPerBatch {
+                // Flush current batch if non-empty
+                if !currentBatch.isEmpty {
+                    batches.append(currentBatch)
+                    currentBatch = []
+                    currentTokenCount = 0
+                }
+                // Add oversized line as its own batch
+                batches.append([(lineIndex: lineIndex, words: data.words, bboxes: data.bboxes)])
+                continue
+            }
+
+            // Check if line fits in current batch
+            if currentTokenCount + data.tokenCount <= maxTokensPerBatch {
+                currentBatch.append((lineIndex: lineIndex, words: data.words, bboxes: data.bboxes))
+                currentTokenCount += data.tokenCount
+            } else {
+                // Start new batch
+                batches.append(currentBatch)
+                currentBatch = [(lineIndex: lineIndex, words: data.words, bboxes: data.bboxes)]
+                currentTokenCount = data.tokenCount
+            }
+        }
+
+        // Don't forget the last batch
+        if !currentBatch.isEmpty {
+            batches.append(currentBatch)
+        }
+
+        // Run inference on each batch and collect results
+        var results: [LinePrediction?] = Array(repeating: nil, count: lines.count)
+
+        for batch in batches {
+            let batchPredictions = try predictBatch(batch)
+            for (i, item) in batch.enumerated() {
+                results[item.lineIndex] = batchPredictions[i]
+            }
+        }
+
+        // Fill in empty predictions for lines that were skipped
+        return results.enumerated().map { (index, prediction) in
+            prediction ?? LinePrediction(
+                tokens: [],
+                labels: [],
+                confidences: [],
+                allProbabilities: nil
+            )
+        }
     }
+
+    /// Count tokens for a list of words (without special tokens or padding).
+    private func countTokens(words: [String]) -> Int {
+        var count = 0
+        for word in words {
+            // Use tokenizer to count subtokens
+            let result = tokenizer.tokenize(words: [word], padding: false, truncation: false)
+            // Subtract 2 for [CLS] and [SEP] that tokenize() adds
+            count += max(0, result.inputIds.count - 2)
+        }
+        return count
+    }
+
+    /// Predict labels for a batch of lines packed into a single sequence.
+    private func predictBatch(
+        _ batch: [(lineIndex: Int, words: [String], bboxes: [[Int32]])]
+    ) throws -> [LinePrediction] {
+        // Concatenate all words and bboxes, tracking line boundaries
+        var allWords: [String] = []
+        var allBboxes: [[Int32]] = []
+        var lineWordRanges: [(start: Int, count: Int)] = []
+
+        for item in batch {
+            let start = allWords.count
+            allWords.append(contentsOf: item.words)
+            allBboxes.append(contentsOf: item.bboxes)
+            lineWordRanges.append((start: start, count: item.words.count))
+        }
+
+        // Tokenize the combined words
+        let tokenResult = tokenizer.tokenize(words: allWords, padding: true, truncation: true)
+
+        // Build bbox tensor for subtokens
+        var bboxTensor: [[Int32]] = []
+        for wordId in tokenResult.wordIds {
+            if let wid = wordId, wid < allBboxes.count {
+                bboxTensor.append(allBboxes[wid])
+            } else {
+                bboxTensor.append([0, 0, 0, 0])
+            }
+        }
+
+        // Create MLMultiArray inputs
+        let seqLength = tokenResult.inputIds.count
+        let inputIds = try createMultiArray(from: tokenResult.inputIds, shape: [1, seqLength])
+        let attentionMask = try createMultiArray(from: tokenResult.attentionMask, shape: [1, seqLength])
+        let tokenTypeIds = try createMultiArray(from: tokenResult.tokenTypeIds, shape: [1, seqLength])
+        let bbox = try createBboxMultiArray(from: bboxTensor, shape: [1, seqLength, 4])
+
+        // Create feature provider and run prediction
+        let inputFeatures = LayoutLMInput(
+            input_ids: inputIds,
+            attention_mask: attentionMask,
+            bbox: bbox,
+            token_type_ids: tokenTypeIds
+        )
+        let output = try model.prediction(from: inputFeatures)
+
+        guard let logitsArray = output.featureValue(for: "logits")?.multiArrayValue else {
+            throw LayoutLMError.outputNotFound
+        }
+
+        // Split predictions by line
+        var predictions: [LinePrediction] = []
+
+        for (batchIdx, item) in batch.enumerated() {
+            let range = lineWordRanges[batchIdx]
+
+            // Find word IDs that belong to this line
+            // Word IDs in tokenResult.wordIds are global (0 to allWords.count-1)
+            // We need words in range [range.start, range.start + range.count)
+            let lineWordIds = (range.start..<(range.start + range.count))
+
+            let prediction = aggregatePredictionsForLine(
+                logits: logitsArray,
+                wordIds: tokenResult.wordIds,
+                targetWordIds: Set(lineWordIds),
+                words: Array(allWords[range.start..<(range.start + range.count)]),
+                wordIdOffset: range.start
+            )
+            predictions.append(prediction)
+        }
+
+        return predictions
+    }
+
+    /// Aggregate predictions for a specific line within a batched sequence.
+    private func aggregatePredictionsForLine(
+        logits: MLMultiArray,
+        wordIds: [Int?],
+        targetWordIds: Set<Int>,
+        words: [String],
+        wordIdOffset: Int
+    ) -> LinePrediction {
+        let numLabels = logits.shape[2].intValue
+        let numWords = words.count
+
+        // Group token indices by word ID (only for words in this line)
+        var wordToTokens: [Int: [Int]] = [:]
+        for (tokenIdx, wordId) in wordIds.enumerated() {
+            if let wid = wordId, targetWordIds.contains(wid) {
+                let localWordId = wid - wordIdOffset
+                wordToTokens[localWordId, default: []].append(tokenIdx)
+            }
+        }
+
+        var labels: [String] = []
+        var confidences: [Float] = []
+        var allProbs: [[String: Float]] = []
+
+        for wordIdx in 0..<numWords {
+            let tokenIndices = wordToTokens[wordIdx] ?? []
+
+            if tokenIndices.isEmpty {
+                labels.append("O")
+                confidences.append(0.0)
+                allProbs.append([:])
+                continue
+            }
+
+            // Average logits across subtokens
+            var avgLogits = [Float](repeating: 0, count: numLabels)
+            for tokenIdx in tokenIndices {
+                for labelIdx in 0..<numLabels {
+                    let index = tokenIdx * numLabels + labelIdx
+                    avgLogits[labelIdx] += logits[index].floatValue
+                }
+            }
+            for labelIdx in 0..<numLabels {
+                avgLogits[labelIdx] /= Float(tokenIndices.count)
+            }
+
+            // Softmax and argmax
+            let probs = softmax(avgLogits)
+            var maxProb: Float = 0
+            var maxIdx = 0
+            for (idx, prob) in probs.enumerated() {
+                if prob > maxProb {
+                    maxProb = prob
+                    maxIdx = idx
+                }
+            }
+
+            labels.append(config.labelName(for: maxIdx))
+            confidences.append(maxProb.isNaN ? 0.0 : maxProb)
+
+            var probDict: [String: Float] = [:]
+            for labelIdx in 0..<numLabels {
+                let prob = probs[labelIdx]
+                probDict[config.labelName(for: labelIdx)] = prob.isNaN ? 0.0 : prob
+            }
+            allProbs.append(probDict)
+        }
+
+        return LinePrediction(
+            tokens: words,
+            labels: labels,
+            confidences: confidences,
+            allProbabilities: allProbs
+        )
+    }
+
+    // MARK: - Legacy Single-Line Prediction (kept for reference)
 
     /// Predict labels for a single line of words.
     private func predictLine(
