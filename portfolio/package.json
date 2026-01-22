@@ -28,8 +28,8 @@
     "docs": "typedoc",
     "docs:md": "typedoc --theme markdown --out docs-md",
     "ci:docs": "npm run docs && npm run docs:md && git diff --exit-code",
-    "analyze": "ANALYZE=true npm run build",
-    "analyze:bundle": "npm run build && node scripts/analyze-bundle.js",
+    "analyze": "ANALYZE=true next build --webpack",
+    "analyze:bundle": "next build --webpack && node scripts/analyze-bundle.js",
     "lighthouse": "lhci autorun",
     "lighthouse:view": "npx lighthouse http://localhost:3000 --view",
     "perf:all": "npm run test:perf && npm run lighthouse"
