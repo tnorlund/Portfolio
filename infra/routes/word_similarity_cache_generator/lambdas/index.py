@@ -43,6 +43,32 @@ CHROMA_CLOUD_ENABLED = (
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
 
+# Pattern to match price-like tokens (used to extract product name from row text)
+def find_milk_line_text(lines, target_word: str = "MILK") -> str | None:
+    """Find the specific OCR line containing the target word.
+
+    When visual rows contain multiple products (e.g., KOMBUCHA and RAW MILK
+    on the same row), this finds the specific line with the milk product.
+
+    Args:
+        lines: List of ReceiptLine entities from DynamoDB
+        target_word: Word to search for (default: MILK)
+
+    Returns:
+        The text of the line containing target_word, or None if not found
+    """
+    for line in lines:
+        if target_word in line.text.upper():
+            # Check exclusions
+            text_upper = line.text.upper()
+            excluded = any(
+                term in text_upper
+                for term in ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
+            )
+            if not excluded:
+                return line.text
+    return None
+
 # Price ranges for inferring milk sizes
 MILK_SIZE_RANGES = {
     "RAW WHOLE MILK": [
@@ -509,21 +535,25 @@ def handler(_event, _context):
             all_lines = _fetch_lines_from_s3(timing, temp_dir)
 
         # Step 2: Filter for dairy milk (in-memory)
+        # Note: After PR #672, `text` is the combined visual row text
+        # (e.g., "RAW WHOLE MILK 8.99"), so we extract just the product name
         step_start = time.time()
         matching_lines = []
         for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
-            text = meta.get("text", "")
-            text_upper = text.upper()
+            row_text = meta.get("text", "")
+            row_text_upper = row_text.upper()
 
-            if TARGET_WORD in text_upper:
+            if TARGET_WORD in row_text_upper:
                 is_excluded = any(
-                    term in text_upper for term in DAIRY_EXCLUDE_TERMS
+                    term in row_text_upper for term in DAIRY_EXCLUDE_TERMS
                 )
                 if not is_excluded:
+                    # Store row text for now; we'll find the specific milk line
+                    # when we fetch receipt details from DynamoDB
                     matching_lines.append(
                         {
                             "id": id_,
-                            "text": text,
+                            "text": row_text,  # Will be refined later
                             "image_id": meta.get("image_id"),
                             "receipt_id": meta.get("receipt_id"),
                             "line_id": meta.get("line_id"),
@@ -553,7 +583,7 @@ def handler(_event, _context):
             work_items.append((image_id, receipt_id, line_id, product_text))
 
         def process_receipt(work_item):
-            image_id, receipt_id, line_id, product_text = work_item
+            image_id, receipt_id, line_id, row_text = work_item
             timings = {"details": 0, "visual_line": 0}
             try:
                 t0 = time.time()
@@ -561,6 +591,13 @@ def handler(_event, _context):
                     image_id, receipt_id
                 )
                 timings["details"] = time.time() - t0
+
+                # Find the specific OCR line containing "MILK"
+                # This handles rows with multiple products (e.g., KOMBUCHA + RAW MILK)
+                product_text = find_milk_line_text(details.lines, TARGET_WORD)
+                if not product_text:
+                    # Fallback to row text if specific line not found
+                    product_text = row_text
 
                 t0 = time.time()
                 line_total, unit_price = find_price_on_visual_line(
