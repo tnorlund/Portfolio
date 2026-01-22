@@ -8,7 +8,7 @@
 
 > **detectImageFormatSupport**(): `Promise`\<[`FormatSupport`](../interfaces/FormatSupport.md)\>
 
-Defined in: [utils/image.ts:6](https://github.com/tnorlund/Portfolio/blob/b0b8536a7a51844dfe7b571f68fadc42aa17d6ce/portfolio/utils/image.ts#L6)
+Defined in: [utils/image.ts:6](https://github.com/tnorlund/Portfolio/blob/3b675cefaa08161dc60b8acfb44af83c07bd8745/portfolio/utils/image.ts#L6)
 
 ## Returns
 

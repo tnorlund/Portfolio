@@ -6,7 +6,7 @@
 
 # Interface: AddressSimilarityResponse
 
-Defined in: [types/api.ts:206](https://github.com/tnorlund/Portfolio/blob/b0b8536a7a51844dfe7b571f68fadc42aa17d6ce/portfolio/types/api.ts#L206)
+Defined in: [types/api.ts:206](https://github.com/tnorlund/Portfolio/blob/3b675cefaa08161dc60b8acfb44af83c07bd8745/portfolio/types/api.ts#L206)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:206](https://github.com/tnorlund/Portfolio/blob/b0b853
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:225](https://github.com/tnorlund/Portfolio/blob/b0b8536a7a51844dfe7b571f68fadc42aa17d6ce/portfolio/types/api.ts#L225)
+Defined in: [types/api.ts:225](https://github.com/tnorlund/Portfolio/blob/3b675cefaa08161dc60b8acfb44af83c07bd8745/portfolio/types/api.ts#L225)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:225](https://github.com/tnorlund/Portfolio/blob/b0b853
 
 > **original**: `object`
 
-Defined in: [types/api.ts:207](https://github.com/tnorlund/Portfolio/blob/b0b8536a7a51844dfe7b571f68fadc42aa17d6ce/portfolio/types/api.ts#L207)
+Defined in: [types/api.ts:207](https://github.com/tnorlund/Portfolio/blob/3b675cefaa08161dc60b8acfb44af83c07bd8745/portfolio/types/api.ts#L207)
 
 #### labels
 
@@ -58,7 +58,7 @@ Defined in: [types/api.ts:207](https://github.com/tnorlund/Portfolio/blob/b0b853
 
 > **similar**: `object`[]
 
-Defined in: [types/api.ts:216](https://github.com/tnorlund/Portfolio/blob/b0b8536a7a51844dfe7b571f68fadc42aa17d6ce/portfolio/types/api.ts#L216)
+Defined in: [types/api.ts:216](https://github.com/tnorlund/Portfolio/blob/3b675cefaa08161dc60b8acfb44af83c07bd8745/portfolio/types/api.ts#L216)
 
 #### labels
 
