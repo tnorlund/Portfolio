@@ -233,7 +233,19 @@ def reset_embedding_status(
                 for idx, img in enumerate(images)
             }
             for future in as_completed(futures):
-                local_stats = future.result()
+                idx = futures[future]
+                try:
+                    local_stats = future.result()
+                except Exception as e:
+                    # Log error but continue processing other images
+                    logger.exception(
+                        "Future raised exception for image idx %d", idx
+                    )
+                    local_stats = {
+                        "words_reset": 0,
+                        "lines_reset": 0,
+                        "errors": [f"future_exception:idx_{idx}:{e}"],
+                    }
                 with stats_lock:
                     stats["words_reset"] += local_stats["words_reset"]
                     stats["lines_reset"] += local_stats["lines_reset"]
