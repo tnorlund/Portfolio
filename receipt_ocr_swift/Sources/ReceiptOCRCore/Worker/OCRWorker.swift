@@ -238,9 +238,10 @@ public final class OCRWorker {
             contexts.append(Context(message: msg, imageId: imageId, jobId: jobId, s3Bucket: job.s3Bucket))
         }
 
-        // Run OCR engine with parallel processing
-        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true")
-        let ocrResults = try await ocr.processParallel(images: imageURLs, outputDirectory: tempDir, maxConcurrency: 4)
+        // Run OCR engine with parallel processing (uses CPU count)
+        let concurrency = ProcessInfo.processInfo.activeProcessorCount
+        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true concurrency=\(concurrency)")
+        let ocrResults = try await ocr.processParallel(images: imageURLs, outputDirectory: tempDir, maxConcurrency: concurrency)
 
         // Upload results, write routing decision, send result message, update job
         let now = Date()

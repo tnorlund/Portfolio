@@ -556,12 +556,13 @@ public struct VisionOCREngine: OCREngineProtocol {
     /// - Parameters:
     ///   - images: Array of image URLs to process
     ///   - outputDirectory: Directory to write output JSON and receipt images
-    ///   - maxConcurrency: Maximum number of images to process in parallel (default: 4)
+    ///   - maxConcurrency: Maximum number of images to process in parallel.
+    ///     Defaults to the number of active processors on the machine.
     /// - Returns: Array of output JSON file URLs in the same order as input images
     public func processParallel(
         images: [URL],
         outputDirectory: URL,
-        maxConcurrency: Int = 4
+        maxConcurrency: Int = ProcessInfo.processInfo.activeProcessorCount
     ) async throws -> [URL] {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
