@@ -43,6 +43,33 @@ CHROMA_CLOUD_ENABLED = (
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
 
+# Pattern to match price-like tokens (used to extract product name from row text)
+def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
+    """Find the specific OCR line containing the target word.
+
+    When visual rows contain multiple products (e.g., KOMBUCHA and RAW MILK
+    on the same row), this finds the specific line with the milk product.
+
+    Args:
+        lines: List of ReceiptLine entities from DynamoDB
+        target_word: Word to search for (default: MILK)
+
+    Returns:
+        Tuple of (text, line_id) for the line containing target_word,
+        or None if not found
+    """
+    for line in lines:
+        if target_word in line.text.upper():
+            # Check exclusions
+            text_upper = line.text.upper()
+            excluded = any(
+                term in text_upper
+                for term in ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
+            )
+            if not excluded:
+                return (line.text, line.line_id)
+    return None
+
 # Price ranges for inferring milk sizes
 MILK_SIZE_RANGES = {
     "RAW WHOLE MILK": [
@@ -482,7 +509,7 @@ def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate word similarity cache."""
     logger.info(
-        "Starting milk product cache generation (Chroma Cloud: %s)",
+        "Starting milk product cache generation v2 (Chroma Cloud: %s)",
         CHROMA_CLOUD_ENABLED,
     )
 
@@ -509,21 +536,25 @@ def handler(_event, _context):
             all_lines = _fetch_lines_from_s3(timing, temp_dir)
 
         # Step 2: Filter for dairy milk (in-memory)
+        # Note: After PR #672, `text` is the combined visual row text
+        # (e.g., "RAW WHOLE MILK 8.99"), so we extract just the product name
         step_start = time.time()
         matching_lines = []
         for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
-            text = meta.get("text", "")
-            text_upper = text.upper()
+            row_text = meta.get("text", "")
+            row_text_upper = row_text.upper()
 
-            if TARGET_WORD in text_upper:
+            if TARGET_WORD in row_text_upper:
                 is_excluded = any(
-                    term in text_upper for term in DAIRY_EXCLUDE_TERMS
+                    term in row_text_upper for term in DAIRY_EXCLUDE_TERMS
                 )
                 if not is_excluded:
+                    # Store row text for now; we'll find the specific milk line
+                    # when we fetch receipt details from DynamoDB
                     matching_lines.append(
                         {
                             "id": id_,
-                            "text": text,
+                            "text": row_text,  # Will be refined later
                             "image_id": meta.get("image_id"),
                             "receipt_id": meta.get("receipt_id"),
                             "line_id": meta.get("line_id"),
@@ -553,7 +584,7 @@ def handler(_event, _context):
             work_items.append((image_id, receipt_id, line_id, product_text))
 
         def process_receipt(work_item):
-            image_id, receipt_id, line_id, product_text = work_item
+            image_id, receipt_id, chromadb_line_id, row_text = work_item
             timings = {"details": 0, "visual_line": 0}
             try:
                 t0 = time.time()
@@ -562,13 +593,24 @@ def handler(_event, _context):
                 )
                 timings["details"] = time.time() - t0
 
+                # Find the specific OCR line containing "MILK"
+                # This returns both text and line_id for accurate price lookup
+                milk_line = find_milk_line(details.lines, TARGET_WORD)
+                if milk_line:
+                    product_text, milk_line_id = milk_line
+                else:
+                    # Fallback to row text and ChromaDB line_id if not found
+                    product_text = row_text
+                    milk_line_id = chromadb_line_id
+
                 t0 = time.time()
+                # Use the actual milk line_id for price lookup (not ChromaDB's primary line)
                 line_total, unit_price = find_price_on_visual_line(
-                    line_id, details.words, details.labels
+                    milk_line_id, details.words, details.labels
                 )
-                # Calculate bounding box for visual cropping (uses same visual lines)
+                # Calculate bounding box for visual cropping
                 bbox = calculate_product_bbox(
-                    line_id, details.words, details.labels
+                    milk_line_id, details.words, details.labels
                 )
                 timings["visual_line"] = time.time() - t0
 
@@ -588,7 +630,7 @@ def handler(_event, _context):
                     "merchant": merchant,
                     "price": price,
                     "size": size,
-                    "line_id": line_id,
+                    "line_id": milk_line_id,
                     # Full receipt data for visual display
                     "receipt": receipt_to_dict(details.receipt),
                     "lines": lines_dict,
