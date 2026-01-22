@@ -6,11 +6,11 @@ Pure business logic - no Lambda-specific code.
 import os
 from typing import Any, Dict, List
 
-import utils.logging
-
 from receipt_dynamo.constants import BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
+
+import utils.logging
 
 get_logger = utils.logging.get_logger
 

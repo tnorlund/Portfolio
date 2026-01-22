@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
-import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
 from receipt_agent.clients.factory import (
     create_embed_fn,
@@ -41,6 +40,12 @@ from receipt_chroma.embedding.records import (
     build_word_payload,
 )
 from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_dynamo.constants import BatchStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
@@ -71,11 +76,6 @@ from utils.tracing import (  # pylint: disable=import-error
     trace_openai_batch_poll,
     tracer,
 )
-
-from receipt_dynamo.constants import BatchStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -895,9 +895,7 @@ def _handle_internal_core(
         # Ensure receipt_place exists for all receipts (create if missing using Places API)
         # This is required because get_receipt_descriptions requires receipt_place
         # and embeddings need place data to work properly
-        with operation_with_timeout(
-            "ensure_receipt_place", max_duration=120
-        ):
+        with operation_with_timeout("ensure_receipt_place", max_duration=120):
             unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_places = []
             for receipt_id, image_id in unique_receipts:
@@ -911,9 +909,7 @@ def _handle_internal_core(
                     )
                     # Verify place was created (or already existed)
                     try:
-                        dynamo_client.get_receipt_place(
-                            image_id, receipt_id
-                        )
+                        dynamo_client.get_receipt_place(image_id, receipt_id)
                         logger.debug(
                             "Verified receipt_place exists",
                             image_id=image_id,

@@ -125,7 +125,10 @@ def handler(event, context):
         print(f"Created CoreMLExportJob record: {export_id}")
     except Exception as e:
         print(f"Failed to create DynamoDB record: {e}")
-        return {"statusCode": 500, "body": f"Failed to create DynamoDB record: {e}"}
+        return {
+            "statusCode": 500,
+            "body": f"Failed to create DynamoDB record: {e}",
+        }
 
     # Send message to export queue
     message = {
@@ -150,12 +153,14 @@ def handler(event, context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "export_id": export_id,
-                "job_name": job_name,
-                "job_id": job.job_id,
-                "model_s3_uri": model_s3_uri,
-            }),
+            "body": json.dumps(
+                {
+                    "export_id": export_id,
+                    "job_name": job_name,
+                    "job_id": job.job_id,
+                    "model_s3_uri": model_s3_uri,
+                }
+            ),
         }
     except Exception as e:
         print(f"Failed to send SQS message: {e}")

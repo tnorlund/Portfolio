@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import ChromaDBCollection
 
 from ...lambdas.stream_processor import (
@@ -37,9 +36,7 @@ class TestPlaceMessageContract:
                 "image_id": "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
                 "receipt_id": 1,
             },
-            changes={
-                "merchant_name": FieldChange(old="Old", new="New")
-            },
+            changes={"merchant_name": FieldChange(old="Old", new="New")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",
@@ -73,9 +70,7 @@ class TestPlaceMessageContract:
     def test_place_changes_structure(self):
         """Changes dict has old/new structure."""
         changes = {
-            "merchant_name": FieldChange(
-                old="Old Store", new="New Store"
-            ),
+            "merchant_name": FieldChange(old="Old Store", new="New Store"),
             "place_id": FieldChange(old="place123", new="place456"),
         }
 

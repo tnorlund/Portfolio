@@ -5,13 +5,13 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "lambdas")
@@ -214,7 +214,11 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                     "LAYOUTLM_TRAINING_BUCKET": layoutlm_training_bucket_output,
                     # MODEL_S3_URI overrides auto-detection of latest model
-                    **({"MODEL_S3_URI": model_s3_uri_output} if model_s3_uri_output else {}),
+                    **(
+                        {"MODEL_S3_URI": model_s3_uri_output}
+                        if model_s3_uri_output
+                        else {}
+                    ),
                 },
             },
             platform="linux/arm64",

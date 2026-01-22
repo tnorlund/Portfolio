@@ -11,7 +11,6 @@ import os
 from typing import Any, Dict, Optional
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()

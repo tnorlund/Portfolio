@@ -369,7 +369,9 @@ class OCRProcessor:
                     raw_s3_key,
                     receipt_cdn_base_key,
                 )
-            except Exception as cdn_exc:  # pylint: disable=broad-exception-caught
+            except (
+                Exception
+            ) as cdn_exc:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Failed to process receipt %s for CDN: %s - %s",
                     receipt_id,
@@ -455,7 +457,9 @@ class OCRProcessor:
                 image_entity.cdn_s3_key = cdn_keys.get("jpeg_full")
                 image_entity.cdn_webp_s3_key = cdn_keys.get("webp_full")
                 image_entity.cdn_avif_s3_key = cdn_keys.get("avif_full")
-                image_entity.cdn_thumbnail_s3_key = cdn_keys.get("jpeg_thumbnail")
+                image_entity.cdn_thumbnail_s3_key = cdn_keys.get(
+                    "jpeg_thumbnail"
+                )
                 image_entity.cdn_thumbnail_webp_s3_key = cdn_keys.get(
                     "webp_thumbnail"
                 )
@@ -466,15 +470,21 @@ class OCRProcessor:
                 image_entity.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
                 image_entity.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
                 image_entity.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
-                image_entity.cdn_medium_webp_s3_key = cdn_keys.get("webp_medium")
-                image_entity.cdn_medium_avif_s3_key = cdn_keys.get("avif_medium")
+                image_entity.cdn_medium_webp_s3_key = cdn_keys.get(
+                    "webp_medium"
+                )
+                image_entity.cdn_medium_avif_s3_key = cdn_keys.get(
+                    "avif_medium"
+                )
 
                 logger.info(
                     "Processed original image for CDN: %s -> %s",
                     image_id,
                     cdn_base_key,
                 )
-            except Exception as cdn_exc:  # pylint: disable=broad-exception-caught
+            except (
+                Exception
+            ) as cdn_exc:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Failed to process original image for CDN: %s - %s",
                     image_id,
@@ -684,7 +694,12 @@ class OCRProcessor:
             bbox = data.get("bounding_box", {})
             if not all(k in bbox for k in ("x", "y", "width", "height")):
                 return False
-            for corner in ("top_left", "top_right", "bottom_left", "bottom_right"):
+            for corner in (
+                "top_left",
+                "top_right",
+                "bottom_left",
+                "bottom_right",
+            ):
                 point = data.get(corner, {})
                 if not all(k in point for k in ("x", "y")):
                     return False
@@ -715,7 +730,11 @@ class OCRProcessor:
             ):
                 word_text = word_data.get("text", "")
                 word_confidence = word_data.get("confidence", 0.0)
-                if not word_text or word_confidence <= 0 or not _has_valid_geometry(word_data):
+                if (
+                    not word_text
+                    or word_confidence <= 0
+                    or not _has_valid_geometry(word_data)
+                ):
                     continue
 
                 word = Word(

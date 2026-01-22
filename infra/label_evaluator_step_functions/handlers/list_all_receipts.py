@@ -108,7 +108,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         from datetime import datetime, timezone
 
         # Parse ISO date string to datetime (start of day UTC)
-        since_date = datetime.fromisoformat(since_date_str.replace("Z", "+00:00"))
+        since_date = datetime.fromisoformat(
+            since_date_str.replace("Z", "+00:00")
+        )
         if since_date.tzinfo is None:
             since_date = since_date.replace(tzinfo=timezone.utc)
 
@@ -121,7 +123,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # Filter receipts by timestamp
         before_count = len(all_places)
         all_places = [
-            p for p in all_places
+            p
+            for p in all_places
             if p.timestamp and _to_utc(p.timestamp) >= since_date
         ]
         after_count = len(all_places)
@@ -136,7 +139,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     filtered_total = len(all_places)
     if limit and limit < filtered_total:
         all_places = random.sample(all_places, limit)
-        logger.info("Randomly sampled %s places from %s total", limit, filtered_total)
+        logger.info(
+            "Randomly sampled %s places from %s total", limit, filtered_total
+        )
 
     # Collect receipts from the selected places, grouped by merchant
     receipts_by_merchant: dict[str, list[dict]] = {}
@@ -175,7 +180,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     logger.info(
         "Queried total counts for %s merchants: %s",
         len(unique_merchants),
-        {k: v for k, v in sorted(total_merchant_counts.items(), key=lambda x: -x[1])[:5]},
+        {
+            k: v
+            for k, v in sorted(
+                total_merchant_counts.items(), key=lambda x: -x[1]
+            )[:5]
+        },
     )
 
     # Filter merchants by minimum receipt threshold using TOTAL counts (for pattern computation)
@@ -187,7 +197,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         total_count = total_merchant_counts[merchant_name]
         if total_count >= min_receipts:
             qualifying_merchants.append(
-                MerchantInfo(merchant_name=merchant_name, receipt_count=total_count)
+                MerchantInfo(
+                    merchant_name=merchant_name, receipt_count=total_count
+                )
             )
             merchants_with_patterns.add(merchant_name)
         else:

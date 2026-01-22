@@ -118,7 +118,9 @@ def _get_labels_from_dynamodb(
     """
     try:
         client = _get_dynamo_client()
-        labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        labels, _ = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
         return {
             (label.line_id, label.word_id): {
                 "label": label.label,
@@ -224,9 +226,9 @@ def _build_validation_words(
                 # Include DynamoDB validation_status - this is the source of truth
                 "validation_status": label_info["validation_status"],
                 # Trace info - may be null if no trace found for this word
-                "validation_source": validation.get("validation_source")
-                if validation
-                else None,
+                "validation_source": (
+                    validation.get("validation_source") if validation else None
+                ),
                 "decision": validation.get("decision") if validation else None,
             }
             viz_words.append(viz_word)
@@ -291,7 +293,11 @@ def _build_receipt_visualization(
     # Get receipt info from DynamoDB
     receipt_info = _get_receipt_from_dynamodb(image_id, receipt_id)
     if not receipt_info:
-        logger.warning("Could not fetch receipt from DynamoDB: %s_%d", image_id, receipt_id)
+        logger.warning(
+            "Could not fetch receipt from DynamoDB: %s_%d",
+            image_id,
+            receipt_id,
+        )
         return None
 
     # Get words from DynamoDB
@@ -305,14 +311,20 @@ def _build_receipt_visualization(
 
     # Parse validation traces
     root_id = root_trace.get("id", "")
-    chroma_validations, llm_validations = _parse_validation_traces(index, root_id)
+    chroma_validations, llm_validations = _parse_validation_traces(
+        index, root_id
+    )
 
     # Get timing info
     children = index.get_children(root_id)
     timings = get_step_timings(root_trace, children)
 
-    chroma_duration = timings.get("chroma_validation", {}).get("duration_ms", 0) / 1000
-    llm_duration = timings.get("llm_validation", {}).get("duration_ms", 0) / 1000
+    chroma_duration = (
+        timings.get("chroma_validation", {}).get("duration_ms", 0) / 1000
+    )
+    llm_duration = (
+        timings.get("llm_validation", {}).get("duration_ms", 0) / 1000
+    )
 
     # Build visualization words
     viz_words = _build_validation_words(
@@ -320,7 +332,9 @@ def _build_receipt_visualization(
     )
 
     if not viz_words:
-        logger.warning("No validation words built for %s_%d", image_id, receipt_id)
+        logger.warning(
+            "No validation words built for %s_%d", image_id, receipt_id
+        )
         return None
 
     # Build tier summaries
@@ -444,7 +458,9 @@ def _calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
             total_invalid += llm_decisions.get("INVALID", 0)
             total_needs_review += llm_decisions.get("NEEDS_REVIEW", 0)
 
-    avg_chroma_rate = (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    avg_chroma_rate = (
+        (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    )
 
     return {
         "total_receipts": len(receipts),
@@ -482,7 +498,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     if not traces:
         logger.warning("No traces found in LangSmith export")
-        return {"statusCode": 200, "message": "No traces found", "receipts_cached": 0}
+        return {
+            "statusCode": 200,
+            "message": "No traces found",
+            "receipts_cached": 0,
+        }
 
     logger.info("Read %d traces from Parquet", len(traces))
 
@@ -493,11 +513,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     logger.info("Found %d root receipt_processing runs", len(root_runs))
 
     if not root_runs:
-        return {"statusCode": 200, "message": "No root runs found", "receipts_cached": 0}
+        return {
+            "statusCode": 200,
+            "message": "No root runs found",
+            "receipts_cached": 0,
+        }
 
     # Build visualization receipts
     all_receipts = []
-    for root in root_runs[:MAX_RECEIPTS * 2]:  # Get extra to allow for filtering
+    for root in root_runs[
+        : MAX_RECEIPTS * 2
+    ]:  # Get extra to allow for filtering
         viz_receipt = _build_receipt_visualization(root, index)
         if viz_receipt:
             all_receipts.append(viz_receipt)
@@ -506,7 +532,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     if not all_receipts:
         logger.warning("No receipts could be built from traces")
-        return {"statusCode": 200, "message": "No receipts built", "receipts_cached": 0}
+        return {
+            "statusCode": 200,
+            "message": "No receipts built",
+            "receipts_cached": 0,
+        }
 
     logger.info("Built %d visualization receipts", len(all_receipts))
 

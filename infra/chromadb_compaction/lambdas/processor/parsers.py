@@ -7,8 +7,6 @@ Parses stream records into typed entities via receipt_dynamo.
 import logging
 from typing import Any, Dict, Optional, Union
 
-from receipt_dynamo_stream.stream_types import MetricsRecorder
-
 from receipt_dynamo.entities.receipt_place import (
     ReceiptPlace,
     item_to_receipt_place,
@@ -17,6 +15,7 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
+from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 from .models import ParsedStreamRecord
 

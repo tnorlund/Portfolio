@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
-import utils.logging  # pylint: disable=import-error
+from embedding_ingest import (  # pylint: disable=import-error
+    deserialize_receipt_words,
+    download_serialized_file,
+    query_receipt_words,
+    set_pending_and_update_words,
+    write_ndjson,
+)
 from openai import OpenAI
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
@@ -20,16 +26,9 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
-
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-from embedding_ingest import (  # pylint: disable=import-error
-    deserialize_receipt_words,
-    download_serialized_file,
-    query_receipt_words,
-    set_pending_and_update_words,
-    write_ndjson,
-)
+import utils.logging  # pylint: disable=import-error
 from utils.env_vars import get_required_env  # pylint: disable=import-error
 
 get_logger = utils.logging.get_logger

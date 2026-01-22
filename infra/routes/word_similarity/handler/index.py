@@ -65,7 +65,9 @@ def handler(event, _context):
             logger.warning("Cache not found in S3")
             return {
                 "statusCode": 404,
-                "body": json.dumps({"error": "Word similarity cache not found"}),
+                "body": json.dumps(
+                    {"error": "Word similarity cache not found"}
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",

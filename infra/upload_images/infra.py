@@ -244,7 +244,9 @@ class UploadImages(ComponentResource):
             source_paths=["receipt_dynamo"],  # Only need receipt_dynamo
             lambda_config=upload_receipt_lambda_config,
             platform="linux/arm64",
-            opts=ResourceOptions(parent=self, depends_on=[upload_receipt_role]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[upload_receipt_role]
+            ),
         )
 
         upload_receipt_lambda = cast(
@@ -467,9 +469,11 @@ class UploadImages(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
-                "LANGCHAIN_PROJECT": label_validation_project_name or "receipt-validation",
+                "LANGCHAIN_PROJECT": label_validation_project_name
+                or "receipt-validation",
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                "LANGCHAIN_LABEL_PROJECT": label_validation_project_name or "receipt-validation",
+                "LANGCHAIN_LABEL_PROJECT": label_validation_project_name
+                or "receipt-validation",
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": (
                     "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"

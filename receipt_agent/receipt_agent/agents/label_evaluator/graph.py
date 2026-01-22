@@ -37,9 +37,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.graph import END, StateGraph
-
-# LLM factory for creating OpenRouter-based LLMs
-from receipt_agent.utils.llm_factory import create_llm
+from receipt_dynamo.entities import ReceiptWordLabel
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
@@ -71,7 +69,9 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
 )
 from receipt_agent.constants import CORE_LABELS
-from receipt_dynamo.entities import ReceiptWordLabel
+
+# LLM factory for creating OpenRouter-based LLMs
+from receipt_agent.utils.llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,9 @@ def create_label_evaluator_graph(
     else:
         try:
             _llm = create_llm(model=llm_model, temperature=0, timeout=120)
-            logger.info("Using OpenRouter LLM: %s", llm_model or "default model")
+            logger.info(
+                "Using OpenRouter LLM: %s", llm_model or "default model"
+            )
         except ValueError as e:
             _llm = None
             logger.warning(

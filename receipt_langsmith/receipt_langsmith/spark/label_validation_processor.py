@@ -84,14 +84,20 @@ class LabelValidationSparkProcessor:
 
         # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
         spark_path = (
-            path.replace("s3://", "s3a://") if path.startswith("s3://") else path
+            path.replace("s3://", "s3a://")
+            if path.startswith("s3://")
+            else path
         )
 
         # Read with recursive lookup to handle nested directory structures
-        df = self.spark.read.option("recursiveFileLookup", "true").parquet(spark_path)
+        df = self.spark.read.option("recursiveFileLookup", "true").parquet(
+            spark_path
+        )
         available_columns = set(df.columns)
 
-        logger.info("Available columns in parquet: %s", sorted(available_columns))
+        logger.info(
+            "Available columns in parquet: %s", sorted(available_columns)
+        )
 
         # Import LongType for timestamp conversion check
         from pyspark.sql.types import LongType
@@ -149,7 +155,9 @@ class LabelValidationSparkProcessor:
 
         df = df.select(*needed_columns)
 
-        logger.info("Read Parquet with %d partitions", df.rdd.getNumPartitions())
+        logger.info(
+            "Read Parquet with %d partitions", df.rdd.getNumPartitions()
+        )
         return df
 
     def parse_json_fields(self, df: DataFrame) -> DataFrame:
@@ -179,11 +187,16 @@ class LabelValidationSparkProcessor:
             )
             .withColumn(
                 "metadata_receipt_id",
-                F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast("int"),
+                F.get_json_object(
+                    F.col("extra"), "$.metadata.receipt_id"
+                ).cast("int"),
             )
             .withColumn(
                 "duration_ms",
-                (F.col("end_time").cast("double") - F.col("start_time").cast("double"))
+                (
+                    F.col("end_time").cast("double")
+                    - F.col("start_time").cast("double")
+                )
                 * 1000,
             )
             # Extract output fields for validation traces
@@ -197,7 +210,9 @@ class LabelValidationSparkProcessor:
             )
             .withColumn(
                 "confidence",
-                F.get_json_object(F.col("outputs"), "$.confidence").cast("double"),
+                F.get_json_object(F.col("outputs"), "$.confidence").cast(
+                    "double"
+                ),
             )
             .withColumn(
                 "predicted_label",
@@ -240,39 +255,49 @@ class LabelValidationSparkProcessor:
             F.sum("completion_tokens").alias("completion_tokens"),
             F.count("*").alias("run_count"),
             # Count by step type
-            F.sum(F.when(F.col("name").like("s3_%"), 1).otherwise(0)).alias("s3_runs"),
-            F.sum(F.when(F.col("name").like("openai_embed%"), 1).otherwise(0)).alias(
-                "embed_runs"
+            F.sum(F.when(F.col("name").like("s3_%"), 1).otherwise(0)).alias(
+                "s3_runs"
             ),
+            F.sum(
+                F.when(F.col("name").like("openai_embed%"), 1).otherwise(0)
+            ).alias("embed_runs"),
             F.sum(
                 F.when(F.col("name").like("label_validation%"), 1).otherwise(0)
             ).alias("validation_runs"),
             F.sum(
-                F.when(F.col("name").like("merchant_resolution%"), 1).otherwise(0)
+                F.when(
+                    F.col("name").like("merchant_resolution%"), 1
+                ).otherwise(0)
             ).alias("merchant_runs"),
             # Sum duration by step type
             F.sum(
-                F.when(F.col("name").like("s3_%"), F.col("duration_ms")).otherwise(0)
+                F.when(
+                    F.col("name").like("s3_%"), F.col("duration_ms")
+                ).otherwise(0)
             ).alias("s3_duration_ms"),
             F.sum(
-                F.when(F.col("name").like("openai_embed%"), F.col("duration_ms")).otherwise(
-                    0
-                )
+                F.when(
+                    F.col("name").like("openai_embed%"), F.col("duration_ms")
+                ).otherwise(0)
             ).alias("embed_duration_ms"),
             F.sum(
                 F.when(
-                    F.col("name") == "label_validation_chroma", F.col("duration_ms")
+                    F.col("name") == "label_validation_chroma",
+                    F.col("duration_ms"),
                 ).otherwise(0)
             ).alias("chroma_duration_ms"),
             F.sum(
                 F.when(
-                    F.col("name").isin(["llm_batch_validation", "label_validation_llm"]),
+                    F.col("name").isin(
+                        ["llm_batch_validation", "label_validation_llm"]
+                    ),
                     F.col("duration_ms"),
                 ).otherwise(0)
             ).alias("llm_duration_ms"),
             F.sum(
                 F.when(
-                    F.col("name").like("merchant_resolution%"), F.col("duration_ms")
+                    F.col("name").like("merchant_resolution%"),
+                    F.col("duration_ms"),
                 ).otherwise(0)
             ).alias("merchant_duration_ms"),
         )
@@ -281,35 +306,51 @@ class LabelValidationSparkProcessor:
         receipts_with_outputs = (
             receipts.withColumn(
                 "success",
-                F.get_json_object(F.col("outputs"), "$.success").cast("boolean"),
+                F.get_json_object(F.col("outputs"), "$.success").cast(
+                    "boolean"
+                ),
             )
             .withColumn(
                 "words_count",
-                F.get_json_object(F.col("outputs"), "$.words_count").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.words_count").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "lines_count",
-                F.get_json_object(F.col("outputs"), "$.lines_count").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.lines_count").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "labels_validated",
-                F.get_json_object(F.col("outputs"), "$.labels_validated").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.labels_validated").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "labels_corrected",
-                F.get_json_object(F.col("outputs"), "$.labels_corrected").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.labels_corrected").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "chroma_validated",
-                F.get_json_object(F.col("outputs"), "$.chroma_validated").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.chroma_validated").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "llm_validated",
-                F.get_json_object(F.col("outputs"), "$.llm_validated").cast("int"),
+                F.get_json_object(F.col("outputs"), "$.llm_validated").cast(
+                    "int"
+                ),
             )
             .withColumn(
                 "merchant_found_root",
-                F.get_json_object(F.col("outputs"), "$.merchant_found").cast("boolean"),
+                F.get_json_object(F.col("outputs"), "$.merchant_found").cast(
+                    "boolean"
+                ),
             )
             .withColumn(
                 "merchant_name_root",
@@ -317,13 +358,15 @@ class LabelValidationSparkProcessor:
             )
             .withColumn(
                 "merchant_resolution_tier",
-                F.get_json_object(F.col("outputs"), "$.merchant_resolution_tier"),
+                F.get_json_object(
+                    F.col("outputs"), "$.merchant_resolution_tier"
+                ),
             )
             .withColumn(
                 "merchant_confidence",
-                F.get_json_object(F.col("outputs"), "$.merchant_confidence").cast(
-                    "double"
-                ),
+                F.get_json_object(
+                    F.col("outputs"), "$.merchant_confidence"
+                ).cast("double"),
             )
         )
 
@@ -334,15 +377,20 @@ class LabelValidationSparkProcessor:
                 F.col("metadata_image_id").alias("image_id"),
                 F.col("metadata_receipt_id").alias("receipt_id"),
                 F.coalesce(
-                    F.col("merchant_name_root"), F.col("metadata_merchant_name")
+                    F.col("merchant_name_root"),
+                    F.col("metadata_merchant_name"),
                 ).alias("merchant_name"),
                 F.col("metadata_execution_id").alias("execution_id"),
                 "total_duration_ms",
                 F.col("s3_duration_ms").alias("s3_download_duration_ms"),
                 F.col("embed_duration_ms").alias("embedding_duration_ms"),
-                F.col("chroma_duration_ms").alias("chroma_validation_duration_ms"),
+                F.col("chroma_duration_ms").alias(
+                    "chroma_validation_duration_ms"
+                ),
                 F.col("llm_duration_ms").alias("llm_validation_duration_ms"),
-                F.col("merchant_duration_ms").alias("merchant_resolution_duration_ms"),
+                F.col("merchant_duration_ms").alias(
+                    "merchant_resolution_duration_ms"
+                ),
                 "words_count",
                 "lines_count",
                 "labels_validated",
@@ -397,9 +445,15 @@ class LabelValidationSparkProcessor:
             steps.groupBy("name", "step_type")
             .agg(
                 F.avg("duration_ms").alias("avg_duration_ms"),
-                F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
-                F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
-                F.expr("percentile_approx(duration_ms, 0.99)").alias("p99_duration_ms"),
+                F.expr("percentile_approx(duration_ms, 0.5)").alias(
+                    "p50_duration_ms"
+                ),
+                F.expr("percentile_approx(duration_ms, 0.95)").alias(
+                    "p95_duration_ms"
+                ),
+                F.expr("percentile_approx(duration_ms, 0.99)").alias(
+                    "p99_duration_ms"
+                ),
                 F.min("duration_ms").alias("min_duration_ms"),
                 F.max("duration_ms").alias("max_duration_ms"),
                 F.count("*").alias("total_runs"),
@@ -427,7 +481,9 @@ class LabelValidationSparkProcessor:
         """
         # Filter to label_validation traces
         validations = df.filter(
-            F.col("name").isin(["label_validation_chroma", "label_validation_llm"])
+            F.col("name").isin(
+                ["label_validation_chroma", "label_validation_llm"]
+            )
         )
 
         # Extract source from name if not in outputs
@@ -467,28 +523,34 @@ class LabelValidationSparkProcessor:
             DataFrame with merchant resolution statistics.
         """
         # Filter to merchant resolution traces
-        merchant = df.filter(F.col("name").like("merchant_resolution_chroma_%"))
+        merchant = df.filter(
+            F.col("name").like("merchant_resolution_chroma_%")
+        )
 
         # Extract tier from name if not in outputs
         merchant = merchant.withColumn(
             "tier",
             F.coalesce(
                 F.col("resolution_tier"),
-                F.regexp_extract(F.col("name"), r"merchant_resolution_chroma_(\w+)", 1),
+                F.regexp_extract(
+                    F.col("name"), r"merchant_resolution_chroma_(\w+)", 1
+                ),
             ),
         )
 
         result = (
             merchant.groupBy("tier")
             .agg(
-                F.sum(F.when(F.col("merchant_found") == True, 1).otherwise(0)).alias(
-                    "success_count"
-                ),
-                F.sum(F.when(F.col("merchant_found") == False, 1).otherwise(0)).alias(
-                    "failure_count"
-                ),
+                F.sum(
+                    F.when(F.col("merchant_found") == True, 1).otherwise(0)
+                ).alias("success_count"),
+                F.sum(
+                    F.when(F.col("merchant_found") == False, 1).otherwise(0)
+                ).alias("failure_count"),
                 F.avg(
-                    F.when(F.col("merchant_found") == True, F.col("confidence"))
+                    F.when(
+                        F.col("merchant_found") == True, F.col("confidence")
+                    )
                 ).alias("avg_confidence"),
                 F.count("*").alias("total_attempts"),
             )
@@ -526,8 +588,12 @@ class LabelValidationSparkProcessor:
 
         result = s3_downloads.groupBy("collection").agg(
             F.avg("duration_ms").alias("avg_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
+            F.expr("percentile_approx(duration_ms, 0.5)").alias(
+                "p50_duration_ms"
+            ),
+            F.expr("percentile_approx(duration_ms, 0.95)").alias(
+                "p95_duration_ms"
+            ),
             F.min("duration_ms").alias("min_duration_ms"),
             F.max("duration_ms").alias("max_duration_ms"),
             F.count("*").alias("total_downloads"),

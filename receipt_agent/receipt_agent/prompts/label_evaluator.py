@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
+
 from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
 from receipt_agent.constants import CORE_LABELS_SET
 from receipt_agent.prompts.structured_outputs import (
@@ -706,8 +707,7 @@ def build_receipt_context_prompt(
         if drill_down and issue_type == "constellation_anomaly":
             drill_down_text = _build_drill_down_text(drill_down)
 
-        issues_text.append(
-            f"""
+        issues_text.append(f"""
 ### Issue {idx}: "{word_text}" labeled as {current_label}
 **Type**: {issue_type}
 **Evaluator reasoning**: {evaluator_reasoning}
@@ -715,8 +715,7 @@ def build_receipt_context_prompt(
 **Similar Word Evidence**:
 {similar_text}
 {drill_down_text}
-"""
-        )
+""")
 
     # Build patterns section if available
     patterns_text = ""

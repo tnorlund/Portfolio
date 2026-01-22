@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import boto3
 from moto import mock_aws
-
 from receipt_dynamo.constants import ChromaDBCollection
 
 
@@ -377,14 +376,8 @@ class TestStreamProcessorRealOperations:
 
         assert lines_body["entity_type"] == "RECEIPT_PLACE"
         assert words_body["entity_type"] == "RECEIPT_PLACE"
-        assert (
-            lines_body["entity_data"]["merchant_name"]
-            == "Target Store"
-        )
-        assert (
-            words_body["entity_data"]["merchant_name"]
-            == "Target Store"
-        )
+        assert lines_body["entity_data"]["merchant_name"] == "Target Store"
+        assert words_body["entity_data"]["merchant_name"] == "Target Store"
 
 
 if __name__ == "__main__":

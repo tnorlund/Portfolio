@@ -32,7 +32,9 @@ LABEL_GROUPS = {
 
 # Map each label to its group
 LABEL_TO_GROUP = {
-    label: group_name for group_name, labels in LABEL_GROUPS.items() for label in labels
+    label: group_name
+    for group_name, labels in LABEL_GROUPS.items()
+    for label in labels
 }
 
 # Priority within-group pairs (important relationships within semantic groups)

@@ -59,11 +59,15 @@ def build_train_command(hps: dict) -> list[str]:
     cmd = ["layoutlm-cli", "train"]
 
     # Required parameters
-    job_name = hps.get("job_name", os.environ.get("TRAINING_JOB_NAME", "sagemaker-job"))
+    job_name = hps.get(
+        "job_name", os.environ.get("TRAINING_JOB_NAME", "sagemaker-job")
+    )
     dynamo_table = hps.get("dynamo_table", os.environ.get("DYNAMO_TABLE_NAME"))
 
     if not dynamo_table:
-        raise ValueError("dynamo_table hyperparameter or DYNAMO_TABLE_NAME env var required")
+        raise ValueError(
+            "dynamo_table hyperparameter or DYNAMO_TABLE_NAME env var required"
+        )
 
     cmd.extend(["--job-name", job_name])
     cmd.extend(["--dynamo-table", dynamo_table])
@@ -174,7 +178,9 @@ def main():
         sys.exit(result.returncode)
 
     # Copy model to SageMaker model directory
-    job_name = hps.get("job_name", os.environ.get("TRAINING_JOB_NAME", "sagemaker-job"))
+    job_name = hps.get(
+        "job_name", os.environ.get("TRAINING_JOB_NAME", "sagemaker-job")
+    )
     copy_model_to_sagemaker_dir(job_name)
 
     print("=" * 60)

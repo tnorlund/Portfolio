@@ -22,13 +22,14 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     RunTree = None  # type: ignore
 
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.data._pulumi import load_env, load_secrets
+from receipt_dynamo.entities import Receipt, ReceiptLine
+
 from receipt_agent.config.settings import get_settings
 from receipt_agent.utils.receipt_coordinates import (
     get_receipt_to_image_transform,
 )
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
-from receipt_dynamo.entities import Receipt, ReceiptLine
 
 # Make receipt_upload available for geometry helpers (min-area rect, reorder)
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

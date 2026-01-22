@@ -679,7 +679,9 @@ def _call_llm_direct(
         result = response.json()
 
     # OpenRouter uses OpenAI-compatible response format
-    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    content = (
+        result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    )
     return _parse_llm_response(content)
 
 
@@ -725,7 +727,11 @@ def _call_llm_with_tracing(
             result = response.json()
 
         # OpenRouter uses OpenAI-compatible response format
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        content = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
 
         # Capture raw output in trace
         llm_trace_ctx.set_outputs(
@@ -734,7 +740,9 @@ def _call_llm_with_tracing(
                     content[:2000] if len(content) > 2000 else content
                 ),
                 "model": result.get("model"),
-                "finish_reason": result.get("choices", [{}])[0].get("finish_reason"),
+                "finish_reason": result.get("choices", [{}])[0].get(
+                    "finish_reason"
+                ),
             }
         )
 

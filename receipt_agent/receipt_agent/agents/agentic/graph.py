@@ -23,8 +23,6 @@ from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
-
-from receipt_agent.utils.llm_factory import create_llm
 from langgraph.prebuilt import ToolNode
 
 from receipt_agent.agents.agentic.state import AgentState
@@ -33,6 +31,7 @@ from receipt_agent.agents.agentic.tools import (
     create_agentic_tools,
 )
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 

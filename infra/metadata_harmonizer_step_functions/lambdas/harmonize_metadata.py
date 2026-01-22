@@ -32,6 +32,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import boto3
+
 from utils.emf_metrics import emf_metrics
 
 # LangSmith tracing - ensure traces are flushed before Lambda exits
@@ -490,8 +491,7 @@ async def process_place_id_batch(
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and place.merchant_name
-                            != canonical_merchant_name
+                            and place.merchant_name != canonical_merchant_name
                         ):
                             place.merchant_name = canonical_merchant_name
                             updated_fields.append("merchant_name")
@@ -508,8 +508,7 @@ async def process_place_id_batch(
 
                         if (
                             canonical_phone
-                            and place.phone_number
-                            != canonical_phone
+                            and place.phone_number != canonical_phone
                         ):
                             place.phone_number = canonical_phone
                             updated_fields.append("phone_number")
@@ -558,8 +557,7 @@ async def process_place_id_batch(
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and place.merchant_name
-                            != canonical_merchant_name
+                            and place.merchant_name != canonical_merchant_name
                         ):
                             place.merchant_name = canonical_merchant_name
                             updated_fields.append("merchant_name")

@@ -80,8 +80,12 @@ def handler(event, _context):
 
     try:
         # Fetch cache from S3
-        logger.info("Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, S3_CACHE_KEY)
-        response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=S3_CACHE_KEY)
+        logger.info(
+            "Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, S3_CACHE_KEY
+        )
+        response = s3_client.get_object(
+            Bucket=S3_CACHE_BUCKET, Key=S3_CACHE_KEY
+        )
         cache_data = json.loads(response["Body"].read().decode("utf-8"))
 
         logger.info(
@@ -101,14 +105,18 @@ def handler(event, _context):
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchKey":
-            logger.warning("Cache not found at s3://%s/%s", S3_CACHE_BUCKET, S3_CACHE_KEY)
+            logger.warning(
+                "Cache not found at s3://%s/%s", S3_CACHE_BUCKET, S3_CACHE_KEY
+            )
             return {
                 "statusCode": 404,
-                "body": json.dumps({
-                    "error": "Cache not found",
-                    "message": "Timeline cache has not been generated yet. "
-                               "Invoke the cache generator Lambda to create it.",
-                }),
+                "body": json.dumps(
+                    {
+                        "error": "Cache not found",
+                        "message": "Timeline cache has not been generated yet. "
+                        "Invoke the cache generator Lambda to create it.",
+                    }
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",

@@ -245,7 +245,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             line_item_patterns["_trace_metadata"]["error"] = discovery_error
 
     # Save line item patterns to S3
-    upload_json_to_s3(s3, batch_bucket, line_item_patterns_s3_key, line_item_patterns)
+    upload_json_to_s3(
+        s3, batch_bucket, line_item_patterns_s3_key, line_item_patterns
+    )
     logger.info(
         "Saved line item patterns to s3://%s/%s (%.2fs)",
         batch_bucket,
@@ -273,7 +275,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             },
             metadata={"step": "geometric"},
         ):
-            from receipt_agent.agents.label_evaluator.state import OtherReceiptData
+            from receipt_agent.agents.label_evaluator.state import (
+                OtherReceiptData,
+            )
 
             # Load training receipts for geometric patterns
             other_receipt_data: list[OtherReceiptData] = []
@@ -281,10 +285,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             load_start = time.time()
 
             while len(other_receipt_data) < max_training_receipts:
-                places, last_key = dynamo_client.get_receipt_places_by_merchant(
-                    merchant_name,
-                    limit=min(100, max_training_receipts - len(other_receipt_data)),
-                    last_evaluated_key=last_key,
+                places, last_key = (
+                    dynamo_client.get_receipt_places_by_merchant(
+                        merchant_name,
+                        limit=min(
+                            100,
+                            max_training_receipts - len(other_receipt_data),
+                        ),
+                        last_evaluated_key=last_key,
+                    )
                 )
 
                 if not places:
@@ -298,8 +307,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                         words = dynamo_client.list_receipt_words_from_receipt(
                             place.image_id, place.receipt_id
                         )
-                        labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
-                            place.image_id, place.receipt_id
+                        labels, _ = (
+                            dynamo_client.list_receipt_word_labels_for_receipt(
+                                place.image_id, place.receipt_id
+                            )
                         )
 
                         other_receipt_data.append(
@@ -342,18 +353,28 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     max_relationship_dimension=3,
                 )
                 compute_duration = time.time() - compute_start
-                logger.info("Pattern computation completed in %.2fs", compute_duration)
+                logger.info(
+                    "Pattern computation completed in %.2fs", compute_duration
+                )
 
                 if geometric_patterns:
                     pattern_stats = {
-                        "label_positions": len(geometric_patterns.label_positions),
-                        "label_pairs": len(geometric_patterns.label_pair_geometry),
-                        "observed_pairs": len(geometric_patterns.all_observed_pairs),
+                        "label_positions": len(
+                            geometric_patterns.label_positions
+                        ),
+                        "label_pairs": len(
+                            geometric_patterns.label_pair_geometry
+                        ),
+                        "observed_pairs": len(
+                            geometric_patterns.all_observed_pairs
+                        ),
                         "receipt_count": geometric_patterns.receipt_count,
                     }
 
     except Exception as e:
-        logger.error("Error in geometric pattern computation: %s", e, exc_info=True)
+        logger.error(
+            "Error in geometric pattern computation: %s", e, exc_info=True
+        )
         # Continue without geometric patterns - not a fatal error
 
     computation_end_time = datetime.now(timezone.utc).isoformat()
@@ -424,7 +445,9 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
     for label, y_positions in patterns.label_positions.items():
         if y_positions:
             mean_y = statistics.mean(y_positions)
-            std_y = statistics.stdev(y_positions) if len(y_positions) > 1 else 0.0
+            std_y = (
+                statistics.stdev(y_positions) if len(y_positions) > 1 else 0.0
+            )
             label_position_stats[label] = {
                 "mean_y": mean_y,
                 "std_y": std_y,
@@ -475,7 +498,9 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
             "receipt_count": patterns.receipt_count,
             "label_positions": label_position_stats,
             "label_pair_geometry": label_pair_geometry_list,
-            "all_observed_pairs": [list(pair) for pair in patterns.all_observed_pairs],
+            "all_observed_pairs": [
+                list(pair) for pair in patterns.all_observed_pairs
+            ],
             "constellation_geometry": constellation_geometry_list,
             "batch_classification": dict(patterns.batch_classification),
             "labels_with_same_line_multiplicity": list(

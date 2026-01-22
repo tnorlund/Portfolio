@@ -5,7 +5,6 @@ This file contains refactored tests using pytest.mark.parametrize to ensure
 complete test coverage matching test__receipt.py standards.
 """
 
-
 from typing import Any, Literal, Type
 from uuid import uuid4
 

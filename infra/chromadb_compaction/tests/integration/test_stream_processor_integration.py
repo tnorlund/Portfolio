@@ -78,9 +78,7 @@ class TestPlaceRoutingSQS:
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
 
-        custom_event = target_event_factory(
-            merchant_name="Target Store"
-        )
+        custom_event = target_event_factory(merchant_name="Target Store")
         result = lambda_handler(custom_event, None)
 
         assert result["statusCode"] == 200
@@ -245,9 +243,7 @@ class TestBatchProcessing:
         # Create event with 15 place changes
         events = {"Records": []}
         for i in range(15):
-            single_event = target_event_factory(
-                merchant_name=f"Merchant {i}"
-            )
+            single_event = target_event_factory(merchant_name=f"Merchant {i}")
             record = single_event["Records"][0]
             record["eventID"] = f"event-{i}"
             events["Records"].append(record)

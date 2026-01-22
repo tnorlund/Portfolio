@@ -56,7 +56,6 @@ from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
-
 from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
 from receipt_dynamo_stream.stream_types import LambdaContext
 
@@ -81,7 +80,6 @@ from utils.lambda_types import (
     SQSRecord,
 )
 from utils.logging import OperationLogger
-
 
 # Get logger instance
 logger = get_operation_logger(__name__)
@@ -543,8 +541,7 @@ def process_sqs_messages(
 
     return {
         "batchItemFailures": [
-            {"itemIdentifier": msg_id}
-            for msg_id in result.failed_message_ids
+            {"itemIdentifier": msg_id} for msg_id in result.failed_message_ids
         ]
     }
 

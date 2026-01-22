@@ -3,8 +3,8 @@
 import copy
 from datetime import datetime
 
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.compaction_run import CompactionRun
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # ============================================================================

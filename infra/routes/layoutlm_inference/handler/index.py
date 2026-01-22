@@ -67,7 +67,9 @@ def _fetch_receipt(key: str) -> Dict[str, Any]:
     return json.loads(response["Body"].read().decode("utf-8"))
 
 
-def _calculate_aggregate_stats(receipts: List[Dict[str, Any]], pool_size: int) -> Dict[str, Any]:
+def _calculate_aggregate_stats(
+    receipts: List[Dict[str, Any]], pool_size: int
+) -> Dict[str, Any]:
     """Calculate aggregate statistics across batch.
 
     Args:
@@ -89,19 +91,27 @@ def _calculate_aggregate_stats(receipts: List[Dict[str, Any]], pool_size: int) -
             "estimated_throughput_per_hour": 0,
         }
 
-    accuracies = [r.get("metrics", {}).get("overall_accuracy", 0) for r in receipts]
+    accuracies = [
+        r.get("metrics", {}).get("overall_accuracy", 0) for r in receipts
+    ]
     inference_times = [r.get("inference_time_ms", 100) for r in receipts]
-    total_words = sum(r.get("metrics", {}).get("total_words", 0) for r in receipts)
+    total_words = sum(
+        r.get("metrics", {}).get("total_words", 0) for r in receipts
+    )
 
-    avg_inference_time = sum(inference_times) / len(inference_times) if inference_times else 100
+    avg_inference_time = (
+        sum(inference_times) / len(inference_times) if inference_times else 100
+    )
     # Estimate throughput: receipts per hour based on avg inference time
     if avg_inference_time > 0:
-        throughput = (3600 * 1000 / avg_inference_time)
+        throughput = 3600 * 1000 / avg_inference_time
     else:
         throughput = 0
 
     return {
-        "avg_accuracy": sum(accuracies) / len(accuracies) if accuracies else 0.0,
+        "avg_accuracy": (
+            sum(accuracies) / len(accuracies) if accuracies else 0.0
+        ),
         "min_accuracy": min(accuracies) if accuracies else 0.0,
         "max_accuracy": max(accuracies) if accuracies else 0.0,
         "avg_inference_time_ms": round(avg_inference_time, 2),
@@ -119,7 +129,9 @@ def _try_legacy_cache() -> Dict[str, Any]:
         Legacy cache data wrapped in batch format, or None if not found
     """
     try:
-        response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=LEGACY_CACHE_KEY)
+        response = s3_client.get_object(
+            Bucket=S3_CACHE_BUCKET, Key=LEGACY_CACHE_KEY
+        )
         cache_data = json.loads(response["Body"].read().decode("utf-8"))
 
         # Wrap legacy response in new batch format
@@ -137,13 +149,23 @@ def _try_legacy_cache() -> Dict[str, Any]:
         return {
             "receipts": [cache_data],
             "aggregate_stats": {
-                "avg_accuracy": cache_data.get("metrics", {}).get("overall_accuracy", 0),
-                "min_accuracy": cache_data.get("metrics", {}).get("overall_accuracy", 0),
-                "max_accuracy": cache_data.get("metrics", {}).get("overall_accuracy", 0),
-                "avg_inference_time_ms": cache_data.get("inference_time_ms", 100),
+                "avg_accuracy": cache_data.get("metrics", {}).get(
+                    "overall_accuracy", 0
+                ),
+                "min_accuracy": cache_data.get("metrics", {}).get(
+                    "overall_accuracy", 0
+                ),
+                "max_accuracy": cache_data.get("metrics", {}).get(
+                    "overall_accuracy", 0
+                ),
+                "avg_inference_time_ms": cache_data.get(
+                    "inference_time_ms", 100
+                ),
                 "total_receipts_in_pool": 1,
                 "batch_size": 1,
-                "total_words_processed": cache_data.get("metrics", {}).get("total_words", 0),
+                "total_words_processed": cache_data.get("metrics", {}).get(
+                    "total_words", 0
+                ),
                 "estimated_throughput_per_hour": 36000,
             },
             "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -227,12 +249,14 @@ def handler(event, _context):
 
             return {
                 "statusCode": 404,
-                "body": json.dumps({
-                    "error": "Cache pool empty",
-                    "message": "No cached receipts found. The batch cache generator should populate the pool.",
-                    "bucket": S3_CACHE_BUCKET,
-                    "prefix": CACHE_PREFIX,
-                }),
+                "body": json.dumps(
+                    {
+                        "error": "Cache pool empty",
+                        "message": "No cached receipts found. The batch cache generator should populate the pool.",
+                        "bucket": S3_CACHE_BUCKET,
+                        "prefix": CACHE_PREFIX,
+                    }
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",
@@ -263,10 +287,12 @@ def handler(event, _context):
         if not receipts:
             return {
                 "statusCode": 500,
-                "body": json.dumps({
-                    "error": "Failed to fetch receipts",
-                    "message": "All receipt fetches failed",
-                }),
+                "body": json.dumps(
+                    {
+                        "error": "Failed to fetch receipts",
+                        "message": "All receipt fetches failed",
+                    }
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",

@@ -13,12 +13,12 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+
 from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
     MerchantResult,
 )
-
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 
 class TestMerchantResolvingEmbeddingProcessor:

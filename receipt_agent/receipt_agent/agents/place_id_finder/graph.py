@@ -455,7 +455,9 @@ async def run_place_id_finder(
                 "workflow": "place_id_finder",
             }
             # Use project name from environment (same as parent trace)
-            project_name = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            project_name = os.environ.get(
+                "LANGCHAIN_PROJECT", "receipt-label-validation"
+            )
             config["run_name"] = "place_id_finder_agent"
             config["tags"] = ["place_id_finder", "tier2"]
 

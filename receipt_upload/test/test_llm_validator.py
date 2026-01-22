@@ -1,12 +1,13 @@
 """Tests for LLM validator parsing logic."""
 
 import pytest
+
 from receipt_upload.label_validation.llm_validator import (
-    parse_validation_response,
-    convert_structured_response,
-    LLMValidationResult,
-    LabelValidationResponse,
     LabelDecision,
+    LabelValidationResponse,
+    LLMValidationResult,
+    convert_structured_response,
+    parse_validation_response,
 )
 
 
@@ -182,7 +183,9 @@ class TestParseValidationResponse:
         assert len(results) == 1
         assert results[0].decision == "NEEDS_REVIEW"
 
-    def test_parse_invalid_label_rejected_and_invalid_becomes_needs_review(self):
+    def test_parse_invalid_label_rejected_and_invalid_becomes_needs_review(
+        self,
+    ):
         """Test that invalid labels with INVALID decision become NEEDS_REVIEW."""
         pending_labels = [
             {"line_id": 1, "word_id": 1, "label": "GRAND_TOTAL"},

@@ -82,7 +82,9 @@ def _fetch_metadata() -> dict[str, Any]:
         Empty dict if metadata file not found.
     """
     try:
-        response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key="metadata.json")
+        response = s3_client.get_object(
+            Bucket=S3_CACHE_BUCKET, Key="metadata.json"
+        )
         return json.loads(response["Body"].read().decode("utf-8"))
     except ClientError:
         logger.warning("Could not fetch metadata.json")
@@ -137,7 +139,9 @@ def _calculate_aggregate_stats(
             total_invalid += llm_decisions.get("INVALID", 0)
             total_needs_review += llm_decisions.get("NEEDS_REVIEW", 0)
 
-    avg_chroma_rate = (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    avg_chroma_rate = (
+        (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    )
 
     return {
         "total_receipts": pool_size,
@@ -216,7 +220,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # batch_size: number of receipts per page
         try:
-            batch_size = int(query_params.get("batch_size", DEFAULT_BATCH_SIZE))
+            batch_size = int(
+                query_params.get("batch_size", DEFAULT_BATCH_SIZE)
+            )
             batch_size = max(1, min(batch_size, MAX_BATCH_SIZE))
         except (ValueError, TypeError):
             batch_size = DEFAULT_BATCH_SIZE
@@ -234,7 +240,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         except (ValueError, TypeError):
             offset = 0
 
-        logger.info("batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset)
+        logger.info(
+            "batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset
+        )
 
         # List all cached receipts
         cached_keys = _list_cached_receipts()
@@ -280,7 +288,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         key_to_receipt: dict[str, dict[str, Any] | None] = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(_fetch_receipt, key): key for key in selected_keys
+                executor.submit(_fetch_receipt, key): key
+                for key in selected_keys
             }
             for future in as_completed(futures):
                 key = futures[future]
@@ -288,7 +297,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # Rebuild list in original selected_keys order
         receipts: list[dict[str, Any]] = [
-            key_to_receipt[key] for key in selected_keys if key_to_receipt.get(key)
+            key_to_receipt[key]
+            for key in selected_keys
+            if key_to_receipt.get(key)
         ]
 
         # Get metadata and build response

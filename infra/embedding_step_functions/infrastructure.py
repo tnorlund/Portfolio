@@ -9,11 +9,12 @@ code organization and easier maintenance of the 79-character line limit.
 
 from typing import Optional
 
+from pulumi import ComponentResource, Output, ResourceOptions
+
 # pylint: disable=import-error
 from chromadb_compaction import (  # type: ignore[import-not-found]
     ChromaDBBuckets,
 )
-from pulumi import ComponentResource, Output, ResourceOptions
 
 from .components import (
     DockerImageComponent,

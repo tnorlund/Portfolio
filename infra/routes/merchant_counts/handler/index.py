@@ -22,10 +22,8 @@ def normalize_for_display(name: str) -> str:
 
 
 def fetch_merchant_counts():
-    receipt_places, last_evaluated_key = (
-        dynamo_client.list_receipt_places(
-            limit=1000,
-        )
+    receipt_places, last_evaluated_key = dynamo_client.list_receipt_places(
+        limit=1000,
     )
     while last_evaluated_key is not None:
         next_receipt_places, last_evaluated_key = (

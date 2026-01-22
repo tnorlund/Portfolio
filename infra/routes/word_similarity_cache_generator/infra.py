@@ -4,6 +4,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Import the ChromaDB bucket name from the shared chromadb_buckets module
 from chromadb_buckets import bucket_name as chromadb_bucket_name
@@ -13,7 +14,6 @@ from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Get the DynamoDB table name
 DYNAMODB_TABLE_NAME = dynamodb_table.name
@@ -191,7 +191,9 @@ class WordSimilarityCacheGenerator(ComponentResource):
         )
 
         # Build Docker image using CodeBuild
-        dockerfile_path = "infra/routes/word_similarity_cache_generator/lambdas/Dockerfile"
+        dockerfile_path = (
+            "infra/routes/word_similarity_cache_generator/lambdas/Dockerfile"
+        )
         build_context_path = "."  # Project root
 
         # Create Lambda function name
@@ -228,7 +230,8 @@ class WordSimilarityCacheGenerator(ComponentResource):
                         portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
                     ),
                     "CHROMA_CLOUD_API_KEY": (
-                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY")
+                        or ""
                     ),
                     "CHROMA_CLOUD_TENANT": (
                         portfolio_config.get("CHROMA_CLOUD_TENANT") or ""

@@ -22,7 +22,7 @@ DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 # This can be updated to point to the best trained model
 FEATURED_JOB_ID = os.environ.get(
     "FEATURED_JOB_ID",
-    "18da9414-37a5-4837-b65a-a03b7f8df4cd"  # layoutlm-hybrid-8-labels-orig-label-fix
+    "18da9414-37a5-4837-b65a-a03b7f8df4cd",  # layoutlm-hybrid-8-labels-orig-label-fix
 )
 
 
@@ -46,7 +46,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         job_id = path_params.get("job_id")
 
         if not job_id:
-            return _error_response(400, "Missing required path parameter: job_id")
+            return _error_response(
+                400, "Missing required path parameter: job_id"
+            )
 
         # Support "featured" as a special job_id alias
         if job_id == "featured":
@@ -61,11 +63,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             except ValueError:
                 return _error_response(400, "epoch must be an integer")
 
-        include_cm = query_params.get("include_confusion_matrix", "true").lower() != "false"
-        collapse_bio = query_params.get("collapse_bio", "false").lower() == "true"
+        include_cm = (
+            query_params.get("include_confusion_matrix", "true").lower()
+            != "false"
+        )
+        collapse_bio = (
+            query_params.get("collapse_bio", "false").lower() == "true"
+        )
 
         # Initialize DynamoDB client
-        client = DynamoClient(table_name=DYNAMODB_TABLE_NAME, region="us-east-1")
+        client = DynamoClient(
+            table_name=DYNAMODB_TABLE_NAME, region="us-east-1"
+        )
 
         # Get job metadata
         try:
@@ -157,7 +166,9 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
         all_metrics.extend(metrics)
         if not last_key:
             break
-    label_metrics = [m for m in all_metrics if m.metric_name.startswith("label_")]
+    label_metrics = [
+        m for m in all_metrics if m.metric_name.startswith("label_")
+    ]
     result["label_metrics"] = label_metrics
 
     # Extract dataset-level metrics (epoch=None) from the same fetch
@@ -175,14 +186,23 @@ def _aggregate_by_epoch(
     epoch_filter: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Aggregate all metrics by epoch."""
-    epochs_dict: Dict[int, Dict[str, Any]] = defaultdict(lambda: {
-        "epoch": None,
-        "metrics": {},
-        "per_label": {},
-    })
+    epochs_dict: Dict[int, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "epoch": None,
+            "metrics": {},
+            "per_label": {},
+        }
+    )
 
     # Process scalar metrics
-    scalar_metrics = ["val_f1", "val_precision", "val_recall", "eval_loss", "train_loss", "learning_rate"]
+    scalar_metrics = [
+        "val_f1",
+        "val_precision",
+        "val_recall",
+        "eval_loss",
+        "train_loss",
+        "learning_rate",
+    ]
     for metric_name in scalar_metrics:
         for m in metrics_data.get(metric_name, []):
             if m.epoch is None:
@@ -219,12 +239,16 @@ def _aggregate_by_epoch(
         parts = m.metric_name.split("_")
         if len(parts) >= 3:
             metric_type = parts[-1]  # f1, precision, recall, support
-            label_name = "_".join(parts[1:-1])  # Handle labels with underscores
+            label_name = "_".join(
+                parts[1:-1]
+            )  # Handle labels with underscores
 
             epochs_dict[m.epoch]["epoch"] = m.epoch
             if label_name not in epochs_dict[m.epoch]["per_label"]:
                 epochs_dict[m.epoch]["per_label"][label_name] = {}
-            epochs_dict[m.epoch]["per_label"][label_name][metric_type] = m.value
+            epochs_dict[m.epoch]["per_label"][label_name][
+                metric_type
+            ] = m.value
 
     # Convert to sorted list
     epochs_list = [v for v in epochs_dict.values() if v["epoch"] is not None]

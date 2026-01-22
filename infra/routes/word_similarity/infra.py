@@ -10,7 +10,6 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-
 from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Reference the directory containing index.py

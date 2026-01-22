@@ -6,7 +6,6 @@ Clean up compaction locks using the proper DynamoDB client methods.
 import sys
 
 import botocore.exceptions
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.shared_exceptions import (

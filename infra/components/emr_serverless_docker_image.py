@@ -434,12 +434,16 @@ echo "Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "codebuild.amazonaws.com"},
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "codepipeline.amazonaws.com"},
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -595,7 +599,9 @@ echo "Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "codepipeline.amazonaws.com"},
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         }
                     ],

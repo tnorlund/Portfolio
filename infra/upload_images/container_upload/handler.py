@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
@@ -55,7 +54,9 @@ def handler(event, _):
     # 3. push message onto the job queue
     sqs.send_message(
         QueueUrl=OCR_QUEUE,
-        MessageBody=json.dumps({"job_id": job.job_id, "image_id": job.image_id}),
+        MessageBody=json.dumps(
+            {"job_id": job.job_id, "image_id": job.image_id}
+        ),
     )
 
     return {

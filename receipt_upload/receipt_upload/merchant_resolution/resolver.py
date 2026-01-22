@@ -141,13 +141,17 @@ class MerchantResolver:
         """Lazy-load OpenAI client."""
         if self._openai_client is None:
             try:
-                from openai import OpenAI  # pylint: disable=import-outside-toplevel
+                from openai import (  # pylint: disable=import-outside-toplevel
+                    OpenAI,
+                )
 
                 api_key = os.environ.get("OPENAI_API_KEY")
                 if api_key:
                     self._openai_client = OpenAI(api_key=api_key)
                 else:
-                    _log("WARNING: OPENAI_API_KEY not set, similarity search disabled")
+                    _log(
+                        "WARNING: OPENAI_API_KEY not set, similarity search disabled"
+                    )
             except ImportError:
                 _log("WARNING: openai package not available")
         return self._openai_client
@@ -254,7 +258,10 @@ class MerchantResolver:
         if phone:
             phone_line = self._get_line_for_phone(words, lines, phone)
             if phone_line:
-                _log("Tier 1: Similarity search for phone line: %s", phone_line.text)
+                _log(
+                    "Tier 1: Similarity search for phone line: %s",
+                    phone_line.text,
+                )
                 result = self._similarity_search(
                     lines_client=lines_client,
                     query_line=phone_line,
@@ -264,7 +271,10 @@ class MerchantResolver:
                     expected_address=address,
                     resolution_tier="chroma_phone",
                 )
-                if result.place_id and result.confidence >= MIN_SIMILARITY_THRESHOLD:
+                if (
+                    result.place_id
+                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                ):
                     _log(
                         "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
@@ -277,7 +287,10 @@ class MerchantResolver:
         if address:
             address_line = self._get_line_for_address(words, lines, address)
             if address_line:
-                _log("Tier 1: Similarity search for address line: %s", address_line.text)
+                _log(
+                    "Tier 1: Similarity search for address line: %s",
+                    address_line.text,
+                )
                 result = self._similarity_search(
                     lines_client=lines_client,
                     query_line=address_line,
@@ -287,7 +300,10 @@ class MerchantResolver:
                     expected_address=address,
                     resolution_tier="chroma_address",
                 )
-                if result.place_id and result.confidence >= MIN_SIMILARITY_THRESHOLD:
+                if (
+                    result.place_id
+                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                ):
                     _log(
                         "Tier 1 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
@@ -299,7 +315,10 @@ class MerchantResolver:
         # Try first line (often merchant name)
         merchant_line = self._get_merchant_line(lines)
         if merchant_line:
-            _log("Tier 1: Similarity search for merchant line: %s", merchant_line.text)
+            _log(
+                "Tier 1: Similarity search for merchant line: %s",
+                merchant_line.text,
+            )
             result = self._similarity_search(
                 lines_client=lines_client,
                 query_line=merchant_line,
@@ -309,7 +328,10 @@ class MerchantResolver:
                 expected_address=address,
                 resolution_tier="chroma_text",
             )
-            if result.place_id and result.confidence >= MIN_SIMILARITY_THRESHOLD:
+            if (
+                result.place_id
+                and result.confidence >= MIN_SIMILARITY_THRESHOLD
+            ):
                 _log(
                     "Tier 1 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
@@ -368,7 +390,9 @@ class MerchantResolver:
                         return line
         return None
 
-    def _get_merchant_line(self, lines: List[ReceiptLine]) -> Optional[ReceiptLine]:
+    def _get_merchant_line(
+        self, lines: List[ReceiptLine]
+    ) -> Optional[ReceiptLine]:
         """Get the first line (often contains merchant name)."""
         if not lines:
             return None
@@ -413,7 +437,9 @@ class MerchantResolver:
                 "receipt_id": current_receipt_id,
                 "line_text": query_line.text[:50] if query_line.text else "",
                 "expected_phone": expected_phone,
-                "expected_address": expected_address[:30] if expected_address else None,
+                "expected_address": (
+                    expected_address[:30] if expected_address else None
+                ),
             },
         )
         def _traced_search() -> MerchantResult:
@@ -444,13 +470,19 @@ class MerchantResolver:
         embedding = self._line_embeddings.get(query_line.line_id)
         if not embedding:
             # Fallback to generating embedding (should rarely happen)
-            _log("Cache miss for line %d, generating embedding", query_line.line_id)
+            _log(
+                "Cache miss for line %d, generating embedding",
+                query_line.line_id,
+            )
             formatted_text = format_line_context_embedding_input(
                 query_line, []  # No context available in fallback
             )
             embedding = self._generate_embedding(formatted_text)
             if not embedding:
-                _log("Could not generate embedding for line %d", query_line.line_id)
+                _log(
+                    "Could not generate embedding for line %d",
+                    query_line.line_id,
+                )
                 return MerchantResult()
 
         try:
@@ -499,7 +531,9 @@ class MerchantResolver:
 
                 if expected_address and result_address:
                     # For addresses, use fuzzy comparison (OCR errors)
-                    if self._addresses_similar(expected_address, result_address):
+                    if self._addresses_similar(
+                        expected_address, result_address
+                    ):
                         metadata_boost += ADDRESS_MATCH_BOOST
                         _log("  Address match boost: %s", result_address[:30])
 
@@ -692,7 +726,9 @@ class MerchantResolver:
 
         return None
 
-    def _extract_merchant_name(self, lines: List[ReceiptLine]) -> Optional[str]:
+    def _extract_merchant_name(
+        self, lines: List[ReceiptLine]
+    ) -> Optional[str]:
         """
         Extract merchant name from receipt lines.
 
@@ -773,17 +809,25 @@ class MerchantResolver:
         # Get current Langsmith callbacks for parent trace context
         langsmith_callbacks = None
         try:
-            from langsmith.run_helpers import get_current_run_tree  # pylint: disable=import-outside-toplevel
+            from langsmith.run_helpers import (  # pylint: disable=import-outside-toplevel
+                get_current_run_tree,
+            )
 
             run_tree = get_current_run_tree()
             if run_tree:
                 # Get callbacks that will make agent traces children of current trace
-                from langchain_core.tracers.langchain import LangChainTracer  # pylint: disable=import-outside-toplevel
+                from langchain_core.tracers.langchain import (  # pylint: disable=import-outside-toplevel
+                    LangChainTracer,
+                )
 
-                langsmith_callbacks = [LangChainTracer(
-                    project_name=os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation"),
-                    client=run_tree.client,
-                )]
+                langsmith_callbacks = [
+                    LangChainTracer(
+                        project_name=os.environ.get(
+                            "LANGCHAIN_PROJECT", "receipt-label-validation"
+                        ),
+                        client=run_tree.client,
+                    )
+                ]
                 _log("Got Langsmith callbacks for parent trace context")
         except ImportError:
             _log("Langsmith not available for trace context propagation")
@@ -843,16 +887,25 @@ class MerchantResolver:
                     resolution_tier="place_id_finder_agentic",
                 )
 
-            _log("Agentic finder did not find place_id, reason: %s",
-                 result.get("reasoning", "unknown") if result else "no result")
+            _log(
+                "Agentic finder did not find place_id, reason: %s",
+                result.get("reasoning", "unknown") if result else "no result",
+            )
 
         except ImportError as exc:
-            _log("WARNING: receipt_agent import failed, falling back to simple search: %s", exc)
-            logger.warning("receipt_agent agentic import failed", exc_info=True)
+            _log(
+                "WARNING: receipt_agent import failed, falling back to simple search: %s",
+                exc,
+            )
+            logger.warning(
+                "receipt_agent agentic import failed", exc_info=True
+            )
             # Fall through to simple search below
         except RuntimeError as exc:
             # Handle "no running event loop" error in Lambda
-            if "no running event loop" in str(exc) or "cannot be called from a running event loop" in str(exc):
+            if "no running event loop" in str(
+                exc
+            ) or "cannot be called from a running event loop" in str(exc):
                 _log("Event loop issue, trying asyncio.run(): %s", exc)
                 try:
                     # pylint: disable=import-outside-toplevel
@@ -867,6 +920,7 @@ class MerchantResolver:
                         from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
                             embed_texts,
                         )
+
                         return embed_texts(
                             client=self.openai_client,
                             texts=texts,
@@ -890,7 +944,11 @@ class MerchantResolver:
                         )
                     )
 
-                    if result and result.get("found") and result.get("place_id"):
+                    if (
+                        result
+                        and result.get("found")
+                        and result.get("place_id")
+                    ):
                         return MerchantResult(
                             place_id=result["place_id"],
                             merchant_name=result.get("place_name"),
@@ -899,7 +957,9 @@ class MerchantResolver:
                             confidence=result.get("confidence", 0.0),
                             resolution_tier="place_id_finder_agentic",
                         )
-                except Exception as inner_exc:  # pylint: disable=broad-exception-caught
+                except (
+                    Exception
+                ) as inner_exc:  # pylint: disable=broad-exception-caught
                     _log("Agentic fallback also failed: %s", inner_exc)
             else:
                 _log("RuntimeError in agentic finder: %s", exc)
@@ -959,4 +1019,3 @@ class MerchantResolver:
             logger.exception("Simple Place ID Finder failed")
 
         return MerchantResult()
-

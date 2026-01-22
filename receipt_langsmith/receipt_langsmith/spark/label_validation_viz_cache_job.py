@@ -157,7 +157,9 @@ def find_latest_export_prefix(
                     export_id = prefix.split("export_id=")[1].rstrip("/")
                     if export_id and export_id not in all_exports:
                         all_exports[export_id] = prefix
-                        logger.info("Found export: %s at %s", export_id, prefix)
+                        logger.info(
+                            "Found export: %s at %s", export_id, prefix
+                        )
         except Exception:
             logger.warning("Failed to search %s", search_prefix)
 
@@ -175,7 +177,11 @@ def find_latest_export_prefix(
             Bucket=bucket, Prefix=check_prefix, MaxKeys=1
         )
         if resp.get("Contents"):
-            logger.info("Using preferred export: %s at %s", preferred_export_id, check_prefix)
+            logger.info(
+                "Using preferred export: %s at %s",
+                preferred_export_id,
+                check_prefix,
+            )
             return check_prefix
 
     # Find most recent export
@@ -194,7 +200,11 @@ def find_latest_export_prefix(
                 latest_prefix = prefix
 
     if latest_export and latest_prefix:
-        logger.info("Found latest export: %s (modified: %s)", latest_prefix, latest_time)
+        logger.info(
+            "Found latest export: %s (modified: %s)",
+            latest_prefix,
+            latest_time,
+        )
         return latest_prefix
 
     logger.warning("No exports with data found")
@@ -300,11 +310,16 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
         )
         .withColumn(
             "receipt_id",
-            F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast("int"),
+            F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast(
+                "int"
+            ),
         )
         .withColumn(
             "duration_ms",
-            (F.col("end_time").cast("double") - F.col("start_time").cast("double"))
+            (
+                F.col("end_time").cast("double")
+                - F.col("start_time").cast("double")
+            )
             * 1000,
         )
     )
@@ -318,7 +333,9 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
     return [row.asDict() for row in root_data]
 
 
-def extract_validation_traces(df: Any, trace_ids: list[str]) -> dict[str, list[dict]]:
+def extract_validation_traces(
+    df: Any, trace_ids: list[str]
+) -> dict[str, list[dict]]:
     """Extract label_validation_chroma and label_validation_llm traces.
 
     Returns dict mapping trace_id -> list of validation dicts.
@@ -328,7 +345,11 @@ def extract_validation_traces(df: Any, trace_ids: list[str]) -> dict[str, list[d
         (F.col("trace_id").isin(trace_ids))
         & (
             F.col("name").isin(
-                ["label_validation_chroma", "label_validation_llm", "llm_batch_validation"]
+                [
+                    "label_validation_chroma",
+                    "label_validation_llm",
+                    "llm_batch_validation",
+                ]
             )
         )
     )
@@ -336,7 +357,8 @@ def extract_validation_traces(df: Any, trace_ids: list[str]) -> dict[str, list[d
     # Extract validation data
     validations = validations.withColumn(
         "duration_ms",
-        (F.col("end_time").cast("double") - F.col("start_time").cast("double")) * 1000,
+        (F.col("end_time").cast("double") - F.col("start_time").cast("double"))
+        * 1000,
     )
 
     validation_data = validations.select(
@@ -503,10 +525,14 @@ def build_viz_receipt(
                     # Include DynamoDB validation_status - this is the source of truth
                     "validation_status": validation_status,
                     # Trace info - may be null if no trace found
-                    "validation_source": validation.get("validation_source")
-                    if validation
-                    else None,
-                    "decision": validation.get("decision") if validation else None,
+                    "validation_source": (
+                        validation.get("validation_source")
+                        if validation
+                        else None
+                    ),
+                    "decision": (
+                        validation.get("decision") if validation else None
+                    ),
                 }
             )
 
@@ -640,7 +666,9 @@ def calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
             total_invalid += llm_decisions.get("INVALID", 0)
             total_needs_review += llm_decisions.get("NEEDS_REVIEW", 0)
 
-    avg_chroma_rate = (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    avg_chroma_rate = (
+        (chroma_words / total_words * 100) if total_words > 0 else 0.0
+    )
 
     return {
         "total_receipts": len(receipts),
@@ -689,13 +717,19 @@ def write_cache(
     uploaded_keys = []
     failed_count = 0
     with ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_receipt = {executor.submit(upload_receipt, r): r for r in receipts}
+        future_to_receipt = {
+            executor.submit(upload_receipt, r): r for r in receipts
+        }
         for future in as_completed(future_to_receipt):
             try:
                 key = future.result()
                 uploaded_keys.append(key)
                 if len(uploaded_keys) % 20 == 0:
-                    logger.info("Uploaded %d/%d receipts", len(uploaded_keys), len(receipts))
+                    logger.info(
+                        "Uploaded %d/%d receipts",
+                        len(uploaded_keys),
+                        len(receipts),
+                    )
             except Exception:
                 failed_count += 1
                 logger.exception("Failed to upload receipt")
@@ -737,7 +771,9 @@ def write_cache(
     logger.info("Cache generation complete!")
     logger.info("  Version: %s", cache_version)
     logger.info("  Total receipts: %d", len(receipts))
-    logger.info("  Avg ChromaDB rate: %.1f%%", aggregate_stats["avg_chroma_rate"])
+    logger.info(
+        "  Avg ChromaDB rate: %.1f%%", aggregate_stats["avg_chroma_rate"]
+    )
 
 
 # --- Main ---
@@ -757,7 +793,9 @@ def main() -> int:
 
     # Resolve parquet prefix
     parquet_prefix = args.parquet_prefix
-    if parquet_prefix == "traces/" or not parquet_prefix.startswith("traces/export_id="):
+    if parquet_prefix == "traces/" or not parquet_prefix.startswith(
+        "traces/export_id="
+    ):
         detected = find_latest_export_prefix(s3_client, args.parquet_bucket)
         if detected:
             parquet_prefix = detected
@@ -768,7 +806,9 @@ def main() -> int:
     logger.info("Using parquet prefix: %s", parquet_prefix)
 
     # List parquet files
-    parquet_files = list_parquet_files(s3_client, args.parquet_bucket, parquet_prefix)
+    parquet_files = list_parquet_files(
+        s3_client, args.parquet_bucket, parquet_prefix
+    )
     if not parquet_files:
         logger.error("No parquet files found")
         return 1
@@ -778,7 +818,9 @@ def main() -> int:
 
     # Initialize Spark
     logger.info("Initializing Spark...")
-    spark = SparkSession.builder.appName("LabelValidationVizCache").getOrCreate()
+    spark = SparkSession.builder.appName(
+        "LabelValidationVizCache"
+    ).getOrCreate()
 
     try:
         # Read traces

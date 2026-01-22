@@ -6,7 +6,6 @@ from typing import Any, Dict, List
 
 import boto3
 import chromadb
-
 from receipt_dynamo import DynamoClient
 
 

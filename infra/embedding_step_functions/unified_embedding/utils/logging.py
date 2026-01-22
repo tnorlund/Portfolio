@@ -68,9 +68,12 @@ class OperationLogger:
         """Log exception message with traceback."""
         self._log_with_context(logging.ERROR, message, exc_info=True, **kwargs)
 
-    def _log_with_context(self, level: int, message: str, exc_info: bool = False, **kwargs):
+    def _log_with_context(
+        self, level: int, message: str, exc_info: bool = False, **kwargs
+    ):
         """Log message with correlation ID and extra context."""
         import sys
+
         extra_fields = {"correlation_id": self.correlation_id, **kwargs}
 
         # Get exception info if requested

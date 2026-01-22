@@ -100,7 +100,9 @@ def get_receipt_to_image_transform(
         f = src_tl[1]
 
         # Invert to get receipt -> image transform
-        a_inv, b_inv, c_inv, d_inv, e_inv, f_inv = invert_affine(a, b, c, d, e, f)
+        a_inv, b_inv, c_inv, d_inv, e_inv, f_inv = invert_affine(
+            a, b, c, d, e, f
+        )
 
         # Convert to perspective coefficients (affine is perspective with g=h=0)
         transform_coeffs = [a_inv, b_inv, c_inv, d_inv, e_inv, f_inv, 0.0, 0.0]
@@ -127,13 +129,14 @@ def transform_receipt_line_to_image_coords(
         Dictionary with transformed coordinates in image space
     """
     # Get transform coefficients
-    transform_coeffs, receipt_width, receipt_height = get_receipt_to_image_transform(
-        receipt, image_width, image_height
+    transform_coeffs, receipt_width, receipt_height = (
+        get_receipt_to_image_transform(receipt, image_width, image_height)
     )
 
     # Create a copy of the line to transform (don't modify original)
-    from receipt_dynamo.entities.receipt_line import ReceiptLine
     import copy
+
+    from receipt_dynamo.entities.receipt_line import ReceiptLine
 
     line_copy = copy.deepcopy(receipt_line)
 

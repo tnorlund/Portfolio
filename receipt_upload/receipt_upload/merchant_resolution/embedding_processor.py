@@ -33,6 +33,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
+from receipt_agent.constants import CORE_LABELS
 from receipt_chroma import (
     ChromaClient,
     EmbeddingConfig,
@@ -50,7 +51,6 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
-from receipt_agent.constants import CORE_LABELS
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
     LLMBatchValidator,
@@ -586,7 +586,9 @@ def _run_words_pipeline_worker(
                                             label_proposed_by=f"llm_corrected:{label.label}",
                                             label_consolidated_from=label.label,
                                         )
-                                        dynamo.add_receipt_word_label(new_label)
+                                        dynamo.add_receipt_word_label(
+                                            new_label
+                                        )
                                         llm_validated += 1
                                     else:
                                         # LLM returned invalid label (AMOUNT, TIP, etc.)
@@ -594,7 +596,9 @@ def _run_words_pipeline_worker(
                                         label.validation_status = (
                                             ValidationStatus.NEEDS_REVIEW.value
                                         )
-                                        label.label_proposed_by = "llm_invalid_label"
+                                        label.label_proposed_by = (
+                                            "llm_invalid_label"
+                                        )
                                         label.reasoning = (
                                             f"LLM suggested '{llm_result.label}' but it's not "
                                             f"a valid CORE_LABEL. {llm_result.reasoning or ''}"

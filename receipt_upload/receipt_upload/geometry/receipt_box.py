@@ -132,8 +132,8 @@ def compute_receipt_box_from_skewed_extents(
         desired_y: The y-value to interpolate at
         returns: (x, desired_y)
         """
-        (x1, y1) = v_top
-        (x2, y2) = v_bottom
+        x1, y1 = v_top
+        x2, y2 = v_bottom
         dy = y2 - y1
         if abs(dy) < 1e-9:
             return (x1, desired_y)  # degenerate, nearly horizontal

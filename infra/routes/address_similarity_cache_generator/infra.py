@@ -5,6 +5,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Import the ChromaDB bucket name from the shared chromadb_buckets module
 from chromadb_buckets import bucket_name as chromadb_bucket_name
@@ -14,7 +15,6 @@ from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")

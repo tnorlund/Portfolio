@@ -44,7 +44,10 @@ def load_json_from_s3(
         response = s3_client.get_object(Bucket=bucket, Key=key)
         return json.loads(response["Body"].read().decode("utf-8"))
     except ClientError as e:
-        if e.response.get("Error", {}).get("Code") == "NoSuchKey" and allow_missing:
+        if (
+            e.response.get("Error", {}).get("Code") == "NoSuchKey"
+            and allow_missing
+        ):
             return None
         if logger is not None:
             logger.exception(

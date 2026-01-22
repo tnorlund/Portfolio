@@ -121,7 +121,9 @@ class TestBatchedChunkProcessing:
         mock_s3.download_file.side_effect = mock_download
 
         # Mock chunk processing to return different intermediate keys
-        def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
+        def mock_process_side_effect(
+            batch_id, chunk_index, deltas, by_collection
+        ):
             return {
                 "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
             }
@@ -170,7 +172,9 @@ class TestBatchedChunkProcessing:
         mock_s3.download_file.side_effect = mock_download
 
         # Mock chunk processing
-        def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
+        def mock_process_side_effect(
+            batch_id, chunk_index, deltas, by_collection
+        ):
             return {
                 "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
             }
@@ -256,7 +260,9 @@ class TestBatchedChunkProcessing:
         # Track the order of chunk processing
         processed_indices = []
 
-        def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
+        def mock_process_side_effect(
+            batch_id, chunk_index, deltas, by_collection
+        ):
             processed_indices.append(chunk_index)
             return {
                 "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
@@ -284,7 +290,9 @@ class TestBatchedChunkProcessing:
 
     @patch("handlers.compaction.s3_client")
     @patch("handlers.compaction.process_chunk_deltas")
-    def test_process_chunk_error_handling(self, mock_process, mock_s3, mock_s3_chunks):
+    def test_process_chunk_error_handling(
+        self, mock_process, mock_s3, mock_s3_chunks
+    ):
         """Test error handling when chunk processing fails."""
         from handlers.compaction import process_chunk_handler
 
@@ -296,7 +304,9 @@ class TestBatchedChunkProcessing:
         mock_s3.download_file.side_effect = mock_download
 
         # Mock chunk processing to fail on second chunk
-        def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
+        def mock_process_side_effect(
+            batch_id, chunk_index, deltas, by_collection
+        ):
             if chunk_index == 1:
                 raise ValueError("Simulated processing error")
             return {

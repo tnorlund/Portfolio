@@ -124,7 +124,11 @@ def create_label_validation_timeline_lambda(
     )
 
     # Export Lambda details
-    pulumi.export(f"{ROUTE_NAME}_lambda_arn", label_validation_timeline_lambda.arn)
-    pulumi.export(f"{ROUTE_NAME}_lambda_name", label_validation_timeline_lambda.name)
+    pulumi.export(
+        f"{ROUTE_NAME}_lambda_arn", label_validation_timeline_lambda.arn
+    )
+    pulumi.export(
+        f"{ROUTE_NAME}_lambda_name", label_validation_timeline_lambda.name
+    )
 
     return label_validation_timeline_lambda

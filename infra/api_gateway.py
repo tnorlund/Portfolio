@@ -5,17 +5,19 @@ import pulumi_aws as aws
 import routes.address_similarity_cache_generator.infra  # noqa: F401
 import routes.image_details_cache_generator.infra  # noqa: F401
 import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
+
 # word_similarity_cache_generator is now created in __main__.py with VPC config
 from routes.address_similarity.infra import address_similarity_lambda
-from routes.image_details_cache.infra import image_details_cache_lambda
+
 # word_similarity_lambda is created in __main__.py after cache generator
 from routes.ai_usage.infra import ai_usage_lambda
-from routes.job_training_metrics.infra import job_training_metrics_lambda
 
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda
+from routes.image_details_cache.infra import image_details_cache_lambda
 from routes.images.infra import images_lambda
+from routes.job_training_metrics.infra import job_training_metrics_lambda
 from routes.label_validation_count.infra import label_validation_count_lambda
 from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda

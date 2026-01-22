@@ -237,7 +237,9 @@ def _process_single_record(
     is_swift_single_pass = ocr_result.get("swift_single_pass", False)
 
     # For Swift single-pass with multiple receipts, process all of them
-    receipt_ids = ocr_result.get("receipt_ids", [receipt_id] if receipt_id else [])
+    receipt_ids = ocr_result.get(
+        "receipt_ids", [receipt_id] if receipt_id else []
+    )
     per_receipt_data = ocr_result.get("per_receipt_data", {})
 
     # Only create embeddings if we have valid receipt_id(s)
@@ -277,8 +279,12 @@ def _process_single_record(
             for rid in receipt_ids:
                 # Get per-receipt lines/words if available, otherwise use combined
                 receipt_data = per_receipt_data.get(rid, {})
-                lines = receipt_data.get("lines") or ocr_result.get("receipt_lines")
-                words = receipt_data.get("words") or ocr_result.get("receipt_words")
+                lines = receipt_data.get("lines") or ocr_result.get(
+                    "receipt_lines"
+                )
+                words = receipt_data.get("words") or ocr_result.get(
+                    "receipt_words"
+                )
 
                 _log(
                     "Processing embeddings for receipt %s: lines=%s, words=%s",
@@ -295,7 +301,9 @@ def _process_single_record(
                         words=words,
                     )
 
-                    merchant_found = embedding_result.get("merchant_found", False)
+                    merchant_found = embedding_result.get(
+                        "merchant_found", False
+                    )
                     if merchant_found:
                         total_merchants_found += 1
 
@@ -307,13 +315,19 @@ def _process_single_record(
                         embedding_result.get("merchant_name"),
                     )
 
-                    all_embedding_results.append({
-                        "receipt_id": rid,
-                        "success": True,
-                        "merchant_found": merchant_found,
-                        "merchant_name": embedding_result.get("merchant_name"),
-                        "merchant_place_id": embedding_result.get("merchant_place_id"),
-                    })
+                    all_embedding_results.append(
+                        {
+                            "receipt_id": rid,
+                            "success": True,
+                            "merchant_found": merchant_found,
+                            "merchant_name": embedding_result.get(
+                                "merchant_name"
+                            ),
+                            "merchant_place_id": embedding_result.get(
+                                "merchant_place_id"
+                            ),
+                        }
+                    )
 
                 except Exception as receipt_exc:
                     _log(
@@ -321,16 +335,20 @@ def _process_single_record(
                         rid,
                         receipt_exc,
                     )
-                    all_embedding_results.append({
-                        "receipt_id": rid,
-                        "success": False,
-                        "error": str(receipt_exc),
-                    })
+                    all_embedding_results.append(
+                        {
+                            "receipt_id": rid,
+                            "success": False,
+                            "error": str(receipt_exc),
+                        }
+                    )
 
             embedding_duration = time.time() - embedding_start
 
             # Use first receipt's result for backward compatibility
-            first_result = all_embedding_results[0] if all_embedding_results else {}
+            first_result = (
+                all_embedding_results[0] if all_embedding_results else {}
+            )
 
             _log(
                 "SUCCESS: Processed %s receipts for %s image: "

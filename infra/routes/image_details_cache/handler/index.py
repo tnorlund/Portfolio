@@ -52,9 +52,11 @@ def handler(event, _context):
     if image_type not in ["SCAN", "PHOTO"]:
         return {
             "statusCode": 400,
-            "body": json.dumps({
-                "error": f"Invalid image_type '{image_type}'. Must be SCAN or PHOTO"
-            }),
+            "body": json.dumps(
+                {
+                    "error": f"Invalid image_type '{image_type}'. Must be SCAN or PHOTO"
+                }
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
@@ -65,7 +67,9 @@ def handler(event, _context):
 
     try:
         # Download cached JSON from S3
-        logger.info("Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, cache_key)
+        logger.info(
+            "Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, cache_key
+        )
         response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=cache_key)
         cache_data = json.loads(response["Body"].read().decode("utf-8"))
 
@@ -88,9 +92,11 @@ def handler(event, _context):
             logger.warning("Cache not found in S3: %s", cache_key)
             return {
                 "statusCode": 404,
-                "body": json.dumps({
-                    "error": f"Image details cache not found for type {image_type}"
-                }),
+                "body": json.dumps(
+                    {
+                        "error": f"Image details cache not found for type {image_type}"
+                    }
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",

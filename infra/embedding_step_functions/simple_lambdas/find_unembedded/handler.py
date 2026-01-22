@@ -12,7 +12,6 @@ from typing import Any, Dict
 from uuid import uuid4
 
 import boto3
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_line import ReceiptLine

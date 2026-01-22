@@ -7,7 +7,6 @@ Tests the logic that determines which field changes require ChromaDB updates.
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import ValidationMethod, ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel

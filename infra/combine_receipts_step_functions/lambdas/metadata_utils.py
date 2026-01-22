@@ -36,11 +36,7 @@ def get_best_receipt_place(
     for receipt_id in receipt_ids:
         try:
             place = client.get_receipt_place(image_id, receipt_id)
-            if (
-                place
-                and place.merchant_name
-                and place.merchant_name.strip()
-            ):
+            if place and place.merchant_name and place.merchant_name.strip():
                 places.append(place)
         except Exception as e:  # pylint: disable=broad-except
             logger.error(
@@ -72,9 +68,7 @@ def get_best_receipt_place(
             score += 2
         return score
 
-    places.sort(
-        key=lambda p: (score_place(p), p.timestamp), reverse=True
-    )
+    places.sort(key=lambda p: (score_place(p), p.timestamp), reverse=True)
     return places[0]
 
 

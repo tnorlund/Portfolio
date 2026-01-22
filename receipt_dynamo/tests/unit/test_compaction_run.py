@@ -1,5 +1,6 @@
 # pylint: disable=redefined-outer-name,unused-variable
 """Unit tests for CompactionRun entity."""
+
 from datetime import datetime
 from uuid import uuid4
 

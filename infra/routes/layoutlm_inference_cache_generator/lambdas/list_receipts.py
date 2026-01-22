@@ -53,8 +53,12 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         # Get unique receipts that have VALID labels (2x target for random selection)
         min_needed = target_count * 2
-        logger.info("Finding at least %d receipts with VALID labels", min_needed)
-        receipt_ids = _get_receipts_with_valid_labels(dynamo_client, min_needed)
+        logger.info(
+            "Finding at least %d receipts with VALID labels", min_needed
+        )
+        receipt_ids = _get_receipts_with_valid_labels(
+            dynamo_client, min_needed
+        )
 
         if not receipt_ids:
             logger.warning("No receipts with VALID labels found")
@@ -66,7 +70,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "error": "No receipts with VALID labels found",
             }
 
-        logger.info("Found %d unique receipts with VALID labels", len(receipt_ids))
+        logger.info(
+            "Found %d unique receipts with VALID labels", len(receipt_ids)
+        )
 
         # Randomly select target_count receipts
         selected_count = min(target_count, len(receipt_ids))
