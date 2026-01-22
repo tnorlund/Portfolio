@@ -10,8 +10,8 @@
     "react-intersection-observer": "^10.0.0"
   },
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "dev": "next dev --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "jest",

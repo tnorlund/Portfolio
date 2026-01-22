@@ -20,49 +20,8 @@ const baseConfig = {
   // Only consider these file extensions as pages (excludes .test.tsx, .test.ts, etc.)
   pageExtensions: ['page.tsx', 'page.ts', 'page.jsx', 'page.js', 'tsx', 'ts', 'jsx', 'js'],
 
-  // Note: Using Webpack instead of Turbopack due to Safari FOUC bug
-  // https://github.com/vercel/next.js/issues/77218
-  // Turbopack's body{display:none} FOUC prevention doesn't get removed in Safari
-
-  webpack: (config, { dev, isServer }) => {
-    // Webpack config for backward compatibility if webpack is explicitly used
-    // Note: Turbopack is now the default and recommended bundler in Next.js 16+
-    if (!dev && !isServer) {
-      config.optimization.splitChunks = {
-        chunks: "all",
-        minSize: 20000,
-        maxSize: 244000,
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: "vendors",
-            chunks: "all",
-            priority: 10,
-            reuseExistingChunk: true,
-          },
-          common: {
-            minChunks: 2,
-            chunks: "all",
-            name: "common",
-            priority: 5,
-            reuseExistingChunk: true,
-          },
-        },
-      };
-
-      // Enhanced tree shaking
-      config.optimization.usedExports = true;
-      config.optimization.sideEffects = false;
-
-      // Remove unused modules
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        // Remove moment.js if it exists (heavy date library)
-        moment: false,
-      };
-    }
-    return config;
-  },
+  // Note: Testing Turbopack - Safari FOUC bug (vercel/next.js#77218) may be fixed
+  // The webpack config below is ignored when using Turbopack
 };
 
 // Export phase-aware config - only add rewrites in development to avoid warning with output: "export"
