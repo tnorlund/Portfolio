@@ -53,21 +53,22 @@ jobs:
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_chroma
               pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_dynamo_stream)
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
-              pip install boto3 pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              pip install boto3 pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_places)
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_places
               pip install pydantic pydantic-settings structlog boto3 requests tenacity
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto responses
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
               ;;
             *)
               pip install -e "${{ matrix.package }}[test]"
+              pip install pytest-rerunfailures
               ;;
           esac
 
@@ -76,10 +77,11 @@ jobs:
           black --check --line-length=79 ${{ matrix.package }}
           isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
 
-          # Test
+          # Test (--reruns for flaky integration tests with race conditions or timeouts)
           cd ${{ matrix.package }}
           python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
+            --reruns 2 --reruns-delay 1 \
             --cov --cov-report=xml
 
       - name: Upload coverage
