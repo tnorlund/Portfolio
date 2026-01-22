@@ -275,7 +275,7 @@ test.describe("Diagram Performance Tests", () => {
     await page.evaluate(() => {
       // Find CodeBuildDiagram by looking for its unique SVG structure
       const svgs = document.querySelectorAll("svg");
-      for (const svg of svgs) {
+      for (const svg of Array.from(svgs)) {
         const viewBox = svg.getAttribute("viewBox");
         if (viewBox === "0 0 300 400" || viewBox === "0 0 400 200") {
           svg.scrollIntoView({ block: "center", behavior: "instant" });
@@ -301,7 +301,7 @@ test.describe("Diagram Performance Tests", () => {
     await page.evaluate(() => {
       const svgs = document.querySelectorAll('svg[viewBox="0 0 300 300"]');
       // First one might be UploadDiagram, find the one with robot paths
-      for (const svg of svgs) {
+      for (const svg of Array.from(svgs)) {
         if (svg.querySelector("#MiddleRobot") || svg.querySelector("#DynamoStream")) {
           svg.scrollIntoView({ block: "center", behavior: "instant" });
           break;
@@ -325,7 +325,7 @@ test.describe("Diagram Performance Tests", () => {
     // UploadDiagram has viewBox="0 0 300 300" and PyTorch group
     await page.evaluate(() => {
       const svgs = document.querySelectorAll('svg[viewBox="0 0 300 300"]');
-      for (const svg of svgs) {
+      for (const svg of Array.from(svgs)) {
         if (svg.querySelector("#PyTorch")) {
           svg.scrollIntoView({ block: "center", behavior: "instant" });
           break;
