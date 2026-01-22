@@ -74,7 +74,7 @@
     "typedoc": "^0.28.15",
     "typedoc-material-theme": "^1.4.1",
     "typedoc-plugin-markdown": "^4.9.0",
-    "typescript": "^5.9.0",
+    "typescript": "^5.9.3",
     "web-vitals": "^5.1.0"
   }
 }
