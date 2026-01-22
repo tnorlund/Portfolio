@@ -209,15 +209,19 @@ def create_row_metadata(
     # Calculate bounding box spanning all lines
     min_x = min(line.bounding_box["x"] for line in row_lines)
     max_x = max(
-        line.bounding_box["x"] + line.bounding_box["width"] for line in row_lines
+        line.bounding_box["x"] + line.bounding_box["width"]
+        for line in row_lines
     )
     min_y = min(line.bounding_box["y"] for line in row_lines)
     max_y = max(
-        line.bounding_box["y"] + line.bounding_box["height"] for line in row_lines
+        line.bounding_box["y"] + line.bounding_box["height"]
+        for line in row_lines
     )
 
     # Calculate average confidence
-    avg_confidence = sum(line.confidence for line in row_lines) / len(row_lines)
+    avg_confidence = sum(line.confidence for line in row_lines) / len(
+        row_lines
+    )
 
     # Standardize merchant name format
     if merchant_name:
@@ -294,7 +298,8 @@ def enrich_row_metadata_with_labels(
 
     # Filter labels to only those belonging to words in this row
     row_labels = [
-        lbl for lbl in all_labels
+        lbl
+        for lbl in all_labels
         if (lbl.line_id, lbl.word_id) in row_word_keys
     ]
 

@@ -85,7 +85,9 @@ class RowEmbeddingRecord:
     OCR splits a row (e.g., product name on left, price on right).
     """
 
-    row_lines: tuple[ReceiptLine, ...]  # Lines in the row, sorted left-to-right
+    row_lines: tuple[
+        ReceiptLine, ...
+    ]  # Lines in the row, sorted left-to-right
     embedding: List[float]
     batch_id: Optional[str] = None
 
@@ -264,7 +266,9 @@ def build_row_payload(
         )
 
         # Enrich with anchors from all words in the row
-        row_metadata = enrich_row_metadata_with_anchors(row_metadata, row_words)
+        row_metadata = enrich_row_metadata_with_anchors(
+            row_metadata, row_words
+        )
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)

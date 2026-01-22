@@ -198,8 +198,12 @@ class TestGroupLinesIntoVisualRows:
     def test_two_lines_same_row(self):
         """Test two lines on the same visual row (overlapping y)."""
         # Lines with overlapping y-spans should be grouped together
-        line1 = MockReceiptLine("img1", 1, 0, "product", x=0.1, y=0.5, height=0.1)
-        line2 = MockReceiptLine("img1", 1, 1, "12.99", x=0.8, y=0.52, height=0.1)
+        line1 = MockReceiptLine(
+            "img1", 1, 0, "product", x=0.1, y=0.5, height=0.1
+        )
+        line2 = MockReceiptLine(
+            "img1", 1, 1, "12.99", x=0.8, y=0.52, height=0.1
+        )
         result = group_lines_into_visual_rows([line1, line2])
 
         assert len(result) == 1  # One visual row
@@ -210,8 +214,12 @@ class TestGroupLinesIntoVisualRows:
 
     def test_two_lines_different_rows(self):
         """Test two lines on different visual rows (no y overlap)."""
-        line1 = MockReceiptLine("img1", 1, 0, "first", x=0.1, y=0.8, height=0.1)
-        line2 = MockReceiptLine("img1", 1, 1, "second", x=0.1, y=0.3, height=0.1)
+        line1 = MockReceiptLine(
+            "img1", 1, 0, "first", x=0.1, y=0.8, height=0.1
+        )
+        line2 = MockReceiptLine(
+            "img1", 1, 1, "second", x=0.1, y=0.3, height=0.1
+        )
         result = group_lines_into_visual_rows([line1, line2])
 
         assert len(result) == 2  # Two visual rows
@@ -222,9 +230,13 @@ class TestGroupLinesIntoVisualRows:
         """Test typical receipt with split rows (Apple Vision behavior)."""
         lines = [
             # Row 1: Merchant name
-            MockReceiptLine("img1", 1, 0, "TRADER JOE'S", x=0.3, y=0.9, height=0.05),
+            MockReceiptLine(
+                "img1", 1, 0, "TRADER JOE'S", x=0.3, y=0.9, height=0.05
+            ),
             # Row 2: Item + price (split by Apple Vision)
-            MockReceiptLine("img1", 1, 1, "ORGANIC COFFEE", x=0.1, y=0.7, height=0.05),
+            MockReceiptLine(
+                "img1", 1, 1, "ORGANIC COFFEE", x=0.1, y=0.7, height=0.05
+            ),
             MockReceiptLine("img1", 1, 2, "12.99", x=0.8, y=0.71, height=0.05),
             # Row 3: Total
             MockReceiptLine("img1", 1, 3, "TOTAL", x=0.1, y=0.3, height=0.05),
@@ -351,7 +363,9 @@ class TestGetRowEmbeddingInputs:
     def test_split_row_receipt(self):
         """Test receipt with split rows (multiple lines per visual row)."""
         lines = [
-            MockReceiptLine("img1", 1, 0, "PRODUCT", x=0.1, y=0.7, height=0.05),
+            MockReceiptLine(
+                "img1", 1, 0, "PRODUCT", x=0.1, y=0.7, height=0.05
+            ),
             MockReceiptLine("img1", 1, 1, "9.99", x=0.8, y=0.71, height=0.05),
             MockReceiptLine("img1", 1, 2, "TOTAL", x=0.1, y=0.3, height=0.05),
         ]
