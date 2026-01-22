@@ -12,7 +12,6 @@ import tempfile
 from typing import Any, Dict
 
 import boto3
-
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 # Set up logging

@@ -768,9 +768,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": [
-                                            "LLMRateLimitError"
-                                        ],
+                                        "ErrorEquals": ["LLMRateLimitError"],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,

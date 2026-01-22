@@ -155,7 +155,9 @@ LABEL_VALIDATION_RECEIPT_SCHEMA = StructType(
 LABEL_VALIDATION_STEP_TIMING_SCHEMA = StructType(
     [
         StructField("step_name", StringType(), False),
-        StructField("step_type", StringType(), True),  # s3, embedding, chroma, llm, merchant
+        StructField(
+            "step_type", StringType(), True
+        ),  # s3, embedding, chroma, llm, merchant
         StructField("avg_duration_ms", DoubleType(), True),
         StructField("p50_duration_ms", DoubleType(), True),
         StructField("p95_duration_ms", DoubleType(), True),
@@ -171,7 +173,9 @@ LABEL_VALIDATION_STEP_TIMING_SCHEMA = StructType(
 LABEL_VALIDATION_DECISION_SCHEMA = StructType(
     [
         StructField("validation_source", StringType(), True),  # chroma, llm
-        StructField("decision", StringType(), True),  # valid, invalid, needs_review
+        StructField(
+            "decision", StringType(), True
+        ),  # valid, invalid, needs_review
         StructField("label_type", StringType(), True),  # predicted_label value
         StructField("count", LongType(), True),
         StructField("avg_confidence", DoubleType(), True),
@@ -181,7 +185,9 @@ LABEL_VALIDATION_DECISION_SCHEMA = StructType(
 
 MERCHANT_RESOLUTION_SCHEMA = StructType(
     [
-        StructField("resolution_tier", StringType(), True),  # phone, address, text
+        StructField(
+            "resolution_tier", StringType(), True
+        ),  # phone, address, text
         StructField("success_count", LongType(), True),
         StructField("failure_count", LongType(), True),
         StructField("success_rate", DoubleType(), True),

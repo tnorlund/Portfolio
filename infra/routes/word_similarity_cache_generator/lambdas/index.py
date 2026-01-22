@@ -20,7 +20,6 @@ from typing import Optional
 
 import boto3
 import chromadb
-
 from receipt_chroma.compaction.dual_write import CloudConfig
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic
@@ -37,7 +36,9 @@ CACHE_KEY = "word-similarity-cache/milk.json"
 TARGET_WORD = "MILK"
 
 # Chroma Cloud configuration (optional - falls back to S3 if not set)
-CHROMA_CLOUD_ENABLED = os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
+CHROMA_CLOUD_ENABLED = (
+    os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
+)
 
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
@@ -116,7 +117,9 @@ class TimingStats:
 
         # Add DynamoDB breakdown if available
         if self.dynamo_fetch_details:
-            avg_details = sum(self.dynamo_fetch_details) / len(self.dynamo_fetch_details)
+            avg_details = sum(self.dynamo_fetch_details) / len(
+                self.dynamo_fetch_details
+            )
             result["dynamo_details"] = {
                 "avg_ms": round(avg_details * 1000, 1),
                 "min_ms": round(min(self.dynamo_fetch_details) * 1000, 1),
@@ -127,13 +130,17 @@ class TimingStats:
             # Calculate speedup from parallelization
             sequential_time = sum(self.dynamo_fetch_details)
             if self.dynamo_fetch_total > 0:
-                result["dynamo_details"]["sequential_ms"] = round(sequential_time * 1000, 1)
+                result["dynamo_details"]["sequential_ms"] = round(
+                    sequential_time * 1000, 1
+                )
                 result["dynamo_details"]["speedup"] = round(
                     sequential_time / self.dynamo_fetch_total, 1
                 )
 
         if self.visual_line_assembly:
-            avg_visual = sum(self.visual_line_assembly) / len(self.visual_line_assembly)
+            avg_visual = sum(self.visual_line_assembly) / len(
+                self.visual_line_assembly
+            )
             result["visual_line_assembly"] = {
                 "avg_ms": round(avg_visual * 1000, 1),
                 "min_ms": round(min(self.visual_line_assembly) * 1000, 1),
@@ -194,12 +201,14 @@ def assemble_visual_lines(words, labels):
     for word in words:
         centroid = word.calculate_centroid()
         label = get_valid_label(word.line_id, word.word_id)
-        word_contexts.append({
-            "word": word,
-            "label": label,
-            "y": centroid[1],
-            "x": centroid[0],
-        })
+        word_contexts.append(
+            {
+                "word": word,
+                "label": label,
+                "y": centroid[1],
+                "x": centroid[0],
+            }
+        )
 
     # Sort by y descending
     sorted_contexts = sorted(word_contexts, key=lambda c: -c["y"])
@@ -308,7 +317,9 @@ def calculate_product_bbox(target_line_id, words, labels):
     max_x = max(ctx["word"].top_right.get("x", 1) for ctx in lines_to_include)
     # Y coordinates: use top_left.y (top) and bottom_left.y (bottom)
     max_y = max(ctx["word"].top_left.get("y", 1) for ctx in lines_to_include)
-    min_y = min(ctx["word"].bottom_left.get("y", 0) for ctx in lines_to_include)
+    min_y = min(
+        ctx["word"].bottom_left.get("y", 0) for ctx in lines_to_include
+    )
 
     # Add padding (5% on x, variable on y)
     padding_x = (max_x - min_x) * 0.05
@@ -347,14 +358,26 @@ def receipt_to_dict(receipt):
         "cdn_webp_s3_key": getattr(receipt, "cdn_webp_s3_key", None),
         "cdn_avif_s3_key": getattr(receipt, "cdn_avif_s3_key", None),
         "cdn_thumbnail_s3_key": getattr(receipt, "cdn_thumbnail_s3_key", None),
-        "cdn_thumbnail_webp_s3_key": getattr(receipt, "cdn_thumbnail_webp_s3_key", None),
-        "cdn_thumbnail_avif_s3_key": getattr(receipt, "cdn_thumbnail_avif_s3_key", None),
+        "cdn_thumbnail_webp_s3_key": getattr(
+            receipt, "cdn_thumbnail_webp_s3_key", None
+        ),
+        "cdn_thumbnail_avif_s3_key": getattr(
+            receipt, "cdn_thumbnail_avif_s3_key", None
+        ),
         "cdn_small_s3_key": getattr(receipt, "cdn_small_s3_key", None),
-        "cdn_small_webp_s3_key": getattr(receipt, "cdn_small_webp_s3_key", None),
-        "cdn_small_avif_s3_key": getattr(receipt, "cdn_small_avif_s3_key", None),
+        "cdn_small_webp_s3_key": getattr(
+            receipt, "cdn_small_webp_s3_key", None
+        ),
+        "cdn_small_avif_s3_key": getattr(
+            receipt, "cdn_small_avif_s3_key", None
+        ),
         "cdn_medium_s3_key": getattr(receipt, "cdn_medium_s3_key", None),
-        "cdn_medium_webp_s3_key": getattr(receipt, "cdn_medium_webp_s3_key", None),
-        "cdn_medium_avif_s3_key": getattr(receipt, "cdn_medium_avif_s3_key", None),
+        "cdn_medium_webp_s3_key": getattr(
+            receipt, "cdn_medium_webp_s3_key", None
+        ),
+        "cdn_medium_avif_s3_key": getattr(
+            receipt, "cdn_medium_avif_s3_key", None
+        ),
     }
 
 
@@ -469,14 +492,18 @@ def handler(_event, _context):
 
     try:
         # Use larger connection pool to match parallel workers (50) + headroom for retries
-        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME, max_pool_connections=100)
+        dynamo_client = DynamoClient(
+            DYNAMODB_TABLE_NAME, max_pool_connections=100
+        )
 
         # Step 1: Fetch lines (Cloud or S3)
         if CHROMA_CLOUD_ENABLED:
             try:
                 all_lines = _fetch_lines_from_cloud(timing)
             except Exception as e:
-                logger.warning("Chroma Cloud failed, falling back to S3: %s", e)
+                logger.warning(
+                    "Chroma Cloud failed, falling back to S3: %s", e
+                )
                 all_lines = _fetch_lines_from_s3(timing, temp_dir)
         else:
             all_lines = _fetch_lines_from_s3(timing, temp_dir)
@@ -489,18 +516,26 @@ def handler(_event, _context):
             text_upper = text.upper()
 
             if TARGET_WORD in text_upper:
-                is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
+                is_excluded = any(
+                    term in text_upper for term in DAIRY_EXCLUDE_TERMS
+                )
                 if not is_excluded:
-                    matching_lines.append({
-                        "id": id_,
-                        "text": text,
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "line_id": meta.get("line_id"),
-                    })
+                    matching_lines.append(
+                        {
+                            "id": id_,
+                            "text": text,
+                            "image_id": meta.get("image_id"),
+                            "receipt_id": meta.get("receipt_id"),
+                            "line_id": meta.get("line_id"),
+                        }
+                    )
 
         timing.filter_lines = time.time() - step_start
-        logger.info("Found %d dairy milk lines (%.1fms)", len(matching_lines), timing.filter_lines * 1000)
+        logger.info(
+            "Found %d dairy milk lines (%.1fms)",
+            len(matching_lines),
+            timing.filter_lines * 1000,
+        )
 
         # Step 3: Deduplicate by image_id
         by_image = defaultdict(list)
@@ -522,7 +557,9 @@ def handler(_event, _context):
             timings = {"details": 0, "visual_line": 0}
             try:
                 t0 = time.time()
-                details = dynamo_client.get_receipt_details(image_id, receipt_id)
+                details = dynamo_client.get_receipt_details(
+                    image_id, receipt_id
+                )
                 timings["details"] = time.time() - t0
 
                 t0 = time.time()
@@ -530,10 +567,14 @@ def handler(_event, _context):
                     line_id, details.words, details.labels
                 )
                 # Calculate bounding box for visual cropping (uses same visual lines)
-                bbox = calculate_product_bbox(line_id, details.words, details.labels)
+                bbox = calculate_product_bbox(
+                    line_id, details.words, details.labels
+                )
                 timings["visual_line"] = time.time() - t0
 
-                merchant = details.place.merchant_name if details.place else "Unknown"
+                merchant = (
+                    details.place.merchant_name if details.place else "Unknown"
+                )
                 price = line_total or unit_price
                 size = infer_size(product_text, price)
 
@@ -562,33 +603,52 @@ def handler(_event, _context):
         max_workers = 50
         timing.parallel_workers = max_workers
 
-        logger.info("Fetching receipt details with %d parallel workers", max_workers)
+        logger.info(
+            "Fetching receipt details with %d parallel workers", max_workers
+        )
 
         dynamo_start = time.time()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(process_receipt, item): item for item in work_items}
+            futures = {
+                executor.submit(process_receipt, item): item
+                for item in work_items
+            }
             for future in as_completed(futures):
                 result = future.result()
                 if result:
                     # Extract and record individual timings
                     if "_timings" in result:
-                        timing.dynamo_fetch_details.append(result["_timings"]["details"])
-                        timing.visual_line_assembly.append(result["_timings"]["visual_line"])
-                        del result["_timings"]  # Remove internal timing data from output
+                        timing.dynamo_fetch_details.append(
+                            result["_timings"]["details"]
+                        )
+                        timing.visual_line_assembly.append(
+                            result["_timings"]["visual_line"]
+                        )
+                        del result[
+                            "_timings"
+                        ]  # Remove internal timing data from output
                     results.append(result)
 
         timing.dynamo_fetch_total = time.time() - dynamo_start
-        logger.info("Processed %d receipts successfully (%.2fs)", len(results), timing.dynamo_fetch_total)
+        logger.info(
+            "Processed %d receipts successfully (%.2fs)",
+            len(results),
+            timing.dynamo_fetch_total,
+        )
 
         # Step 5: Build summary table
-        summary = defaultdict(lambda: {"count": 0, "prices": [], "receipts": []})
+        summary = defaultdict(
+            lambda: {"count": 0, "prices": [], "receipts": []}
+        )
         for r in results:
             key = (r["merchant"], r["product"], r["size"])
             summary[key]["count"] += 1
-            summary[key]["receipts"].append({
-                "image_id": r["image_id"],
-                "receipt_id": r["receipt_id"],
-            })
+            summary[key]["receipts"].append(
+                {
+                    "image_id": r["image_id"],
+                    "receipt_id": r["receipt_id"],
+                }
+            )
             if r["price"]:
                 try:
                     summary[key]["prices"].append(float(r["price"]))
@@ -604,15 +664,17 @@ def handler(_event, _context):
                 avg_price = sum(data["prices"]) / len(data["prices"])
                 total = sum(data["prices"])
 
-            summary_table.append({
-                "merchant": merchant,
-                "product": product,
-                "size": size,
-                "count": data["count"],
-                "avg_price": round(avg_price, 2) if avg_price else None,
-                "total": round(total, 2) if total else None,
-                "receipts": data["receipts"],
-            })
+            summary_table.append(
+                {
+                    "merchant": merchant,
+                    "product": product,
+                    "size": size,
+                    "count": data["count"],
+                    "avg_price": round(avg_price, 2) if avg_price else None,
+                    "total": round(total, 2) if total else None,
+                    "receipts": data["receipts"],
+                }
+            )
 
         # Step 6: Build response
         timing.total = time.time() - total_start
@@ -667,11 +729,13 @@ def handler(_event, _context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "Cache generated successfully",
-                "total_receipts": len(results),
-                "summary_rows": len(summary_table),
-            }),
+            "body": json.dumps(
+                {
+                    "message": "Cache generated successfully",
+                    "total_receipts": len(results),
+                    "summary_rows": len(summary_table),
+                }
+            ),
         }
 
     except Exception as e:

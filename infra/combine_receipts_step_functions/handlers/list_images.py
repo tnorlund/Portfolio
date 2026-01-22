@@ -14,7 +14,6 @@ import boto3
 from receipt_agent.utils.combination_generator import (
     generate_receipt_combinations,
 )
-
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()

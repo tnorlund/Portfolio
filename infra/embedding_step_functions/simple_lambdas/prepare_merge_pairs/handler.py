@@ -181,7 +181,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         group_intermediates = valid_intermediates[i : i + MERGE_GROUP_SIZE]
         groups.append(
             {
-                "pair_index": len(groups),  # Keep name for backward compatibility
+                "pair_index": len(
+                    groups
+                ),  # Keep name for backward compatibility
                 "batch_id": f"{batch_id}-r{next_round}",
                 "intermediates": group_intermediates,
                 "database": database,

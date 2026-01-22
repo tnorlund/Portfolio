@@ -248,9 +248,7 @@ def combine_receipts(
                 )
 
         # Get best ReceiptPlace
-        best_place = get_best_receipt_place(
-            client, image_id, receipt_ids
-        )
+        best_place = get_best_receipt_place(client, image_id, receipt_ids)
         receipt_place = None
         if best_place:
             receipt_place = ReceiptPlace(
@@ -314,9 +312,7 @@ def combine_receipts(
             "receipt_letters": [
                 dict(letter) for letter in records["receipt_letters"]
             ],
-            "receipt_place": (
-                dict(receipt_place) if receipt_place else None
-            ),
+            "receipt_place": (dict(receipt_place) if receipt_place else None),
             "migrated_labels": [dict(label) for label in migrated_labels],
             "compaction_run": dict(compaction_run) if compaction_run else None,
             "bounds": bounds,

@@ -11,9 +11,9 @@ All external services (ChromaDB, DynamoDB, Places API) are mocked.
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_upload.merchant_resolution import MerchantResolver, MerchantResult
-
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+
+from receipt_upload.merchant_resolution import MerchantResolver, MerchantResult
 
 
 class TestMerchantResolverTier1Phone:
@@ -152,7 +152,10 @@ class TestMerchantResolverTier1Phone:
         lines = [mock_line]
 
         # No matching results from ChromaDB
-        mock_lines_client.query.return_value = {"metadatas": [[]], "distances": [[]]}
+        mock_lines_client.query.return_value = {
+            "metadatas": [[]],
+            "distances": [[]],
+        }
 
         # Provide pre-cached line embeddings
         fake_embedding = [0.1] * 1536
@@ -416,7 +419,9 @@ class TestMerchantResolverHelpers:
 
     def test_extract_merchant_name_from_first_line(self, resolver):
         """Test merchant name extraction from first line."""
-        mock_line1 = MagicMock(spec=ReceiptLine, line_id=2, text="123 Address St")
+        mock_line1 = MagicMock(
+            spec=ReceiptLine, line_id=2, text="123 Address St"
+        )
         mock_line1.calculate_centroid.return_value = (0.5, 0.3)
         mock_line2 = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
         mock_line2.calculate_centroid.return_value = (0.5, 0.1)

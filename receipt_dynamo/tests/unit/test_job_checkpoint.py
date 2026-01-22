@@ -1,5 +1,6 @@
 # pylint: disable=redefined-outer-name,protected-access
 """Unit tests for JobCheckpoint entity."""
+
 import uuid
 from datetime import datetime, timezone
 

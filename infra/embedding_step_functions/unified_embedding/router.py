@@ -22,6 +22,7 @@ from handlers import (
     submit_words_openai,
     word_polling,
 )
+
 from utils import response as response_utils
 
 # Set up logging

@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ----- Nested/Shared Models -----
 
 
@@ -268,7 +267,9 @@ class MerchantResolutionOutputs(BaseModel):
     address_extracted: Optional[str] = None
     """Extracted address (address tier only)."""
 
-    similarity_matches: list[SimilarityMatchTrace] = Field(default_factory=list)
+    similarity_matches: list[SimilarityMatchTrace] = Field(
+        default_factory=list
+    )
     """Similarity matches from ChromaDB."""
 
     source_receipt: Optional[str] = None

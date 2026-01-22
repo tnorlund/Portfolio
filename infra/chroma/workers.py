@@ -8,7 +8,6 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from chroma.base import dynamo_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -16,6 +15,8 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
+
+from chroma.base import dynamo_layer
 
 
 class ChromaWorkers(ComponentResource):

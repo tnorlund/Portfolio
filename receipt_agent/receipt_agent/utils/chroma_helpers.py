@@ -14,11 +14,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, TypedDict
 
-from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
-from receipt_agent.config.settings import get_settings
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
+from receipt_agent.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

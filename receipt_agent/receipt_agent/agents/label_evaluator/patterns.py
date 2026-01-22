@@ -13,6 +13,8 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Any, Optional
 
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.geometry import (
     calculate_angle_degrees,
     calculate_distance,
@@ -32,7 +34,6 @@ from receipt_agent.constants import (
     LABEL_TO_GROUP,
     WITHIN_GROUP_PRIORITY_PAIRS,
 )
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

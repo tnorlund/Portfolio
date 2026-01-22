@@ -88,7 +88,6 @@ class TestAWSServiceIntegration:
     def test_dynamodb_queries_with_real_table(self):
         """Test DynamoDB queries using real moto table."""
         import boto3
-
         from receipt_dynamo.data.dynamo_client import DynamoClient
 
         # Create real DynamoDB table using moto

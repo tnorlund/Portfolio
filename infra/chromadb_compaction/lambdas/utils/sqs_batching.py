@@ -3,6 +3,7 @@
 With Standard queues, Lambda event source mapping provides batch size up to 1000.
 This module provides utilities for manual message fetching and cleanup if needed.
 """
+
 # pylint: disable=import-error
 # import-error: aws_clients is bundled into Lambda package
 import logging
@@ -20,7 +21,6 @@ from .lambda_types import (
     RawSQSMessage,
     SQSRecord,
 )
-
 
 logger = logging.getLogger(__name__)
 

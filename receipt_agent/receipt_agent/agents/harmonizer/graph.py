@@ -50,8 +50,8 @@ from receipt_agent.utils.address_validation import (
     is_clean_address,
 )
 from receipt_agent.utils.agent_common import create_agent_node_with_retry
-from receipt_agent.utils.llm_factory import create_llm_from_settings
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 from receipt_agent.utils.receipt_fetching import (
     fetch_receipt_details_with_fallback,
 )

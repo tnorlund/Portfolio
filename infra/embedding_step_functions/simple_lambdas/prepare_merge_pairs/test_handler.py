@@ -19,10 +19,10 @@ class TestNWayMerge:
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
         # Need to reimport after setting env var
-        import handler
-
         # Reload module to pick up new env var
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -62,8 +62,9 @@ class TestNWayMerge:
         monkeypatch.setenv("MERGE_GROUP_SIZE", "8")
 
         # Reimport to pick up new env var
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -91,15 +92,18 @@ class TestNWayMerge:
         """Test that single intermediate returns done=True."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
         event = {
             "batch_id": "test-batch",
             "database": "lines",
-            "intermediates": [{"intermediate_key": "intermediate/batch/chunk-0/"}],
+            "intermediates": [
+                {"intermediate_key": "intermediate/batch/chunk-0/"}
+            ],
             "round": 0,
         }
 
@@ -115,8 +119,9 @@ class TestNWayMerge:
         """Test that zero intermediates returns done=True."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -137,8 +142,9 @@ class TestNWayMerge:
         """Test that intermediates are grouped in order."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "3")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -161,7 +167,8 @@ class TestNWayMerge:
 
         # Verify first group has chunks 0-2
         group_0_keys = [
-            item["intermediate_key"] for item in result["pairs"][0]["intermediates"]
+            item["intermediate_key"]
+            for item in result["pairs"][0]["intermediates"]
         ]
         assert group_0_keys == [
             "intermediate/batch/chunk-0/",
@@ -171,7 +178,8 @@ class TestNWayMerge:
 
         # Verify second group has chunks 3-5
         group_1_keys = [
-            item["intermediate_key"] for item in result["pairs"][1]["intermediates"]
+            item["intermediate_key"]
+            for item in result["pairs"][1]["intermediates"]
         ]
         assert group_1_keys == [
             "intermediate/batch/chunk-3/",
@@ -183,14 +191,18 @@ class TestNWayMerge:
         """Test that invalid/error intermediates are filtered out."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
         intermediates = [
             {"intermediate_key": "intermediate/batch/chunk-0/"},
-            {"statusCode": 500, "error": "Processing failed"},  # Error response
+            {
+                "statusCode": 500,
+                "error": "Processing failed",
+            },  # Error response
             {"intermediate_key": "intermediate/batch/chunk-1/"},
             {"empty": True, "message": "Empty chunk"},  # Empty chunk
             {"intermediate_key": "intermediate/batch/chunk-2/"},
@@ -214,8 +226,9 @@ class TestNWayMerge:
         """Test that round number increments correctly."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "2")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -245,8 +258,9 @@ class TestNWayMerge:
         """Test that field names maintain backward compatibility."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -277,8 +291,9 @@ class TestNWayMerge:
         """Test that poll_results S3 keys are passed through."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -299,7 +314,10 @@ class TestNWayMerge:
         result = handler.handle(event, None)
 
         # Should pass through poll_results keys
-        assert result["poll_results_s3_key"] == "poll_results/test-batch/poll_results.json"
+        assert (
+            result["poll_results_s3_key"]
+            == "poll_results/test-batch/poll_results.json"
+        )
         assert result["poll_results_s3_bucket"] == "test-bucket"
 
 
@@ -310,8 +328,9 @@ class TestNWayMergeEdgeCases:
         """Test with group size larger than intermediate count."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "100")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -337,8 +356,9 @@ class TestNWayMergeEdgeCases:
         """Test when intermediate count is exact multiple of group size."""
         monkeypatch.setenv("MERGE_GROUP_SIZE", "10")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 

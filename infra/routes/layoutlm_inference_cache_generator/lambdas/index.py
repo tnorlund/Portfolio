@@ -14,10 +14,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
-from receipt_layoutlm import LayoutLMInference
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
+from receipt_layoutlm import LayoutLMInference
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -47,10 +46,14 @@ def _get_model() -> LayoutLMInference:
             model_dir=MODEL_DIR,
             model_s3_uri=MODEL_S3_URI,
             auto_from_bucket_env=(
-                "LAYOUTLM_TRAINING_BUCKET" if LAYOUTLM_TRAINING_BUCKET else None
+                "LAYOUTLM_TRAINING_BUCKET"
+                if LAYOUTLM_TRAINING_BUCKET
+                else None
             ),
         )
-        logger.info("Model loaded successfully. Device: %s", _model_instance._device)
+        logger.info(
+            "Model loaded successfully. Device: %s", _model_instance._device
+        )
     return _model_instance
 
 
@@ -104,7 +107,9 @@ def _combine_bio_probabilities(
     return base_probs
 
 
-def _normalize_label_with_model(raw_label: str, infer: LayoutLMInference) -> str:
+def _normalize_label_with_model(
+    raw_label: str, infer: LayoutLMInference
+) -> str:
     """Normalize ground truth labels using the model's label configuration.
 
     Uses the model's run.json to determine label merges dynamically.
@@ -635,7 +640,11 @@ def _extract_entities_summary(
         for lbl in label_list:
             if lbl == "O":
                 continue
-            base = lbl[2:] if lbl.startswith("B-") or lbl.startswith("I-") else lbl
+            base = (
+                lbl[2:]
+                if lbl.startswith("B-") or lbl.startswith("I-")
+                else lbl
+            )
             if base not in seen:
                 seen.add(base)
                 base_labels.append(base)
@@ -701,7 +710,9 @@ def _process_single_receipt(
     Returns:
         Dict containing receipt inference data ready for S3 storage
     """
-    logger.info("Processing receipt: image_id=%s, receipt_id=%s", image_id, receipt_id)
+    logger.info(
+        "Processing receipt: image_id=%s, receipt_id=%s", image_id, receipt_id
+    )
 
     # Get receipt details
     receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
@@ -751,13 +762,16 @@ def _process_single_receipt(
                     word_id = word.word_id
 
             if word_id is None:
-                word_id = word_lookup.get(
-                    (line_id, token)
-                ) or word_lookup.get((line_id, token.strip()))
+                word_id = word_lookup.get((line_id, token)) or word_lookup.get(
+                    (line_id, token.strip())
+                )
 
             if word_id is None:
                 for word in line_words:
-                    if token == word.text or token.strip() == word.text.strip():
+                    if (
+                        token == word.text
+                        or token.strip() == word.text.strip()
+                    ):
                         word_id = word.word_id
                         break
 
@@ -778,7 +792,9 @@ def _process_single_receipt(
                 prev_base = "O"
             else:
                 bio_label = (
-                    "B-" + base_label if prev_base != base_label else "I-" + base_label
+                    "B-" + base_label
+                    if prev_base != base_label
+                    else "I-" + base_label
                 )
                 line_bio_labels.append(bio_label)
                 prev_base = base_label
@@ -845,7 +861,9 @@ def _process_single_receipt(
         line_id = pred.get("line_id")
         if word_id is not None and line_id is not None:
             gt_label = pred.get("ground_truth_label")
-            ground_truth_bio_dict[(line_id, word_id)] = gt_label if gt_label else "O"
+            ground_truth_bio_dict[(line_id, word_id)] = (
+                gt_label if gt_label else "O"
+            )
 
     metrics = calculate_metrics(predictions, ground_truth_bio_dict)
 
@@ -924,7 +942,9 @@ def batch_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 )
 
                 # Store to S3 with unique key
-                cache_key = f"{CACHE_PREFIX}receipt-{image_id}-{receipt_id}.json"
+                cache_key = (
+                    f"{CACHE_PREFIX}receipt-{image_id}-{receipt_id}.json"
+                )
                 s3_client.put_object(
                     Bucket=S3_CACHE_BUCKET,
                     Key=cache_key,
@@ -968,7 +988,9 @@ def batch_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 )
                 failed += 1
 
-        logger.info("Batch complete: processed=%d, failed=%d", processed, failed)
+        logger.info(
+            "Batch complete: processed=%d, failed=%d", processed, failed
+        )
 
         return {
             "processed": processed,

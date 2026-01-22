@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from geometry_utils import transform_point_to_warped_space
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,

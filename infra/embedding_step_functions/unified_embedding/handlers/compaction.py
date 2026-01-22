@@ -16,11 +16,11 @@ from typing import Any, Dict, List, Optional
 import boto3
 from chromadb.errors import NotFoundError
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
-from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.compaction.dual_write import (
     CloudConfig,
     sync_collection_to_cloud,
 )
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
@@ -1011,7 +1011,9 @@ def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         "poll_results_s3_bucket": "..."
     }
     """
-    logger.info("Starting FINAL MERGE ALL (simplified architecture, optimized)")
+    logger.info(
+        "Starting FINAL MERGE ALL (simplified architecture, optimized)"
+    )
 
     batch_id = event.get("batch_id")
     chunk_results = event.get("chunk_results", [])
@@ -1164,7 +1166,11 @@ def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                             batch_ids = all_ids[j : j + batch_size]
                             results = chunk_collection.get(
                                 ids=batch_ids,
-                                include=["embeddings", "documents", "metadatas"],
+                                include=[
+                                    "embeddings",
+                                    "documents",
+                                    "metadatas",
+                                ],
                             )
                             compacted_collection.upsert(
                                 ids=results["ids"],
@@ -1414,7 +1420,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             for intermediate_key in intermediate_keys_to_download:
                 temp_dir = tempfile.mkdtemp()
                 download_from_s3(bucket, intermediate_key, temp_dir)
-                predownloaded_intermediates.append((intermediate_key, temp_dir))
+                predownloaded_intermediates.append(
+                    (intermediate_key, temp_dir)
+                )
                 logger.info(
                     "Pre-downloaded intermediate",
                     intermediate_key=intermediate_key,
@@ -1431,7 +1439,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             # Clean up any pre-downloaded intermediates on failure
             for _, temp_dir in predownloaded_intermediates:
                 shutil.rmtree(temp_dir, ignore_errors=True)
-            raise RuntimeError(f"Failed to pre-download intermediates: {e}") from e
+            raise RuntimeError(
+                f"Failed to pre-download intermediates: {e}"
+            ) from e
 
     # Acquire lock for final merge with retry logic
     # Wait-acquire pattern: retry within Lambda to reduce Step Function retry overhead

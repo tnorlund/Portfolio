@@ -42,7 +42,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.utils import AnalysisException
 from pyspark.sql.types import (
     ArrayType,
     DoubleType,
@@ -51,6 +50,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
 from receipt_langsmith.spark.processor import LangSmithSparkProcessor
@@ -796,7 +796,13 @@ def main() -> int:
         logger.info("All phases complete!")
         return 0
 
-    except (Py4JJavaError, Py4JError, AnalysisException, BotoCoreError, ClientError):
+    except (
+        Py4JJavaError,
+        Py4JError,
+        AnalysisException,
+        BotoCoreError,
+        ClientError,
+    ):
         logger.exception("Job failed")
         return 1
     except Exception:

@@ -5,10 +5,10 @@ import os
 
 import pulumi
 import pulumi_aws as aws
+from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Import the Lambda Layer
 from infra.components.lambda_layer import dynamo_layer
-from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Import the cache bucket name from the cache generator route
 from routes.image_details_cache_generator.infra import cache_bucket_name

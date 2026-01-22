@@ -71,15 +71,21 @@ class LabelValidationVizCache(ComponentResource):
         account_id = aws.get_caller_identity().account_id
 
         # Convert to Output for proper resolution
-        langsmith_export_bucket_output = Output.from_input(langsmith_export_bucket)
+        langsmith_export_bucket_output = Output.from_input(
+            langsmith_export_bucket
+        )
         langsmith_api_key_output = Output.from_input(langsmith_api_key)
         langsmith_tenant_id_output = Output.from_input(langsmith_tenant_id)
-        langsmith_project_name_output = Output.from_input(langsmith_project_name)
+        langsmith_project_name_output = Output.from_input(
+            langsmith_project_name
+        )
         dynamodb_table_name_output = Output.from_input(dynamodb_table_name)
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
         emr_application_id_output = Output.from_input(emr_application_id)
         emr_job_role_arn_output = Output.from_input(emr_job_role_arn)
-        spark_artifacts_bucket_output = Output.from_input(spark_artifacts_bucket)
+        spark_artifacts_bucket_output = Output.from_input(
+            spark_artifacts_bucket
+        )
         setup_lambda_name_output = Output.from_input(setup_lambda_name)
         setup_lambda_arn_output = Output.from_input(setup_lambda_arn)
 
@@ -466,7 +472,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-dynamo-query-logs",
-            name=self.dynamo_query_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.dynamo_query_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -662,7 +670,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-trigger-export-logs",
-            name=self.trigger_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.trigger_export_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -772,7 +782,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-check-export-logs",
-            name=self.check_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.check_export_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )

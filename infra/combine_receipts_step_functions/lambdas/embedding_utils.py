@@ -76,6 +76,8 @@ def create_embeddings_and_compaction_run(
     # Import and call receipt_chroma implementation
     from receipt_chroma.embedding.orchestration import (
         EmbeddingConfig,
+    )
+    from receipt_chroma.embedding.orchestration import (
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 

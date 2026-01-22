@@ -4,10 +4,10 @@ TypedDict definitions for Lambda and SQS message processing.
 Provides type-safe structures for SQS messages, Lambda responses,
 and related types to reduce usage of `Any` throughout the codebase.
 """
+
 # pylint: disable=import-error
 # import-error: utils is bundled into Lambda package
 from typing import Optional, Protocol, TypedDict, Union
-
 
 # =============================================================================
 # SQS Message Attribute Types

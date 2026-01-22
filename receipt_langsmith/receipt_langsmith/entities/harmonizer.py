@@ -8,6 +8,7 @@ across receipts sharing the same place_id.
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+
 from receipt_langsmith.entities.place_id_finder import ToolCallTrace
 
 

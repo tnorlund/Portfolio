@@ -24,6 +24,8 @@ from receipt_dynamo.entities import (
 try:
     from receipt_chroma.embedding.orchestration import (
         EmbeddingConfig,
+    )
+    from receipt_chroma.embedding.orchestration import (
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 except ImportError:  # pragma: no cover

@@ -7,14 +7,14 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
 )
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 
 class ChromaEcsService(ComponentResource):

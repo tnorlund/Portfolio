@@ -7,6 +7,7 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
+
 from typing import TYPE_CHECKING, Any, Dict
 
 from receipt_dynamo.constants import ImageType

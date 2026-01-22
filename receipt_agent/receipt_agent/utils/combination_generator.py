@@ -8,7 +8,9 @@ of receipt IDs, used across multiple receipt processing handlers.
 from typing import List, Tuple
 
 
-def generate_receipt_combinations(receipt_ids: List[int]) -> List[Tuple[int, ...]]:
+def generate_receipt_combinations(
+    receipt_ids: List[int],
+) -> List[Tuple[int, ...]]:
     """
     Generate all possible pairwise combinations of receipt IDs.
 

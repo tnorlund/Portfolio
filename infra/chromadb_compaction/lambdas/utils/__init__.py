@@ -2,7 +2,7 @@
 
 from .aws_clients import get_dynamodb_client, get_s3_client, get_sqs_client
 from .logging import get_logger, get_operation_logger
-from .metrics import emf_metrics, metrics, MetricsAccumulator
+from .metrics import MetricsAccumulator, emf_metrics, metrics
 from .response import format_response, is_step_function_invocation
 from .sqs_batching import (
     CollectionProcessingResult,

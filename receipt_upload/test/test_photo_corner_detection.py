@@ -9,6 +9,7 @@ This test file validates the new approach works correctly.
 
 import pytest
 from receipt_dynamo.entities import Line
+
 from receipt_upload.geometry import convex_hull
 
 
@@ -136,7 +137,9 @@ class TestSimplifiedCornerDetection:
         assert top_line.top_left["y"] > bottom_line.top_left["y"]
 
     @pytest.mark.unit
-    def test_top_line_corners_become_receipt_top_edge(self, vertical_receipt_lines):
+    def test_top_line_corners_become_receipt_top_edge(
+        self, vertical_receipt_lines
+    ):
         """Test that top line's TL/TR become receipt's top edge."""
         image_width = 4032
         image_height = 3024
@@ -378,7 +381,9 @@ class TestSimplifiedVsComplexApproach:
         ]
 
     @pytest.mark.unit
-    def test_simplified_produces_valid_quadrilateral(self, straight_receipt_lines):
+    def test_simplified_produces_valid_quadrilateral(
+        self, straight_receipt_lines
+    ):
         """Test simplified approach produces a valid quadrilateral."""
         image_width = 1000
         image_height = 800
@@ -413,8 +418,14 @@ class TestSimplifiedVsComplexApproach:
         receipt_box = [
             (max(min_hull_x, top_corners[0][0]), top_corners[0][1]),  # TL
             (min(max_hull_x, top_corners[1][0]), top_corners[1][1]),  # TR
-            (min(max_hull_x, bottom_corners[3][0]), bottom_corners[3][1]),  # BR
-            (max(min_hull_x, bottom_corners[2][0]), bottom_corners[2][1]),  # BL
+            (
+                min(max_hull_x, bottom_corners[3][0]),
+                bottom_corners[3][1],
+            ),  # BR
+            (
+                max(min_hull_x, bottom_corners[2][0]),
+                bottom_corners[2][1],
+            ),  # BL
         ]
 
         # Check it's a valid quadrilateral (4 distinct points)
@@ -479,7 +490,9 @@ class TestSimplifiedVsComplexApproach:
         assert max(hull_xs) == pytest.approx(0.9 * image_width, abs=1)
 
         # But when we constrain, it respects the hull
-        sorted_lines = sorted(lines, key=lambda l: l.top_left["y"], reverse=True)
+        sorted_lines = sorted(
+            lines, key=lambda l: l.top_left["y"], reverse=True
+        )
         top_line = sorted_lines[0]
         top_corners = top_line.calculate_corners(
             width=image_width, height=image_height, flip_y=True

@@ -11,9 +11,9 @@ import tempfile
 from typing import Any, Dict, List
 
 import boto3
-import utils.logging
-
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+import utils.logging
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

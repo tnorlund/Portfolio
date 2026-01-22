@@ -1,5 +1,6 @@
 # pylint: disable=redefined-outer-name,unused-variable
 """Unit tests for BatchSummary entity."""
+
 from datetime import datetime
 
 import pytest

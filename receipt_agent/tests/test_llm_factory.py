@@ -6,22 +6,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from receipt_agent.utils.llm_factory import (
-    # Primary exports
-    LLMRateLimitError,
-    LLMInvoker,
+from receipt_agent.utils.llm_factory import (  # Primary exports; Backward compatibility aliases
     EmptyResponseError,
+    LLMInvoker,
+    LLMRateLimitError,
+    RateLimitedLLMInvoker,
     create_llm,
     create_llm_invoker,
     create_production_invoker,
-    is_rate_limit_error,
-    is_service_error,
-    is_retriable_error,
-    is_timeout_error,
-    # Backward compatibility aliases
-    RateLimitedLLMInvoker,
     create_resilient_llm,
     is_fallback_error,
+    is_rate_limit_error,
+    is_retriable_error,
+    is_service_error,
+    is_timeout_error,
 )
 
 
@@ -135,11 +133,14 @@ class TestCreateLLM:
         """Test that create_llm creates ChatOpenAI for OpenRouter."""
         mock_chat_openai.return_value = MagicMock()
 
-        with patch.dict(os.environ, {
-            "OPENROUTER_MODEL": "openai/gpt-oss-120b",
-            "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-            "OPENROUTER_API_KEY": "or_test_key",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_API_KEY": "or_test_key",
+            },
+        ):
             _ = create_llm()
 
         mock_chat_openai.assert_called_once()
@@ -185,7 +186,9 @@ class TestCreateLLM:
             os.environ.pop("OPENROUTER_API_KEY", None)
             os.environ.pop("RECEIPT_AGENT_OPENROUTER_API_KEY", None)
 
-            with pytest.raises(ValueError, match="OpenRouter API key is required"):
+            with pytest.raises(
+                ValueError, match="OpenRouter API key is required"
+            ):
                 create_llm()
 
     @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
@@ -193,11 +196,15 @@ class TestCreateLLM:
         """Test that RECEIPT_AGENT_ prefixed env vars are used."""
         mock_chat_openai.return_value = MagicMock()
 
-        with patch.dict(os.environ, {
-            "RECEIPT_AGENT_OPENROUTER_MODEL": "prefixed-model",
-            "RECEIPT_AGENT_OPENROUTER_BASE_URL": "https://prefixed.url",
-            "RECEIPT_AGENT_OPENROUTER_API_KEY": "prefixed-key",
-        }, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "RECEIPT_AGENT_OPENROUTER_MODEL": "prefixed-model",
+                "RECEIPT_AGENT_OPENROUTER_BASE_URL": "https://prefixed.url",
+                "RECEIPT_AGENT_OPENROUTER_API_KEY": "prefixed-key",
+            },
+            clear=True,
+        ):
             os.environ.pop("OPENROUTER_MODEL", None)
             os.environ.pop("OPENROUTER_BASE_URL", None)
             os.environ.pop("OPENROUTER_API_KEY", None)
@@ -367,10 +374,12 @@ class TestLLMInvokerAsync:
         mock_response = MagicMock()
         mock_response.content = "success"
 
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            Exception("429 Rate Limit"),
-            mock_response,
-        ])
+        mock_llm.ainvoke = AsyncMock(
+            side_effect=[
+                Exception("429 Rate Limit"),
+                mock_response,
+            ]
+        )
 
         invoker = LLMInvoker(llm=mock_llm, max_jitter_seconds=0)
         response = await invoker.ainvoke("test message")
@@ -462,7 +471,9 @@ class TestEmptyResponseError:
 
     def test_custom_provider(self):
         """Test creating error with custom provider."""
-        error = EmptyResponseError(provider="TestProvider", message="Custom message")
+        error = EmptyResponseError(
+            provider="TestProvider", message="Custom message"
+        )
         assert "TestProvider" in str(error)
         assert "Custom message" in str(error)
         assert error.provider == "TestProvider"

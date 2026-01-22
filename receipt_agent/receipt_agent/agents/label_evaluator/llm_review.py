@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
+from receipt_dynamo import ReceiptWordLabel
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
@@ -36,8 +38,6 @@ from receipt_agent.utils.chroma_helpers import (
     enrich_evidence_with_dynamo_reasoning,
     query_similar_words,
 )
-from receipt_dynamo import ReceiptWordLabel
-from receipt_dynamo.entities import ReceiptWord
 
 from .state import (
     EvaluationIssue,

@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
+
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_rotated_bounding_box_corners,
@@ -25,10 +29,6 @@ from receipt_upload.utils import (
     upload_jpeg_to_s3,
     upload_png_to_s3,
 )
-
-from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
 
 
 def process_photo(
@@ -149,7 +149,8 @@ def process_photo(
             if len(cluster_lines) < 3:
                 logger.debug(
                     "Skipping cluster %d: insufficient lines (%d)",
-                    cluster_id, len(cluster_lines)
+                    cluster_id,
+                    len(cluster_lines),
                 )
                 continue
 
@@ -159,7 +160,8 @@ def process_photo(
             if len(cluster_words) < 4:
                 logger.debug(
                     "Skipping cluster %d: insufficient words (%d)",
-                    cluster_id, len(cluster_words)
+                    cluster_id,
+                    len(cluster_words),
                 )
                 continue
 
@@ -176,7 +178,8 @@ def process_photo(
             if len(all_word_corners) < 4:
                 logger.debug(
                     "Skipping cluster %d: insufficient corner points (%d)",
-                    cluster_id, len(all_word_corners)
+                    cluster_id,
+                    len(all_word_corners),
                 )
                 continue
 
@@ -185,7 +188,8 @@ def process_photo(
             if len(hull) < 4:
                 logger.debug(
                     "Skipping cluster %d: hull has insufficient points (%d)",
-                    cluster_id, len(hull)
+                    cluster_id,
+                    len(hull),
                 )
                 continue
 
@@ -195,8 +199,10 @@ def process_photo(
             # This handles tilted lines where one corner may be higher than another
             def get_line_centroid_y(line):
                 return (
-                    line.top_left["y"] + line.top_right["y"] +
-                    line.bottom_left["y"] + line.bottom_right["y"]
+                    line.top_left["y"]
+                    + line.top_right["y"]
+                    + line.bottom_left["y"]
+                    + line.bottom_right["y"]
                 ) / 4
 
             # Sort descending so highest Y (top of image) comes first
@@ -205,7 +211,7 @@ def process_photo(
                 key=get_line_centroid_y,
                 reverse=True,
             )
-            top_line = sorted_lines[0]      # Highest Y = top of image
+            top_line = sorted_lines[0]  # Highest Y = top of image
             bottom_line = sorted_lines[-1]  # Lowest Y = bottom of image
 
             # Check if receipt is upside down based on line angles
@@ -216,7 +222,8 @@ def process_photo(
                 # Receipt is upside down - swap top and bottom
                 logger.debug(
                     "Cluster %d appears upside down (avg_angle=%.1f°), swapping top/bottom",
-                    cluster_id, avg_angle
+                    cluster_id,
+                    avg_angle,
                 )
                 top_line, bottom_line = bottom_line, top_line
 
@@ -247,7 +254,9 @@ def process_photo(
                 bottom_line.top_left["y"],
             )
             for i, corner in enumerate(receipt_box_corners):
-                logger.debug("  Point %d: (%.2f, %.2f)", i, corner[0], corner[1])
+                logger.debug(
+                    "  Point %d: (%.2f, %.2f)", i, corner[0], corner[1]
+                )
 
             # Check distances between points and detect duplicates
             logger.debug("Cluster %d distances:", cluster_id)
@@ -262,14 +271,16 @@ def process_photo(
                         has_duplicates = True
                         logger.warning(
                             "Cluster %d: Points %d and %d are too close together!",
-                            cluster_id, i, j
+                            cluster_id,
+                            i,
+                            j,
                         )
 
             # Skip if we have duplicate corners
             if has_duplicates:
                 logger.warning(
                     "Skipping cluster %d: detected duplicate/near-duplicate corners",
-                    cluster_id
+                    cluster_id,
                 )
                 continue
 
@@ -280,7 +291,7 @@ def process_photo(
             ):
                 logger.warning(
                     "Skipping cluster %d: invalid receipt box corners",
-                    cluster_id
+                    cluster_id,
                 )
                 continue
 
@@ -293,7 +304,9 @@ def process_photo(
             if (max_x - min_x) < 10 or (max_y - min_y) < 10:
                 logger.warning(
                     "Skipping cluster %d: degenerate rectangle (%.0fx%.0f)",
-                    cluster_id, max_x - min_x, max_y - min_y
+                    cluster_id,
+                    max_x - min_x,
+                    max_y - min_y,
                 )
                 continue
 
@@ -317,7 +330,9 @@ def process_photo(
             ):
                 logger.warning(
                     "Skipping cluster %d: unreasonable dimensions (%.0fx%.0f)",
-                    cluster_id, source_width, source_height
+                    cluster_id,
+                    source_width,
+                    source_height,
                 )
                 continue
 
@@ -340,7 +355,8 @@ def process_photo(
                 logger.warning(
                     "Perspective transform failed for cluster %d: %s. "
                     "Falling back to simple bounding rectangle...",
-                    cluster_id, e
+                    cluster_id,
+                    e,
                 )
 
                 # Fallback: Use hull bounding rectangle
@@ -367,7 +383,8 @@ def process_photo(
                 except ValueError as fallback_error:
                     logger.error(
                         "Even fallback failed for cluster %d: %s",
-                        cluster_id, fallback_error
+                        cluster_id,
+                        fallback_error,
                     )
                     continue
 

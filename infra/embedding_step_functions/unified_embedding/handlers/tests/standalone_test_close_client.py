@@ -19,6 +19,7 @@ Or run directly (may have Python 3.14 compatibility issues):
 NOTE: ChromaDB has compatibility issues with Python 3.14.
 This test works best with Python 3.12.
 """
+
 import sys
 
 # Check Python version

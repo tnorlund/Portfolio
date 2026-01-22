@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import boto3
 from moto import mock_aws
-
 from receipt_dynamo import (
     DynamoClient,
     ReceiptLine,
@@ -216,23 +215,17 @@ class TestEndToEndWorkflow:
                     "dynamodb": {
                         "ApproximateCreationDateTime": 1640995200.0,
                         "Keys": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}"},
                             "SK": {"S": "RECEIPT#00001#PLACE"},
                         },
                         "NewImage": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}"},
                             "SK": {"S": "RECEIPT#00001#PLACE"},
                             "merchant_name": {"S": "Target Store"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "OldImage": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}"},
                             "SK": {"S": "RECEIPT#00001#PLACE"},
                             "merchant_name": {"S": "Target"},
                             "merchant_category": {"S": "Retail"},
@@ -439,9 +432,7 @@ class TestEndToEndWorkflow:
         receipt_place_result = dynamo_client.get_receipt_place(
             test_image_id, 1
         )
-        assert (
-            receipt_place_result.merchant_name == "Target"
-        )
+        assert receipt_place_result.merchant_name == "Target"
 
     @mock_aws
     def test_error_propagation_between_services(self):

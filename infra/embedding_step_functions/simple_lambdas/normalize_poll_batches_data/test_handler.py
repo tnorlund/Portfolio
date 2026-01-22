@@ -38,14 +38,17 @@ class TestChunkBatching:
             for i in range(50)  # 50 deltas
         ]
 
-    def test_chunks_per_lambda_default(self, monkeypatch, mock_combined_results):
+    def test_chunks_per_lambda_default(
+        self, monkeypatch, mock_combined_results
+    ):
         """Test default CHUNKS_PER_LAMBDA=4."""
         monkeypatch.setenv("CHUNKS_PER_LAMBDA", "4")
         monkeypatch.setenv("CHUNK_SIZE_LINES", "10")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -76,8 +79,9 @@ class TestChunkBatching:
         monkeypatch.setenv("CHUNK_SIZE_LINES", "5")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -123,7 +127,10 @@ class TestChunkBatching:
         test_cases = [
             (1, 50),  # No batching: 1 chunk per Lambda
             (2, 25),  # 2 chunks per Lambda
-            (4, 13),  # 4 chunks per Lambda (50 deltas / 1 per chunk = 50 chunks; ceil(50/4) = 13 batches)
+            (
+                4,
+                13,
+            ),  # 4 chunks per Lambda (50 deltas / 1 per chunk = 50 chunks; ceil(50/4) = 13 batches)
             (10, 5),  # 10 chunks per Lambda
         ]
 
@@ -132,8 +139,9 @@ class TestChunkBatching:
             monkeypatch.setenv("CHUNK_SIZE_LINES", "1")  # 1 delta per chunk
             monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-            import handler
             import importlib
+
+            import handler
 
             importlib.reload(handler)
 
@@ -159,12 +167,15 @@ class TestChunkBatching:
         monkeypatch.setenv("CHUNKS_PER_LAMBDA", "4")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
-        with patch("handler._download_and_combine_poll_results", return_value=[]):
+        with patch(
+            "handler._download_and_combine_poll_results", return_value=[]
+        ):
             event = {
                 "batch_id": "test-batch",
                 "database": "lines",
@@ -185,8 +196,9 @@ class TestChunkBatching:
         monkeypatch.setenv("CHUNK_SIZE_LINES", "10")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -207,18 +219,24 @@ class TestChunkBatching:
                 for batch in result["chunks"]:
                     assert "chunks_s3_key" in batch
                     assert "chunks_s3_bucket" in batch
-                    assert batch["chunks_s3_key"] == "chunks/test-batch/chunks.json"
+                    assert (
+                        batch["chunks_s3_key"]
+                        == "chunks/test-batch/chunks.json"
+                    )
                     assert batch["chunks_s3_bucket"] == "test-bucket"
                     assert batch["batch_id"] == "test-batch"
 
-    def test_poll_results_s3_keys_preserved(self, monkeypatch, mock_combined_results):
+    def test_poll_results_s3_keys_preserved(
+        self, monkeypatch, mock_combined_results
+    ):
         """Test that poll_results S3 keys are preserved in output."""
         monkeypatch.setenv("CHUNKS_PER_LAMBDA", "4")
         monkeypatch.setenv("CHUNK_SIZE_LINES", "10")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -236,7 +254,10 @@ class TestChunkBatching:
                 result = handler.lambda_handler(event, None)
 
                 # Should include poll_results S3 keys
-                assert result["poll_results_s3_key"] == "poll_results/test-batch/poll_results.json"
+                assert (
+                    result["poll_results_s3_key"]
+                    == "poll_results/test-batch/poll_results.json"
+                )
                 assert result["poll_results_s3_bucket"] == "test-bucket"
 
     def test_exact_multiple_of_batch_size(self, monkeypatch):
@@ -245,8 +266,9 @@ class TestChunkBatching:
         monkeypatch.setenv("CHUNK_SIZE_LINES", "2")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
@@ -259,7 +281,9 @@ class TestChunkBatching:
             for i in range(10)
         ]
 
-        with patch("handler._download_and_combine_poll_results", return_value=deltas):
+        with patch(
+            "handler._download_and_combine_poll_results", return_value=deltas
+        ):
             with patch("handler._upload_json_to_s3"):
                 event = {
                     "batch_id": "test-batch",
@@ -286,14 +310,17 @@ class TestChunkBatchingEdgeCases:
         monkeypatch.setenv("CHUNK_SIZE_LINES", "1")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
         deltas = [{"delta_key": "delta/0/", "collection": "lines"}]
 
-        with patch("handler._download_and_combine_poll_results", return_value=deltas):
+        with patch(
+            "handler._download_and_combine_poll_results", return_value=deltas
+        ):
             with patch("handler._upload_json_to_s3"):
                 event = {
                     "batch_id": "test-batch",
@@ -315,16 +342,20 @@ class TestChunkBatchingEdgeCases:
         monkeypatch.setenv("CHUNK_SIZE_LINES", "10")
         monkeypatch.setenv("CHROMADB_BUCKET", "test-bucket")
 
-        import handler
         import importlib
+
+        import handler
 
         importlib.reload(handler)
 
         deltas = [
-            {"delta_key": f"delta/{i}/", "collection": "words"} for i in range(30)
+            {"delta_key": f"delta/{i}/", "collection": "words"}
+            for i in range(30)
         ]
 
-        with patch("handler._download_and_combine_poll_results", return_value=deltas):
+        with patch(
+            "handler._download_and_combine_poll_results", return_value=deltas
+        ):
             with patch("handler._upload_json_to_s3"):
                 event = {
                     "batch_id": "test-batch",

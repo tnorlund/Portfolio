@@ -12,7 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType
 
@@ -46,14 +45,22 @@ def image_to_dict(image):
         "cdn_webp_s3_key": getattr(image, "cdn_webp_s3_key", None),
         "cdn_avif_s3_key": getattr(image, "cdn_avif_s3_key", None),
         "cdn_thumbnail_s3_key": getattr(image, "cdn_thumbnail_s3_key", None),
-        "cdn_thumbnail_webp_s3_key": getattr(image, "cdn_thumbnail_webp_s3_key", None),
-        "cdn_thumbnail_avif_s3_key": getattr(image, "cdn_thumbnail_avif_s3_key", None),
+        "cdn_thumbnail_webp_s3_key": getattr(
+            image, "cdn_thumbnail_webp_s3_key", None
+        ),
+        "cdn_thumbnail_avif_s3_key": getattr(
+            image, "cdn_thumbnail_avif_s3_key", None
+        ),
         "cdn_small_s3_key": getattr(image, "cdn_small_s3_key", None),
         "cdn_small_webp_s3_key": getattr(image, "cdn_small_webp_s3_key", None),
         "cdn_small_avif_s3_key": getattr(image, "cdn_small_avif_s3_key", None),
         "cdn_medium_s3_key": getattr(image, "cdn_medium_s3_key", None),
-        "cdn_medium_webp_s3_key": getattr(image, "cdn_medium_webp_s3_key", None),
-        "cdn_medium_avif_s3_key": getattr(image, "cdn_medium_avif_s3_key", None),
+        "cdn_medium_webp_s3_key": getattr(
+            image, "cdn_medium_webp_s3_key", None
+        ),
+        "cdn_medium_avif_s3_key": getattr(
+            image, "cdn_medium_avif_s3_key", None
+        ),
         "image_type": getattr(image, "image_type", None),
     }
 
@@ -95,14 +102,26 @@ def receipt_to_dict(receipt):
         "cdn_webp_s3_key": getattr(receipt, "cdn_webp_s3_key", None),
         "cdn_avif_s3_key": getattr(receipt, "cdn_avif_s3_key", None),
         "cdn_thumbnail_s3_key": getattr(receipt, "cdn_thumbnail_s3_key", None),
-        "cdn_thumbnail_webp_s3_key": getattr(receipt, "cdn_thumbnail_webp_s3_key", None),
-        "cdn_thumbnail_avif_s3_key": getattr(receipt, "cdn_thumbnail_avif_s3_key", None),
+        "cdn_thumbnail_webp_s3_key": getattr(
+            receipt, "cdn_thumbnail_webp_s3_key", None
+        ),
+        "cdn_thumbnail_avif_s3_key": getattr(
+            receipt, "cdn_thumbnail_avif_s3_key", None
+        ),
         "cdn_small_s3_key": getattr(receipt, "cdn_small_s3_key", None),
-        "cdn_small_webp_s3_key": getattr(receipt, "cdn_small_webp_s3_key", None),
-        "cdn_small_avif_s3_key": getattr(receipt, "cdn_small_avif_s3_key", None),
+        "cdn_small_webp_s3_key": getattr(
+            receipt, "cdn_small_webp_s3_key", None
+        ),
+        "cdn_small_avif_s3_key": getattr(
+            receipt, "cdn_small_avif_s3_key", None
+        ),
         "cdn_medium_s3_key": getattr(receipt, "cdn_medium_s3_key", None),
-        "cdn_medium_webp_s3_key": getattr(receipt, "cdn_medium_webp_s3_key", None),
-        "cdn_medium_avif_s3_key": getattr(receipt, "cdn_medium_avif_s3_key", None),
+        "cdn_medium_webp_s3_key": getattr(
+            receipt, "cdn_medium_webp_s3_key", None
+        ),
+        "cdn_medium_avif_s3_key": getattr(
+            receipt, "cdn_medium_avif_s3_key", None
+        ),
     }
 
 
@@ -133,10 +152,22 @@ def generate_cache_for_type(dynamo_client, image_type: ImageType) -> dict:
     )
 
     if not images:
-        logger.warning("No %s images found with %d receipts", image_type.value, target_receipt_count)
-        return {"images": [], "cached_at": datetime.now(timezone.utc).isoformat()}
+        logger.warning(
+            "No %s images found with %d receipts",
+            image_type.value,
+            target_receipt_count,
+        )
+        return {
+            "images": [],
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+        }
 
-    logger.info("Found %d %s images, selecting %d for cache", len(images), image_type.value, min(POOL_SIZE, len(images)))
+    logger.info(
+        "Found %d %s images, selecting %d for cache",
+        len(images),
+        image_type.value,
+        min(POOL_SIZE, len(images)),
+    )
 
     # Randomly select POOL_SIZE images
     selected_images = random.sample(images, min(POOL_SIZE, len(images)))
@@ -145,9 +176,13 @@ def generate_cache_for_type(dynamo_client, image_type: ImageType) -> dict:
     def fetch_details(image):
         try:
             details = dynamo_client.get_image_details(image.image_id)
-            image_dict = image_to_dict(details.images[0]) if details.images else None
+            image_dict = (
+                image_to_dict(details.images[0]) if details.images else None
+            )
             lines_dict = [line_to_dict(line) for line in details.lines]
-            receipts_dict = [receipt_to_dict(receipt) for receipt in details.receipts]
+            receipts_dict = [
+                receipt_to_dict(receipt) for receipt in details.receipts
+            ]
 
             return {
                 "image": image_dict,
@@ -155,18 +190,24 @@ def generate_cache_for_type(dynamo_client, image_type: ImageType) -> dict:
                 "receipts": receipts_dict,
             }
         except Exception as e:
-            logger.warning("Error fetching details for %s: %s", image.image_id, e)
+            logger.warning(
+                "Error fetching details for %s: %s", image.image_id, e
+            )
             return None
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(fetch_details, img): img for img in selected_images}
+        futures = {
+            executor.submit(fetch_details, img): img for img in selected_images
+        }
         for future in as_completed(futures):
             result = future.result()
             if result and result["image"]:
                 results.append(result)
 
-    logger.info("Successfully cached %d %s images", len(results), image_type.value)
+    logger.info(
+        "Successfully cached %d %s images", len(results), image_type.value
+    )
 
     return {
         "images": results,
@@ -206,9 +247,11 @@ def handler(_event, _context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "Cache generated successfully",
-            }),
+            "body": json.dumps(
+                {
+                    "message": "Cache generated successfully",
+                }
+            ),
         }
 
     except Exception as e:

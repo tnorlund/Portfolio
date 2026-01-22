@@ -119,7 +119,9 @@ def extract_json_from_response(response_text: str) -> str:
     """
     if "```" in response_text:
         # Handle any language tag (json, javascript, etc.) or no tag at all
-        match = re.search(r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", response_text, re.DOTALL)
+        match = re.search(
+            r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", response_text, re.DOTALL
+        )
         if match:
             return match.group(1).strip()
     return response_text.strip()
@@ -181,7 +183,9 @@ class SingleReview(BaseModel):
     issue_index: int = Field(
         description="The index of the issue being reviewed (0-based)"
     )
-    decision: DecisionEnum = Field(description="Whether the current label is correct")
+    decision: DecisionEnum = Field(
+        description="Whether the current label is correct"
+    )
     reasoning: str = Field(
         description="Brief explanation citing evidence from similar words or receipt context"
     )
@@ -254,8 +258,12 @@ class CurrencyLabelEnum(str, Enum):
 class CurrencyEvaluation(BaseModel):
     """Evaluation result for a single currency word."""
 
-    index: int = Field(description="The index of the word being evaluated (0-based)")
-    decision: DecisionEnum = Field(description="Whether the current label is correct")
+    index: int = Field(
+        description="The index of the word being evaluated (0-based)"
+    )
+    decision: DecisionEnum = Field(
+        description="Whether the current label is correct"
+    )
     reasoning: str = Field(description="Brief explanation of the decision")
     suggested_label: Optional[CurrencyLabelEnum] = Field(
         default=None, description="If INVALID, the correct label"
@@ -312,8 +320,12 @@ class MetadataLabelEnum(str, Enum):
 class MetadataEvaluation(BaseModel):
     """Evaluation result for a single metadata word."""
 
-    index: int = Field(description="The index of the word being evaluated (0-based)")
-    decision: DecisionEnum = Field(description="Whether the current label is correct")
+    index: int = Field(
+        description="The index of the word being evaluated (0-based)"
+    )
+    decision: DecisionEnum = Field(
+        description="Whether the current label is correct"
+    )
     reasoning: str = Field(description="Brief explanation of the decision")
     suggested_label: Optional[MetadataLabelEnum] = Field(
         default=None, description="If INVALID, the correct label"
@@ -375,8 +387,12 @@ class MathIssueTypeEnum(str, Enum):
 class FinancialEvaluation(BaseModel):
     """Evaluation result for a single financial value with math issue."""
 
-    index: int = Field(description="The index of the issue being evaluated (0-based)")
-    issue_type: MathIssueTypeEnum = Field(description="Type of math issue detected")
+    index: int = Field(
+        description="The index of the issue being evaluated (0-based)"
+    )
+    issue_type: MathIssueTypeEnum = Field(
+        description="Type of math issue detected"
+    )
     decision: DecisionEnum = Field(
         description="Which value is wrong: VALID means current label correct, INVALID means it should change"
     )
@@ -475,7 +491,9 @@ class XPositionZones(BaseModel):
 class PatternDiscoveryResponse(BaseModel):
     """Response for line item pattern discovery."""
 
-    merchant: Optional[str] = Field(default=None, description="Name of the merchant")
+    merchant: Optional[str] = Field(
+        default=None, description="Name of the merchant"
+    )
     receipt_type: ReceiptTypeEnum = Field(
         description="Whether receipt has itemized products or is a service receipt"
     )

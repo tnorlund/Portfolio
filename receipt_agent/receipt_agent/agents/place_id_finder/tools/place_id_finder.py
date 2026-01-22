@@ -350,7 +350,9 @@ class PlaceIdFinder:
                         )
                         match.place_phone = getattr(
                             place_data, "formatted_phone_number", None
-                        ) or getattr(place_data, "international_phone_number", None)
+                        ) or getattr(
+                            place_data, "international_phone_number", None
+                        )
                         match.search_method = "phone"
                         match.found = True
                         match.confidence = self._calculate_confidence(
@@ -393,7 +395,9 @@ class PlaceIdFinder:
                         )
                         match.place_phone = getattr(
                             place_data, "formatted_phone_number", None
-                        ) or getattr(place_data, "international_phone_number", None)
+                        ) or getattr(
+                            place_data, "international_phone_number", None
+                        )
                         match.search_method = "address"
                         match.found = True
                         match.confidence = self._calculate_confidence(
@@ -435,7 +439,9 @@ class PlaceIdFinder:
                         )
                         match.place_phone = getattr(
                             place_data, "formatted_phone_number", None
-                        ) or getattr(place_data, "international_phone_number", None)
+                        ) or getattr(
+                            place_data, "international_phone_number", None
+                        )
                         match.search_method = "text"
                         match.found = True
                         match.confidence = self._calculate_confidence(

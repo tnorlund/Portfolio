@@ -1,10 +1,10 @@
 import os
-from typing import Optional, Dict, Tuple, List
+from typing import Dict, List, Optional, Tuple
 
 import pytest
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
+
 from receipt_layoutlm.inference import LayoutLMInference
 
 try:

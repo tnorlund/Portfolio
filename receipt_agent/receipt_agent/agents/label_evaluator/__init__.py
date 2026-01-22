@@ -91,7 +91,6 @@ For LangSmith evaluations:
     )
 """
 
-from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     CurrencyWord,
     LineItemRow,
@@ -202,6 +201,7 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
     get_same_line_words,
 )
+from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.utils.chroma_helpers import (
     SimilarWordResult,
     build_word_chroma_id,

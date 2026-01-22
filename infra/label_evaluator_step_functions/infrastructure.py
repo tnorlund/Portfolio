@@ -149,7 +149,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self._external_batch_bucket = batch_bucket_name is not None
         if self._external_batch_bucket:
             # Use the externally-provided bucket
-            self._batch_bucket_name = pulumi.Output.from_input(batch_bucket_name)
+            self._batch_bucket_name = pulumi.Output.from_input(
+                batch_bucket_name
+            )
             self._batch_bucket_arn = pulumi.Output.from_input(batch_bucket_arn)
             # Create a dummy object to satisfy attribute access patterns
             # (lambdas reference self.batch_bucket.bucket)
@@ -1029,7 +1031,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],
@@ -1269,7 +1273,9 @@ def handler(event, context):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],
@@ -1571,7 +1577,11 @@ def handler(event, context):
             )
 
         # Add viz-cache outputs if enabled (indices 21-23)
-        if self.viz_cache_enabled and trigger_export_lambda and check_export_lambda:
+        if (
+            self.viz_cache_enabled
+            and trigger_export_lambda
+            and check_export_lambda
+        ):
             base_outputs.extend(
                 [
                     self.cache_bucket,  # 21
@@ -1587,7 +1597,9 @@ def handler(event, context):
             viz_base_idx = 21  # After EMR params
 
             config = EmrConfig(
-                application_id=args[emr_base_idx] if self.emr_enabled else None,
+                application_id=(
+                    args[emr_base_idx] if self.emr_enabled else None
+                ),
                 job_execution_role_arn=(
                     args[emr_base_idx + 1] if self.emr_enabled else None
                 ),

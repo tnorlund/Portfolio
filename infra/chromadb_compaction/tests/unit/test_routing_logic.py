@@ -5,7 +5,6 @@ Tests that messages target the correct ChromaDB collections.
 """
 
 import pytest
-
 from receipt_dynamo.constants import ChromaDBCollection
 
 from ...lambdas.stream_processor import (
@@ -92,9 +91,7 @@ class TestMessageStructure:
                 "image_id": "test-image-123",
                 "receipt_id": 1,
             },
-            changes={
-                "merchant_name": FieldChange(old="Old", new="New")
-            },
+            changes={"merchant_name": FieldChange(old="Old", new="New")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",

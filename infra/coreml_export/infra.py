@@ -230,7 +230,9 @@ class CoreMLExportComponent(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],

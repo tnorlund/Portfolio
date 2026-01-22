@@ -45,8 +45,12 @@ class ValidationResult:
     consensus_label: Optional[str]
     matching_count: int
     reason: str
-    suggested_label: Optional[str] = None  # Best alternative from brute-force search
-    label_scores: Optional[List[LabelScore]] = None  # Top candidates for LLM prompt
+    suggested_label: Optional[str] = (
+        None  # Best alternative from brute-force search
+    )
+    label_scores: Optional[List[LabelScore]] = (
+        None  # Top candidates for LLM prompt
+    )
 
 
 def _build_word_chroma_id(
@@ -435,7 +439,10 @@ class LightweightLabelValidator:
         for word in similar_words:
             # Apply same-merchant boost
             weight = word["similarity"]
-            if self.merchant_name and word.get("merchant_name") == self.merchant_name:
+            if (
+                self.merchant_name
+                and word.get("merchant_name") == self.merchant_name
+            ):
                 weight = min(1.0, weight + self.SAME_MERCHANT_BOOST)
 
             if word["label_valid"]:

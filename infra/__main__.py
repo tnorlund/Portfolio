@@ -502,9 +502,7 @@ if enable_sagemaker:
     pulumi.export(
         "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
     )
-    pulumi.export(
-        "layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip"
-    )
+    pulumi.export("layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip")
 else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
@@ -527,8 +525,13 @@ if layoutlm_training_bucket_name is not None:
 
     # Get optional model S3 URI from config, otherwise auto-detect latest
     # Default to the 8-label hybrid model that matches the featured job metrics
-    layoutlm_model_run = config.get("layoutlm-model-run") or "layoutlm-hybrid-8-labels-orig-label-fix"
-    layoutlm_model_checkpoint = config.get("layoutlm-model-checkpoint") or "checkpoint-13605"
+    layoutlm_model_run = (
+        config.get("layoutlm-model-run")
+        or "layoutlm-hybrid-8-labels-orig-label-fix"
+    )
+    layoutlm_model_checkpoint = (
+        config.get("layoutlm-model-checkpoint") or "checkpoint-13605"
+    )
 
     # Build model S3 URI from training bucket and run/checkpoint names
     layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
@@ -1302,7 +1305,8 @@ pulumi.export(
     "label_validation_setup_lambda", label_validation_export.setup_lambda.name
 )
 pulumi.export(
-    "label_validation_trigger_lambda", label_validation_export.trigger_lambda.name
+    "label_validation_trigger_lambda",
+    label_validation_export.trigger_lambda.name,
 )
 pulumi.export("label_validation_project_name", label_validation_project_name)
 
@@ -1349,7 +1353,8 @@ pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
 pulumi.export(
-    "label_evaluator_viz_cache_merged_bucket", label_evaluator_shared.viz_cache_bucket_name
+    "label_evaluator_viz_cache_merged_bucket",
+    label_evaluator_shared.viz_cache_bucket_name,
 )
 
 # Label Evaluator Step Function (with LangSmith observability + EMR analytics + viz-cache)
@@ -1512,7 +1517,9 @@ if hasattr(api_gateway, "api"):
     )
 
     # Label Validation Visualization Cache (uses label_validation_project_name)
-    from routes.label_validation_viz_cache import create_label_validation_viz_cache
+    from routes.label_validation_viz_cache import (
+        create_label_validation_viz_cache,
+    )
 
     label_validation_viz_cache = create_label_validation_viz_cache(
         f"label-validation-viz-{stack}",

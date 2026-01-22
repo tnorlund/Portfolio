@@ -106,12 +106,16 @@ class BulkExportManager:
             start_time=datetime.fromisoformat(
                 data["start_time"].replace("Z", "+00:00")
             ),
-            end_time=datetime.fromisoformat(data["end_time"].replace("Z", "+00:00")),
+            end_time=datetime.fromisoformat(
+                data["end_time"].replace("Z", "+00:00")
+            ),
             created_at=datetime.fromisoformat(
                 data["created_at"].replace("Z", "+00:00")
             ),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"].replace("Z", "+00:00"))
+                datetime.fromisoformat(
+                    data["completed_at"].replace("Z", "+00:00")
+                )
                 if data.get("completed_at")
                 else None
             ),
@@ -228,7 +232,9 @@ class BulkExportManager:
                 return job
 
             if job.status == ExportStatus.FAILED:
-                logger.error("Export failed: %s - %s", job.id, job.error_message)
+                logger.error(
+                    "Export failed: %s - %s", job.id, job.error_message
+                )
                 return job
 
             elapsed = int(time.monotonic() - start)
@@ -240,7 +246,9 @@ class BulkExportManager:
             )
             await asyncio.sleep(poll_interval)
 
-        raise TimeoutError(f"Export {export_id} did not complete within {timeout}s")
+        raise TimeoutError(
+            f"Export {export_id} did not complete within {timeout}s"
+        )
 
     async def alist_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent bulk exports.
@@ -281,7 +289,9 @@ class BulkExportManager:
         timeout: int = 3600,
     ) -> ExportJob:
         """Wait for export completion (sync wrapper)."""
-        return asyncio.run(self.await_completion(export_id, poll_interval, timeout))
+        return asyncio.run(
+            self.await_completion(export_id, poll_interval, timeout)
+        )
 
     def list_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent exports (sync wrapper)."""

@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import boto3
 from moto import mock_aws
-
 from receipt_dynamo import DynamoClient, ReceiptLine, ReceiptWord
 from receipt_dynamo.constants import ChromaDBCollection
 

@@ -14,6 +14,7 @@ from typing import Iterator, Optional, Union
 import boto3
 import pyarrow
 import pyarrow.parquet as pq
+
 from receipt_langsmith.entities.base import LangSmithRun
 from receipt_langsmith.entities.parquet_schema import LangSmithRunRaw
 from receipt_langsmith.parsers.json_fields import (

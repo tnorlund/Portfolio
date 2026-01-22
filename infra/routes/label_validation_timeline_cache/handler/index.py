@@ -74,7 +74,9 @@ def fetch_all_labels():
         logger.info("Fetched %d labels for %s", len(all_labels), core_label)
 
     # Sort chronologically by timestamp_added
-    all_labels.sort(key=lambda x: x.timestamp_added if x.timestamp_added else "")
+    all_labels.sort(
+        key=lambda x: x.timestamp_added if x.timestamp_added else ""
+    )
 
     logger.info("Total labels fetched: %d", len(all_labels))
     return all_labels
@@ -105,7 +107,7 @@ def generate_keyframes(all_labels):
         # Handle validation_status as either Enum or string
         if label.validation_status is None:
             status = "NONE"
-        elif hasattr(label.validation_status, 'value'):
+        elif hasattr(label.validation_status, "value"):
             status = label.validation_status.value
         else:
             status = str(label.validation_status)
@@ -126,12 +128,16 @@ def generate_keyframes(all_labels):
                     "total": total_for_label,
                 }
 
-            keyframes.append({
-                "progress": i / max(1, total - 1),
-                "timestamp": label.timestamp_added if label.timestamp_added else "",
-                "records_processed": i + 1,
-                "labels": labels_snapshot,
-            })
+            keyframes.append(
+                {
+                    "progress": i / max(1, total - 1),
+                    "timestamp": (
+                        label.timestamp_added if label.timestamp_added else ""
+                    ),
+                    "records_processed": i + 1,
+                    "labels": labels_snapshot,
+                }
+            )
 
     logger.info("Generated %d keyframes", len(keyframes))
     return keyframes
@@ -173,10 +179,12 @@ def handler(event, _context):
             logger.warning("No labels found to process")
             return {
                 "statusCode": 200,
-                "body": json.dumps({
-                    "message": "No labels found",
-                    "total_records": 0,
-                }),
+                "body": json.dumps(
+                    {
+                        "message": "No labels found",
+                        "total_records": 0,
+                    }
+                ),
             }
 
         # Generate keyframes
@@ -200,12 +208,14 @@ def handler(event, _context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "Cache generated successfully",
-                "total_records": len(all_labels),
-                "keyframes_count": len(keyframes),
-                "generated_at": timeline_data["generated_at"],
-            }),
+            "body": json.dumps(
+                {
+                    "message": "Cache generated successfully",
+                    "total_records": len(all_labels),
+                    "keyframes_count": len(keyframes),
+                    "generated_at": timeline_data["generated_at"],
+                }
+            ),
         }
 
     except Exception as e:

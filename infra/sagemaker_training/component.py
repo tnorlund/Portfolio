@@ -9,22 +9,22 @@ replacing the custom EC2-based training setup. Benefits include:
 - Pay only for training time
 """
 
-import json
 import hashlib
+import json
 import os
 from pathlib import Path
+
 import pulumi
 import pulumi_aws as aws
 import pulumi_command as command
 from pulumi import (
-    ComponentResource,
-    ResourceOptions,
-    Output,
     AssetArchive,
+    ComponentResource,
     FileArchive,
     FileAsset,
+    Output,
+    ResourceOptions,
 )
-
 
 # Get repo root at module load time (two levels up from this file)
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -71,20 +71,22 @@ class SageMakerTrainingInfra(ComponentResource):
         aws.ecr.LifecyclePolicy(
             f"{name}-lifecycle",
             repository=self.ecr_repo.name,
-            policy=json.dumps({
-                "rules": [
-                    {
-                        "rulePriority": 1,
-                        "description": "Keep last 5 images",
-                        "selection": {
-                            "tagStatus": "any",
-                            "countType": "imageCountMoreThan",
-                            "countNumber": 5,
-                        },
-                        "action": {"type": "expire"},
-                    }
-                ]
-            }),
+            policy=json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": "Keep last 5 images",
+                            "selection": {
+                                "tagStatus": "any",
+                                "countType": "imageCountMoreThan",
+                                "countNumber": 5,
+                            },
+                            "action": {"type": "expire"},
+                        }
+                    ]
+                }
+            ),
             opts=ResourceOptions(parent=self.ecr_repo),
         )
 
@@ -146,14 +148,20 @@ class SageMakerTrainingInfra(ComponentResource):
         # ---------------------------------------------------------------------
         self.sagemaker_role = aws.iam.Role(
             f"{name}-sagemaker-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "sagemaker.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "sagemaker.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={"Component": name},
             opts=ResourceOptions(parent=self),
         )
@@ -166,79 +174,83 @@ class SageMakerTrainingInfra(ComponentResource):
                 self.output_bucket.arn,
                 self.ecr_repo.arn,
                 dynamodb_table_name,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # S3 access for model outputs and data
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:DeleteObject",
-                            "s3:ListBucket",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # S3 access for model outputs and data
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:DeleteObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
+                                    args[0],
+                                    f"{args[0]}/*",
+                                ],
+                            },
+                            # ECR access to pull training image
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ecr:GetDownloadUrlForLayer",
+                                    "ecr:BatchGetImage",
+                                    "ecr:BatchCheckLayerAvailability",
+                                ],
+                                "Resource": args[1],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "ecr:GetAuthorizationToken",
+                                "Resource": "*",
+                            },
+                            # DynamoDB access for training data
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",  # For table validation
+                                    "dynamodb:GetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:Scan",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:PutItem",  # For job logging
+                                    "dynamodb:UpdateItem",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:dynamodb:{region}:{account_id}:table/{args[2]}",
+                                    f"arn:aws:dynamodb:{region}:{account_id}:table/{args[2]}/index/*",
+                                ],
+                            },
+                            # CloudWatch Logs
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                    "logs:DescribeLogStreams",
+                                ],
+                                "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*",
+                            },
+                            # CloudWatch Metrics
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloudwatch:PutMetricData",
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "cloudwatch:namespace": "/aws/sagemaker/TrainingJobs",
+                                    }
+                                },
+                            },
                         ],
-                        "Resource": [
-                            args[0],
-                            f"{args[0]}/*",
-                        ],
-                    },
-                    # ECR access to pull training image
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "ecr:GetDownloadUrlForLayer",
-                            "ecr:BatchGetImage",
-                            "ecr:BatchCheckLayerAvailability",
-                        ],
-                        "Resource": args[1],
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": "ecr:GetAuthorizationToken",
-                        "Resource": "*",
-                    },
-                    # DynamoDB access for training data
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:DescribeTable",  # For table validation
-                            "dynamodb:GetItem",
-                            "dynamodb:Query",
-                            "dynamodb:Scan",
-                            "dynamodb:BatchGetItem",
-                            "dynamodb:PutItem",  # For job logging
-                            "dynamodb:UpdateItem",
-                        ],
-                        "Resource": [
-                            f"arn:aws:dynamodb:{region}:{account_id}:table/{args[2]}",
-                            f"arn:aws:dynamodb:{region}:{account_id}:table/{args[2]}/index/*",
-                        ],
-                    },
-                    # CloudWatch Logs
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents",
-                            "logs:DescribeLogStreams",
-                        ],
-                        "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*",
-                    },
-                    # CloudWatch Metrics
-                    {
-                        "Effect": "Allow",
-                        "Action": "cloudwatch:PutMetricData",
-                        "Resource": "*",
-                        "Condition": {
-                            "StringEquals": {
-                                "cloudwatch:namespace": "/aws/sagemaker/TrainingJobs",
-                            }
-                        },
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self.sagemaker_role),
         )
 
@@ -270,19 +282,25 @@ class SageMakerTrainingInfra(ComponentResource):
         # Create source archive using Pulumi's native asset system
         # This automatically handles change detection and uploads
         sagemaker_training_dir = REPO_ROOT / "infra" / "sagemaker_training"
-        self.source_archive = AssetArchive({
-            "receipt_layoutlm": FileArchive(str(REPO_ROOT / "receipt_layoutlm")),
-            "receipt_dynamo": FileArchive(str(REPO_ROOT / "receipt_dynamo")),
-            "infra/sagemaker_training/Dockerfile": FileAsset(
-                str(sagemaker_training_dir / "Dockerfile")
-            ),
-            "infra/sagemaker_training/requirements.txt": FileAsset(
-                str(sagemaker_training_dir / "requirements.txt")
-            ),
-            "infra/sagemaker_training/train.py": FileAsset(
-                str(sagemaker_training_dir / "train.py")
-            ),
-        })
+        self.source_archive = AssetArchive(
+            {
+                "receipt_layoutlm": FileArchive(
+                    str(REPO_ROOT / "receipt_layoutlm")
+                ),
+                "receipt_dynamo": FileArchive(
+                    str(REPO_ROOT / "receipt_dynamo")
+                ),
+                "infra/sagemaker_training/Dockerfile": FileAsset(
+                    str(sagemaker_training_dir / "Dockerfile")
+                ),
+                "infra/sagemaker_training/requirements.txt": FileAsset(
+                    str(sagemaker_training_dir / "requirements.txt")
+                ),
+                "infra/sagemaker_training/train.py": FileAsset(
+                    str(sagemaker_training_dir / "train.py")
+                ),
+            }
+        )
 
         # Upload source archive to S3 (Pulumi handles change detection automatically)
         self.source_object = aws.s3.BucketObjectv2(
@@ -298,14 +316,20 @@ class SageMakerTrainingInfra(ComponentResource):
         # ---------------------------------------------------------------------
         self.codebuild_role = aws.iam.Role(
             f"{name}-codebuild-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "codebuild.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -315,54 +339,58 @@ class SageMakerTrainingInfra(ComponentResource):
             policy=Output.all(
                 self.ecr_repo.arn,
                 self.source_bucket.arn,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # ECR push access
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": [
-                            "ecr:GetDownloadUrlForLayer",
-                            "ecr:BatchGetImage",
-                            "ecr:BatchCheckLayerAvailability",
-                            "ecr:PutImage",
-                            "ecr:InitiateLayerUpload",
-                            "ecr:UploadLayerPart",
-                            "ecr:CompleteLayerUpload",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # ECR push access
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ecr:GetDownloadUrlForLayer",
+                                    "ecr:BatchGetImage",
+                                    "ecr:BatchCheckLayerAvailability",
+                                    "ecr:PutImage",
+                                    "ecr:InitiateLayerUpload",
+                                    "ecr:UploadLayerPart",
+                                    "ecr:CompleteLayerUpload",
+                                ],
+                                "Resource": args[0],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "ecr:GetAuthorizationToken",
+                                "Resource": "*",
+                            },
+                            # CloudWatch Logs
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                ],
+                                "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
+                            },
+                            # S3 source bucket access
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:GetObjectVersion",
+                                ],
+                                "Resource": f"{args[1]}/*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": args[1],
+                            },
                         ],
-                        "Resource": args[0],
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": "ecr:GetAuthorizationToken",
-                        "Resource": "*",
-                    },
-                    # CloudWatch Logs
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents",
-                        ],
-                        "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
-                    },
-                    # S3 source bucket access
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:GetObjectVersion",
-                        ],
-                        "Resource": f"{args[1]}/*",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": "s3:ListBucket",
-                        "Resource": args[1],
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self.codebuild_role),
         )
 
@@ -433,14 +461,18 @@ class SageMakerTrainingInfra(ComponentResource):
         # ---------------------------------------------------------------------
         self.lambda_role = aws.iam.Role(
             f"{name}-lambda-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             managed_policy_arns=[
                 "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             ],
@@ -454,33 +486,37 @@ class SageMakerTrainingInfra(ComponentResource):
                 self.sagemaker_role.arn,
                 self.output_bucket.arn,
                 self.ecr_repo.arn,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # SageMaker training job management
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": [
-                            "sagemaker:CreateTrainingJob",
-                            "sagemaker:DescribeTrainingJob",
-                            "sagemaker:StopTrainingJob",
-                            "sagemaker:ListTrainingJobs",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # SageMaker training job management
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sagemaker:CreateTrainingJob",
+                                    "sagemaker:DescribeTrainingJob",
+                                    "sagemaker:StopTrainingJob",
+                                    "sagemaker:ListTrainingJobs",
+                                ],
+                                "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
+                            },
+                            # Pass role to SageMaker
+                            {
+                                "Effect": "Allow",
+                                "Action": "iam:PassRole",
+                                "Resource": args[0],
+                                "Condition": {
+                                    "StringEquals": {
+                                        "iam:PassedToService": "sagemaker.amazonaws.com",
+                                    }
+                                },
+                            },
                         ],
-                        "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
-                    },
-                    # Pass role to SageMaker
-                    {
-                        "Effect": "Allow",
-                        "Action": "iam:PassRole",
-                        "Resource": args[0],
-                        "Condition": {
-                            "StringEquals": {
-                                "iam:PassedToService": "sagemaker.amazonaws.com",
-                            }
-                        },
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self.lambda_role),
         )
 
@@ -494,21 +530,25 @@ class SageMakerTrainingInfra(ComponentResource):
             role=self.lambda_role.arn,
             timeout=30,
             memory_size=256,
-            code=pulumi.AssetArchive({
-                "index.py": pulumi.StringAsset(lambda_code),
-            }),
+            code=pulumi.AssetArchive(
+                {
+                    "index.py": pulumi.StringAsset(lambda_code),
+                }
+            ),
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables=Output.all(
                     self.ecr_repo.repository_url,
                     self.output_bucket.bucket,
                     self.sagemaker_role.arn,
                     dynamodb_table_name,
-                ).apply(lambda args: {
-                    "ECR_IMAGE_URI": f"{args[0]}:latest",
-                    "OUTPUT_BUCKET": args[1],
-                    "SAGEMAKER_ROLE_ARN": args[2],
-                    "DYNAMO_TABLE_NAME": args[3],
-                }),
+                ).apply(
+                    lambda args: {
+                        "ECR_IMAGE_URI": f"{args[0]}:latest",
+                        "OUTPUT_BUCKET": args[1],
+                        "SAGEMAKER_ROLE_ARN": args[2],
+                        "DYNAMO_TABLE_NAME": args[3],
+                    }
+                ),
             ),
             tags={"Component": name},
             opts=ResourceOptions(parent=self),
@@ -517,15 +557,17 @@ class SageMakerTrainingInfra(ComponentResource):
         # ---------------------------------------------------------------------
         # Outputs
         # ---------------------------------------------------------------------
-        self.register_outputs({
-            "ecr_repo_url": self.ecr_repo.repository_url,
-            "output_bucket": self.output_bucket.bucket,
-            "source_bucket": self.source_bucket.bucket,
-            "content_hash": self.content_hash,
-            "sagemaker_role_arn": self.sagemaker_role.arn,
-            "start_training_lambda_arn": self.start_training_lambda.arn,
-            "codebuild_project_name": self.codebuild_project.name,
-        })
+        self.register_outputs(
+            {
+                "ecr_repo_url": self.ecr_repo.repository_url,
+                "output_bucket": self.output_bucket.bucket,
+                "source_bucket": self.source_bucket.bucket,
+                "content_hash": self.content_hash,
+                "sagemaker_role_arn": self.sagemaker_role.arn,
+                "start_training_lambda_arn": self.start_training_lambda.arn,
+                "codebuild_project_name": self.codebuild_project.name,
+            }
+        )
 
     def _generate_lambda_code(self) -> str:
         """Generate the Lambda function code for starting training jobs."""
@@ -653,7 +695,7 @@ def handler(event, context):
 
     def _generate_buildspec(self) -> str:
         """Generate the buildspec for CodeBuild."""
-        return '''version: 0.2
+        return """version: 0.2
 
 phases:
   pre_build:
@@ -676,4 +718,4 @@ phases:
       - docker push $ECR_REPO:$IMAGE_TAG
       - echo "Image pushed successfully"
       - echo "Image URI - $ECR_REPO:$IMAGE_TAG"
-'''
+"""

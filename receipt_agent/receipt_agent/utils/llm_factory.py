@@ -103,7 +103,9 @@ class EmptyResponseError(Exception):
     """
 
     def __init__(
-        self, provider: str = "OpenRouter", message: str = "LLM returned empty response"
+        self,
+        provider: str = "OpenRouter",
+        message: str = "LLM returned empty response",
     ):
         super().__init__(f"{provider}: {message}")
         self.provider = provider
@@ -244,7 +246,9 @@ def create_llm(
     _model = (
         model
         or os.environ.get("OPENROUTER_MODEL")
-        or os.environ.get("RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b")
+        or os.environ.get(
+            "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b"
+        )
     )
     _base_url = (
         base_url
@@ -265,10 +269,14 @@ def create_llm(
             "RECEIPT_AGENT_OPENROUTER_API_KEY environment variable."
         )
 
-    logger.debug("Creating OpenRouter LLM: model=%s, base_url=%s", _model, _base_url)
+    logger.debug(
+        "Creating OpenRouter LLM: model=%s, base_url=%s", _model, _base_url
+    )
 
     default_headers = kwargs.pop("default_headers", {})
-    default_headers.setdefault("HTTP-Referer", "https://github.com/tnorlund/Portfolio")
+    default_headers.setdefault(
+        "HTTP-Referer", "https://github.com/tnorlund/Portfolio"
+    )
     default_headers.setdefault("X-Title", "Receipt Agent")
 
     return ChatOpenAI(
@@ -393,7 +401,9 @@ class LLMInvoker:
     call_count: int = field(default=0, init=False)
     consecutive_errors: int = field(default=0, init=False)
     total_errors: int = field(default=0, init=False)
-    _async_lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
+    _async_lock: Optional[asyncio.Lock] = field(
+        default=None, init=False, repr=False
+    )
 
     def _get_async_lock(self) -> asyncio.Lock:
         """Get or create the async lock (lazy initialization).
@@ -419,7 +429,9 @@ class LLMInvoker:
             if jitter > 0:
                 await asyncio.sleep(jitter)
 
-    def invoke(self, messages: Any, config: Optional[dict] = None, **kwargs) -> Any:
+    def invoke(
+        self, messages: Any, config: Optional[dict] = None, **kwargs
+    ) -> Any:
         """
         Invoke the LLM with retry logic.
 
@@ -442,13 +454,17 @@ class LLMInvoker:
 
             try:
                 if config:
-                    response = self.llm.invoke(messages, config=config, **kwargs)
+                    response = self.llm.invoke(
+                        messages, config=config, **kwargs
+                    )
                 else:
                     response = self.llm.invoke(messages, **kwargs)
 
                 # Check for empty response
                 if _is_empty_response(response):
-                    raise EmptyResponseError("OpenRouter", "Empty response received")
+                    raise EmptyResponseError(
+                        "OpenRouter", "Empty response received"
+                    )
 
                 # Success - reset consecutive errors
                 self.consecutive_errors = 0
@@ -525,13 +541,17 @@ class LLMInvoker:
 
             try:
                 if config:
-                    response = await self.llm.ainvoke(messages, config=config, **kwargs)
+                    response = await self.llm.ainvoke(
+                        messages, config=config, **kwargs
+                    )
                 else:
                     response = await self.llm.ainvoke(messages, **kwargs)
 
                 # Check for empty response
                 if _is_empty_response(response):
-                    raise EmptyResponseError("OpenRouter", "Empty response received")
+                    raise EmptyResponseError(
+                        "OpenRouter", "Empty response received"
+                    )
 
                 # Success - reset consecutive errors
                 async with self._get_async_lock():
@@ -735,7 +755,3 @@ def create_resilient_llm(
         timeout=timeout,
         **kwargs,
     )
-
-
-
-

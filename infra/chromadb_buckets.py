@@ -9,6 +9,7 @@
 # This avoids circular imports while allowing routes to be self-contained
 
 import pulumi
+
 from chromadb_compaction import ChromaDBBuckets
 
 # Create the bucket here (same as __main__.py was doing)

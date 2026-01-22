@@ -1,5 +1,6 @@
 # infra/lambda_layer/python/test/unit/test_image.py
 """Unit tests for the Image entity."""
+
 # pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
 # pylint: disable=too-many-locals,unused-argument,line-too-long
 

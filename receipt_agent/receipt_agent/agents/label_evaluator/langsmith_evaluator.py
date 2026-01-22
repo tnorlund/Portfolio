@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Optional
 
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
@@ -41,7 +43,6 @@ from receipt_agent.agents.label_evaluator.word_context import (
     assemble_visual_lines,
     build_word_contexts,
 )
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 @dataclass

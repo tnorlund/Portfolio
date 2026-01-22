@@ -29,7 +29,9 @@ class LambdaArns:  # pylint: disable=too-many-instance-attributes
     llm_review: str
     unified_evaluator: str
     # New combined Lambda
-    unified_pattern_builder: str = ""  # Combines discover_patterns + compute_patterns
+    unified_pattern_builder: str = (
+        ""  # Combines discover_patterns + compute_patterns
+    )
 
 
 @dataclass
@@ -663,7 +665,9 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         job_name = "analytics"
 
     # Job state name depends on viz-cache config
-    job_state_name = "RunMergedSparkJob" if emr.viz_cache_enabled else "RunSparkAnalytics"
+    job_state_name = (
+        "RunMergedSparkJob" if emr.viz_cache_enabled else "RunSparkAnalytics"
+    )
 
     states[job_state_name] = {
         "Type": "Task",

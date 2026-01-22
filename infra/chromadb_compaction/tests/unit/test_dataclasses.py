@@ -7,7 +7,6 @@ Tests the dataclass structures used in the stream processor.
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 

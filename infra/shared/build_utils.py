@@ -107,7 +107,9 @@ def make_artifact_bucket(
     force_destroy: bool = True,
     enable_versioning: bool = True,
     tags: Optional[Mapping[str, str]] = None,
-) -> Tuple[Bucket, Optional[BucketVersioning], BucketServerSideEncryptionConfiguration]:
+) -> Tuple[
+    Bucket, Optional[BucketVersioning], BucketServerSideEncryptionConfiguration
+]:
     """
     Create an S3 bucket for build artifacts with sensible defaults:
     - Force destroy by default to keep dev stacks clean.

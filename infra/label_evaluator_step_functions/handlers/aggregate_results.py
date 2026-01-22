@@ -86,9 +86,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     # Save summary to S3
-    safe_merchant = "".join(
-        c if c.isalnum() else "_" for c in merchant_name
-    )[:50]
+    safe_merchant = "".join(c if c.isalnum() else "_" for c in merchant_name)[
+        :50
+    ]
     summary_key = f"summaries/{execution_id}/{safe_merchant}.json"
 
     summary = {

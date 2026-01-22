@@ -13,7 +13,14 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Input, Output, ResourceOptions, AssetArchive, FileArchive
+from pulumi import (
+    AssetArchive,
+    ComponentResource,
+    FileArchive,
+    Input,
+    Output,
+    ResourceOptions,
+)
 
 # Import the DynamoDB table from dynamo_db module
 from dynamo_db import dynamodb_table
@@ -55,14 +62,18 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         # Create IAM role for List Receipts Lambda
         self.list_receipts_role = aws.iam.Role(
             f"{name}-list-receipts-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-list-receipts-role",
                 "Environment": stack,
@@ -84,21 +95,25 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
             f"{name}-list-receipts-dynamodb-policy",
             role=self.list_receipts_role.id,
             policy=dynamodb_table.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:Query",
-                            "dynamodb:GetItem",
-                            "dynamodb:DescribeTable",
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:Query",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:DescribeTable",
+                                ],
+                                "Resource": [
+                                    arn,
+                                    f"{arn}/index/*",
+                                ],
+                            }
                         ],
-                        "Resource": [
-                            arn,
-                            f"{arn}/index/*",
-                        ],
-                    }],
-                })
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -109,9 +124,11 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
             runtime="python3.12",
             architectures=["arm64"],
             role=self.list_receipts_role.arn,
-            code=AssetArchive({
-                ".": FileArchive(HANDLER_DIR),
-            }),
+            code=AssetArchive(
+                {
+                    ".": FileArchive(HANDLER_DIR),
+                }
+            ),
             handler="list_receipts.handler",
             layers=[dynamo_layer.arn] if dynamo_layer.arn else None,
             environment=aws.lambda_.FunctionEnvironmentArgs(
@@ -138,14 +155,18 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         # Create IAM role for Step Function
         self.sfn_role = aws.iam.Role(
             f"{name}-sfn-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "states.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-sfn-role",
                 "Environment": stack,
@@ -161,17 +182,20 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
             f"{name}-sfn-lambda-policy",
             role=self.sfn_role.id,
             policy=Output.all(
-                self.list_receipts_lambda.arn,
-                inference_lambda_arn_output
+                self.list_receipts_lambda.arn, inference_lambda_arn_output
             ).apply(
-                lambda arns: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": "lambda:InvokeFunction",
-                        "Resource": [arns[0], arns[1]],
-                    }],
-                })
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "lambda:InvokeFunction",
+                                "Resource": [arns[0], arns[1]],
+                            }
+                        ],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -180,23 +204,27 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         aws.iam.RolePolicy(
             f"{name}-sfn-logs-policy",
             role=self.sfn_role.id,
-            policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:CreateLogDelivery",
-                        "logs:GetLogDelivery",
-                        "logs:UpdateLogDelivery",
-                        "logs:DeleteLogDelivery",
-                        "logs:ListLogDeliveries",
-                        "logs:PutResourcePolicy",
-                        "logs:DescribeResourcePolicies",
-                        "logs:DescribeLogGroups",
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "logs:CreateLogDelivery",
+                                "logs:GetLogDelivery",
+                                "logs:UpdateLogDelivery",
+                                "logs:DeleteLogDelivery",
+                                "logs:ListLogDeliveries",
+                                "logs:PutResourcePolicy",
+                                "logs:DescribeResourcePolicies",
+                                "logs:DescribeLogGroups",
+                            ],
+                            "Resource": "*",
+                        }
                     ],
-                    "Resource": "*",
-                }],
-            }),
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -205,64 +233,61 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
             f"{name}-state-machine",
             role_arn=self.sfn_role.arn,
             definition=Output.all(
-                self.list_receipts_lambda.arn,
-                inference_lambda_arn_output
+                self.list_receipts_lambda.arn, inference_lambda_arn_output
             ).apply(
-                lambda arns: json.dumps({
-                    "Comment": "LayoutLM Batch Inference Cache Generator",
-                    "StartAt": "ListReceipts",
-                    "States": {
-                        "ListReceipts": {
-                            "Type": "Task",
-                            "Resource": arns[0],
-                            "Parameters": {
-                                "target_count": 100,
-                                "batch_size": 10
-                            },
-                            "ResultPath": "$.listResult",
-                            "Next": "CheckReceipts"
-                        },
-                        "CheckReceipts": {
-                            "Type": "Choice",
-                            "Choices": [{
-                                "Variable": "$.listResult.total_count",
-                                "NumericEquals": 0,
-                                "Next": "NoReceiptsFound"
-                            }],
-                            "Default": "ProcessBatches"
-                        },
-                        "NoReceiptsFound": {
-                            "Type": "Succeed",
-                            "Comment": "No receipts with VALID labels found"
-                        },
-                        "ProcessBatches": {
-                            "Type": "Map",
-                            "ItemsPath": "$.listResult.batches",
-                            "MaxConcurrency": 5,
-                            "ItemProcessor": {
-                                "ProcessorConfig": {
-                                    "Mode": "INLINE"
+                lambda arns: json.dumps(
+                    {
+                        "Comment": "LayoutLM Batch Inference Cache Generator",
+                        "StartAt": "ListReceipts",
+                        "States": {
+                            "ListReceipts": {
+                                "Type": "Task",
+                                "Resource": arns[0],
+                                "Parameters": {
+                                    "target_count": 100,
+                                    "batch_size": 10,
                                 },
-                                "StartAt": "ProcessBatch",
-                                "States": {
-                                    "ProcessBatch": {
-                                        "Type": "Task",
-                                        "Resource": arns[1],
-                                        "Parameters": {
-                                            "receipts.$": "$"
-                                        },
-                                        "End": True
-                                    }
-                                }
+                                "ResultPath": "$.listResult",
+                                "Next": "CheckReceipts",
                             },
-                            "ResultPath": "$.batchResults",
-                            "Next": "Success"
+                            "CheckReceipts": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.listResult.total_count",
+                                        "NumericEquals": 0,
+                                        "Next": "NoReceiptsFound",
+                                    }
+                                ],
+                                "Default": "ProcessBatches",
+                            },
+                            "NoReceiptsFound": {
+                                "Type": "Succeed",
+                                "Comment": "No receipts with VALID labels found",
+                            },
+                            "ProcessBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.listResult.batches",
+                                "MaxConcurrency": 5,
+                                "ItemProcessor": {
+                                    "ProcessorConfig": {"Mode": "INLINE"},
+                                    "StartAt": "ProcessBatch",
+                                    "States": {
+                                        "ProcessBatch": {
+                                            "Type": "Task",
+                                            "Resource": arns[1],
+                                            "Parameters": {"receipts.$": "$"},
+                                            "End": True,
+                                        }
+                                    },
+                                },
+                                "ResultPath": "$.batchResults",
+                                "Next": "Success",
+                            },
+                            "Success": {"Type": "Succeed"},
                         },
-                        "Success": {
-                            "Type": "Succeed"
-                        }
                     }
-                })
+                )
             ),
             tags={
                 "Name": f"{name}-state-machine",
@@ -275,14 +300,18 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         # Create IAM role for EventBridge to trigger Step Function
         self.eventbridge_role = aws.iam.Role(
             f"{name}-eventbridge-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "events.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "events.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-eventbridge-role",
                 "Environment": stack,
@@ -296,14 +325,18 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
             f"{name}-eventbridge-sfn-policy",
             role=self.eventbridge_role.id,
             policy=self.state_machine.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": "states:StartExecution",
-                        "Resource": arn,
-                    }],
-                })
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "states:StartExecution",
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -331,12 +364,14 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         )
 
         # Export outputs
-        self.register_outputs({
-            "state_machine_arn": self.state_machine.arn,
-            "state_machine_name": self.state_machine.name,
-            "list_receipts_lambda_arn": self.list_receipts_lambda.arn,
-            "schedule_arn": self.schedule.arn,
-        })
+        self.register_outputs(
+            {
+                "state_machine_arn": self.state_machine.arn,
+                "state_machine_name": self.state_machine.name,
+                "list_receipts_lambda_arn": self.list_receipts_lambda.arn,
+                "schedule_arn": self.schedule.arn,
+            }
+        )
 
 
 def create_batch_cache_generator(

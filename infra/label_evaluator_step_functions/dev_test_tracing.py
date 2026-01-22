@@ -28,7 +28,7 @@ from langsmith import tracing_context
 from langsmith.run_trees import RunTree, get_cached_client
 
 # Import our tracing utilities
-from tracing import child_trace, state_trace, TraceContext
+from tracing import TraceContext, child_trace, state_trace
 
 print("=" * 60)
 print("DEV TRACE TEST - Using headers consistently")
@@ -65,11 +65,15 @@ try:
         value: int
 
     def add_one(state: TestState) -> TestState:
-        print(f"      [add_one node] value: {state['value']} -> {state['value'] + 1}")
+        print(
+            f"      [add_one node] value: {state['value']} -> {state['value'] + 1}"
+        )
         return {"value": state["value"] + 1}
 
     def multiply_two(state: TestState) -> TestState:
-        print(f"      [multiply_two node] value: {state['value']} -> {state['value'] * 2}")
+        print(
+            f"      [multiply_two node] value: {state['value']} -> {state['value'] * 2}"
+        )
         return {"value": state["value"] * 2}
 
     workflow = StateGraph(TestState)
@@ -80,7 +84,9 @@ try:
     workflow.set_finish_point("multiply")
     graph = workflow.compile()
 
-    with child_trace("test_langgraph_child", parent_ctx, metadata={"test": "langgraph"}) as ctx:
+    with child_trace(
+        "test_langgraph_child", parent_ctx, metadata={"test": "langgraph"}
+    ) as ctx:
         print(f"   Child trace created, run_tree: {ctx.run_tree is not None}")
         result = graph.invoke({"value": 5})
         print(f"   Graph result: {result}")
@@ -90,6 +96,7 @@ try:
 except Exception as e:
     print(f"   ERROR: {e}")
     import traceback
+
     traceback.print_exc()
 
 # Test 2: Nested child traces
@@ -110,7 +117,9 @@ except Exception as e:
 # Test 3: Simulate LLM call (without actual LLM)
 print("\n4. Testing simulated LLM child trace...")
 try:
-    with child_trace("llm_call_simulation", parent_ctx, run_type="llm") as llm_ctx:
+    with child_trace(
+        "llm_call_simulation", parent_ctx, run_type="llm"
+    ) as llm_ctx:
         print("   LLM trace created")
         # In real code, this would be: llm.invoke(messages)
         # The tracing_context should make LangChain calls children of this

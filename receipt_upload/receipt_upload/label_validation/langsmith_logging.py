@@ -59,7 +59,9 @@ def _get_label_validation_project() -> str:
 
 def _get_merchant_resolution_project() -> str:
     """Get the Langsmith project name for merchant resolution."""
-    return os.environ.get("LANGCHAIN_MERCHANT_PROJECT", DEFAULT_MERCHANT_PROJECT)
+    return os.environ.get(
+        "LANGCHAIN_MERCHANT_PROJECT", DEFAULT_MERCHANT_PROJECT
+    )
 
 
 def _is_langsmith_enabled() -> bool:
@@ -375,7 +377,9 @@ def log_validation_feedback(
             value=correct_label,
             comment=f"Annotated by {annotator}",
         )
-        _log(f"Logged feedback for run {run_id}: correct_label={correct_label}")
+        _log(
+            f"Logged feedback for run {run_id}: correct_label={correct_label}"
+        )
         return True
     except ImportError:
         _log("langsmith package not installed")

@@ -985,15 +985,13 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Trigger pipeline run when source is updated
-        trigger_script = pipeline.name.apply(
-            lambda pn: f"""#!/usr/bin/env bash
+        trigger_script = pipeline.name.apply(lambda pn: f"""#!/usr/bin/env bash
 set -e
 echo "🔄 Changes detected, starting CodePipeline execution for {self.name}"
 EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} \
   --query pipelineExecutionId --output text)
 echo "Triggered pipeline: $EXEC_ID"
-"""
-        )
+""")
         # Only create trigger-pipeline command if NOT in sync mode (to avoid duplicate triggers)
         if not self.sync_mode:
             command.local.Command(

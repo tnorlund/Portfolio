@@ -155,8 +155,7 @@ class EMRServerlessAnalytics(ComponentResource):
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Driver",
                     initial_capacity_config=(
-                        aws.emrserverless
-                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                        aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
                             worker_count=1,
                             worker_configuration=(
                                 aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
@@ -170,8 +169,7 @@ class EMRServerlessAnalytics(ComponentResource):
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Executor",
                     initial_capacity_config=(
-                        aws.emrserverless
-                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                        aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
                             worker_count=4,
                             worker_configuration=(
                                 aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
@@ -217,7 +215,9 @@ class EMRServerlessAnalytics(ComponentResource):
                 parent=self,
                 # CodeBuild updates imageConfiguration directly after build,
                 # so we tell Pulumi to ignore changes to avoid conflicts
-                ignore_changes=["imageConfiguration"] if self.custom_image_uri else [],
+                ignore_changes=(
+                    ["imageConfiguration"] if self.custom_image_uri else []
+                ),
             ),
         )
 
@@ -258,7 +258,9 @@ class EMRServerlessAnalytics(ComponentResource):
         if self.cache_bucket_arn:
             policy_outputs.append(self.cache_bucket_arn)  # 3
         if self.batch_bucket_arn:
-            policy_outputs.append(self.batch_bucket_arn)  # 4 (or 3 if no cache)
+            policy_outputs.append(
+                self.batch_bucket_arn
+            )  # 4 (or 3 if no cache)
 
         def build_policy(args):
             """Build IAM policy with optional bucket permissions."""
@@ -323,27 +325,33 @@ class EMRServerlessAnalytics(ComponentResource):
             # Add cache bucket permissions if provided
             idx = 3
             if self.cache_bucket_arn and len(args) > idx:
-                statements.append({
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:PutObject",
-                        "s3:DeleteObject",
-                        "s3:ListBucket",
-                    ],
-                    "Resource": [args[idx], f"{args[idx]}/*"],
-                })
+                statements.append(
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:ListBucket",
+                        ],
+                        "Resource": [args[idx], f"{args[idx]}/*"],
+                    }
+                )
                 idx += 1
 
             # Add batch bucket permissions if provided
             if self.batch_bucket_arn and len(args) > idx:
-                statements.append({
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:ListBucket"],
-                    "Resource": [args[idx], f"{args[idx]}/*"],
-                })
+                statements.append(
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject", "s3:ListBucket"],
+                        "Resource": [args[idx], f"{args[idx]}/*"],
+                    }
+                )
 
-            return json.dumps({"Version": "2012-10-17", "Statement": statements})
+            return json.dumps(
+                {"Version": "2012-10-17", "Statement": statements}
+            )
 
         aws.iam.RolePolicy(
             f"{name}-emr-job-policy",
@@ -363,7 +371,9 @@ class EMRServerlessAnalytics(ComponentResource):
         # Compute content hash to detect file changes
         def file_hash(path: Path) -> str:
             """Compute truncated MD5 hash for content change detection."""
-            return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
+            return hashlib.md5(path.read_bytes()).hexdigest()[
+                :12
+            ]  # noqa: S324
 
         merged_job_path = spark_scripts_dir / "merged_job.py"
         label_validation_viz_cache_path = (

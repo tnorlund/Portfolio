@@ -14,9 +14,10 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+from pulumi import AssetArchive, FileArchive, Output, ResourceOptions
+
 from dynamo_db import dynamodb_table
 from infra.components.lambda_layer import dynamo_layer
-from pulumi import AssetArchive, FileArchive, Output, ResourceOptions
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
@@ -35,9 +36,9 @@ cache_bucket: Optional[aws.s3.Bucket] = None
 cache_generator_lambda: Optional[aws.lambda_.Function] = None
 
 
-def create_label_validation_timeline_cache() -> tuple[
-    aws.s3.Bucket, aws.lambda_.Function
-]:
+def create_label_validation_timeline_cache() -> (
+    tuple[aws.s3.Bucket, aws.lambda_.Function]
+):
     """Create the label validation timeline cache generator infrastructure.
 
     Returns:
@@ -172,9 +173,7 @@ def create_label_validation_timeline_cache() -> tuple[
     # CloudWatch log group
     aws.cloudwatch.LogGroup(
         f"api_{ROUTE_NAME}_log_group",
-        name=cache_generator_lambda.name.apply(
-            lambda fn: f"/aws/lambda/{fn}"
-        ),
+        name=cache_generator_lambda.name.apply(lambda fn: f"/aws/lambda/{fn}"),
         retention_in_days=7 if is_production else 3,
     )
 

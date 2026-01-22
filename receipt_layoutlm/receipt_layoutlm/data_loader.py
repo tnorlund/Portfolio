@@ -1,11 +1,10 @@
-from typing import Any, Dict, List, Tuple, Optional
-from dataclasses import dataclass, field
-from collections import deque
 import hashlib
-
 import importlib
-import random
 import os
+import random
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
@@ -61,12 +60,16 @@ class WordInfo:
     receipt_id: int
 
 
-def _ranges_overlap(a_min: float, a_max: float, b_min: float, b_max: float) -> bool:
+def _ranges_overlap(
+    a_min: float, a_max: float, b_min: float, b_max: float
+) -> bool:
     """Check if two 1D ranges overlap."""
     return a_min < b_max and b_min < a_max
 
 
-def _find_right_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[int]:
+def _find_right_neighbor(
+    word: WordInfo, all_words: List[WordInfo]
+) -> Optional[int]:
     """Find the index of the word directly to the right of this word.
 
     Returns the closest word that:
@@ -91,7 +94,9 @@ def _find_right_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[
             continue
 
         # Must have overlapping y-range (same visual line)
-        if not _ranges_overlap(word_y_min, word_y_max, other_y_min, other_y_max):
+        if not _ranges_overlap(
+            word_y_min, word_y_max, other_y_min, other_y_max
+        ):
             continue
 
         distance = other_x_min - word_x_max
@@ -102,7 +107,9 @@ def _find_right_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[
     return best_idx
 
 
-def _find_below_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[int]:
+def _find_below_neighbor(
+    word: WordInfo, all_words: List[WordInfo]
+) -> Optional[int]:
     """Find the index of the word directly below this word.
 
     Returns the closest word that:
@@ -127,7 +134,9 @@ def _find_below_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[
             continue
 
         # Must have overlapping x-range (vertically aligned)
-        if not _ranges_overlap(word_x_min, word_x_max, other_x_min, other_x_max):
+        if not _ranges_overlap(
+            word_x_min, word_x_max, other_x_min, other_x_max
+        ):
             continue
 
         distance = other_y_min - word_y_max
@@ -166,13 +175,19 @@ def _group_words_into_blocks(words: List[WordInfo]) -> List[List[WordInfo]]:
     for i, word in enumerate(words):
         # Find right neighbor
         right_idx = _find_right_neighbor(word, words)
-        if right_idx is not None and words[right_idx].original_label == word.original_label:
+        if (
+            right_idx is not None
+            and words[right_idx].original_label == word.original_label
+        ):
             adjacency[i].append(right_idx)
             adjacency[right_idx].append(i)
 
         # Find below neighbor
         below_idx = _find_below_neighbor(word, words)
-        if below_idx is not None and words[below_idx].original_label == word.original_label:
+        if (
+            below_idx is not None
+            and words[below_idx].original_label == word.original_label
+        ):
             adjacency[i].append(below_idx)
             adjacency[below_idx].append(i)
 
@@ -296,7 +311,7 @@ _CORE_SET = set(CORE_LABELS.keys())
 
 
 def _build_merge_lookup(
-    label_merges: Optional[Dict[str, List[str]]]
+    label_merges: Optional[Dict[str, List[str]]],
 ) -> Dict[str, str]:
     """Build reverse lookup: source_label -> target_label.
 
@@ -476,7 +491,12 @@ def load_datasets(
         # Backwards compatibility: check env vars for legacy merge flags
         env_merges: Dict[str, List[str]] = {}
         if os.getenv("LAYOUTLM_MERGE_AMOUNTS", "0") == "1":
-            env_merges["AMOUNT"] = ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]
+            env_merges["AMOUNT"] = [
+                "LINE_TOTAL",
+                "SUBTOTAL",
+                "TAX",
+                "GRAND_TOTAL",
+            ]
         if os.getenv("LAYOUTLM_MERGE_DATE_TIME", "0") == "1":
             env_merges["DATE"] = ["TIME"]
         if os.getenv("LAYOUTLM_MERGE_ADDRESS_PHONE", "0") == "1":
@@ -591,7 +611,9 @@ def load_datasets(
         random_seed = random.randint(0, 2**31 - 1)
     random.seed(random_seed)
 
-    unique_receipts = sorted({ex.receipt_key for ex in examples})  # Sort for determinism
+    unique_receipts = sorted(
+        {ex.receipt_key for ex in examples}
+    )  # Sort for determinism
     random.shuffle(unique_receipts)
     cut = max(1, int(len(unique_receipts) * 0.9))
     train_receipts_list = unique_receipts[:cut]
@@ -637,7 +659,9 @@ def load_datasets(
         if has_entity:
             entity_lines_count += 1
             entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
-            o_tokens_in_entity_lines += sum(1 for tag in ex.ner_tags if tag == "O")
+            o_tokens_in_entity_lines += sum(
+                1 for tag in ex.ner_tags if tag == "O"
+            )
         else:
             o_only_lines_count += 1
             o_only_tokens_total += len(ex.tokens)
@@ -645,7 +669,9 @@ def load_datasets(
     # Compute O:entity ratio before downsampling
     total_o_tokens_before = o_tokens_in_entity_lines + o_only_tokens_total
     o_entity_ratio_before = (
-        total_o_tokens_before / entity_tokens if entity_tokens > 0 else float("inf")
+        total_o_tokens_before / entity_tokens
+        if entity_tokens > 0
+        else float("inf")
     )
 
     keep_ratio = 1.0
@@ -669,7 +695,9 @@ def load_datasets(
     # Compute O:entity ratio after downsampling
     total_o_tokens_after = o_tokens_in_entity_lines + o_tokens_kept
     o_entity_ratio_after = (
-        total_o_tokens_after / entity_tokens if entity_tokens > 0 else float("inf")
+        total_o_tokens_after / entity_tokens
+        if entity_tokens > 0
+        else float("inf")
     )
 
     # Compute validation O:entity ratio
@@ -680,7 +708,9 @@ def load_datasets(
         val_entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
         val_o_tokens += sum(1 for tag in ex.ner_tags if tag == "O")
     o_entity_ratio_val = (
-        val_o_tokens / val_entity_tokens if val_entity_tokens > 0 else float("inf")
+        val_o_tokens / val_entity_tokens
+        if val_entity_tokens > 0
+        else float("inf")
     )
 
     # Create split metadata
@@ -712,4 +742,8 @@ def load_datasets(
         resulting_labels=sorted(resulting_labels_set),
     )
 
-    return DatasetDict({"train": train_ds, "validation": val_ds}), split_metadata, merge_info
+    return (
+        DatasetDict({"train": train_ds, "validation": val_ds}),
+        split_metadata,
+        merge_info,
+    )

@@ -7,7 +7,6 @@ Tests entity detection and parsing logic without AWS dependencies.
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import ValidationMethod, ValidationStatus
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_dynamo.entities.receipt_place import ReceiptPlace

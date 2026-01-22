@@ -93,9 +93,7 @@ async def run_test():
                 )
 
         if not openrouter_api_key:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY not set - cannot use LLM"
-            )
+            raise RuntimeError("OPENROUTER_API_KEY not set - cannot use LLM")
 
         # Find a Sprouts receipt with actual data
         logger.info("Finding a Sprouts receipt with words/labels...")

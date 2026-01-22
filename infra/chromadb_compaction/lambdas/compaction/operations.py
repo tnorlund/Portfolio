@@ -246,9 +246,7 @@ def update_receipt_metadata(
         # No ChromaDB records but DynamoDB has entities:
         # embeddings may not be created yet
         if chromadb_ids:
-            logger.info(
-                "DynamoDB entities exist but no embeddings found"
-            )
+            logger.info("DynamoDB entities exist but no embeddings found")
 
     elapsed_time = time.time() - start_time
 
@@ -1043,9 +1041,7 @@ def delete_receipt_embeddings(
             # No ChromaDB records but DynamoDB has entities:
             # embeddings may not exist or were already deleted
             if chromadb_ids:
-                logger.info(
-                    "DynamoDB entities exist but no embeddings found"
-                )
+                logger.info("DynamoDB entities exist but no embeddings found")
 
         elapsed_time = time.time() - start_time
 
