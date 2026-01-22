@@ -566,13 +566,16 @@ public struct VisionOCREngine: OCREngineProtocol {
     ) async throws -> [URL] {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
+        // Clamp concurrency to at least 1 to ensure tasks are scheduled
+        let concurrency = max(1, maxConcurrency)
+
         // Process images concurrently with limited parallelism
         return try await withThrowingTaskGroup(of: (Int, URL).self) { group in
             var results: [(Int, URL)] = []
             var nextIndex = 0
 
             // Add initial batch of tasks
-            for i in 0..<min(maxConcurrency, images.count) {
+            for i in 0..<min(concurrency, images.count) {
                 let imageURL = images[i]
                 let index = i
                 group.addTask {
