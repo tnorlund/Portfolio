@@ -101,10 +101,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Only create entries for rows that contain at least one line needing embedding
         formatted_lines = []
         rows_processed = 0
+        # Track ALL line IDs in processed rows (for consistent PENDING status)
+        all_line_ids_in_processed_rows: set[int] = set()
+
         for embedding_input, row_line_ids in row_inputs:
             # Check if any line in this row needs embedding
             if not any(lid in lines_to_embed_ids for lid in row_line_ids):
                 continue
+
+            # Track all lines in this row - they'll all be marked SUCCESS when
+            # the embedding completes, so mark them all PENDING now
+            all_line_ids_in_processed_rows.update(row_line_ids)
 
             # Use the primary (first/leftmost) line's ID for the custom_id
             primary_line_id = row_line_ids[0]
@@ -133,6 +140,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "Formatted visual rows with context",
             rows_processed=rows_processed,
             total_lines=len(lines_to_embed),
+            lines_in_processed_rows=len(all_line_ids_in_processed_rows),
         )
 
         # Write formatted data to NDJSON file
@@ -160,10 +168,20 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
-        # Update line embedding status in DynamoDB
-        set_pending_and_update_lines(dynamo_client, lines_to_embed)
+        # Update line embedding status in DynamoDB for ALL lines in processed rows
+        # This ensures consistent status transitions: all lines in a visual row
+        # go NONE -> PENDING -> SUCCESS together (since line_polling marks all
+        # lines in a row as SUCCESS when the embedding completes)
+        lines_to_mark_pending = [
+            line
+            for line in all_lines_in_receipt
+            if line.line_id in all_line_ids_in_processed_rows
+        ]
+        set_pending_and_update_lines(dynamo_client, lines_to_mark_pending)
         logger.info(
-            "Updated embedding status for lines", count=len(lines_to_embed)
+            "Updated embedding status for lines",
+            lines_marked_pending=len(lines_to_mark_pending),
+            original_batch_size=len(lines_to_embed),
         )
 
         # Save batch summary to database
