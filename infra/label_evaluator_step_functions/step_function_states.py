@@ -513,7 +513,7 @@ def build_langsmith_export_states(emr: EmrConfig) -> dict[str, Any]:
             "Parameters": {
                 "FunctionName": emr.trigger_export_lambda_arn,
                 "Payload": {
-                    "langchain_project.$": "$.init.langchain_project",
+                    "project_name.$": "$.init.langchain_project",
                 },
             },
             "ResultSelector": {
