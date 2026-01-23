@@ -2,7 +2,7 @@
 Lambda handler for generating label validation timeline cache.
 
 This module generates a timeline of label validation counts over time by:
-1. Scanning all labels via GSI1 (by label type)
+1. Scanning all labels via GSI1 (by label type) in parallel
 2. Sorting chronologically by timestamp_added
 3. Computing cumulative counts at sampled intervals
 4. Caching the keyframes to S3 for frontend animation
@@ -12,11 +12,15 @@ import json
 import logging
 import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 import boto3
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import ReceiptDynamoError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -24,44 +28,34 @@ logger.setLevel(logging.INFO)
 # Configuration
 KEYFRAME_COUNT = 200  # Number of keyframes to sample for smooth animation
 S3_CACHE_KEY = "label_validation_timeline.json"
-
-# Initialize clients outside handler for connection reuse
-_dynamo_client = None
-_s3_client = None
+# Number of parallel workers for fetching labels (one per CORE_LABEL)
+MAX_WORKERS = len(CORE_LABELS)
 
 
-def get_dynamo_client():
-    """Get or create DynamoDB client with lazy initialization."""
-    global _dynamo_client
-    if _dynamo_client is None:
-        _dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
-    return _dynamo_client
+def fetch_labels_for_type(
+    dynamo_client: DynamoClient, core_label: str
+) -> list:
+    """Fetch all labels for a single label type from DynamoDB.
 
-
-def get_s3_client():
-    """Get or create S3 client with lazy initialization."""
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3")
-    return _s3_client
-
-
-def fetch_all_labels():
-    """Fetch all labels across core label types from DynamoDB.
+    Args:
+        dynamo_client: The DynamoDB client to use for queries.
+        core_label: The label type to fetch (e.g., "MERCHANT_NAME").
 
     Returns:
-        List of label records sorted by timestamp_added
-    """
-    dynamo_client = get_dynamo_client()
-    all_labels = []
+        List of label records for this type.
 
-    for core_label in CORE_LABELS:
-        logger.info("Fetching labels for: %s", core_label)
+    Raises:
+        RuntimeError: If fetching fails, wraps the original exception with
+            context about which label type failed.
+    """
+    try:
+        labels_for_type = []
+
         labels, last_key = dynamo_client.get_receipt_word_labels_by_label(
             label=core_label,
             limit=10000,
         )
-        all_labels.extend(labels)
+        labels_for_type.extend(labels)
 
         while last_key:
             labels, last_key = dynamo_client.get_receipt_word_labels_by_label(
@@ -69,9 +63,38 @@ def fetch_all_labels():
                 limit=10000,
                 last_evaluated_key=last_key,
             )
-            all_labels.extend(labels)
+            labels_for_type.extend(labels)
 
-        logger.info("Fetched %d labels for %s", len(all_labels), core_label)
+        logger.info(
+            "Fetched %d labels for %s", len(labels_for_type), core_label
+        )
+        return labels_for_type
+
+    except (ClientError, ReceiptDynamoError) as e:
+        raise RuntimeError(f"Failed to fetch labels for {core_label}") from e
+
+
+def fetch_all_labels(dynamo_client: DynamoClient) -> list:
+    """Fetch all labels across core label types from DynamoDB in parallel.
+
+    Args:
+        dynamo_client: The DynamoDB client to use for queries.
+
+    Returns:
+        List of label records sorted by timestamp_added.
+    """
+    all_labels = []
+
+    # Fetch labels for all CORE_LABELS in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(fetch_labels_for_type, dynamo_client, label): label
+            for label in CORE_LABELS
+        }
+
+        for future in as_completed(futures):
+            labels = future.result()
+            all_labels.extend(labels)
 
     # Sort chronologically by timestamp_added
     all_labels.sort(
@@ -82,14 +105,14 @@ def fetch_all_labels():
     return all_labels
 
 
-def generate_keyframes(all_labels):
+def generate_keyframes(all_labels: list) -> list:
     """Generate sampled keyframes with cumulative counts.
 
     Args:
-        all_labels: List of label records sorted by timestamp_added
+        all_labels: List of label records sorted by timestamp_added.
 
     Returns:
-        List of keyframe dictionaries
+        List of keyframe dictionaries.
     """
     if not all_labels:
         return []
@@ -99,7 +122,7 @@ def generate_keyframes(all_labels):
 
     keyframes = []
     # Track cumulative counts: {label_name: {status: count}}
-    cumulative = defaultdict(lambda: defaultdict(int))
+    cumulative: defaultdict = defaultdict(lambda: defaultdict(int))
 
     for i, label in enumerate(all_labels):
         # Update cumulative counts
@@ -143,15 +166,14 @@ def generate_keyframes(all_labels):
     return keyframes
 
 
-def write_cache_to_s3(timeline_data):
+def write_cache_to_s3(s3_client, bucket: str, timeline_data: dict) -> None:
     """Write timeline cache to S3.
 
     Args:
-        timeline_data: Dictionary containing timeline keyframes
+        s3_client: The S3 client to use.
+        bucket: The S3 bucket name.
+        timeline_data: Dictionary containing timeline keyframes.
     """
-    s3_client = get_s3_client()
-    bucket = os.environ["S3_CACHE_BUCKET"]
-
     s3_client.put_object(
         Bucket=bucket,
         Key=S3_CACHE_KEY,
@@ -171,9 +193,18 @@ def handler(event, _context):
     logger.info("Starting label validation timeline cache generation")
     logger.info("Event: %s", event)
 
+    # Create clients - no need for global caching since this Lambda
+    # runs infrequently (weekly) and will cold start each time
+    dynamo_client = DynamoClient(
+        os.environ["DYNAMODB_TABLE_NAME"],
+        max_pool_connections=MAX_WORKERS + 5,  # Headroom for pagination
+    )
+    s3_client = boto3.client("s3")
+    bucket = os.environ["S3_CACHE_BUCKET"]
+
     try:
         # Fetch all labels
-        all_labels = fetch_all_labels()
+        all_labels = fetch_all_labels(dynamo_client)
 
         if not all_labels:
             logger.warning("No labels found to process")
@@ -198,7 +229,7 @@ def handler(event, _context):
         }
 
         # Write to S3
-        write_cache_to_s3(timeline_data)
+        write_cache_to_s3(s3_client, bucket, timeline_data)
 
         logger.info(
             "Cache generation complete: %d records, %d keyframes",
@@ -218,7 +249,7 @@ def handler(event, _context):
             ),
         }
 
-    except Exception as e:
+    except (ClientError, ReceiptDynamoError, RuntimeError) as e:
         logger.error("Error generating cache: %s", e, exc_info=True)
         return {
             "statusCode": 500,
