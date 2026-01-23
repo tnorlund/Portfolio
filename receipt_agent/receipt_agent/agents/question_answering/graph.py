@@ -104,7 +104,7 @@ Include evidence array with:
 # ==============================================================================
 
 
-def create_plan_node(llm: Any) -> Callable:
+def create_plan_node(llm: Any, state_holder: dict) -> Callable:
     """Create the plan node for question classification."""
 
     # Use structured output for classification
@@ -128,6 +128,9 @@ def create_plan_node(llm: Any) -> Callable:
                 classification.retrieval_strategy,
             )
 
+            # Store in state_holder for external access
+            state_holder["classification"] = classification
+
             return {
                 "classification": classification,
                 "current_phase": "retrieve",
@@ -136,13 +139,15 @@ def create_plan_node(llm: Any) -> Callable:
         except Exception as e:
             logger.warning("Classification failed: %s, using defaults", e)
             # Default classification on failure
+            default_classification = QuestionClassification(
+                question_type="specific_item",
+                retrieval_strategy="simple_lookup",
+                query_rewrites=[],
+                tools_to_use=["search_receipts", "get_receipt"],
+            )
+            state_holder["classification"] = default_classification
             return {
-                "classification": QuestionClassification(
-                    question_type="specific_item",
-                    retrieval_strategy="simple_lookup",
-                    query_rewrites=[],
-                    tools_to_use=["search_receipts", "get_receipt"],
-                ),
+                "classification": default_classification,
                 "current_phase": "retrieve",
             }
 
@@ -641,7 +646,7 @@ def _create_enhanced_graph(
     """Create the enhanced 5-node ReAct RAG graph."""
 
     # Create nodes
-    plan_node = create_plan_node(llm)
+    plan_node = create_plan_node(llm, state_holder)
     agent_node = create_agent_node(llm, tools, state_holder)
     tool_node = ToolNode(tools)
     shape_node = create_shape_node(state_holder)
