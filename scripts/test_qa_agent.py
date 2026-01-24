@@ -6,6 +6,9 @@ Usage:
     # Ask a specific question
     python scripts/test_qa_agent.py --env dev --question "How much did I spend on coffee?"
 
+    # Use Gemini 3 Flash (cheap, good tool calling)
+    python scripts/test_qa_agent.py --env dev --model google/gemini-2.5-flash-preview --question "..."
+
     # Run predefined test questions
     python scripts/test_qa_agent.py --env dev --test-all
 
@@ -14,6 +17,7 @@ Usage:
 
 Environment variables:
     OPENROUTER_API_KEY: Required for LLM inference
+    LANGCHAIN_API_KEY: Optional for LangSmith tracing
 """
 
 import argparse
@@ -88,6 +92,12 @@ def main():
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="google/gemini-2.5-flash",
+        help="OpenRouter model to use (default: google/gemini-2.5-flash)",
+    )
 
     args = parser.parse_args()
 
@@ -117,6 +127,22 @@ def main():
         if openai_key:
             os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = openai_key
             logger.info("Loaded OPENAI_API_KEY from Pulumi secrets")
+
+    # Set LangSmith API key for tracing
+    langchain_key = config.get("langchain_api_key")
+    if langchain_key:
+        os.environ["LANGCHAIN_API_KEY"] = langchain_key
+        os.environ["LANGSMITH_API_KEY"] = langchain_key
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_PROJECT"] = "question-answering-rag"
+        logger.info("LangSmith tracing ENABLED (project: question-answering-rag)")
+    else:
+        logger.warning("LANGCHAIN_API_KEY not found - LangSmith tracing disabled")
+
+    # Set OpenRouter model from args
+    os.environ["OPENROUTER_MODEL"] = args.model
+    os.environ["RECEIPT_AGENT_OPENROUTER_MODEL"] = args.model
+    logger.info("Using OpenRouter model: %s", args.model)
 
     # Check for OpenRouter API key
     if not os.environ.get("OPENROUTER_API_KEY"):
