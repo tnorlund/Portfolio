@@ -8,7 +8,7 @@
 
 > **measureComponentRender**\<`P`\>(`Component`, `props`, `iterations`): [`PerformanceTestResult`](../interfaces/PerformanceTestResult.md)
 
-Defined in: [utils/performance/testing.ts:110](https://github.com/tnorlund/Portfolio/blob/5f1dc9802a7bd48f9f114f496e8688dcf0828380/portfolio/utils/performance/testing.ts#L110)
+Defined in: [utils/performance/testing.ts:110](https://github.com/tnorlund/Portfolio/blob/88a6726d8de73b487ee9f516a8394ba90c2fc7ad/portfolio/utils/performance/testing.ts#L110)
 
 Measure React component render performance
 
