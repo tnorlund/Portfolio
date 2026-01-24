@@ -717,6 +717,7 @@ async def answer_question(
     state_holder: dict,
     question: str,
     use_enhanced: bool = False,
+    callbacks: Optional[list] = None,
 ) -> dict:
     """
     Run the question-answering workflow for a question.
@@ -726,6 +727,7 @@ async def answer_question(
         state_holder: State holder dict
         question: The question to answer
         use_enhanced: Whether using enhanced graph
+        callbacks: Optional list of LangChain callbacks for cost tracking etc.
 
     Returns:
         Answer dict with answer, amount, count, and evidence
@@ -769,6 +771,8 @@ async def answer_question(
 
     try:
         config = {"recursion_limit": 30}
+        if callbacks:
+            config["callbacks"] = callbacks
         await graph.ainvoke(initial_state, config=config)
 
         answer = state_holder.get("answer")
@@ -800,6 +804,7 @@ def answer_question_sync(
     state_holder: dict,
     question: str,
     use_enhanced: bool = False,
+    callbacks: Optional[list] = None,
 ) -> dict:
     """Synchronous wrapper for answer_question."""
     return asyncio.run(
@@ -808,6 +813,7 @@ def answer_question_sync(
             state_holder=state_holder,
             question=question,
             use_enhanced=use_enhanced,
+            callbacks=callbacks,
         )
     )
 

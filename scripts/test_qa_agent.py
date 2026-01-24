@@ -2,18 +2,24 @@
 """
 Test script for the question-answering agent.
 
+Uses the enhanced 5-node ReAct RAG workflow by default:
+  START → plan → agent ⟷ tools → shape → synthesize → END
+
 Usage:
-    # Ask a specific question
+    # Ask a specific question (uses enhanced 5-node workflow)
     python scripts/test_qa_agent.py --env dev --question "How much did I spend on coffee?"
 
-    # Use Gemini 3 Flash (cheap, good tool calling)
-    python scripts/test_qa_agent.py --env dev --model google/gemini-2.5-flash-preview --question "..."
+    # Use Gemini 2.5 Flash (cheap, good tool calling)
+    python scripts/test_qa_agent.py --env dev --model google/gemini-2.5-flash --question "..."
 
     # Run predefined test questions
     python scripts/test_qa_agent.py --env dev --test-all
 
     # Interactive mode
     python scripts/test_qa_agent.py --env dev --interactive
+
+    # Use simple 2-node graph (backwards compatible)
+    python scripts/test_qa_agent.py --env dev --simple --question "..."
 
 Environment variables:
     OPENROUTER_API_KEY: Required for LLM inference
@@ -25,6 +31,8 @@ import json
 import logging
 import os
 import sys
+from threading import Lock
+from typing import Any
 
 # Add parent directories to path for imports
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +53,58 @@ from receipt_agent.clients.factory import (
 )
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_dynamo.data._pulumi import load_env, load_secrets
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
+
+
+class CostTrackingCallback(BaseCallbackHandler):
+    """Callback handler that tracks OpenRouter API costs.
+
+    OpenRouter returns cost directly in llm_output['token_usage']['cost'].
+    """
+
+    def __init__(self):
+        self.total_cost = 0.0
+        self.total_tokens = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.llm_calls = 0
+        self._lock = Lock()
+
+    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        """Track cost from LLM response."""
+        with self._lock:
+            self.llm_calls += 1
+
+            # OpenRouter returns cost in llm_output['token_usage']
+            if response.llm_output:
+                token_usage = response.llm_output.get("token_usage", {})
+                if token_usage:
+                    self.total_cost += token_usage.get("cost", 0) or 0
+                    self.total_tokens += token_usage.get("total_tokens", 0) or 0
+                    self.prompt_tokens += token_usage.get("prompt_tokens", 0) or 0
+                    self.completion_tokens += token_usage.get("completion_tokens", 0) or 0
+
+    def reset(self):
+        """Reset all counters."""
+        with self._lock:
+            self.total_cost = 0.0
+            self.total_tokens = 0
+            self.prompt_tokens = 0
+            self.completion_tokens = 0
+            self.llm_calls = 0
+
+    def get_stats(self) -> dict:
+        """Get current stats."""
+        with self._lock:
+            return {
+                "total_cost": self.total_cost,
+                "total_tokens": self.total_tokens,
+                "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens,
+                "llm_calls": self.llm_calls,
+            }
+
 
 # Configure logging
 logging.basicConfig(
@@ -97,6 +157,11 @@ def main():
         type=str,
         default="google/gemini-2.5-flash",
         help="OpenRouter model to use (default: google/gemini-2.5-flash)",
+    )
+    parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Use simple 2-node graph instead of enhanced 5-node ReAct RAG workflow",
     )
 
     args = parser.parse_args()
@@ -201,12 +266,20 @@ def main():
 
     embed_fn = create_embed_fn()
 
+    # Create cost tracking callback
+    cost_callback = CostTrackingCallback()
+
     # Create the graph
-    logger.info("Creating QA graph...")
+    use_enhanced = not args.simple
+    logger.info(
+        "Creating QA graph... (mode: %s)",
+        "simple 2-node" if args.simple else "enhanced 5-node ReAct RAG",
+    )
     graph, state_holder = create_qa_graph(
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
         embed_fn=embed_fn,
+        use_enhanced=use_enhanced,
     )
 
     def ask_question(question: str) -> dict:
@@ -215,7 +288,14 @@ def main():
         print(f"Question: {question}")
         print(f"{'=' * 60}")
 
-        result = answer_question_sync(graph, state_holder, question)
+        # Reset cost tracking for this question
+        cost_callback.reset()
+
+        result = answer_question_sync(
+            graph, state_holder, question,
+            use_enhanced=use_enhanced,
+            callbacks=[cost_callback],
+        )
 
         print(f"\nAnswer: {result['answer']}")
         if result.get("total_amount") is not None:
@@ -226,6 +306,13 @@ def main():
             print(f"\nEvidence ({len(result['evidence'])} items):")
             for i, e in enumerate(result["evidence"][:5], 1):
                 print(f"  {i}. {json.dumps(e, default=str)[:100]}...")
+
+        # Display cost info
+        stats = cost_callback.get_stats()
+        print(f"\n--- Cost ---")
+        print(f"LLM Calls: {stats['llm_calls']}")
+        print(f"Tokens: {stats['total_tokens']} (prompt: {stats['prompt_tokens']}, completion: {stats['completion_tokens']})")
+        print(f"Cost: ${stats['total_cost']:.6f}")
 
         return result
 

@@ -64,199 +64,8 @@ def create_simplified_qa_tools(
         "answer": None,
     }
 
-    @tool
-    def search_receipts(
-        query: str,
-        search_type: str = "text",
-        limit: int = 20,
-    ) -> dict:
-        """Search for receipts by text content, label type, or semantic similarity.
-
-        Args:
-            query: What to search for.
-                - For text search: product name like "COFFEE", "MILK", "ORGANIC"
-                - For label search: label type like "TAX", "GRAND_TOTAL", "SUBTOTAL"
-                - For semantic search: natural language like "coffee purchase"
-            search_type: Search method to use:
-                - "text": Search line content for exact text match
-                - "label": Search by label type (uses WORDS collection)
-                - "label_lines": Search rows with specific label (uses LINES
-                   collection with aggregated labels)
-                - "semantic": Semantic similarity search using embeddings
-            limit: Maximum results to return
-
-        Returns:
-            Dict with matching receipts (image_id, receipt_id, preview text)
-
-        Examples:
-            search_receipts("COFFEE", "text")  -> finds receipts with coffee
-            search_receipts("TAX", "label")    -> finds receipts with TAX labels
-            search_receipts("PRODUCT_NAME", "label_lines") -> finds rows with
-                                                              product labels
-            search_receipts("coffee purchase", "semantic") -> semantic search
-        """
-        try:
-            if search_type == "label":
-                # Search words collection by label
-                words_collection = chroma_client.get_collection("words")
-                results = words_collection.get(
-                    where={"label": query.upper()},
-                    include=["metadatas"],
-                )
-
-                # Dedupe by receipt
-                unique_receipts = {}
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    key = (meta.get("image_id"), meta.get("receipt_id"))
-                    if key not in unique_receipts:
-                        unique_receipts[key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_text": meta.get("text"),
-                            "matched_label": query.upper(),
-                        }
-
-                return {
-                    "search_type": "label",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-            elif search_type == "label_lines":
-                # Search lines collection by aggregated label metadata
-                # This uses the row-based embeddings with label_* fields
-                lines_collection = chroma_client.get_collection("lines")
-                label_key = f"label_{query.upper()}"
-
-                results = lines_collection.get(
-                    where={label_key: True},
-                    include=["metadatas"],
-                )
-
-                # Dedupe by receipt
-                unique_receipts = {}
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    key = (meta.get("image_id"), meta.get("receipt_id"))
-                    if key not in unique_receipts:
-                        unique_receipts[key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_row": meta.get("text", "")[:100],
-                            "matched_label": query.upper(),
-                        }
-
-                return {
-                    "search_type": "label_lines",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-            elif search_type == "semantic":
-                # Semantic search using embeddings
-                lines_collection = chroma_client.get_collection("lines")
-
-                # Generate embedding for the query
-                query_embeddings = _embed_fn([query])
-                if not query_embeddings or not query_embeddings[0]:
-                    return {"error": "Failed to generate query embedding", "results": []}
-
-                # Perform similarity search
-                results = lines_collection.query(
-                    query_embeddings=query_embeddings,
-                    n_results=limit * 2,  # Get extra to allow deduping
-                    include=["metadatas", "distances"],
-                )
-
-                # Dedupe by receipt, keeping best match
-                unique_receipts = {}
-                if results["ids"] and results["ids"][0]:
-                    for idx, (id_, meta) in enumerate(
-                        zip(results["ids"][0], results["metadatas"][0])
-                    ):
-                        key = (meta.get("image_id"), meta.get("receipt_id"))
-                        distance = (
-                            results["distances"][0][idx]
-                            if results["distances"]
-                            else None
-                        )
-                        if key not in unique_receipts:
-                            unique_receipts[key] = {
-                                "image_id": meta.get("image_id"),
-                                "receipt_id": meta.get("receipt_id"),
-                                "matched_row": meta.get("text", "")[:100],
-                                "similarity_distance": distance,
-                            }
-
-                return {
-                    "search_type": "semantic",
-                    "query": query,
-                    "total_matches": (
-                        len(results["ids"][0]) if results["ids"] else 0
-                    ),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-            else:
-                # Default: Search lines collection by text content
-                lines_collection = chroma_client.get_collection("lines")
-                results = lines_collection.get(
-                    where_document={"$contains": query.upper()},
-                    include=["metadatas"],
-                )
-
-                # Dedupe by receipt
-                unique_receipts = {}
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    key = (meta.get("image_id"), meta.get("receipt_id"))
-                    if key not in unique_receipts:
-                        unique_receipts[key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_line": meta.get("text", "")[:100],
-                        }
-
-                return {
-                    "search_type": "text",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-        except Exception as e:
-            logger.error("Search error: %s", e)
-            return {"error": str(e), "results": []}
-
-    @tool
-    def get_receipt(
-        image_id: str,
-        receipt_id: int,
-    ) -> dict:
-        """Get full receipt with formatted text showing all words and labels.
-
-        The receipt text shows each line with words and their labels inline:
-            Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
-            Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
-            Line 8: TAX 0.84[TAX]
-            Line 9: TOTAL 13.83[GRAND_TOTAL]
-
-        Use this to:
-        - See what items are on a receipt
-        - Find prices (look for [LINE_TOTAL] on same line as product)
-        - Get tax and total amounts (look for [TAX], [GRAND_TOTAL])
-
-        Args:
-            image_id: The image ID from search results
-            receipt_id: The receipt ID from search results
-
-        Returns:
-            Dict with merchant, formatted receipt text, and amounts summary
-        """
+    def _fetch_receipt_details(image_id: str, receipt_id: int) -> Optional[dict]:
+        """Fetch receipt details and format them. Returns None on error."""
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
 
@@ -367,7 +176,7 @@ def create_simplified_qa_tools(
                     except ValueError:
                         pass
 
-            result = {
+            return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "merchant": merchant,
@@ -375,24 +184,246 @@ def create_simplified_qa_tools(
                 "amounts": amounts,
             }
 
-            # Track retrieved receipt for aggregate_amounts
-            if "retrieved_receipts" not in state_holder:
-                state_holder["retrieved_receipts"] = []
+        except Exception as e:
+            logger.error("Error fetching receipt %s:%s: %s", image_id, receipt_id, e)
+            return None
 
-            # Avoid duplicates
-            existing = [
-                r for r in state_holder["retrieved_receipts"]
-                if r.get("image_id") == image_id
-                and r.get("receipt_id") == receipt_id
-            ]
-            if not existing:
-                state_holder["retrieved_receipts"].append(result)
+    def _store_receipt(result: dict) -> None:
+        """Store a receipt result in state_holder, avoiding duplicates."""
+        if "retrieved_receipts" not in state_holder:
+            state_holder["retrieved_receipts"] = []
 
-            return result
+        existing = [
+            r for r in state_holder["retrieved_receipts"]
+            if r.get("image_id") == result.get("image_id")
+            and r.get("receipt_id") == result.get("receipt_id")
+        ]
+        if not existing:
+            state_holder["retrieved_receipts"].append(result)
+
+    @tool
+    def search_receipts(
+        query: str,
+        search_type: str = "text",
+        limit: int = 20,
+        auto_fetch: int = 5,
+    ) -> dict:
+        """Search for receipts by text content, label type, or semantic similarity.
+
+        Automatically fetches and stores the top results for use by other tools.
+
+        Args:
+            query: What to search for.
+                - For text search: product name like "COFFEE", "MILK", "ORGANIC"
+                - For label search: label type like "TAX", "GRAND_TOTAL", "SUBTOTAL"
+                - For semantic search: natural language like "coffee purchase"
+            search_type: Search method to use:
+                - "text": Search line content for exact text match
+                - "label": Search by label type (uses WORDS collection)
+                - "label_lines": Search rows with specific label (uses LINES
+                   collection with aggregated labels)
+                - "semantic": Semantic similarity search using embeddings
+            limit: Maximum results to return
+            auto_fetch: Number of top results to auto-fetch full details for (default 5)
+
+        Returns:
+            Dict with matching receipts (image_id, receipt_id, preview text)
+
+        Examples:
+            search_receipts("COFFEE", "text")  -> finds receipts with coffee
+            search_receipts("TAX", "label")    -> finds receipts with TAX labels
+            search_receipts("PRODUCT_NAME", "label_lines") -> finds rows with
+                                                              product labels
+            search_receipts("coffee purchase", "semantic") -> semantic search
+        """
+        search_result = None
+        unique_receipts = {}
+
+        try:
+            if search_type == "label":
+                # Search words collection by label
+                words_collection = chroma_client.get_collection("words")
+                results = words_collection.get(
+                    where={"label": query.upper()},
+                    include=["metadatas"],
+                )
+
+                # Dedupe by receipt
+                for id_, meta in zip(results["ids"], results["metadatas"]):
+                    key = (meta.get("image_id"), meta.get("receipt_id"))
+                    if key not in unique_receipts:
+                        unique_receipts[key] = {
+                            "image_id": meta.get("image_id"),
+                            "receipt_id": meta.get("receipt_id"),
+                            "matched_text": meta.get("text"),
+                            "matched_label": query.upper(),
+                        }
+
+                search_result = {
+                    "search_type": "label",
+                    "query": query,
+                    "total_matches": len(results["ids"]),
+                    "unique_receipts": len(unique_receipts),
+                    "results": list(unique_receipts.values())[:limit],
+                }
+
+            elif search_type == "label_lines":
+                # Search lines collection by aggregated label metadata
+                # This uses the row-based embeddings with label_* fields
+                lines_collection = chroma_client.get_collection("lines")
+                label_key = f"label_{query.upper()}"
+
+                results = lines_collection.get(
+                    where={label_key: True},
+                    include=["metadatas"],
+                )
+
+                # Dedupe by receipt
+                for id_, meta in zip(results["ids"], results["metadatas"]):
+                    key = (meta.get("image_id"), meta.get("receipt_id"))
+                    if key not in unique_receipts:
+                        unique_receipts[key] = {
+                            "image_id": meta.get("image_id"),
+                            "receipt_id": meta.get("receipt_id"),
+                            "matched_row": meta.get("text", "")[:100],
+                            "matched_label": query.upper(),
+                        }
+
+                search_result = {
+                    "search_type": "label_lines",
+                    "query": query,
+                    "total_matches": len(results["ids"]),
+                    "unique_receipts": len(unique_receipts),
+                    "results": list(unique_receipts.values())[:limit],
+                }
+
+            elif search_type == "semantic":
+                # Semantic search using embeddings
+                lines_collection = chroma_client.get_collection("lines")
+
+                # Generate embedding for the query
+                query_embeddings = _embed_fn([query])
+                if not query_embeddings or not query_embeddings[0]:
+                    return {"error": "Failed to generate query embedding", "results": []}
+
+                # Perform similarity search
+                results = lines_collection.query(
+                    query_embeddings=query_embeddings,
+                    n_results=limit * 2,  # Get extra to allow deduping
+                    include=["metadatas", "distances"],
+                )
+
+                # Dedupe by receipt, keeping best match
+                if results["ids"] and results["ids"][0]:
+                    for idx, (id_, meta) in enumerate(
+                        zip(results["ids"][0], results["metadatas"][0])
+                    ):
+                        key = (meta.get("image_id"), meta.get("receipt_id"))
+                        distance = (
+                            results["distances"][0][idx]
+                            if results["distances"]
+                            else None
+                        )
+                        if key not in unique_receipts:
+                            unique_receipts[key] = {
+                                "image_id": meta.get("image_id"),
+                                "receipt_id": meta.get("receipt_id"),
+                                "matched_row": meta.get("text", "")[:100],
+                                "similarity_distance": distance,
+                            }
+
+                search_result = {
+                    "search_type": "semantic",
+                    "query": query,
+                    "total_matches": (
+                        len(results["ids"][0]) if results["ids"] else 0
+                    ),
+                    "unique_receipts": len(unique_receipts),
+                    "results": list(unique_receipts.values())[:limit],
+                }
+
+            else:
+                # Default: Search lines collection by text content
+                lines_collection = chroma_client.get_collection("lines")
+                results = lines_collection.get(
+                    where_document={"$contains": query.upper()},
+                    include=["metadatas"],
+                )
+
+                # Dedupe by receipt
+                for id_, meta in zip(results["ids"], results["metadatas"]):
+                    key = (meta.get("image_id"), meta.get("receipt_id"))
+                    if key not in unique_receipts:
+                        unique_receipts[key] = {
+                            "image_id": meta.get("image_id"),
+                            "receipt_id": meta.get("receipt_id"),
+                            "matched_line": meta.get("text", "")[:100],
+                        }
+
+                search_result = {
+                    "search_type": "text",
+                    "query": query,
+                    "total_matches": len(results["ids"]),
+                    "unique_receipts": len(unique_receipts),
+                    "results": list(unique_receipts.values())[:limit],
+                }
+
+            # Auto-fetch top N receipts and store them for shape node
+            if search_result and auto_fetch > 0:
+                fetched_count = 0
+                for receipt_info in search_result.get("results", [])[:auto_fetch]:
+                    image_id = receipt_info.get("image_id")
+                    receipt_id = receipt_info.get("receipt_id")
+                    if image_id and receipt_id is not None:
+                        details = _fetch_receipt_details(image_id, receipt_id)
+                        if details:
+                            _store_receipt(details)
+                            fetched_count += 1
+
+                search_result["auto_fetched"] = fetched_count
+                logger.info(
+                    "Search found %d receipts, auto-fetched %d",
+                    len(unique_receipts),
+                    fetched_count,
+                )
+
+            return search_result
 
         except Exception as e:
-            logger.error("Error getting receipt: %s", e)
-            return {"error": str(e)}
+            logger.error("Search error: %s", e)
+            return {"error": str(e), "results": []}
+
+    @tool
+    def get_receipt(
+        image_id: str,
+        receipt_id: int,
+    ) -> dict:
+        """Get full receipt with formatted text showing all words and labels.
+
+        The receipt text shows each line with words and their labels inline:
+            Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
+            Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
+            Line 8: TAX 0.84[TAX]
+            Line 9: TOTAL 13.83[GRAND_TOTAL]
+
+        Use this to:
+        - See what items are on a receipt
+        - Find prices (look for [LINE_TOTAL] on same line as product)
+        - Get tax and total amounts (look for [TAX], [GRAND_TOTAL])
+
+        Args:
+            image_id: The image ID from search results
+            receipt_id: The receipt ID from search results
+
+        Returns:
+            Dict with merchant, formatted receipt text, and amounts summary
+        """
+        result = _fetch_receipt_details(image_id, receipt_id)
+        if result is None:
+            return {"error": f"Failed to fetch receipt {image_id}:{receipt_id}"}
+
+        _store_receipt(result)
+        return result
 
     @tool
     def semantic_search(
@@ -857,6 +888,26 @@ def create_simplified_qa_tools(
                     item["price"] for item in items if item["price"] is not None
                 )
 
+                # Auto-fetch unique receipts for context
+                unique_receipt_keys = set()
+                for item in items[:10]:  # Limit to top 10
+                    key = (item.get("image_id"), item.get("receipt_id"))
+                    if key[0] and key[1] is not None:
+                        unique_receipt_keys.add(key)
+
+                fetched_count = 0
+                for image_id, receipt_id in list(unique_receipt_keys)[:5]:
+                    details = _fetch_receipt_details(image_id, receipt_id)
+                    if details:
+                        _store_receipt(details)
+                        fetched_count += 1
+
+                if fetched_count:
+                    logger.info(
+                        "search_product_lines auto-fetched %d receipts",
+                        fetched_count,
+                    )
+
                 return {
                     "query": query,
                     "search_type": "semantic",
@@ -864,6 +915,7 @@ def create_simplified_qa_tools(
                     "unique_items": len(items),
                     "items": items,
                     "raw_total": round(total, 2),
+                    "auto_fetched": fetched_count,
                     "note": "Review items for relevance before summing prices.",
                 }
 
@@ -911,6 +963,26 @@ def create_simplified_qa_tools(
                     item["price"] for item in items if item["price"] is not None
                 )
 
+                # Auto-fetch unique receipts for context
+                unique_receipt_keys = set()
+                for item in items[:10]:  # Limit to top 10
+                    key = (item.get("image_id"), item.get("receipt_id"))
+                    if key[0] and key[1] is not None:
+                        unique_receipt_keys.add(key)
+
+                fetched_count = 0
+                for image_id, receipt_id in list(unique_receipt_keys)[:5]:
+                    details = _fetch_receipt_details(image_id, receipt_id)
+                    if details:
+                        _store_receipt(details)
+                        fetched_count += 1
+
+                if fetched_count:
+                    logger.info(
+                        "search_product_lines auto-fetched %d receipts",
+                        fetched_count,
+                    )
+
                 return {
                     "query": query,
                     "search_type": "text",
@@ -918,6 +990,7 @@ def create_simplified_qa_tools(
                     "unique_items": len(items),
                     "items": items,
                     "raw_total": round(total, 2),
+                    "auto_fetched": fetched_count,
                     "note": "Exclude false positives before reporting total.",
                 }
 
@@ -1048,6 +1121,23 @@ def create_simplified_qa_tools(
             total_tip = sum(s["tip"] or 0 for s in filtered)
             receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
 
+            # Auto-fetch a few sample receipts for context
+            fetched_count = 0
+            for summary in filtered[:5]:
+                image_id = summary.get("image_id")
+                receipt_id = summary.get("receipt_id")
+                if image_id and receipt_id is not None:
+                    details = _fetch_receipt_details(image_id, receipt_id)
+                    if details:
+                        _store_receipt(details)
+                        fetched_count += 1
+
+            if fetched_count:
+                logger.info(
+                    "get_receipt_summaries auto-fetched %d sample receipts",
+                    fetched_count,
+                )
+
             return {
                 "count": len(filtered),
                 "total_spending": round(total_spending, 2),
@@ -1066,6 +1156,7 @@ def create_simplified_qa_tools(
                     "end_date": end_date,
                 },
                 "summaries": filtered,
+                "auto_fetched": fetched_count,
             }
 
         except Exception as e:
