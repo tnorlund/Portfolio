@@ -232,6 +232,75 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
                 "required": ["merchant_name"]
             }
         ),
+        Tool(
+            name="search_product_lines",
+            description="""Search for product lines containing a term and return prices.
+
+Use this to answer spending questions like "how much did I spend on X?"
+
+Returns lines containing the search term with:
+- text: The full line text (e.g., "RAW WHOLE MILK 17.99")
+- price: The price if labeled as LINE_TOTAL (from ML model)
+- merchant: Store name
+- image_id/receipt_id: For drilling into specific receipts
+
+The LLM should filter false positives (e.g., "MILK CHOCOLATE" when searching for milk).
+
+Example:
+  search_product_lines("MILK") -> returns all lines with MILK and their prices
+
+Then the LLM can sum prices for relevant items only.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Product term to search for (e.g., MILK, COFFEE, EGGS)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum results"
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_receipt_summaries",
+            description="""Get computed summaries for all receipts with totals, tax, dates.
+
+Use this to answer aggregation questions like:
+- "What was my total spending at Costco?"
+- "How much tax did I pay last month?"
+- "What's my average grocery bill?"
+- "What was my largest purchase?"
+
+Returns for each receipt:
+- merchant_name: Store name
+- date: Receipt date (if available)
+- grand_total: Total amount
+- subtotal: Before tax
+- tax: Tax amount
+- tip: Tip amount (if applicable)
+- item_count: Number of line items
+
+You can filter/aggregate these results to answer spending questions.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_filter": {
+                        "type": "string",
+                        "description": "Optional: filter to specific merchant name"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum receipts to return"
+                    }
+                }
+            }
+        ),
     ]
 
 
@@ -266,6 +335,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await get_receipts_by_merchant_impl(
                 dynamo_client,
                 merchant_name=arguments["merchant_name"],
+            )
+        elif name == "search_product_lines":
+            result = await search_product_lines_impl(
+                chroma_client,
+                query=arguments["query"],
+                limit=arguments.get("limit", 100),
+            )
+        elif name == "get_receipt_summaries":
+            result = await get_receipt_summaries_impl(
+                dynamo_client,
+                merchant_filter=arguments.get("merchant_filter"),
+                limit=arguments.get("limit", 100),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -601,6 +682,178 @@ async def get_receipts_by_merchant_impl(
 
     except Exception as e:
         logger.error("Error getting receipts by merchant: %s", e, exc_info=True)
+        return {"error": str(e)}
+
+
+async def search_product_lines_impl(
+    chroma_client,
+    query: str,
+    limit: int,
+) -> dict:
+    """Search for product lines and extract prices for spending analysis."""
+    import re
+
+    try:
+        lines_collection = chroma_client.get_collection("lines")
+
+        # Search for lines containing the query term
+        results = lines_collection.get(
+            where_document={"$contains": query.upper()},
+            include=["metadatas"],
+        )
+
+        if not results["ids"]:
+            return {
+                "query": query,
+                "total_matches": 0,
+                "items": [],
+            }
+
+        # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
+        def extract_price(text: str) -> Optional[float]:
+            matches = re.findall(r'\d+\.\d{2}', text)
+            if matches:
+                return float(matches[-1])  # Last match is usually the price
+            return None
+
+        # Process results
+        items = []
+        seen = set()  # Dedupe by image_id + receipt_id + text
+
+        for id_, meta in zip(results["ids"], results["metadatas"]):
+            text = meta.get("text", "")
+            image_id = meta.get("image_id")
+            receipt_id = meta.get("receipt_id")
+
+            # Dedupe
+            key = (image_id, receipt_id, text)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Check if this line has a LINE_TOTAL label (from ML model)
+            has_line_total = meta.get("label_LINE_TOTAL", False)
+
+            price = extract_price(text)
+
+            items.append({
+                "text": text,
+                "price": price,
+                "has_price_label": has_line_total,
+                "merchant": meta.get("merchant_name", "Unknown"),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            })
+
+        # Sort by price descending (items with prices first)
+        items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
+
+        # Limit results
+        items = items[:limit]
+
+        # Calculate total for items that have prices
+        total = sum(item["price"] for item in items if item["price"] is not None)
+
+        return {
+            "query": query,
+            "total_matches": len(results["ids"]),
+            "unique_items": len(items),
+            "items": items,
+            "raw_total": round(total, 2),
+            "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
+        }
+
+    except Exception as e:
+        logger.error("Error searching product lines: %s", e, exc_info=True)
+        return {"error": str(e)}
+
+
+async def get_receipt_summaries_impl(
+    dynamo_client,
+    merchant_filter: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """Get computed summaries for all receipts.
+
+    This computes ReceiptSummary from ReceiptWordLabel data,
+    extracting grand_total, tax, date, etc. from the LayoutLM labels.
+    """
+    from receipt_dynamo.entities.receipt_summary import (
+        ReceiptSummary,
+    )
+
+    try:
+        # Get all receipt details (includes words and labels)
+        # We'll use list_receipt_details which fetches via GSI4
+        summaries = []
+        processed = 0
+
+        # First get all receipt places to get merchant names
+        # Then iterate through receipts and compute summaries
+        all_places = {}
+        try:
+            # Get places by querying - this gives us merchant names
+            places, _ = dynamo_client.list_receipt_places(limit=1000)
+            for place in places:
+                key = f"{place.image_id}_{place.receipt_id}"
+                all_places[key] = place
+        except Exception as e:
+            logger.warning("Could not load places: %s", e)
+
+        # Get receipt summaries (includes words and word_labels)
+        page = dynamo_client.list_receipt_details(limit=500)
+
+        while True:
+            for key, summary in page.summaries.items():
+                if processed >= limit:
+                    break
+
+                # Get place for merchant name
+                place = all_places.get(key)
+
+                # Apply merchant filter if specified
+                if merchant_filter:
+                    merchant_name = place.merchant_name if place else None
+                    if not merchant_name or merchant_filter.lower() not in merchant_name.lower():
+                        continue
+
+                # Compute summary from words and labels
+                computed = ReceiptSummary.from_word_labels_and_words(
+                    image_id=summary.receipt.image_id,
+                    receipt_id=summary.receipt.receipt_id,
+                    merchant_name=place.merchant_name if place else None,
+                    word_labels=summary.word_labels,
+                    words=summary.words,
+                )
+
+                summaries.append(computed.to_dict())
+                processed += 1
+
+            if processed >= limit or not page.has_more:
+                break
+
+            page = dynamo_client.list_receipt_details(
+                limit=500,
+                last_evaluated_key=page.last_evaluated_key,
+            )
+
+        # Calculate aggregates
+        total_spending = sum(s["grand_total"] or 0 for s in summaries)
+        total_tax = sum(s["tax"] or 0 for s in summaries)
+        receipts_with_totals = sum(1 for s in summaries if s["grand_total"])
+
+        return {
+            "count": len(summaries),
+            "total_spending": round(total_spending, 2),
+            "total_tax": round(total_tax, 2),
+            "receipts_with_totals": receipts_with_totals,
+            "average_receipt": round(total_spending / receipts_with_totals, 2) if receipts_with_totals > 0 else None,
+            "merchant_filter": merchant_filter,
+            "summaries": summaries,
+        }
+
+    except Exception as e:
+        logger.error("Error getting receipt summaries: %s", e, exc_info=True)
         return {"error": str(e)}
 
 
