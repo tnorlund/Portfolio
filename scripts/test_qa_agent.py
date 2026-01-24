@@ -58,13 +58,10 @@ from langchain_core.outputs import LLMResult
 
 
 class CostTrackingCallback(BaseCallbackHandler):
-    """Callback handler that tracks OpenRouter API costs.
+    """Callback handler that tracks OpenRouter API costs and adds them to LangSmith.
 
     OpenRouter returns cost directly in llm_output['token_usage']['cost'].
-
-    Note: LangSmith doesn't auto-calculate OpenRouter costs. We track costs
-    locally and display them in the CLI. LangSmith uses ls_provider/ls_model_name
-    metadata (set in graph.py) to attempt cost estimation for known providers.
+    This callback extracts the cost and adds it to the LangSmith run metadata.
     """
 
     def __init__(self):
@@ -76,18 +73,44 @@ class CostTrackingCallback(BaseCallbackHandler):
         self._lock = Lock()
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
-        """Track cost from LLM response."""
+        """Track cost from LLM response and add to LangSmith run."""
+        cost = 0.0
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+
+        # OpenRouter returns cost in llm_output['token_usage']
+        if response.llm_output:
+            token_usage = response.llm_output.get("token_usage", {})
+            if token_usage:
+                cost = token_usage.get("cost", 0) or 0
+                total_tokens = token_usage.get("total_tokens", 0) or 0
+                prompt_tokens = token_usage.get("prompt_tokens", 0) or 0
+                completion_tokens = token_usage.get("completion_tokens", 0) or 0
+
+        # Update local counters
         with self._lock:
             self.llm_calls += 1
+            self.total_cost += cost
+            self.total_tokens += total_tokens
+            self.prompt_tokens += prompt_tokens
+            self.completion_tokens += completion_tokens
 
-            # OpenRouter returns cost in llm_output['token_usage']
-            if response.llm_output:
-                token_usage = response.llm_output.get("token_usage", {})
-                if token_usage:
-                    self.total_cost += token_usage.get("cost", 0) or 0
-                    self.total_tokens += token_usage.get("total_tokens", 0) or 0
-                    self.prompt_tokens += token_usage.get("prompt_tokens", 0) or 0
-                    self.completion_tokens += token_usage.get("completion_tokens", 0) or 0
+        # Try to add cost to LangSmith run metadata
+        if cost > 0:
+            try:
+                from langsmith.run_helpers import get_current_run_tree
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.add_metadata({
+                        "openrouter_cost_usd": round(cost, 8),
+                        "openrouter_prompt_tokens": prompt_tokens,
+                        "openrouter_completion_tokens": completion_tokens,
+                        "openrouter_total_tokens": total_tokens,
+                    })
+            except Exception as e:
+                # Don't fail if LangSmith integration doesn't work
+                logging.debug("Could not add cost to LangSmith run: %s", e)
 
     def reset(self):
         """Reset all counters."""
