@@ -80,10 +80,15 @@ class CostTrackingCallback(BaseCallbackHandler):
         total_tokens = 0
 
         # OpenRouter returns cost in llm_output['token_usage']
+        # For BYOK (Bring Your Own Key), cost=0 but actual cost is in cost_details
         if response.llm_output:
             token_usage = response.llm_output.get("token_usage", {})
             if token_usage:
                 cost = token_usage.get("cost", 0) or 0
+                # BYOK mode: cost is in cost_details.upstream_inference_cost
+                if cost == 0:
+                    cost_details = token_usage.get("cost_details", {})
+                    cost = cost_details.get("upstream_inference_cost", 0) or 0
                 total_tokens = token_usage.get("total_tokens", 0) or 0
                 prompt_tokens = token_usage.get("prompt_tokens", 0) or 0
                 completion_tokens = token_usage.get("completion_tokens", 0) or 0
