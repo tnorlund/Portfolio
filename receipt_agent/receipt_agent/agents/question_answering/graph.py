@@ -51,7 +51,8 @@ PLAN_SYSTEM_PROMPT = """You are a question classifier for a receipt analysis sys
 Analyze the user's question and classify it to determine the best retrieval strategy.
 
 ## Question Types
-- specific_item: Questions about a specific product/item (e.g., "How much did I spend on coffee?")
+- specific_product: Questions about a specific named product (e.g., "How much was the Kirkland Olive Oil?")
+- category_query: Questions about a product category or concept (e.g., "How much on coffee?", "dairy spending")
 - aggregation: Questions requiring summing across receipts (e.g., "Total spending this month?")
 - time_based: Questions filtered by date/time (e.g., "Receipts from last week")
 - comparison: Questions comparing categories (e.g., "Did I spend more on groceries or dining?")
@@ -59,23 +60,101 @@ Analyze the user's question and classify it to determine the best retrieval stra
 - metadata_query: Questions about merchants/places (e.g., "Which stores have I visited?")
 
 ## Retrieval Strategies
-- simple_lookup: Single search, expect few results (specific_item, metadata_query)
-- multi_source: Multiple searches with different terms (comparison, list_query)
-- exhaustive_scan: Need to check many receipts (aggregation)
-- semantic_hybrid: Combine text and semantic search (when terms are unclear)
+
+- text_only: Use when searching for a specific, unique product name
+  - Example: "Kirkland Signature Olive Oil" - exact text match needed
+
+- semantic_first: Use when the query is a broad category or concept
+  - Example: "coffee" - could be grocery coffee, café drinks, espresso, cold brew
+  - Example: "dairy" - could be milk, cheese, yogurt, butter, cream
+  - Example: "snacks" - chips, crackers, cookies, etc.
+  - The semantic search finds conceptually related items that don't contain the literal word
+
+- hybrid_comprehensive: Use BOTH text AND semantic search for complete coverage
+  - Best for spending questions on categories: "How much did I spend on coffee?"
+  - Text search catches exact matches (COFFEE, FRENCH ROAST COFFEE)
+  - Semantic search catches related items (cappuccino, americano, latte, espresso)
+  - Deduplicate results by (image_id, receipt_id, line_text) before aggregating
+
+- aggregation_direct: Use get_receipt_summaries for merchant/category/date aggregation
+  - Example: "Total at Costco?" → merchant_filter
+  - Example: "Grocery spending?" → category_filter
+  - Example: "Last month's spending?" → date filters
+
+## Semantic Search Indicators
+Use semantic search (semantic_first or hybrid_comprehensive) when the query involves:
+- Food/drink categories: coffee, dairy, produce, meat, snacks, beverages, alcohol
+- General concepts: organic, healthy, junk food, breakfast items, cleaning supplies
+- Activity-based: dining out, groceries, gas, pharmacy
+- Ambiguous terms that could have many variants
 
 ## Query Rewrites
-Suggest alternative search terms if the initial query might not find results.
-Example: "coffee" → ["COFFEE", "COLD BREW", "ESPRESSO", "LATTE"]
+For hybrid_comprehensive, suggest BOTH:
+1. Text search terms: exact product words likely on receipts
+2. Semantic queries: natural language descriptions
+
+Example for "coffee":
+- text_terms: ["COFFEE", "ESPRESSO", "COLD BREW", "ROAST"]
+- semantic_queries: ["coffee drinks", "café beverages", "espresso drinks"]
+
+Example for "dairy":
+- text_terms: ["MILK", "CHEESE", "YOGURT", "BUTTER", "CREAM"]
+- semantic_queries: ["dairy products", "milk and cheese"]
 
 ## Tools to Use
-Recommend which tools based on question type:
-- specific_item: search_receipts, get_receipt, aggregate_amounts
-- aggregation: search_receipts (label), aggregate_amounts
-- time_based: search_receipts, get_receipt (check dates manually)
-- comparison: search_receipts (multiple), aggregate_amounts
+- specific_product: search_product_lines (text), get_receipt
+- category_query: search_product_lines (text AND semantic), dedupe, aggregate
+- aggregation: get_receipt_summaries (fastest for totals)
+- time_based: get_receipt_summaries with date filters
+- comparison: get_receipt_summaries (multiple calls), compare
 - list_query: search_receipts (multiple), get_receipt
-- metadata_query: search_receipts (label for MERCHANT_NAME)
+- metadata_query: list_merchants, list_categories, get_receipts_by_merchant
+
+## Classification Output Examples
+
+### Question: "How much did I spend on coffee?"
+```json
+{
+  "question_type": "category_query",
+  "retrieval_strategy": "hybrid_comprehensive",
+  "text_search_terms": ["COFFEE", "ESPRESSO", "COLD BREW", "ROAST"],
+  "semantic_queries": ["coffee drinks", "café beverages", "espresso latte cappuccino americano"],
+  "tools_to_use": ["search_product_lines"]
+}
+```
+
+### Question: "How much did I spend on dairy?"
+```json
+{
+  "question_type": "category_query",
+  "retrieval_strategy": "hybrid_comprehensive",
+  "text_search_terms": ["MILK", "CHEESE", "YOGURT", "BUTTER", "CREAM"],
+  "semantic_queries": ["dairy products", "milk cheese yogurt butter"],
+  "tools_to_use": ["search_product_lines"]
+}
+```
+
+### Question: "Total spending at Costco?"
+```json
+{
+  "question_type": "aggregation",
+  "retrieval_strategy": "aggregation_direct",
+  "text_search_terms": [],
+  "semantic_queries": [],
+  "tools_to_use": ["get_receipt_summaries"]
+}
+```
+
+### Question: "How much was the Kirkland Olive Oil?"
+```json
+{
+  "question_type": "specific_product",
+  "retrieval_strategy": "text_only",
+  "text_search_terms": ["KIRKLAND OLIVE OIL"],
+  "semantic_queries": [],
+  "tools_to_use": ["search_product_lines", "get_receipt"]
+}
+```
 """
 
 SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing an answer about receipts based on retrieved context.
@@ -138,12 +217,13 @@ def create_plan_node(llm: Any, state_holder: dict) -> Callable:
 
         except Exception as e:
             logger.warning("Classification failed: %s, using defaults", e)
-            # Default classification on failure
+            # Default classification on failure - use hybrid for robustness
             default_classification = QuestionClassification(
-                question_type="specific_item",
-                retrieval_strategy="simple_lookup",
-                query_rewrites=[],
-                tools_to_use=["search_receipts", "get_receipt"],
+                question_type="category_query",
+                retrieval_strategy="hybrid_comprehensive",
+                text_search_terms=[],
+                semantic_queries=[],
+                tools_to_use=["search_product_lines", "get_receipt"],
             )
             state_holder["classification"] = default_classification
             return {
@@ -179,8 +259,15 @@ def create_agent_node(
                 f"- Question type: {state.classification.question_type}\n"
                 f"- Retrieval strategy: {state.classification.retrieval_strategy}\n"
                 f"- Suggested tools: {', '.join(state.classification.tools_to_use)}\n"
-                f"- Query alternatives: {', '.join(state.classification.query_rewrites)}\n"
             )
+            if state.classification.text_search_terms:
+                classification_context += (
+                    f"- Text search terms: {', '.join(state.classification.text_search_terms)}\n"
+                )
+            if state.classification.semantic_queries:
+                classification_context += (
+                    f"- Semantic queries: {', '.join(state.classification.semantic_queries)}\n"
+                )
             # Append to system message if present
             if messages and isinstance(messages[0], SystemMessage):
                 messages[0] = SystemMessage(

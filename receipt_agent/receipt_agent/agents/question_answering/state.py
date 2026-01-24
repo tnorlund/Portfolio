@@ -25,7 +25,8 @@ class QuestionClassification(BaseModel):
     """
 
     question_type: Literal[
-        "specific_item",  # "How much did I spend on coffee?"
+        "specific_product",  # "How much was the Kirkland Olive Oil?"
+        "category_query",  # "How much on coffee?" - needs hybrid search
         "aggregation",  # "What's my total spending this month?"
         "time_based",  # "Show receipts from last week"
         "comparison",  # "Did I spend more on groceries or dining?"
@@ -34,15 +35,20 @@ class QuestionClassification(BaseModel):
     ] = Field(description="Type of question for routing")
 
     retrieval_strategy: Literal[
-        "simple_lookup",  # Single search, few receipts expected
-        "multi_source",  # Multiple searches needed (e.g., different terms)
-        "exhaustive_scan",  # Need to check many/all receipts
-        "semantic_hybrid",  # Combine text and semantic search
+        "text_only",  # Exact product name search
+        "semantic_first",  # Concept/category - semantic search primary
+        "hybrid_comprehensive",  # Both text AND semantic for complete coverage
+        "aggregation_direct",  # Use get_receipt_summaries directly
     ] = Field(description="Strategy for retrieving relevant receipts")
 
-    query_rewrites: list[str] = Field(
+    text_search_terms: list[str] = Field(
         default_factory=list,
-        description="Alternative queries to try if initial search fails",
+        description="Exact terms to search with text search (e.g., COFFEE, ESPRESSO)",
+    )
+
+    semantic_queries: list[str] = Field(
+        default_factory=list,
+        description="Natural language queries for semantic search (e.g., 'coffee drinks')",
     )
 
     tools_to_use: list[str] = Field(
