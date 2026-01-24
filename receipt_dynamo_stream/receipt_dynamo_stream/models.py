@@ -28,6 +28,14 @@ class ChromaDBCollection(str, Enum):
     WORDS = "words"
 
 
+class TargetQueue(str, Enum):
+    """Target queues for stream message routing."""
+
+    LINES = "lines"
+    WORDS = "words"
+    RECEIPT_SUMMARY = "receipt_summary"
+
+
 @dataclass(frozen=True)
 class LambdaResponse:
     """Response structure for Lambda handlers."""
@@ -82,7 +90,7 @@ class StreamMessage:
     entity_data: Mapping[str, object]
     changes: Mapping[str, FieldChange]
     event_name: str
-    collections: tuple[ChromaDBCollection, ...]
+    collections: tuple[ChromaDBCollection | TargetQueue, ...]
     context: StreamRecordContext
     record_snapshot: Optional[DynamoDBItem] = None
 
@@ -94,4 +102,5 @@ __all__ = [
     "ParsedStreamRecord",
     "StreamMessage",
     "StreamRecordContext",
+    "TargetQueue",
 ]

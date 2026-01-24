@@ -1,0 +1,5 @@
+# Dependencies are provided via Lambda layers:
+# - dynamo_layer: receipt_dynamo package
+#
+# This file is for documentation purposes.
+# No additional pip dependencies required.
