@@ -61,6 +61,10 @@ class CostTrackingCallback(BaseCallbackHandler):
     """Callback handler that tracks OpenRouter API costs.
 
     OpenRouter returns cost directly in llm_output['token_usage']['cost'].
+
+    Note: LangSmith doesn't auto-calculate OpenRouter costs. We track costs
+    locally and display them in the CLI. LangSmith uses ls_provider/ls_model_name
+    metadata (set in graph.py) to attempt cost estimation for known providers.
     """
 
     def __init__(self):

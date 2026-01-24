@@ -770,7 +770,22 @@ async def answer_question(
     logger.info("Answering question: %s", question[:100])
 
     try:
-        config = {"recursion_limit": 30}
+        # Get model name for LangSmith cost tracking metadata
+        import os
+        model_name = os.environ.get("OPENROUTER_MODEL") or os.environ.get(
+            "RECEIPT_AGENT_OPENROUTER_MODEL", "google/gemini-2.5-flash"
+        )
+
+        # Parse provider from model name (e.g., "google/gemini-2.5-flash" -> "google")
+        provider = model_name.split("/")[0] if "/" in model_name else "openrouter"
+
+        config = {
+            "recursion_limit": 30,
+            "metadata": {
+                "ls_provider": provider,
+                "ls_model_name": model_name,
+            },
+        }
         if callbacks:
             config["callbacks"] = callbacks
         await graph.ainvoke(initial_state, config=config)
