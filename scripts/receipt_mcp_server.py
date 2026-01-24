@@ -268,34 +268,43 @@ Then the LLM can sum prices for relevant items only.""",
         ),
         Tool(
             name="get_receipt_summaries",
-            description="""Get computed summaries for all receipts with totals, tax, dates.
+            description="""Get pre-computed summaries for all receipts with totals, tax, dates, tips.
 
 Use this to answer aggregation questions like:
-- "What was my total spending at Costco?"
-- "How much tax did I pay last month?"
+- "What was my total spending at Costco?" (merchant_filter="Costco")
+- "How much tax did I pay last month?" (use date filters)
 - "What's my average grocery bill?"
-- "What was my largest purchase?"
+- "What was my largest purchase this month?"
+- "What's my average tip at restaurants?"
+- "How much did I spend in 2024?"
 
-Returns for each receipt:
-- merchant_name: Store name
-- date: Receipt date (if available)
-- grand_total: Total amount
-- subtotal: Before tax
-- tax: Tax amount
-- tip: Tip amount (if applicable)
-- item_count: Number of line items
+Returns aggregates AND individual receipt summaries:
+- count: Number of receipts
+- total_spending: Sum of all grand_totals
+- total_tax: Sum of all tax
+- total_tip: Sum of all tips
+- average_receipt: Average spending per receipt
+- summaries: List of individual receipts with merchant_name, date, grand_total, tax, tip, item_count
 
-You can filter/aggregate these results to answer spending questions.""",
+Filter by merchant name (partial match) and/or date range.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "merchant_filter": {
                         "type": "string",
-                        "description": "Optional: filter to specific merchant name"
+                        "description": "Filter by merchant name (partial match, case-insensitive)"
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Filter receipts on or after this date (ISO format: YYYY-MM-DD)"
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Filter receipts on or before this date (ISO format: YYYY-MM-DD)"
                     },
                     "limit": {
                         "type": "integer",
-                        "default": 100,
+                        "default": 1000,
                         "description": "Maximum receipts to return"
                     }
                 }
@@ -346,7 +355,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await get_receipt_summaries_impl(
                 dynamo_client,
                 merchant_filter=arguments.get("merchant_filter"),
-                limit=arguments.get("limit", 100),
+                start_date=arguments.get("start_date"),
+                end_date=arguments.get("end_date"),
+                limit=arguments.get("limit", 1000),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -771,85 +782,86 @@ async def search_product_lines_impl(
 async def get_receipt_summaries_impl(
     dynamo_client,
     merchant_filter: Optional[str] = None,
-    limit: int = 100,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 1000,
 ) -> dict:
-    """Get computed summaries for all receipts.
+    """Get pre-computed summaries for all receipts from DynamoDB.
 
-    This computes ReceiptSummary from ReceiptWordLabel data,
-    extracting grand_total, tax, date, etc. from the LayoutLM labels.
+    Reads ReceiptSummaryRecord from DynamoDB (pre-computed totals, tax, dates).
+    Supports filtering by merchant name and date range.
     """
-    from receipt_dynamo.entities.receipt_summary import (
-        ReceiptSummary,
-    )
+    from datetime import datetime
 
     try:
-        # Get all receipt details (includes words and labels)
-        # We'll use list_receipt_details which fetches via GSI4
-        summaries = []
-        processed = 0
+        # Parse date filters
+        start_dt = None
+        end_dt = None
+        if start_date:
+            try:
+                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            except ValueError:
+                pass
 
-        # First get all receipt places to get merchant names
-        # Then iterate through receipts and compute summaries
-        all_places = {}
-        try:
-            # Get places by querying - this gives us merchant names
-            places, _ = dynamo_client.list_receipt_places(limit=1000)
-            for place in places:
-                key = f"{place.image_id}_{place.receipt_id}"
-                all_places[key] = place
-        except Exception as e:
-            logger.warning("Could not load places: %s", e)
-
-        # Get receipt summaries (includes words and word_labels)
-        page = dynamo_client.list_receipt_details(limit=500)
-
+        # Load all summaries from DynamoDB (pre-computed)
+        all_summaries = []
+        last_key = None
         while True:
-            for key, summary in page.summaries.items():
-                if processed >= limit:
-                    break
-
-                # Get place for merchant name
-                place = all_places.get(key)
-
-                # Apply merchant filter if specified
-                if merchant_filter:
-                    merchant_name = place.merchant_name if place else None
-                    if not merchant_name or merchant_filter.lower() not in merchant_name.lower():
-                        continue
-
-                # Compute summary from words and labels
-                computed = ReceiptSummary.from_word_labels_and_words(
-                    image_id=summary.receipt.image_id,
-                    receipt_id=summary.receipt.receipt_id,
-                    merchant_name=place.merchant_name if place else None,
-                    word_labels=summary.word_labels,
-                    words=summary.words,
-                )
-
-                summaries.append(computed.to_dict())
-                processed += 1
-
-            if processed >= limit or not page.has_more:
+            records, last_key = dynamo_client.list_receipt_summaries(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+            all_summaries.extend(records)
+            if last_key is None:
                 break
 
-            page = dynamo_client.list_receipt_details(
-                limit=500,
-                last_evaluated_key=page.last_evaluated_key,
-            )
+        # Filter in memory
+        filtered = []
+        for record in all_summaries:
+            # Merchant filter
+            if merchant_filter:
+                if not record.merchant_name:
+                    continue
+                if merchant_filter.lower() not in record.merchant_name.lower():
+                    continue
+
+            # Date filter
+            if start_dt and record.date:
+                if record.date < start_dt:
+                    continue
+            if end_dt and record.date:
+                if record.date > end_dt:
+                    continue
+
+            filtered.append(record.to_dict())
+
+            if len(filtered) >= limit:
+                break
 
         # Calculate aggregates
-        total_spending = sum(s["grand_total"] or 0 for s in summaries)
-        total_tax = sum(s["tax"] or 0 for s in summaries)
-        receipts_with_totals = sum(1 for s in summaries if s["grand_total"])
+        total_spending = sum(s["grand_total"] or 0 for s in filtered)
+        total_tax = sum(s["tax"] or 0 for s in filtered)
+        total_tip = sum(s["tip"] or 0 for s in filtered)
+        receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
 
         return {
-            "count": len(summaries),
+            "count": len(filtered),
             "total_spending": round(total_spending, 2),
             "total_tax": round(total_tax, 2),
+            "total_tip": round(total_tip, 2),
             "receipts_with_totals": receipts_with_totals,
             "average_receipt": round(total_spending / receipts_with_totals, 2) if receipts_with_totals > 0 else None,
-            "merchant_filter": merchant_filter,
-            "summaries": summaries,
+            "filters": {
+                "merchant": merchant_filter,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            "summaries": filtered,
         }
 
     except Exception as e:
