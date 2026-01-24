@@ -96,17 +96,18 @@ class CostTrackingCallback(BaseCallbackHandler):
             self.prompt_tokens += prompt_tokens
             self.completion_tokens += completion_tokens
 
-        # Try to add cost to LangSmith run metadata
+        # Add cost to LangSmith run via usage_metadata (this populates the cost column)
         if cost > 0:
             try:
                 from langsmith.run_helpers import get_current_run_tree
                 run_tree = get_current_run_tree()
                 if run_tree:
-                    run_tree.add_metadata({
-                        "openrouter_cost_usd": round(cost, 8),
-                        "openrouter_prompt_tokens": prompt_tokens,
-                        "openrouter_completion_tokens": completion_tokens,
-                        "openrouter_total_tokens": total_tokens,
+                    # usage_metadata with total_cost is what LangSmith uses for cost tracking
+                    run_tree.set(usage_metadata={
+                        "input_tokens": prompt_tokens,
+                        "output_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                        "total_cost": cost,
                     })
             except Exception as e:
                 # Don't fail if LangSmith integration doesn't work
