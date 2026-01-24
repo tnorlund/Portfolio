@@ -272,11 +272,13 @@ Then the LLM can sum prices for relevant items only.""",
 
 Use this to answer aggregation questions like:
 - "What was my total spending at Costco?" (merchant_filter="Costco")
+- "How much did I spend on groceries?" (category_filter="grocery")
 - "How much tax did I pay last month?" (use date filters)
 - "What's my average grocery bill?"
 - "What was my largest purchase this month?"
-- "What's my average tip at restaurants?"
+- "What's my average tip at restaurants?" (category_filter="restaurant")
 - "How much did I spend in 2024?"
+- "How much did I spend on gas?" (category_filter="gas_station")
 
 Returns aggregates AND individual receipt summaries:
 - count: Number of receipts
@@ -284,15 +286,21 @@ Returns aggregates AND individual receipt summaries:
 - total_tax: Sum of all tax
 - total_tip: Sum of all tips
 - average_receipt: Average spending per receipt
-- summaries: List of individual receipts with merchant_name, date, grand_total, tax, tip, item_count
+- summaries: List of individual receipts with merchant_name, merchant_category, date, grand_total, tax, tip, item_count
 
-Filter by merchant name (partial match) and/or date range.""",
+Filter by merchant name, category (from Google Places), and/or date range.
+
+Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy, convenience_store, coffee_shop""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "merchant_filter": {
                         "type": "string",
                         "description": "Filter by merchant name (partial match, case-insensitive)"
+                    },
+                    "category_filter": {
+                        "type": "string",
+                        "description": "Filter by merchant category from Google Places (e.g., 'grocery', 'restaurant', 'gas_station'). Partial match supported."
                     },
                     "start_date": {
                         "type": "string",
@@ -308,6 +316,25 @@ Filter by merchant name (partial match) and/or date range.""",
                         "description": "Maximum receipts to return"
                     }
                 }
+            }
+        ),
+        Tool(
+            name="list_categories",
+            description="""List all merchant categories with receipt counts.
+
+Returns categories from Google Places data, sorted by receipt count.
+Use this to discover available categories for filtering with get_receipt_summaries.
+
+Example output:
+  {"categories": [
+    {"category": "grocery_store", "receipt_count": 241},
+    {"category": "restaurant", "receipt_count": 47},
+    {"category": "gas_station", "receipt_count": 4},
+    ...
+  ]}""",
+            inputSchema={
+                "type": "object",
+                "properties": {}
             }
         ),
     ]
@@ -355,10 +382,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await get_receipt_summaries_impl(
                 dynamo_client,
                 merchant_filter=arguments.get("merchant_filter"),
+                category_filter=arguments.get("category_filter"),
                 start_date=arguments.get("start_date"),
                 end_date=arguments.get("end_date"),
                 limit=arguments.get("limit", 1000),
             )
+        elif name == "list_categories":
+            result = await list_categories_impl(dynamo_client)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -782,6 +812,7 @@ async def search_product_lines_impl(
 async def get_receipt_summaries_impl(
     dynamo_client,
     merchant_filter: Optional[str] = None,
+    category_filter: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 1000,
@@ -789,7 +820,7 @@ async def get_receipt_summaries_impl(
     """Get pre-computed summaries for all receipts from DynamoDB.
 
     Reads ReceiptSummaryRecord from DynamoDB (pre-computed totals, tax, dates).
-    Supports filtering by merchant name and date range.
+    Supports filtering by merchant name, category (from Google Places), and date range.
     """
     from datetime import datetime
 
@@ -820,14 +851,48 @@ async def get_receipt_summaries_impl(
             if last_key is None:
                 break
 
+        # Load ReceiptPlace records to get merchant categories
+        places_by_key: dict[str, Any] = {}
+        if category_filter or True:  # Always load for category info in output
+            last_key = None
+            while True:
+                places, last_key = dynamo_client.list_receipt_places(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                for place in places:
+                    key = f"{place.image_id}_{place.receipt_id}"
+                    places_by_key[key] = place
+                if last_key is None:
+                    break
+
         # Filter in memory
         filtered = []
         for record in all_summaries:
+            # Get place info for this receipt
+            key = f"{record.image_id}_{record.receipt_id}"
+            place = places_by_key.get(key)
+            merchant_category = place.merchant_category if place else ""
+
             # Merchant filter
             if merchant_filter:
                 if not record.merchant_name:
                     continue
                 if merchant_filter.lower() not in record.merchant_name.lower():
+                    continue
+
+            # Category filter (partial match on category or types)
+            if category_filter:
+                category_match = False
+                if merchant_category and category_filter.lower() in merchant_category.lower():
+                    category_match = True
+                # Also check merchant_types list
+                if place and place.merchant_types:
+                    for t in place.merchant_types:
+                        if category_filter.lower() in t.lower():
+                            category_match = True
+                            break
+                if not category_match:
                     continue
 
             # Date filter
@@ -838,7 +903,10 @@ async def get_receipt_summaries_impl(
                 if record.date > end_dt:
                     continue
 
-            filtered.append(record.to_dict())
+            # Build output dict with category info
+            summary_dict = record.to_dict()
+            summary_dict["merchant_category"] = merchant_category
+            filtered.append(summary_dict)
 
             if len(filtered) >= limit:
                 break
@@ -858,6 +926,7 @@ async def get_receipt_summaries_impl(
             "average_receipt": round(total_spending / receipts_with_totals, 2) if receipts_with_totals > 0 else None,
             "filters": {
                 "merchant": merchant_filter,
+                "category": category_filter,
                 "start_date": start_date,
                 "end_date": end_date,
             },
@@ -866,6 +935,46 @@ async def get_receipt_summaries_impl(
 
     except Exception as e:
         logger.error("Error getting receipt summaries: %s", e, exc_info=True)
+        return {"error": str(e)}
+
+
+async def list_categories_impl(dynamo_client) -> dict:
+    """List all merchant categories with receipt counts."""
+    try:
+        # Paginate through all ReceiptPlace records
+        category_counts: dict[str, int] = defaultdict(int)
+        last_key = None
+
+        while True:
+            places, last_key = dynamo_client.list_receipt_places(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+
+            for place in places:
+                if place.merchant_category:
+                    category_counts[place.merchant_category] += 1
+
+            if last_key is None:
+                break
+
+        # Sort by count descending
+        sorted_categories = sorted(
+            category_counts.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+
+        return {
+            "total_categories": len(sorted_categories),
+            "categories": [
+                {"category": cat, "receipt_count": count}
+                for cat, count in sorted_categories
+            ],
+        }
+
+    except Exception as e:
+        logger.error("Error listing categories: %s", e, exc_info=True)
         return {"error": str(e)}
 
 
