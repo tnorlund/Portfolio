@@ -234,28 +234,39 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
         ),
         Tool(
             name="search_product_lines",
-            description="""Search for product lines containing a term and return prices.
+            description="""Search for product lines and return prices for spending analysis.
+
+Use search_type:
+- "text": Exact text match (e.g., query="MILK", "COFFEE") - fast but requires exact words
+- "semantic": Meaning-based similarity (e.g., query="snack foods", "cleaning supplies") - finds conceptually similar items
 
 Use this to answer spending questions like "how much did I spend on X?"
 
-Returns lines containing the search term with:
+Returns lines with:
 - text: The full line text (e.g., "RAW WHOLE MILK 17.99")
-- price: The price if labeled as LINE_TOTAL (from ML model)
+- price: The price if found (regex extracted)
+- similarity: Match score (semantic only)
 - merchant: Store name
 - image_id/receipt_id: For drilling into specific receipts
 
-The LLM should filter false positives (e.g., "MILK CHOCOLATE" when searching for milk).
+Examples:
+  search_product_lines("MILK", "text") -> exact matches for MILK
+  search_product_lines("dairy products", "semantic") -> milk, cheese, yogurt, etc.
+  search_product_lines("cleaning supplies", "semantic") -> soap, detergent, wipes, etc.
 
-Example:
-  search_product_lines("MILK") -> returns all lines with MILK and their prices
-
-Then the LLM can sum prices for relevant items only.""",
+The LLM should filter false positives before summing prices.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Product term to search for (e.g., MILK, COFFEE, EGGS)"
+                        "description": "Product term or natural language description"
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "enum": ["text", "semantic"],
+                        "default": "text",
+                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based"
                     },
                     "limit": {
                         "type": "integer",
@@ -279,6 +290,13 @@ Use this to answer aggregation questions like:
 - "What's my average tip at restaurants?" (category_filter="restaurant")
 - "How much did I spend in 2024?"
 - "How much did I spend on gas?" (category_filter="gas_station")
+
+DATE FILTERING EXAMPLES (use ISO format YYYY-MM-DD):
+- Last month: start_date="2025-12-01", end_date="2025-12-31"
+- Last quarter (Q4 2025): start_date="2025-10-01", end_date="2025-12-31"
+- Past 7 days: start_date="2025-01-16" (calculate from today)
+- Year 2024: start_date="2024-01-01", end_date="2024-12-31"
+- This month: start_date="2025-01-01", end_date="2025-01-31"
 
 Returns aggregates AND individual receipt summaries:
 - count: Number of receipts
@@ -375,7 +393,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         elif name == "search_product_lines":
             result = await search_product_lines_impl(
                 chroma_client,
+                embed_fn,
                 query=arguments["query"],
+                search_type=arguments.get("search_type", "text"),
                 limit=arguments.get("limit", 100),
             )
         elif name == "get_receipt_summaries":
@@ -728,27 +748,19 @@ async def get_receipts_by_merchant_impl(
 
 async def search_product_lines_impl(
     chroma_client,
+    embed_fn,
     query: str,
+    search_type: str,
     limit: int,
 ) -> dict:
-    """Search for product lines and extract prices for spending analysis."""
+    """Search for product lines and extract prices for spending analysis.
+
+    Supports both text (exact match) and semantic (embedding-based) search.
+    """
     import re
 
     try:
         lines_collection = chroma_client.get_collection("lines")
-
-        # Search for lines containing the query term
-        results = lines_collection.get(
-            where_document={"$contains": query.upper()},
-            include=["metadatas"],
-        )
-
-        if not results["ids"]:
-            return {
-                "query": query,
-                "total_matches": 0,
-                "items": [],
-            }
 
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
         def extract_price(text: str) -> Optional[float]:
@@ -757,52 +769,142 @@ async def search_product_lines_impl(
                 return float(matches[-1])  # Last match is usually the price
             return None
 
-        # Process results
-        items = []
-        seen = set()  # Dedupe by image_id + receipt_id + text
+        if search_type == "semantic":
+            # Semantic search using embeddings
+            query_embeddings = embed_fn([query])
 
-        for id_, meta in zip(results["ids"], results["metadatas"]):
-            text = meta.get("text", "")
-            image_id = meta.get("image_id")
-            receipt_id = meta.get("receipt_id")
+            if not query_embeddings or not query_embeddings[0]:
+                return {"error": "Failed to generate embedding"}
 
-            # Dedupe
-            key = (image_id, receipt_id, text)
-            if key in seen:
-                continue
-            seen.add(key)
+            results = lines_collection.query(
+                query_embeddings=query_embeddings,
+                n_results=limit * 3,  # Get more to filter duplicates
+                include=["metadatas", "distances"],
+            )
 
-            # Check if this line has a LINE_TOTAL label (from ML model)
-            has_line_total = meta.get("label_LINE_TOTAL", False)
+            if not results["ids"] or not results["ids"][0]:
+                return {
+                    "query": query,
+                    "search_type": "semantic",
+                    "total_matches": 0,
+                    "items": [],
+                }
 
-            price = extract_price(text)
+            # Process semantic results with similarity scores
+            items = []
+            seen = set()
 
-            items.append({
-                "text": text,
-                "price": price,
-                "has_price_label": has_line_total,
-                "merchant": meta.get("merchant_name", "Unknown"),
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-            })
+            for idx, (id_, meta) in enumerate(zip(results["ids"][0], results["metadatas"][0])):
+                text = meta.get("text", "")
+                image_id = meta.get("image_id")
+                receipt_id = meta.get("receipt_id")
 
-        # Sort by price descending (items with prices first)
-        items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
+                # Dedupe
+                key = (image_id, receipt_id, text)
+                if key in seen:
+                    continue
+                seen.add(key)
 
-        # Limit results
-        items = items[:limit]
+                # Calculate similarity from distance
+                distance = results["distances"][0][idx] if results["distances"] else 1.0
+                similarity = max(0.0, 1.0 - distance)
 
-        # Calculate total for items that have prices
-        total = sum(item["price"] for item in items if item["price"] is not None)
+                # Skip low similarity results
+                if similarity < 0.25:
+                    continue
 
-        return {
-            "query": query,
-            "total_matches": len(results["ids"]),
-            "unique_items": len(items),
-            "items": items,
-            "raw_total": round(total, 2),
-            "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
-        }
+                has_line_total = meta.get("label_LINE_TOTAL", False)
+                price = extract_price(text)
+
+                items.append({
+                    "text": text,
+                    "price": price,
+                    "similarity": round(similarity, 3),
+                    "has_price_label": has_line_total,
+                    "merchant": meta.get("merchant_name", "Unknown"),
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                })
+
+            # Sort by similarity descending
+            items.sort(key=lambda x: -x.get("similarity", 0))
+            items = items[:limit]
+
+            # Calculate total for items that have prices
+            total = sum(item["price"] for item in items if item["price"] is not None)
+
+            return {
+                "query": query,
+                "search_type": "semantic",
+                "total_matches": len(results["ids"][0]),
+                "unique_items": len(items),
+                "items": items,
+                "raw_total": round(total, 2),
+                "note": "Semantic search finds conceptually similar items. Review relevance before summing prices.",
+            }
+
+        else:
+            # Text search (exact match)
+            results = lines_collection.get(
+                where_document={"$contains": query.upper()},
+                include=["metadatas"],
+            )
+
+            if not results["ids"]:
+                return {
+                    "query": query,
+                    "search_type": "text",
+                    "total_matches": 0,
+                    "items": [],
+                }
+
+            # Process results
+            items = []
+            seen = set()  # Dedupe by image_id + receipt_id + text
+
+            for id_, meta in zip(results["ids"], results["metadatas"]):
+                text = meta.get("text", "")
+                image_id = meta.get("image_id")
+                receipt_id = meta.get("receipt_id")
+
+                # Dedupe
+                key = (image_id, receipt_id, text)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                # Check if this line has a LINE_TOTAL label (from ML model)
+                has_line_total = meta.get("label_LINE_TOTAL", False)
+
+                price = extract_price(text)
+
+                items.append({
+                    "text": text,
+                    "price": price,
+                    "has_price_label": has_line_total,
+                    "merchant": meta.get("merchant_name", "Unknown"),
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                })
+
+            # Sort by price descending (items with prices first)
+            items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
+
+            # Limit results
+            items = items[:limit]
+
+            # Calculate total for items that have prices
+            total = sum(item["price"] for item in items if item["price"] is not None)
+
+            return {
+                "query": query,
+                "search_type": "text",
+                "total_matches": len(results["ids"]),
+                "unique_items": len(items),
+                "items": items,
+                "raw_total": round(total, 2),
+                "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
+            }
 
     except Exception as e:
         logger.error("Error searching product lines: %s", e, exc_info=True)
