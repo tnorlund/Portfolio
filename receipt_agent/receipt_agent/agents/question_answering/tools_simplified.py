@@ -7,6 +7,11 @@ This module provides a consolidated tool set for the QA agent:
 4. signal_retrieval_complete - explicit signal to move to context shaping
 5. aggregate_amounts - helper for "how much" questions
 6. submit_answer - submit final answer (for backwards compatibility)
+7. list_merchants - list all merchants with receipt counts
+8. get_receipts_by_merchant - get receipts for a specific merchant
+9. search_product_lines - search product lines with prices
+10. get_receipt_summaries - pre-computed aggregates with filtering
+11. list_categories - list merchant categories
 
 The key insight is that showing the receipt with inline labels like:
     Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
@@ -16,9 +21,11 @@ needing separate tools for each query type.
 """
 
 import logging
+import re
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
@@ -661,6 +668,461 @@ def create_simplified_qa_tools(
         logger.info("Answer submitted: %s", answer[:100])
         return {"status": "submitted", "answer": answer}
 
+    @tool
+    def list_merchants() -> dict:
+        """List all merchants with receipt counts.
+
+        Returns merchants sorted by receipt count (descending).
+        Use this to see which stores appear most frequently in receipts.
+
+        Returns:
+            Dict with total_merchants count and list of {merchant, receipt_count}
+
+        Example:
+            list_merchants() -> {"merchants": [
+                {"merchant": "Sprouts", "receipt_count": 45},
+                {"merchant": "Costco", "receipt_count": 12},
+            ]}
+        """
+        try:
+            merchant_counts: dict[str, int] = defaultdict(int)
+            last_key = None
+
+            while True:
+                places, last_key = dynamo_client.list_receipt_places(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for place in places:
+                    if place.merchant_name:
+                        merchant_counts[place.merchant_name] += 1
+
+                if last_key is None:
+                    break
+
+            sorted_merchants = sorted(
+                merchant_counts.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            return {
+                "total_merchants": len(sorted_merchants),
+                "merchants": [
+                    {"merchant": name, "receipt_count": count}
+                    for name, count in sorted_merchants
+                ],
+            }
+
+        except Exception as e:
+            logger.error("Error listing merchants: %s", e)
+            return {"error": str(e)}
+
+    @tool
+    def get_receipts_by_merchant(merchant_name: str) -> dict:
+        """Get all receipt IDs for a specific merchant.
+
+        Use this after list_merchants to drill down into a specific store.
+
+        Args:
+            merchant_name: Exact merchant name from list_merchants
+
+        Returns:
+            Dict with merchant, count, and list of [image_id, receipt_id] pairs
+
+        Example:
+            get_receipts_by_merchant("Sprouts Farmers Market")
+            -> {"merchant": "...", "count": 45, "receipts": [[img_id, receipt_id], ...]}
+        """
+        try:
+            all_places = []
+            last_key = None
+
+            while True:
+                places, last_key = dynamo_client.get_receipt_places_by_merchant(
+                    merchant_name=merchant_name,
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                all_places.extend(places)
+
+                if last_key is None:
+                    break
+
+            receipts = [
+                [place.image_id, place.receipt_id]
+                for place in all_places
+            ]
+
+            return {
+                "merchant": merchant_name,
+                "count": len(receipts),
+                "receipts": receipts,
+            }
+
+        except Exception as e:
+            logger.error("Error getting receipts by merchant: %s", e)
+            return {"error": str(e)}
+
+    @tool
+    def search_product_lines(
+        query: str,
+        search_type: str = "text",
+        limit: int = 100,
+    ) -> dict:
+        """Search for product lines and return prices for spending analysis.
+
+        Use this to answer spending questions like "how much did I spend on X?"
+
+        Args:
+            query: Product term or natural language description
+            search_type: "text" for exact match, "semantic" for meaning-based
+            limit: Maximum results to return
+
+        Returns:
+            Dict with items containing text, price, merchant, and receipt IDs
+
+        Examples:
+            search_product_lines("MILK", "text") -> exact matches for MILK
+            search_product_lines("dairy products", "semantic") -> milk, cheese, etc.
+        """
+        try:
+            lines_collection = chroma_client.get_collection("lines")
+
+            def extract_price(text: str) -> Optional[float]:
+                matches = re.findall(r'\d+\.\d{2}', text)
+                if matches:
+                    return float(matches[-1])
+                return None
+
+            if search_type == "semantic":
+                query_embeddings = _embed_fn([query])
+                if not query_embeddings or not query_embeddings[0]:
+                    return {"error": "Failed to generate embedding"}
+
+                results = lines_collection.query(
+                    query_embeddings=query_embeddings,
+                    n_results=limit * 3,
+                    include=["metadatas", "distances"],
+                )
+
+                if not results["ids"] or not results["ids"][0]:
+                    return {
+                        "query": query,
+                        "search_type": "semantic",
+                        "total_matches": 0,
+                        "items": [],
+                    }
+
+                items = []
+                seen = set()
+
+                for idx, (id_, meta) in enumerate(
+                    zip(results["ids"][0], results["metadatas"][0])
+                ):
+                    text = meta.get("text", "")
+                    image_id = meta.get("image_id")
+                    receipt_id = meta.get("receipt_id")
+
+                    key = (image_id, receipt_id, text)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    distance = (
+                        results["distances"][0][idx]
+                        if results["distances"]
+                        else 1.0
+                    )
+                    similarity = max(0.0, 1.0 - distance)
+
+                    if similarity < 0.25:
+                        continue
+
+                    items.append({
+                        "text": text,
+                        "price": extract_price(text),
+                        "similarity": round(similarity, 3),
+                        "has_price_label": meta.get("label_LINE_TOTAL", False),
+                        "merchant": meta.get("merchant_name", "Unknown"),
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                    })
+
+                items.sort(key=lambda x: -x.get("similarity", 0))
+                items = items[:limit]
+
+                total = sum(
+                    item["price"] for item in items if item["price"] is not None
+                )
+
+                return {
+                    "query": query,
+                    "search_type": "semantic",
+                    "total_matches": len(results["ids"][0]),
+                    "unique_items": len(items),
+                    "items": items,
+                    "raw_total": round(total, 2),
+                    "note": "Review items for relevance before summing prices.",
+                }
+
+            else:
+                # Text search
+                results = lines_collection.get(
+                    where_document={"$contains": query.upper()},
+                    include=["metadatas"],
+                )
+
+                if not results["ids"]:
+                    return {
+                        "query": query,
+                        "search_type": "text",
+                        "total_matches": 0,
+                        "items": [],
+                    }
+
+                items = []
+                seen = set()
+
+                for id_, meta in zip(results["ids"], results["metadatas"]):
+                    text = meta.get("text", "")
+                    image_id = meta.get("image_id")
+                    receipt_id = meta.get("receipt_id")
+
+                    key = (image_id, receipt_id, text)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    items.append({
+                        "text": text,
+                        "price": extract_price(text),
+                        "has_price_label": meta.get("label_LINE_TOTAL", False),
+                        "merchant": meta.get("merchant_name", "Unknown"),
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                    })
+
+                items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
+                items = items[:limit]
+
+                total = sum(
+                    item["price"] for item in items if item["price"] is not None
+                )
+
+                return {
+                    "query": query,
+                    "search_type": "text",
+                    "total_matches": len(results["ids"]),
+                    "unique_items": len(items),
+                    "items": items,
+                    "raw_total": round(total, 2),
+                    "note": "Exclude false positives before reporting total.",
+                }
+
+        except Exception as e:
+            logger.error("Error searching product lines: %s", e)
+            return {"error": str(e)}
+
+    @tool
+    def get_receipt_summaries(
+        merchant_filter: Optional[str] = None,
+        category_filter: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 1000,
+    ) -> dict:
+        """Get pre-computed summaries for receipts with totals, tax, dates.
+
+        Use this for aggregation questions like:
+        - "What was my total spending at Costco?" (merchant_filter="Costco")
+        - "How much did I spend on groceries?" (category_filter="grocery")
+        - "How much tax did I pay last month?" (use date filters)
+        - "What's my average grocery bill?"
+
+        Args:
+            merchant_filter: Filter by merchant name (partial match)
+            category_filter: Filter by category (grocery, restaurant, gas_station)
+            start_date: Filter receipts on/after this date (YYYY-MM-DD)
+            end_date: Filter receipts on/before this date (YYYY-MM-DD)
+            limit: Maximum receipts to return
+
+        Returns:
+            Dict with aggregates (total_spending, total_tax, average_receipt)
+            and individual receipt summaries
+        """
+        try:
+            # Parse date filters
+            start_dt = None
+            end_dt = None
+            if start_date:
+                try:
+                    start_dt = datetime.fromisoformat(
+                        start_date.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    pass
+            if end_date:
+                try:
+                    end_dt = datetime.fromisoformat(
+                        end_date.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    pass
+
+            # Load all summaries from DynamoDB
+            all_summaries = []
+            last_key = None
+            while True:
+                records, last_key = dynamo_client.list_receipt_summaries(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                all_summaries.extend(records)
+                if last_key is None:
+                    break
+
+            # Load ReceiptPlace for category info
+            places_by_key: dict[str, Any] = {}
+            last_key = None
+            while True:
+                places, last_key = dynamo_client.list_receipt_places(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                for place in places:
+                    key = f"{place.image_id}_{place.receipt_id}"
+                    places_by_key[key] = place
+                if last_key is None:
+                    break
+
+            # Filter in memory
+            filtered = []
+            for record in all_summaries:
+                key = f"{record.image_id}_{record.receipt_id}"
+                place = places_by_key.get(key)
+                merchant_category = place.merchant_category if place else ""
+
+                # Merchant filter
+                if merchant_filter:
+                    if not record.merchant_name:
+                        continue
+                    if merchant_filter.lower() not in record.merchant_name.lower():
+                        continue
+
+                # Category filter
+                if category_filter:
+                    category_match = False
+                    if (
+                        merchant_category
+                        and category_filter.lower() in merchant_category.lower()
+                    ):
+                        category_match = True
+                    if place and place.merchant_types:
+                        for t in place.merchant_types:
+                            if category_filter.lower() in t.lower():
+                                category_match = True
+                                break
+                    if not category_match:
+                        continue
+
+                # Date filter
+                if start_dt and record.date:
+                    if record.date < start_dt:
+                        continue
+                if end_dt and record.date:
+                    if record.date > end_dt:
+                        continue
+
+                summary_dict = record.to_dict()
+                summary_dict["merchant_category"] = merchant_category
+                filtered.append(summary_dict)
+
+                if len(filtered) >= limit:
+                    break
+
+            # Calculate aggregates
+            total_spending = sum(s["grand_total"] or 0 for s in filtered)
+            total_tax = sum(s["tax"] or 0 for s in filtered)
+            total_tip = sum(s["tip"] or 0 for s in filtered)
+            receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
+
+            return {
+                "count": len(filtered),
+                "total_spending": round(total_spending, 2),
+                "total_tax": round(total_tax, 2),
+                "total_tip": round(total_tip, 2),
+                "receipts_with_totals": receipts_with_totals,
+                "average_receipt": (
+                    round(total_spending / receipts_with_totals, 2)
+                    if receipts_with_totals > 0
+                    else None
+                ),
+                "filters": {
+                    "merchant": merchant_filter,
+                    "category": category_filter,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                },
+                "summaries": filtered,
+            }
+
+        except Exception as e:
+            logger.error("Error getting receipt summaries: %s", e)
+            return {"error": str(e)}
+
+    @tool
+    def list_categories() -> dict:
+        """List all merchant categories with receipt counts.
+
+        Returns categories from Google Places data, sorted by receipt count.
+        Use this to discover available categories for filtering.
+
+        Returns:
+            Dict with categories like grocery_store, restaurant, gas_station
+
+        Example:
+            list_categories() -> {"categories": [
+                {"category": "grocery_store", "receipt_count": 241},
+                {"category": "restaurant", "receipt_count": 47},
+            ]}
+        """
+        try:
+            category_counts: dict[str, int] = defaultdict(int)
+            last_key = None
+
+            while True:
+                places, last_key = dynamo_client.list_receipt_places(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for place in places:
+                    if place.merchant_category:
+                        category_counts[place.merchant_category] += 1
+
+                if last_key is None:
+                    break
+
+            sorted_categories = sorted(
+                category_counts.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            return {
+                "total_categories": len(sorted_categories),
+                "categories": [
+                    {"category": cat, "receipt_count": count}
+                    for cat, count in sorted_categories
+                ],
+            }
+
+        except Exception as e:
+            logger.error("Error listing categories: %s", e)
+            return {"error": str(e)}
+
     return [
         search_receipts,
         semantic_search,
@@ -668,6 +1130,11 @@ def create_simplified_qa_tools(
         signal_retrieval_complete,
         aggregate_amounts,
         submit_answer,
+        list_merchants,
+        get_receipts_by_merchant,
+        search_product_lines,
+        get_receipt_summaries,
+        list_categories,
     ], state_holder
 
 
@@ -689,9 +1156,14 @@ SIMPLIFIED_SYSTEM_PROMPT = """You are a receipt analysis assistant using a ReAct
    - Use when text search fails or returns sparse results
    - Returns confidence scores (high/medium/low)
 
+3. **search_product_lines(query, search_type, limit)** - Search with prices
+   - Returns product lines with extracted prices
+   - Use for "how much did I spend on X?" questions
+   - search_type="text" or "semantic"
+
 ### Retrieval Tools
 
-3. **get_receipt(image_id, receipt_id)** - Full receipt details
+4. **get_receipt(image_id, receipt_id)** - Full receipt details
    - Returns formatted text with inline labels:
      ```
      Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
@@ -701,42 +1173,61 @@ SIMPLIFIED_SYSTEM_PROMPT = """You are a receipt analysis assistant using a ReAct
      ```
    - [LINE_TOTAL] = item price, [TAX]/[GRAND_TOTAL]/[SUBTOTAL] = summary amounts
 
-4. **signal_retrieval_complete(reason, receipts_found, confidence)** - Signal done retrieving
+5. **signal_retrieval_complete(reason, receipts_found, confidence)** - Signal done retrieving
    - Call when you have gathered sufficient context
    - Triggers context shaping phase
 
 ### Aggregation Tools
 
-5. **aggregate_amounts(label_type, filter_text)** - Sum amounts across receipts
+6. **aggregate_amounts(label_type, filter_text)** - Sum amounts across receipts
    - Aggregates LINE_TOTAL, TAX, GRAND_TOTAL across retrieved receipts
    - Use filter_text to limit (e.g., filter_text="COFFEE" for coffee items only)
 
+7. **get_receipt_summaries(merchant_filter, category_filter, start_date, end_date)** - Pre-computed aggregates
+   - Fast aggregation for total spending, tax, tips
+   - Filter by merchant name, category, or date range
+   - Categories: grocery_store, restaurant, gas_station, pharmacy, coffee_shop
+   - Date format: YYYY-MM-DD
+
+### Merchant/Category Tools
+
+8. **list_merchants()** - List all merchants with receipt counts
+   - Shows which stores appear most frequently
+
+9. **get_receipts_by_merchant(merchant_name)** - Get receipts for a merchant
+   - Returns all receipt IDs for drilling down
+
+10. **list_categories()** - List merchant categories with counts
+    - Shows available categories for filtering
+
 ### Answer Tool
 
-6. **submit_answer(answer, total_amount, receipt_count, evidence)** - Submit final answer
-   - ALWAYS call at the end
-   - Include total_amount for "how much" questions
-   - Include evidence [{image_id, receipt_id, item, amount}]
+11. **submit_answer(answer, total_amount, receipt_count, evidence)** - Submit final answer
+    - ALWAYS call at the end
+    - Include total_amount for "how much" questions
+    - Include evidence [{image_id, receipt_id, item, amount}]
 
 ## ReAct Strategy
 
 **Think → Act → Observe → Repeat**
 
 1. **Plan**: Understand the question type
-   - Specific item query: "How much for coffee?" → search + get_receipt
-   - Aggregation: "Total spending?" → search labels + aggregate_amounts
+   - Specific item query: "How much for coffee?" → search_product_lines or search + get_receipt
+   - Aggregation: "Total spending at Costco?" → get_receipt_summaries(merchant_filter="Costco")
+   - Time-based: "Spending last month?" → get_receipt_summaries with date filters
+   - Category: "Grocery spending?" → get_receipt_summaries(category_filter="grocery")
    - List query: "Show all dairy" → multiple searches + compile list
 
 2. **Search**: Find relevant receipts
-   - Start with text search for known terms
+   - For spending questions: try get_receipt_summaries first (fast aggregation)
+   - For product search: use search_product_lines
    - Fall back to semantic_search if sparse results
-   - Try query variations if initial search fails
 
-3. **Retrieve**: Get full receipt details
+3. **Retrieve**: Get full receipt details if needed
    - Use get_receipt for each relevant match
    - Look for [LINE_TOTAL] on same line as products
 
-4. **Aggregate** (if needed): Use aggregate_amounts for "how much" questions
+4. **Aggregate** (if needed): Use aggregate_amounts or get_receipt_summaries
 
 5. **Signal**: Call signal_retrieval_complete when done gathering
 
@@ -745,24 +1236,26 @@ SIMPLIFIED_SYSTEM_PROMPT = """You are a receipt analysis assistant using a ReAct
 ## Examples
 
 ### "How much did I spend on coffee?"
-1. search_receipts("COFFEE", "text")
-2. get_receipt(image_id_1, receipt_id_1) → find COFFEE[PRODUCT_NAME] 5.99[LINE_TOTAL]
-3. get_receipt(image_id_2, receipt_id_2) → find COLD BREW[PRODUCT_NAME] 4.99[LINE_TOTAL]
-4. aggregate_amounts("LINE_TOTAL", filter_text="COFFEE")
-5. signal_retrieval_complete("Found all coffee purchases", receipts_found=2)
-6. submit_answer("$10.98 on coffee", total_amount=10.98, receipt_count=2, evidence=[...])
+1. search_product_lines("COFFEE", "text")
+2. Review items, filter false positives
+3. submit_answer("$45.67 on coffee", total_amount=45.67, receipt_count=8, evidence=[...])
 
-### "Show me all receipts with dairy products"
-1. search_receipts("MILK", "text")
-2. search_receipts("CHEESE", "text")
-3. semantic_search("dairy products yogurt cream")
-4. get_receipt for each unique match
-5. signal_retrieval_complete("Found dairy receipts", receipts_found=5)
-6. submit_answer("Found 5 receipts with dairy...", receipt_count=5, evidence=[...])
+### "What was my total spending at Costco?"
+1. get_receipt_summaries(merchant_filter="Costco")
+2. submit_answer("$1,234.56 at Costco across 12 receipts", total_amount=1234.56, receipt_count=12)
+
+### "How much did I spend on groceries last month?"
+1. get_receipt_summaries(category_filter="grocery", start_date="2025-12-01", end_date="2025-12-31")
+2. submit_answer("$456.78 on groceries in December", total_amount=456.78, receipt_count=15)
+
+### "Which stores do I shop at most?"
+1. list_merchants()
+2. submit_answer("Top stores: Sprouts (45 visits), Costco (12 visits)...")
 
 ## Rules
 - ALWAYS end with submit_answer
-- Call signal_retrieval_complete before answering if you did retrieval
+- For aggregation questions, try get_receipt_summaries FIRST (it's faster)
+- For product-specific spending, use search_product_lines
+- Call signal_retrieval_complete before answering if you did detailed retrieval
 - Try semantic_search if text search returns < 3 results
-- Look for [LINE_TOTAL] on same line as product to find prices
 """
