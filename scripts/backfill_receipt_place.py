@@ -60,7 +60,7 @@ async def main(
     """
     try:
         # Import after logging is configured
-        from receipt_agent.subagents.metadata_finder.backfill_receipt_place import (
+        from receipt_agent.subagents.place_finder.backfill_receipt_place import (
             ReceiptPlaceBackfiller,
         )
         from receipt_dynamo import DynamoClient
