@@ -187,7 +187,7 @@ class FixPlaceLambda(ComponentResource):
                 "receipt_places",
                 "receipt_upload",
             ],
-            lambda_function_name=f"{name}-fix-place",
+            lambda_function_name=f"{name}-{stack}-fix-place",
             lambda_config=lambda_config,
             platform="linux/arm64",
             opts=ResourceOptions(

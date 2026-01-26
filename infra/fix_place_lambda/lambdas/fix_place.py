@@ -117,25 +117,29 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         places_client = PlacesClient(api_key=places_api_key)
 
-        # Get current ReceiptPlace
-        current_place = dynamo_client.get_receipt_place(image_id, receipt_id)
+        # Get receipt details (includes lines, words, labels, place)
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        current_place = details.place
         old_merchant = current_place.merchant_name if current_place else None
 
-        # Get receipt content for analysis
-        receipt_lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-        receipt_words = dynamo_client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
-
-        if not receipt_lines and not receipt_words:
+        if not details.lines and not details.words:
             return {
                 "success": False,
                 "error": f"No receipt content found for {image_id}/{receipt_id}",
             }
 
-        # Build receipt text for analysis
-        receipt_text = _build_receipt_text(receipt_lines, receipt_words)
+        # Build label lookup: (line_id, word_id) -> label
+        labels_by_word: dict[tuple[int, int], str] = {}
+        for label in details.labels:
+            key = (label.line_id, label.word_id)
+            # Keep the most recent/valid label
+            labels_by_word[key] = label.label
 
-        # Extract merchant hints from receipt content
-        merchant_hints = _extract_merchant_hints(receipt_words)
+        # Build receipt text for analysis
+        receipt_text = _build_receipt_text(details.lines)
+
+        # Extract merchant hints from words with their labels
+        merchant_hints = _extract_merchant_hints(details.words, labels_by_word)
 
         logger.info(
             "Extracted merchant hints: %s",
@@ -197,33 +201,26 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         flush_langsmith_traces()
 
 
-def _build_receipt_text(receipt_lines: list, receipt_words: list) -> str:
-    """Build receipt text from lines and words."""
+def _build_receipt_text(receipt_lines: list) -> str:
+    """Build receipt text from lines."""
     lines = []
 
-    # Use lines if available
     if receipt_lines:
-        for line in sorted(receipt_lines, key=lambda x: x.line_number):
-            lines.append(f"Line {line.line_number}: {line.text}")
-
-    # Add labeled words
-    if receipt_words:
-        word_lines: dict[int, list] = {}
-        for word in receipt_words:
-            line_num = word.line_number
-            if line_num not in word_lines:
-                word_lines[line_num] = []
-            label_str = f"[{word.label}]" if word.label and word.label != "O" else ""
-            word_lines[line_num].append(f"{word.text}{label_str}")
-
-        for line_num in sorted(word_lines.keys()):
-            lines.append(f"Line {line_num} (labeled): {' '.join(word_lines[line_num])}")
+        for line in sorted(receipt_lines, key=lambda x: x.line_id):
+            lines.append(f"Line {line.line_id}: {line.text}")
 
     return "\n".join(lines)
 
 
-def _extract_merchant_hints(receipt_words: list) -> dict[str, Any]:
-    """Extract merchant-related hints from labeled words."""
+def _extract_merchant_hints(
+    words: list, labels_by_word: dict[tuple[int, int], str]
+) -> dict[str, Any]:
+    """Extract merchant-related hints from words with their labels.
+
+    Args:
+        words: List of ReceiptWord entities (have text, line_id, word_id)
+        labels_by_word: Dict mapping (line_id, word_id) to label string
+    """
     hints: dict[str, Any] = {
         "merchant_names": [],
         "addresses": [],
@@ -231,8 +228,9 @@ def _extract_merchant_hints(receipt_words: list) -> dict[str, Any]:
         "websites": [],
     }
 
-    for word in receipt_words:
-        label = word.label or ""
+    for word in words:
+        key = (word.line_id, word.word_id)
+        label = labels_by_word.get(key, "")
         text = word.text or ""
 
         if label == "MERCHANT_NAME":
@@ -261,60 +259,75 @@ def _find_correct_place(
     receipt_text: str,
     reason: str,
 ) -> dict[str, Any] | None:
-    """Find the correct place using various strategies."""
+    """Find the correct place using various strategies.
 
-    # Strategy 1: Search by phone number (most reliable)
-    phone_numbers = merchant_hints.get("phone_numbers", [])
-    for phone in phone_numbers:
-        if len(phone) >= 7:
-            logger.info("Searching by phone: %s", phone)
-            place = places_client.search_by_phone(phone)
-            if place:
-                return {
-                    "place_id": place.place_id,
-                    "merchant_name": place.name,
-                    "formatted_address": place.formatted_address,
-                    "merchant_types": place.types,
-                    "confidence": 0.95,
-                    "reasoning": f"Found via phone number {phone}",
-                    "source": "phone_search",
-                }
+    Handles validation errors from the Places API gracefully by using
+    the basic text search which is more lenient with validation.
+    """
+    import re
 
-    # Strategy 2: Search by address
-    address = merchant_hints.get("address_combined")
-    if address and len(address) > 10:
-        logger.info("Searching by address: %s", address)
-        place = places_client.search_by_address(address)
-        if place:
-            return {
-                "place_id": place.place_id,
-                "merchant_name": place.name,
-                "formatted_address": place.formatted_address,
-                "merchant_types": place.types,
-                "confidence": 0.85,
-                "reasoning": f"Found via address: {address}",
-                "source": "address_search",
-            }
+    # Extract merchant name candidates from receipt text (first few lines often have merchant name)
+    merchant_candidates = []
 
-    # Strategy 3: Search by merchant name + address
-    merchant_name = merchant_hints.get("merchant_name_combined")
-    if merchant_name:
+    # Look for common merchant patterns in receipt text
+    receipt_lines = receipt_text.split("\n")
+    for i, line in enumerate(receipt_lines[:5]):  # Check first 5 lines
+        # Extract line text after "Line X: "
+        match = re.search(r"Line \d+: (.+)", line)
+        if match:
+            text = match.group(1).strip()
+            if text and len(text) > 2:
+                # Clean up common artifacts
+                text = re.sub(r"\.\s*$", "", text)  # Remove trailing period
+                merchant_candidates.append(text)
+
+    logger.info("Merchant candidates from text: %s", merchant_candidates[:3])
+
+    # Also check for explicit merchant hints from labels
+    if merchant_hints.get("merchant_name_combined"):
+        merchant_candidates.insert(0, merchant_hints["merchant_name_combined"])
+
+    address = merchant_hints.get("address_combined", "")
+
+    # Strategy 1: Text search with merchant name + address (most reliable for this use case)
+    for merchant_name in merchant_candidates[:3]:  # Try top 3 candidates
         search_query = merchant_name
-        if address:
+        if address and len(address) > 10:
             search_query = f"{merchant_name} {address}"
 
         logger.info("Searching by text: %s", search_query)
-        place = places_client.search_by_text(search_query)
-        if place:
-            return {
-                "place_id": place.place_id,
-                "merchant_name": place.name,
-                "formatted_address": place.formatted_address,
-                "merchant_types": place.types,
-                "confidence": 0.75,
-                "reasoning": f"Found via text search: {search_query}",
-                "source": "text_search",
-            }
+        try:
+            place = places_client.search_by_text(search_query)
+            if place and place.place_id:
+                return {
+                    "place_id": place.place_id,
+                    "merchant_name": place.name,
+                    "formatted_address": getattr(place, "formatted_address", None),
+                    "merchant_types": getattr(place, "types", None) or [],
+                    "confidence": 0.80,
+                    "reasoning": f"Found via text search: {search_query}",
+                    "source": "text_search",
+                }
+        except Exception as e:
+            logger.warning("Text search error (continuing): %s", str(e)[:200])
+
+    # Strategy 2: Search by address alone
+    if address and len(address) > 10:
+        logger.info("Searching by address alone: %s", address)
+        try:
+            place = places_client.search_by_text(address)
+            if place and place.place_id:
+                return {
+                    "place_id": place.place_id,
+                    "merchant_name": place.name,
+                    "formatted_address": getattr(place, "formatted_address", None),
+                    "merchant_types": getattr(place, "types", None) or [],
+                    "confidence": 0.70,
+                    "reasoning": f"Found via address search: {address}",
+                    "source": "address_search",
+                }
+        except Exception as e:
+            logger.warning("Address search error (continuing): %s", str(e)[:200])
 
     logger.warning("Could not find place using any strategy")
     return None
@@ -341,7 +354,7 @@ def _update_receipt_place(
         current_place.merchant_types = new_data.get("merchant_types") or current_place.merchant_types
         current_place.confidence = new_data.get("confidence", 0.0)
         current_place.reasoning = f"Fixed: {reason}. {new_data.get('reasoning', '')}"
-        current_place.validated_by = "LAMBDA_FIX"
+        current_place.validated_by = "TEXT_SEARCH"
         current_place.validation_status = "MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE"
         current_place.timestamp = now
 
@@ -358,7 +371,7 @@ def _update_receipt_place(
             merchant_types=new_data.get("merchant_types", []),
             confidence=new_data.get("confidence", 0.0),
             reasoning=f"Fixed: {reason}. {new_data.get('reasoning', '')}",
-            validated_by="LAMBDA_FIX",
+            validated_by="TEXT_SEARCH",
             validation_status="MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE",
             timestamp=now,
         )
