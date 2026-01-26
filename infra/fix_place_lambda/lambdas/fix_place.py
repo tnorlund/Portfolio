@@ -122,8 +122,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         old_merchant = current_place.merchant_name if current_place else None
 
         # Get receipt content for analysis
-        receipt_lines = dynamo_client.get_receipt_lines(image_id, receipt_id)
-        receipt_words = dynamo_client.get_receipt_word_labels(image_id, receipt_id)
+        receipt_lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
+        receipt_words = dynamo_client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
         if not receipt_lines and not receipt_words:
             return {
