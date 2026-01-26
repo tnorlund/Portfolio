@@ -18,6 +18,7 @@ import {
   LayoutLMInferenceVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
+  QAAgentFlow,
   QuestionMarquee,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
@@ -495,6 +496,16 @@ M1LK 2%           1    $4.4g`}</code>
         But more importantly, it lets me throw hundreds of fake questions at
         the system to see what breaks.
       </p>
+
+      <p>
+        The agent follows a 5-node workflow: classify the question, search for
+        relevant receipts, shape the context, and synthesize an answer. Tool
+        calls loop back until it has enough information.
+      </p>
+
+      <ClientOnly>
+        <QAAgentFlow animate={true} />
+      </ClientOnly>
 
       <ClientOnly>
         <QuestionMarquee rows={4} speed={25} />
