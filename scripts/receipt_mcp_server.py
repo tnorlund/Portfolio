@@ -355,6 +355,40 @@ Example output:
                 "properties": {}
             }
         ),
+        Tool(
+            name="fix_place",
+            description="""Fix an incorrect ReceiptPlace record by re-looking up the merchant in Google Places.
+
+Use this when you notice a receipt has the wrong merchant name or place information.
+The Lambda will:
+1. Read receipt content (lines, labeled words)
+2. Extract merchant hints (MERCHANT_NAME, ADDRESS, PHONE labels)
+3. Search Google Places for the correct match
+4. Update the ReceiptPlace record
+
+Example:
+  fix_place("ce0da565-...", 1, "Shows 'Hyatt Regency' but receipt is from VONS grocery")
+
+Returns the old and new merchant names, plus confidence score.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt to fix"
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID within the image"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Description of why the current data is wrong"
+                    }
+                },
+                "required": ["image_id", "receipt_id", "reason"]
+            }
+        ),
     ]
 
 
@@ -409,6 +443,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "list_categories":
             result = await list_categories_impl(dynamo_client)
+        elif name == "fix_place":
+            result = await fix_place_impl(
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                reason=arguments["reason"],
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -1077,6 +1117,57 @@ async def list_categories_impl(dynamo_client) -> dict:
 
     except Exception as e:
         logger.error("Error listing categories: %s", e, exc_info=True)
+        return {"error": str(e)}
+
+
+async def fix_place_impl(image_id: str, receipt_id: int, reason: str) -> dict:
+    """Fix an incorrect ReceiptPlace by invoking the fix-place Lambda.
+
+    The Lambda will:
+    1. Read receipt content from DynamoDB
+    2. Extract merchant hints from labeled words
+    3. Search Google Places for the correct match
+    4. Update ReceiptPlace with corrected data
+    """
+    import boto3
+    from receipt_dynamo.data._pulumi import load_env
+
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        config = load_env(env=env)
+
+        # Get the fix-place Lambda ARN from Pulumi outputs
+        lambda_arn = config.get("fix_place_lambda_arn")
+        if not lambda_arn:
+            return {"error": "fix_place_lambda_arn not found in Pulumi config"}
+
+        logger.info("Invoking fix-place Lambda for image_id=%s, receipt_id=%s", image_id, receipt_id)
+
+        # Invoke Lambda asynchronously (InvocationType='Event' for async)
+        lambda_client = boto3.client("lambda", region_name="us-east-1")
+
+        payload = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "reason": reason,
+        }
+
+        response = lambda_client.invoke(
+            FunctionName=lambda_arn,
+            InvocationType="RequestResponse",  # Wait for response
+            Payload=json.dumps(payload),
+        )
+
+        # Parse response
+        response_payload = json.loads(response["Payload"].read().decode("utf-8"))
+
+        if response.get("FunctionError"):
+            return {"error": f"Lambda error: {response_payload}"}
+
+        return response_payload
+
+    except Exception as e:
+        logger.error("Error fixing place: %s", e, exc_info=True)
         return {"error": str(e)}
 
 
