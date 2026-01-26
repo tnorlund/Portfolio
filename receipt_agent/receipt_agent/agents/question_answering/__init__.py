@@ -6,19 +6,15 @@ This agent answers questions about receipts using:
 - LangGraph for orchestration
 - OpenRouter for LLM inference
 
-Supports two workflow modes:
-- Simple (backwards compatible): 2-node agent ⟷ tools loop
-- Enhanced (ReAct RAG): 5-node graph with plan, shape, and synthesize phases
+Simple ReAct workflow:
+- agent: LLM decides to call tools or respond
+- tools: Execute tool calls
+- synthesize: Format final answer with evidence
 
 Example questions:
 - "How much did I spend on coffee this year?"
 - "Show me all receipts with dairy products"
 - "How much tax did I pay last quarter?"
-
-Evaluation tools:
-- LangSmith evaluators for retrieval, answer quality, trajectory
-- Tracing utilities for dataset building
-- Golden dataset builder script
 """
 
 # Core workflow
@@ -26,27 +22,19 @@ from receipt_agent.agents.question_answering.graph import (
     answer_question,
     answer_question_sync,
     create_qa_graph,
-    SYSTEM_PROMPT,
-    PLAN_SYSTEM_PROMPT,
-    SYNTHESIZE_SYSTEM_PROMPT,
+    SYNTHESIZE_PROMPT,
 )
 
 # State schemas
 from receipt_agent.agents.question_answering.state import (
-    EnhancedQAState,
-    QuestionAnsweringState,
-    QuestionClassification,
-    RetrievedContext,
+    AnswerWithEvidence,
+    QAState,
 )
 
 # Tools
 from receipt_agent.agents.question_answering.tools import (
-    QuestionContext,
     create_qa_tools,
-)
-from receipt_agent.agents.question_answering.tools_simplified import (
-    create_simplified_qa_tools,
-    SIMPLIFIED_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
 )
 
 # Evaluation
@@ -90,19 +78,13 @@ __all__ = [
     "answer_question",
     "answer_question_sync",
     "create_qa_graph",
-    "SYSTEM_PROMPT",
-    "PLAN_SYSTEM_PROMPT",
-    "SYNTHESIZE_SYSTEM_PROMPT",
+    "SYNTHESIZE_PROMPT",
     # State schemas
-    "EnhancedQAState",
-    "QuestionAnsweringState",
-    "QuestionClassification",
-    "RetrievedContext",
+    "AnswerWithEvidence",
+    "QAState",
     # Tools
-    "QuestionContext",
     "create_qa_tools",
-    "create_simplified_qa_tools",
-    "SIMPLIFIED_SYSTEM_PROMPT",
+    "SYSTEM_PROMPT",
     # Evaluation
     "create_qa_evaluator",
     "retrieval_evaluator",

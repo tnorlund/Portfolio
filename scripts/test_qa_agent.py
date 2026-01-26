@@ -2,11 +2,11 @@
 """
 Test script for the question-answering agent.
 
-Uses the enhanced 5-node ReAct RAG workflow by default:
-  START → plan → agent ⟷ tools → shape → synthesize → END
+Simple ReAct workflow:
+  START → agent ⟷ tools → synthesize → END
 
 Usage:
-    # Ask a specific question (uses enhanced 5-node workflow)
+    # Ask a specific question
     python scripts/test_qa_agent.py --env dev --question "How much did I spend on coffee?"
 
     # Use Gemini 2.5 Flash (cheap, good tool calling)
@@ -17,9 +17,6 @@ Usage:
 
     # Interactive mode
     python scripts/test_qa_agent.py --env dev --interactive
-
-    # Use simple 2-node graph (backwards compatible)
-    python scripts/test_qa_agent.py --env dev --simple --question "..."
 
 Environment variables:
     OPENROUTER_API_KEY: Required for LLM inference
@@ -191,11 +188,6 @@ def main():
         default="google/gemini-2.5-flash",
         help="OpenRouter model to use (default: google/gemini-2.5-flash)",
     )
-    parser.add_argument(
-        "--simple",
-        action="store_true",
-        help="Use simple 2-node graph instead of enhanced 5-node ReAct RAG workflow",
-    )
 
     args = parser.parse_args()
 
@@ -303,16 +295,11 @@ def main():
     cost_callback = CostTrackingCallback()
 
     # Create the graph
-    use_enhanced = not args.simple
-    logger.info(
-        "Creating QA graph... (mode: %s)",
-        "simple 2-node" if args.simple else "enhanced 5-node ReAct RAG",
-    )
+    logger.info("Creating QA graph (ReAct + synthesize)...")
     graph, state_holder = create_qa_graph(
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
         embed_fn=embed_fn,
-        use_enhanced=use_enhanced,
     )
 
     def ask_question(question: str) -> dict:
@@ -326,7 +313,6 @@ def main():
 
         result = answer_question_sync(
             graph, state_holder, question,
-            use_enhanced=use_enhanced,
             callbacks=[cost_callback],
         )
 
