@@ -498,13 +498,11 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <p>
-        The agent follows a 5-node workflow: classify the question, search for
-        relevant receipts, shape the context, and synthesize an answer. Tool
-        calls loop back until it has enough information.
+        Here's what happens when I ask "How much did I spend on coffee?"
       </p>
 
       <ClientOnly>
-        <QAAgentFlow animate={true} />
+        <QAAgentFlow autoPlay={true} />
       </ClientOnly>
 
       <ClientOnly>
