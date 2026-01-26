@@ -45,6 +45,7 @@ from dynamo_db import (
 from embedding_step_functions import EmbeddingInfrastructure
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
+from fix_place_lambda import create_fix_place_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1274,6 +1275,15 @@ pulumi.export(
     "metadata_harmonizer_batch_bucket_name",
     metadata_harmonizer_sf.batch_bucket_name,
 )
+
+# Fix Place Lambda (for correcting incorrect ReceiptPlace records)
+# Can be invoked with: {image_id, receipt_id, reason}
+fix_place_lambda = create_fix_place_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+)
+pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
+pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
