@@ -283,9 +283,9 @@ def _find_correct_place(
 
     logger.info("Merchant candidates from text: %s", merchant_candidates[:3])
 
-    # Also check for explicit merchant hints from labels
-    if merchant_hints.get("merchant_name_combined"):
-        merchant_candidates.insert(0, merchant_hints["merchant_name_combined"])
+    # Note: We intentionally do NOT prioritize label-based merchant hints here
+    # because labels can be incorrect (e.g., address labeled as merchant name).
+    # The receipt text (especially first line) is more reliable.
 
     address = merchant_hints.get("address_combined", "")
 
