@@ -18,7 +18,11 @@ from receipt_dynamo_stream.message_builder import (
     build_entity_change_message,
     build_messages_from_records,
 )
-from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+from receipt_dynamo_stream.models import (
+    ChromaDBCollection,
+    StreamMessage,
+    TargetQueue,
+)
 
 from .conftest import MockMetrics
 
@@ -210,14 +214,15 @@ def test_build_messages_from_records_with_remove() -> None:
     record = _create_word_label_remove_record()
     messages = build_messages_from_records([record])
 
-    # Word label changes return 1 message targeting both collections
+    # Word label changes return 1 message targeting both collections + summary queue
     assert len(messages) == 1
     assert messages[0].entity_type == "RECEIPT_WORD_LABEL"
     assert messages[0].event_name == "REMOVE"
-    # Verify both collections are targeted
+    # Verify collections and summary queue are targeted
     assert messages[0].collections == (
         ChromaDBCollection.WORDS,
         ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
 
@@ -418,6 +423,7 @@ def test_build_entity_change_message_place_modify() -> None:
     assert message.collections == (
         ChromaDBCollection.LINES,
         ChromaDBCollection.WORDS,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
 
@@ -429,10 +435,11 @@ def test_build_entity_change_message_word_label_remove() -> None:
     assert message is not None
     assert message.entity_type == "RECEIPT_WORD_LABEL"
     assert message.event_name == "REMOVE"
-    # Word labels affect both WORDS and LINES collections
+    # Word labels affect WORDS, LINES collections, and trigger summary update
     assert message.collections == (
         ChromaDBCollection.WORDS,
         ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
 
@@ -483,7 +490,11 @@ def test_extract_entity_data_receipt_place() -> None:
     assert data["entity_type"] == "RECEIPT_PLACE"
     assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert data["receipt_id"] == 1
-    assert collections == [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+    assert collections == [
+        ChromaDBCollection.LINES,
+        ChromaDBCollection.WORDS,
+        TargetQueue.RECEIPT_SUMMARY,
+    ]
 
 
 def test_extract_entity_data_receipt_word_label() -> None:
@@ -497,8 +508,12 @@ def test_extract_entity_data_receipt_word_label() -> None:
     assert data["line_id"] == 1
     assert data["word_id"] == 1
     assert data["label"] == "TOTAL"
-    # Word labels affect both WORDS and LINES collections
-    assert collections == [ChromaDBCollection.WORDS, ChromaDBCollection.LINES]
+    # Word labels affect WORDS, LINES collections, and trigger summary update
+    assert collections == [
+        ChromaDBCollection.WORDS,
+        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
+    ]
 
 
 def test_extract_entity_data_none_entity() -> None:

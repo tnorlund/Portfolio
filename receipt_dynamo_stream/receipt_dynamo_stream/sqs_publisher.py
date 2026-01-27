@@ -16,7 +16,11 @@ from typing import Any, Iterable, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+from receipt_dynamo_stream.models import (
+    ChromaDBCollection,
+    StreamMessage,
+    TargetQueue,
+)
 from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,7 @@ def publish_messages(
     sent_count = 0
     lines_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
     words_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
+    summary_messages: list[tuple[dict[str, object], TargetQueue]] = []
 
     for msg in messages:
         msg_dict = _message_to_dict(msg)
@@ -40,6 +45,8 @@ def publish_messages(
             lines_messages.append((msg_dict, ChromaDBCollection.LINES))
         if ChromaDBCollection.WORDS in msg.collections:
             words_messages.append((msg_dict, ChromaDBCollection.WORDS))
+        if TargetQueue.RECEIPT_SUMMARY in msg.collections:
+            summary_messages.append((msg_dict, TargetQueue.RECEIPT_SUMMARY))
 
     if lines_messages:
         sent_count += send_batch_to_queue(
@@ -56,6 +63,15 @@ def publish_messages(
             words_messages,
             "WORDS_QUEUE_URL",
             ChromaDBCollection.WORDS,
+            metrics,
+        )
+
+    if summary_messages:
+        sent_count += send_batch_to_queue(
+            sqs,
+            summary_messages,
+            "RECEIPT_SUMMARY_QUEUE_URL",
+            TargetQueue.RECEIPT_SUMMARY,
             metrics,
         )
 
@@ -88,7 +104,7 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
 def _build_sqs_entry(
     entry_id: str,
     message_dict: dict[str, object],
-    collection: ChromaDBCollection,
+    collection: ChromaDBCollection | TargetQueue,
 ) -> dict[str, object]:
     """Build a single SQS batch entry for Standard queues."""
     return {
@@ -119,9 +135,9 @@ def _build_sqs_entry(
 
 def send_batch_to_queue(
     sqs: Any,
-    messages: list[tuple[dict[str, object], ChromaDBCollection]],
+    messages: list[tuple[dict[str, object], ChromaDBCollection | TargetQueue]],
     queue_env_var: str,
-    collection: ChromaDBCollection,
+    collection: ChromaDBCollection | TargetQueue,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
     """Send a batch of messages to a specific queue."""

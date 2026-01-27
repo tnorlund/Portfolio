@@ -12,6 +12,7 @@ from receipt_dynamo_stream import (
     ParsedStreamRecord,
     StreamMessage,
     StreamRecordContext,
+    TargetQueue,
     detect_entity_type,
     get_chromadb_relevant_changes,
 )
@@ -95,6 +96,42 @@ def test_stream_message_supports_multiple_collections() -> None:
 
     assert {col.value for col in message.collections} == {"lines", "words"}
     assert message.changes["merchant_name"].new == "new"
+
+
+def test_stream_message_supports_mixed_collection_and_queue_targets() -> None:
+    """Test that StreamMessage can have both ChromaDBCollection and TargetQueue."""
+    message = StreamMessage(
+        entity_type="RECEIPT_WORD_LABEL",
+        entity_data={"image_id": "img", "receipt_id": 1, "label": "TOTAL"},
+        changes={"label": FieldChange(old="OTHER", new="TOTAL")},
+        event_name="MODIFY",
+        collections=(
+            ChromaDBCollection.WORDS,
+            ChromaDBCollection.LINES,
+            TargetQueue.RECEIPT_SUMMARY,
+        ),
+        context=StreamRecordContext(
+            record_id="abc",
+            aws_region="us-east-1",
+        ),
+    )
+
+    # Verify mixed types work correctly
+    assert ChromaDBCollection.WORDS in message.collections
+    assert ChromaDBCollection.LINES in message.collections
+    assert TargetQueue.RECEIPT_SUMMARY in message.collections
+    assert {target.value for target in message.collections} == {
+        "words",
+        "lines",
+        "receipt_summary",
+    }
+
+
+def test_target_queue_enum_values() -> None:
+    """Test TargetQueue enum has expected values."""
+    assert TargetQueue.LINES.value == "lines"
+    assert TargetQueue.WORDS.value == "words"
+    assert TargetQueue.RECEIPT_SUMMARY.value == "receipt_summary"
 
 
 def test_detect_entity_type_patterns() -> None:

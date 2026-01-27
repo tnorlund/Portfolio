@@ -185,6 +185,43 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Create receipt summary update dead letter queue
+        self.summary_dlq = aws.sqs.Queue(
+            f"{name}-summary-dlq",
+            message_retention_seconds=1209600,  # 14 days
+            visibility_timeout_seconds=300,  # 5 minutes
+            receive_wait_time_seconds=0,  # Short polling
+            tags={
+                "Project": "ChromaDB",
+                "Component": "Summary-DLQ",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create receipt summary update queue
+        # Uses delay_seconds=15 to batch multiple label changes for the same receipt
+        self.summary_queue = aws.sqs.Queue(
+            f"{name}-summary-queue",
+            message_retention_seconds=345600,  # 4 days
+            visibility_timeout_seconds=60,  # Lambda timeout
+            receive_wait_time_seconds=20,  # Long polling
+            delay_seconds=15,  # 15-second delay for batching multiple changes
+            redrive_policy=Output.all(self.summary_dlq.arn).apply(
+                lambda args: json.dumps(
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
+                )
+            ),
+            tags={
+                "Project": "ChromaDB",
+                "Component": "Summary-Queue",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
         # Create queue policies with least-privilege access
         self.lines_queue_policy = aws.sqs.QueuePolicy(
             f"{name}-lines-queue-policy",
@@ -204,13 +241,25 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        self.summary_queue_policy = aws.sqs.QueuePolicy(
+            f"{name}-summary-queue-policy",
+            queue_url=self.summary_queue.url,
+            policy=_create_queue_policy_document(
+                self.summary_queue.arn, self._producer_role_arns
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
         # Export useful properties
         self.lines_queue_url = self.lines_queue.url
         self.lines_queue_arn = self.lines_queue.arn
         self.words_queue_url = self.words_queue.url
         self.words_queue_arn = self.words_queue.arn
+        self.summary_queue_url = self.summary_queue.url
+        self.summary_queue_arn = self.summary_queue.arn
         self.lines_dlq_arn = self.lines_dlq.arn
         self.words_dlq_arn = self.words_dlq.arn
+        self.summary_dlq_arn = self.summary_dlq.arn
 
         # Register outputs
         self.register_outputs(
@@ -219,8 +268,11 @@ class ChromaDBQueues(ComponentResource):
                 "lines_queue_arn": self.lines_queue_arn,
                 "words_queue_url": self.words_queue_url,
                 "words_queue_arn": self.words_queue_arn,
+                "summary_queue_url": self.summary_queue_url,
+                "summary_queue_arn": self.summary_queue_arn,
                 "lines_dlq_arn": self.lines_dlq_arn,
                 "words_dlq_arn": self.words_dlq_arn,
+                "summary_dlq_arn": self.summary_dlq_arn,
             }
         )
 
