@@ -9,16 +9,21 @@ import logging
 import os
 from typing import Any
 
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityError,
+    OperationError,
+)
+# pylint: disable-next=wrong-import-order  # Local Lambda module, not third-party
+from summary_processor import deduplicate_messages, update_receipt_summary
+
 # Configure logging
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
-# Import processor functions (available via Lambda layer)
-from summary_processor import deduplicate_messages, update_receipt_summary
 
-
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Process receipt summary update messages from SQS.
 
     Deduplicates messages by (image_id, receipt_id) to avoid redundant
@@ -39,15 +44,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info("Processing %d SQS messages", len(records))
 
     # Deduplicate by (image_id, receipt_id)
-    unique_receipts = deduplicate_messages(records)
+    unique_receipts, malformed_message_ids = deduplicate_messages(records)
     logger.info(
-        "Deduplicated to %d unique receipts from %d messages",
+        "Deduplicated to %d unique receipts from %d messages (%d malformed)",
         len(unique_receipts),
         len(records),
+        len(malformed_message_ids),
     )
 
     # Track failed message IDs for batch item failure reporting
-    failed_message_ids: list[str] = []
+    # Start with malformed messages that couldn't be parsed/validated
+    failed_message_ids: list[str] = list(malformed_message_ids)
     success_count = 0
 
     # Process each unique receipt
@@ -61,15 +68,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 receipt_id,
                 result,
             )
-        except Exception as e:
+        except (EntityError, OperationError) as e:
             logger.error(
-                "Failed to update summary for %s:%d: %s",
+                "Entity error updating summary for %s:%d: %s",
                 image_id[:8],
                 receipt_id,
                 e,
                 exc_info=True,
             )
-            # Mark all message IDs for this receipt as failed
+            failed_message_ids.extend(message_ids)
+        except DynamoDBError as e:
+            logger.error(
+                "DynamoDB error updating summary for %s:%d: %s",
+                image_id[:8],
+                receipt_id,
+                e,
+                exc_info=True,
+            )
             failed_message_ids.extend(message_ids)
 
     logger.info(

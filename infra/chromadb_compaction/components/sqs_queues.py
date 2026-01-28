@@ -205,7 +205,7 @@ class ChromaDBQueues(ComponentResource):
         self.summary_queue = aws.sqs.Queue(
             f"{name}-summary-queue",
             message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=60,  # Lambda timeout
+            visibility_timeout_seconds=120,  # 2x Lambda timeout for safety margin
             receive_wait_time_seconds=20,  # Long polling
             delay_seconds=15,  # 15-second delay for batching multiple changes
             redrive_policy=Output.all(self.summary_dlq.arn).apply(
@@ -294,6 +294,4 @@ def create_chromadb_queues(
     Returns:
         ChromaDBQueues component resource
     """
-    return ChromaDBQueues(
-        name, producer_role_arns=producer_role_arns, opts=opts
-    )
+    return ChromaDBQueues(name, producer_role_arns=producer_role_arns, opts=opts)

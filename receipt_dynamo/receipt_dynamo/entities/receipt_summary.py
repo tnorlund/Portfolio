@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from receipt_dynamo.entities.identifier_mixins import ReceiptIdentifierMixin
 
 if TYPE_CHECKING:
     from receipt_dynamo.entities.receipt import Receipt
@@ -25,6 +27,32 @@ if TYPE_CHECKING:
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MonetaryTotals:
+    """Grouped monetary fields from a receipt.
+
+    Attributes:
+        grand_total: Total amount (from GRAND_TOTAL label).
+        subtotal: Subtotal before tax (from SUBTOTAL label).
+        tax: Tax amount (from TAX label).
+        tip: Tip amount (from TIP label, if present).
+    """
+
+    grand_total: float | None = None
+    subtotal: float | None = None
+    tax: float | None = None
+    tip: float | None = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "grand_total": self.grand_total,
+            "subtotal": self.subtotal,
+            "tax": self.tax,
+            "tip": self.tip,
+        }
 
 
 # Regex pattern to extract monetary values from text
@@ -87,14 +115,28 @@ def parse_date(text: str) -> datetime | None:
             try:
                 if len(groups[0]) == 4:
                     # YYYY-MM-DD format
-                    year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
+                    year, month, day = (
+                        int(groups[0]),
+                        int(groups[1]),
+                        int(groups[2]),
+                    )
                 elif len(groups[2]) == 4:
                     # MM/DD/YYYY format
-                    month, day, year = int(groups[0]), int(groups[1]), int(groups[2])
+                    month, day, year = (
+                        int(groups[0]),
+                        int(groups[1]),
+                        int(groups[2]),
+                    )
                 else:
-                    # MM/DD/YY format - assume 2000s
+                    # MM/DD/YY format - use sliding window approach
+                    # 00-49 -> 2000-2049, 50-99 -> 1950-1999
                     month, day = int(groups[0]), int(groups[1])
-                    year = 2000 + int(groups[2])
+                    two_digit_year = int(groups[2])
+                    year = (
+                        2000 + two_digit_year
+                        if two_digit_year < 50
+                        else 1900 + two_digit_year
+                    )
 
                 return datetime(year, month, day)
             except ValueError:
@@ -103,8 +145,114 @@ def parse_date(text: str) -> datetime | None:
     return None
 
 
+# =============================================================================
+# Label extraction with dispatch pattern (fixes R0912: too many branches)
+# =============================================================================
+
+
 @dataclass
-class ReceiptSummary:
+class _ExtractionState:
+    """Mutable state for label extraction."""
+
+    grand_total: float | None = None
+    subtotal: float | None = None
+    tax: float | None = None
+    tip: float | None = None
+    date: datetime | None = None
+    item_count: int = 0
+
+
+def _handle_grand_total(text: str, state: _ExtractionState) -> None:
+    """Handle GRAND_TOTAL label - take the largest value."""
+    amount = extract_amount(text)
+    if amount is not None:
+        if state.grand_total is None or amount > state.grand_total:
+            state.grand_total = amount
+
+
+def _handle_subtotal(text: str, state: _ExtractionState) -> None:
+    """Handle SUBTOTAL label - take the largest value."""
+    amount = extract_amount(text)
+    if amount is not None:
+        if state.subtotal is None or amount > state.subtotal:
+            state.subtotal = amount
+
+
+def _handle_tax(text: str, state: _ExtractionState) -> None:
+    """Handle TAX label - sum all values."""
+    amount = extract_amount(text)
+    if amount is not None:
+        state.tax = (state.tax or 0) + amount
+
+
+def _handle_tip(text: str, state: _ExtractionState) -> None:
+    """Handle TIP label - take the largest value."""
+    amount = extract_amount(text)
+    if amount is not None:
+        if state.tip is None or amount > state.tip:
+            state.tip = amount
+
+
+def _handle_date(text: str, state: _ExtractionState) -> None:
+    """Handle DATE label - take the last valid date."""
+    parsed = parse_date(text)
+    if parsed is not None:
+        state.date = parsed
+
+
+def _handle_line_total(_text: str, state: _ExtractionState) -> None:
+    """Handle LINE_TOTAL label - count occurrences."""
+    state.item_count += 1
+
+
+# Dispatch table mapping label types to handler functions
+_LABEL_HANDLERS: dict[str, Any] = {
+    "GRAND_TOTAL": _handle_grand_total,
+    "SUBTOTAL": _handle_subtotal,
+    "TAX": _handle_tax,
+    "TIP": _handle_tip,
+    "DATE": _handle_date,
+    "LINE_TOTAL": _handle_line_total,
+}
+
+
+def _extract_summary_fields(
+    word_labels: list["ReceiptWordLabel"],
+    word_text_lookup: dict[tuple[int, int], str],
+) -> tuple[MonetaryTotals, datetime | None, int]:
+    """Extract summary fields from word labels using dispatch pattern.
+
+    Args:
+        word_labels: List of ReceiptWordLabel records.
+        word_text_lookup: Mapping from (line_id, word_id) to word text.
+
+    Returns:
+        Tuple of (totals, date, item_count).
+    """
+    state = _ExtractionState()
+
+    for label in word_labels:
+        handler = _LABEL_HANDLERS.get(label.label)
+        if handler:
+            text = word_text_lookup.get((label.line_id, label.word_id), "")
+            handler(text, state)
+
+    totals = MonetaryTotals(
+        grand_total=state.grand_total,
+        subtotal=state.subtotal,
+        tax=state.tax,
+        tip=state.tip,
+    )
+    return totals, state.date, state.item_count
+
+
+# =============================================================================
+# ReceiptSummary dataclass
+# =============================================================================
+
+
+@dataclass
+class ReceiptSummary(ReceiptIdentifierMixin):
     """Computed summary of a receipt with derived monetary fields.
 
     This is a read-only view computed from ReceiptWordLabel records.
@@ -115,10 +263,7 @@ class ReceiptSummary:
         receipt_id: ID of the receipt within the image.
         merchant_name: Name of the merchant (from ReceiptPlace).
         date: Date of the receipt (parsed from DATE label).
-        grand_total: Total amount (from GRAND_TOTAL label).
-        subtotal: Subtotal before tax (from SUBTOTAL label).
-        tax: Tax amount (from TAX label).
-        tip: Tip amount (from TIP label, if present).
+        totals: Grouped monetary totals (grand_total, subtotal, tax, tip).
         item_count: Number of line items (count of LINE_TOTAL labels).
     """
 
@@ -126,11 +271,33 @@ class ReceiptSummary:
     receipt_id: int
     merchant_name: str | None = None
     date: datetime | None = None
-    grand_total: float | None = None
-    subtotal: float | None = None
-    tax: float | None = None
-    tip: float | None = None
+    totals: MonetaryTotals = field(default_factory=MonetaryTotals)
     item_count: int = 0
+
+    def __post_init__(self) -> None:
+        """Validate identifiers."""
+        self._validate_receipt_identifiers()
+
+    # Convenience properties for backwards compatibility
+    @property
+    def grand_total(self) -> float | None:
+        """Get grand total from totals."""
+        return self.totals.grand_total
+
+    @property
+    def subtotal(self) -> float | None:
+        """Get subtotal from totals."""
+        return self.totals.subtotal
+
+    @property
+    def tax(self) -> float | None:
+        """Get tax from totals."""
+        return self.totals.tax
+
+    @property
+    def tip(self) -> float | None:
+        """Get tip from totals."""
+        return self.totals.tip
 
     @property
     def key(self) -> str:
@@ -157,66 +324,21 @@ class ReceiptSummary:
             A ReceiptSummary with computed fields.
         """
         # Build a lookup from (line_id, word_id) -> word text
-        word_text_lookup: dict[tuple[int, int], str] = {}
-        for word in words:
-            word_text_lookup[(word.line_id, word.word_id)] = word.text
+        word_text_lookup: dict[tuple[int, int], str] = {
+            (word.line_id, word.word_id): word.text for word in words
+        }
 
         # Extract values from labels
-        grand_total: float | None = None
-        subtotal: float | None = None
-        tax: float | None = None
-        tip: float | None = None
-        date: datetime | None = None
-        item_count = 0
-
-        for label in word_labels:
-            text = word_text_lookup.get((label.line_id, label.word_id), "")
-
-            if label.label == "GRAND_TOTAL":
-                amount = extract_amount(text)
-                if amount is not None:
-                    # Take the largest GRAND_TOTAL if multiple
-                    if grand_total is None or amount > grand_total:
-                        grand_total = amount
-
-            elif label.label == "SUBTOTAL":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if subtotal is None or amount > subtotal:
-                        subtotal = amount
-
-            elif label.label == "TAX":
-                amount = extract_amount(text)
-                if amount is not None:
-                    # Sum all TAX amounts (there may be multiple tax lines)
-                    if tax is None:
-                        tax = amount
-                    else:
-                        tax += amount
-
-            elif label.label == "TIP":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if tip is None or amount > tip:
-                        tip = amount
-
-            elif label.label == "DATE":
-                parsed = parse_date(text)
-                if parsed is not None:
-                    date = parsed
-
-            elif label.label == "LINE_TOTAL":
-                item_count += 1
+        totals, date, item_count = _extract_summary_fields(
+            word_labels, word_text_lookup
+        )
 
         return cls(
             image_id=receipt.image_id,
             receipt_id=receipt.receipt_id,
             merchant_name=place.merchant_name if place else None,
             date=date,
-            grand_total=grand_total,
-            subtotal=subtotal,
-            tax=tax,
-            tip=tip,
+            totals=totals,
             item_count=item_count,
         )
 
@@ -245,64 +367,21 @@ class ReceiptSummary:
             A ReceiptSummary with computed fields.
         """
         # Build a lookup from (line_id, word_id) -> word text
-        word_text_lookup: dict[tuple[int, int], str] = {}
-        for word in words:
-            word_text_lookup[(word.line_id, word.word_id)] = word.text
+        word_text_lookup: dict[tuple[int, int], str] = {
+            (word.line_id, word.word_id): word.text for word in words
+        }
 
         # Extract values from labels
-        grand_total: float | None = None
-        subtotal: float | None = None
-        tax: float | None = None
-        tip: float | None = None
-        date: datetime | None = None
-        item_count = 0
-
-        for label in word_labels:
-            text = word_text_lookup.get((label.line_id, label.word_id), "")
-
-            if label.label == "GRAND_TOTAL":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if grand_total is None or amount > grand_total:
-                        grand_total = amount
-
-            elif label.label == "SUBTOTAL":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if subtotal is None or amount > subtotal:
-                        subtotal = amount
-
-            elif label.label == "TAX":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if tax is None:
-                        tax = amount
-                    else:
-                        tax += amount
-
-            elif label.label == "TIP":
-                amount = extract_amount(text)
-                if amount is not None:
-                    if tip is None or amount > tip:
-                        tip = amount
-
-            elif label.label == "DATE":
-                parsed = parse_date(text)
-                if parsed is not None:
-                    date = parsed
-
-            elif label.label == "LINE_TOTAL":
-                item_count += 1
+        totals, date, item_count = _extract_summary_fields(
+            word_labels, word_text_lookup
+        )
 
         return cls(
             image_id=image_id,
             receipt_id=receipt_id,
             merchant_name=merchant_name,
             date=date,
-            grand_total=grand_total,
-            subtotal=subtotal,
-            tax=tax,
-            tip=tip,
+            totals=totals,
             item_count=item_count,
         )
 
@@ -312,17 +391,15 @@ class ReceiptSummary:
         Returns:
             Dictionary with all fields, dates as ISO strings.
         """
-        return {
+        result = {
             "image_id": self.image_id,
             "receipt_id": self.receipt_id,
             "merchant_name": self.merchant_name,
             "date": self.date.isoformat() if self.date else None,
-            "grand_total": self.grand_total,
-            "subtotal": self.subtotal,
-            "tax": self.tax,
-            "tip": self.tip,
             "item_count": self.item_count,
         }
+        result.update(self.totals.to_dict())
+        return result
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -330,9 +407,9 @@ class ReceiptSummary:
             f"ReceiptSummary("
             f"image_id='{self.image_id[:8]}...', "
             f"receipt_id={self.receipt_id}, "
-            f"merchant_name={self.merchant_name!r}, "
-            f"grand_total={self.grand_total}, "
+            f"merchant={self.merchant_name!r}, "
+            f"total={self.grand_total}, "
             f"tax={self.tax}, "
-            f"item_count={self.item_count}"
+            f"items={self.item_count}"
             f")"
         )

@@ -6,6 +6,9 @@ summaries via the TYPE GSI and filtering in memory for flexibility.
 
 The summary is computed from LayoutLM labels (GRAND_TOTAL, TAX, DATE, etc.)
 and stored once per receipt.
+
+Uses composition: contains a ReceiptSummary instance for the core data
+and adds DynamoDB-specific persistence fields and methods.
 """
 
 from __future__ import annotations
@@ -13,16 +16,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, ClassVar
 
 from receipt_dynamo.entities.receipt_summary import (
+    MonetaryTotals,
     ReceiptSummary,
 )
 from receipt_dynamo.entities.util import (
     _repr_str,
-    assert_valid_uuid,
     validate_iso_timestamp,
-    validate_positive_int,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 class ReceiptSummaryRecord:
     """Persisted summary of a receipt stored in DynamoDB.
 
-    This entity stores pre-computed fields from ReceiptWordLabel records.
+    Uses composition to wrap a ReceiptSummary with DynamoDB persistence.
     Use TYPE GSI to list all summaries, then filter in memory.
 
     Primary Key:
@@ -48,41 +50,25 @@ class ReceiptSummaryRecord:
         GSI4SK: 5_SUMMARY
 
     Attributes:
-        image_id: UUID of the image containing the receipt.
-        receipt_id: ID of the receipt within the image.
-        merchant_name: Name of the merchant (from ReceiptPlace).
-        date: Datetime of the receipt (parsed from DATE label).
-        grand_total: Total amount (from GRAND_TOTAL label).
-        subtotal: Subtotal before tax (from SUBTOTAL label).
-        tax: Tax amount (from TAX label).
-        tip: Tip amount (from TIP label, if present).
-        item_count: Number of line items (count of LINE_TOTAL labels).
+        summary: The underlying ReceiptSummary with core receipt data.
         timestamp_computed: When this summary was computed.
     """
 
-    REQUIRED_KEYS = {"PK", "SK", "TYPE", "timestamp_computed"}
+    REQUIRED_KEYS: ClassVar[set[str]] = {
+        "PK",
+        "SK",
+        "TYPE",
+        "timestamp_computed",
+    }
 
-    # Primary identifiers (required)
-    image_id: str
-    receipt_id: int
+    # Core data via composition
+    summary: ReceiptSummary
 
-    # Computed fields (optional)
-    merchant_name: str | None = None
-    date: datetime | None = None
-    grand_total: float | None = None
-    subtotal: float | None = None
-    tax: float | None = None
-    tip: float | None = None
-    item_count: int = 0
-
-    # Metadata
-    timestamp_computed: str | datetime = None
+    # Metadata for persistence
+    timestamp_computed: str | datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        assert_valid_uuid(self.image_id)
-        validate_positive_int("receipt_id", self.receipt_id)
-
         # Set timestamp if not provided
         if self.timestamp_computed is None:
             self.timestamp_computed = datetime.now(timezone.utc).isoformat()
@@ -91,14 +77,56 @@ class ReceiptSummaryRecord:
                 self.timestamp_computed, "timestamp_computed", default_now=True
             )
 
-        # Validate numeric fields
-        for field_name in ["grand_total", "subtotal", "tax", "tip"]:
-            value = getattr(self, field_name)
-            if value is not None and not isinstance(value, (int, float)):
-                raise ValueError(f"{field_name} must be a number or None")
+    # Delegate properties to the underlying summary
+    @property
+    def image_id(self) -> str:
+        """Get image_id from summary."""
+        return self.summary.image_id
 
-        if not isinstance(self.item_count, int) or self.item_count < 0:
-            raise ValueError("item_count must be a non-negative integer")
+    @property
+    def receipt_id(self) -> int:
+        """Get receipt_id from summary."""
+        return self.summary.receipt_id
+
+    @property
+    def merchant_name(self) -> str | None:
+        """Get merchant_name from summary."""
+        return self.summary.merchant_name
+
+    @property
+    def date(self) -> datetime | None:
+        """Get date from summary."""
+        return self.summary.date
+
+    @property
+    def totals(self) -> MonetaryTotals:
+        """Get totals from summary."""
+        return self.summary.totals
+
+    @property
+    def item_count(self) -> int:
+        """Get item_count from summary."""
+        return self.summary.item_count
+
+    @property
+    def grand_total(self) -> float | None:
+        """Get grand total from totals."""
+        return self.summary.grand_total
+
+    @property
+    def subtotal(self) -> float | None:
+        """Get subtotal from totals."""
+        return self.summary.subtotal
+
+    @property
+    def tax(self) -> float | None:
+        """Get tax from totals."""
+        return self.summary.tax
+
+    @property
+    def tip(self) -> float | None:
+        """Get tip from totals."""
+        return self.summary.tip
 
     @property
     def key(self) -> dict[str, Any]:
@@ -149,9 +177,9 @@ class ReceiptSummaryRecord:
         else:
             item["date"] = {"NULL": True}
 
-        # Optional numeric fields
+        # Optional numeric fields from totals
         for field_name in ["grand_total", "subtotal", "tax", "tip"]:
-            value = getattr(self, field_name)
+            value = getattr(self.totals, field_name)
             if value is not None:
                 item[field_name] = {"N": str(value)}
             else:
@@ -192,16 +220,25 @@ class ReceiptSummaryRecord:
                     pass
             return None
 
-        return cls(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            merchant_name=merchant_name,
-            date=date,
+        totals = MonetaryTotals(
             grand_total=parse_number("grand_total"),
             subtotal=parse_number("subtotal"),
             tax=parse_number("tax"),
             tip=parse_number("tip"),
+        )
+
+        # Create ReceiptSummary for composition
+        summary = ReceiptSummary(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            merchant_name=merchant_name,
+            date=date,
+            totals=totals,
             item_count=int(item.get("item_count", {}).get("N", "0")),
+        )
+
+        return cls(
+            summary=summary,
             timestamp_computed=item["timestamp_computed"]["S"],
         )
 
@@ -211,45 +248,15 @@ class ReceiptSummaryRecord:
         summary: ReceiptSummary,
     ) -> "ReceiptSummaryRecord":
         """Create a persisted record from a computed summary."""
-        return cls(
-            image_id=summary.image_id,
-            receipt_id=summary.receipt_id,
-            merchant_name=summary.merchant_name,
-            date=summary.date,
-            grand_total=summary.grand_total,
-            subtotal=summary.subtotal,
-            tax=summary.tax,
-            tip=summary.tip,
-            item_count=summary.item_count,
-        )
+        return cls(summary=summary)
 
     def to_summary(self) -> ReceiptSummary:
-        """Convert to a ReceiptSummary."""
-        return ReceiptSummary(
-            image_id=self.image_id,
-            receipt_id=self.receipt_id,
-            merchant_name=self.merchant_name,
-            date=self.date,
-            grand_total=self.grand_total,
-            subtotal=self.subtotal,
-            tax=self.tax,
-            tip=self.tip,
-            item_count=self.item_count,
-        )
+        """Return the underlying ReceiptSummary."""
+        return self.summary
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
-            "image_id": self.image_id,
-            "receipt_id": self.receipt_id,
-            "merchant_name": self.merchant_name,
-            "date": self.date.isoformat() if self.date else None,
-            "grand_total": self.grand_total,
-            "subtotal": self.subtotal,
-            "tax": self.tax,
-            "tip": self.tip,
-            "item_count": self.item_count,
-        }
+        return self.summary.to_dict()
 
     def __repr__(self) -> str:
         """Return string representation."""

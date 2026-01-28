@@ -116,6 +116,18 @@ class ReceiptBundlePage:
         """
         return key in self.bundles
 
+    def __iter__(self):
+        """Iterate over bundle keys.
+
+        Returns:
+            Iterator over the composite keys in this page.
+
+        Example:
+            >>> for key in page:
+            ...     print(key)
+        """
+        return iter(self.bundles)
+
     @property
     def has_more(self) -> bool:
         """Check if there are more pages available.

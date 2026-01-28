@@ -14,11 +14,6 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Callable, Iterable, Optional
 
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
     get_chromadb_relevant_changes,
 )
@@ -38,6 +33,12 @@ from receipt_dynamo_stream.stream_types import (
     DynamoDBStreamRecord,
     MetricsRecorder,
 )
+
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -192,9 +193,7 @@ def build_compaction_run_completion_messages(
         )
 
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        logger.exception(
-            "Failed to build compaction run completion message: %s", exc
-        )
+        logger.exception("Failed to build compaction run completion message: %s", exc)
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -216,9 +215,7 @@ def build_entity_change_message(
         old_entity = parsed_record.old_entity
         new_entity = parsed_record.new_entity
 
-        changes = get_chromadb_relevant_changes(
-            entity_type, old_entity, new_entity
-        )
+        changes = get_chromadb_relevant_changes(entity_type, old_entity, new_entity)
         if metrics:
             metrics.count(
                 "ChromaDBRelevantChanges",
@@ -230,9 +227,7 @@ def build_entity_change_message(
             return None
 
         entity = old_entity or new_entity
-        entity_data, target_collections = _extract_entity_data(
-            entity_type, entity
-        )
+        entity_data, target_collections = _extract_entity_data(entity_type, entity)
         if not entity_data or not target_collections:
             return None
 
@@ -348,16 +343,14 @@ def _extract_receipt_line(
     }, [ChromaDBCollection.LINES]
 
 
+# Type alias for entity extractor functions
+_EntityType = Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
+_ExtractorFunc = Callable[
+    [_EntityType], tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]
+]
+
 # Entity type to (expected class, extractor function) mapping
-_ENTITY_EXTRACTORS: dict[
-    str,
-    tuple[
-        type,
-        Callable[
-            ..., tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]
-        ],
-    ],
-] = {
+_ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
     "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
     "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
     "RECEIPT": (Receipt, _extract_receipt),
@@ -369,12 +362,7 @@ _ENTITY_EXTRACTORS: dict[
 def _extract_entity_data(
     entity_type: str,
     entity: (
-        Receipt
-        | ReceiptLine
-        | ReceiptPlace
-        | ReceiptWord
-        | ReceiptWordLabel
-        | None
+        Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel | None
     ),
 ) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
     """Extract entity data and determine target collections/queues."""

@@ -14,6 +14,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
+from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
@@ -21,7 +22,6 @@ from receipt_dynamo.entities.receipt_line import (
 from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
-from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,

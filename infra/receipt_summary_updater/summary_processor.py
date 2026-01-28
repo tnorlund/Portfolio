@@ -4,39 +4,22 @@ This module fetches the required data from DynamoDB and computes
 a new ReceiptSummary from ReceiptWordLabel and ReceiptWord records.
 """
 
+import json
 import logging
 import os
 from typing import Any
 
 # These imports are available via Lambda layer
-from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError  # noqa: E402
-from receipt_dynamo.entities.receipt_summary import ReceiptSummary  # noqa: E402
-from receipt_dynamo.entities.receipt_summary_record import (  # noqa: E402
-    ReceiptSummaryRecord,
-)
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_summary import ReceiptSummary
+from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
 
 logger = logging.getLogger(__name__)
 
-# Cache the DynamoDB client for connection reuse across invocations
-_dynamo_client: DynamoClient | None = None
-
-
-def get_dynamo_client() -> DynamoClient:
-    """Get or create a cached DynamoDB client.
-
-    Returns:
-        DynamoClient instance configured for the table.
-    """
-    global _dynamo_client
-
-    if _dynamo_client is None:
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
-        _dynamo_client = DynamoClient(table_name)
-
-    return _dynamo_client
+# Initialize DynamoDB client from environment variable (set by Pulumi)
+TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
+dynamo_client = DynamoClient(TABLE_NAME) if TABLE_NAME else None
 
 
 def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
@@ -52,19 +35,33 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
 
     Returns:
         Dictionary with summary details for logging.
-    """
-    client = get_dynamo_client()
 
-    # Fetch required data
-    # Note: list_receipt_word_labels_for_receipt returns (list, last_key) tuple
-    word_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
-    words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+    Raises:
+        ValueError: If DYNAMODB_TABLE_NAME environment variable is not set.
+    """
+    if dynamo_client is None:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+
+    # Fetch all word labels with pagination
+    word_labels = []
+    last_key = None
+    while True:
+        page_labels, last_key = (
+            dynamo_client.list_receipt_word_labels_for_receipt(
+                image_id, receipt_id, last_evaluated_key=last_key
+            )
+        )
+        word_labels.extend(page_labels)
+        if last_key is None:
+            break
+
+    words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
 
     # Try to get merchant name from ReceiptPlace
     merchant_name: str | None = None
     merchant_category: str | None = None
     try:
-        place = client.get_receipt_place(image_id, receipt_id)
+        place = dynamo_client.get_receipt_place(image_id, receipt_id)
         merchant_name = place.merchant_name
         merchant_category = getattr(place, "merchant_category", None)
     except EntityNotFoundError:
@@ -85,7 +82,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
 
     # Convert to record and upsert
     record = ReceiptSummaryRecord.from_summary(summary)
-    client.upsert_receipt_summary(record)
+    dynamo_client.upsert_receipt_summary(record)
 
     result = {
         "image_id": image_id,
@@ -110,7 +107,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
 
 def deduplicate_messages(
     records: list[dict[str, Any]],
-) -> dict[tuple[str, int], list[str]]:
+) -> tuple[dict[tuple[str, int], list[str]], list[str]]:
     """Deduplicate SQS messages by (image_id, receipt_id).
 
     Groups message IDs by receipt key so we can process each receipt
@@ -120,11 +117,12 @@ def deduplicate_messages(
         records: List of SQS record dictionaries from the event.
 
     Returns:
-        Dictionary mapping (image_id, receipt_id) to list of message IDs.
+        Tuple of:
+        - Dictionary mapping (image_id, receipt_id) to list of message IDs.
+        - List of message IDs that failed to parse or were malformed.
     """
-    import json
-
     grouped: dict[tuple[str, int], list[str]] = {}
+    malformed_message_ids: list[str] = []
 
     for record in records:
         message_id = record.get("messageId", "")
@@ -145,7 +143,9 @@ def deduplicate_messages(
                     message_id,
                     entity_data,
                 )
+                malformed_message_ids.append(message_id)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.error("Failed to parse message %s: %s", message_id, e)
+            malformed_message_ids.append(message_id)
 
-    return grouped
+    return grouped, malformed_message_ids

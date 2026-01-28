@@ -12,17 +12,14 @@ Usage:
 
 import argparse
 import logging
-import os
-import sys
-
-# Add paths for local packages
-script_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(script_dir)
-sys.path.insert(0, parent_dir)
-sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityError,
+    OperationError,
+)
 from receipt_dynamo.entities import ReceiptSummary, ReceiptSummaryRecord
 
 logging.basicConfig(
@@ -69,7 +66,7 @@ def backfill_summaries(
             places_by_key[key] = place
         if last_key is None:
             break
-    logger.info(f"Loaded {len(places_by_key)} places")
+    logger.info("Loaded %d places", len(places_by_key))
 
     # Process receipts in batches
     pending_records: list[ReceiptSummaryRecord] = []
@@ -78,7 +75,7 @@ def backfill_summaries(
 
     while True:
         page_num += 1
-        logger.info(f"Processing page {page_num}...")
+        logger.info("Processing page %d...", page_num)
 
         page = client.list_receipt_details(
             limit=100,
@@ -116,13 +113,17 @@ def backfill_summaries(
                         client.upsert_receipt_summaries(pending_records)
                     stats["summaries_created"] += len(pending_records)
                     logger.info(
-                        f"  Upserted {len(pending_records)} summaries "
-                        f"(total: {stats['summaries_created']})"
+                        "  Upserted %d summaries (total: %d)",
+                        len(pending_records),
+                        stats["summaries_created"],
                     )
                     pending_records = []
 
-            except Exception as e:
-                logger.error(f"Error processing {key}: {e}")
+            except (EntityError, OperationError) as e:
+                logger.error("Entity error processing %s: %s", key, e)
+                stats["errors"] += 1
+            except DynamoDBError as e:
+                logger.error("DynamoDB error processing %s: %s", key, e)
                 stats["errors"] += 1
 
         last_key = page.last_evaluated_key
@@ -134,12 +135,13 @@ def backfill_summaries(
         if not dry_run:
             client.upsert_receipt_summaries(pending_records)
         stats["summaries_created"] += len(pending_records)
-        logger.info(f"  Upserted final {len(pending_records)} summaries")
+        logger.info("  Upserted final %d summaries", len(pending_records))
 
     return stats
 
 
-def main():
+def main() -> None:
+    """Run the backfill script with CLI arguments."""
     parser = argparse.ArgumentParser(
         description="Backfill ReceiptSummaryRecord for all receipts"
     )
@@ -162,7 +164,7 @@ def main():
     )
     args = parser.parse_args()
 
-    logger.info(f"Starting backfill for {args.env} environment...")
+    logger.info("Starting backfill for %s environment...", args.env)
     if args.dry_run:
         logger.info("DRY RUN - no changes will be written")
 
@@ -180,11 +182,11 @@ def main():
     # Print summary
     logger.info("=" * 50)
     logger.info("Backfill complete!")
-    logger.info(f"  Receipts processed: {stats['receipts_processed']}")
-    logger.info(f"  Summaries created:  {stats['summaries_created']}")
-    logger.info(f"  With grand_total:   {stats['summaries_with_total']}")
-    logger.info(f"  With date:          {stats['summaries_with_date']}")
-    logger.info(f"  Errors:             {stats['errors']}")
+    logger.info("  Receipts processed: %d", stats["receipts_processed"])
+    logger.info("  Summaries created:  %d", stats["summaries_created"])
+    logger.info("  With grand_total:   %d", stats["summaries_with_total"])
+    logger.info("  With date:          %d", stats["summaries_with_date"])
+    logger.info("  Errors:             %d", stats["errors"])
 
 
 if __name__ == "__main__":
