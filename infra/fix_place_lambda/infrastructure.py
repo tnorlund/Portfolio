@@ -174,7 +174,8 @@ class FixPlaceLambda(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": config.get("langchain_project") or "fix-place",
+                "LANGCHAIN_PROJECT": config.get("langchain_project")
+                or "fix-place",
             },
         }
 
@@ -184,6 +185,9 @@ class FixPlaceLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_agent",
+                "receipt_chroma",
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
                 "receipt_places",
                 "receipt_upload",
             ],
