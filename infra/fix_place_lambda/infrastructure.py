@@ -75,7 +75,6 @@ class FixPlaceLambda(ComponentResource):
         # ============================================================
         lambda_role = Role(
             f"{name}-lambda-role",
-            name=f"{name}-lambda-role",
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
