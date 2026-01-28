@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Run all QuestionMarquee questions through the ENHANCED QA agent with LangSmith tracing.
+Run all QuestionMarquee questions through the QA agent with LangSmith tracing.
 
-This script uses the new 5-node ReAct RAG workflow:
+This script uses the 5-node ReAct RAG workflow:
 - plan: Question classification
 - agent: Tool loop with classification context
 - tools: Tool execution
@@ -156,7 +156,7 @@ async def run_question_with_enhanced_graph(
         start_time = time.time()
 
         try:
-            # Create enhanced graph (use_enhanced=True)
+            # Create 5-node ReAct RAG graph: plan -> agent <-> tools -> shape -> synthesize
             graph, state_holder = create_qa_graph(
                 dynamo_client=dynamo_client,
                 chroma_client=chroma_client,

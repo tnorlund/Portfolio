@@ -1,15 +1,20 @@
 """
 LangGraph workflow for answering questions about receipts.
 
-Simple ReAct workflow with 3 nodes:
-- agent: LLM decides to call tools or respond with answer
-- tools: Execute tool calls
-- synthesize: Format final answer with evidence (structured output)
+5-node ReAct RAG workflow:
+- plan: Classify question, determine retrieval strategy
+- agent: ReAct tool loop with retry logic
+- tools: Standard ToolNode for tool execution
+- shape: Post-retrieval context processing
+- synthesize: Dedicated answer generation
 
-Flow: START → agent ⟷ tools → synthesize → END
+Flow: START -> plan -> agent <-> tools -> shape -> synthesize -> END
 
-The agent loops calling tools until it responds without tool calls,
-then synthesize formats the answer with supporting receipt details.
+This agent uses ChromaDB for semantic search and DynamoDB for receipt data
+to answer questions like:
+- "How much did I spend on coffee this year?"
+- "Show me all receipts with dairy products"
+- "How much tax did I pay last quarter?"
 """
 
 import asyncio
@@ -23,6 +28,8 @@ from langgraph.prebuilt import ToolNode
 from receipt_agent.agents.question_answering.state import (
     AnswerWithEvidence,
     QAState,
+    QuestionClassification,
+    RetrievedContext,
 )
 from receipt_agent.agents.question_answering.tools import (
     SYSTEM_PROMPT,
@@ -34,78 +41,145 @@ from receipt_agent.utils.llm_factory import create_llm
 logger = logging.getLogger(__name__)
 
 
-# Prompt for the synthesize node
-SYNTHESIZE_PROMPT = """Based on the conversation above, create a structured answer.
+# ==============================================================================
+# System Prompts
+# ==============================================================================
 
-The agent has gathered information about receipts. Now format a clear response.
+PLAN_SYSTEM_PROMPT = """You are a question classifier for a receipt analysis system.
 
-Instructions:
-1. Extract the answer from the agent's final response
-2. Include any total amounts mentioned
-3. Count the receipts involved
-4. Build evidence from the retrieved receipts (provided below)
+Analyze the user's question and classify it to determine the best retrieval strategy.
 
-Retrieved Receipts:
-{receipts}
+## Question Types
+- specific_item: Questions about a specific product/item (e.g., "How much did I spend on coffee?")
+- aggregation: Questions requiring summing across receipts (e.g., "Total spending this month?")
+- time_based: Questions filtered by date/time (e.g., "Receipts from last week")
+- comparison: Questions comparing categories (e.g., "Did I spend more on groceries or dining?")
+- list_query: Questions asking to list/enumerate (e.g., "Show all dairy receipts")
+- metadata_query: Questions about merchants/places (e.g., "Which stores have I visited?")
 
-Format your response as:
-- answer: Natural language answer to the question
-- total_amount: Dollar amount if this was a "how much" question (null otherwise)
-- receipt_count: Number of receipts supporting the answer
-- evidence: List of supporting items [{{"image_id": "...", "receipt_id": N, "item": "...", "amount": N.NN}}, ...]
+## Retrieval Strategies
+- simple_lookup: Single search, expect few results (specific_item, metadata_query)
+- multi_source: Multiple searches with different terms (comparison, list_query)
+- exhaustive_scan: Need to check many receipts (aggregation)
+- semantic_hybrid: Combine text and semantic search (when terms are unclear)
+
+## Query Rewrites
+Suggest alternative search terms if the initial query might not find results.
+Example: "coffee" -> ["COFFEE", "COLD BREW", "ESPRESSO", "LATTE"]
+
+## Tools to Use
+Recommend which tools based on question type:
+- specific_item: search_receipts, get_receipt, aggregate_amounts
+- aggregation: search_receipts (label), aggregate_amounts
+- time_based: search_receipts, get_receipt (check dates manually)
+- comparison: search_receipts (multiple), aggregate_amounts
+- list_query: search_receipts (multiple), get_receipt
+- metadata_query: search_receipts (label for MERCHANT_NAME)
+"""
+
+SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing an answer about receipts based on retrieved context.
+
+You have been given shaped context containing relevant receipt information.
+Generate a clear, accurate answer with citations to specific receipts.
+
+## Guidelines
+1. Be precise with amounts - use exact numbers from the receipts
+2. Cite specific receipts by merchant name when possible
+3. For "how much" questions, always state the total
+4. If context is insufficient, acknowledge what's missing
+5. Structure list responses clearly
+
+## Evidence Format
+Include evidence array with:
+- image_id: Receipt identifier
+- receipt_id: Receipt number
+- item: Relevant item/description
+- amount: Dollar amount (if applicable)
 """
 
 
-def create_qa_graph(
-    dynamo_client: Any,
-    chroma_client: Any,
-    embed_fn: Callable[[list[str]], list[list[float]]],
-    settings: Optional[Settings] = None,
-) -> tuple[Any, dict]:
-    """
-    Create the question-answering workflow.
+# ==============================================================================
+# Plan Node
+# ==============================================================================
 
-    Args:
-        dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client
-        embed_fn: Function to generate embeddings
-        settings: Optional settings
 
-    Returns:
-        (compiled_graph, state_holder) - The graph and state dict
-    """
-    if settings is None:
-        settings = get_settings()
+def create_plan_node(llm: Any) -> Callable:
+    """Create the plan node for question classification."""
 
-    # Create tools
-    tools, state_holder = create_qa_tools(
-        dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
-    )
+    # Use structured output for classification
+    classification_llm = llm.with_structured_output(QuestionClassification)
 
-    # Create LLM
-    llm = create_llm(
-        model=settings.openrouter_model,
-        base_url=settings.openrouter_base_url,
-        api_key=settings.openrouter_api_key.get_secret_value(),
-        temperature=0.0,
-        timeout=120,
-    )
+    def plan_node(state: QAState) -> dict:
+        """Classify the question and determine retrieval strategy."""
+        question = state.question
 
-    # LLM with tools bound for the agent node
+        # Build prompt for classification
+        messages = [
+            SystemMessage(content=PLAN_SYSTEM_PROMPT),
+            HumanMessage(content=f"Classify this question: {question}"),
+        ]
+
+        try:
+            classification = classification_llm.invoke(messages)
+            logger.info(
+                "Question classified: type=%s, strategy=%s",
+                classification.question_type,
+                classification.retrieval_strategy,
+            )
+
+            return {
+                "classification": classification,
+                "current_phase": "retrieve",
+            }
+
+        except Exception as e:
+            logger.warning("Classification failed: %s, using defaults", e)
+            # Default classification on failure
+            return {
+                "classification": QuestionClassification(
+                    question_type="specific_item",
+                    retrieval_strategy="simple_lookup",
+                    query_rewrites=[],
+                    tools_to_use=["search_receipts", "get_receipt"],
+                ),
+                "current_phase": "retrieve",
+            }
+
+    return plan_node
+
+
+# ==============================================================================
+# Agent Node
+# ==============================================================================
+
+
+def create_agent_node(
+    llm: Any,
+    tools: list,
+    state_holder: dict,
+) -> Callable:
+    """Create the agent node with classification context."""
+
     llm_with_tools = llm.bind_tools(tools)
 
-    # LLM with structured output for synthesize node
-    synthesize_llm = llm.with_structured_output(AnswerWithEvidence)
-
-    # Initialize state holder
-    state_holder["iteration_count"] = 0
-    state_holder["max_iterations"] = 10
-
     def agent_node(state: QAState) -> dict:
-        """Call the LLM to decide next action or provide answer."""
+        """Call the LLM to decide next action with classification context."""
         messages = list(state.messages)
+
+        # Include classification in context if available
+        if state.classification:
+            classification_context = (
+                f"\n\n## Classification Context\n"
+                f"- Question type: {state.classification.question_type}\n"
+                f"- Retrieval strategy: {state.classification.retrieval_strategy}\n"
+                f"- Suggested tools: {', '.join(state.classification.tools_to_use)}\n"
+                f"- Query alternatives: {', '.join(state.classification.query_rewrites)}\n"
+            )
+            # Append to system message if present
+            if messages and isinstance(messages[0], SystemMessage):
+                messages[0] = SystemMessage(
+                    content=messages[0].content + classification_context
+                )
 
         # Add context about what's been searched (helps avoid redundant searches)
         searches = state_holder.get("searches", [])
@@ -127,6 +201,7 @@ def create_qa_graph(
         for attempt in range(max_retries):
             response = llm_with_tools.invoke(messages)
 
+            # Check if response is valid
             has_content = bool(getattr(response, "content", None))
             has_tool_calls = bool(getattr(response, "tool_calls", None))
 
@@ -139,132 +214,383 @@ def create_qa_graph(
                     attempt + 1,
                     max_retries,
                 )
+            else:
+                logger.warning(
+                    "Empty response from LLM after %d attempts",
+                    max_retries,
+                )
 
+        # Log tool calls for debugging
         if hasattr(response, "tool_calls") and response.tool_calls:
             logger.debug(
                 "Agent tool calls: %s",
                 [tc["name"] for tc in response.tool_calls],
             )
 
-        return {"messages": [response]}
+        # Track iteration
+        new_iteration = state.iteration_count + 1
+        state_holder["iteration_count"] = new_iteration
 
-    def synthesize_node(state: QAState) -> dict:
-        """Format the final answer with structured output."""
-        # Get retrieved receipts for evidence
-        retrieved = state_holder.get("retrieved_receipts", [])
+        return {
+            "messages": [response],
+            "iteration_count": new_iteration,
+        }
 
-        # Format receipts for the prompt
-        receipt_text = ""
-        if retrieved:
-            receipt_parts = []
-            for r in retrieved[:10]:  # Limit to 10 receipts
-                amounts = r.get("amounts", [])
-                amount_str = ", ".join([
-                    f"{a['label']}: ${a['amount']}"
-                    for a in amounts[:5]  # Limit amounts shown
-                ])
-                receipt_parts.append(
-                    f"- {r.get('merchant', 'Unknown')} "
-                    f"(image_id={r.get('image_id')}, receipt_id={r.get('receipt_id')}): "
-                    f"{amount_str or 'no amounts'}"
-                )
-            receipt_text = "\n".join(receipt_parts)
-        else:
-            receipt_text = "(No receipts retrieved)"
+    return agent_node
 
-        # Build synthesize prompt
-        synthesize_prompt = SYNTHESIZE_PROMPT.format(receipts=receipt_text)
 
-        # Get conversation history plus synthesize instruction
-        messages = list(state.messages) + [
-            HumanMessage(content=synthesize_prompt)
+# ==============================================================================
+# Shape Node
+# ==============================================================================
+
+
+def create_shape_node(state_holder: dict) -> Callable:
+    """Create the context shaping node."""
+
+    def shape_node(state: QAState) -> dict:
+        """Process retrieved contexts: dedupe, rerank, filter."""
+        # Get retrieved receipts from state_holder
+        retrieved_receipts = state_holder.get("retrieved_receipts", [])
+
+        logger.info(
+            "Shaping context from %d retrieved receipts",
+            len(retrieved_receipts),
+        )
+
+        # Convert to RetrievedContext objects
+        contexts: list[RetrievedContext] = []
+        seen_keys: set[tuple] = set()
+
+        for receipt in retrieved_receipts:
+            key = (receipt.get("image_id"), receipt.get("receipt_id"))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            # Extract labels from formatted receipt
+            labels_found = []
+            formatted = receipt.get("formatted_receipt", "")
+            for label in ["TAX", "SUBTOTAL", "GRAND_TOTAL", "PRODUCT_NAME", "LINE_TOTAL"]:
+                if f"[{label}]" in formatted:
+                    labels_found.append(label)
+
+            contexts.append(RetrievedContext(
+                image_id=receipt.get("image_id", ""),
+                receipt_id=receipt.get("receipt_id", 0),
+                text=formatted[:2000],  # Limit text length
+                relevance_score=1.0,  # Default score
+                labels_found=labels_found,
+                amounts=receipt.get("amounts", []),
+            ))
+
+        # Filter low-confidence contexts (< 0.3)
+        filtered_contexts = [
+            ctx for ctx in contexts
+            if ctx.relevance_score >= 0.3
         ]
 
-        try:
-            result = synthesize_llm.invoke(messages)
+        # Limit total tokens (~4000 chars as proxy)
+        total_chars = 0
+        limited_contexts = []
+        for ctx in filtered_contexts:
+            if total_chars + len(ctx.text) > 4000:
+                break
+            limited_contexts.append(ctx)
+            total_chars += len(ctx.text)
 
-            # Store in state_holder for extraction
-            state_holder["answer"] = {
-                "answer": result.answer,
-                "total_amount": result.total_amount,
-                "receipt_count": result.receipt_count,
-                "evidence": result.evidence,
-            }
+        logger.info(
+            "Shaped context: %d receipts, %d chars",
+            len(limited_contexts),
+            total_chars,
+        )
 
-            logger.info("Synthesized answer: %s", result.answer[:100])
+        # Check if we need to retry (empty after shaping)
+        if not limited_contexts and retrieved_receipts:
+            logger.warning("Context empty after shaping, may need retry")
 
-        except Exception as e:
-            logger.error("Synthesize failed: %s", e)
-            # Fallback: extract from last agent message
-            last_content = ""
-            for msg in reversed(state.messages):
-                if isinstance(msg, AIMessage) and msg.content:
-                    last_content = str(msg.content)
-                    break
+        return {
+            "shaped_context": limited_contexts,
+            "retrieved_contexts": contexts,  # Store full list too
+            "current_phase": "synthesize",
+        }
 
-            state_holder["answer"] = {
-                "answer": last_content or "Unable to generate answer.",
-                "total_amount": None,
-                "receipt_count": len(retrieved),
-                "evidence": [],
-            }
+    return shape_node
 
-        return {}
 
-    # Create tool node
-    tool_node = ToolNode(tools)
+# ==============================================================================
+# Synthesize Node
+# ==============================================================================
 
-    def should_continue(state: QAState) -> str:
-        """Route after agent: tools, synthesize, or end."""
-        state_holder["iteration_count"] = state_holder.get("iteration_count", 0) + 1
 
-        # Check iteration limit
-        if state_holder["iteration_count"] >= state_holder["max_iterations"]:
-            logger.warning(
-                "Max iterations reached (%d), going to synthesize",
-                state_holder["max_iterations"],
+def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
+    """Create the answer synthesis node."""
+
+    def synthesize_node(state: QAState) -> dict:
+        """Generate final answer from shaped context."""
+        logger.info("Synthesizing answer from %d contexts", len(state.shaped_context))
+
+        # Build context string
+        context_parts = []
+        for i, ctx in enumerate(state.shaped_context):
+            context_parts.append(
+                f"Receipt {i + 1} (image_id={ctx.image_id}, receipt_id={ctx.receipt_id}):\n"
+                f"{ctx.text}\n"
+                f"Amounts: {ctx.amounts}\n"
             )
-            return "synthesize"
 
-        # Check last message
-        if state.messages:
-            last_message = state.messages[-1]
-            if isinstance(last_message, AIMessage):
-                if last_message.tool_calls:
-                    # Has tool calls - execute them
+        context_str = "\n---\n".join(context_parts) if context_parts else "(No receipts found)"
+
+        # Check for aggregated amount
+        aggregated = state_holder.get("aggregated_amount")
+        if aggregated:
+            context_str += f"\n\nAggregated Total: ${aggregated.get('total', 0):.2f}"
+
+        # Build synthesis prompt
+        messages = [
+            SystemMessage(content=SYNTHESIZE_SYSTEM_PROMPT),
+            HumanMessage(
+                content=f"Question: {state.question}\n\n"
+                f"Retrieved Context:\n{context_str}\n\n"
+                f"Generate a clear answer with evidence."
+            ),
+        ]
+
+        response = llm.invoke(messages)
+        answer_text = response.content if hasattr(response, "content") else str(response)
+
+        # Extract amount from aggregation if available
+        total_amount = None
+        if aggregated:
+            total_amount = aggregated.get("total")
+
+        # Build evidence from shaped contexts
+        evidence = []
+        for ctx in state.shaped_context:
+            for amt in ctx.amounts:
+                evidence.append({
+                    "image_id": ctx.image_id,
+                    "receipt_id": ctx.receipt_id,
+                    "item": amt.get("text", ""),
+                    "amount": amt.get("amount"),
+                })
+
+        # Store in state_holder for extraction
+        state_holder["answer"] = {
+            "answer": answer_text,
+            "total_amount": total_amount,
+            "receipt_count": len(state.shaped_context),
+            "evidence": evidence,
+        }
+
+        # Also store classification for the caller
+        if state.classification:
+            state_holder["classification"] = {
+                "question_type": state.classification.question_type,
+                "retrieval_strategy": state.classification.retrieval_strategy,
+            }
+
+        logger.info("Synthesized answer: %s", answer_text[:100])
+
+        return {
+            "final_answer": answer_text,
+            "total_amount": total_amount,
+            "receipt_count": len(state.shaped_context),
+            "evidence": evidence,
+            "current_phase": "complete",
+        }
+
+    return synthesize_node
+
+
+# ==============================================================================
+# Routing Functions
+# ==============================================================================
+
+
+def route_after_agent(state: QAState, state_holder: dict) -> str:
+    """Route after agent node: tools, shape, or end."""
+    # Check if answer was submitted via tool
+    if state_holder.get("answer") is not None:
+        logger.debug("Answer already submitted, going to end")
+        return "end"
+
+    # Check if retrieval complete signal was given
+    if state_holder.get("retrieval_complete"):
+        logger.debug("Retrieval complete, going to shape")
+        return "shape"
+
+    # Check last message for tool calls
+    if state.messages:
+        last_message = state.messages[-1]
+        if isinstance(last_message, AIMessage):
+            if last_message.tool_calls:
+                # Has tool calls - execute them if under limit
+                if state.iteration_count < 15:
                     return "tools"
                 else:
-                    # No tool calls - agent is done, go to synthesize
-                    logger.info("Agent done (no tool calls), going to synthesize")
-                    return "synthesize"
+                    logger.warning(
+                        "Max iterations reached (%d), going to shape",
+                        state.iteration_count,
+                    )
+                    return "shape"
+            else:
+                # No tool calls - LLM responded with text
+                # Check if we have retrieved anything
+                if state_holder.get("retrieved_receipts"):
+                    return "shape"
+                else:
+                    # Extract answer from content
+                    if last_message.content:
+                        state_holder["answer"] = {
+                            "answer": str(last_message.content),
+                            "total_amount": None,
+                            "receipt_count": 0,
+                            "evidence": [],
+                        }
+                    return "end"
 
-        return "synthesize"
+    return "end"
+
+
+def route_after_tools(state: QAState, state_holder: dict) -> str:
+    """Route after tools node."""
+    # Check if answer was submitted
+    if state_holder.get("answer") is not None:
+        return "end"
+
+    # Check if retrieval complete
+    if state_holder.get("retrieval_complete"):
+        return "shape"
+
+    # Default: back to agent
+    return "agent"
+
+
+def route_after_shape(state: QAState, state_holder: dict) -> str:
+    """Route after shape node: synthesize or retry."""
+    # If context is empty but we retrieved something, might need to retry
+    if state.should_retry_retrieval:
+        logger.info("Empty context after shaping, retrying retrieval")
+        # Reset retrieval complete flag
+        state_holder["retrieval_complete"] = False
+        return "agent"
+
+    return "synthesize"
+
+
+# ==============================================================================
+# Graph Builder
+# ==============================================================================
+
+
+def create_qa_graph(
+    dynamo_client: Any,
+    chroma_client: Any,
+    embed_fn: Callable[[list[str]], list[list[float]]],
+    settings: Optional[Settings] = None,
+) -> tuple[Any, dict]:
+    """
+    Create the 5-node question-answering workflow.
+
+    Flow: START -> plan -> agent <-> tools -> shape -> synthesize -> END
+
+    Args:
+        dynamo_client: DynamoDB client
+        chroma_client: ChromaDB client
+        embed_fn: Function to generate embeddings
+        settings: Optional settings
+
+    Returns:
+        (compiled_graph, state_holder) - The graph and state dict
+    """
+    if settings is None:
+        settings = get_settings()
+
+    # Create tools with injected dependencies
+    tools, state_holder = create_qa_tools(
+        dynamo_client=dynamo_client,
+        chroma_client=chroma_client,
+        embed_fn=embed_fn,
+    )
+
+    # Create LLM (uses OpenRouter)
+    llm = create_llm(
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        temperature=0.0,
+        timeout=120,
+    )
+
+    # Initialize state holder
+    state_holder["iteration_count"] = 0
+    state_holder["max_iterations"] = 15
+
+    # Create nodes
+    plan_node = create_plan_node(llm)
+    agent_node = create_agent_node(llm, tools, state_holder)
+    tool_node = ToolNode(tools)
+    shape_node = create_shape_node(state_holder)
+    synthesize_node = create_synthesize_node(llm, state_holder)
 
     # Build graph
     workflow = StateGraph(QAState)
 
     # Add nodes
+    workflow.add_node("plan", plan_node)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tool_node)
+    workflow.add_node("shape", shape_node)
     workflow.add_node("synthesize", synthesize_node)
 
     # Set entry point
-    workflow.set_entry_point("agent")
+    workflow.set_entry_point("plan")
 
     # Add edges
+    workflow.add_edge("plan", "agent")
+
+    # Agent routing
     workflow.add_conditional_edges(
         "agent",
-        should_continue,
+        lambda state: route_after_agent(state, state_holder),
         {
             "tools": "tools",
+            "shape": "shape",
+            "end": END,
+        },
+    )
+
+    # Tools routing
+    workflow.add_conditional_edges(
+        "tools",
+        lambda state: route_after_tools(state, state_holder),
+        {
+            "agent": "agent",
+            "shape": "shape",
+            "end": END,
+        },
+    )
+
+    # Shape routing
+    workflow.add_conditional_edges(
+        "shape",
+        lambda state: route_after_shape(state, state_holder),
+        {
+            "agent": "agent",
             "synthesize": "synthesize",
         },
     )
-    workflow.add_edge("tools", "agent")
+
+    # Synthesize always ends
     workflow.add_edge("synthesize", END)
 
     compiled = workflow.compile()
     return compiled, state_holder
+
+
+# ==============================================================================
+# Question Runner
+# ==============================================================================
 
 
 async def answer_question(
@@ -287,9 +613,11 @@ async def answer_question(
     """
     # Reset state
     state_holder["answer"] = None
+    state_holder["classification"] = None
     state_holder["iteration_count"] = 0
-    state_holder["searches"] = []
+    state_holder["retrieval_complete"] = False
     state_holder["retrieved_receipts"] = []
+    state_holder["searches"] = []
     state_holder["fetched_receipt_keys"] = set()
 
     # Create initial state
@@ -311,7 +639,7 @@ async def answer_question(
         provider = model_name.split("/")[0] if "/" in model_name else "openrouter"
 
         config = {
-            "recursion_limit": 25,
+            "recursion_limit": 30,
             "metadata": {
                 "ls_provider": provider,
                 "ls_model_name": model_name,
@@ -328,7 +656,7 @@ async def answer_question(
             logger.info("Answer: %s", answer["answer"][:100])
             return answer
         else:
-            logger.warning("Agent ended without answer")
+            logger.warning("Agent ended without submitting answer")
             return {
                 "answer": "I couldn't find enough information to answer that question.",
                 "total_amount": None,
@@ -361,3 +689,7 @@ def answer_question_sync(
             callbacks=callbacks,
         )
     )
+
+
+# Backwards compatibility alias
+SYNTHESIZE_PROMPT = SYNTHESIZE_SYSTEM_PROMPT

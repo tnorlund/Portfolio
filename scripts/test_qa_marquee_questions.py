@@ -159,17 +159,15 @@ async def run_question_with_own_graph(
 
         try:
             # Create a fresh graph for this question (thread-safe)
-            # Always use enhanced 5-node ReAct RAG workflow
+            # Uses 5-node ReAct RAG workflow: plan -> agent <-> tools -> shape -> synthesize
             graph, state_holder = create_qa_graph(
                 dynamo_client=dynamo_client,
                 chroma_client=chroma_client,
                 embed_fn=embed_fn,
-                use_enhanced=True,
             )
 
             result = await answer_question(
                 graph, state_holder, question,
-                use_enhanced=True,
                 callbacks=[cost_callback],
             )
             duration = time.time() - start_time
@@ -393,7 +391,7 @@ def main():
     print(f"Model: {args.model}")
     print(f"Tracing: {os.environ.get('LANGCHAIN_TRACING_V2')}")
     print(f"Concurrency: {args.concurrency}")
-    print(f"Mode: Enhanced 5-node ReAct RAG with hybrid search")
+    print(f"Mode: 5-node ReAct RAG (plan -> agent <-> tools -> shape -> synthesize)")
 
     # Run all questions in parallel
     async def run_all_questions():

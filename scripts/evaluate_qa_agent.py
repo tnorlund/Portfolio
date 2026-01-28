@@ -394,12 +394,11 @@ def run_evaluation(env: str, model: str):
 
     embed_fn = create_embed_fn()
 
-    # Create graph
+    # Create graph (5-node ReAct RAG: plan -> agent <-> tools -> shape -> synthesize)
     graph, state_holder = create_qa_graph(
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
         embed_fn=embed_fn,
-        use_enhanced=True,
     )
 
     def target_function(inputs: dict) -> dict:
@@ -407,7 +406,6 @@ def run_evaluation(env: str, model: str):
         question = inputs["question"]
         result = answer_question_sync(
             graph, state_holder, question,
-            use_enhanced=True,
         )
         return result
 

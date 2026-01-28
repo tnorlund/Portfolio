@@ -6,10 +6,12 @@ This agent answers questions about receipts using:
 - LangGraph for orchestration
 - OpenRouter for LLM inference
 
-Simple ReAct workflow:
-- agent: LLM decides to call tools or respond
+5-node ReAct RAG workflow:
+- plan: Classify question, determine retrieval strategy
+- agent: ReAct tool loop with classification context
 - tools: Execute tool calls
-- synthesize: Format final answer with evidence
+- shape: Post-retrieval context processing
+- synthesize: Dedicated answer generation
 
 Example questions:
 - "How much did I spend on coffee this year?"
@@ -23,12 +25,16 @@ from receipt_agent.agents.question_answering.graph import (
     answer_question_sync,
     create_qa_graph,
     SYNTHESIZE_PROMPT,
+    PLAN_SYSTEM_PROMPT,
+    SYNTHESIZE_SYSTEM_PROMPT,
 )
 
 # State schemas
 from receipt_agent.agents.question_answering.state import (
     AnswerWithEvidence,
     QAState,
+    QuestionClassification,
+    RetrievedContext,
 )
 
 # Tools
@@ -79,9 +85,13 @@ __all__ = [
     "answer_question_sync",
     "create_qa_graph",
     "SYNTHESIZE_PROMPT",
+    "PLAN_SYSTEM_PROMPT",
+    "SYNTHESIZE_SYSTEM_PROMPT",
     # State schemas
     "AnswerWithEvidence",
     "QAState",
+    "QuestionClassification",
+    "RetrievedContext",
     # Tools
     "create_qa_tools",
     "SYSTEM_PROMPT",
