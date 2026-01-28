@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.entities.identifier_mixins import ReceiptIdentifierMixin
 
@@ -205,8 +206,11 @@ def _handle_line_total(_text: str, state: _ExtractionState) -> None:
     state.item_count += 1
 
 
+# Type alias for handler functions
+_HandlerFunc = Callable[[str, _ExtractionState], None]
+
 # Dispatch table mapping label types to handler functions
-_LABEL_HANDLERS: dict[str, Any] = {
+_LABEL_HANDLERS: dict[str, _HandlerFunc] = {
     "GRAND_TOTAL": _handle_grand_total,
     "SUBTOTAL": _handle_subtotal,
     "TAX": _handle_tax,

@@ -91,7 +91,9 @@ class _ReceiptSummary(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_receipt_summaries")
-    def add_receipt_summaries(self, summaries: list[ReceiptSummaryRecord]) -> None:
+    def add_receipt_summaries(
+        self, summaries: list[ReceiptSummaryRecord]
+    ) -> None:
         """
         Adds multiple ReceiptSummaryRecord items to DynamoDB in batches.
 
@@ -112,10 +114,14 @@ class _ReceiptSummary(FlattenedStandardMixin):
         ValueError
             If summaries is invalid or if an error occurs during batch write.
         """
-        self._validate_entity_list(summaries, ReceiptSummaryRecord, "summaries")
+        self._validate_entity_list(
+            summaries, ReceiptSummaryRecord, "summaries"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=item.to_item())
+            )
             for item in summaries
         ]
         self._batch_write_with_retry(request_items)
@@ -138,7 +144,9 @@ class _ReceiptSummary(FlattenedStandardMixin):
         self._validate_entity(summary, ReceiptSummaryRecord, "summary")
         self._update_entity(
             summary,
-            condition_expression=("attribute_exists(PK) and attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) and attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("delete_receipt_summary")
@@ -157,10 +165,15 @@ class _ReceiptSummary(FlattenedStandardMixin):
             If summary is invalid.
         """
         self._validate_entity(summary, ReceiptSummaryRecord, "summary")
-        self._delete_entity(summary, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            summary,
+            condition_expression="attribute_exists(PK) and attribute_exists(SK)",
+        )
 
     @handle_dynamodb_errors("delete_receipt_summaries")
-    def delete_receipt_summaries(self, summaries: list[ReceiptSummaryRecord]) -> None:
+    def delete_receipt_summaries(
+        self, summaries: list[ReceiptSummaryRecord]
+    ) -> None:
         """
         Deletes multiple ReceiptSummaryRecord items from DynamoDB.
 
@@ -174,7 +187,9 @@ class _ReceiptSummary(FlattenedStandardMixin):
         ValueError
             If summaries is invalid or if any record does not exist.
         """
-        self._validate_entity_list(summaries, ReceiptSummaryRecord, "summaries")
+        self._validate_entity_list(
+            summaries, ReceiptSummaryRecord, "summaries"
+        )
 
         transact_items = [
             TransactWriteItemTypeDef(
@@ -297,7 +312,9 @@ class _ReceiptSummary(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("upsert_receipt_summaries")
-    def upsert_receipt_summaries(self, summaries: list[ReceiptSummaryRecord]) -> None:
+    def upsert_receipt_summaries(
+        self, summaries: list[ReceiptSummaryRecord]
+    ) -> None:
         """
         Upserts multiple ReceiptSummaryRecord items to DynamoDB.
 
@@ -314,11 +331,15 @@ class _ReceiptSummary(FlattenedStandardMixin):
         ValueError
             If summaries is invalid or if an error occurs during batch write.
         """
-        self._validate_entity_list(summaries, ReceiptSummaryRecord, "summaries")
+        self._validate_entity_list(
+            summaries, ReceiptSummaryRecord, "summaries"
+        )
 
         # batch_write_item is idempotent - overwrites if exists
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=item.to_item())
+            )
             for item in summaries
         ]
         self._batch_write_with_retry(request_items)

@@ -46,10 +46,8 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = (
-            dynamo_client.list_receipt_word_labels_for_receipt(
-                image_id, receipt_id, last_evaluated_key=last_key
-            )
+        page_labels, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
         )
         word_labels.extend(page_labels)
         if last_key is None:
@@ -144,8 +142,8 @@ def deduplicate_messages(
                     entity_data,
                 )
                 malformed_message_ids.append(message_id)
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.error("Failed to parse message %s: %s", message_id, e)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            logger.exception("Failed to parse message %s", message_id)
             malformed_message_ids.append(message_id)
 
     return grouped, malformed_message_ids

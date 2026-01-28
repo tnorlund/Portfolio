@@ -119,11 +119,11 @@ def backfill_summaries(
                     )
                     pending_records = []
 
-            except (EntityError, OperationError) as e:
-                logger.error("Entity error processing %s: %s", key, e)
+            except (EntityError, OperationError):
+                logger.exception("Entity error processing %s", key)
                 stats["errors"] += 1
-            except DynamoDBError as e:
-                logger.error("DynamoDB error processing %s: %s", key, e)
+            except DynamoDBError:
+                logger.exception("DynamoDB error processing %s", key)
                 stats["errors"] += 1
 
         last_key = page.last_evaluated_key

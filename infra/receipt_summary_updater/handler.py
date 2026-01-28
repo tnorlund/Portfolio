@@ -9,13 +9,14 @@ import logging
 import os
 from typing import Any
 
+# pylint: disable-next=wrong-import-order  # Local Lambda module, not third-party
+from summary_processor import deduplicate_messages, update_receipt_summary
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     EntityError,
     OperationError,
 )
-# pylint: disable-next=wrong-import-order  # Local Lambda module, not third-party
-from summary_processor import deduplicate_messages, update_receipt_summary
 
 # Configure logging
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()

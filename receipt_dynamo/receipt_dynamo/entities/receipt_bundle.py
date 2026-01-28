@@ -6,7 +6,7 @@ operations that don't require fetching all related entities.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterator
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -116,7 +116,7 @@ class ReceiptBundlePage:
         """
         return key in self.bundles
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate over bundle keys.
 
         Returns:
