@@ -29,8 +29,11 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 # Import shared components
 try:
     from codebuild_docker_image import CodeBuildDockerImage
-except ImportError:
-    CodeBuildDockerImage = None  # type: ignore
+except ImportError as e:
+    raise ImportError(
+        "CodeBuildDockerImage is required for FixPlaceLambda. "
+        "Ensure codebuild_docker_image.py is in the Pulumi project root."
+    ) from e
 
 # Load secrets
 config = Config("portfolio")
@@ -168,6 +171,8 @@ class FixPlaceLambda(ComponentResource):
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "RECEIPT_PLACES_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_PLACES_AWS_REGION": "us-east-1",
+                # OpenRouter (for LLM calls)
+                "OPENROUTER_API_KEY": openrouter_api_key,
                 # OpenAI (for embeddings if needed)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 # LangSmith tracing

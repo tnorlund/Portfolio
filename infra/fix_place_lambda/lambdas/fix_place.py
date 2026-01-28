@@ -65,9 +65,14 @@ def flush_langsmith_traces():
         except Exception as e:
             error_str = str(e)
             if "multipart" in error_str.lower():
-                logger.debug("LangSmith multipart upload error (non-fatal): %s", error_str[:200])
+                logger.debug(
+                    "LangSmith multipart upload error (non-fatal): %s",
+                    error_str[:200],
+                )
             else:
-                logger.warning("Failed to flush LangSmith traces: %s", error_str)
+                logger.warning(
+                    "Failed to flush LangSmith traces: %s", error_str
+                )
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -151,7 +156,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             places_client=places_client,
             merchant_hints=merchant_hints,
             receipt_text=receipt_text,
-            reason=reason,
         )
 
         if not result:
@@ -189,7 +193,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return response
 
     except Exception as e:
-        logger.exception("Error fixing place: %s", e)
+        logger.exception("Error fixing place")
         return {
             "success": False,
             "error": str(e),
@@ -257,7 +261,6 @@ def _find_correct_place(
     places_client: "PlacesClient",
     merchant_hints: dict[str, Any],
     receipt_text: str,
-    reason: str,
 ) -> dict[str, Any] | None:
     """Find the correct place using various strategies.
 
@@ -271,7 +274,7 @@ def _find_correct_place(
 
     # Look for common merchant patterns in receipt text
     receipt_lines = receipt_text.split("\n")
-    for i, line in enumerate(receipt_lines[:5]):  # Check first 5 lines
+    for line in receipt_lines[:5]:  # Check first 5 lines
         # Extract line text after "Line X: "
         match = re.search(r"Line \d+: (.+)", line)
         if match:
@@ -302,7 +305,9 @@ def _find_correct_place(
                 return {
                     "place_id": place.place_id,
                     "merchant_name": place.name,
-                    "formatted_address": getattr(place, "formatted_address", None),
+                    "formatted_address": getattr(
+                        place, "formatted_address", None
+                    ),
                     "merchant_types": getattr(place, "types", None) or [],
                     "confidence": 0.80,
                     "reasoning": f"Found via text search: {search_query}",
@@ -320,14 +325,18 @@ def _find_correct_place(
                 return {
                     "place_id": place.place_id,
                     "merchant_name": place.name,
-                    "formatted_address": getattr(place, "formatted_address", None),
+                    "formatted_address": getattr(
+                        place, "formatted_address", None
+                    ),
                     "merchant_types": getattr(place, "types", None) or [],
                     "confidence": 0.70,
                     "reasoning": f"Found via address search: {address}",
                     "source": "address_search",
                 }
         except Exception as e:
-            logger.warning("Address search error (continuing): %s", str(e)[:200])
+            logger.warning(
+                "Address search error (continuing): %s", str(e)[:200]
+            )
 
     logger.warning("Could not find place using any strategy")
     return None
@@ -348,14 +357,27 @@ def _update_receipt_place(
 
     if current_place:
         # Update existing place
-        current_place.place_id = new_data.get("place_id") or current_place.place_id
-        current_place.merchant_name = new_data.get("merchant_name") or current_place.merchant_name
-        current_place.formatted_address = new_data.get("formatted_address") or current_place.formatted_address
-        current_place.merchant_types = new_data.get("merchant_types") or current_place.merchant_types
+        current_place.place_id = (
+            new_data.get("place_id") or current_place.place_id
+        )
+        current_place.merchant_name = (
+            new_data.get("merchant_name") or current_place.merchant_name
+        )
+        current_place.formatted_address = (
+            new_data.get("formatted_address")
+            or current_place.formatted_address
+        )
+        current_place.merchant_types = (
+            new_data.get("merchant_types") or current_place.merchant_types
+        )
         current_place.confidence = new_data.get("confidence", 0.0)
-        current_place.reasoning = f"Fixed: {reason}. {new_data.get('reasoning', '')}"
+        current_place.reasoning = (
+            f"Fixed: {reason}. {new_data.get('reasoning', '')}"
+        )
         current_place.validated_by = "TEXT_SEARCH"
-        current_place.validation_status = "MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE"
+        current_place.validation_status = (
+            "MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE"
+        )
         current_place.timestamp = now
 
         dynamo_client.update_receipt_place(current_place)
@@ -372,7 +394,9 @@ def _update_receipt_place(
             confidence=new_data.get("confidence", 0.0),
             reasoning=f"Fixed: {reason}. {new_data.get('reasoning', '')}",
             validated_by="TEXT_SEARCH",
-            validation_status="MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE",
+            validation_status=(
+                "MATCHED" if new_data.get("confidence", 0) >= 0.8 else "UNSURE"
+            ),
             timestamp=now,
         )
 
