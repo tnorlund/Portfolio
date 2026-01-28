@@ -18,6 +18,7 @@ import {
   LayoutLMInferenceVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
+  QAAgentFlow,
   QuestionMarquee,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
@@ -495,6 +496,14 @@ M1LK 2%           1    $4.4g`}</code>
         But more importantly, it lets me throw hundreds of fake questions at
         the system to see what breaks.
       </p>
+
+      <p>
+        Here's what happens when I ask "How much did I spend on coffee?"
+      </p>
+
+      <ClientOnly>
+        <QAAgentFlow autoPlay={true} />
+      </ClientOnly>
 
       <ClientOnly>
         <QuestionMarquee rows={4} speed={25} />

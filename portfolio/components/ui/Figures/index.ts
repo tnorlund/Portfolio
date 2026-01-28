@@ -75,6 +75,7 @@ export const LabelWordCloud = dynamic(
   { ssr: false }
 );
 export { default as QuestionMarquee } from "./QuestionMarquee";
+export { default as QAAgentFlow } from "./QAAgentFlow";
 export const LabelValidationVisualization = dynamic(
   () => import("./LabelValidationVisualization"),
   { ssr: false }
