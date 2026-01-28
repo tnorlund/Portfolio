@@ -57,8 +57,12 @@ class MonetaryTotals:
 
 
 # Regex pattern to extract monetary values from text
-# Matches: $12.99, 12.99, $1,234.56, 1234.56
-MONEY_PATTERN = re.compile(r"\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+\.\d{2}")
+# Matches: $12.99, 12.99, $1,234.56, 1234.56, $1234, 1234
+# Order matters: try comma-grouped first, then ungrouped amounts
+MONEY_PATTERN = re.compile(
+    r"\$?\d{1,3}(?:,\d{3})+(?:\.\d{2})?"  # Comma-grouped: $1,234.56
+    r"|\$?\d+(?:\.\d{2})?"  # Ungrouped: $1234.56, 1234, $50
+)
 
 # Regex patterns for date parsing
 DATE_PATTERNS = [

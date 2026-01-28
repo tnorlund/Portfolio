@@ -110,13 +110,37 @@ def backfill_summaries(
                 # Batch upsert when we have enough
                 if len(pending_records) >= batch_size:
                     if not dry_run:
-                        client.upsert_receipt_summaries(pending_records)
-                    stats["summaries_created"] += len(pending_records)
-                    logger.info(
-                        "  Upserted %d summaries (total: %d)",
-                        len(pending_records),
-                        stats["summaries_created"],
-                    )
+                        try:
+                            client.upsert_receipt_summaries(pending_records)
+                            stats["summaries_created"] += len(pending_records)
+                            logger.info(
+                                "  Upserted %d summaries (total: %d)",
+                                len(pending_records),
+                                stats["summaries_created"],
+                            )
+                        except (EntityError, OperationError, DynamoDBError):
+                            logger.exception(
+                                "Batch upsert failed, falling back to per-record"
+                            )
+                            # Fallback: try each record individually
+                            for record in pending_records:
+                                try:
+                                    client.upsert_receipt_summaries([record])
+                                    stats["summaries_created"] += 1
+                                except (EntityError, OperationError, DynamoDBError):
+                                    logger.exception(
+                                        "Failed to upsert %s:%d",
+                                        record.image_id[:8],
+                                        record.receipt_id,
+                                    )
+                                    stats["errors"] += 1
+                    else:
+                        stats["summaries_created"] += len(pending_records)
+                        logger.info(
+                            "  [DRY RUN] Would upsert %d summaries (total: %d)",
+                            len(pending_records),
+                            stats["summaries_created"],
+                        )
                     pending_records = []
 
             except (EntityError, OperationError):
@@ -133,9 +157,31 @@ def backfill_summaries(
     # Upsert remaining records
     if pending_records:
         if not dry_run:
-            client.upsert_receipt_summaries(pending_records)
-        stats["summaries_created"] += len(pending_records)
-        logger.info("  Upserted final %d summaries", len(pending_records))
+            try:
+                client.upsert_receipt_summaries(pending_records)
+                stats["summaries_created"] += len(pending_records)
+                logger.info("  Upserted final %d summaries", len(pending_records))
+            except (EntityError, OperationError, DynamoDBError):
+                logger.exception(
+                    "Final batch upsert failed, falling back to per-record"
+                )
+                # Fallback: try each record individually
+                for record in pending_records:
+                    try:
+                        client.upsert_receipt_summaries([record])
+                        stats["summaries_created"] += 1
+                    except (EntityError, OperationError, DynamoDBError):
+                        logger.exception(
+                            "Failed to upsert %s:%d",
+                            record.image_id[:8],
+                            record.receipt_id,
+                        )
+                        stats["errors"] += 1
+        else:
+            stats["summaries_created"] += len(pending_records)
+            logger.info(
+                "  [DRY RUN] Would upsert final %d summaries", len(pending_records)
+            )
 
     return stats
 

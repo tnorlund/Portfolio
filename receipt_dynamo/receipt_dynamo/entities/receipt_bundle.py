@@ -5,6 +5,7 @@ associated words and labels in a paginated format, optimized for listing
 operations that don't require fetching all related entities.
 """
 
+from collections.abc import ItemsView, KeysView, ValuesView
 from dataclasses import dataclass
 from typing import Any, Iterator
 
@@ -138,27 +139,27 @@ class ReceiptBundlePage:
         """
         return self.last_evaluated_key is not None
 
-    def keys(self) -> list[str]:
+    def keys(self) -> KeysView[str]:
         """Get all composite keys in this page.
 
         Returns:
-            list[str]: List of composite keys in format
-                      "{image_id}_{receipt_id}"
+            KeysView[str]: View of composite keys in format
+                          "{image_id}_{receipt_id}"
         """
-        return list(self.bundles.keys())
+        return self.bundles.keys()
 
-    def values(self) -> list[ReceiptBundle]:
+    def values(self) -> ValuesView[ReceiptBundle]:
         """Get all receipt bundles in this page.
 
         Returns:
-            list[ReceiptBundle]: List of all receipt bundles in this page
+            ValuesView[ReceiptBundle]: View of all receipt bundles in this page
         """
-        return list(self.bundles.values())
+        return self.bundles.values()
 
-    def items(self) -> list[tuple[str, ReceiptBundle]]:
+    def items(self) -> ItemsView[str, ReceiptBundle]:
         """Get all key-bundle pairs in this page.
 
         Returns:
-            list[tuple[str, ReceiptBundle]]: List of (key, bundle) tuples
+            ItemsView[str, ReceiptBundle]: View of (key, bundle) pairs
         """
-        return list(self.bundles.items())
+        return self.bundles.items()
