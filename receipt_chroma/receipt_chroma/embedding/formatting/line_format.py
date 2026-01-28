@@ -6,18 +6,11 @@ including visual row detection and row-based embedding formatting.
 Visual Row Approach:
 Apple Vision OCR often splits a single visual row into multiple ReceiptLine
 entities (e.g., product name on left, price on right). This module groups
-lines into visual rows based on centroid overlap, then creates embeddings
+lines into visual rows based on vertical overlap, then creates embeddings
 with row context (row above + target row + row below).
-
-Centroid Overlap Algorithm:
-Two lines are considered part of the same visual row if one line's centroid
-falls within the other line's vertical bounding box span. This approach uses
-no hardcoded tolerances - just the actual geometry of the lines. Connected
-lines are grouped using union-find to form visual rows.
 """
 
 import re
-from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
@@ -42,12 +35,9 @@ class LineLike(Protocol):
 def group_lines_into_visual_rows(
     lines: Sequence[LineLike],
 ) -> list[list[LineLike]]:
-    """Group ReceiptLines into visual rows based on centroid overlap.
+    """Group ReceiptLines into visual rows based on vertical span overlap.
 
-    Two lines are on the same visual row if one line's vertical centroid
-    falls within the other line's bounding box height. This uses no hardcoded
-    tolerances - just the actual geometry of the lines.
-
+    Lines that vertically overlap are considered part of the same visual row.
     This handles Apple Vision OCR splitting rows into separate entities
     (e.g., "ORGANIC COFFEE" on left and "12.99" on right as separate lines).
 
@@ -61,71 +51,46 @@ def group_lines_into_visual_rows(
     if not lines:
         return []
 
-    lines_list = list(lines)
-    n = len(lines_list)
-
-    # Build adjacency: which lines share a row?
-    # Two lines are on the same row if one's centroid falls within the other's
-    # vertical span
-    same_row = [[False] * n for _ in range(n)]
-
-    for i in range(n):
-        same_row[i][i] = True
-        line_i = lines_list[i]
-        bb_i = line_i.bounding_box
-        cy_i = bb_i.get("y", 0) + bb_i.get("height", 0) / 2
-        y_min_i = bb_i.get("y", 0)
-        y_max_i = y_min_i + bb_i.get("height", 0)
-
-        for j in range(i + 1, n):
-            line_j = lines_list[j]
-            bb_j = line_j.bounding_box
-            cy_j = bb_j.get("y", 0) + bb_j.get("height", 0) / 2
-            y_min_j = bb_j.get("y", 0)
-            y_max_j = y_min_j + bb_j.get("height", 0)
-
-            # Check if centroids fall within each other's spans
-            i_centroid_in_j = y_min_j <= cy_i <= y_max_j
-            j_centroid_in_i = y_min_i <= cy_j <= y_max_i
-
-            if i_centroid_in_j or j_centroid_in_i:
-                same_row[i][j] = True
-                same_row[j][i] = True
-
-    # Find connected components using union-find
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        if parent[x] != x:
-            parent[x] = find(parent[x])
-        return parent[x]
-
-    def union(x: int, y: int) -> None:
-        px, py = find(x), find(y)
-        if px != py:
-            parent[px] = py
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            if same_row[i][j]:
-                union(i, j)
-
-    # Group by component
-    components: dict[int, list[LineLike]] = defaultdict(list)
-    for i in range(n):
-        components[find(i)].append(lines_list[i])
-
-    # Sort lines within rows by x-coordinate (left to right)
-    rows: list[list[LineLike]] = []
-    for comp_lines in components.values():
-        comp_lines.sort(key=lambda ln: ln.bounding_box.get("x", 0))
-        rows.append(comp_lines)
-
-    # Sort rows by average y-coordinate (top first, so descending)
-    rows.sort(
-        key=lambda row: -sum(ln.bounding_box.get("y", 0) for ln in row)
-        / len(row)
+    # Sort lines by y-coordinate descending (top of receipt first)
+    sorted_lines = sorted(
+        lines,
+        key=lambda ln: -ln.bounding_box.get("y", 0),
     )
+
+    rows: list[list[LineLike]] = []
+    current_row: list[LineLike] = [sorted_lines[0]]
+
+    # Track the y-span of the current row
+    first_line = sorted_lines[0]
+    current_y_min = first_line.bounding_box.get("y", 0)
+    current_y_max = current_y_min + first_line.bounding_box.get("height", 0)
+
+    for line in sorted_lines[1:]:
+        line_y_min = line.bounding_box.get("y", 0)
+        line_y_max = line_y_min + line.bounding_box.get("height", 0)
+
+        # Check if this line overlaps vertically with the current row
+        # Overlap: line_y_min <= current_y_max AND line_y_max >= current_y_min
+        if line_y_min <= current_y_max and line_y_max >= current_y_min:
+            # Same visual row - add to current row
+            current_row.append(line)
+            # Expand the row's y-span
+            current_y_min = min(current_y_min, line_y_min)
+            current_y_max = max(current_y_max, line_y_max)
+        else:
+            # New visual row - finalize current row and start new one
+            # Sort current row left-to-right by x-coordinate
+            current_row.sort(key=lambda ln: ln.bounding_box.get("x", 0))
+            rows.append(current_row)
+
+            # Start new row
+            current_row = [line]
+            current_y_min = line_y_min
+            current_y_max = line_y_max
+
+    # Don't forget the last row
+    current_row.sort(key=lambda ln: ln.bounding_box.get("x", 0))
+    rows.append(current_row)
 
     return rows
 
