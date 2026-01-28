@@ -162,12 +162,9 @@ async def run_question_with_enhanced_graph(
                 chroma_client=chroma_client,
                 embed_fn=embed_fn,
                 settings=settings,
-                use_enhanced=True,  # Use the new 5-node ReAct RAG workflow
             )
 
-            result = await answer_question(
-                graph, state_holder, question, use_enhanced=True
-            )
+            result = await answer_question(graph, state_holder, question)
             duration = time.time() - start_time
 
             # Extract classification info - check both dict and object forms
@@ -180,7 +177,9 @@ async def run_question_with_enhanced_graph(
                     retrieval_strategy = classification.get("retrieval_strategy")
                 else:
                     question_type = getattr(classification, "question_type", None)
-                    retrieval_strategy = getattr(classification, "retrieval_strategy", None)
+                    retrieval_strategy = getattr(
+                        classification, "retrieval_strategy", None
+                    )
 
             # Also check result for classification data
             if not question_type and isinstance(result, dict):
@@ -284,7 +283,9 @@ def print_summary(results: list[QuestionResult]) -> None:
     print("\n" + "-" * 80)
     print("QUICK RESULTS")
     print("-" * 80)
-    print(f"{'#':<3} {'Question':<35} {'Type':<12} {'Amount':<10} {'Iter':<5} {'Time':<6}")
+    print(
+        f"{'#':<3} {'Question':<35} {'Type':<12} {'Amount':<10} {'Iter':<5} {'Time':<6}"
+    )
     print("-" * 80)
 
     for i, r in enumerate(results, 1):
@@ -436,7 +437,9 @@ def main():
 
         return await asyncio.gather(*tasks)
 
-    logger.info("Starting enhanced ReAct RAG execution with concurrency=%d", args.concurrency)
+    logger.info(
+        "Starting enhanced ReAct RAG execution with concurrency=%d", args.concurrency
+    )
     start_time = time.time()
     results = asyncio.run(run_all_questions())
     wall_time = time.time() - start_time
