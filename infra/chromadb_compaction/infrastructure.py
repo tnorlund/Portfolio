@@ -140,20 +140,24 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         # Export useful properties
         self.lines_queue_url = self.chromadb_queues.lines_queue_url
         self.words_queue_url = self.chromadb_queues.words_queue_url
+        self.summary_queue_url = self.chromadb_queues.summary_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
         self.stream_processor_arn = self.hybrid_deployment.stream_processor_arn
         self.enhanced_compaction_arn = (
             self.hybrid_deployment.enhanced_compaction_arn
         )
+        self.summary_updater_arn = self.hybrid_deployment.summary_updater_arn
 
         # Register outputs
         self.register_outputs(
             {
                 "lines_queue_url": self.lines_queue_url,
                 "words_queue_url": self.words_queue_url,
+                "summary_queue_url": self.summary_queue_url,
                 "bucket_name": self.bucket_name,
                 "stream_processor_arn": self.stream_processor_arn,
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
+                "summary_updater_arn": self.summary_updater_arn,
                 "efs_access_point_arn": (
                     self.efs.access_point_arn if self.efs else None
                 ),

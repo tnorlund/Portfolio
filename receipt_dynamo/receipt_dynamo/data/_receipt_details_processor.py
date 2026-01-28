@@ -7,9 +7,9 @@ details from GSI2, keeping the main _Receipt class focused on CRUD operations.
 from typing import Any
 
 from receipt_dynamo.entities.receipt import item_to_receipt
-from receipt_dynamo.entities.receipt_summary import (
-    ReceiptSummary,
-    ReceiptSummaryPage,
+from receipt_dynamo.entities.receipt_bundle import (
+    ReceiptBundle,
+    ReceiptBundlePage,
 )
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
@@ -21,8 +21,8 @@ def process_receipt_details_query(
     client: Any,
     query_params: dict[str, Any],
     limit: int | None,
-) -> ReceiptSummaryPage:
-    """Process GSI2 query response into receipt summaries.
+) -> ReceiptBundlePage:
+    """Process GSI2 query response into receipt bundles.
 
     Args:
         client: DynamoDB client
@@ -30,10 +30,10 @@ def process_receipt_details_query(
         limit: Maximum number of receipts to return
 
     Returns:
-        ReceiptSummaryPage with processed results
+        ReceiptBundlePage with processed results
     """
-    summaries: dict[str, ReceiptSummary] = {}
-    current_summary: ReceiptSummary | None = None
+    bundles: dict[str, ReceiptBundle] = {}
+    current_bundle: ReceiptBundle | None = None
     receipt_count = 0
 
     while True:
@@ -42,14 +42,14 @@ def process_receipt_details_query(
         for item in response["Items"]:
             # Check if we should stop at receipt boundary
             if _should_stop_at_receipt_boundary(item, limit, receipt_count):
-                return _create_receipt_summary_page(summaries, item)
+                return _create_receipt_bundle_page(bundles, item)
 
             # Process item based on type
             result = _process_receipt_detail_item(
-                item, summaries, current_summary
+                item, bundles, current_bundle
             )
             if result:
-                current_summary = result.get("summary")
+                current_bundle = result.get("bundle")
                 if result.get("is_receipt"):
                     receipt_count += 1
 
@@ -59,7 +59,7 @@ def process_receipt_details_query(
 
         query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
-    return ReceiptSummaryPage(summaries=summaries, last_evaluated_key=None)
+    return ReceiptBundlePage(bundles=bundles, last_evaluated_key=None)
 
 
 def _should_stop_at_receipt_boundary(
@@ -74,8 +74,8 @@ def _should_stop_at_receipt_boundary(
 
 def _process_receipt_detail_item(
     item: dict[str, Any],
-    summaries: dict[str, ReceiptSummary],
-    current: ReceiptSummary | None,
+    bundles: dict[str, ReceiptBundle],
+    current: ReceiptBundle | None,
 ) -> dict[str, Any] | None:
     """Process a single item from the query."""
     item_type = item.get("TYPE", {}).get("S", "")
@@ -83,9 +83,9 @@ def _process_receipt_detail_item(
     if item_type == "RECEIPT":
         receipt = item_to_receipt(item)
         key = f"{receipt.image_id}_{receipt.receipt_id}"
-        summary = ReceiptSummary(receipt=receipt, words=[], word_labels=[])
-        summaries[key] = summary
-        return {"summary": summary, "is_receipt": True}
+        bundle = ReceiptBundle(receipt=receipt, words=[], word_labels=[])
+        bundles[key] = bundle
+        return {"bundle": bundle, "is_receipt": True}
 
     if item_type == "RECEIPT_WORD" and current:
         word = item_to_receipt_word(item)
@@ -108,12 +108,12 @@ def _item_belongs_to_receipt(item: Any, receipt: Any) -> bool:
     )
 
 
-def _create_receipt_summary_page(
-    summaries: dict[str, ReceiptSummary], item: dict[str, Any]
-) -> ReceiptSummaryPage:
+def _create_receipt_bundle_page(
+    bundles: dict[str, ReceiptBundle], item: dict[str, Any]
+) -> ReceiptBundlePage:
     """Create a page when limit is reached."""
-    return ReceiptSummaryPage(
-        summaries=summaries,
+    return ReceiptBundlePage(
+        bundles=bundles,
         last_evaluated_key={
             "PK": item["PK"],
             "SK": item["SK"],

@@ -26,6 +26,7 @@ from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     StreamMessage,
     StreamRecordContext,
+    TargetQueue,
 )
 from receipt_dynamo_stream.parsing import (
     is_compaction_run,
@@ -190,10 +191,8 @@ def build_compaction_run_completion_messages(
             },
         )
 
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        logger.exception(
-            "Failed to build compaction run completion message: %s", exc
-        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        logger.exception("Failed to build compaction run completion message")
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -274,22 +273,31 @@ def build_entity_change_message(
 
 def _extract_receipt_place(
     entity: ReceiptPlace,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+    """Extract place data and target collections including summary queue.
+
+    Place changes affect merchant_name in ReceiptSummary.
+    """
     return {
         "entity_type": "RECEIPT_PLACE",
         "image_id": entity.image_id,
         "receipt_id": entity.receipt_id,
-    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+    }, [
+        ChromaDBCollection.LINES,
+        ChromaDBCollection.WORDS,
+        TargetQueue.RECEIPT_SUMMARY,
+    ]
 
 
 def _extract_receipt_word_label(
     entity: ReceiptWordLabel,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    """Extract word label data and target both WORDS and LINES collections.
+) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+    """Extract word label data and target collections including summary queue.
 
     Label changes affect:
     - WORDS: Direct label metadata updates on word embeddings
     - LINES: Label aggregation on row-based line embeddings
+    - RECEIPT_SUMMARY: Totals, tax, dates extracted from labels
     """
     return {
         "entity_type": "RECEIPT_WORD_LABEL",
@@ -298,7 +306,11 @@ def _extract_receipt_word_label(
         "line_id": entity.line_id,
         "word_id": entity.word_id,
         "label": entity.label,
-    }, [ChromaDBCollection.WORDS, ChromaDBCollection.LINES]
+    }, [
+        ChromaDBCollection.WORDS,
+        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
+    ]
 
 
 def _extract_receipt(
@@ -334,14 +346,17 @@ def _extract_receipt_line(
     }, [ChromaDBCollection.LINES]
 
 
+# Type alias for entity extractor functions
+_EntityType = (
+    Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
+)
+_ExtractorFunc = Callable[
+    [_EntityType],
+    tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]],
+]
+
 # Entity type to (expected class, extractor function) mapping
-_ENTITY_EXTRACTORS: dict[
-    str,
-    tuple[
-        type,
-        Callable[..., tuple[dict[str, object], list[ChromaDBCollection]]],
-    ],
-] = {
+_ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
     "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
     "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
     "RECEIPT": (Receipt, _extract_receipt),
@@ -360,8 +375,8 @@ def _extract_entity_data(
         | ReceiptWordLabel
         | None
     ),
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    """Extract entity data and determine target collections."""
+) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+    """Extract entity data and determine target collections/queues."""
     if not entity:
         return {}, []
 

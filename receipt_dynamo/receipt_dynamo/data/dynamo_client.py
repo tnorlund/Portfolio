@@ -42,6 +42,7 @@ from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_structure_analysis import (
     _ReceiptStructureAnalysis,
 )
+from receipt_dynamo.data._receipt_summary import _ReceiptSummary
 from receipt_dynamo.data._receipt_validation_category import (
     _ReceiptValidationCategory,
 )
@@ -115,6 +116,7 @@ class DynamoClient(
     _CompactionLock,
     _CompactionRun,
     _CoreMLExportJob,
+    _ReceiptSummary,
 ):
     """A class used to represent a DynamoDB client."""
 

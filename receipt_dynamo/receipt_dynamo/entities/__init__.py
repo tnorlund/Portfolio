@@ -90,6 +90,10 @@ from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_analysis import (  # noqa: F401
     ReceiptAnalysis,
 )
+from receipt_dynamo.entities.receipt_bundle import (
+    ReceiptBundle,
+    ReceiptBundlePage,
+)
 from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
     ReceiptChatGPTValidation,
     item_to_receipt_chat_gpt_validation,
@@ -132,6 +136,16 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptStructureAnalysis,
     SpatialPattern,
     item_to_receipt_structure_analysis,
+)
+from receipt_dynamo.entities.receipt_summary import (
+    MonetaryTotals,
+    ReceiptSummary,
+    extract_amount,
+    parse_date,
+)
+from receipt_dynamo.entities.receipt_summary_record import (
+    ReceiptSummaryRecord,
+    item_to_receipt_summary_record,
 )
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
@@ -235,6 +249,11 @@ __all__ = [
     "Receipt",
     "ReceiptAnalysis",
     "ReceiptChatGPTValidation",
+    "ReceiptBundle",
+    "ReceiptBundlePage",
+    "MonetaryTotals",
+    "ReceiptSummary",
+    "ReceiptSummaryRecord",
     "ReceiptDetails",
     "ReceiptField",
     "ReceiptLabelAnalysis",
@@ -283,6 +302,7 @@ __all__ = [
     "item_to_queue_job",
     "item_to_receipt",
     "item_to_receipt_chat_gpt_validation",
+    "item_to_receipt_summary_record",
     "item_to_receipt_field",
     "item_to_receipt_label_analysis",
     "item_to_receipt_letter",
@@ -301,6 +321,8 @@ __all__ = [
     "item_to_word",
     # Utility functions
     "assert_valid_uuid",
+    "extract_amount",
+    "parse_date",
     # Additional exports from receipt_structure_analysis
     "ContentPattern",
     "SpatialPattern",

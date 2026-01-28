@@ -387,6 +387,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "variables": {
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "RECEIPT_SUMMARY_QUEUE_URL": chromadb_queues.summary_queue_url,
                     "LOG_LEVEL": "INFO",
                     # Stream processing configuration (aligned with code and infrastructure)
                     "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
@@ -480,9 +481,93 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
+        # Receipt Summary Updater Lambda (zip-based)
+        # Processes SQS messages to recompute ReceiptSummary when labels change
+        summary_updater_code = pulumi.AssetArchive(
+            {
+                "handler.py": pulumi.FileAsset(
+                    str(
+                        Path(__file__).parent.parent.parent
+                        / "receipt_summary_updater"
+                        / "handler.py"
+                    )
+                ),
+                "summary_processor.py": pulumi.FileAsset(
+                    str(
+                        Path(__file__).parent.parent.parent
+                        / "receipt_summary_updater"
+                        / "summary_processor.py"
+                    )
+                ),
+            }
+        )
+
+        self.summary_updater_log_group = aws.cloudwatch.LogGroup(
+            f"{name}-summary-updater-log-group",
+            retention_in_days=14,
+            tags={
+                "Project": "ChromaDB",
+                "Component": "SummaryUpdater",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        self.summary_updater_function = aws.lambda_.Function(
+            f"{name}-summary-updater",
+            runtime="python3.12",
+            architectures=["arm64"],
+            code=summary_updater_code,
+            handler="handler.lambda_handler",
+            role=self.lambda_role.arn,
+            timeout=60,  # 60 seconds - matches SQS visibility timeout
+            memory_size=256,  # Lightweight processing
+            environment={
+                "variables": {
+                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
+                        lambda args: args[0].split("/")[-1]
+                    ),
+                    "LOG_LEVEL": "INFO",
+                }
+            },
+            description=(
+                "Recomputes ReceiptSummary when ReceiptWordLabel or "
+                "ReceiptPlace records change"
+            ),
+            tags={
+                "Project": "ChromaDB",
+                "Component": "SummaryUpdater",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+                "environment": stack,
+            },
+            layers=[dynamo_layer.arn],
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[
+                    self.lambda_role,
+                    self.summary_updater_log_group,
+                ],
+                ignore_changes=["layers"],
+            ),
+        )
+
+        # Event source mapping for summary queue
+        self.summary_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-summary-event-source-mapping",
+            event_source_arn=chromadb_queues.summary_queue_arn,
+            function_name=self.summary_updater_function.arn,
+            batch_size=100,  # Process up to 100 messages per invocation
+            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
+            function_response_types=["ReportBatchItemFailures"],
+            opts=ResourceOptions(parent=self),
+        )
+
         # Export useful properties
         self.stream_processor_arn = self.stream_processor_function.arn
         self.enhanced_compaction_arn = self.enhanced_compaction_function.arn
+        self.summary_updater_arn = self.summary_updater_function.arn
         self.role_arn = self.lambda_role.arn
 
         # Register outputs
@@ -490,6 +575,7 @@ class HybridLambdaDeployment(ComponentResource):
             {
                 "stream_processor_arn": self.stream_processor_arn,
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
+                "summary_updater_arn": self.summary_updater_arn,
                 "role_arn": self.role_arn,
                 "docker_image_uri": self.docker_image.image_uri,
                 "efs_diag_arn": self.efs_diag_function.arn,
@@ -588,6 +674,8 @@ class HybridLambdaDeployment(ComponentResource):
                 chromadb_queues.words_queue_arn,
                 chromadb_queues.lines_dlq_arn,
                 chromadb_queues.words_dlq_arn,
+                chromadb_queues.summary_queue_arn,
+                chromadb_queues.summary_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -607,6 +695,8 @@ class HybridLambdaDeployment(ComponentResource):
                                     args[1],  # Words queue ARN
                                     args[2],  # Lines DLQ ARN
                                     args[3],  # Words DLQ ARN
+                                    args[4],  # Summary queue ARN
+                                    args[5],  # Summary DLQ ARN
                                 ],
                             }
                         ],

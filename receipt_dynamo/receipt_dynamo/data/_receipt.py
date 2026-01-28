@@ -14,6 +14,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
+from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
@@ -21,7 +22,6 @@ from receipt_dynamo.entities.receipt_line import (
 from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
-from receipt_dynamo.entities.receipt_summary import ReceiptSummaryPage
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -373,26 +373,26 @@ class _Receipt(FlattenedStandardMixin):
         self,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
-    ) -> ReceiptSummaryPage:
+    ) -> ReceiptBundlePage:
         """List receipts with their words and word labels using GSI2.
 
         This method queries the database for receipt-related items using GSI2
-        (where GSI2PK = 'RECEIPT') and returns a page of receipt summaries.
+        (where GSI2PK = 'RECEIPT') and returns a page of receipt bundles.
 
         Note: With the addition of new entities using the same GSI2PK pattern
         (ReceiptLineItemAnalysis, ReceiptLabelAnalysis), this method now uses
         a filter expression to only retrieve the specific types needed.
 
         Args:
-            limit: The maximum number of receipt summaries to return.
+            limit: The maximum number of receipt bundles to return.
                    Defaults to None (return all).
             last_evaluated_key: The key to start the query from for
                                pagination. Defaults to None.
 
         Returns:
-            ReceiptSummaryPage: A page containing:
-                - summaries: Dict mapping composite keys to ReceiptSummary
-                            objects
+            ReceiptBundlePage: A page containing:
+                - bundles: Dict mapping composite keys to ReceiptBundle
+                          objects
                 - last_evaluated_key: Key for next page (None if no more)
 
         Raises:

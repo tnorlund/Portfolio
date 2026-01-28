@@ -12,6 +12,7 @@ from receipt_dynamo_stream.models import (
     FieldChange,
     StreamMessage,
     StreamRecordContext,
+    TargetQueue,
 )
 from receipt_dynamo_stream.sqs_publisher import (
     _message_to_dict,
@@ -39,6 +40,24 @@ def env_both_queues(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set both LINES_QUEUE_URL and WORDS_QUEUE_URL environment variables."""
     monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
     monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
+
+
+@pytest.fixture
+def env_summary_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set RECEIPT_SUMMARY_QUEUE_URL environment variable."""
+    monkeypatch.setenv(
+        "RECEIPT_SUMMARY_QUEUE_URL", "https://queue.amazonaws.com/summary"
+    )
+
+
+@pytest.fixture
+def env_all_queues(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set all queue URLs including summary queue."""
+    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
+    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
+    monkeypatch.setenv(
+        "RECEIPT_SUMMARY_QUEUE_URL", "https://queue.amazonaws.com/summary"
+    )
 
 
 @pytest.fixture
@@ -181,6 +200,73 @@ def test_publish_messages_both_collections(
 
     assert sent == 2
     assert mock_sqs.send_message_batch.call_count == 2
+
+
+@patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
+def test_publish_messages_with_summary_queue(
+    mock_boto_client: Mock, env_all_queues: None
+) -> None:
+    """Test message targeting collections and summary queue."""
+    mock_sqs = Mock()
+    mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
+    mock_boto_client.return_value = mock_sqs
+
+    msg = _create_test_message(
+        collections=(
+            ChromaDBCollection.LINES,
+            ChromaDBCollection.WORDS,
+            TargetQueue.RECEIPT_SUMMARY,
+        )
+    )
+    sent = publish_messages([msg])
+
+    # Should send to lines, words, and summary queues
+    assert sent == 3
+    assert mock_sqs.send_message_batch.call_count == 3
+
+
+@patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
+def test_publish_messages_summary_queue_only(
+    mock_boto_client: Mock, env_summary_queue: None
+) -> None:
+    """Test message targeting only summary queue."""
+    mock_sqs = Mock()
+    mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
+    mock_boto_client.return_value = mock_sqs
+
+    msg = _create_test_message(collections=(TargetQueue.RECEIPT_SUMMARY,))
+    sent = publish_messages([msg])
+
+    assert sent == 1
+    assert mock_sqs.send_message_batch.call_count == 1
+
+
+def test_send_batch_to_queue_summary_queue(
+    env_summary_queue: None,
+) -> None:
+    """Test sending to summary queue with TargetQueue type."""
+    mock_sqs = Mock()
+    mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
+
+    msg = _create_test_message(
+        entity_type="RECEIPT_WORD_LABEL",
+        entity_data={"image_id": "img-123", "receipt_id": 1},
+    )
+    msg_dict = _message_to_dict(msg)
+
+    sent = send_batch_to_queue(
+        mock_sqs,
+        [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
+        "RECEIPT_SUMMARY_QUEUE_URL",
+        TargetQueue.RECEIPT_SUMMARY,
+    )
+
+    assert sent == 1
+    call_args = mock_sqs.send_message_batch.call_args
+    entries = call_args[1]["Entries"]
+    attrs = entries[0]["MessageAttributes"]
+    # Should use TargetQueue.RECEIPT_SUMMARY.value for collection attribute
+    assert attrs["collection"]["StringValue"] == "receipt_summary"
 
 
 # Test send_batch_to_queue
