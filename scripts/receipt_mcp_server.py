@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,20 +79,22 @@ def get_clients():
 
         # Create ChromaDB client
         chroma_cloud_api_key = config.get("chroma_cloud_api_key")
-        chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
+        chroma_cloud_enabled = (
+            config.get("chroma_cloud_enabled", "false").lower() == "true"
+        )
 
-        if chroma_cloud_enabled and chroma_cloud_api_key:
-            _chroma_client = ChromaClient(
-                cloud_api_key=chroma_cloud_api_key,
-                cloud_tenant=config.get("chroma_cloud_tenant"),
-                cloud_database=config.get("chroma_cloud_database"),
-                mode="read",
+        if not chroma_cloud_enabled or not chroma_cloud_api_key:
+            raise ValueError(
+                "Chroma Cloud is required. Set chroma_cloud_enabled=true and "
+                "chroma_cloud_api_key in Pulumi config."
             )
-        else:
-            os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = config.get(
-                "chroma_lines_directory", "/tmp/chroma_lines"
-            )
-            _chroma_client = create_chroma_client(mode="read")
+
+        _chroma_client = ChromaClient(
+            cloud_api_key=chroma_cloud_api_key,
+            cloud_tenant=config.get("chroma_cloud_tenant"),
+            cloud_database=config.get("chroma_cloud_database"),
+            mode="read",
+        )
 
         _embed_fn = create_embed_fn()
         logger.info("Clients initialized successfully")
@@ -127,22 +129,22 @@ Examples:
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search term - product name, label type, or natural language"
+                        "description": "Search term - product name, label type, or natural language",
                     },
                     "search_type": {
                         "type": "string",
                         "enum": ["text", "label", "semantic"],
                         "default": "text",
-                        "description": "Search method"
+                        "description": "Search method",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 20,
-                        "description": "Maximum results"
-                    }
+                        "description": "Maximum results",
+                    },
                 },
-                "required": ["query"]
-            }
+                "required": ["query"],
+            },
         ),
         Tool(
             name="get_receipt",
@@ -166,15 +168,15 @@ Labels mean:
                 "properties": {
                     "image_id": {
                         "type": "string",
-                        "description": "Image ID from search results"
+                        "description": "Image ID from search results",
                     },
                     "receipt_id": {
                         "type": "integer",
-                        "description": "Receipt ID from search results"
-                    }
+                        "description": "Receipt ID from search results",
+                    },
                 },
-                "required": ["image_id", "receipt_id"]
-            }
+                "required": ["image_id", "receipt_id"],
+            },
         ),
         Tool(
             name="list_all_receipts",
@@ -187,10 +189,10 @@ Use this to get an overview of what receipts are available.""",
                     "limit": {
                         "type": "integer",
                         "default": 50,
-                        "description": "Maximum receipts to return"
+                        "description": "Maximum receipts to return",
                     }
-                }
-            }
+                },
+            },
         ),
         Tool(
             name="list_merchants",
@@ -205,10 +207,7 @@ Example output:
     {"merchant": "Costco Wholesale", "receipt_count": 12},
     ...
   ]}""",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="get_receipts_by_merchant",
@@ -226,11 +225,11 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
                 "properties": {
                     "merchant_name": {
                         "type": "string",
-                        "description": "Merchant name (use exact name from list_merchants)"
+                        "description": "Merchant name (use exact name from list_merchants)",
                     }
                 },
-                "required": ["merchant_name"]
-            }
+                "required": ["merchant_name"],
+            },
         ),
         Tool(
             name="search_product_lines",
@@ -260,22 +259,22 @@ The LLM should filter false positives before summing prices.""",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Product term or natural language description"
+                        "description": "Product term or natural language description",
                     },
                     "search_type": {
                         "type": "string",
                         "enum": ["text", "semantic"],
                         "default": "text",
-                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based"
+                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 100,
-                        "description": "Maximum results"
-                    }
+                        "description": "Maximum results",
+                    },
                 },
-                "required": ["query"]
-            }
+                "required": ["query"],
+            },
         ),
         Tool(
             name="get_receipt_summaries",
@@ -314,27 +313,27 @@ Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy
                 "properties": {
                     "merchant_filter": {
                         "type": "string",
-                        "description": "Filter by merchant name (partial match, case-insensitive)"
+                        "description": "Filter by merchant name (partial match, case-insensitive)",
                     },
                     "category_filter": {
                         "type": "string",
-                        "description": "Filter by merchant category from Google Places (e.g., 'grocery', 'restaurant', 'gas_station'). Partial match supported."
+                        "description": "Filter by merchant category from Google Places (e.g., 'grocery', 'restaurant', 'gas_station'). Partial match supported.",
                     },
                     "start_date": {
                         "type": "string",
-                        "description": "Filter receipts on or after this date (ISO format: YYYY-MM-DD)"
+                        "description": "Filter receipts on or after this date (ISO format: YYYY-MM-DD)",
                     },
                     "end_date": {
                         "type": "string",
-                        "description": "Filter receipts on or before this date (ISO format: YYYY-MM-DD)"
+                        "description": "Filter receipts on or before this date (ISO format: YYYY-MM-DD)",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 1000,
-                        "description": "Maximum receipts to return"
-                    }
-                }
-            }
+                        "description": "Maximum receipts to return",
+                    },
+                },
+            },
         ),
         Tool(
             name="list_categories",
@@ -350,10 +349,7 @@ Example output:
     {"category": "gas_station", "receipt_count": 4},
     ...
   ]}""",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -415,7 +411,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     except Exception as e:
-        logger.error("Tool error: %s", e, exc_info=True)
+        logger.exception("Tool error")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
@@ -436,7 +432,7 @@ async def search_receipts_impl(
             )
 
             unique_receipts = {}
-            for id_, meta in zip(results["ids"], results["metadatas"]):
+            for meta in results["metadatas"]:
                 key = (meta.get("image_id"), meta.get("receipt_id"))
                 if key not in unique_receipts:
                     unique_receipts[key] = {
@@ -469,9 +465,13 @@ async def search_receipts_impl(
 
             unique_receipts = {}
             if results["ids"] and results["ids"][0]:
-                for idx, (id_, meta) in enumerate(zip(results["ids"][0], results["metadatas"][0])):
+                for idx, (id_, meta) in enumerate(
+                    zip(results["ids"][0], results["metadatas"][0])
+                ):
                     key = (meta.get("image_id"), meta.get("receipt_id"))
-                    distance = results["distances"][0][idx] if results["distances"] else 1.0
+                    distance = (
+                        results["distances"][0][idx] if results["distances"] else 1.0
+                    )
                     similarity = max(0.0, 1.0 - distance)
 
                     if key not in unique_receipts:
@@ -503,7 +503,7 @@ async def search_receipts_impl(
             )
 
             unique_receipts = {}
-            for id_, meta in zip(results["ids"], results["metadatas"]):
+            for meta in results["metadatas"]:
                 key = (meta.get("image_id"), meta.get("receipt_id"))
                 if key not in unique_receipts:
                     unique_receipts[key] = {
@@ -555,13 +555,15 @@ async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dic
         for word in details.words:
             centroid = word.calculate_centroid()
             label = get_valid_label(word.line_id, word.word_id)
-            word_contexts.append({
-                "word": word,
-                "label": label,
-                "y": centroid[1],
-                "x": centroid[0],
-                "text": word.text,
-            })
+            word_contexts.append(
+                {
+                    "word": word,
+                    "label": label,
+                    "y": centroid[1],
+                    "x": centroid[0],
+                    "text": word.text,
+                }
+            )
 
         if not word_contexts:
             return {
@@ -620,11 +622,13 @@ async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dic
             if w["label"] in currency_labels:
                 try:
                     amount = float(w["text"].replace("$", "").replace(",", ""))
-                    amounts.append({
-                        "label": w["label"],
-                        "text": w["text"],
-                        "amount": amount,
-                    })
+                    amounts.append(
+                        {
+                            "label": w["label"],
+                            "text": w["text"],
+                            "amount": amount,
+                        }
+                    )
                 except ValueError:
                     pass
 
@@ -645,13 +649,13 @@ async def list_all_receipts_impl(chroma_client, limit: int) -> dict:
     try:
         lines_collection = chroma_client.get_collection("lines")
 
-        # Get all unique receipts by querying for GRAND_TOTAL labels
+        # Get all receipts by querying metadata (no label filtering)
         results = lines_collection.get(
             include=["metadatas"],
         )
 
         unique_receipts = {}
-        for id_, meta in zip(results["ids"], results["metadatas"]):
+        for meta in results["metadatas"]:
             key = (meta.get("image_id"), meta.get("receipt_id"))
             if key not in unique_receipts:
                 unique_receipts[key] = {
@@ -704,7 +708,7 @@ async def list_merchants_impl(dynamo_client) -> dict:
         }
 
     except Exception as e:
-        logger.error("Error listing merchants: %s", e, exc_info=True)
+        logger.exception("Error listing merchants")
         return {"error": str(e)}
 
 
@@ -730,10 +734,7 @@ async def get_receipts_by_merchant_impl(
                 break
 
         # Return compact list - just the IDs needed to call get_receipt
-        receipts = [
-            [place.image_id, place.receipt_id]
-            for place in all_places
-        ]
+        receipts = [[place.image_id, place.receipt_id] for place in all_places]
 
         return {
             "merchant": merchant_name,
@@ -742,7 +743,7 @@ async def get_receipts_by_merchant_impl(
         }
 
     except Exception as e:
-        logger.error("Error getting receipts by merchant: %s", e, exc_info=True)
+        logger.exception("Error getting receipts by merchant")
         return {"error": str(e)}
 
 
@@ -764,7 +765,7 @@ async def search_product_lines_impl(
 
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
         def extract_price(text: str) -> Optional[float]:
-            matches = re.findall(r'\d+\.\d{2}', text)
+            matches = re.findall(r"\d+\.\d{2}", text)
             if matches:
                 return float(matches[-1])  # Last match is usually the price
             return None
@@ -794,7 +795,9 @@ async def search_product_lines_impl(
             items = []
             seen = set()
 
-            for idx, (id_, meta) in enumerate(zip(results["ids"][0], results["metadatas"][0])):
+            for idx, (id_, meta) in enumerate(
+                zip(results["ids"][0], results["metadatas"][0])
+            ):
                 text = meta.get("text", "")
                 image_id = meta.get("image_id")
                 receipt_id = meta.get("receipt_id")
@@ -816,15 +819,17 @@ async def search_product_lines_impl(
                 has_line_total = meta.get("label_LINE_TOTAL", False)
                 price = extract_price(text)
 
-                items.append({
-                    "text": text,
-                    "price": price,
-                    "similarity": round(similarity, 3),
-                    "has_price_label": has_line_total,
-                    "merchant": meta.get("merchant_name", "Unknown"),
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                })
+                items.append(
+                    {
+                        "text": text,
+                        "price": price,
+                        "similarity": round(similarity, 3),
+                        "has_price_label": has_line_total,
+                        "merchant": meta.get("merchant_name", "Unknown"),
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                    }
+                )
 
             # Sort by similarity descending
             items.sort(key=lambda x: -x.get("similarity", 0))
@@ -862,7 +867,7 @@ async def search_product_lines_impl(
             items = []
             seen = set()  # Dedupe by image_id + receipt_id + text
 
-            for id_, meta in zip(results["ids"], results["metadatas"]):
+            for meta in results["metadatas"]:
                 text = meta.get("text", "")
                 image_id = meta.get("image_id")
                 receipt_id = meta.get("receipt_id")
@@ -878,14 +883,16 @@ async def search_product_lines_impl(
 
                 price = extract_price(text)
 
-                items.append({
-                    "text": text,
-                    "price": price,
-                    "has_price_label": has_line_total,
-                    "merchant": meta.get("merchant_name", "Unknown"),
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                })
+                items.append(
+                    {
+                        "text": text,
+                        "price": price,
+                        "has_price_label": has_line_total,
+                        "merchant": meta.get("merchant_name", "Unknown"),
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                    }
+                )
 
             # Sort by price descending (items with prices first)
             items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
@@ -907,7 +914,7 @@ async def search_product_lines_impl(
             }
 
     except Exception as e:
-        logger.error("Error searching product lines: %s", e, exc_info=True)
+        logger.exception("Error searching product lines")
         return {"error": str(e)}
 
 
@@ -934,12 +941,16 @@ async def get_receipt_summaries_impl(
             try:
                 start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
             except ValueError:
-                pass
+                return {
+                    "error": f"Invalid start_date format: '{start_date}'. Use ISO format (e.g., 2024-01-15)."
+                }
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
             except ValueError:
-                pass
+                return {
+                    "error": f"Invalid end_date format: '{end_date}'. Use ISO format (e.g., 2024-01-15)."
+                }
 
         # Load all summaries from DynamoDB (pre-computed)
         all_summaries = []
@@ -953,20 +964,19 @@ async def get_receipt_summaries_impl(
             if last_key is None:
                 break
 
-        # Load ReceiptPlace records to get merchant categories
+        # Load ReceiptPlace records to get merchant categories (always needed for output)
         places_by_key: dict[str, Any] = {}
-        if category_filter or True:  # Always load for category info in output
-            last_key = None
-            while True:
-                places, last_key = dynamo_client.list_receipt_places(
-                    limit=1000,
-                    last_evaluated_key=last_key,
-                )
-                for place in places:
-                    key = f"{place.image_id}_{place.receipt_id}"
-                    places_by_key[key] = place
-                if last_key is None:
-                    break
+        last_key = None
+        while True:
+            places, last_key = dynamo_client.list_receipt_places(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+            for place in places:
+                key = f"{place.image_id}_{place.receipt_id}"
+                places_by_key[key] = place
+            if last_key is None:
+                break
 
         # Filter in memory
         filtered = []
@@ -986,7 +996,10 @@ async def get_receipt_summaries_impl(
             # Category filter (partial match on category or types)
             if category_filter:
                 category_match = False
-                if merchant_category and category_filter.lower() in merchant_category.lower():
+                if (
+                    merchant_category
+                    and category_filter.lower() in merchant_category.lower()
+                ):
                     category_match = True
                 # Also check merchant_types list
                 if place and place.merchant_types:
@@ -1025,7 +1038,11 @@ async def get_receipt_summaries_impl(
             "total_tax": round(total_tax, 2),
             "total_tip": round(total_tip, 2),
             "receipts_with_totals": receipts_with_totals,
-            "average_receipt": round(total_spending / receipts_with_totals, 2) if receipts_with_totals > 0 else None,
+            "average_receipt": (
+                round(total_spending / receipts_with_totals, 2)
+                if receipts_with_totals > 0
+                else None
+            ),
             "filters": {
                 "merchant": merchant_filter,
                 "category": category_filter,
@@ -1036,7 +1053,7 @@ async def get_receipt_summaries_impl(
         }
 
     except Exception as e:
-        logger.error("Error getting receipt summaries: %s", e, exc_info=True)
+        logger.exception("Error getting receipt summaries")
         return {"error": str(e)}
 
 
@@ -1076,7 +1093,7 @@ async def list_categories_impl(dynamo_client) -> dict:
         }
 
     except Exception as e:
-        logger.error("Error listing categories: %s", e, exc_info=True)
+        logger.exception("Error listing categories")
         return {"error": str(e)}
 
 
@@ -1092,7 +1109,9 @@ async def main():
         # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+        await server.run(
+            read_stream, write_stream, server.create_initialization_options()
+        )
 
 
 if __name__ == "__main__":
