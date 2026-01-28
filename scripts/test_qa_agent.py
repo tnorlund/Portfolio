@@ -9,8 +9,8 @@ Usage:
     # Ask a specific question
     python scripts/test_qa_agent.py --env dev --question "How much did I spend on coffee?"
 
-    # Use Gemini 2.5 Flash (cheap, good tool calling)
-    python scripts/test_qa_agent.py --env dev --model google/gemini-2.5-flash --question "..."
+    # Use Grok 4.1 Fast (good tool calling, accurate)
+    python scripts/test_qa_agent.py --env dev --model x-ai/grok-4.1-fast --question "..."
 
     # Run predefined test questions
     python scripts/test_qa_agent.py --env dev --test-all
@@ -185,8 +185,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="google/gemini-2.5-flash",
-        help="OpenRouter model to use (default: google/gemini-2.5-flash)",
+        default="x-ai/grok-4.1-fast",
+        help="OpenRouter model to use (default: x-ai/grok-4.1-fast)",
     )
 
     args = parser.parse_args()

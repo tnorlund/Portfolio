@@ -297,14 +297,14 @@ def main():
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=5,
-        help="Number of questions to run in parallel (default: 5)",
+        default=20,
+        help="Number of questions to run in parallel (default: 20)",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="google/gemini-2.5-flash",
-        help="OpenRouter model to use (default: google/gemini-2.5-flash)",
+        default="x-ai/grok-4.1-fast",
+        help="OpenRouter model to use (default: x-ai/grok-4.1-fast)",
     )
     parser.add_argument(
         "--project",

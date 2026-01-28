@@ -52,8 +52,42 @@ def create_qa_tools(
         "fetched_receipt_keys": set(),  # (image_id, receipt_id) to avoid re-fetching
     }
 
+    def _get_effective_label(
+        labels: list,
+        line_id: int,
+        word_id: int,
+    ) -> Optional[str]:
+        """Get the effective label for a word, preferring VALID status.
+
+        A word can have multiple ReceiptWordLabel records (audit trail).
+        Priority: VALID status, then most recent by timestamp.
+        """
+        matching = [
+            lb for lb in labels
+            if lb.line_id == line_id and lb.word_id == word_id
+        ]
+        if not matching:
+            return None
+
+        # Prefer VALID labels
+        valid = [lb for lb in matching if lb.validation_status == "VALID"]
+        if valid:
+            valid.sort(key=lambda lb: str(lb.timestamp_added or ""), reverse=True)
+            return valid[0].label
+
+        # Fall back to most recent
+        matching.sort(key=lambda lb: str(lb.timestamp_added or ""), reverse=True)
+        return matching[0].label
+
     def _fetch_receipt_details(image_id: str, receipt_id: int) -> Optional[dict]:
-        """Fetch receipt details and format them. Returns None on error."""
+        """Fetch receipt details with structured word/label data.
+
+        Returns dict with:
+        - image_id, receipt_id, merchant
+        - words_by_line: dict[line_id] -> list of {text, label, x, y, word_id}
+        - amounts: list of {label, text, amount, line_id, word_id}
+        - formatted_receipt: text representation for LLM display
+        """
         # Skip if already fetched
         key = (image_id, receipt_id)
         if key in state_holder["fetched_receipt_keys"]:
@@ -71,33 +105,19 @@ def create_qa_tools(
             if details.place:
                 merchant = details.place.merchant_name or "Unknown"
 
-            # Build label lookup
-            labels_by_word: dict[tuple[int, int], list] = defaultdict(list)
-            for label in details.labels:
-                label_key = (label.line_id, label.word_id)
-                labels_by_word[label_key].append(label)
-
-            def get_valid_label(line_id: int, word_id: int) -> Optional[str]:
-                history = labels_by_word.get((line_id, word_id), [])
-                valid = [lb for lb in history if lb.validation_status == "VALID"]
-                if valid:
-                    valid.sort(key=lambda lb: str(lb.timestamp_added), reverse=True)
-                    return valid[0].label
-                return None
-
-            # Build word contexts with positions
+            # Build word contexts with positions and labels
             word_contexts = []
             for word in details.words:
                 centroid = word.calculate_centroid()
-                label = get_valid_label(word.line_id, word.word_id)
+                label = _get_effective_label(details.labels, word.line_id, word.word_id)
                 word_contexts.append({
-                    "word": word,
+                    "text": word.text,
                     "label": label,
                     "y": centroid[1],
                     "x": centroid[0],
-                    "text": word.text,
                     "line_id": word.line_id,
                     "word_id": word.word_id,
+                    "bounding_box": word.bounding_box,
                 })
 
             if not word_contexts:
@@ -105,8 +125,9 @@ def create_qa_tools(
                     "image_id": image_id,
                     "receipt_id": receipt_id,
                     "merchant": merchant,
-                    "formatted_receipt": "(empty receipt)",
+                    "words_by_line": {},
                     "amounts": [],
+                    "formatted_receipt": "(empty receipt)",
                 }
                 state_holder["fetched_receipt_keys"].add(key)
                 state_holder["retrieved_receipts"].append(result)
@@ -115,17 +136,17 @@ def create_qa_tools(
             # Sort by y descending (top first)
             sorted_words = sorted(word_contexts, key=lambda w: -w["y"])
 
-            # Group into visual lines
+            # Group into visual lines based on y-position
             heights = [
-                w["word"].bounding_box.get("height", 0.02)
+                w["bounding_box"].get("height", 0.02)
                 for w in sorted_words
-                if w["word"].bounding_box.get("height")
+                if w["bounding_box"] and w["bounding_box"].get("height")
             ]
             y_tolerance = (
                 max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
             )
 
-            visual_lines = []
+            visual_lines: list[list[dict]] = []
             current_line = [sorted_words[0]]
             current_y = sorted_words[0]["y"]
 
@@ -142,20 +163,20 @@ def create_qa_tools(
             current_line.sort(key=lambda c: c["x"])
             visual_lines.append(current_line)
 
-            # Format as text with inline labels
-            formatted_lines = []
-            for i, line in enumerate(visual_lines):
-                line_parts = []
-                for w in line:
-                    if w["label"]:
-                        line_parts.append(f"{w['text']}[{w['label']}]")
-                    else:
-                        line_parts.append(w["text"])
-                formatted_lines.append(f"Line {i}: {' '.join(line_parts)}")
+            # Build structured words_by_line dict
+            words_by_line: dict[int, list[dict]] = {}
+            for line_idx, line_words in enumerate(visual_lines):
+                words_by_line[line_idx] = [
+                    {
+                        "text": w["text"],
+                        "label": w["label"],
+                        "word_id": w["word_id"],
+                        "x": w["x"],
+                    }
+                    for w in line_words
+                ]
 
-            formatted_receipt = "\n".join(formatted_lines)
-
-            # Extract amounts summary
+            # Extract amounts with line context
             amounts = []
             currency_labels = [
                 "TAX",
@@ -164,24 +185,41 @@ def create_qa_tools(
                 "LINE_TOTAL",
                 "UNIT_PRICE",
             ]
-            for w in sorted_words:
-                if w["label"] in currency_labels:
-                    try:
-                        amount = float(w["text"].replace("$", "").replace(",", ""))
-                        amounts.append({
-                            "label": w["label"],
-                            "text": w["text"],
-                            "amount": amount,
-                        })
-                    except ValueError:
-                        pass
+            for line_idx, line_words in words_by_line.items():
+                for w in line_words:
+                    if w["label"] in currency_labels:
+                        try:
+                            amount = float(w["text"].replace("$", "").replace(",", ""))
+                            amounts.append({
+                                "label": w["label"],
+                                "text": w["text"],
+                                "amount": amount,
+                                "line_idx": line_idx,
+                                "word_id": w["word_id"],
+                            })
+                        except ValueError:
+                            pass
+
+            # Format as text for LLM display (still useful for debugging/display)
+            formatted_lines = []
+            for line_idx, line_words in words_by_line.items():
+                line_parts = []
+                for w in line_words:
+                    if w["label"]:
+                        line_parts.append(f"{w['text']}[{w['label']}]")
+                    else:
+                        line_parts.append(w["text"])
+                formatted_lines.append(f"Line {line_idx}: {' '.join(line_parts)}")
+
+            formatted_receipt = "\n".join(formatted_lines)
 
             result = {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "merchant": merchant,
-                "formatted_receipt": formatted_receipt,
+                "words_by_line": words_by_line,
                 "amounts": amounts,
+                "formatted_receipt": formatted_receipt,
             }
 
             # Track as fetched
@@ -553,33 +591,62 @@ def create_qa_tools(
 
         for receipt in retrieved:
             amounts = receipt.get("amounts", [])
+            words_by_line = receipt.get("words_by_line", {})
+
             for amt in amounts:
                 if amt.get("label") != label_type:
                     continue
 
+                # Check filter_text using structured data
                 if filter_text:
-                    formatted_receipt = receipt.get("formatted_receipt", "")
-                    lines = formatted_receipt.split("\n")
-                    amount_found_with_filter = False
-                    for line in lines:
-                        if (
-                            filter_text.upper() in line.upper()
-                            and amt.get("text", "") in line
-                        ):
-                            amount_found_with_filter = True
-                            break
-                    if not amount_found_with_filter:
+                    line_idx = amt.get("line_idx")
+                    if line_idx is None:
+                        continue
+
+                    # Get all text on this line
+                    line_words = words_by_line.get(line_idx, [])
+                    line_text = " ".join(w.get("text", "") for w in line_words)
+
+                    # Check if filter text appears on this line
+                    if filter_text.upper() not in line_text.upper():
                         continue
 
                 amount_value = amt.get("amount", 0.0)
                 total += amount_value
                 count += 1
+
+                # Get product name from the line (for breakdown)
+                line_idx = amt.get("line_idx")
+                product_name = ""
+                if line_idx is not None:
+                    line_words = words_by_line.get(line_idx, [])
+                    # Collect PRODUCT_NAME words or unlabeled words
+                    product_words = [
+                        w for w in line_words
+                        if w.get("label") == "PRODUCT_NAME"
+                    ]
+                    if product_words:
+                        product_name = " ".join(w["text"] for w in product_words)
+                    else:
+                        # Use unlabeled words (excluding price)
+                        price_word_id = amt.get("word_id")
+                        unlabeled = [
+                            w for w in line_words
+                            if w.get("word_id") != price_word_id
+                            and w.get("label") not in (
+                                "TAX", "SUBTOTAL", "GRAND_TOTAL",
+                                "LINE_TOTAL", "UNIT_PRICE",
+                            )
+                        ]
+                        product_name = " ".join(w["text"] for w in unlabeled)
+
                 breakdown.append({
                     "image_id": receipt.get("image_id"),
                     "receipt_id": receipt.get("receipt_id"),
                     "merchant": receipt.get("merchant", "Unknown"),
                     "amount": amount_value,
                     "text": amt.get("text"),
+                    "product": product_name.strip() if product_name else None,
                 })
 
         return {

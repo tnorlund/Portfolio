@@ -26,9 +26,11 @@ from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from receipt_agent.agents.question_answering.state import (
+    AmountItem,
     AnswerWithEvidence,
     QAState,
     QuestionClassification,
+    ReceiptSummary,
     RetrievedContext,
 )
 from receipt_agent.agents.question_answering.tools import (
@@ -65,16 +67,25 @@ Analyze the user's question and classify it to determine the best retrieval stra
 
 ## Query Rewrites
 Suggest alternative search terms if the initial query might not find results.
-Example: "coffee" -> ["COFFEE", "COLD BREW", "ESPRESSO", "LATTE"]
+Include BOTH product terms AND merchant names for category queries.
+
+Examples:
+- "coffee" -> ["COFFEE", "ESPRESSO", "LATTE", "CAPPUCCINO", "Starbucks", "Blue Bottle"]
+- "groceries" -> ["GROCERY", "PRODUCE", "Trader Joe's", "Sprouts", "Costco"]
+- "restaurants" -> ["RESTAURANT", "DINING", "Sweetgreen", "Chipotle"]
 
 ## Tools to Use
 Recommend which tools based on question type:
-- specific_item: search_receipts, get_receipt, aggregate_amounts
-- aggregation: search_receipts (label), aggregate_amounts
-- time_based: search_receipts, get_receipt (check dates manually)
-- comparison: search_receipts (multiple), aggregate_amounts
+- specific_item: search_receipts, semantic_search, get_receipt_summaries (if merchant known)
+- aggregation: get_receipt_summaries, search_receipts (label), aggregate_amounts
+- time_based: get_receipt_summaries, search_receipts
+- comparison: search_receipts (multiple), get_receipt_summaries, aggregate_amounts
 - list_query: search_receipts (multiple), get_receipt
-- metadata_query: search_receipts (label for MERCHANT_NAME)
+- metadata_query: list_merchants, get_receipts_by_merchant
+
+IMPORTANT: For category queries (coffee, groceries, etc.), use BOTH:
+1. search_product_lines for items mentioning the category
+2. get_receipt_summaries with merchant_filter for known merchants
 """
 
 SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing an answer about receipts based on retrieved context.
@@ -244,22 +255,98 @@ def create_agent_node(
 # ==============================================================================
 
 
+def _extract_line_items_from_structured(
+    words_by_line: dict[int, list[dict]],
+    amounts: list[dict],
+) -> list[AmountItem]:
+    """Extract product-price pairs from structured word/label data.
+
+    Uses the words_by_line dict (line_idx -> list of {text, label, word_id, x})
+    and amounts list ({label, text, amount, line_idx, word_id}) to find
+    product names associated with prices.
+
+    For each LINE_TOTAL or UNIT_PRICE, collects PRODUCT_NAME words on the same line.
+    """
+    line_items: list[AmountItem] = []
+
+    # Process each amount that's a line item price
+    for amt in amounts:
+        label = amt.get("label", "")
+        if label not in ("LINE_TOTAL", "UNIT_PRICE"):
+            continue
+
+        amount_value = amt.get("amount")
+        if amount_value is None or amount_value < 0.50:
+            continue
+
+        line_idx = amt.get("line_idx")
+        if line_idx is None:
+            continue
+
+        # Get all words on this line
+        line_words = words_by_line.get(line_idx, [])
+        if not line_words:
+            continue
+
+        # Collect PRODUCT_NAME words (sorted by x position, left to right)
+        product_words = [
+            w for w in sorted(line_words, key=lambda w: w.get("x", 0))
+            if w.get("label") == "PRODUCT_NAME"
+        ]
+
+        if product_words:
+            # Join product name words
+            product_name = " ".join(w["text"] for w in product_words)
+        else:
+            # Fallback: collect unlabeled words before the price
+            # (excluding the price word itself and common non-product labels)
+            price_word_id = amt.get("word_id")
+            non_product_labels = {
+                "TAX", "SUBTOTAL", "GRAND_TOTAL", "LINE_TOTAL",
+                "UNIT_PRICE", "QUANTITY", "MERCHANT_NAME",
+            }
+            unlabeled_words = [
+                w for w in sorted(line_words, key=lambda w: w.get("x", 0))
+                if w.get("word_id") != price_word_id
+                and w.get("label") not in non_product_labels
+            ]
+            product_name = " ".join(w["text"] for w in unlabeled_words)
+
+        # Clean up product name
+        product_name = product_name.strip()
+        # Remove leading numbers (SKU codes)
+        import re
+        product_name = re.sub(r"^\d+\s*", "", product_name).strip()
+
+        if product_name and amount_value > 0:
+            line_items.append(AmountItem(
+                label=label,
+                amount=amount_value,
+                item_text=product_name,
+            ))
+
+    return line_items
+
+
 def create_shape_node(state_holder: dict) -> Callable:
-    """Create the context shaping node."""
+    """Create the context shaping node.
+
+    Transforms raw receipt data into structured summaries using
+    words_by_line and amounts data directly (no text parsing).
+    """
 
     def shape_node(state: QAState) -> dict:
-        """Process retrieved contexts: dedupe, rerank, filter."""
-        # Get retrieved receipts from state_holder
+        """Convert retrieved receipts to structured summaries."""
         retrieved_receipts = state_holder.get("retrieved_receipts", [])
 
         logger.info(
-            "Shaping context from %d retrieved receipts",
+            "Shaping %d retrieved receipts into structured summaries",
             len(retrieved_receipts),
         )
 
-        # Convert to RetrievedContext objects
-        contexts: list[RetrievedContext] = []
+        # Dedupe by (image_id, receipt_id)
         seen_keys: set[tuple] = set()
+        summaries: list[ReceiptSummary] = []
 
         for receipt in retrieved_receipts:
             key = (receipt.get("image_id"), receipt.get("receipt_id"))
@@ -267,50 +354,61 @@ def create_shape_node(state_holder: dict) -> Callable:
                 continue
             seen_keys.add(key)
 
-            # Extract labels from formatted receipt
-            labels_found = []
-            formatted = receipt.get("formatted_receipt", "")
-            for label in ["TAX", "SUBTOTAL", "GRAND_TOTAL", "PRODUCT_NAME", "LINE_TOTAL"]:
-                if f"[{label}]" in formatted:
-                    labels_found.append(label)
+            # Get structured data
+            words_by_line = receipt.get("words_by_line", {})
+            amounts = receipt.get("amounts", [])
 
-            contexts.append(RetrievedContext(
+            # Extract GRAND_TOTAL and TAX
+            grand_total = None
+            tax = None
+
+            for amt in amounts:
+                label = amt.get("label", "")
+                amount_value = amt.get("amount")
+
+                if label == "GRAND_TOTAL" and amount_value is not None:
+                    grand_total = amount_value
+                elif label == "TAX" and amount_value is not None:
+                    tax = amount_value
+
+            # Extract line items using structured data
+            line_items = _extract_line_items_from_structured(words_by_line, amounts)
+
+            # Collect labels found from structured data
+            labels_found = set()
+            for line_words in words_by_line.values():
+                for w in line_words:
+                    if w.get("label"):
+                        labels_found.add(w["label"])
+
+            summaries.append(ReceiptSummary(
                 image_id=receipt.get("image_id", ""),
                 receipt_id=receipt.get("receipt_id", 0),
-                text=formatted[:2000],  # Limit text length
-                relevance_score=1.0,  # Default score
-                labels_found=labels_found,
-                amounts=receipt.get("amounts", []),
+                merchant=receipt.get("merchant", "Unknown"),
+                grand_total=grand_total,
+                tax=tax,
+                line_items=line_items,
+                labels_found=list(labels_found),
             ))
 
-        # Filter low-confidence contexts (< 0.3)
-        filtered_contexts = [
-            ctx for ctx in contexts
-            if ctx.relevance_score >= 0.3
-        ]
+        # Limit to reasonable number of receipts
+        MAX_RECEIPTS = 50
+        limited_summaries = summaries[:MAX_RECEIPTS]
 
-        # Limit total tokens (~4000 chars as proxy)
-        total_chars = 0
-        limited_contexts = []
-        for ctx in filtered_contexts:
-            if total_chars + len(ctx.text) > 4000:
-                break
-            limited_contexts.append(ctx)
-            total_chars += len(ctx.text)
-
+        # Log summary stats
+        total_line_items = sum(len(s.line_items) for s in limited_summaries)
         logger.info(
-            "Shaped context: %d receipts, %d chars",
-            len(limited_contexts),
-            total_chars,
+            "Shaped to %d receipts with %d line items",
+            len(limited_summaries),
+            total_line_items,
         )
 
         # Check if we need to retry (empty after shaping)
-        if not limited_contexts and retrieved_receipts:
-            logger.warning("Context empty after shaping, may need retry")
+        if not limited_summaries and retrieved_receipts:
+            logger.warning("No summaries after shaping, may need retry")
 
         return {
-            "shaped_context": limited_contexts,
-            "retrieved_contexts": contexts,  # Store full list too
+            "shaped_summaries": limited_summaries,
             "current_phase": "synthesize",
         }
 
@@ -323,35 +421,57 @@ def create_shape_node(state_holder: dict) -> Callable:
 
 
 def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
-    """Create the answer synthesis node."""
+    """Create the answer synthesis node.
+
+    Works with structured ReceiptSummary objects instead of raw text.
+    """
 
     def synthesize_node(state: QAState) -> dict:
-        """Generate final answer from shaped context."""
-        logger.info("Synthesizing answer from %d contexts", len(state.shaped_context))
+        """Generate final answer from structured receipt summaries."""
+        summaries = state.shaped_summaries
+        logger.info("Synthesizing answer from %d receipt summaries", len(summaries))
 
-        # Build context string
+        # Build structured context for the LLM
         context_parts = []
-        for i, ctx in enumerate(state.shaped_context):
-            context_parts.append(
-                f"Receipt {i + 1} (image_id={ctx.image_id}, receipt_id={ctx.receipt_id}):\n"
-                f"{ctx.text}\n"
-                f"Amounts: {ctx.amounts}\n"
+        for i, summary in enumerate(summaries):
+            # Format line items compactly
+            items_str = ""
+            if summary.line_items:
+                items = [
+                    f"  - {item.item_text}: ${item.amount:.2f}"
+                    if item.item_text else f"  - ${item.amount:.2f}"
+                    for item in summary.line_items
+                ]
+                items_str = "\n" + "\n".join(items)
+
+            # Build receipt summary
+            receipt_info = (
+                f"Receipt {i + 1}: {summary.merchant}\n"
+                f"  ID: {summary.image_id}:{summary.receipt_id}"
             )
+            if summary.grand_total is not None:
+                receipt_info += f"\n  Total: ${summary.grand_total:.2f}"
+            if summary.tax is not None:
+                receipt_info += f"\n  Tax: ${summary.tax:.2f}"
+            if items_str:
+                receipt_info += f"\n  Items:{items_str}"
 
-        context_str = "\n---\n".join(context_parts) if context_parts else "(No receipts found)"
+            context_parts.append(receipt_info)
 
-        # Check for aggregated amount
+        context_str = "\n\n".join(context_parts) if context_parts else "(No receipts found)"
+
+        # Check for pre-computed aggregation
         aggregated = state_holder.get("aggregated_amount")
         if aggregated:
-            context_str += f"\n\nAggregated Total: ${aggregated.get('total', 0):.2f}"
+            context_str += f"\n\nPre-computed Total: ${aggregated.get('total', 0):.2f}"
 
         # Build synthesis prompt
         messages = [
             SystemMessage(content=SYNTHESIZE_SYSTEM_PROMPT),
             HumanMessage(
                 content=f"Question: {state.question}\n\n"
-                f"Retrieved Context:\n{context_str}\n\n"
-                f"Generate a clear answer with evidence."
+                f"Receipt Data:\n{context_str}\n\n"
+                f"Generate a clear answer with specific amounts and evidence."
             ),
         ]
 
@@ -363,22 +483,23 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
         if aggregated:
             total_amount = aggregated.get("total")
 
-        # Build evidence from shaped contexts
+        # Build evidence from structured summaries
         evidence = []
-        for ctx in state.shaped_context:
-            for amt in ctx.amounts:
+        for summary in summaries:
+            for item in summary.line_items:
                 evidence.append({
-                    "image_id": ctx.image_id,
-                    "receipt_id": ctx.receipt_id,
-                    "item": amt.get("text", ""),
-                    "amount": amt.get("amount"),
+                    "image_id": summary.image_id,
+                    "receipt_id": summary.receipt_id,
+                    "merchant": summary.merchant,
+                    "item": item.item_text or "",
+                    "amount": item.amount,
                 })
 
         # Store in state_holder for extraction
         state_holder["answer"] = {
             "answer": answer_text,
             "total_amount": total_amount,
-            "receipt_count": len(state.shaped_context),
+            "receipt_count": len(summaries),
             "evidence": evidence,
         }
 
@@ -394,7 +515,7 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
         return {
             "final_answer": answer_text,
             "total_amount": total_amount,
-            "receipt_count": len(state.shaped_context),
+            "receipt_count": len(summaries),
             "evidence": evidence,
             "current_phase": "complete",
         }
@@ -634,7 +755,7 @@ async def answer_question(
     try:
         import os
         model_name = os.environ.get("OPENROUTER_MODEL") or os.environ.get(
-            "RECEIPT_AGENT_OPENROUTER_MODEL", "google/gemini-2.5-flash"
+            "RECEIPT_AGENT_OPENROUTER_MODEL", "x-ai/grok-4.1-fast"
         )
         provider = model_name.split("/")[0] if "/" in model_name else "openrouter"
 

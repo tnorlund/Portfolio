@@ -16,7 +16,7 @@ Usage:
     python scripts/evaluate_qa_agent.py --env dev --evaluate
 
     # Run evaluation with specific model
-    python scripts/evaluate_qa_agent.py --env dev --model google/gemini-2.5-flash --evaluate
+    python scripts/evaluate_qa_agent.py --env dev --model x-ai/grok-4.1-fast --evaluate
 """
 
 import argparse
@@ -433,7 +433,7 @@ def run_evaluation(env: str, model: str):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate QA agent with LangSmith")
     parser.add_argument("--env", type=str, choices=["dev", "prod"], help="Environment")
-    parser.add_argument("--model", type=str, default="google/gemini-2.5-flash", help="Model to evaluate")
+    parser.add_argument("--model", type=str, default="x-ai/grok-4.1-fast", help="Model to evaluate")
     parser.add_argument("--create-dataset", action="store_true", help="Create golden dataset")
     parser.add_argument("--evaluate", action="store_true", help="Run evaluation")
 

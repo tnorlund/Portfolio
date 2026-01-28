@@ -47,10 +47,50 @@ class QuestionClassification(BaseModel):
     )
 
 
+class AmountItem(BaseModel):
+    """A labeled amount from a receipt."""
+
+    label: str = Field(description="Label type: LINE_TOTAL, GRAND_TOTAL, TAX, etc.")
+    amount: float = Field(description="Dollar amount")
+    item_text: Optional[str] = Field(
+        default=None,
+        description="Associated item text (e.g., 'Grande Latte')",
+    )
+
+
+class ReceiptSummary(BaseModel):
+    """Structured summary of a receipt for synthesis.
+
+    This is the output of the shape node - contains only what synthesize needs.
+    Much more compact than raw receipt text (~200 chars vs ~2000 chars).
+    """
+
+    image_id: str = Field(description="S3 image identifier")
+    receipt_id: int = Field(description="Receipt number within image")
+    merchant: str = Field(description="Merchant name")
+    grand_total: Optional[float] = Field(
+        default=None,
+        description="Receipt total amount",
+    )
+    tax: Optional[float] = Field(
+        default=None,
+        description="Tax amount",
+    )
+    line_items: list[AmountItem] = Field(
+        default_factory=list,
+        description="Individual line items with amounts",
+    )
+    labels_found: list[str] = Field(
+        default_factory=list,
+        description="Label types present on this receipt",
+    )
+
+
 class RetrievedContext(BaseModel):
     """Chunk with relevance metadata.
 
     Represents a retrieved receipt or receipt segment with scoring.
+    Used during retrieval phase before shaping.
     """
 
     image_id: str = Field(description="S3 image identifier")
@@ -110,9 +150,9 @@ class QAState(BaseModel):
     )
 
     # Shaping phase
-    shaped_context: list[RetrievedContext] = Field(
+    shaped_summaries: list[ReceiptSummary] = Field(
         default_factory=list,
-        description="Filtered and reranked contexts for synthesis",
+        description="Structured receipt summaries for synthesis",
     )
 
     # Synthesis phase
@@ -159,10 +199,10 @@ class QAState(BaseModel):
 
     @property
     def should_retry_retrieval(self) -> bool:
-        """Check if retrieval should retry (empty context after shaping)."""
+        """Check if retrieval should retry (empty summaries after shaping)."""
         return (
             len(self.retrieved_contexts) > 0
-            and len(self.shaped_context) == 0
+            and len(self.shaped_summaries) == 0
             and self.iteration_count < 15
         )
 

@@ -31,9 +31,11 @@ from receipt_agent.agents.question_answering.graph import (
 
 # State schemas
 from receipt_agent.agents.question_answering.state import (
+    AmountItem,
     AnswerWithEvidence,
     QAState,
     QuestionClassification,
+    ReceiptSummary,
     RetrievedContext,
 )
 
@@ -88,9 +90,11 @@ __all__ = [
     "PLAN_SYSTEM_PROMPT",
     "SYNTHESIZE_SYSTEM_PROMPT",
     # State schemas
+    "AmountItem",
     "AnswerWithEvidence",
     "QAState",
     "QuestionClassification",
+    "ReceiptSummary",
     "RetrievedContext",
     # Tools
     "create_qa_tools",
