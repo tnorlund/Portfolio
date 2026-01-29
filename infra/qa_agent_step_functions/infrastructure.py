@@ -79,7 +79,6 @@ class QAAgentStepFunction(ComponentResource):
         langsmith_export_bucket: pulumi.Input[str],
         analytics_output_bucket: pulumi.Input[str],
         spark_artifacts_bucket: pulumi.Input[str],
-        cache_bucket: pulumi.Input[str],
         # LangSmith export lambdas (reuse from existing infrastructure)
         trigger_export_lambda_arn: pulumi.Input[str],
         check_export_lambda_arn: pulumi.Input[str],
@@ -456,7 +455,6 @@ class QAAgentStepFunction(ComponentResource):
             Output.from_input(emr_job_execution_role_arn),
             Output.from_input(spark_artifacts_bucket),
             Output.from_input(langsmith_export_bucket),
-            Output.from_input(cache_bucket),
             self.batch_bucket.id,
         ).apply(
             lambda args: json.dumps(
@@ -469,8 +467,9 @@ class QAAgentStepFunction(ComponentResource):
                     emr_job_role_arn=args[5],
                     spark_artifacts_bucket=args[6],
                     langsmith_export_bucket=args[7],
+                    # Cache and batch are the same bucket
                     cache_bucket=args[8],
-                    batch_bucket=args[9],
+                    batch_bucket=args[8],
                 )
             )
         )
@@ -591,9 +590,10 @@ def _build_state_machine_definition(
             # LangSmith needs time to ingest traces after the Lambda
             # flushes them.  Without this delay the bulk export may
             # return 0 rows because the traces aren't queryable yet.
+            # 5 minutes is conservative but reliable for 32-trace batches.
             "WaitForTraceIngestion": {
                 "Type": "Wait",
-                "Seconds": 120,
+                "Seconds": 300,
                 "Next": "TriggerLangSmithExport",
             },
             "TriggerLangSmithExport": {

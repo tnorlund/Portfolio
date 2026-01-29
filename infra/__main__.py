@@ -1598,7 +1598,6 @@ qa_agent_sf = QAAgentStepFunction(
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
     # LangSmith export lambdas (reuse from label validation viz cache)
     trigger_export_lambda_arn=label_validation_viz_cache.trigger_export_lambda.arn,
     check_export_lambda_arn=label_validation_viz_cache.check_export_lambda.arn,
