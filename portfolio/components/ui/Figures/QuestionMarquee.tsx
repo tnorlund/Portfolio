@@ -41,6 +41,8 @@ interface QuestionMarqueeProps {
   speed?: number;
   /** Number of rows to display */
   rows?: number;
+  /** Called when a question pill is clicked, with the question's global index */
+  onQuestionClick?: (index: number) => void;
 }
 
 /**
@@ -50,6 +52,7 @@ interface QuestionMarqueeProps {
 const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   speed = 30,
   rows = 4,
+  onQuestionClick,
 }) => {
   // Split questions across rows
   const questionsPerRow = Math.ceil(QUESTIONS.length / rows);
@@ -136,11 +139,20 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
               "--scroll-speed": `${speed + rowIndex * 3}s`,
             }}
           >
-            {duplicatedQuestions.map((question, qIndex) => (
-              <span key={`${rowIndex}-${qIndex}`} className="question-pill">
-                {question}
-              </span>
-            ))}
+            {duplicatedQuestions.map((question, qIndex) => {
+              // Map duplicated index back to original QUESTIONS index
+              const originalIdx = (rowIndex * questionsPerRow) + (qIndex % questions.length);
+              return (
+                <span
+                  key={`${rowIndex}-${qIndex}`}
+                  className="question-pill"
+                  onClick={onQuestionClick ? () => onQuestionClick(originalIdx) : undefined}
+                  style={onQuestionClick ? { cursor: "pointer" } : undefined}
+                >
+                  {question}
+                </span>
+              );
+            })}
           </div>
         );
       })}

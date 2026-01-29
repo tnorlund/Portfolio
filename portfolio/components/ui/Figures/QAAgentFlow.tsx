@@ -1,9 +1,25 @@
 import React from "react";
 import { useSpring, animated, config } from "@react-spring/web";
 
+/** Data for a single question from the QA cache API */
+export interface QAQuestionData {
+  question: string;
+  questionIndex: number;
+  traceId?: string;
+  trace: TraceStep[];
+  stats: {
+    llmCalls: number;
+    toolInvocations: number;
+    receiptsProcessed: number;
+    cost: number;
+  };
+}
+
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
   autoPlay?: boolean;
+  /** Optional real data from the cache API; falls back to EXAMPLE_TRACE */
+  questionData?: QAQuestionData;
 }
 
 // 5-node workflow step types
@@ -137,9 +153,14 @@ const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string
 
 const CDN_BASE = "https://dev.tylernorlund.com";
 
-const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
+const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData }) => {
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
+
+  // Use real data when available, fall back to example trace
+  const trace = questionData?.trace ?? EXAMPLE_TRACE;
+  const questionText = questionData?.question ?? "How much did I spend on coffee?";
+  const stats = questionData?.stats;
 
   // Auto-advance through steps
   React.useEffect(() => {
@@ -147,7 +168,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
 
     const interval = setInterval(() => {
       setActiveStep((prev) => {
-        if (prev >= EXAMPLE_TRACE.length - 1) {
+        if (prev >= trace.length - 1) {
           // Pause at end, then reset
           setTimeout(() => setActiveStep(-1), 3000);
           return prev;
@@ -157,26 +178,28 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isPlaying, activeStep]);
+  }, [isPlaying, activeStep, trace.length]);
 
   const questionSpring = useSpring({
     opacity: 1,
     config: config.gentle,
   });
 
-  // Compute loop count: increments each time an agent step appears (steps 1, 3, 5)
+  // Compute loop count: increments each time an agent step appears
   const loopCount = React.useMemo(() => {
     if (activeStep < 1) return 0;
     let count = 0;
-    for (let i = 1; i <= Math.min(activeStep, EXAMPLE_TRACE.length - 1); i++) {
-      if (EXAMPLE_TRACE[i].type === "agent") count++;
+    for (let i = 1; i <= Math.min(activeStep, trace.length - 1); i++) {
+      if (trace[i].type === "agent") count++;
     }
     return count;
-  }, [activeStep]);
+  }, [activeStep, trace]);
 
   // Determine which node is currently active
-  const activeType: StepType | null = activeStep >= 0 ? EXAMPLE_TRACE[activeStep].type : null;
-  const inLoopPhase = activeStep >= 1 && activeStep <= 5;
+  const activeType: StepType | null = activeStep >= 0 && activeStep < trace.length ? trace[activeStep].type : null;
+  // Determine the loop phase bounds dynamically based on trace content
+  const loopEndIdx = trace.length > 0 ? trace.reduce((last, s, i) => (s.type === "agent" || s.type === "tools" ? i : last), -1) : 5;
+  const inLoopPhase = activeStep >= 1 && activeStep <= loopEndIdx;
 
   return (
     <div
@@ -200,7 +223,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         }}
       >
         <div style={{ color: "var(--text-color)", fontSize: "0.8rem" }}>
-          💬 "How much did I spend on coffee?"
+          {`\uD83D\uDCAC "${questionText}"`}
         </div>
       </animated.div>
 
@@ -235,7 +258,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
           if (activeType !== toType) return false;
           const fromType = mainNodes[fromIdx];
           // agent → shape: previous trace step is "agent" (step 5), fromType is "agent" ✓
-          return activeStep > 0 && EXAMPLE_TRACE[activeStep - 1].type === fromType;
+          return activeStep > 0 && trace[activeStep - 1].type === fromType;
         };
 
         // Arrowhead size (defined early so edges can account for it)
@@ -283,7 +306,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         // Activation states
         const downActive = activeType === "tools" && inLoopPhase;
         const upActive = activeType === "agent" && activeStep > 1 && inLoopPhase;
-        const loopVisible = inLoopPhase || activeStep === 6;
+        const loopVisible = inLoopPhase || activeStep === loopEndIdx + 1;
 
         // Badge position: centered between the arc departure points (Agent bottom and Tools top)
         const badgeX = agentX;
@@ -309,7 +332,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
           const isActive = activeType === node;
-          const wasVisited = activeStep >= 0 && EXAMPLE_TRACE.slice(0, activeStep + 1).some((s) => s.type === node);
+          const wasVisited = activeStep >= 0 && trace.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
             <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.85 : 0.3}>
               {/* Base circle: filled with color when visited (but not active) */}
@@ -421,14 +444,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
 
       {/* Trace Steps */}
       <div style={{ position: "relative" }}>
-        {EXAMPLE_TRACE.map((step, idx) => {
+        {trace.map((step, idx) => {
           const isActive = idx <= activeStep;
           const isCurrent = idx === activeStep;
           const cfg = STEP_CONFIG[step.type];
 
           // Visual grouping for agent/tools loop
           const isLoopStep = step.type === "agent" || step.type === "tools";
-          const isInLoop = idx >= 1 && idx <= 5;
+          const isInLoop = idx >= 1 && idx <= loopEndIdx;
 
           return (
             <div
@@ -635,7 +658,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
       </div>
 
       {/* Stats footer */}
-      {activeStep >= EXAMPLE_TRACE.length - 1 && (
+      {activeStep >= trace.length - 1 && (
         <div
           style={{
             fontSize: "0.65rem",
@@ -647,7 +670,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
             borderTop: "1px solid var(--text-color)",
           }}
         >
-          4 LLM calls · 2 tool invocations · 10 receipts shaped · $0.005 cost
+          {stats
+            ? `${stats.llmCalls} LLM calls · ${stats.toolInvocations} tool invocations · ${stats.receiptsProcessed} receipts shaped · $${stats.cost.toFixed(3)} cost`
+            : "4 LLM calls · 2 tool invocations · 10 receipts shaped · $0.005 cost"}
         </div>
       )}
 

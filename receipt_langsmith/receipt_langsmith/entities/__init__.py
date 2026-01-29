@@ -66,6 +66,16 @@ from receipt_langsmith.entities.label_validation import (
     StepTimingSummary,
 )
 from receipt_langsmith.entities.parquet_schema import LangSmithRunRaw
+from receipt_langsmith.entities.qa_trace import (
+    QACacheMetadata,
+    QAPlanOutput,
+    QAQuestionCache,
+    QAShapeOutput,
+    QASynthesizeOutput,
+    QATraceRoot,
+    QATraceStats,
+    QATraceStep,
+)
 from receipt_langsmith.entities.place_id_finder import (
     PlaceIdFinderInputs,
     PlaceIdFinderOutputs,
@@ -175,4 +185,13 @@ __all__ = [
     "ReceiptProcessingInputs",
     "ReceiptProcessingOutputs",
     "StepTimingSummary",
+    # QA Agent traces
+    "QATraceRoot",
+    "QAPlanOutput",
+    "QAShapeOutput",
+    "QASynthesizeOutput",
+    "QATraceStep",
+    "QATraceStats",
+    "QAQuestionCache",
+    "QACacheMetadata",
 ]

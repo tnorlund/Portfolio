@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--job-type",
-        choices=["analytics", "viz-cache", "all"],
+        choices=["analytics", "viz-cache", "qa-cache", "all"],
         default="all",
         help="Type of job to run (default: all)",
     )
@@ -117,6 +117,12 @@ def parse_args() -> argparse.Namespace:
         help="S3 path/prefix to receipts-lookup JSONL dataset (optional)",
     )
 
+    # QA cache arguments
+    parser.add_argument(
+        "--results-ndjson",
+        help="S3 path to question-results.ndjson (required for qa-cache)",
+    )
+
     return parser.parse_args()
 
 
@@ -135,6 +141,16 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--cache-bucket required for viz-cache")
         if not args.execution_id:
             raise ValueError("--execution-id required for viz-cache")
+
+    if args.job_type == "qa-cache":
+        if not args.parquet_input:
+            raise ValueError("--parquet-input required for qa-cache")
+        if not args.cache_bucket:
+            raise ValueError("--cache-bucket required for qa-cache")
+        if not args.results_ndjson:
+            raise ValueError("--results-ndjson required for qa-cache")
+        if not args.receipts_json:
+            raise ValueError("--receipts-json required for qa-cache")
 
 
 # =============================================================================
@@ -792,6 +808,24 @@ def main() -> int:
             logger.info("Starting viz-cache phase...")
             run_viz_cache(spark, args)
             logger.info("Viz-cache phase complete")
+
+        # Run QA cache if requested
+        if args.job_type == "qa-cache":
+            from receipt_langsmith.spark.qa_viz_cache_job import (
+                run_qa_cache_job,
+            )
+
+            logger.info("Starting qa-cache phase...")
+            run_qa_cache_job(
+                spark=spark,
+                parquet_input=args.parquet_input,
+                cache_bucket=args.cache_bucket,
+                results_ndjson=args.results_ndjson,
+                receipts_json=args.receipts_json,
+                execution_id=args.execution_id or "",
+                max_questions=50,
+            )
+            logger.info("QA cache phase complete")
 
         logger.info("All phases complete!")
         return 0
