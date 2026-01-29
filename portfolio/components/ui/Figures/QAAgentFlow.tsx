@@ -128,11 +128,11 @@ const EXAMPLE_TRACE: TraceStep[] = [
 ];
 
 const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string; node: string }> = {
-  plan: { color: "#9C27B0", label: "Plan", icon: "📋", node: "1" },
-  agent: { color: "#1E88E5", label: "Agent", icon: "🤖", node: "2" },
-  tools: { color: "#43A047", label: "Tools", icon: "🔧", node: "3" },
-  shape: { color: "#FB8C00", label: "Shape", icon: "📊", node: "4" },
-  synthesize: { color: "#E53935", label: "Synthesize", icon: "✓", node: "5" },
+  plan: { color: "var(--color-purple)", label: "Plan", icon: "📋", node: "1" },
+  agent: { color: "var(--color-blue)", label: "Agent", icon: "🤖", node: "2" },
+  tools: { color: "var(--color-green)", label: "Tools", icon: "🔧", node: "3" },
+  shape: { color: "var(--color-orange)", label: "Shape", icon: "📊", node: "4" },
+  synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5" },
 };
 
 const CDN_BASE = "https://dev.tylernorlund.com";
@@ -196,7 +196,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
           backgroundColor: "var(--code-background)",
           borderRadius: "6px",
           marginBottom: "0.75rem",
-          borderLeft: "3px solid #1E88E5",
+          borderLeft: "3px solid var(--color-blue)",
         }}
       >
         <div style={{ color: "var(--text-color)", fontSize: "0.8rem" }}>
@@ -246,7 +246,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         const angle = 40 * Math.PI / 180;
         const dx = Math.round(nodeR * Math.sin(angle));  // ~10 — horizontal offset on circle
         const dy = Math.round(nodeR * Math.cos(angle));   // ~12 — vertical offset on circle
-        const armLen = 28; // control-point distance along tangent
+        const armLen = 20; // control-point distance along tangent (circular arc approximation)
         const tx = Math.cos(angle); // tangent x component ~0.77
         const ty = Math.sin(angle); // tangent y component ~0.64
 
@@ -328,12 +328,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                 const x1 = mainXs[fromIdx] + nodeR + 4;
                 const x2 = mainXs[toIdx] - nodeR - 4;
                 const active = isForwardArrowActive(fromIdx, toIdx);
-                const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "#999";
+                const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
                 return (
                   <g key={`fwd-${fromIdx}-${toIdx}`} opacity={active ? 1 : 0.2} style={{ transition: "opacity 0.3s ease" }}>
                     <line
                       x1={x1} y1={rowY} x2={x2} y2={rowY}
-                      stroke={color} strokeWidth={active ? 2 : 1.5}
+                      stroke={color} strokeWidth={active ? 2.5 : 2}
                     />
                     {renderArrowhead(x2, rowY, 0, color)}
                   </g>
@@ -344,20 +344,20 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
               <g opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
                 <path
                   d={downD} fill="none"
-                  stroke={downActive ? "#43A047" : "#999"}
-                  strokeWidth={downActive ? 2 : 1.5}
+                  stroke={downActive ? "var(--color-green)" : "var(--text-color)"}
+                  strokeWidth={downActive ? 2.5 : 2}
                 />
-                {renderArrowhead(rex, rey, downArrowAngle, downActive ? "#43A047" : "#999")}
+                {renderArrowhead(rex, rey, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
               </g>
 
               {/* Loop: Tools → Agent (left arc) */}
               <g opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
                 <path
                   d={upD} fill="none"
-                  stroke={upActive ? "#43A047" : "#999"}
-                  strokeWidth={upActive ? 2 : 1.5}
+                  stroke={upActive ? "var(--color-blue)" : "var(--text-color)"}
+                  strokeWidth={upActive ? 2.5 : 2}
                 />
-                {renderArrowhead(lex, ley, upArrowAngle, upActive ? "#43A047" : "#999")}
+                {renderArrowhead(lex, ley, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
               </g>
 
               {/* Iteration badge ×N */}
@@ -366,12 +366,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                   <rect
                     x={badgeX - 14} y={badgeY - 9}
                     width={28} height={18} rx={4}
-                    fill="var(--code-background)" stroke="#43A047" strokeWidth={1} opacity={0.9}
+                    fill="var(--code-background)" stroke="var(--color-green)" strokeWidth={1} opacity={0.9}
                   />
                   <text
                     x={badgeX} y={badgeY + 3}
                     textAnchor="middle" fontSize="11" fontWeight={700}
-                    fontFamily="var(--font-mono, monospace)" fill="#43A047"
+                    fontFamily="var(--font-mono, monospace)" fill="var(--color-green)"
                   >
                     {`×${loopCount}`}
                   </text>
@@ -498,7 +498,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                         border: "1px solid rgba(var(--text-color-rgb, 0,0,0), 0.2)",
                       }}
                     >
-                      <div style={{ fontWeight: 600, color: "#FB8C00" }}>{receipt.merchant}</div>
+                      <div style={{ fontWeight: 600, color: "var(--color-orange)" }}>{receipt.merchant}</div>
                       {receipt.items.map((item, iIdx) => (
                         <div key={iIdx} style={{ opacity: 0.7 }}>
                           {item.name}: ${item.amount.toFixed(2)}
@@ -587,7 +587,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                         <div
                           style={{
                             fontSize: "0.6rem",
-                            color: "#43A047",
+                            color: "var(--color-green)",
                             fontWeight: 600,
                           }}
                         >
