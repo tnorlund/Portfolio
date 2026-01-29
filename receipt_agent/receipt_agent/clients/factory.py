@@ -242,6 +242,11 @@ def create_chroma_client(
     persist_dir = persist_directory or settings.chroma_persist_directory
     url = http_url or settings.chroma_http_url
 
+    # Chroma Cloud env vars
+    cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip() or None
+    cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT") or None
+    cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE") or None
+
     if ChromaClient is None:
         logger.error(
             "Failed to import receipt_chroma. "
@@ -251,7 +256,15 @@ def create_chroma_client(
             "receipt_chroma package required for ChromaDB operations"
         )
 
-    if url:
+    if cloud_api_key:
+        client = ChromaClient(
+            cloud_api_key=cloud_api_key,
+            cloud_tenant=cloud_tenant,
+            cloud_database=cloud_database,
+            mode=mode,
+        )
+        logger.info("Created Chroma Cloud client (tenant=%s)", cloud_tenant)
+    elif url:
         client = ChromaClient(http_url=url, mode=mode)
         logger.info("Created ChromaDB HTTP client: %s", url)
     elif persist_dir:
@@ -260,7 +273,8 @@ def create_chroma_client(
     else:
         raise ValueError(
             "Either persist_directory or http_url must be specified. "
-            "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
+            "Set CHROMA_CLOUD_API_KEY, "
+            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
             "RECEIPT_AGENT_CHROMA_HTTP_URL, or "
             "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
             "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
