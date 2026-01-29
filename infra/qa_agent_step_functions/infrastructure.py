@@ -220,6 +220,35 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
+        # Grant EMR job execution role access to the QA batch/cache bucket
+        # so the Spark job can read NDJSON/receipts-lookup and write cache files.
+        emr_role_name = Output.from_input(emr_job_execution_role_arn).apply(
+            lambda arn: arn.split("/")[-1]
+        )
+        aws.iam.RolePolicy(
+            f"{name}-emr-s3-policy",
+            role=emr_role_name,
+            policy=self.batch_bucket.arn.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [arn, f"{arn}/*"],
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
         # Step Function role
         sfn_role = aws.iam.Role(
             f"{name}-sfn-role",
@@ -565,7 +594,27 @@ def _build_state_machine_definition(
                 "Parameters": {
                     "FunctionName": trigger_export_arn,
                     "Payload": {
-                        "langchain_project.$": "$.questions_result.langchain_project",
+                        "project_name.$": "$.questions_result.langchain_project",
+                        "export_fields": [
+                            "id",
+                            "name",
+                            "inputs",
+                            "outputs",
+                            "extra",
+                            "parent_run_id",
+                            "trace_id",
+                            "dotted_order",
+                            "is_root",
+                            "start_time",
+                            "end_time",
+                            "run_type",
+                            "status",
+                            "total_tokens",
+                            "prompt_tokens",
+                            "completion_tokens",
+                            "tags",
+                            "session_id",
+                        ],
                     },
                 },
                 "ResultSelector": {
@@ -646,6 +695,11 @@ def _build_state_machine_definition(
                         "$.questions_result.results_ndjson_key)"
                     ),
                     "langchain_project.$": "$.questions_result.langchain_project",
+                    "parquet_input.$": (
+                        f"States.Format('s3://{langsmith_export_bucket}"
+                        "/traces/export_id={}/'"
+                        ", $.export.export_id)"
+                    ),
                 },
                 "ResultPath": "$.emr_args",
                 "Next": "StartEMRJob",
@@ -663,7 +717,7 @@ def _build_state_machine_definition(
                             "EntryPointArguments.$": (
                                 "States.Array("
                                 "'--job-type', 'qa-cache', "
-                                f"'--parquet-input', 's3://{langsmith_export_bucket}/traces/', "
+                                "'--parquet-input', $.emr_args.parquet_input, "
                                 f"'--cache-bucket', '{cache_bucket}', "
                                 "'--execution-id', $.emr_args.execution_id, "
                                 "'--receipts-json', $.emr_args.receipts_json, "
@@ -676,7 +730,8 @@ def _build_state_machine_definition(
                                 "--conf spark.executor.cores=2 "
                                 "--conf spark.dynamicAllocation.enabled=true "
                                 "--conf spark.dynamicAllocation.minExecutors=1 "
-                                "--conf spark.dynamicAllocation.maxExecutors=4"
+                                "--conf spark.dynamicAllocation.maxExecutors=4 "
+                                "--conf spark.sql.legacy.parquet.nanosAsLong=true"
                             ),
                         }
                     },
