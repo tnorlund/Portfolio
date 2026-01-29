@@ -172,8 +172,8 @@ def derive_trace_steps(
 ) -> list[dict]:
     """Derive trace steps from child runs for the React component.
 
-    Maps each child run to a TraceStep with type, content, and detail
-    based on the node name and outputs.
+    Maps each child run to a TraceStep with type, content, detail, and
+    durationMs based on the node name, outputs, and timestamps.
 
     Args:
         child_runs: Sorted list of child run dicts from parquet.
@@ -201,6 +201,11 @@ def derive_trace_steps(
             continue
 
         step = {"type": step_type}
+
+        # Compute duration from start_time / end_time
+        duration_ms = _compute_duration_ms(run)
+        if duration_ms is not None:
+            step["durationMs"] = duration_ms
 
         if step_type == "plan":
             # Plan outputs are nested under "classification" key
@@ -275,6 +280,40 @@ def _classify_run(name: str, run_type: str) -> Optional[str]:
         return "tools"
     if "agent" in name or run_type == "chain":
         return "agent"
+    return None
+
+
+def _compute_duration_ms(run: dict) -> Optional[int]:
+    """Compute step duration in milliseconds from start_time and end_time.
+
+    Handles both datetime strings and numeric (epoch seconds) values
+    that come from the parquet after timestamp conversion.
+    """
+    start = run.get("start_time")
+    end = run.get("end_time")
+    if start is None or end is None:
+        return None
+
+    try:
+        # After Spark's from_unixtime, values are datetime strings
+        if isinstance(start, str) and isinstance(end, str):
+            from datetime import datetime as _dt
+
+            fmt = "%Y-%m-%d %H:%M:%S"
+            s = _dt.strptime(start[:19], fmt)
+            e = _dt.strptime(end[:19], fmt)
+            return max(int((e - s).total_seconds() * 1000), 0)
+
+        # PySpark Row might also give datetime objects
+        if hasattr(start, "timestamp") and hasattr(end, "timestamp"):
+            return max(int((end.timestamp() - start.timestamp()) * 1000), 0)
+
+        # Numeric (epoch seconds)
+        if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+            return max(int((end - start) * 1000), 0)
+    except Exception:
+        return None
+
     return None
 
 

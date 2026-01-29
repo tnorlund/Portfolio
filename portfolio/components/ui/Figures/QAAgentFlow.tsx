@@ -29,6 +29,8 @@ interface TraceStep {
   type: StepType;
   content: string;
   detail?: string;
+  /** Step duration in milliseconds (from LangSmith trace timestamps) */
+  durationMs?: number;
   receipts?: ReceiptEvidence[];
   structuredData?: StructuredReceipt[];
 }
@@ -103,42 +105,50 @@ const EXAMPLE_TRACE: TraceStep[] = [
     type: "plan",
     content: "specific_item → semantic_hybrid",
     detail: "Classify question and choose retrieval strategy",
+    durationMs: 1200,
   },
   {
     type: "agent",
     content: "Search for coffee using text and semantic",
     detail: "Deciding which tools to call based on classification",
+    durationMs: 3400,
   },
   {
     type: "tools",
     content: 'search_receipts("COFFEE", "text") → 8 matches',
     detail: "Text search finds grocery store coffee",
+    durationMs: 800,
   },
   {
     type: "agent",
     content: "Need semantic search for café drinks too",
     detail: "ReAct loop continues - more tools needed",
+    durationMs: 2100,
   },
   {
     type: "tools",
     content: 'semantic_search("coffee espresso latte") → 6 matches',
     detail: "Finds café purchases: La La Land, Blue Bottle...",
+    durationMs: 600,
   },
   {
     type: "agent",
     content: "Have enough context, ready to shape",
     detail: "10 unique receipts retrieved",
+    durationMs: 1800,
   },
   {
     type: "shape",
     content: "10 receipts → 25 structured line items",
     detail: "Extract product names + amounts using word labels",
+    durationMs: 4500,
     structuredData: STRUCTURED_RECEIPTS,
   },
   {
     type: "synthesize",
     content: "You spent $58.38 on coffee",
     detail: "5 receipts with coffee items identified",
+    durationMs: 5200,
     receipts: COFFEE_RECEIPTS,
   },
 ];
@@ -153,6 +163,15 @@ const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string
 
 const CDN_BASE = "https://dev.tylernorlund.com";
 
+/** Default step duration (ms) when durationMs is not available */
+const DEFAULT_STEP_MS = 1500;
+/** Target total animation time (ms) for proportional scaling */
+const TARGET_TOTAL_MS = 12000;
+/** Minimum per-step duration to keep the animation readable */
+const MIN_STEP_MS = 600;
+/** Maximum per-step duration to prevent a single slow step dominating */
+const MAX_STEP_MS = 3500;
+
 const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData }) => {
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
@@ -162,23 +181,39 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   const questionText = questionData?.question ?? "How much did I spend on coffee?";
   const stats = questionData?.stats;
 
-  // Auto-advance through steps
+  // Compute per-step animation durations from durationMs, scaled proportionally
+  const stepDurations = React.useMemo(() => {
+    const hasTiming = trace.some((s) => s.durationMs != null && s.durationMs > 0);
+    if (!hasTiming) return trace.map(() => DEFAULT_STEP_MS);
+
+    const rawMs = trace.map((s) => s.durationMs ?? DEFAULT_STEP_MS);
+    const rawTotal = rawMs.reduce((sum, d) => sum + d, 0);
+    if (rawTotal === 0) return trace.map(() => DEFAULT_STEP_MS);
+
+    const scale = TARGET_TOTAL_MS / rawTotal;
+    return rawMs.map((d) => Math.max(MIN_STEP_MS, Math.min(MAX_STEP_MS, Math.round(d * scale))));
+  }, [trace]);
+
+  // Current step's animation duration (for clock-fill sync)
+  const currentStepDuration =
+    activeStep >= 0 && activeStep < stepDurations.length
+      ? stepDurations[activeStep]
+      : DEFAULT_STEP_MS;
+
+  // Auto-advance through steps using per-step durations
   React.useEffect(() => {
     if (!isPlaying) return;
 
-    const interval = setInterval(() => {
-      setActiveStep((prev) => {
-        if (prev >= trace.length - 1) {
-          // Pause at end, then reset
-          setTimeout(() => setActiveStep(-1), 3000);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 1500);
+    if (activeStep >= trace.length - 1) {
+      // Pause at end, then reset
+      const id = setTimeout(() => setActiveStep(-1), 3000);
+      return () => clearTimeout(id);
+    }
 
-    return () => clearInterval(interval);
-  }, [isPlaying, activeStep, trace.length]);
+    const delay = activeStep < 0 ? 400 : stepDurations[activeStep];
+    const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
+    return () => clearTimeout(id);
+  }, [isPlaying, activeStep, trace.length, stepDurations]);
 
   const questionSpring = useSpring({
     opacity: 1,
@@ -328,6 +363,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         // Clock-fill animation circumference
         const circumference = Math.PI * nodeR;
 
+        // Clock-fill duration: match the current step's scaled duration (with small buffer)
+        const fillDurationSec = ((currentStepDuration - 100) / 1000).toFixed(2);
+
         // Helper: render a node circle at arbitrary (cx, cy)
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
@@ -341,7 +379,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                 fill={wasVisited && !isActive ? cfg.color : "var(--code-background)"}
                 stroke={cfg.color} strokeWidth={2}
               />
-              {/* Clock-fill overlay: sweeps clockwise when active */}
+              {/* Clock-fill overlay: sweeps clockwise, duration synced to step timing */}
               {isActive && (
                 <circle
                   key={activeStep}
@@ -353,7 +391,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   strokeDasharray={circumference}
                   strokeDashoffset={circumference}
                   transform={`rotate(-90 ${cx} ${cy})`}
-                  style={{ animation: "clockFill 1.3s linear forwards" }}
+                  style={{ animation: `clockFill ${fillDurationSec}s linear forwards` }}
                 />
               )}
             </g>

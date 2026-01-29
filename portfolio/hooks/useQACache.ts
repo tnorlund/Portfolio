@@ -5,6 +5,8 @@ interface TraceStep {
   type: "plan" | "agent" | "tools" | "shape" | "synthesize";
   content: string;
   detail?: string;
+  /** Step duration in milliseconds (from LangSmith trace timestamps) */
+  durationMs?: number;
   receipts?: {
     imageId: string;
     merchant: string;
