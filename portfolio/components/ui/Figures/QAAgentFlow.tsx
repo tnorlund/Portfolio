@@ -302,18 +302,37 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
           />
         );
 
+        // Clock-fill animation circumference
+        const circumference = Math.PI * nodeR;
+
         // Helper: render a node circle at arbitrary (cx, cy)
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
           const isActive = activeType === node;
           const wasVisited = activeStep >= 0 && EXAMPLE_TRACE.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
-            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.7 : 0.3}>
+            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.85 : 0.3}>
+              {/* Base circle: filled with color when visited (but not active) */}
               <circle
                 cx={cx} cy={cy} r={nodeR}
-                fill={isActive ? cfg.color : "var(--code-background)"}
+                fill={wasVisited && !isActive ? cfg.color : "var(--code-background)"}
                 stroke={cfg.color} strokeWidth={2}
               />
+              {/* Clock-fill overlay: sweeps clockwise when active */}
+              {isActive && (
+                <circle
+                  key={activeStep}
+                  cx={cx} cy={cy}
+                  r={nodeR / 2}
+                  fill="none"
+                  stroke={cfg.color}
+                  strokeWidth={nodeR}
+                  strokeDasharray={circumference}
+                  strokeDashoffset={circumference}
+                  transform={`rotate(-90 ${cx} ${cy})`}
+                  style={{ animation: "clockFill 1.3s linear forwards" }}
+                />
+              )}
             </g>
           );
         };
@@ -326,6 +345,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
               viewBox={`0 0 ${svgW} ${svgH}`}
               style={{ maxWidth: `${svgW}px`, overflow: "visible" }}
             >
+              <defs>
+                <style>{`
+                  @keyframes clockFill {
+                    from { stroke-dashoffset: ${circumference}; }
+                    to   { stroke-dashoffset: 0; }
+                  }
+                `}</style>
+              </defs>
               {/* Horizontal forward arrows on main row */}
               {forwardArrows.map(([fromIdx, toIdx]) => {
                 const x1 = mainXs[fromIdx] + nodeR + edgeGap;     // start at source edge + gap
