@@ -2,19 +2,17 @@
 Pulumi infrastructure for QA Agent Step Function pipeline.
 
 This component creates a Step Function that:
-1. Lists the 32 marquee questions (zip Lambda)
-2. Runs each question through the 5-node QA graph (container Lambda, Map state)
-3. Aggregates results and extracts receipt keys (zip Lambda)
-4. Queries DynamoDB for receipt metadata (zip Lambda)
-5. Triggers LangSmith bulk export (reuses existing Lambda)
-6. Polls export status with retry loop (reuses existing Lambda)
-7. Starts EMR Spark job to build per-question viz cache
+1. Runs all 32 marquee questions through the 5-node QA graph (single container Lambda)
+2. Queries DynamoDB for receipt metadata (zip Lambda)
+3. Triggers LangSmith bulk export (reuses existing Lambda)
+4. Polls export status with retry loop (reuses existing Lambda)
+5. Starts EMR Spark job to build per-question viz cache
 
 Architecture:
-- Zip Lambdas: list_questions, aggregate_results, query_receipt_metadata
-- Container Lambda: run_question (QA graph with LLM agent)
+- Container Lambda: run_question (runs all 32 questions with asyncio concurrency)
+- Zip Lambda: query_receipt_metadata (DynamoDB lookup)
 - S3 Bucket: intermediate results (NDJSON, receipts-lookup.json)
-- Step Function: orchestration with Map state (MaxConcurrency=10)
+- Step Function: orchestration with export polling + EMR
 """
 
 import json
@@ -27,7 +25,6 @@ from pulumi import (
     AssetArchive,
     ComponentResource,
     Config,
-    FileArchive,
     FileAsset,
     Output,
     ResourceOptions,
@@ -54,21 +51,17 @@ class QAAgentStepFunction(ComponentResource):
     """Step Function infrastructure for QA Agent marquee pipeline.
 
     Components:
-    - Zip Lambda: list_questions (returns 32 questions)
-    - Container Lambda: run_question (5-node QA graph)
-    - Zip Lambda: aggregate_results (extract receipt keys, write NDJSON)
+    - Container Lambda: run_question (runs all 32 questions, asyncio concurrency=10)
     - Zip Lambda: query_receipt_metadata (DynamoDB → receipts-lookup.json)
-    - Step Function: orchestration with Map state + LangSmith export + EMR
+    - Step Function: orchestration with LangSmith export polling + EMR
 
     Workflow:
-    1. ListQuestions → 32 questions
-    2. RunQuestions (Map, MaxConcurrency=10) → per-question results
-    3. AggregateResults → NDJSON to S3, extract receipt keys
-    4. QueryReceiptMetadata → receipts-lookup.json to S3
-    5. TriggerLangSmithExport → start bulk export
-    6. WaitForExport → 60s wait
-    7. CheckExportStatus → poll loop (max 30 retries)
-    8. StartEMRJob → qa_viz_cache_job.py
+    1. RunAllQuestions → run 32 questions, write NDJSON, extract receipt keys
+    2. QueryReceiptMetadata → receipts-lookup.json to S3
+    3. TriggerLangSmithExport → start bulk export
+    4. WaitForExport → 60s wait
+    5. CheckExportStatus → poll loop (max 30 retries)
+    6. StartEMRJob → qa_viz_cache_job.py
     """
 
     def __init__(
@@ -93,8 +86,6 @@ class QAAgentStepFunction(ComponentResource):
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
-        region = aws.get_region().name
-        account_id = aws.get_caller_identity().account_id
 
         # ============================================================
         # S3 Bucket for intermediate results
@@ -253,70 +244,8 @@ class QAAgentStepFunction(ComponentResource):
         )
 
         # ============================================================
-        # Zip Lambdas
+        # Zip Lambda: query_receipt_metadata (uses dynamo layer)
         # ============================================================
-
-        # list_questions Lambda
-        self.list_questions_lambda = aws.lambda_.Function(
-            f"{name}-list-questions",
-            runtime="python3.12",
-            architectures=["arm64"],
-            role=lambda_role.arn,
-            code=AssetArchive(
-                {"index.py": FileAsset(os.path.join(HANDLERS_DIR, "list_questions.py"))}
-            ),
-            handler="index.handler",
-            environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.id,
-                }
-            ),
-            memory_size=256,
-            timeout=60,
-            tags={"environment": stack},
-            opts=ResourceOptions(parent=self),
-        )
-
-        aws.cloudwatch.LogGroup(
-            f"{name}-list-questions-logs",
-            name=self.list_questions_lambda.name.apply(
-                lambda n: f"/aws/lambda/{n}"
-            ),
-            retention_in_days=30,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # aggregate_results Lambda
-        self.aggregate_results_lambda = aws.lambda_.Function(
-            f"{name}-aggregate-results",
-            runtime="python3.12",
-            architectures=["arm64"],
-            role=lambda_role.arn,
-            code=AssetArchive(
-                {"index.py": FileAsset(os.path.join(HANDLERS_DIR, "aggregate_results.py"))}
-            ),
-            handler="index.handler",
-            environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.id,
-                }
-            ),
-            memory_size=512,
-            timeout=300,
-            tags={"environment": stack},
-            opts=ResourceOptions(parent=self),
-        )
-
-        aws.cloudwatch.LogGroup(
-            f"{name}-aggregate-results-logs",
-            name=self.aggregate_results_lambda.name.apply(
-                lambda n: f"/aws/lambda/{n}"
-            ),
-            retention_in_days=30,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # query_receipt_metadata Lambda (uses dynamo layer)
         self.query_metadata_lambda = aws.lambda_.Function(
             f"{name}-query-receipt-metadata",
             runtime="python3.12",
@@ -353,7 +282,7 @@ class QAAgentStepFunction(ComponentResource):
         )
 
         # ============================================================
-        # Container Lambda: run_question (QA graph)
+        # Container Lambda: run_question (all 32 questions, asyncio)
         # ============================================================
         lambda_config = {
             "memory_size": 3072,
@@ -370,6 +299,7 @@ class QAAgentStepFunction(ComponentResource):
                     "LANGCHAIN_PROJECT": "qa-agent-marquee",
                     "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                     "CHROMADB_BUCKET": chromadb_bucket_name,
+                    "BATCH_BUCKET": self.batch_bucket.id,
                 }
             },
         }
@@ -411,9 +341,7 @@ class QAAgentStepFunction(ComponentResource):
             f"{name}-sfn-policy",
             role=sfn_role.id,
             policy=Output.all(
-                self.list_questions_lambda.arn,
                 self.run_question_lambda.arn,
-                self.aggregate_results_lambda.arn,
                 self.query_metadata_lambda.arn,
                 Output.from_input(trigger_export_lambda_arn),
                 Output.from_input(check_export_lambda_arn),
@@ -481,9 +409,7 @@ class QAAgentStepFunction(ComponentResource):
         # State Machine Definition
         # ============================================================
         step_function_definition = Output.all(
-            self.list_questions_lambda.arn,
             self.run_question_lambda.arn,
-            self.aggregate_results_lambda.arn,
             self.query_metadata_lambda.arn,
             Output.from_input(trigger_export_lambda_arn),
             Output.from_input(check_export_lambda_arn),
@@ -496,18 +422,16 @@ class QAAgentStepFunction(ComponentResource):
         ).apply(
             lambda args: json.dumps(
                 _build_state_machine_definition(
-                    list_questions_arn=args[0],
-                    run_question_arn=args[1],
-                    aggregate_results_arn=args[2],
-                    query_metadata_arn=args[3],
-                    trigger_export_arn=args[4],
-                    check_export_arn=args[5],
-                    emr_application_id=args[6],
-                    emr_job_role_arn=args[7],
-                    spark_artifacts_bucket=args[8],
-                    langsmith_export_bucket=args[9],
-                    cache_bucket=args[10],
-                    batch_bucket=args[11],
+                    run_all_questions_arn=args[0],
+                    query_metadata_arn=args[1],
+                    trigger_export_arn=args[2],
+                    check_export_arn=args[3],
+                    emr_application_id=args[4],
+                    emr_job_role_arn=args[5],
+                    spark_artifacts_bucket=args[6],
+                    langsmith_export_bucket=args[7],
+                    cache_bucket=args[8],
+                    batch_bucket=args[9],
                 )
             )
         )
@@ -545,9 +469,7 @@ class QAAgentStepFunction(ComponentResource):
 
 def _build_state_machine_definition(
     *,
-    list_questions_arn: str,
-    run_question_arn: str,
-    aggregate_results_arn: str,
+    run_all_questions_arn: str,
     query_metadata_arn: str,
     trigger_export_arn: str,
     check_export_arn: str,
@@ -558,7 +480,13 @@ def _build_state_machine_definition(
     cache_bucket: str,
     batch_bucket: str,
 ) -> dict:
-    """Build the Step Function ASL definition."""
+    """Build the Step Function ASL definition.
+
+    Pipeline:
+    Initialize → RunAllQuestions → QueryReceiptMetadata →
+    TriggerLangSmithExport → WaitForExport ⟷ CheckExportStatus →
+    PrepareEMRArgs → StartEMRJob → Done
+    """
     return {
         "Comment": "QA Agent pipeline: run marquee questions, export traces, build viz cache",
         "StartAt": "Initialize",
@@ -571,76 +499,15 @@ def _build_state_machine_definition(
                     "retry_count": 0,
                 },
                 "ResultPath": "$.init",
-                "Next": "ListQuestions",
+                "Next": "RunAllQuestions",
             },
-            "ListQuestions": {
+            "RunAllQuestions": {
                 "Type": "Task",
                 "Resource": "arn:aws:states:::lambda:invoke",
                 "Parameters": {
-                    "FunctionName": list_questions_arn,
+                    "FunctionName": run_all_questions_arn,
                     "Payload": {
                         "execution_id.$": "$.init.execution_id",
-                    },
-                },
-                "ResultSelector": {
-                    "questions.$": "$.Payload.questions",
-                    "total_questions.$": "$.Payload.total_questions",
-                    "batch_bucket.$": "$.Payload.batch_bucket",
-                },
-                "ResultPath": "$.questions_result",
-                "Next": "RunQuestions",
-            },
-            "RunQuestions": {
-                "Type": "Map",
-                "ItemsPath": "$.questions_result.questions",
-                "MaxConcurrency": 10,
-                "Parameters": {
-                    "question.$": "$$.Map.Item.Value",
-                    "execution_id.$": "$.init.execution_id",
-                    "batch_bucket.$": "$.init.batch_bucket",
-                },
-                "ItemProcessor": {
-                    "ProcessorConfig": {"Mode": "INLINE"},
-                    "StartAt": "RunQuestion",
-                    "States": {
-                        "RunQuestion": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": run_question_arn,
-                                "Payload.$": "$",
-                            },
-                            "ResultSelector": {"result.$": "$.Payload"},
-                            "OutputPath": "$.result",
-                            "TimeoutSeconds": 900,
-                            "Retry": [
-                                {
-                                    "ErrorEquals": [
-                                        "Lambda.ServiceException",
-                                        "Lambda.AWSLambdaException",
-                                        "Lambda.SdkClientException",
-                                    ],
-                                    "IntervalSeconds": 10,
-                                    "MaxAttempts": 2,
-                                    "BackoffRate": 2,
-                                }
-                            ],
-                            "End": True,
-                        }
-                    },
-                },
-                "ResultPath": "$.results",
-                "Next": "AggregateResults",
-            },
-            "AggregateResults": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::lambda:invoke",
-                "Parameters": {
-                    "FunctionName": aggregate_results_arn,
-                    "Payload": {
-                        "results.$": "$.results",
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket.$": "$.init.batch_bucket",
                     },
                 },
                 "ResultSelector": {
@@ -649,7 +516,20 @@ def _build_state_machine_definition(
                     "success_count.$": "$.Payload.success_count",
                     "results_ndjson_key.$": "$.Payload.results_ndjson_key",
                 },
-                "ResultPath": "$.aggregate",
+                "ResultPath": "$.questions_result",
+                "TimeoutSeconds": 900,
+                "Retry": [
+                    {
+                        "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException",
+                        ],
+                        "IntervalSeconds": 30,
+                        "MaxAttempts": 1,
+                        "BackoffRate": 1,
+                    }
+                ],
                 "Next": "QueryReceiptMetadata",
             },
             "QueryReceiptMetadata": {
@@ -658,7 +538,7 @@ def _build_state_machine_definition(
                 "Parameters": {
                     "FunctionName": query_metadata_arn,
                     "Payload": {
-                        "receipt_keys.$": "$.aggregate.receipt_keys",
+                        "receipt_keys.$": "$.questions_result.receipt_keys",
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
                     },
@@ -713,7 +593,7 @@ def _build_state_machine_definition(
                     {
                         "Variable": "$.export_check.status",
                         "StringEquals": "completed",
-                        "Next": "StartEMRJob",
+                        "Next": "PrepareEMRArgs",
                     },
                     {
                         "Variable": "$.export_check.status",
@@ -726,6 +606,8 @@ def _build_state_machine_definition(
             "IncrementRetryCount": {
                 "Type": "Pass",
                 "Parameters": {
+                    "execution_id.$": "$.init.execution_id",
+                    "batch_bucket.$": "$.init.batch_bucket",
                     "retry_count.$": "States.MathAdd($.init.retry_count, 1)",
                 },
                 "ResultPath": "$.init",
@@ -742,6 +624,22 @@ def _build_state_machine_definition(
                 ],
                 "Default": "WaitForExport",
             },
+            # Format dynamic EMR arguments in a Pass state so the
+            # StartEMRJob state can reference them with States.Array.
+            "PrepareEMRArgs": {
+                "Type": "Pass",
+                "Parameters": {
+                    "execution_id.$": "$.init.execution_id",
+                    "receipts_json.$": "$.metadata.receipts_lookup_path",
+                    "results_ndjson.$": (
+                        "States.Format('s3://{}/{}', "
+                        "$.init.batch_bucket, "
+                        "$.questions_result.results_ndjson_key)"
+                    ),
+                },
+                "ResultPath": "$.emr_args",
+                "Next": "StartEMRJob",
+            },
             "StartEMRJob": {
                 "Type": "Task",
                 "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
@@ -752,22 +650,16 @@ def _build_state_machine_definition(
                     "JobDriver": {
                         "SparkSubmit": {
                             "EntryPoint": f"s3://{spark_artifacts_bucket}/scripts/merged_job.py",
-                            "EntryPointArguments": [
-                                "--job-type",
-                                "qa-cache",
-                                "--parquet-input",
-                                f"s3://{langsmith_export_bucket}/traces/",
-                                "--cache-bucket",
-                                cache_bucket,
-                                "--batch-bucket",
-                                batch_bucket,
-                                "--execution-id.$",
-                                "$.init.execution_id",
-                                "--receipts-json.$",
-                                "$.metadata.receipts_lookup_path",
-                                "--results-ndjson.$",
-                                "States.Format('s3://{}/{}', $.init.batch_bucket, $.aggregate.results_ndjson_key)",
-                            ],
+                            "EntryPointArguments.$": (
+                                "States.Array("
+                                "'--job-type', 'qa-cache', "
+                                f"'--parquet-input', 's3://{langsmith_export_bucket}/traces/', "
+                                f"'--cache-bucket', '{cache_bucket}', "
+                                "'--execution-id', $.emr_args.execution_id, "
+                                "'--receipts-json', $.emr_args.receipts_json, "
+                                "'--results-ndjson', $.emr_args.results_ndjson"
+                                ")"
+                            ),
                             "SparkSubmitParameters": (
                                 "--conf spark.executor.memory=4g "
                                 "--conf spark.executor.cores=2 "

@@ -1,25 +1,70 @@
-"""Container Lambda handler: run one question through the 5-node QA graph.
+"""Container Lambda handler: run all 32 marquee questions through the QA graph.
 
-This handler is invoked by the Step Function Map state, once per question.
-It creates a fresh QA graph instance and runs the question through it.
-LangSmith tracing is enabled with the 'qa-agent-marquee' project.
+Single Lambda invocation runs all questions concurrently with asyncio
+(semaphore-based concurrency control). Writes NDJSON results and extracts
+receipt keys to S3. This replaces the separate ListQuestions + Map + Aggregate
+pattern with a single invocation to minimize cold starts and Lambda costs.
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
 from threading import Lock
 from typing import Any
 
+import boto3
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+s3_client = boto3.client("s3")
+
+# All questions from QuestionMarquee.tsx
+QUESTIONS = [
+    "How much did I spend on groceries last month?",
+    "What was my total spending at Costco?",
+    "Show me all receipts with dairy products",
+    "How much did I spend on coffee this year?",
+    "What's my average grocery bill?",
+    "Find all receipts from restaurants",
+    "How much tax did I pay last quarter?",
+    "What was my largest purchase this month?",
+    "Show receipts with items over $50",
+    "How much did I spend on organic products?",
+    "What's the total for all gas station visits?",
+    "Find all receipts with produce items",
+    "How much did I spend on snacks?",
+    "Show me pharmacy receipts from last week",
+    "What was my food spending trend over 6 months?",
+    "Find duplicate purchases across stores",
+    "How much did I spend on beverages?",
+    "Show all receipts with discounts applied",
+    "What's the breakdown by store category?",
+    "Find receipts where I bought milk",
+    "How much did I spend on household items?",
+    "Show receipts from the past 7 days",
+    "What's my monthly spending average?",
+    "Find all breakfast item purchases",
+    "How much did I spend on pet food?",
+    "Show receipts with loyalty points earned",
+    "What was my cheapest grocery trip?",
+    "Find all receipts with returns or refunds",
+    "How much did I spend on frozen foods?",
+    "Show me spending patterns by day of week",
+    "What's my average tip at restaurants?",
+    "Find receipts with handwritten notes",
+]
+
+CONCURRENCY = 10
 
 
 class CostTrackingCallback:
     """Callback handler that tracks OpenRouter API costs.
 
     Extracts cost from OpenRouter's token_usage response field.
+    Thread-safe for concurrent use across asyncio tasks.
     """
 
     def __init__(self):
@@ -66,10 +111,70 @@ class CostTrackingCallback:
             }
 
 
-async def _run(
-    question_text: str, question_index: int, execution_id: str
+async def _run_question(
+    semaphore: asyncio.Semaphore,
+    answer_question_fn,
+    create_qa_graph_fn,
+    dynamo_client,
+    chroma_client,
+    embed_fn,
+    question_text: str,
+    question_index: int,
 ) -> dict[str, Any]:
-    """Run a single question through the QA graph."""
+    """Run a single question with semaphore-based concurrency control."""
+    async with semaphore:
+        graph, state_holder = create_qa_graph_fn(
+            dynamo_client=dynamo_client,
+            chroma_client=chroma_client,
+            embed_fn=embed_fn,
+        )
+
+        cost_callback = CostTrackingCallback()
+        start_time = time.time()
+
+        try:
+            result = await answer_question_fn(
+                graph,
+                state_holder,
+                question_text,
+                callbacks=[cost_callback],
+            )
+            duration = time.time() - start_time
+            stats = cost_callback.get_stats()
+
+            return {
+                "questionIndex": question_index,
+                "question": question_text,
+                "answer": result.get("answer", ""),
+                "totalAmount": result.get("total_amount"),
+                "receiptCount": result.get("receipt_count", 0),
+                "evidence": result.get("evidence", []),
+                "cost": stats["total_cost"],
+                "llmCalls": stats["llm_calls"],
+                "toolInvocations": len(state_holder.get("searches", [])),
+                "durationSeconds": round(duration, 1),
+                "success": True,
+            }
+        except Exception as e:
+            logger.exception("Error on question %d: %s", question_index, question_text[:60])
+            return {
+                "questionIndex": question_index,
+                "question": question_text,
+                "answer": f"Error: {e}",
+                "totalAmount": None,
+                "receiptCount": 0,
+                "evidence": [],
+                "cost": 0,
+                "llmCalls": 0,
+                "toolInvocations": 0,
+                "durationSeconds": round(time.time() - start_time, 1),
+                "success": False,
+                "error": str(e),
+            }
+
+
+async def _run_all(execution_id: str, batch_bucket: str) -> dict[str, Any]:
+    """Run all questions concurrently and write results to S3."""
     from receipt_agent.agents.question_answering import (
         answer_question,
         create_qa_graph,
@@ -80,7 +185,6 @@ async def _run(
         create_embed_fn,
     )
 
-    # Enable LangSmith tracing
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_PROJECT"] = "qa-agent-marquee"
 
@@ -89,82 +193,102 @@ async def _run(
     chroma_client = create_chroma_client(mode="read")
     embed_fn = create_embed_fn()
 
-    graph, state_holder = create_qa_graph(
-        dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+
+    tasks = [
+        _run_question(
+            semaphore,
+            answer_question,
+            create_qa_graph,
+            dynamo_client,
+            chroma_client,
+            embed_fn,
+            question_text,
+            i,
+        )
+        for i, question_text in enumerate(QUESTIONS)
+    ]
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Process results: handle any exceptions from gather
+    processed: list[dict[str, Any]] = []
+    receipt_keys: set[tuple[str, str]] = set()
+
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            processed.append(
+                {
+                    "questionIndex": i,
+                    "question": QUESTIONS[i],
+                    "answer": f"Error: {result}",
+                    "totalAmount": None,
+                    "receiptCount": 0,
+                    "evidence": [],
+                    "cost": 0,
+                    "llmCalls": 0,
+                    "toolInvocations": 0,
+                    "durationSeconds": 0,
+                    "success": False,
+                    "error": str(result),
+                }
+            )
+        else:
+            processed.append(result)
+            for e in result.get("evidence", []):
+                image_id = e.get("imageId") or e.get("image_id")
+                receipt_id = e.get("receiptId") or e.get("receipt_id")
+                if image_id and receipt_id:
+                    receipt_keys.add((image_id, str(receipt_id)))
+
+    # Write NDJSON (one JSON line per question result)
+    ndjson_key = f"qa-runs/{execution_id}/question-results.ndjson"
+    ndjson_lines = "\n".join(json.dumps(r, default=str) for r in processed)
+
+    s3_client.put_object(
+        Bucket=batch_bucket,
+        Key=ndjson_key,
+        Body=ndjson_lines.encode("utf-8"),
+        ContentType="application/x-ndjson",
     )
 
-    cost_callback = CostTrackingCallback()
-    start_time = time.time()
+    success_count = sum(1 for r in processed if r.get("success"))
+    total_cost = sum(r.get("cost", 0) for r in processed)
 
-    result = await answer_question(
-        graph,
-        state_holder,
-        question_text,
-        callbacks=[cost_callback],
+    logger.info(
+        "Completed %d/%d questions ($%.4f total cost)",
+        success_count,
+        len(QUESTIONS),
+        total_cost,
     )
-
-    duration = time.time() - start_time
-    stats = cost_callback.get_stats()
 
     return {
-        "questionIndex": question_index,
-        "question": question_text,
-        "answer": result.get("answer", ""),
-        "totalAmount": result.get("total_amount"),
-        "receiptCount": result.get("receipt_count", 0),
-        "evidence": result.get("evidence", []),
-        "cost": stats["total_cost"],
-        "llmCalls": stats["llm_calls"],
-        "toolInvocations": stats["total_tokens"],
-        "durationSeconds": round(duration, 1),
-        "success": True,
+        "execution_id": execution_id,
+        "batch_bucket": batch_bucket,
+        "receipt_keys": [{"image_id": k[0], "receipt_id": k[1]} for k in receipt_keys],
+        "total_questions": len(QUESTIONS),
+        "success_count": success_count,
+        "results_ndjson_key": ndjson_key,
+        "total_cost": total_cost,
     }
 
 
-def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
-    """Lambda entry point. Runs one question through the QA graph.
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Lambda entry point. Runs all 32 questions through the QA graph.
 
     Args:
-        event: Contains 'question' (dict with text/index) and 'execution_id'.
+        event: Contains optional 'execution_id'.
 
     Returns:
-        dict with question results, answer, evidence, and stats.
+        dict with receipt_keys, question counts, NDJSON path, and total cost.
     """
-    question = event["question"]
-    execution_id = event.get("execution_id", "unknown")
+    execution_id = event.get("execution_id") or context.aws_request_id
+    batch_bucket = os.environ["BATCH_BUCKET"]
 
     logger.info(
-        "Running question %d: %s",
-        question["index"],
-        question["text"][:60],
+        "Starting QA pipeline: %d questions, concurrency=%d",
+        len(QUESTIONS),
+        CONCURRENCY,
     )
 
-    try:
-        result = asyncio.run(
-            _run(question["text"], question["index"], execution_id)
-        )
-        logger.info(
-            "Question %d completed: cost=$%.6f, receipts=%d",
-            question["index"],
-            result["cost"],
-            result["receiptCount"],
-        )
-        return result
-    except Exception as e:
-        logger.exception("Error running question %d", question["index"])
-        return {
-            "questionIndex": question["index"],
-            "question": question["text"],
-            "answer": f"Error: {str(e)}",
-            "totalAmount": None,
-            "receiptCount": 0,
-            "evidence": [],
-            "cost": 0,
-            "llmCalls": 0,
-            "toolInvocations": 0,
-            "durationSeconds": 0,
-            "success": False,
-            "error": str(e),
-        }
+    return asyncio.run(_run_all(execution_id, batch_bucket))
