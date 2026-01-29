@@ -122,6 +122,11 @@ def parse_args() -> argparse.Namespace:
         "--results-ndjson",
         help="S3 path to question-results.ndjson (required for qa-cache)",
     )
+    parser.add_argument(
+        "--langchain-project",
+        default="",
+        help="LangSmith project name (for qa-cache metadata)",
+    )
 
     return parser.parse_args()
 
@@ -824,6 +829,7 @@ def main() -> int:
                 receipts_json=args.receipts_json,
                 execution_id=args.execution_id or "",
                 max_questions=50,
+                langchain_project=args.langchain_project,
             )
             logger.info("QA cache phase complete")
 

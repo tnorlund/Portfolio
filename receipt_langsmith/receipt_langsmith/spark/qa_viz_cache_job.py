@@ -203,9 +203,11 @@ def derive_trace_steps(
         step = {"type": step_type}
 
         if step_type == "plan":
-            q_type = outputs.get("question_type", "")
-            strategy = outputs.get("retrieval_strategy", "")
-            rewrites = outputs.get("query_rewrites", [])
+            # Plan outputs are nested under "classification" key
+            classification = outputs.get("classification", outputs)
+            q_type = classification.get("question_type", "")
+            strategy = classification.get("retrieval_strategy", "")
+            rewrites = classification.get("query_rewrites", [])
             step["content"] = f"{q_type} → {strategy}" if q_type else "Classify question and choose retrieval strategy"
             step["detail"] = f"Query rewrites: {', '.join(rewrites)}" if rewrites else "Classify question and choose retrieval strategy"
 
@@ -302,15 +304,29 @@ def _count_tool_calls(outputs: dict) -> int:
 
 
 def _extract_tool_info(outputs: dict) -> tuple[str, str]:
-    """Extract tool name and result summary from tool node output."""
+    """Extract tool names and result summary from tool node output.
+
+    Summarizes ALL tool messages in the node, not just the first.
+    """
     messages = outputs.get("messages", [])
+    tool_names: list[str] = []
+    result_parts: list[str] = []
+
     for msg in messages:
         if isinstance(msg, dict):
             name = msg.get("name", "")
             content = msg.get("content", "")
             if name:
-                return name, str(content)[:100] if content else ""
-    return "", ""
+                tool_names.append(name)
+            if content:
+                result_parts.append(str(content)[:80])
+
+    if not tool_names:
+        return "", ""
+
+    name_summary = ", ".join(tool_names)
+    result_summary = " | ".join(result_parts) if result_parts else ""
+    return name_summary, result_summary[:200]
 
 
 def _enrich_evidence(
@@ -336,13 +352,19 @@ def _enrich_evidence(
     return enriched
 
 
-def compute_stats(child_runs: list[dict], question_result: dict) -> dict:
-    """Compute trace statistics for a question."""
+def compute_stats(all_runs: list[dict], question_result: dict) -> dict:
+    """Compute trace statistics for a question.
+
+    Args:
+        all_runs: ALL runs in the trace (not just depth-1), used to count
+                  LLM calls and tool invocations at every depth.
+        question_result: The NDJSON result dict (has cost from CostTrackingCallback).
+    """
     llm_calls = 0
     tool_invocations = 0
     total_tokens = 0
 
-    for run in child_runs:
+    for run in all_runs:
         run_type = run.get("run_type", "")
         if run_type == "llm":
             llm_calls += 1
@@ -363,7 +385,8 @@ def compute_stats(child_runs: list[dict], question_result: dict) -> dict:
 
 def build_question_cache(
     trace_id: str,
-    child_runs: list[dict],
+    root_run_id: str,
+    all_runs: list[dict],
     question_result: dict,
     receipts_lookup: dict,
 ) -> dict:
@@ -371,19 +394,26 @@ def build_question_cache(
 
     Args:
         trace_id: LangSmith trace ID.
-        child_runs: Sorted child runs from parquet.
+        root_run_id: ID of the root run (used to filter depth-1 children).
+        all_runs: All runs in this trace (including nested).
         question_result: Result dict from NDJSON.
         receipts_lookup: CDN key lookup dict.
 
     Returns:
         dict matching the QAQuestionCache schema for the React component.
     """
+    # Depth-1 runs are direct children of the root (plan, agent, tools, shape, synthesize)
+    depth1_runs = sorted(
+        [r for r in all_runs if r.get("parent_run_id") == root_run_id],
+        key=lambda r: r.get("dotted_order", ""),
+    )
+
     return {
         "question": question_result.get("question", ""),
         "questionIndex": question_result.get("questionIndex", 0),
         "traceId": trace_id,
-        "trace": derive_trace_steps(child_runs, question_result, receipts_lookup),
-        "stats": compute_stats(child_runs, question_result),
+        "trace": derive_trace_steps(depth1_runs, question_result, receipts_lookup),
+        "stats": compute_stats(all_runs, question_result),
     }
 
 
@@ -395,6 +425,7 @@ def run_qa_cache_job(
     receipts_json: str,
     execution_id: str = "",
     max_questions: int = 50,
+    langchain_project: str = "",
 ) -> None:
     """Main entry point for QA viz cache generation.
 
@@ -406,6 +437,7 @@ def run_qa_cache_job(
         receipts_json: S3 path to receipts-lookup.json.
         execution_id: Execution ID for this run.
         max_questions: Maximum questions to process.
+        langchain_project: LangSmith project name (for metadata).
     """
     s3_client = boto3.client("s3")
 
@@ -416,6 +448,13 @@ def run_qa_cache_job(
         return
 
     logger.info("Loaded %d question results", len(question_results))
+
+    # Build question text → index lookup for trace matching
+    question_text_to_index: dict[str, int] = {}
+    for r in question_results:
+        q_text = r.get("question", "").strip()
+        if q_text:
+            question_text_to_index[q_text] = r.get("questionIndex", 0)
 
     # 2. Load receipts lookup
     receipts_lookup = load_receipts_lookup(s3_client, receipts_json)
@@ -444,24 +483,22 @@ def run_qa_cache_job(
                 )
 
     # Add missing columns
-    for col_name in ["trace_id", "total_tokens", "prompt_tokens", "completion_tokens"]:
+    for col_name in ["trace_id", "parent_run_id", "total_tokens", "prompt_tokens", "completion_tokens"]:
         if col_name not in df.columns:
             df = df.withColumn(col_name, F.lit(None))
 
-    # 4. Filter to qa-agent-marquee project
-    # Check if session_name or tags contain the project
-    if "session_name" in df.columns:
-        df = df.filter(F.col("session_name") == "qa-agent-marquee")
-    elif "tags" in df.columns:
-        df = df.filter(F.col("tags").contains("qa-agent-marquee"))
+    # 4. No session_name filter needed — LangSmith exports are per-project.
+    #    We identify our traces by matching root run question text against
+    #    the known question list from NDJSON.
 
-    logger.info("Filtered to qa-agent-marquee: %d rows", df.count())
+    total_rows = df.count()
+    logger.info("Total parquet rows: %d", total_rows)
 
-    if df.count() == 0:
-        logger.warning("No traces found for qa-agent-marquee project")
-        # Fall back: build cache from NDJSON results only (no trace detail)
+    if total_rows == 0:
+        logger.warning("No traces found in parquet")
         _write_cache_from_ndjson(
-            s3_client, cache_bucket, question_results, receipts_lookup, execution_id
+            s3_client, cache_bucket, question_results, receipts_lookup,
+            execution_id, langchain_project,
         )
         return
 
@@ -494,24 +531,32 @@ def run_qa_cache_job(
         if row_dict.get("is_root"):
             root_runs[tid] = row_dict
 
-    logger.info("Found %d unique traces", len(traces))
+    logger.info("Found %d unique traces, %d root runs", len(traces), len(root_runs))
 
-    # 6. Match traces to question results using metadata
-    # Extract question_index from root run's extra.metadata
+    # 6. Match traces to question results by question text.
+    #    Root run inputs contain the question at inputs.input.question
+    #    (or inputs.question for simpler invocations).
     trace_to_question: dict[str, int] = {}
     for tid, root in root_runs.items():
         try:
-            extra_str = root.get("inputs", "{}")
-            extra = json.loads(extra_str) if isinstance(extra_str, str) else (extra_str or {})
-            # Try inputs.question or metadata.question_index
-            q_idx = extra.get("question_index", -1)
-            if q_idx < 0:
-                metadata = extra.get("metadata", {})
-                q_idx = metadata.get("question_index", -1)
-            if q_idx >= 0:
-                trace_to_question[tid] = q_idx
+            inputs_str = root.get("inputs", "{}")
+            inputs = json.loads(inputs_str) if isinstance(inputs_str, str) else (inputs_str or {})
+
+            # Try inputs.input.question first (LangGraph invocation pattern)
+            question_text = ""
+            inner_input = inputs.get("input", {})
+            if isinstance(inner_input, dict):
+                question_text = inner_input.get("question", "")
+            if not question_text:
+                question_text = inputs.get("question", "")
+
+            question_text = question_text.strip()
+            if question_text and question_text in question_text_to_index:
+                trace_to_question[tid] = question_text_to_index[question_text]
         except (json.JSONDecodeError, TypeError):
             pass
+
+    logger.info("Matched %d traces to questions", len(trace_to_question))
 
     # Build result index
     result_by_index = {r.get("questionIndex", -1): r for r in question_results}
@@ -524,14 +569,15 @@ def run_qa_cache_job(
             continue
 
         question_result = result_by_index[q_idx]
+        root = root_runs.get(tid, {})
+        root_run_id = root.get("id", "")
 
-        # Sort child runs by dotted_order
-        child_runs = sorted(
-            [r for r in runs_list if not r.get("is_root")],
-            key=lambda r: r.get("dotted_order", ""),
+        # All non-root runs for stats; depth-1 filtering happens inside build_question_cache
+        non_root_runs = [r for r in runs_list if not r.get("is_root")]
+
+        cache = build_question_cache(
+            tid, root_run_id, non_root_runs, question_result, receipts_lookup
         )
-
-        cache = build_question_cache(tid, child_runs, question_result, receipts_lookup)
         cache_files.append(cache)
 
     # For questions without traces, create minimal cache from NDJSON
@@ -555,7 +601,10 @@ def run_qa_cache_job(
     cache_files.sort(key=lambda c: c["questionIndex"])
 
     # Write to S3
-    _write_cache_files(s3_client, cache_bucket, cache_files, question_results, execution_id)
+    _write_cache_files(
+        s3_client, cache_bucket, cache_files, question_results,
+        execution_id, langchain_project,
+    )
 
 
 def _minimal_trace_from_result(result: dict, receipts_lookup: dict) -> list[dict]:
@@ -584,6 +633,7 @@ def _write_cache_from_ndjson(
     question_results: list[dict],
     receipts_lookup: dict,
     execution_id: str,
+    langchain_project: str = "",
 ) -> None:
     """Write cache files from NDJSON only (fallback when no parquet traces)."""
     cache_files = []
@@ -601,7 +651,10 @@ def _write_cache_from_ndjson(
             },
         })
 
-    _write_cache_files(s3_client, cache_bucket, cache_files, question_results, execution_id)
+    _write_cache_files(
+        s3_client, cache_bucket, cache_files, question_results,
+        execution_id, langchain_project,
+    )
 
 
 def _write_cache_files(
@@ -610,6 +663,7 @@ def _write_cache_files(
     cache_files: list[dict],
     question_results: list[dict],
     execution_id: str,
+    langchain_project: str = "",
 ) -> None:
     """Write per-question JSON files and metadata to S3."""
     # Write individual question files in parallel
@@ -649,7 +703,7 @@ def _write_cache_files(
         "avg_cost_per_question": round(total_cost / total_questions, 6) if total_questions > 0 else 0,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "execution_id": execution_id,
-        "langsmith_project": "qa-agent-marquee",
+        "langsmith_project": langchain_project or "qa-agent-marquee",
     }
 
     s3_client.put_object(

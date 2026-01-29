@@ -645,6 +645,7 @@ def _build_state_machine_definition(
                         "$.init.batch_bucket, "
                         "$.questions_result.results_ndjson_key)"
                     ),
+                    "langchain_project.$": "$.questions_result.langchain_project",
                 },
                 "ResultPath": "$.emr_args",
                 "Next": "StartEMRJob",
@@ -666,7 +667,8 @@ def _build_state_machine_definition(
                                 f"'--cache-bucket', '{cache_bucket}', "
                                 "'--execution-id', $.emr_args.execution_id, "
                                 "'--receipts-json', $.emr_args.receipts_json, "
-                                "'--results-ndjson', $.emr_args.results_ndjson"
+                                "'--results-ndjson', $.emr_args.results_ndjson, "
+                                "'--langchain-project', $.emr_args.langchain_project"
                                 ")"
                             ),
                             "SparkSubmitParameters": (
