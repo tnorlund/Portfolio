@@ -15,6 +15,7 @@ from threading import Lock
 from typing import Any
 
 import boto3
+from langchain_core.callbacks import BaseCallbackHandler
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -60,7 +61,7 @@ QUESTIONS = [
 CONCURRENCY = 10
 
 
-class CostTrackingCallback:
+class CostTrackingCallback(BaseCallbackHandler):
     """Callback handler that tracks OpenRouter API costs.
 
     Extracts cost from OpenRouter's token_usage response field.

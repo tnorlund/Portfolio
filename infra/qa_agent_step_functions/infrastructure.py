@@ -43,6 +43,9 @@ config = Config("portfolio")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
+chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
+chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
+chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 HANDLERS_DIR = os.path.join(os.path.dirname(__file__), "handlers")
 
@@ -70,8 +73,6 @@ class QAAgentStepFunction(ComponentResource):
         *,
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
-        chromadb_bucket_name: pulumi.Input[str],
-        chromadb_bucket_arn: pulumi.Input[str],
         # EMR Serverless
         emr_application_id: pulumi.Input[str],
         emr_job_execution_role_arn: pulumi.Input[str],
@@ -180,6 +181,7 @@ class QAAgentStepFunction(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": [
+                                    "dynamodb:DescribeTable",
                                     "dynamodb:GetItem",
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
@@ -193,15 +195,12 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 permissions (batch bucket + ChromaDB bucket)
+        # S3 permissions (batch bucket only — ChromaDB is via Chroma Cloud)
         aws.iam.RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
-            policy=Output.all(
-                self.batch_bucket.arn,
-                Output.from_input(chromadb_bucket_arn),
-            ).apply(
-                lambda args: json.dumps(
+            policy=self.batch_bucket.arn.apply(
+                lambda arn: json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
@@ -212,12 +211,7 @@ class QAAgentStepFunction(ComponentResource):
                                     "s3:PutObject",
                                     "s3:ListBucket",
                                 ],
-                                "Resource": [
-                                    args[0],
-                                    f"{args[0]}/*",
-                                    args[1],
-                                    f"{args[1]}/*",
-                                ],
+                                "Resource": [arn, f"{arn}/*"],
                             }
                         ],
                     }
@@ -300,7 +294,9 @@ class QAAgentStepFunction(ComponentResource):
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 "BATCH_BUCKET": self.batch_bucket.id,
             },
         }

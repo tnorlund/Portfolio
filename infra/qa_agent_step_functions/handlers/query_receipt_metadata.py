@@ -11,7 +11,7 @@ import os
 from typing import Any
 
 import boto3
-from receipt_dynamo.data import DynamoClient
+from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
