@@ -86,6 +86,8 @@ class QAAgentStepFunction(ComponentResource):
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
+        region = aws.get_region().name
+        account_id = aws.get_caller_identity().account_id
 
         # ============================================================
         # S3 Bucket for intermediate results
@@ -285,22 +287,21 @@ class QAAgentStepFunction(ComponentResource):
         # Container Lambda: run_question (all 32 questions, asyncio)
         # ============================================================
         lambda_config = {
+            "role_arn": lambda_role.arn,
             "memory_size": 3072,
             "timeout": 900,
-            "ephemeral_storage_size": 10240,
-            "architectures": ["arm64"],
+            "ephemeral_storage": 10240,
+            "tags": {"environment": stack},
             "environment": {
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                    "OPENROUTER_API_KEY": openrouter_api_key,
-                    "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
-                    "LANGCHAIN_API_KEY": langchain_api_key,
-                    "LANGCHAIN_TRACING_V2": "true",
-                    "LANGCHAIN_PROJECT": "qa-agent-marquee",
-                    "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                    "CHROMADB_BUCKET": chromadb_bucket_name,
-                    "BATCH_BUCKET": self.batch_bucket.id,
-                }
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                "LANGCHAIN_TRACING_V2": "true",
+                "LANGCHAIN_PROJECT": "qa-agent-marquee",
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "BATCH_BUCKET": self.batch_bucket.id,
             },
         }
 
@@ -387,6 +388,19 @@ class QAAgentStepFunction(ComponentResource):
                                     "logs:DescribeLogGroups",
                                 ],
                                 "Resource": "*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "events:PutTargets",
+                                    "events:PutRule",
+                                    "events:DescribeRule",
+                                    "events:DeleteRule",
+                                    "events:RemoveTargets",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:events:{region}:{account_id}:rule/StepFunctions*",
+                                ],
                             },
                         ],
                     }
