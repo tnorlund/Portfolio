@@ -241,6 +241,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
           return activeStep > 0 && EXAMPLE_TRACE[activeStep - 1].type === fromType;
         };
 
+        // Arrowhead size (defined early so edges can account for it)
+        const ahLen = 7;
+        const ahHalf = 4;
+
         // Loop arrows using cubic beziers with natural entry/exit angles
         // Departure angle from vertical (40°) sets where the path leaves each node
         const angle = 40 * Math.PI / 180;
@@ -250,9 +254,15 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         const tx = Math.cos(angle); // tangent x component ~0.77
         const ty = Math.sin(angle); // tangent y component ~0.64
 
+        // All edges follow the same rule:
+        //   - arrowhead tip sits at the destination node's circle edge
+        //   - line/path ends ahLen before the tip (so no line shows behind the arrowhead)
+        //   - line/path starts at the source node's circle edge
+
         // Right arc: Agent bottom-right → Tools top-right
-        const rsx = agentX + dx, rsy = rowY + dy;       // start
-        const rex = agentX + dx, rey = toolsY - dy;     // end
+        const rsx = agentX + dx, rsy = rowY + dy;                          // start (on Agent circle)
+        const rTipX = agentX + dx, rTipY = toolsY - dy;                    // arrowhead tip (on Tools circle)
+        const rex = rTipX + ahLen * tx, rey = rTipY - ahLen * ty;          // path end (ahLen back along tangent)
         const downD = [
           `M ${rsx} ${rsy}`,
           `C ${rsx + armLen * tx} ${rsy + armLen * ty},`,
@@ -261,8 +271,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         ].join(" ");
 
         // Left arc: Tools top-left → Agent bottom-left (mirror)
-        const lsx = agentX - dx, lsy = toolsY - dy;     // start
-        const lex = agentX - dx, ley = rowY + dy;       // end
+        const lsx = agentX - dx, lsy = toolsY - dy;                        // start (on Tools circle)
+        const lTipX = agentX - dx, lTipY = rowY + dy;                      // arrowhead tip (on Agent circle)
+        const lex = lTipX - ahLen * tx, ley = lTipY + ahLen * ty;          // path end (ahLen back along tangent)
         const upD = [
           `M ${lsx} ${lsy}`,
           `C ${lsx - armLen * tx} ${lsy - armLen * ty},`,
@@ -282,10 +293,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         // Arrowhead angles (degrees) for loop curves, derived from the bezier tangent at t=1
         const downArrowAngle = 180 - 40; // 140° — points down-left into Tools
         const upArrowAngle = -40;        // -40° — points up-right into Agent
-
-        // Arrowhead size
-        const ahLen = 7;
-        const ahHalf = 4;
 
         // Helper: render an arrowhead triangle at (tipX, tipY) rotated by angleDeg
         const renderArrowhead = (tipX: number, tipY: number, angleDeg: number, color: string) => (
@@ -325,8 +332,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
             >
               {/* Horizontal forward arrows on main row */}
               {forwardArrows.map(([fromIdx, toIdx]) => {
-                const x1 = mainXs[fromIdx] + nodeR + 4;
-                const x2 = mainXs[toIdx] - nodeR - 4;
+                const x1 = mainXs[fromIdx] + nodeR;              // start at source edge
+                const tipX = mainXs[toIdx] - nodeR;              // arrowhead tip at dest edge
+                const x2 = tipX - ahLen;                          // line ends ahLen before tip
                 const active = isForwardArrowActive(fromIdx, toIdx);
                 const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
                 return (
@@ -335,7 +343,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                       x1={x1} y1={rowY} x2={x2} y2={rowY}
                       stroke={color} strokeWidth={active ? 2.5 : 2}
                     />
-                    {renderArrowhead(x2, rowY, 0, color)}
+                    {renderArrowhead(tipX, rowY, 0, color)}
                   </g>
                 );
               })}
@@ -347,7 +355,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                   stroke={downActive ? "var(--color-green)" : "var(--text-color)"}
                   strokeWidth={downActive ? 2.5 : 2}
                 />
-                {renderArrowhead(rex, rey, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
+                {renderArrowhead(rTipX, rTipY, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
               </g>
 
               {/* Loop: Tools → Agent (left arc) */}
@@ -357,7 +365,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                   stroke={upActive ? "var(--color-blue)" : "var(--text-color)"}
                   strokeWidth={upActive ? 2.5 : 2}
                 />
-                {renderArrowhead(lex, ley, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
+                {renderArrowhead(lTipX, lTipY, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
               </g>
 
               {/* Iteration badge ×N */}
