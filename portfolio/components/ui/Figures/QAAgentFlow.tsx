@@ -164,20 +164,19 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
     config: config.gentle,
   });
 
-  // Track which nodes are active for the flow diagram
-  const getActiveNodes = () => {
-    if (activeStep < 0) return new Set<string>();
-    const step = EXAMPLE_TRACE[activeStep];
-    const nodes = new Set<string>([step.type]);
-
-    // Show connection from previous node
-    if (activeStep > 0) {
-      nodes.add(EXAMPLE_TRACE[activeStep - 1].type);
+  // Compute loop count: increments each time an agent step appears (steps 1, 3, 5)
+  const loopCount = React.useMemo(() => {
+    if (activeStep < 1) return 0;
+    let count = 0;
+    for (let i = 1; i <= Math.min(activeStep, EXAMPLE_TRACE.length - 1); i++) {
+      if (EXAMPLE_TRACE[i].type === "agent") count++;
     }
-    return nodes;
-  };
+    return count;
+  }, [activeStep]);
 
-  const activeNodes = getActiveNodes();
+  // Determine which node is currently active
+  const activeType: StepType | null = activeStep >= 0 ? EXAMPLE_TRACE[activeStep].type : null;
+  const inLoopPhase = activeStep >= 1 && activeStep <= 5;
 
   return (
     <div
@@ -205,101 +204,189 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         </div>
       </animated.div>
 
-      {/* 5-Node Flow Diagram */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.5rem 0",
-          marginBottom: "0.75rem",
-          fontSize: "0.65rem",
-        }}
-      >
-        {(["plan", "agent", "tools", "shape", "synthesize"] as StepType[]).map((node, idx) => {
+      {/* 5-Node SVG Flow Diagram — Tools below Agent with curved loop */}
+      {(() => {
+        // Main row: Plan, Agent, Shape, Synthesize (4 nodes horizontal)
+        // Tools sits below Agent with curved arrows forming the loop
+        const mainNodes: StepType[] = ["plan", "agent", "shape", "synthesize"];
+        const svgW = 440;
+        const svgH = 130;
+        const rowY = 22;       // main row vertical center
+        const nodeR = 16;
+        const spacing = 100;
+        const startX = 55;
+        const mainXs = mainNodes.map((_, i) => startX + i * spacing);
+
+        // Tools node position: below Agent
+        const agentX = mainXs[1]; // 155
+        const toolsX = agentX;
+        const toolsY = 95;
+
+        // Midpoint between Agent bottom and Tools top (for curve control + badge)
+        const loopMidY = (rowY + toolsY) / 2;
+
+        // Horizontal forward arrows on main row (index pairs into mainNodes)
+        const forwardArrows: [number, number][] = [
+          [0, 1], // plan → agent
+          [1, 2], // agent → shape (activates when exiting the loop)
+          [2, 3], // shape → synthesize
+        ];
+
+        const isForwardArrowActive = (fromIdx: number, toIdx: number): boolean => {
+          if (activeStep < 0) return false;
+          const toType = mainNodes[toIdx];
+          if (activeType !== toType) return false;
+          const fromType = mainNodes[fromIdx];
+          // agent → shape: previous trace step is "agent" (step 5), fromType is "agent" ✓
+          return activeStep > 0 && EXAMPLE_TRACE[activeStep - 1].type === fromType;
+        };
+
+        // Loop arrows using cubic beziers with natural entry/exit angles
+        // Departure angle from vertical (40°) sets where the path leaves each node
+        const angle = 40 * Math.PI / 180;
+        const dx = Math.round(nodeR * Math.sin(angle));  // ~10 — horizontal offset on circle
+        const dy = Math.round(nodeR * Math.cos(angle));   // ~12 — vertical offset on circle
+        const armLen = 28; // control-point distance along tangent
+        const tx = Math.cos(angle); // tangent x component ~0.77
+        const ty = Math.sin(angle); // tangent y component ~0.64
+
+        // Right arc: Agent bottom-right → Tools top-right
+        const rsx = agentX + dx, rsy = rowY + dy;       // start
+        const rex = agentX + dx, rey = toolsY - dy;     // end
+        const downD = [
+          `M ${rsx} ${rsy}`,
+          `C ${rsx + armLen * tx} ${rsy + armLen * ty},`,
+          `${rex + armLen * tx} ${rey - armLen * ty},`,
+          `${rex} ${rey}`,
+        ].join(" ");
+
+        // Left arc: Tools top-left → Agent bottom-left (mirror)
+        const lsx = agentX - dx, lsy = toolsY - dy;     // start
+        const lex = agentX - dx, ley = rowY + dy;       // end
+        const upD = [
+          `M ${lsx} ${lsy}`,
+          `C ${lsx - armLen * tx} ${lsy - armLen * ty},`,
+          `${lex - armLen * tx} ${ley + armLen * ty},`,
+          `${lex} ${ley}`,
+        ].join(" ");
+
+        // Activation states
+        const downActive = activeType === "tools" && inLoopPhase;
+        const upActive = activeType === "agent" && activeStep > 1 && inLoopPhase;
+        const loopVisible = inLoopPhase || activeStep === 6;
+
+        // Badge position: to the right of the widest point of the right arc
+        const badgeX = agentX + dx + Math.round(armLen * tx) + 10;
+        const badgeY = loopMidY;
+
+        // Arrowhead angles (degrees) for loop curves, derived from the bezier tangent at t=1
+        const downArrowAngle = 180 - 40; // 140° — points down-left into Tools
+        const upArrowAngle = -40;        // -40° — points up-right into Agent
+
+        // Arrowhead size
+        const ahLen = 7;
+        const ahHalf = 4;
+
+        // Helper: render an arrowhead triangle at (tipX, tipY) rotated by angleDeg
+        const renderArrowhead = (tipX: number, tipY: number, angleDeg: number, color: string) => (
+          <polygon
+            points={`0,0 ${-ahLen},${-ahHalf} ${-ahLen},${ahHalf}`}
+            fill={color}
+            transform={`translate(${tipX},${tipY}) rotate(${angleDeg})`}
+          />
+        );
+
+        // Helper: render a node circle at arbitrary (cx, cy)
+        const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
-          const isActive = activeNodes.has(node);
-          const isAgentToolsLoop = (node === "agent" || node === "tools") &&
-            activeStep >= 1 && activeStep <= 5;
-
+          const isActive = activeType === node;
+          const wasVisited = activeStep >= 0 && EXAMPLE_TRACE.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
-            <React.Fragment key={node}>
-              {/* Node */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  opacity: isActive ? 1 : 0.3,
-                  transition: "all 0.3s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
-                    backgroundColor: isActive ? cfg.color : "var(--code-background)",
-                    border: `2px solid ${cfg.color}`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "0.9rem",
-                    boxShadow: isActive ? `0 0 8px ${cfg.color}50` : "none",
-                  }}
-                >
-                  {cfg.icon}
-                </div>
-                <span
-                  style={{
-                    marginTop: "0.25rem",
-                    color: cfg.color,
-                    fontWeight: isActive ? 600 : 400,
-                  }}
-                >
-                  {cfg.label}
-                </span>
-              </div>
-
-              {/* Arrow between nodes */}
-              {idx < 4 && (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                  }}
-                >
-                  {/* Bidirectional arrow for agent ⟷ tools */}
-                  {node === "agent" ? (
-                    <div
-                      style={{
-                        fontSize: "0.8rem",
-                        color: isAgentToolsLoop ? "#43A047" : "var(--text-color)",
-                        opacity: isAgentToolsLoop ? 1 : 0.3,
-                      }}
-                    >
-                      ⟷
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        fontSize: "0.7rem",
-                        color: "var(--text-color)",
-                        opacity: 0.3,
-                      }}
-                    >
-                      →
-                    </div>
-                  )}
-                </div>
+            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.7 : 0.3}>
+              {isActive && (
+                <circle cx={cx} cy={cy} r={nodeR + 4} fill="none" stroke={cfg.color} strokeWidth={1} opacity={0.3} />
               )}
-            </React.Fragment>
+              <circle
+                cx={cx} cy={cy} r={nodeR}
+                fill={isActive ? cfg.color : "var(--code-background)"}
+                stroke={cfg.color} strokeWidth={2}
+              />
+            </g>
           );
-        })}
-      </div>
+        };
+
+        return (
+          <div style={{ marginBottom: "0.75rem", textAlign: "center" }}>
+            <svg
+              width="100%"
+              height={svgH}
+              viewBox={`0 0 ${svgW} ${svgH}`}
+              style={{ maxWidth: `${svgW}px`, overflow: "visible" }}
+            >
+              {/* Horizontal forward arrows on main row */}
+              {forwardArrows.map(([fromIdx, toIdx]) => {
+                const x1 = mainXs[fromIdx] + nodeR + 4;
+                const x2 = mainXs[toIdx] - nodeR - 4;
+                const active = isForwardArrowActive(fromIdx, toIdx);
+                const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "#999";
+                return (
+                  <g key={`fwd-${fromIdx}-${toIdx}`} opacity={active ? 1 : 0.2} style={{ transition: "opacity 0.3s ease" }}>
+                    <line
+                      x1={x1} y1={rowY} x2={x2} y2={rowY}
+                      stroke={color} strokeWidth={active ? 2 : 1.5}
+                    />
+                    {renderArrowhead(x2, rowY, 0, color)}
+                  </g>
+                );
+              })}
+
+              {/* Loop: Agent → Tools (right arc) */}
+              <g opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                <path
+                  d={downD} fill="none"
+                  stroke={downActive ? "#43A047" : "#999"}
+                  strokeWidth={downActive ? 2 : 1.5}
+                />
+                {renderArrowhead(rex, rey, downArrowAngle, downActive ? "#43A047" : "#999")}
+              </g>
+
+              {/* Loop: Tools → Agent (left arc) */}
+              <g opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                <path
+                  d={upD} fill="none"
+                  stroke={upActive ? "#43A047" : "#999"}
+                  strokeWidth={upActive ? 2 : 1.5}
+                />
+                {renderArrowhead(lex, ley, upArrowAngle, upActive ? "#43A047" : "#999")}
+              </g>
+
+              {/* Iteration badge ×N */}
+              {loopCount > 0 && (
+                <g style={{ transition: "opacity 0.3s ease" }} opacity={loopVisible ? 1 : 0}>
+                  <rect
+                    x={badgeX - 14} y={badgeY - 9}
+                    width={28} height={18} rx={4}
+                    fill="var(--code-background)" stroke="#43A047" strokeWidth={1} opacity={0.9}
+                  />
+                  <text
+                    x={badgeX} y={badgeY + 3}
+                    textAnchor="middle" fontSize="11" fontWeight={700}
+                    fontFamily="var(--font-mono, monospace)" fill="#43A047"
+                  >
+                    {`×${loopCount}`}
+                  </text>
+                </g>
+              )}
+
+              {/* Main row nodes */}
+              {mainNodes.map((node, idx) => renderNode(node, mainXs[idx], rowY))}
+
+              {/* Tools node (below Agent) */}
+              {renderNode("tools", toolsX, toolsY)}
+            </svg>
+          </div>
+        );
+      })()}
 
       {/* Trace Steps */}
       <div style={{ position: "relative" }}>
