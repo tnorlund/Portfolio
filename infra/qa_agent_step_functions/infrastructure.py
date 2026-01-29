@@ -586,6 +586,14 @@ def _build_state_machine_definition(
                     "receipts_found.$": "$.Payload.receipts_found",
                 },
                 "ResultPath": "$.metadata",
+                "Next": "WaitForTraceIngestion",
+            },
+            # LangSmith needs time to ingest traces after the Lambda
+            # flushes them.  Without this delay the bulk export may
+            # return 0 rows because the traces aren't queryable yet.
+            "WaitForTraceIngestion": {
+                "Type": "Wait",
+                "Seconds": 120,
                 "Next": "TriggerLangSmithExport",
             },
             "TriggerLangSmithExport": {

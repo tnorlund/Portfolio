@@ -508,7 +508,11 @@ def run_qa_cache_job(
             .parquet(spark_path)
         )
     except Exception:
-        logger.exception("Failed to read parquet from %s", spark_path)
+        logger.exception("Failed to read parquet from %s — falling back to NDJSON", spark_path)
+        _write_cache_from_ndjson(
+            s3_client, cache_bucket, question_results, receipts_lookup,
+            execution_id, langchain_project,
+        )
         return
 
     # Handle nanosecond timestamps
