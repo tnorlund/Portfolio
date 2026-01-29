@@ -244,12 +244,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         // Arrowhead size (defined early so edges can account for it)
         const ahLen = 7;
         const ahHalf = 4;
+        const edgeGap = 4; // breathing room between node edge and line start/arrowhead tip
 
         // Loop arrows using cubic beziers with natural entry/exit angles
         // Departure angle from vertical (40°) sets where the path leaves each node
         const angle = 40 * Math.PI / 180;
-        const dx = Math.round(nodeR * Math.sin(angle));  // ~10 — horizontal offset on circle
-        const dy = Math.round(nodeR * Math.cos(angle));   // ~12 — vertical offset on circle
+        const edgeR = nodeR + edgeGap;                        // effective radius including gap
+        const dx = Math.round(edgeR * Math.sin(angle));   // ~12 — horizontal offset
+        const dy = Math.round(edgeR * Math.cos(angle));    // ~15 — vertical offset
         const armLen = 20; // control-point distance along tangent (circular arc approximation)
         const tx = Math.cos(angle); // tangent x component ~0.77
         const ty = Math.sin(angle); // tangent y component ~0.64
@@ -310,9 +312,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
           const wasVisited = activeStep >= 0 && EXAMPLE_TRACE.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
             <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.7 : 0.3}>
-              {isActive && (
-                <circle cx={cx} cy={cy} r={nodeR + 4} fill="none" stroke={cfg.color} strokeWidth={1} opacity={0.3} />
-              )}
               <circle
                 cx={cx} cy={cy} r={nodeR}
                 fill={isActive ? cfg.color : "var(--code-background)"}
@@ -332,8 +331,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
             >
               {/* Horizontal forward arrows on main row */}
               {forwardArrows.map(([fromIdx, toIdx]) => {
-                const x1 = mainXs[fromIdx] + nodeR;              // start at source edge
-                const tipX = mainXs[toIdx] - nodeR;              // arrowhead tip at dest edge
+                const x1 = mainXs[fromIdx] + nodeR + edgeGap;     // start at source edge + gap
+                const tipX = mainXs[toIdx] - nodeR - edgeGap;   // arrowhead tip at dest edge - gap
                 const x2 = tipX - ahLen;                          // line ends ahLen before tip
                 const active = isForwardArrowActive(fromIdx, toIdx);
                 const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
