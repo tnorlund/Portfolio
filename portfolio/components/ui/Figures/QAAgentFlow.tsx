@@ -222,9 +222,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         const toolsX = agentX;
         const toolsY = 95;
 
-        // Midpoint between Agent bottom and Tools top (for curve control + badge)
-        const loopMidY = (rowY + toolsY) / 2;
-
         // Horizontal forward arrows on main row (index pairs into mainNodes)
         const forwardArrows: [number, number][] = [
           [0, 1], // plan → agent
@@ -288,9 +285,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
         const upActive = activeType === "agent" && activeStep > 1 && inLoopPhase;
         const loopVisible = inLoopPhase || activeStep === 6;
 
-        // Badge position: to the right of the widest point of the right arc
-        const badgeX = agentX + dx + Math.round(armLen * tx) + 10;
-        const badgeY = loopMidY;
+        // Badge position: centered between the arc departure points (Agent bottom and Tools top)
+        const badgeX = agentX;
+        const badgeY = (rsy + rTipY) / 2;
 
         // Arrowhead angles (degrees) for loop curves, derived from the bezier tangent at t=1
         const downArrowAngle = 180 - 40; // 140° — points down-left into Tools
@@ -376,8 +373,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true }) => {
                     fill="var(--code-background)" stroke="var(--color-green)" strokeWidth={1} opacity={0.9}
                   />
                   <text
-                    x={badgeX} y={badgeY + 3}
-                    textAnchor="middle" fontSize="11" fontWeight={700}
+                    x={badgeX} y={badgeY}
+                    textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight={700}
                     fontFamily="var(--font-mono, monospace)" fill="var(--color-green)"
                   >
                     {`×${loopCount}`}
