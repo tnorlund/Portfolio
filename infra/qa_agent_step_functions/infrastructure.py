@@ -516,15 +516,14 @@ def _build_state_machine_definition(
                 "Resource": "arn:aws:states:::lambda:invoke",
                 "Parameters": {
                     "FunctionName": run_all_questions_arn,
-                    "Payload": {
-                        "execution_id.$": "$.init.execution_id",
-                    },
+                    "Payload.$": "States.JsonMerge($.init, $$.Execution.Input, false)",
                 },
                 "ResultSelector": {
                     "receipt_keys.$": "$.Payload.receipt_keys",
                     "total_questions.$": "$.Payload.total_questions",
                     "success_count.$": "$.Payload.success_count",
                     "results_ndjson_key.$": "$.Payload.results_ndjson_key",
+                    "langchain_project.$": "$.Payload.langchain_project",
                 },
                 "ResultPath": "$.questions_result",
                 "TimeoutSeconds": 900,
@@ -566,7 +565,7 @@ def _build_state_machine_definition(
                 "Parameters": {
                     "FunctionName": trigger_export_arn,
                     "Payload": {
-                        "project_name": "qa-agent-marquee",
+                        "langchain_project.$": "$.questions_result.langchain_project",
                     },
                 },
                 "ResultSelector": {

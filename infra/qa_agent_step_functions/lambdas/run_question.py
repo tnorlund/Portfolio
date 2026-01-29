@@ -174,7 +174,9 @@ async def _run_question(
             }
 
 
-async def _run_all(execution_id: str, batch_bucket: str) -> dict[str, Any]:
+async def _run_all(
+    execution_id: str, batch_bucket: str, langchain_project: str
+) -> dict[str, Any]:
     """Run all questions concurrently and write results to S3."""
     from receipt_agent.agents.question_answering import (
         answer_question,
@@ -187,7 +189,7 @@ async def _run_all(execution_id: str, batch_bucket: str) -> dict[str, Any]:
     )
 
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_PROJECT"] = "qa-agent-marquee"
+    os.environ["LANGCHAIN_PROJECT"] = langchain_project
 
     table_name = os.environ.get("DYNAMODB_TABLE_NAME", "")
     dynamo_client = create_dynamo_client(table_name=table_name)
@@ -263,9 +265,20 @@ async def _run_all(execution_id: str, batch_bucket: str) -> dict[str, Any]:
         total_cost,
     )
 
+    # Flush LangSmith traces before Lambda terminates
+    try:
+        from langchain_core.tracers.langchain import wait_for_all_tracers
+
+        logger.info("Flushing LangSmith traces...")
+        wait_for_all_tracers()
+        logger.info("LangSmith traces flushed")
+    except Exception:
+        logger.exception("Failed to flush LangSmith traces")
+
     return {
         "execution_id": execution_id,
         "batch_bucket": batch_bucket,
+        "langchain_project": langchain_project,
         "receipt_keys": [{"image_id": k[0], "receipt_id": k[1]} for k in receipt_keys],
         "total_questions": len(QUESTIONS),
         "success_count": success_count,
@@ -278,7 +291,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda entry point. Runs all 32 questions through the QA graph.
 
     Args:
-        event: Contains optional 'execution_id'.
+        event: Contains optional 'execution_id' and 'langchain_project'.
+               If langchain_project is not provided, defaults to
+               'qa-agent-marquee-YYYYMMDD-HHMMSS'.
 
     Returns:
         dict with receipt_keys, question counts, NDJSON path, and total cost.
@@ -286,10 +301,16 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     execution_id = event.get("execution_id") or context.aws_request_id
     batch_bucket = os.environ["BATCH_BUCKET"]
 
+    langchain_project = event.get("langchain_project")
+    if not langchain_project:
+        timestamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        langchain_project = f"qa-agent-marquee-{timestamp}"
+
     logger.info(
-        "Starting QA pipeline: %d questions, concurrency=%d",
+        "Starting QA pipeline: %d questions, concurrency=%d, project=%s",
         len(QUESTIONS),
         CONCURRENCY,
+        langchain_project,
     )
 
-    return asyncio.run(_run_all(execution_id, batch_bucket))
+    return asyncio.run(_run_all(execution_id, batch_bucket, langchain_project))
