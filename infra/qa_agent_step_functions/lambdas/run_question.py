@@ -77,7 +77,7 @@ class CostTrackingCallback(BaseCallbackHandler):
         self._lock = Lock()
 
     def on_llm_end(self, response, **kwargs):
-        """Track cost from LLM response."""
+        """Track cost from LLM response and add to LangSmith run."""
         cost = 0.0
         prompt_tokens = 0
         completion_tokens = 0
@@ -100,6 +100,24 @@ class CostTrackingCallback(BaseCallbackHandler):
             self.total_tokens += total_tokens
             self.prompt_tokens += prompt_tokens
             self.completion_tokens += completion_tokens
+
+        # Add cost to LangSmith run via usage_metadata (populates the cost column)
+        if cost > 0:
+            try:
+                from langsmith.run_helpers import get_current_run_tree
+
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.set(
+                        usage_metadata={
+                            "input_tokens": prompt_tokens,
+                            "output_tokens": completion_tokens,
+                            "total_tokens": total_tokens,
+                            "total_cost": cost,
+                        }
+                    )
+            except Exception:
+                logger.debug("Could not add cost to LangSmith run")
 
     def get_stats(self) -> dict:
         with self._lock:
