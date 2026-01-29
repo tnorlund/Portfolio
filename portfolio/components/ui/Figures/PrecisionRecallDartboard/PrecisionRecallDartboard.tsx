@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { animated, useSprings } from "@react-spring/web";
 import useOptimizedInView from "../../../../hooks/useOptimizedInView";
 import type { PrecisionRecallDartboardProps } from "./types";
@@ -27,20 +27,18 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
     threshold: 0.3,
     triggerOnce: true,
   });
+  const DEFAULT_DARTBOARD_SIZE = 160;
   const [mounted, setMounted] = useState(false);
+  const [dartboardSize, setDartboardSize] = useState(DEFAULT_DARTBOARD_SIZE);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Responsive dartboard size
-  const dartboardSize = useMemo(() => {
-    if (typeof window === "undefined") return 160;
+    // Compute responsive size client-side only
     const width = window.innerWidth;
-    if (width <= 480) return 130;
-    if (width <= 768) return 150;
-    return 170;
+    if (width <= 480) setDartboardSize(130);
+    else if (width <= 768) setDartboardSize(150);
+    else setDartboardSize(170);
+    setMounted(true);
   }, []);
 
   // Animation springs for each dartboard
@@ -94,7 +92,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
         style={{
           display: "flex",
           justifyContent: "center",
-          minHeight: dartboardSize * 2 + 100,
+          minHeight: DEFAULT_DARTBOARD_SIZE * 2 + 100,
           alignItems: "center",
         }}
       >
