@@ -1,4 +1,5 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
 
 /** Data for a single question from the QA cache API */
@@ -177,18 +178,20 @@ const MAX_STEP_MS = 3500;
 const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete }) => {
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
+  const [showAnswer, setShowAnswer] = React.useState(false);
 
   // Use real data when available, fall back to example trace
   const trace = questionData?.trace ?? EXAMPLE_TRACE;
   const questionText = questionData?.question ?? "How much did I spend on coffee?";
   const stats = questionData?.stats;
 
-  // Reset animation when question data changes
-  const questionKey = questionData?.question ?? "";
+  // Reset animation when question changes (use index to avoid stale-data issues on mobile)
+  const questionIndex = questionData?.questionIndex ?? -1;
   React.useEffect(() => {
     setActiveStep(-1);
+    setShowAnswer(false);
     setIsPlaying(true);
-  }, [questionKey]);
+  }, [questionIndex]);
 
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
@@ -214,18 +217,19 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     if (!isPlaying) return;
 
     if (activeStep >= trace.length - 1) {
-      // Pause at end, then notify parent and reset
-      const id = setTimeout(() => {
-        onCycleComplete?.();
-        setActiveStep(-1);
-      }, 3000);
+      // Last step reached — reveal answer after its duration, then hold 5s
+      if (!showAnswer) {
+        const id = setTimeout(() => setShowAnswer(true), stepDurations[trace.length - 1]);
+        return () => clearTimeout(id);
+      }
+      const id = setTimeout(() => onCycleComplete?.(), 5000);
       return () => clearTimeout(id);
     }
 
     const delay = activeStep < 0 ? 400 : stepDurations[activeStep];
     const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
     return () => clearTimeout(id);
-  }, [isPlaying, activeStep, trace.length, stepDurations, onCycleComplete]);
+  }, [isPlaying, activeStep, trace.length, stepDurations, showAnswer, onCycleComplete]);
 
   const questionSpring = useSpring({
     opacity: 1,
@@ -396,7 +400,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               />
               {isNodeActive && (
                 <circle
-                  key={activeStep}
+                  key={`clock-${node}-${activeStep}`}
                   cx={cx} cy={cy}
                   r={nodeR / 2}
                   fill="none"
@@ -561,7 +565,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   const cfg = STEP_CONFIG[step.type];
                   return (
                     <div
-                      key={idx}
+                      key={`bar-${idx}-${step.type}`}
                       title={`${cfg.label}: ${step.durationMs ? formatMs(step.durationMs) : "—"} (${barWidths[idx].toFixed(1)}%)`}
                       style={{
                         width: `${barWidths[idx]}%`,
@@ -627,239 +631,129 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         );
       })()}
 
-      {/* Trace Steps */}
-      <div style={{ position: "relative" }}>
-        {trace.map((step, idx) => {
-          const isActive = idx <= activeStep;
-          const isCurrent = idx === activeStep;
-          const cfg = STEP_CONFIG[step.type];
+      {/* Answer + Receipt Thumbnails */}
+      {(() => {
+        const synthesizeStep = trace.find((s) => s.type === "synthesize");
+        const answerText = synthesizeStep?.content;
+        const receipts = synthesizeStep?.receipts;
 
-          // Visual grouping for agent/tools loop
-          const isLoopStep = step.type === "agent" || step.type === "tools";
-          const isInLoop = idx >= 1 && idx <= loopEndIdx;
-
-          return (
-            <div
-              key={idx}
-              style={{
-                opacity: isActive ? 1 : 0.25,
-                transition: "all 0.3s ease",
-                marginBottom: step.type === "shape" || step.type === "synthesize" ? "0.5rem" : "0.25rem",
-                paddingLeft: isLoopStep && isInLoop ? "0.75rem" : "0",
-                borderLeft: isLoopStep && isInLoop ? `2px solid ${isActive ? cfg.color : "var(--text-color)"}30` : "none",
-                marginLeft: isLoopStep && isInLoop ? "0.5rem" : "0",
-              }}
-            >
-              {/* Loop indicator for first agent step */}
-              {idx === 1 && (
+        return (
+          <div
+            style={{
+              minHeight: "140px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.75rem 0",
+            }}
+          >
+            {showAnswer && answerText ? (
+              <>
                 <div
                   style={{
-                    fontSize: "0.6rem",
+                    fontSize: "0.9rem",
                     color: "var(--text-color)",
-                    opacity: 0.5,
-                    marginBottom: "0.2rem",
-                    marginLeft: "-0.25rem",
-                  }}
-                >
-                  ↻ ReAct Loop
-                </div>
-              )}
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "0.5rem",
-                  padding: "0.25rem 0",
-                }}
-              >
-                {/* Node indicator */}
-                <span
-                  style={{
-                    fontSize: "0.6rem",
-                    fontWeight: 700,
-                    color: cfg.color,
-                    backgroundColor: `${cfg.color}20`,
-                    padding: "0.1rem 0.3rem",
-                    borderRadius: "3px",
-                    minWidth: "1.2rem",
                     textAlign: "center",
-                    filter: isCurrent ? `drop-shadow(0 0 4px ${cfg.color})` : "none",
+                    width: "100%",
                   }}
                 >
-                  {cfg.node}
-                </span>
-
-                {/* Content */}
-                <div style={{ flex: 1 }}>
-                  <span
-                    style={{
-                      color: "var(--text-color)",
-                      fontSize: "0.8rem",
-                      fontFamily: step.type === "tools" ? "var(--font-mono, monospace)" : "inherit",
-                    }}
-                  >
-                    {step.content}
-                  </span>
-                  {step.detail && isActive && (
-                    <div
-                      style={{
-                        fontSize: "0.7rem",
-                        color: "var(--text-color)",
-                        opacity: 0.6,
-                        marginTop: "0.1rem",
-                      }}
-                    >
-                      {step.detail}
-                    </div>
-                  )}
+                  <ReactMarkdown>{answerText}</ReactMarkdown>
                 </div>
-              </div>
-
-              {/* Structured data preview for shape step */}
-              {step.type === "shape" && step.structuredData && isActive && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.4rem",
-                    marginTop: "0.4rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {step.structuredData.slice(0, 3).map((receipt, rIdx) => (
-                    <div
-                      key={rIdx}
-                      style={{
-                        fontSize: "0.6rem",
-                        padding: "0.3rem 0.4rem",
-                        backgroundColor: "var(--code-background)",
-                        borderRadius: "4px",
-                        border: "1px solid rgba(var(--text-color-rgb, 0,0,0), 0.2)",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, color: "var(--color-orange)" }}>{receipt.merchant}</div>
-                      {receipt.items.map((item, iIdx) => (
-                        <div key={iIdx} style={{ opacity: 0.7 }}>
-                          {item.name}: ${item.amount.toFixed(2)}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+                {receipts && receipts.length > 0 && (
                   <div
                     style={{
-                      fontSize: "0.6rem",
-                      padding: "0.3rem",
-                      opacity: 0.5,
-                      alignSelf: "center",
+                      display: "flex",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
+                      justifyContent: "center",
+                      alignItems: "flex-end",
                     }}
                   >
-                    +2 more
-                  </div>
-                </div>
-              )}
+                    {receipts.slice(0, 4).map((receipt, rIdx) => {
+                      const thumbWidth = 50;
+                      const aspectRatio = receipt.height / receipt.width;
+                      const thumbHeight = Math.min(Math.round(thumbWidth * aspectRatio), 100);
+                      const finalWidth = thumbHeight < Math.round(thumbWidth * aspectRatio)
+                        ? Math.round(thumbHeight / aspectRatio)
+                        : thumbWidth;
 
-              {/* Receipt thumbnails for synthesize step */}
-              {step.type === "synthesize" && step.receipts && isActive && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    marginTop: "0.5rem",
-                    flexWrap: "wrap",
-                    alignItems: "flex-end",
-                  }}
-                >
-                  {step.receipts.slice(0, 4).map((receipt, rIdx) => {
-                    const thumbWidth = 50;
-                    const aspectRatio = receipt.height / receipt.width;
-                    const thumbHeight = Math.min(Math.round(thumbWidth * aspectRatio), 100);
-                    const finalWidth = thumbHeight < Math.round(thumbWidth * aspectRatio)
-                      ? Math.round(thumbHeight / aspectRatio)
-                      : thumbWidth;
-
-                    return (
-                      <div
-                        key={rIdx}
-                        style={{
-                          width: `${finalWidth}px`,
-                          textAlign: "center",
-                        }}
-                      >
+                      return (
                         <div
+                          key={`${receipt.imageId}-${rIdx}`}
                           style={{
                             width: `${finalWidth}px`,
-                            height: `${thumbHeight}px`,
-                            backgroundColor: "var(--code-background)",
-                            borderRadius: "4px",
-                            overflow: "hidden",
-                            border: "1px solid var(--text-color)",
+                            textAlign: "center",
                           }}
                         >
-                          <img
-                            src={`${CDN_BASE}/${receipt.thumbnailKey}`}
-                            alt={`${receipt.merchant} receipt`}
+                          <div
                             style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
+                              width: `${finalWidth}px`,
+                              height: `${thumbHeight}px`,
+                              backgroundColor: "var(--code-background)",
+                              borderRadius: "4px",
+                              overflow: "hidden",
+                              border: "1px solid var(--text-color)",
                             }}
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = "none";
-                              target.parentElement!.innerHTML = '<span style="font-size: 1.2rem; opacity: 0.3; display: flex; align-items: center; justify-content: center; height: 100%;">🧾</span>';
+                          >
+                            <img
+                              src={`${CDN_BASE}/${receipt.thumbnailKey}`}
+                              alt={`${receipt.merchant} receipt`}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = "none";
+                                target.parentElement!.innerHTML = '<span style="font-size: 1.2rem; opacity: 0.3; display: flex; align-items: center; justify-content: center; height: 100%;">🧾</span>';
+                              }}
+                            />
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.55rem",
+                              color: "var(--text-color)",
+                              opacity: 0.7,
+                              marginTop: "0.15rem",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
                             }}
-                          />
+                          >
+                            {receipt.merchant}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.6rem",
+                              color: "var(--color-green)",
+                              fontWeight: 600,
+                            }}
+                          >
+                            ${receipt.amount.toFixed(2)}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            fontSize: "0.55rem",
-                            color: "var(--text-color)",
-                            opacity: 0.7,
-                            marginTop: "0.15rem",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {receipt.merchant}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.6rem",
-                            color: "var(--color-green)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          ${receipt.amount.toFixed(2)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Stats footer */}
-      {activeStep >= trace.length - 1 && (
-        <div
-          style={{
-            fontSize: "0.65rem",
-            color: "var(--text-color)",
-            opacity: 0.5,
-            textAlign: "center",
-            marginTop: "0.5rem",
-            paddingTop: "0.5rem",
-            borderTop: "1px solid var(--text-color)",
-          }}
-        >
-          {stats
-            ? `${stats.llmCalls} LLM calls · ${stats.toolInvocations} tool invocations · ${stats.receiptsProcessed} receipts shaped · $${stats.cost.toFixed(3)} cost`
-            : "4 LLM calls · 2 tool invocations · 10 receipts shaped · $0.005 cost"}
-        </div>
-      )}
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  color: "var(--text-color)",
+                  opacity: 0.3,
+                }}
+              >
+                {activeStep < 0 ? "" : "Processing..."}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Controls */}
       <div style={{ textAlign: "center", marginTop: "0.75rem" }}>
