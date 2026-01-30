@@ -232,6 +232,25 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     config: config.gentle,
   });
 
+  // Compute flame-graph bar target (cumulative width% through the current step)
+  const barWidths = React.useMemo(() => {
+    const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
+    return trace.map((s) =>
+      totalMs > 0 ? ((s.durationMs ?? 0) / totalMs) * 100 : 100 / trace.length,
+    );
+  }, [trace]);
+
+  const barTarget = React.useMemo(() => {
+    if (activeStep < 0) return 0;
+    if (activeStep >= trace.length - 1) return 100;
+    return barWidths.slice(0, activeStep + 1).reduce((a, b) => a + b, 0);
+  }, [activeStep, trace.length, barWidths]);
+
+  const barSpring = useSpring({
+    progress: barTarget,
+    config: { duration: activeStep < 0 ? 0 : currentStepDuration },
+  });
+
   // Compute loop count: increments each time an agent step appears
   const loopCount = React.useMemo(() => {
     if (activeStep < 1) return 0;
@@ -253,7 +272,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
       style={{
         fontFamily: "var(--font-mono, monospace)",
         fontSize: "0.85rem",
-        maxWidth: "600px",
+        maxWidth: "1000px",
         margin: "0 auto",
         padding: "0.5rem",
       }}
@@ -274,29 +293,50 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         </div>
       </animated.div>
 
-      {/* 5-Node SVG Flow Diagram — Tools below Agent with curved loop */}
+      {/* Flame Graph Timeline + Node Diagram */}
       {(() => {
-        // Main row: Plan, Agent, Shape, Synthesize (4 nodes horizontal)
-        // Tools sits below Agent with curved arrows forming the loop
+        const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
+
+        const formatMs = (ms: number): string =>
+          ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms.toFixed(1)}ms`;
+
+        // Deduplicate step types for the legend (e.g. multiple agent/tools steps)
+        const uniqueTypes: StepType[] = [];
+        for (const step of trace) {
+          if (!uniqueTypes.includes(step.type)) uniqueTypes.push(step.type);
+        }
+
+        // Compute cumulative boundaries for pie-fill per legend entry
+        const legendEntries = uniqueTypes.map((type) => {
+          const cfg = STEP_CONFIG[type];
+          const stepIndices = trace
+            .map((s, i) => (s.type === type ? i : -1))
+            .filter((i) => i >= 0);
+          const visitedCount = stepIndices.filter((i) => i <= activeStep).length;
+          const fillPercent =
+            stepIndices.length > 0
+              ? (visitedCount / stepIndices.length) * 100
+              : 0;
+          return { type, cfg, fillPercent };
+        });
+
+        // --- SVG node diagram constants ---
         const mainNodes: StepType[] = ["plan", "agent", "shape", "synthesize"];
-        const svgW = 440;
-        const svgH = 130;
-        const rowY = 22;       // main row vertical center
-        const nodeR = 16;
-        const spacing = 100;
-        const startX = 55;
+        const S = 1.5;
+        const svgW = Math.round(440 * S);
+        const svgH = Math.round(130 * S);
+        const rowY = Math.round(22 * S);
+        const nodeR = Math.round(16 * S);
+        const spacing = Math.round(100 * S);
+        const startX = Math.round(55 * S);
         const mainXs = mainNodes.map((_, i) => startX + i * spacing);
 
-        // Tools node position: below Agent
-        const agentX = mainXs[1]; // 155
+        const agentX = mainXs[1];
         const toolsX = agentX;
-        const toolsY = 95;
+        const toolsY = Math.round(95 * S);
 
-        // Horizontal forward arrows on main row (index pairs into mainNodes)
         const forwardArrows: [number, number][] = [
-          [0, 1], // plan → agent
-          [1, 2], // agent → shape (activates when exiting the loop)
-          [2, 3], // shape → synthesize
+          [0, 1], [1, 2], [2, 3],
         ];
 
         const isForwardArrowActive = (fromIdx: number, toIdx: number): boolean => {
@@ -304,34 +344,24 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           const toType = mainNodes[toIdx];
           if (activeType !== toType) return false;
           const fromType = mainNodes[fromIdx];
-          // agent → shape: previous trace step is "agent" (step 5), fromType is "agent" ✓
           return activeStep > 0 && trace[activeStep - 1].type === fromType;
         };
 
-        // Arrowhead size (defined early so edges can account for it)
-        const ahLen = 7;
-        const ahHalf = 4;
-        const edgeGap = 4; // breathing room between node edge and line start/arrowhead tip
+        const ahLen = Math.round(7 * S);
+        const ahHalf = Math.round(4 * S);
+        const edgeGap = Math.round(4 * S);
 
-        // Loop arrows using cubic beziers with natural entry/exit angles
-        // Departure angle from vertical (40°) sets where the path leaves each node
         const angle = 40 * Math.PI / 180;
-        const edgeR = nodeR + edgeGap;                        // effective radius including gap
-        const dx = Math.round(edgeR * Math.sin(angle));   // ~12 — horizontal offset
-        const dy = Math.round(edgeR * Math.cos(angle));    // ~15 — vertical offset
-        const armLen = 20; // control-point distance along tangent (circular arc approximation)
-        const tx = Math.cos(angle); // tangent x component ~0.77
-        const ty = Math.sin(angle); // tangent y component ~0.64
+        const edgeR = nodeR + edgeGap;
+        const dx = Math.round(edgeR * Math.sin(angle));
+        const dy = Math.round(edgeR * Math.cos(angle));
+        const armLen = Math.round(20 * S);
+        const tx = Math.cos(angle);
+        const ty = Math.sin(angle);
 
-        // All edges follow the same rule:
-        //   - arrowhead tip sits at the destination node's circle edge
-        //   - line/path ends ahLen before the tip (so no line shows behind the arrowhead)
-        //   - line/path starts at the source node's circle edge
-
-        // Right arc: Agent bottom-right → Tools top-right
-        const rsx = agentX + dx, rsy = rowY + dy;                          // start (on Agent circle)
-        const rTipX = agentX + dx, rTipY = toolsY - dy;                    // arrowhead tip (on Tools circle)
-        const rex = rTipX + ahLen * tx, rey = rTipY - ahLen * ty;          // path end (ahLen back along tangent)
+        const rsx = agentX + dx, rsy = rowY + dy;
+        const rTipX = agentX + dx, rTipY = toolsY - dy;
+        const rex = rTipX + ahLen * tx, rey = rTipY - ahLen * ty;
         const downD = [
           `M ${rsx} ${rsy}`,
           `C ${rsx + armLen * tx} ${rsy + armLen * ty},`,
@@ -339,10 +369,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           `${rex} ${rey}`,
         ].join(" ");
 
-        // Left arc: Tools top-left → Agent bottom-left (mirror)
-        const lsx = agentX - dx, lsy = toolsY - dy;                        // start (on Tools circle)
-        const lTipX = agentX - dx, lTipY = rowY + dy;                      // arrowhead tip (on Agent circle)
-        const lex = lTipX - ahLen * tx, ley = lTipY + ahLen * ty;          // path end (ahLen back along tangent)
+        const lsx = agentX - dx, lsy = toolsY - dy;
+        const lTipX = agentX - dx, lTipY = rowY + dy;
+        const lex = lTipX - ahLen * tx, ley = lTipY + ahLen * ty;
         const upD = [
           `M ${lsx} ${lsy}`,
           `C ${lsx - armLen * tx} ${lsy - armLen * ty},`,
@@ -350,20 +379,16 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           `${lex} ${ley}`,
         ].join(" ");
 
-        // Activation states
         const downActive = activeType === "tools" && inLoopPhase;
         const upActive = activeType === "agent" && activeStep > 1 && inLoopPhase;
         const loopVisible = inLoopPhase || activeStep === loopEndIdx + 1;
 
-        // Badge position: centered between the arc departure points (Agent bottom and Tools top)
         const badgeX = agentX;
         const badgeY = (rsy + rTipY) / 2;
 
-        // Arrowhead angles (degrees) for loop curves, derived from the bezier tangent at t=1
-        const downArrowAngle = 180 - 40; // 140° — points down-left into Tools
-        const upArrowAngle = -40;        // -40° — points up-right into Agent
+        const downArrowAngle = 180 - 40;
+        const upArrowAngle = -40;
 
-        // Helper: render an arrowhead triangle at (tipX, tipY) rotated by angleDeg
         const renderArrowhead = (tipX: number, tipY: number, angleDeg: number, color: string) => (
           <polygon
             points={`0,0 ${-ahLen},${-ahHalf} ${-ahLen},${ahHalf}`}
@@ -372,27 +397,21 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           />
         );
 
-        // Clock-fill animation circumference
         const circumference = Math.PI * nodeR;
-
-        // Clock-fill duration: match the current step's scaled duration (with small buffer)
         const fillDurationSec = ((currentStepDuration - 100) / 1000).toFixed(2);
 
-        // Helper: render a node circle at arbitrary (cx, cy)
         const renderNode = (node: StepType, cx: number, cy: number) => {
           const cfg = STEP_CONFIG[node];
-          const isActive = activeType === node;
+          const isNodeActive = activeType === node;
           const wasVisited = activeStep >= 0 && trace.slice(0, activeStep + 1).some((s) => s.type === node);
           return (
-            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isActive ? 1 : wasVisited ? 0.85 : 0.3}>
-              {/* Base circle: filled with color when visited (but not active) */}
+            <g key={node} style={{ transition: "opacity 0.3s ease" }} opacity={isNodeActive ? 1 : wasVisited ? 0.85 : 0.3}>
               <circle
                 cx={cx} cy={cy} r={nodeR}
-                fill={wasVisited && !isActive ? cfg.color : "var(--code-background)"}
-                stroke={cfg.color} strokeWidth={2}
+                fill={wasVisited && !isNodeActive ? cfg.color : "var(--code-background)"}
+                stroke={cfg.color} strokeWidth={2 * S}
               />
-              {/* Clock-fill overlay: sweeps clockwise, duration synced to step timing */}
-              {isActive && (
+              {isNodeActive && (
                 <circle
                   key={activeStep}
                   cx={cx} cy={cy}
@@ -410,84 +429,224 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
           );
         };
 
+        // Helper: pie slice path from 12 o'clock, filling clockwise
+        const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
+          if (progress <= 0) return "";
+          if (progress >= 100) return `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 -${r * 2} 0`;
+          const a = (progress / 100) * 2 * Math.PI;
+          const startAngle = -Math.PI / 2;
+          const endAngle = startAngle + a;
+          const x1 = cx + r * Math.cos(startAngle);
+          const y1 = cy + r * Math.sin(startAngle);
+          const x2 = cx + r * Math.cos(endAngle);
+          const y2 = cy + r * Math.sin(endAngle);
+          const largeArcFlag = progress > 50 ? 1 : 0;
+          return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+        };
+
         return (
-          <div style={{ marginBottom: "0.75rem", textAlign: "center" }}>
-            <svg
-              width="100%"
-              height={svgH}
-              viewBox={`0 0 ${svgW} ${svgH}`}
-              style={{ maxWidth: `${svgW}px`, overflow: "visible" }}
+          <div
+            style={{
+              width: "100%",
+              padding: "1rem",
+              backgroundColor: "var(--code-background)",
+              borderRadius: "8px",
+              fontSize: "0.85rem",
+              boxSizing: "border-box",
+              marginBottom: "0.75rem",
+            }}
+          >
+            {/* Title with animated elapsed time */}
+            <animated.div
+              style={{
+                fontWeight: 600,
+                marginBottom: "0.75rem",
+                color: "var(--text-color)",
+              }}
             >
-              <defs>
-                <style>{`
-                  @keyframes clockFill {
-                    from { stroke-dashoffset: ${circumference}; }
-                    to   { stroke-dashoffset: 0; }
-                  }
-                `}</style>
-              </defs>
-              {/* Horizontal forward arrows on main row */}
-              {forwardArrows.map(([fromIdx, toIdx]) => {
-                const x1 = mainXs[fromIdx] + nodeR + edgeGap;     // start at source edge + gap
-                const tipX = mainXs[toIdx] - nodeR - edgeGap;   // arrowhead tip at dest edge - gap
-                const x2 = tipX - ahLen;                          // line ends ahLen before tip
-                const active = isForwardArrowActive(fromIdx, toIdx);
-                const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
-                return (
-                  <g key={`fwd-${fromIdx}-${toIdx}`} opacity={active ? 1 : 0.2} style={{ transition: "opacity 0.3s ease" }}>
-                    <line
-                      x1={x1} y1={rowY} x2={x2} y2={rowY}
-                      stroke={color} strokeWidth={active ? 2.5 : 2}
+              {totalMs > 0
+                ? barSpring.progress.to((p) => `Trace Timeline: ${formatMs((p / 100) * totalMs)}`)
+                : "Trace Timeline:"}
+            </animated.div>
+
+            {/* 5-Node SVG Flow Diagram */}
+            <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
+              <svg
+                width="100%"
+                height={svgH}
+                viewBox={`0 0 ${svgW} ${svgH}`}
+                style={{ maxWidth: `${svgW}px`, overflow: "visible" }}
+              >
+                <defs>
+                  <style>{`
+                    @keyframes clockFill {
+                      from { stroke-dashoffset: ${circumference}; }
+                      to   { stroke-dashoffset: 0; }
+                    }
+                  `}</style>
+                </defs>
+                {forwardArrows.map(([fromIdx, toIdx]) => {
+                  const x1 = mainXs[fromIdx] + nodeR + edgeGap;
+                  const tipX = mainXs[toIdx] - nodeR - edgeGap;
+                  const x2 = tipX - ahLen;
+                  const active = isForwardArrowActive(fromIdx, toIdx);
+                  const color = active ? STEP_CONFIG[mainNodes[toIdx]].color : "var(--text-color)";
+                  return (
+                    <g key={`fwd-${fromIdx}-${toIdx}`} opacity={active ? 1 : 0.2} style={{ transition: "opacity 0.3s ease" }}>
+                      <line
+                        x1={x1} y1={rowY} x2={x2} y2={rowY}
+                        stroke={color} strokeWidth={active ? 2.5 * S : 2 * S}
+                      />
+                      {renderArrowhead(tipX, rowY, 0, color)}
+                    </g>
+                  );
+                })}
+
+                <g opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                  <path
+                    d={downD} fill="none"
+                    stroke={downActive ? "var(--color-green)" : "var(--text-color)"}
+                    strokeWidth={downActive ? 2.5 * S : 2 * S}
+                  />
+                  {renderArrowhead(rTipX, rTipY, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
+                </g>
+
+                <g opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
+                  <path
+                    d={upD} fill="none"
+                    stroke={upActive ? "var(--color-blue)" : "var(--text-color)"}
+                    strokeWidth={upActive ? 2.5 * S : 2 * S}
+                  />
+                  {renderArrowhead(lTipX, lTipY, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
+                </g>
+
+                {loopCount > 0 && (
+                  <g style={{ transition: "opacity 0.3s ease" }} opacity={loopVisible ? 1 : 0}>
+                    <rect
+                      x={badgeX - 14 * S} y={badgeY - 9 * S}
+                      width={28 * S} height={18 * S} rx={4 * S}
+                      fill="var(--code-background)" stroke="var(--color-green)" strokeWidth={1 * S} opacity={0.9}
                     />
-                    {renderArrowhead(tipX, rowY, 0, color)}
+                    <text
+                      x={badgeX} y={badgeY}
+                      textAnchor="middle" dominantBaseline="central" fontSize={11 * S} fontWeight={700}
+                      fontFamily="var(--font-mono, monospace)" fill="var(--color-green)"
+                    >
+                      {`×${loopCount}`}
+                    </text>
                   </g>
+                )}
+
+                {mainNodes.map((node, idx) => renderNode(node, mainXs[idx], rowY))}
+                {renderNode("tools", toolsX, toolsY)}
+              </svg>
+            </div>
+
+            {/* Progress bar — animated with spring */}
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "24px",
+                marginBottom: "0.75rem",
+                borderRadius: "4px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  backgroundColor: "var(--background-color)",
+                  borderRadius: "4px",
+                }}
+              />
+              <animated.div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  clipPath: barSpring.progress.to((p) => `inset(0 ${100 - p}% 0 0)`),
+                }}
+              >
+                {trace.map((step, idx) => {
+                  const cfg = STEP_CONFIG[step.type];
+                  return (
+                    <div
+                      key={idx}
+                      title={`${cfg.label}: ${step.durationMs ? formatMs(step.durationMs) : "—"} (${barWidths[idx].toFixed(1)}%)`}
+                      style={{
+                        width: `${barWidths[idx]}%`,
+                        height: "100%",
+                        backgroundColor: cfg.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                  );
+                })}
+              </animated.div>
+            </div>
+
+            {/* Legend */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, auto))",
+                gap: "0.5rem 1.5rem",
+              }}
+            >
+              {legendEntries.map((entry, index) => {
+                const prevComplete = index === 0 || legendEntries[index - 1].fillPercent >= 100;
+                const isComplete = entry.fillPercent >= 100;
+                const isActive = entry.fillPercent > 0 && entry.fillPercent < 100;
+                const circleSize = 14;
+                return (
+                  <div
+                    key={entry.type}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      color: "var(--text-color)",
+                      opacity: isComplete ? 1 : isActive ? 1 : prevComplete ? 0.6 : 0.3,
+                      transition: "opacity 0.15s ease",
+                    }}
+                  >
+                    <svg
+                      width={circleSize}
+                      height={circleSize}
+                      viewBox="0 0 14 14"
+                      style={{ flexShrink: 0 }}
+                    >
+                      <circle
+                        cx="7"
+                        cy="7"
+                        r="6"
+                        fill="none"
+                        stroke={entry.cfg.color}
+                        strokeWidth="1.5"
+                        opacity={isComplete || isActive ? 0.3 : 0.5}
+                      />
+                      {entry.fillPercent > 0 && (
+                        <path
+                          d={getPieSlicePath(entry.fillPercent, 7, 7, 6)}
+                          fill={entry.cfg.color}
+                        />
+                      )}
+                    </svg>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                      {entry.cfg.label}
+                    </span>
+                  </div>
                 );
               })}
-
-              {/* Loop: Agent → Tools (right arc) */}
-              <g opacity={downActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
-                <path
-                  d={downD} fill="none"
-                  stroke={downActive ? "var(--color-green)" : "var(--text-color)"}
-                  strokeWidth={downActive ? 2.5 : 2}
-                />
-                {renderArrowhead(rTipX, rTipY, downArrowAngle, downActive ? "var(--color-green)" : "var(--text-color)")}
-              </g>
-
-              {/* Loop: Tools → Agent (left arc) */}
-              <g opacity={upActive ? 1 : loopVisible ? 0.35 : 0.15} style={{ transition: "opacity 0.3s ease" }}>
-                <path
-                  d={upD} fill="none"
-                  stroke={upActive ? "var(--color-blue)" : "var(--text-color)"}
-                  strokeWidth={upActive ? 2.5 : 2}
-                />
-                {renderArrowhead(lTipX, lTipY, upArrowAngle, upActive ? "var(--color-blue)" : "var(--text-color)")}
-              </g>
-
-              {/* Iteration badge ×N */}
-              {loopCount > 0 && (
-                <g style={{ transition: "opacity 0.3s ease" }} opacity={loopVisible ? 1 : 0}>
-                  <rect
-                    x={badgeX - 14} y={badgeY - 9}
-                    width={28} height={18} rx={4}
-                    fill="var(--code-background)" stroke="var(--color-green)" strokeWidth={1} opacity={0.9}
-                  />
-                  <text
-                    x={badgeX} y={badgeY}
-                    textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight={700}
-                    fontFamily="var(--font-mono, monospace)" fill="var(--color-green)"
-                  >
-                    {`×${loopCount}`}
-                  </text>
-                </g>
-              )}
-
-              {/* Main row nodes */}
-              {mainNodes.map((node, idx) => renderNode(node, mainXs[idx], rowY))}
-
-              {/* Tools node (below Agent) */}
-              {renderNode("tools", toolsX, toolsY)}
-            </svg>
+            </div>
           </div>
         );
       })()}
