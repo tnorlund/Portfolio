@@ -20,6 +20,8 @@ interface QAAgentFlowProps {
   autoPlay?: boolean;
   /** Optional real data from the cache API; falls back to EXAMPLE_TRACE */
   questionData?: QAQuestionData;
+  /** Called when one animation cycle completes (after the end-of-trace pause) */
+  onCycleComplete?: () => void;
 }
 
 // 5-node workflow step types
@@ -172,7 +174,7 @@ const MIN_STEP_MS = 600;
 /** Maximum per-step duration to prevent a single slow step dominating */
 const MAX_STEP_MS = 3500;
 
-const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData }) => {
+const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete }) => {
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
 
@@ -180,6 +182,13 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   const trace = questionData?.trace ?? EXAMPLE_TRACE;
   const questionText = questionData?.question ?? "How much did I spend on coffee?";
   const stats = questionData?.stats;
+
+  // Reset animation when question data changes
+  const questionKey = questionData?.question ?? "";
+  React.useEffect(() => {
+    setActiveStep(-1);
+    setIsPlaying(true);
+  }, [questionKey]);
 
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
@@ -205,15 +214,18 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     if (!isPlaying) return;
 
     if (activeStep >= trace.length - 1) {
-      // Pause at end, then reset
-      const id = setTimeout(() => setActiveStep(-1), 3000);
+      // Pause at end, then notify parent and reset
+      const id = setTimeout(() => {
+        onCycleComplete?.();
+        setActiveStep(-1);
+      }, 3000);
       return () => clearTimeout(id);
     }
 
     const delay = activeStep < 0 ? 400 : stepDurations[activeStep];
     const id = setTimeout(() => setActiveStep((prev) => prev + 1), delay);
     return () => clearTimeout(id);
-  }, [isPlaying, activeStep, trace.length, stepDurations]);
+  }, [isPlaying, activeStep, trace.length, stepDurations, onCycleComplete]);
 
   const questionSpring = useSpring({
     opacity: 1,
