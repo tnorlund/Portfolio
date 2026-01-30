@@ -306,17 +306,17 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         // --- SVG node diagram constants ---
         const mainNodes: StepType[] = ["plan", "agent", "shape", "synthesize"];
         const S = 1.5;
-        const svgW = Math.round(440 * S);
-        const svgH = Math.round(130 * S);
-        const rowY = Math.round(22 * S);
         const nodeR = Math.round(16 * S);
-        const spacing = Math.round(100 * S);
-        const startX = Math.round(55 * S);
+        const spacing = Math.round(70 * S);
+        const startX = nodeR + Math.round(10 * S);
         const mainXs = mainNodes.map((_, i) => startX + i * spacing);
+        const svgW = mainXs[mainXs.length - 1] + nodeR + Math.round(10 * S);
+        const toolsY = Math.round(95 * S);
+        const svgH = toolsY + nodeR + Math.round(10 * S);
+        const rowY = Math.round(22 * S);
 
         const agentX = mainXs[1];
         const toolsX = agentX;
-        const toolsY = Math.round(95 * S);
 
         const forwardArrows: [number, number][] = [
           [0, 1], [1, 2], [2, 3],
@@ -610,17 +610,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                         cx="7"
                         cy="7"
                         r="6"
-                        fill="none"
+                        fill={entry.fillPercent > 0 ? entry.cfg.color : "none"}
                         stroke={entry.cfg.color}
                         strokeWidth="1.5"
-                        opacity={isComplete || isActive ? 0.3 : 0.5}
+                        opacity={entry.fillPercent > 0 ? 1 : 0.5}
                       />
-                      {entry.fillPercent > 0 && (
-                        <path
-                          d={getPieSlicePath(entry.fillPercent, 7, 7, 6)}
-                          fill={entry.cfg.color}
-                        />
-                      )}
                     </svg>
                     <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
                       {entry.cfg.label}
