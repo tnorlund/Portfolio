@@ -650,28 +650,39 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
             }}
           >
             {showAnswer && answerText ? (
-              <>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1.5rem",
+                  width: "100%",
+                  alignItems: "flex-start",
+                }}
+              >
+                {/* Answer (left) */}
                 <div
                   style={{
+                    flex: 1,
                     fontSize: "0.9rem",
                     color: "var(--text-color)",
-                    textAlign: "center",
-                    width: "100%",
+                    minWidth: 0,
                   }}
                 >
                   <ReactMarkdown>{answerText}</ReactMarkdown>
                 </div>
+                {/* Receipts (right) */}
                 {receipts && receipts.length > 0 && (
                   <div
                     style={{
                       display: "flex",
-                      gap: "0.5rem",
+                      gap: "0.4rem",
                       flexWrap: "wrap",
-                      justifyContent: "center",
-                      alignItems: "flex-end",
+                      justifyContent: "flex-end",
+                      alignItems: "flex-start",
+                      flexShrink: 0,
+                      maxWidth: "50%",
                     }}
                   >
-                    {receipts.slice(0, 4).map((receipt, rIdx) => {
+                    {receipts.map((receipt, rIdx) => {
                       const thumbWidth = 50;
                       const aspectRatio = receipt.height / receipt.width;
                       const thumbHeight = Math.min(Math.round(thumbWidth * aspectRatio), 100);
@@ -739,7 +750,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                     })}
                   </div>
                 )}
-              </>
+              </div>
             ) : (
               <div
                 style={{

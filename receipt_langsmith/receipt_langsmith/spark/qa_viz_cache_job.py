@@ -217,9 +217,8 @@ def derive_trace_steps(
             step["detail"] = f"Query rewrites: {', '.join(rewrites)}" if rewrites else "Classify question and choose retrieval strategy"
 
         elif step_type == "agent":
-            # Extract first ~100 chars of AIMessage content
             content = _extract_agent_content(outputs)
-            step["content"] = content[:100] if content else "Deciding which tools to call"
+            step["content"] = content if content else "Deciding which tools to call"
             # Count tool calls in messages
             tool_calls = _count_tool_calls(outputs)
             if tool_calls > 0:
@@ -256,7 +255,7 @@ def derive_trace_steps(
 
         elif step_type == "synthesize":
             answer = outputs.get("final_answer", outputs.get("answer", ""))
-            step["content"] = answer[:100] if answer else "Generating final answer"
+            step["content"] = answer if answer else "Generating final answer"
             receipt_count = outputs.get("receipt_count", question_result.get("receiptCount", 0))
             step["detail"] = f"{receipt_count} receipts identified"
             # Include receipt evidence with CDN keys
@@ -662,7 +661,7 @@ def _minimal_trace_from_result(result: dict, receipts_lookup: dict) -> list[dict
     evidence = result.get("evidence", [])
     steps.append({
         "type": "synthesize",
-        "content": answer[:100] if answer else "Answer generated",
+        "content": answer if answer else "Answer generated",
         "detail": f"{result.get('receiptCount', 0)} receipts identified",
         "receipts": _enrich_evidence(evidence, receipts_lookup),
     })
