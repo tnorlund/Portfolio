@@ -1598,8 +1598,9 @@ qa_agent_sf = QAAgentStepFunction(
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # LangSmith export lambdas (reuse from label validation viz cache)
-    trigger_export_lambda_arn=label_validation_viz_cache.trigger_export_lambda.arn,
+    # LangSmith export lambdas — use the langsmith_bulk_export component's trigger
+    # (correct SSM_PREFIX → correct destination → correct S3 bucket)
+    trigger_export_lambda_arn=langsmith_bulk_export.trigger_lambda.arn,
     check_export_lambda_arn=label_validation_viz_cache.check_export_lambda.arn,
 )
 
