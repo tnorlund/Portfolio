@@ -270,29 +270,12 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   return (
     <div
       style={{
-        fontFamily: "var(--font-mono, monospace)",
         fontSize: "0.85rem",
         maxWidth: "1000px",
         margin: "0 auto",
         padding: "0.5rem",
       }}
     >
-      {/* Question */}
-      <animated.div
-        style={{
-          ...questionSpring,
-          padding: "0.6rem 0.8rem",
-          backgroundColor: "var(--code-background)",
-          borderRadius: "6px",
-          marginBottom: "0.75rem",
-          borderLeft: "3px solid var(--color-blue)",
-        }}
-      >
-        <div style={{ color: "var(--text-color)", fontSize: "0.8rem" }}>
-          {`\uD83D\uDCAC "${questionText}"`}
-        </div>
-      </animated.div>
-
       {/* Flame Graph Timeline + Node Diagram */}
       {(() => {
         const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
@@ -456,18 +439,17 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               marginBottom: "0.75rem",
             }}
           >
-            {/* Title with animated elapsed time */}
-            <animated.div
+            {/* Question title */}
+            <h2
               style={{
+                margin: "0 0 0.75rem 0",
+                fontSize: "1.1rem",
                 fontWeight: 600,
-                marginBottom: "0.75rem",
                 color: "var(--text-color)",
               }}
             >
-              {totalMs > 0
-                ? barSpring.progress.to((p) => `Trace Timeline: ${formatMs((p / 100) * totalMs)}`)
-                : "Trace Timeline:"}
-            </animated.div>
+              {questionText}
+            </h2>
 
             {/* 5-Node SVG Flow Diagram */}
             <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
