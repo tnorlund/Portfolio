@@ -223,7 +223,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const id = setTimeout(() => setShowAnswer(true), stepDurations[trace.length - 1]);
         return () => clearTimeout(id);
       }
-      const id = setTimeout(() => onCycleComplete?.(), 5000);
+      const id = setTimeout(() => onCycleComplete?.(), 10000);
       return () => clearTimeout(id);
     }
 
@@ -571,6 +571,56 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               </animated.div>
             </div>
 
+            {/* Legend */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, auto))",
+                gap: "0.5rem 1.5rem",
+                marginBottom: "0.75rem",
+              }}
+            >
+              {legendEntries.map((entry, index) => {
+                const prevComplete = index === 0 || legendEntries[index - 1].fillPercent >= 100;
+                const isComplete = entry.fillPercent >= 100;
+                const isActive = entry.fillPercent > 0 && entry.fillPercent < 100;
+                const circleSize = 14;
+                return (
+                  <div
+                    key={entry.type}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      color: "var(--text-color)",
+                      opacity: isComplete ? 1 : isActive ? 1 : prevComplete ? 0.6 : 0.3,
+                      transition: "opacity 0.15s ease",
+                    }}
+                  >
+                    <svg
+                      width={circleSize}
+                      height={circleSize}
+                      viewBox="0 0 14 14"
+                      style={{ flexShrink: 0 }}
+                    >
+                      <circle
+                        cx="7"
+                        cy="7"
+                        r="6"
+                        fill={entry.fillPercent > 0 ? entry.cfg.color : "none"}
+                        stroke={entry.cfg.color}
+                        strokeWidth="1.5"
+                        opacity={entry.fillPercent > 0 ? 1 : 0.5}
+                      />
+                    </svg>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                      {entry.cfg.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
             {/* Answer + Receipt stack (inside card) */}
             {(() => {
               const synthesizeStep = trace.find((s) => s.type === "synthesize");
@@ -696,54 +746,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               );
             })()}
 
-            {/* Legend */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, auto))",
-                gap: "0.5rem 1.5rem",
-              }}
-            >
-              {legendEntries.map((entry, index) => {
-                const prevComplete = index === 0 || legendEntries[index - 1].fillPercent >= 100;
-                const isComplete = entry.fillPercent >= 100;
-                const isActive = entry.fillPercent > 0 && entry.fillPercent < 100;
-                const circleSize = 14;
-                return (
-                  <div
-                    key={entry.type}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      color: "var(--text-color)",
-                      opacity: isComplete ? 1 : isActive ? 1 : prevComplete ? 0.6 : 0.3,
-                      transition: "opacity 0.15s ease",
-                    }}
-                  >
-                    <svg
-                      width={circleSize}
-                      height={circleSize}
-                      viewBox="0 0 14 14"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <circle
-                        cx="7"
-                        cy="7"
-                        r="6"
-                        fill={entry.fillPercent > 0 ? entry.cfg.color : "none"}
-                        stroke={entry.cfg.color}
-                        strokeWidth="1.5"
-                        opacity={entry.fillPercent > 0 ? 1 : 0.5}
-                      />
-                    </svg>
-                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      {entry.cfg.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         );
       })()}

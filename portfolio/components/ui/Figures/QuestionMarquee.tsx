@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect, useState } from "react";
 
 // Sample questions that could be asked about receipts
 const QUESTIONS = [
@@ -66,8 +66,35 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   // Determine which row contains the active question
   const activeRow = activeQuestion != null ? Math.floor(activeQuestion / questionsPerRow) : -1;
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [centerOffset, setCenterOffset] = useState<number | null>(null);
+
+  // Compute translateX to center the active pill in the visible container
+  useEffect(() => {
+    if (activeRow < 0) {
+      setCenterOffset(null);
+      return;
+    }
+
+    const raf = requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const pill = container.querySelector('[data-active="true"]') as HTMLElement | null;
+      if (!pill) return;
+
+      const containerW = container.offsetWidth;
+      const pillLeft = pill.offsetLeft;
+      const pillW = pill.offsetWidth;
+      setCenterOffset(containerW / 2 - pillLeft - pillW / 2);
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [activeQuestion, activeRow]);
+
   return (
     <div
+      ref={containerRef}
       style={{
         width: "100%",
         overflow: "hidden",
@@ -140,12 +167,16 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
         return (
           <div
             key={rowIndex}
-            className={`marquee-row ${isReversed ? "marquee-row-right" : "marquee-row-left"}`}
+            className={`marquee-row ${isRowFrozen ? "" : (isReversed ? "marquee-row-right" : "marquee-row-left")}`}
             style={{
-              // @ts-expect-error - CSS custom property
               "--scroll-speed": `${speed + rowIndex * 3}s`,
-              animationPlayState: isRowFrozen ? "paused" : undefined,
-            }}
+              ...(isRowFrozen
+                ? {
+                    transform: `translateX(${centerOffset ?? 0}px)`,
+                    transition: "transform 0.6s ease",
+                  }
+                : {}),
+            } as React.CSSProperties}
           >
             {duplicatedQuestions.map((question, qIndex) => {
               // Map duplicated index back to original QUESTIONS index
@@ -155,10 +186,12 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
                 <span
                   key={`${rowIndex}-${qIndex}`}
                   className="question-pill"
+                  data-active={isActive ? "true" : undefined}
                   onClick={onQuestionClick ? () => onQuestionClick(originalIdx) : undefined}
                   style={{
                     cursor: onQuestionClick ? "pointer" : undefined,
                     fontWeight: isActive ? 700 : undefined,
+                    fontSize: isActive ? "1.1rem" : undefined,
                     borderColor: isActive ? "var(--color-blue)" : undefined,
                     borderWidth: isActive ? "2px" : undefined,
                   }}
