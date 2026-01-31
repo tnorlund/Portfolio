@@ -503,16 +503,10 @@ M1LK 2%           1    $4.4g`}</code>
         the system to see what breaks.
       </p>
 
-      <p>
-        Here&apos;s what happens when I ask &ldquo;{qaData?.question ?? "How much did I spend on coffee this year?"}&rdquo;
-      </p>
-
       <ClientOnly>
-        <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion} />
-      </ClientOnly>
-
-      <ClientOnly>
-        <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
+        <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
+          <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
+        </QAAgentFlow>
       </ClientOnly>
 
       <p>

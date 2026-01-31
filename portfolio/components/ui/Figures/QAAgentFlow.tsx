@@ -23,6 +23,8 @@ interface QAAgentFlowProps {
   questionData?: QAQuestionData;
   /** Called when one animation cycle completes (after the end-of-trace pause) */
   onCycleComplete?: () => void;
+  /** Content rendered at the top of the card (e.g. QuestionMarquee) */
+  children?: React.ReactNode;
 }
 
 // 5-node workflow step types
@@ -175,14 +177,13 @@ const MIN_STEP_MS = 600;
 /** Maximum per-step duration to prevent a single slow step dominating */
 const MAX_STEP_MS = 3500;
 
-const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete }) => {
+const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete, children }) => {
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
   const [showAnswer, setShowAnswer] = React.useState(false);
 
   // Use real data when available, fall back to example trace
   const trace = questionData?.trace ?? EXAMPLE_TRACE;
-  const questionText = questionData?.question ?? "How much did I spend on coffee?";
   const stats = questionData?.stats;
 
   // Reset animation when question changes (use index to avoid stale-data issues on mobile)
@@ -443,17 +444,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               marginBottom: "0.75rem",
             }}
           >
-            {/* Question title */}
-            <h2
-              style={{
-                margin: "0 0 0.75rem 0",
-                fontSize: "1.1rem",
-                fontWeight: 600,
-                color: "var(--text-color)",
-              }}
-            >
-              {questionText}
-            </h2>
+            {/* Slot for marquee or other header content */}
+            {children}
 
             {/* 5-Node SVG Flow Diagram */}
             <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
