@@ -86,7 +86,12 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
       const containerW = container.offsetWidth;
       const pillLeft = pill.offsetLeft;
       const pillW = pill.offsetWidth;
-      setCenterOffset(containerW / 2 - pillLeft - pillW / 2);
+      const row = pill.parentElement;
+      const rowW = row ? row.scrollWidth : containerW;
+      const raw = containerW / 2 - pillLeft - pillW / 2;
+      // Clamp so the row never reveals empty space on either side
+      const clamped = Math.max(-(rowW - containerW), Math.min(0, raw));
+      setCenterOffset(clamped);
     });
 
     return () => cancelAnimationFrame(raf);

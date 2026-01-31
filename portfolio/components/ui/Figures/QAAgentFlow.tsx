@@ -237,6 +237,27 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     config: config.gentle,
   });
 
+  // Measure answer content height and spring the container open
+  const answerRef = React.useRef<HTMLDivElement>(null);
+  const [measuredHeight, setMeasuredHeight] = React.useState(0);
+
+  React.useEffect(() => {
+    if (showAnswer && answerRef.current) {
+      const raf = requestAnimationFrame(() => {
+        if (answerRef.current) {
+          setMeasuredHeight(answerRef.current.scrollHeight);
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    setMeasuredHeight(0);
+  }, [showAnswer, questionIndex]);
+
+  const answerHeightSpring = useSpring({
+    height: measuredHeight > 0 ? measuredHeight : 60,
+    config: config.gentle,
+  });
+
   // Compute flame-graph bar target (cumulative width% through the current step)
   const barWidths = React.useMemo(() => {
     const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
@@ -655,10 +676,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               });
 
               return (
-                <div
+                <animated.div
                   style={{
-                    height: "300px",
-                    overflowY: "auto",
+                    ...answerHeightSpring,
+                    overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
                     marginTop: "0.75rem",
@@ -667,6 +688,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                 >
                   {showAnswer && answerText ? (
                     <div
+                      ref={answerRef}
                       style={{
                         display: "flex",
                         flexWrap: "wrap",
@@ -730,19 +752,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "var(--text-color)",
-                        opacity: 0.3,
-                        margin: "auto",
-                      }}
-                    >
-                      {activeStep < 0 ? "" : "Processing..."}
-                    </div>
-                  )}
-                </div>
+                  ) : null}
+                </animated.div>
               );
             })()}
 
