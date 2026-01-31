@@ -579,6 +579,131 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               </animated.div>
             </div>
 
+            {/* Answer + Receipt stack (inside card) */}
+            {(() => {
+              const synthesizeStep = trace.find((s) => s.type === "synthesize");
+              const rawAnswer = synthesizeStep?.content ?? "";
+              const answerText = rawAnswer
+                .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
+                .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
+                .trim() || undefined;
+              const allReceipts = synthesizeStep?.receipts ?? [];
+              const uniqueReceipts: ReceiptEvidence[] = [];
+              const seenIds = new Set<string>();
+              for (const r of allReceipts) {
+                if (!seenIds.has(r.imageId)) {
+                  seenIds.add(r.imageId);
+                  uniqueReceipts.push(r);
+                }
+              }
+
+              const stackW = 200, stackH = 250, cW = 80, cH = 200, rBuf = 20;
+              const mLeft = stackW - cW - rBuf;
+              const mTop = Math.max(0, stackH - cH - rBuf);
+              const sPositions = uniqueReceipts.map((r, i) => {
+                let h = 0;
+                for (let c = 0; c < r.imageId.length; c++) h = ((h << 5) - h + r.imageId.charCodeAt(c)) | 0;
+                const p = (n: number) => ((Math.abs(h * (n + 1) * 2654435761) % 1000) / 1000);
+                return {
+                  rotation: p(1) * 24 - 12,
+                  left: Math.max(rBuf / 2, Math.min(p(2) * mLeft, mLeft)),
+                  top: Math.max(rBuf / 2, Math.min(p(3) * mTop, mTop)),
+                  zIndex: i,
+                };
+              });
+
+              return (
+                <div
+                  style={{
+                    height: "300px",
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    marginTop: "0.75rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  {showAnswer && answerText ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "1rem",
+                        width: "100%",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          flex: "1 1 250px",
+                          fontSize: "0.9rem",
+                          color: "var(--text-color)",
+                          minWidth: 0,
+                        }}
+                      >
+                        <ReactMarkdown>{answerText}</ReactMarkdown>
+                      </div>
+                      {uniqueReceipts.length > 0 && (
+                        <div
+                          style={{
+                            position: "relative",
+                            width: `${stackW}px`,
+                            height: `${stackH}px`,
+                            flexShrink: 0,
+                            margin: "0 auto",
+                          }}
+                        >
+                          {uniqueReceipts.map((receipt, idx) => (
+                            <div
+                              key={receipt.imageId}
+                              style={{
+                                position: "absolute",
+                                width: `${cW}px`,
+                                left: `${sPositions[idx].left}px`,
+                                top: `${sPositions[idx].top}px`,
+                                "--r": `${sPositions[idx].rotation}deg`,
+                                zIndex: sPositions[idx].zIndex,
+                                border: "1px solid #ccc",
+                                backgroundColor: "var(--background-color)",
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                                overflow: "hidden",
+                                opacity: 0,
+                                animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
+                              } as React.CSSProperties}
+                            >
+                              <img
+                                src={`${CDN_BASE}/${receipt.thumbnailKey}`}
+                                alt={`${receipt.merchant} receipt`}
+                                style={{ width: "100%", height: "auto", display: "block" }}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            </div>
+                          ))}
+                          <style>{`
+                            @keyframes receiptFadeIn {
+                              from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-20px); }
+                              to   { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0); }
+                            }
+                          `}</style>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-color)",
+                        opacity: 0.3,
+                        margin: "auto",
+                      }}
+                    >
+                      {activeStep < 0 ? "" : "Processing..."}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Legend */}
             <div
               style={{
@@ -627,146 +752,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                 );
               })}
             </div>
-          </div>
-        );
-      })()}
-
-      {/* Answer + Receipt Thumbnails */}
-      {(() => {
-        const synthesizeStep = trace.find((s) => s.type === "synthesize");
-        const rawAnswer = synthesizeStep?.content ?? "";
-        // Strip the trailing Evidence section (any heading variant) and
-        // bare trailing JSON code blocks containing receipt data
-        const answerText = rawAnswer
-          .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
-          .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
-          .trim() || undefined;
-        const allReceipts = synthesizeStep?.receipts ?? [];
-        // Deduplicate receipts by imageId (same receipt photo appears for each line item)
-        const uniqueReceipts: ReceiptEvidence[] = [];
-        const seen = new Set<string>();
-        for (const r of allReceipts) {
-          if (!seen.has(r.imageId)) {
-            seen.add(r.imageId);
-            uniqueReceipts.push(r);
-          }
-        }
-
-        // Stable random positions seeded from imageId so they don't shift on re-render
-        // Use pixel-based positioning like ReceiptStack to prevent clipping
-        const stackContainerW = 200;
-        const stackContainerH = 250;
-        const cardW = 80;
-        // Receipts are ~2-3x taller than wide; at 80px width ≈ 160-240px tall
-        const cardH = 200;
-        const rotationBuffer = 20;
-        const maxLeft = stackContainerW - cardW - rotationBuffer;
-        const maxTop = Math.max(0, stackContainerH - cardH - rotationBuffer);
-
-        const stackPositions = uniqueReceipts.map((r, i) => {
-          let hash = 0;
-          for (let c = 0; c < r.imageId.length; c++) hash = ((hash << 5) - hash + r.imageId.charCodeAt(c)) | 0;
-          const pseudo = (n: number) => ((Math.abs(hash * (n + 1) * 2654435761) % 1000) / 1000);
-          const rotation = pseudo(1) * 24 - 12;
-          const left = Math.max(rotationBuffer / 2, Math.min(pseudo(2) * maxLeft, maxLeft));
-          const top = Math.max(rotationBuffer / 2, Math.min(pseudo(3) * maxTop, maxTop));
-          return { rotation, left, top, zIndex: i };
-        });
-
-        return (
-          <div
-            style={{
-              height: "300px",
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.75rem",
-              padding: "0.75rem 0",
-            }}
-          >
-            {showAnswer && answerText ? (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "1.5rem",
-                  width: "100%",
-                  alignItems: "stretch",
-                }}
-              >
-                {/* Answer (left) */}
-                <div
-                  style={{
-                    flex: 1,
-                    fontSize: "0.9rem",
-                    color: "var(--text-color)",
-                    minWidth: 0,
-                  }}
-                >
-                  <ReactMarkdown>{answerText}</ReactMarkdown>
-                </div>
-                {/* Receipt stack (right) */}
-                {uniqueReceipts.length > 0 && (
-                  <div
-                    style={{
-                      position: "relative",
-                      width: `${stackContainerW}px`,
-                      height: `${stackContainerH}px`,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {uniqueReceipts.map((receipt, idx) => (
-                      <div
-                        key={receipt.imageId}
-                        style={{
-                          position: "absolute",
-                          width: `${cardW}px`,
-                          left: `${stackPositions[idx].left}px`,
-                          top: `${stackPositions[idx].top}px`,
-                          "--r": `${stackPositions[idx].rotation}deg`,
-                          zIndex: stackPositions[idx].zIndex,
-                          border: "1px solid #ccc",
-                          backgroundColor: "var(--background-color)",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                          overflow: "hidden",
-                          opacity: 0,
-                          animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
-                        } as React.CSSProperties}
-                      >
-                        <img
-                          src={`${CDN_BASE}/${receipt.thumbnailKey}`}
-                          alt={`${receipt.merchant} receipt`}
-                          style={{
-                            width: "100%",
-                            height: "auto",
-                            display: "block",
-                          }}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                      </div>
-                    ))}
-                    <style>{`
-                      @keyframes receiptFadeIn {
-                        from { opacity: 0; transform: rotate(var(--r, 0deg)) translateY(-20px); }
-                        to   { opacity: 1; transform: rotate(var(--r, 0deg)) translateY(0); }
-                      }
-                    `}</style>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: "0.85rem",
-                  color: "var(--text-color)",
-                  opacity: 0.3,
-                  margin: "auto",
-                }}
-              >
-                {activeStep < 0 ? "" : "Processing..."}
-              </div>
-            )}
           </div>
         );
       })()}

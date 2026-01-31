@@ -42,10 +42,20 @@ interface UseQACacheResult {
   error: Error | null;
 }
 
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "https://dev-api.tylernorlund.com"
-    : "";
+function getApiBase(): string {
+  if (typeof window === "undefined") return "";
+  const host = window.location.hostname;
+  if (
+    host === "localhost" ||
+    host.startsWith("127.") ||
+    host.startsWith("192.168.") ||
+    host.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) {
+    return "https://dev-api.tylernorlund.com";
+  }
+  return "";
+}
 
 /**
  * Fetches a single question's trace data from the QA visualization cache API.
@@ -74,7 +84,7 @@ export function useQACache(questionIndex?: number): UseQACacheResult {
     const fetchData = async () => {
       try {
         const response = await fetch(
-          `${API_BASE}/qa/visualization?index=${questionIndex}`
+          `${getApiBase()}/qa/visualization?index=${questionIndex}`
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);

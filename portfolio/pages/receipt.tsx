@@ -2,7 +2,7 @@ import { GetStaticProps } from "next";
 import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
-import { useQACache } from "../hooks/useQACache";
+import { useQAQueue } from "../hooks/useQAQueue";
 import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
@@ -87,12 +87,7 @@ export default function ReceiptPage({
   // }, []);
 
   // --- QA Agent live data ---
-  const TOTAL_QUESTIONS = 32;
-  const [selectedQuestion, setSelectedQuestion] = useState<number>(0);
-  const { data: qaData } = useQACache(selectedQuestion);
-  const advanceQuestion = useCallback(() => {
-    setSelectedQuestion((prev) => (prev + 1) % TOTAL_QUESTIONS);
-  }, []);
+  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   // --- Receipt Upload State & Handlers ---
   const [files, setFiles] = useState<File[]>([]);
@@ -517,7 +512,7 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <ClientOnly>
-        <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} />
+        <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
       </ClientOnly>
 
       <p>

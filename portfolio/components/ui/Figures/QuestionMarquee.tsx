@@ -43,6 +43,8 @@ interface QuestionMarqueeProps {
   rows?: number;
   /** Called when a question pill is clicked, with the question's global index */
   onQuestionClick?: (index: number) => void;
+  /** Currently active question index — bolds the pill and freezes its row */
+  activeQuestion?: number;
 }
 
 /**
@@ -53,12 +55,16 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   speed = 30,
   rows = 4,
   onQuestionClick,
+  activeQuestion,
 }) => {
   // Split questions across rows
   const questionsPerRow = Math.ceil(QUESTIONS.length / rows);
   const rowQuestions = Array.from({ length: rows }, (_, i) =>
     QUESTIONS.slice(i * questionsPerRow, (i + 1) * questionsPerRow)
   );
+
+  // Determine which row contains the active question
+  const activeRow = activeQuestion != null ? Math.floor(activeQuestion / questionsPerRow) : -1;
 
   return (
     <div
@@ -127,6 +133,7 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
 
       {rowQuestions.map((questions, rowIndex) => {
         const isReversed = rowIndex % 2 === 1;
+        const isRowFrozen = rowIndex === activeRow;
         // Duplicate questions to create seamless loop
         const duplicatedQuestions = [...questions, ...questions];
 
@@ -137,17 +144,24 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
             style={{
               // @ts-expect-error - CSS custom property
               "--scroll-speed": `${speed + rowIndex * 3}s`,
+              animationPlayState: isRowFrozen ? "paused" : undefined,
             }}
           >
             {duplicatedQuestions.map((question, qIndex) => {
               // Map duplicated index back to original QUESTIONS index
               const originalIdx = (rowIndex * questionsPerRow) + (qIndex % questions.length);
+              const isActive = originalIdx === activeQuestion;
               return (
                 <span
                   key={`${rowIndex}-${qIndex}`}
                   className="question-pill"
                   onClick={onQuestionClick ? () => onQuestionClick(originalIdx) : undefined}
-                  style={onQuestionClick ? { cursor: "pointer" } : undefined}
+                  style={{
+                    cursor: onQuestionClick ? "pointer" : undefined,
+                    fontWeight: isActive ? 700 : undefined,
+                    borderColor: isActive ? "var(--color-blue)" : undefined,
+                    borderWidth: isActive ? "2px" : undefined,
+                  }}
                 >
                   {question}
                 </span>
