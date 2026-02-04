@@ -127,7 +127,9 @@ def build_receipt_identifier(
     )
 
 
-def count_decisions(decisions: list[dict[str, Any]]) -> DecisionCounts:
+def count_decisions(  # pylint: disable=invalid-name
+    decisions: list[dict[str, Any]],
+) -> DecisionCounts:
     """Count VALID/INVALID/NEEDS_REVIEW decisions.
 
     Handles both nested (llm_review.decision) and flat (decision) formats.
@@ -237,7 +239,7 @@ def get_relative_timing(
 
     return (start_ms, duration_ms)
 
-
+# pylint: disable=too-many-arguments,too-many-positional-arguments
 def load_s3_result(
     s3_client: Any,
     bucket: str,
@@ -259,14 +261,17 @@ def load_s3_result(
     Returns:
         Parsed JSON dict or None if not found.
     """
+    # pylint: enable=too-many-arguments,too-many-positional-arguments
     key = f"{result_type}/{execution_id}/{image_id}_{receipt_id}.json"
 
     try:
         response = s3_client.get_object(Bucket=bucket, Key=key)
-        return json.loads(response["Body"].read().decode("utf-8"))
+        payload = response["Body"].read().decode("utf-8")
+        data = json.loads(payload)
+        return data if isinstance(data, dict) else None
     except s3_client.exceptions.NoSuchKey:
         return None
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("Failed to load s3://%s/%s", bucket, key, exc_info=True)
         return None
 
@@ -358,7 +363,10 @@ def get_decisions_from_trace(
     """
     child = children_by_name.get(trace_name, {})
     outputs = child.get("outputs", {}) or {}
-    return outputs.get(decisions_key, [])
+    raw_decisions = outputs.get(decisions_key, [])
+    if isinstance(raw_decisions, list):
+        return [d for d in raw_decisions if isinstance(d, dict)]
+    return []
 
 
 # ============================================================================
@@ -374,7 +382,8 @@ class LabelValidationTraceIndex(TraceIndex):
 
     Args:
         traces: List of raw trace dicts from Parquet.
-        parent_name_filter: Parent trace name filter (default: receipt_processing).
+        parent_name_filter: Parent trace name filter (default:
+            receipt_processing).
 
     Example:
         ```python
@@ -517,11 +526,11 @@ def get_merchant_resolution_result(
 
     # Check in priority order
     for tier in tier_order:
-        trace = by_tier.get(tier)
-        if not trace:
+        resolved_trace = by_tier.get(tier)
+        if not resolved_trace:
             continue
 
-        outputs = trace.get("outputs", {}) or {}
+        outputs = resolved_trace.get("outputs", {}) or {}
         if outputs.get("found"):
             return {
                 "merchant_name": outputs.get("merchant_name"),
@@ -593,7 +602,7 @@ def build_merchant_resolution_summary(
     Returns:
         Dict with resolution attempt results by tier.
     """
-    summary = {
+    summary: dict[str, Any] = {
         "phone_attempted": False,
         "phone_success": False,
         "address_attempted": False,
@@ -639,6 +648,7 @@ def get_step_timings(
     Returns:
         Dict mapping step type to timing info.
     """
+    _ = parent
     timings: dict[str, dict[str, Any]] = {
         "s3_download": {"duration_ms": 0, "count": 0},
         "embedding": {"duration_ms": 0, "count": 0},

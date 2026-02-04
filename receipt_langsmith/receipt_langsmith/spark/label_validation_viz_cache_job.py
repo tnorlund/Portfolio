@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -54,7 +53,10 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Label Validation visualization cache generator for EMR Serverless"
+        description=(
+            "Label Validation visualization cache generator for EMR "
+            "Serverless"
+        )
     )
 
     parser.add_argument(
@@ -131,7 +133,7 @@ def load_receipts_from_s3(
     return lookup
 
 
-def find_latest_export_prefix(
+def find_latest_export_prefix(  # pylint: disable=too-many-locals
     s3_client: Any, bucket: str, preferred_export_id: str | None = None
 ) -> str | None:
     """Find the latest LangSmith export prefix in the bucket.
@@ -160,7 +162,7 @@ def find_latest_export_prefix(
                         logger.info(
                             "Found export: %s at %s", export_id, prefix
                         )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to search %s", search_prefix)
 
     if not all_exports:
@@ -393,7 +395,7 @@ def extract_validation_traces(
 
 # --- Visualization Building ---
 
-
+# pylint: disable=too-many-locals,too-many-branches,too-many-statements
 def build_viz_receipt(
     root_trace: dict[str, Any],
     validation_traces: list[dict],
@@ -406,6 +408,7 @@ def build_viz_receipt(
     - Validation traces (chroma/llm decisions per word)
     - Receipt lookup (CDN keys, word bboxes, labels from DynamoDB)
     """
+    # pylint: enable=too-many-locals,too-many-branches,too-many-statements
     image_id = root_trace.get("image_id")
     receipt_id = root_trace.get("receipt_id")
 
@@ -443,7 +446,8 @@ def build_viz_receipt(
 
     for trace in validation_traces:
         name = trace.get("name", "")
-        # Handle None outputs explicitly (can occur when trace is incomplete or outputs not captured)
+        # Handle None outputs explicitly (can occur when trace is incomplete
+        # or outputs not captured)
         outputs = trace.get("outputs") or {}
         # Handle None duration explicitly (can occur when trace is incomplete)
         duration = trace.get("duration_ms") or 0.0
@@ -503,7 +507,8 @@ def build_viz_receipt(
         # Get label from lookup (string key format)
         # labels_data can be either:
         # - Simple: {f"{line_id}_{word_id}": "LABEL"}
-        # - Extended: {f"{line_id}_{word_id}": {"label": "LABEL", "validation_status": "VALID"}}
+        # - Extended: {f"{line_id}_{word_id}": {"label": "LABEL",
+        #   "validation_status": "VALID"}}
         label_entry = labels_data.get(f"{line_id}_{word_id}", "")
         if isinstance(label_entry, dict):
             label = label_entry.get("label", "")
@@ -522,7 +527,8 @@ def build_viz_receipt(
                     "word_id": word_id,
                     "bbox": word.get("bbox", {}),
                     "label": label,
-                    # Include DynamoDB validation_status - this is the source of truth
+                    # Include DynamoDB validation_status - this is the source
+                    # of truth
                     "validation_status": validation_status,
                     # Trace info - may be null if no trace found
                     "validation_source": (
@@ -682,7 +688,7 @@ def calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
 # --- Cache Writing ---
 
 
-def write_cache(
+def write_cache(  # pylint: disable=too-many-locals
     s3_client: Any,
     bucket: str,
     receipts: list[dict[str, Any]],
@@ -840,7 +846,11 @@ def main() -> int:
         viz_receipts = []
         for root in root_traces:
             trace_id = root.get("trace_id")
-            validations = validation_traces.get(trace_id, [])
+            validations = (
+                validation_traces.get(trace_id, [])
+                if isinstance(trace_id, str)
+                else []
+            )
 
             receipt = build_viz_receipt(root, validations, receipt_lookup)
             if receipt:

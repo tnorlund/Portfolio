@@ -125,10 +125,12 @@ class ParquetReader:
                 for row in table.to_pylist():
                     try:
                         yield LangSmithRunRaw(**row)
+                    # pylint: disable=broad-exception-caught
                     except Exception as e:
                         logger.debug("Failed to parse row: %s", e)
                         continue
-            except Exception:
+                    # pylint: enable=broad-exception-caught
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.exception("Error reading %s", k)
                 continue
 
@@ -148,7 +150,7 @@ class ParquetReader:
         for raw in self.read_raw_traces(key):
             try:
                 yield self._parse_raw_trace(raw)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.debug("Failed to parse trace %s: %s", raw.id, e)
                 continue
 
@@ -171,9 +173,15 @@ class ParquetReader:
             return pq.read_table(key)
 
         # S3 file
+        if not self._s3 or not self.bucket:
+            raise ValueError("S3 client not initialized for parquet reader")
         logger.debug("Reading S3 Parquet file: s3://%s/%s", self.bucket, key)
         response = self._s3.get_object(Bucket=self.bucket, Key=key)
         return pq.read_table(BytesIO(response["Body"].read()))
+
+    def read_parquet_table(self, key: str) -> pyarrow.Table:
+        """Public wrapper for reading a Parquet table from S3 or local path."""
+        return self._read_parquet_table(key)
 
     def _parse_raw_trace(self, raw: LangSmithRunRaw) -> LangSmithRun:
         """Parse a raw trace into a typed LangSmithRun.
@@ -248,9 +256,9 @@ def read_traces_from_parquet(
 
     for key in reader.list_parquet_files():
         try:
-            table = reader._read_parquet_table(key)
+            table = reader.read_parquet_table(key)
             traces.extend(table.to_pylist())
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Error reading %s", key)
             continue
 

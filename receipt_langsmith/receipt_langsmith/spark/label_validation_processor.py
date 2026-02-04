@@ -1,8 +1,8 @@
 """PySpark processor for receipt-label-validation analytics.
 
-This module provides analytics for the receipt-label-validation LangSmith project,
-including receipt-level metrics, step timing, validation decisions, and merchant
-resolution success rates.
+This module provides analytics for the receipt-label-validation LangSmith
+project, including receipt-level metrics, step timing, validation decisions,
+and merchant resolution success rates.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import LongType
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,9 @@ class LabelValidationSparkProcessor:
 
     Example:
         ```python
-        spark = SparkSession.builder.appName("LabelValidationAnalytics").getOrCreate()
+        spark = SparkSession.builder.appName(
+            "LabelValidationAnalytics"
+        ).getOrCreate()
         processor = LabelValidationSparkProcessor(spark)
 
         df = processor.read_parquet("s3://bucket/traces/")
@@ -98,9 +101,6 @@ class LabelValidationSparkProcessor:
         logger.info(
             "Available columns in parquet: %s", sorted(available_columns)
         )
-
-        # Import LongType for timestamp conversion check
-        from pyspark.sql.types import LongType
 
         # Convert timestamp columns from nanoseconds (Long) to timestamp
         if "start_time" in available_columns and isinstance(
@@ -163,8 +163,8 @@ class LabelValidationSparkProcessor:
     def parse_json_fields(self, df: DataFrame) -> DataFrame:
         """Parse JSON string columns and extract metadata.
 
-        Extracts metadata and computes duration for the receipt-label-validation
-        project traces.
+        Extracts metadata and computes duration for the
+        receipt-label-validation project traces.
 
         Args:
             df: DataFrame with raw trace data.
@@ -541,16 +541,14 @@ class LabelValidationSparkProcessor:
         result = (
             merchant.groupBy("tier")
             .agg(
+                F.sum(F.when(F.col("merchant_found"), 1).otherwise(0)).alias(
+                    "success_count"
+                ),
                 F.sum(
-                    F.when(F.col("merchant_found") == True, 1).otherwise(0)
-                ).alias("success_count"),
-                F.sum(
-                    F.when(F.col("merchant_found") == False, 1).otherwise(0)
+                    F.when(~F.col("merchant_found"), 1).otherwise(0)
                 ).alias("failure_count"),
                 F.avg(
-                    F.when(
-                        F.col("merchant_found") == True, F.col("confidence")
-                    )
+                    F.when(F.col("merchant_found"), F.col("confidence"))
                 ).alias("avg_confidence"),
                 F.count("*").alias("total_attempts"),
             )

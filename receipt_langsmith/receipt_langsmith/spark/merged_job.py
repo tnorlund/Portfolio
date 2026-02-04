@@ -20,11 +20,13 @@ Usage:
         --batch-bucket label-evaluator-batch-bucket \\
         --cache-bucket viz-cache-bucket \\
         --execution-id abc123 \\
-        --receipts-lookup s3://label-evaluator-batch-bucket/receipts_lookup/abc123/
+        --receipts-lookup s3://label-evaluator-batch-bucket/ \\
+            receipts_lookup/abc123/
 
 Data Sources:
     - Analytics: LangSmith Parquet exports (full trace analysis)
-    - Viz-cache: S3 JSON files (data/{execution_id}/*.json, unified/{execution_id}/*.json)
+    - Viz-cache: S3 JSON files (data/{execution_id}/*.json,
+      unified/{execution_id}/*.json)
     - CDN keys: receipts_lookup JSONL dataset
 """
 
@@ -54,6 +56,7 @@ from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
 from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+from receipt_langsmith.spark.utils import parse_s3_path, to_s3a
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,7 +101,10 @@ def parse_args() -> argparse.Namespace:
     # Viz-cache arguments
     parser.add_argument(
         "--batch-bucket",
-        help="S3 bucket with receipt data and results (required for viz-cache)",
+        help=(
+            "S3 bucket with receipt data and results (required for "
+            "viz-cache)"
+        ),
     )
     parser.add_argument(
         "--cache-bucket",
@@ -110,7 +116,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--receipts-json",
-        help="(Legacy) S3 path to receipts-lookup.json (optional for viz-cache)",
+        help=(
+            "(Legacy) S3 path to receipts-lookup.json "
+            "(optional for viz-cache)"
+        ),
     )
     parser.add_argument(
         "--receipts-lookup",
@@ -131,8 +140,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# pylint: disable=too-many-branches
 def validate_args(args: argparse.Namespace) -> None:
     """Validate required arguments based on job type."""
+    # pylint: enable=too-many-branches
     if args.job_type in ("analytics", "all"):
         if not args.parquet_input:
             raise ValueError("--parquet-input required for analytics")
@@ -156,6 +167,8 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--results-ndjson required for qa-cache")
         if not args.receipts_json:
             raise ValueError("--receipts-json required for qa-cache")
+        if not args.execution_id:
+            raise ValueError("--execution-id required for qa-cache")
 
 
 # =============================================================================
@@ -300,13 +313,6 @@ LOOKUP_SCHEMA = StructType(
 )
 
 
-def to_s3a(path: str) -> str:
-    """Convert s3:// URIs to s3a:// for Spark."""
-    if path.startswith("s3://"):
-        return f"s3a://{path[5:]}"
-    return path
-
-
 def read_json_df(
     spark: SparkSession,
     path: str,
@@ -319,8 +325,8 @@ def read_json_df(
         spark: SparkSession
         path: S3 path (s3:// or s3a://)
         schema: Optional schema to apply
-        multi_line: If True, each file can contain a single multi-line JSON object.
-                    If False, expects JSONL format (one JSON per line).
+        multi_line: If True, each file can contain a single multi-line JSON
+            object. If False, expects JSONL format (one JSON per line).
     """
     spark_path = to_s3a(path)
     reader = spark.read.option("multiLine", str(multi_line).lower())
@@ -329,25 +335,15 @@ def read_json_df(
     return reader.json(spark_path)
 
 
-def parse_s3_path(s3_path: str) -> tuple[str, str]:
-    """Parse an s3://bucket/key path into bucket and key."""
-    if not s3_path.startswith("s3://"):
-        raise ValueError(f"Invalid S3 path: {s3_path}")
-    path = s3_path[5:]
-    if "/" not in path:
-        raise ValueError(f"Invalid S3 path: {s3_path}")
-    bucket, key = path.split("/", 1)
-    if not bucket or not key:
-        raise ValueError(f"Invalid S3 path: {s3_path}")
-    return bucket, key
-
-
 def read_legacy_lookup_json(legacy_receipts_json: str) -> dict[str, Any]:
     """Read legacy receipts lookup JSON from S3."""
     bucket, key = parse_s3_path(legacy_receipts_json)
     s3_client = boto3.client("s3")
     response = s3_client.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read().decode("utf-8"))
+    payload = json.loads(response["Body"].read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Legacy receipts lookup must be a JSON object")
+    return payload
 
 
 def normalize_legacy_lookup_rows(
@@ -490,7 +486,7 @@ def count_issues(result: dict[str, Any]) -> int:
     total = 0
 
     # Geometric issues
-    total += result.get("geometric_issues_found", 0)
+    total += int(result.get("geometric_issues_found", 0) or 0)
 
     # Decision-based issues (INVALID + NEEDS_REVIEW)
     for key in (
@@ -498,9 +494,10 @@ def count_issues(result: dict[str, Any]) -> int:
         "metadata_decisions",
         "financial_decisions",
     ):
-        decisions = result.get(key, {})
-        total += decisions.get("INVALID", 0)
-        total += decisions.get("NEEDS_REVIEW", 0)
+        decisions = result.get(key, {}) or {}
+        if isinstance(decisions, dict):
+            total += int(decisions.get("INVALID", 0) or 0)
+            total += int(decisions.get("NEEDS_REVIEW", 0) or 0)
 
     return total
 
@@ -795,8 +792,8 @@ def main() -> int:
     spark = None
 
     # pylint: disable=broad-except
-    # Job entrypoint: ensure any unexpected failure logs clearly and exits non-zero
-    # so EMR marks the step failed and surfaces the stack trace.
+    # Job entrypoint: ensure any unexpected failure logs clearly and exits
+    # non-zero so EMR marks the step failed and surfaces the stack trace.
     try:
         spark = SparkSession.builder.appName(
             f"MergedJob-{args.job_type}"
@@ -816,9 +813,11 @@ def main() -> int:
 
         # Run QA cache if requested
         if args.job_type == "qa-cache":
+            # pylint: disable=import-outside-toplevel
             from receipt_langsmith.spark.qa_viz_cache_job import (
                 run_qa_cache_job,
             )
+            # pylint: enable=import-outside-toplevel
 
             logger.info("Starting qa-cache phase...")
             run_qa_cache_job(

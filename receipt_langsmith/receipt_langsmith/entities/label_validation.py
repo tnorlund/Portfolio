@@ -6,7 +6,7 @@ label_validation_chroma, label_validation_llm, llm_batch_validation,
 s3_download_*_snapshot, openai_embed_*, and merchant_resolution_* traces.
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -68,7 +68,8 @@ class S3DownloadSnapshotInputs(BaseModel):
 
 
 class S3DownloadSnapshotOutputs(BaseModel):
-    """Outputs from s3_download_lines_snapshot and s3_download_words_snapshot."""
+    """Outputs from s3_download_lines_snapshot and
+    s3_download_words_snapshot."""
 
     local_path: str = ""
     """Local file path where snapshot was downloaded."""

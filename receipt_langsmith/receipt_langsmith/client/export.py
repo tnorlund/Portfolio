@@ -4,6 +4,8 @@ This module provides utilities for managing LangSmith bulk exports,
 including triggering exports, checking status, and waiting for completion.
 """
 
+# pylint: disable=import-outside-toplevel,protected-access
+
 from __future__ import annotations
 
 import asyncio
@@ -134,7 +136,8 @@ class BulkExportManager:
 
         Args:
             project_id: Project/session ID to export (None = all projects).
-            days_back: Number of days back to export (ignored if start_time set).
+            days_back: Number of days back to export (ignored if start_time
+                set).
             start_time: Export runs starting from this time.
             end_time: Export runs until this time (default: now).
 

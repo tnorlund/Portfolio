@@ -31,16 +31,18 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import boto3
+from botocore.exceptions import ClientError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import LongType
+from pyspark.sql.types import LongType, StringType
+
+from receipt_langsmith.spark.utils import parse_s3_path, to_s3a
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,21 +90,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_s3_path(s3_path: str) -> tuple[str, str]:
-    """Parse s3://bucket/key into (bucket, key)."""
-    match = re.match(r"s3://([^/]+)/(.*)", s3_path)
-    if not match:
-        raise ValueError(f"Invalid S3 path: {s3_path}")
-    return match.group(1), match.group(2)
-
-
-def to_s3a(path: str) -> str:
-    """Convert s3:// to s3a:// for Spark."""
-    if path.startswith("s3://"):
-        return "s3a://" + path[5:]
-    return path
-
-
 def load_receipts_lookup(s3_client: Any, receipts_json: str) -> dict[str, Any]:
     """Load receipts-lookup.json from S3.
 
@@ -112,10 +99,20 @@ def load_receipts_lookup(s3_client: Any, receipts_json: str) -> dict[str, Any]:
     try:
         bucket, key = parse_s3_path(receipts_json)
         response = s3_client.get_object(Bucket=bucket, Key=key)
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except Exception:
-        logger.exception("Failed to load receipts lookup from %s", receipts_json)
-        return {}
+        payload = response["Body"].read().decode("utf-8")
+        receipts = json.loads(payload)
+        if not isinstance(receipts, dict):
+            raise ValueError("receipts lookup payload must be a JSON object")
+    except (ClientError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        logger.exception(
+            "Failed to load receipts lookup from %s", receipts_json
+        )
+        raise
+
+    logger.info(
+        "Loaded %d receipt lookups from %s", len(receipts), receipts_json
+    )
+    return receipts
 
 
 def load_question_results(s3_client: Any, results_ndjson: str) -> list[dict]:
@@ -127,14 +124,46 @@ def load_question_results(s3_client: Any, results_ndjson: str) -> list[dict]:
     try:
         bucket, key = parse_s3_path(results_ndjson)
         response = s3_client.get_object(Bucket=bucket, Key=key)
-        lines = response["Body"].read().decode("utf-8").strip().split("\n")
-        results = [json.loads(line) for line in lines if line.strip()]
-        # Sort by questionIndex
-        results.sort(key=lambda r: r.get("questionIndex", 0))
-        return results
-    except Exception:
-        logger.exception("Failed to load question results from %s", results_ndjson)
-        return []
+        payload = response["Body"].read().decode("utf-8")
+    except (ClientError, ValueError, UnicodeDecodeError):
+        logger.exception(
+            "Failed to load question results from %s", results_ndjson
+        )
+        raise
+
+    results: list[dict] = []
+    malformed = 0
+    for line_no, line in enumerate(payload.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            results.append(json.loads(stripped))
+        except json.JSONDecodeError:
+            malformed += 1
+            logger.warning(
+                "Skipping malformed NDJSON line %d in %s",
+                line_no,
+                results_ndjson,
+            )
+
+    # Sort by questionIndex
+    results.sort(key=lambda r: r.get("questionIndex", 0))
+
+    if malformed:
+        logger.warning(
+            "Loaded %d question results from %s with %d malformed lines "
+            "skipped",
+            len(results),
+            results_ndjson,
+            malformed,
+        )
+    else:
+        logger.info(
+            "Loaded %d question results from %s", len(results), results_ndjson
+        )
+
+    return results
 
 
 def find_latest_export_prefix(
@@ -157,17 +186,19 @@ def find_latest_export_prefix(
                 )
                 if sub_page.get("Contents"):
                     obj_time = sub_page["Contents"][0].get("LastModified")
-                    if latest_time is None or (obj_time and obj_time > latest_time):
+                    if latest_time is None or (
+                        obj_time and obj_time > latest_time
+                    ):
                         latest_time = obj_time
                         latest_key = sub_prefix
 
         return latest_key
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Failed to find latest export prefix")
         return None
 
 
-def derive_trace_steps(
+def derive_trace_steps(  # pylint: disable=too-many-locals
     child_runs: list[dict], question_result: dict, receipts_lookup: dict
 ) -> list[dict]:
     """Derive trace steps from child runs for the React component.
@@ -189,7 +220,11 @@ def derive_trace_steps(
         name = run.get("name", "").lower()
         outputs_str = run.get("outputs", "{}")
         try:
-            outputs = json.loads(outputs_str) if isinstance(outputs_str, str) else (outputs_str or {})
+            outputs = (
+                json.loads(outputs_str)
+                if isinstance(outputs_str, str)
+                else (outputs_str or {})
+            )
         except (json.JSONDecodeError, TypeError):
             outputs = {}
 
@@ -200,7 +235,7 @@ def derive_trace_steps(
         if not step_type:
             continue
 
-        step = {"type": step_type}
+        step: dict[str, Any] = {"type": step_type}
 
         # Compute duration from start_time / end_time
         duration_ms = _compute_duration_ms(run)
@@ -213,12 +248,22 @@ def derive_trace_steps(
             q_type = classification.get("question_type", "")
             strategy = classification.get("retrieval_strategy", "")
             rewrites = classification.get("query_rewrites", [])
-            step["content"] = f"{q_type} → {strategy}" if q_type else "Classify question and choose retrieval strategy"
-            step["detail"] = f"Query rewrites: {', '.join(rewrites)}" if rewrites else "Classify question and choose retrieval strategy"
+            step["content"] = (
+                f"{q_type} → {strategy}"
+                if q_type
+                else "Classify question and choose retrieval strategy"
+            )
+            step["detail"] = (
+                f"Query rewrites: {', '.join(rewrites)}"
+                if rewrites
+                else "Classify question and choose retrieval strategy"
+            )
 
         elif step_type == "agent":
             content = _extract_agent_content(outputs)
-            step["content"] = content if content else "Deciding which tools to call"
+            step["content"] = (
+                content if content else "Deciding which tools to call"
+            )
             # Count tool calls in messages
             tool_calls = _count_tool_calls(outputs)
             if tool_calls > 0:
@@ -236,17 +281,23 @@ def derive_trace_steps(
             summaries = outputs.get("shaped_summaries", [])
             n_receipts = len(summaries)
             n_items = sum(
-                len(s.get("items", s.get("line_items", [])))
-                for s in summaries
+                len(s.get("items", s.get("line_items", []))) for s in summaries
             )
-            step["content"] = f"{n_receipts} receipts → {n_items} structured line items"
-            step["detail"] = "Extract product names + amounts using word labels"
+            step["content"] = (
+                f"{n_receipts} receipts → {n_items} structured line items"
+            )
+            step["detail"] = (
+                "Extract product names + amounts using word labels"
+            )
             # Include structured data for the component
             step["structuredData"] = [
                 {
                     "merchant": s.get("merchant", "Unknown"),
                     "items": [
-                        {"name": item.get("name", ""), "amount": item.get("amount", 0)}
+                        {
+                            "name": item.get("name", ""),
+                            "amount": item.get("amount", 0),
+                        }
                         for item in s.get("items", s.get("line_items", []))[:5]
                     ],
                 }
@@ -256,10 +307,14 @@ def derive_trace_steps(
         elif step_type == "synthesize":
             answer = outputs.get("final_answer", outputs.get("answer", ""))
             step["content"] = answer if answer else "Generating final answer"
-            receipt_count = outputs.get("receipt_count", question_result.get("receiptCount", 0))
+            receipt_count = outputs.get(
+                "receipt_count", question_result.get("receiptCount", 0)
+            )
             step["detail"] = f"{receipt_count} receipts identified"
             # Include receipt evidence with CDN keys
-            evidence = outputs.get("evidence", question_result.get("evidence", []))
+            evidence = outputs.get(
+                "evidence", question_result.get("evidence", [])
+            )
             step["receipts"] = _enrich_evidence(evidence, receipts_lookup)
 
         steps.append(step)
@@ -275,10 +330,11 @@ def _classify_run(name: str, run_type: str) -> Optional[str]:
         return "synthesize"
     if "shape" in name:
         return "shape"
-    if run_type == "tool" or "tool" in name:
-        return "tools"
+    # Prefer agent classification over tool when both keywords appear.
     if "agent" in name or run_type == "chain":
         return "agent"
+    if run_type == "tool" or "tool" in name:
+        return "tools"
     return None
 
 
@@ -296,11 +352,9 @@ def _compute_duration_ms(run: dict) -> Optional[int]:
     try:
         # After Spark's from_unixtime, values are datetime strings
         if isinstance(start, str) and isinstance(end, str):
-            from datetime import datetime as _dt
-
             fmt = "%Y-%m-%d %H:%M:%S"
-            s = _dt.strptime(start[:19], fmt)
-            e = _dt.strptime(end[:19], fmt)
+            s = datetime.strptime(start[:19], fmt)
+            e = datetime.strptime(end[:19], fmt)
             return max(int((e - s).total_seconds() * 1000), 0)
 
         # PySpark Row might also give datetime objects
@@ -310,7 +364,7 @@ def _compute_duration_ms(run: dict) -> Optional[int]:
         # Numeric (epoch seconds)
         if isinstance(start, (int, float)) and isinstance(end, (int, float)):
             return max(int((end - start) * 1000), 0)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
 
     return None
@@ -323,10 +377,13 @@ def _extract_agent_content(outputs: dict) -> str:
     for msg in messages:
         if isinstance(msg, dict):
             content = msg.get("content", "")
-            if content and isinstance(content, str):
+            if isinstance(content, str) and content:
                 return content
     # Fallback: direct content
-    return outputs.get("content", outputs.get("output", ""))
+    fallback = outputs.get("content")
+    if fallback is None:
+        fallback = outputs.get("output", "")
+    return fallback if isinstance(fallback, str) else str(fallback)
 
 
 def _count_tool_calls(outputs: dict) -> int:
@@ -378,15 +435,19 @@ def _enrich_evidence(
         key = f"{image_id}_{receipt_id}"
         lookup = receipts_lookup.get(key, {})
 
-        enriched.append({
-            "imageId": image_id,
-            "merchant": e.get("merchant", ""),
-            "item": e.get("item", ""),
-            "amount": e.get("amount", 0),
-            "thumbnailKey": lookup.get("cdn_webp_s3_key", lookup.get("cdn_s3_key", "")),
-            "width": lookup.get("width", 350),
-            "height": lookup.get("height", 900),
-        })
+        enriched.append(
+            {
+                "imageId": image_id,
+                "merchant": e.get("merchant", ""),
+                "item": e.get("item", ""),
+                "amount": e.get("amount", 0),
+                "thumbnailKey": lookup.get(
+                    "cdn_webp_s3_key", lookup.get("cdn_s3_key", "")
+                ),
+                "width": lookup.get("width", 350),
+                "height": lookup.get("height", 900),
+            }
+        )
     return enriched
 
 
@@ -396,7 +457,8 @@ def compute_stats(all_runs: list[dict], question_result: dict) -> dict:
     Args:
         all_runs: ALL runs in the trace (not just depth-1), used to count
                   LLM calls and tool invocations at every depth.
-        question_result: The NDJSON result dict (has cost from CostTrackingCallback).
+        question_result: The NDJSON result dict (has cost from
+            CostTrackingCallback).
     """
     llm_calls = 0
     tool_invocations = 0
@@ -406,7 +468,7 @@ def compute_stats(all_runs: list[dict], question_result: dict) -> dict:
         run_type = run.get("run_type", "")
         if run_type == "llm":
             llm_calls += 1
-            total_tokens += (run.get("total_tokens") or 0)
+            total_tokens += run.get("total_tokens") or 0
         elif run_type == "tool":
             tool_invocations += 1
 
@@ -440,7 +502,8 @@ def build_question_cache(
     Returns:
         dict matching the QAQuestionCache schema for the React component.
     """
-    # Depth-1 runs are direct children of the root (plan, agent, tools, shape, synthesize)
+    # Depth-1 runs are direct children of the root (plan, agent, tools, shape,
+    # synthesize)
     depth1_runs = sorted(
         [r for r in all_runs if r.get("parent_run_id") == root_run_id],
         key=lambda r: r.get("dotted_order", ""),
@@ -450,11 +513,14 @@ def build_question_cache(
         "question": question_result.get("question", ""),
         "questionIndex": question_result.get("questionIndex", 0),
         "traceId": trace_id,
-        "trace": derive_trace_steps(depth1_runs, question_result, receipts_lookup),
+        "trace": derive_trace_steps(
+            depth1_runs, question_result, receipts_lookup
+        ),
         "stats": compute_stats(all_runs, question_result),
     }
 
-
+# pylint: disable=too-many-arguments,too-many-locals,too-many-branches
+# pylint: disable=too-many-statements,too-many-positional-arguments
 def run_qa_cache_job(
     spark: SparkSession,
     parquet_input: str,
@@ -477,6 +543,8 @@ def run_qa_cache_job(
         max_questions: Maximum questions to process.
         langchain_project: LangSmith project name (for metadata).
     """
+    # pylint: enable=too-many-arguments,too-many-locals,too-many-branches
+    # pylint: enable=too-many-statements,too-many-positional-arguments
     s3_client = boto3.client("s3")
 
     # 1. Load question results from NDJSON
@@ -506,11 +574,19 @@ def run_qa_cache_job(
             .option("mergeSchema", "true")
             .parquet(spark_path)
         )
-    except Exception:
-        logger.exception("Failed to read parquet from %s — falling back to NDJSON", spark_path)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Failed to read parquet from %s — falling back to NDJSON",
+            spark_path,
+        )
         _write_cache_from_ndjson(
-            s3_client, cache_bucket, question_results, receipts_lookup,
-            execution_id, langchain_project,
+            s3_client,
+            cache_bucket,
+            question_results,
+            receipts_lookup,
+            execution_id,
+            max_questions,
+            langchain_project,
         )
         return
 
@@ -525,9 +601,16 @@ def run_qa_cache_job(
                 )
 
     # Add missing columns
-    for col_name in ["trace_id", "parent_run_id", "total_tokens", "prompt_tokens", "completion_tokens"]:
+    for col_name in [
+        "trace_id",
+        "parent_run_id",
+        "total_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+    ]:
         if col_name not in df.columns:
-            df = df.withColumn(col_name, F.lit(None))
+            col_type = LongType() if "tokens" in col_name else StringType()
+            df = df.withColumn(col_name, F.lit(None).cast(col_type))
 
     # 4. No session_name filter needed — LangSmith exports are per-project.
     #    We identify our traces by matching root run question text against
@@ -539,8 +622,13 @@ def run_qa_cache_job(
     if total_rows == 0:
         logger.warning("No traces found in parquet")
         _write_cache_from_ndjson(
-            s3_client, cache_bucket, question_results, receipts_lookup,
-            execution_id, langchain_project,
+            s3_client,
+            cache_bucket,
+            question_results,
+            receipts_lookup,
+            execution_id,
+            max_questions,
+            langchain_project,
         )
         return
 
@@ -573,7 +661,9 @@ def run_qa_cache_job(
         if row_dict.get("is_root"):
             root_runs[tid] = row_dict
 
-    logger.info("Found %d unique traces, %d root runs", len(traces), len(root_runs))
+    logger.info(
+        "Found %d unique traces, %d root runs", len(traces), len(root_runs)
+    )
 
     # 6. Match traces to question results by question text.
     #    Root run inputs contain the question at inputs.input.question
@@ -582,7 +672,11 @@ def run_qa_cache_job(
     for tid, root in root_runs.items():
         try:
             inputs_str = root.get("inputs", "{}")
-            inputs = json.loads(inputs_str) if isinstance(inputs_str, str) else (inputs_str or {})
+            inputs = (
+                json.loads(inputs_str)
+                if isinstance(inputs_str, str)
+                else (inputs_str or {})
+            )
 
             # Try inputs.input.question first (LangGraph invocation pattern)
             question_text = ""
@@ -614,7 +708,8 @@ def run_qa_cache_job(
         root = root_runs.get(tid, {})
         root_run_id = root.get("id", "")
 
-        # All non-root runs for stats; depth-1 filtering happens inside build_question_cache
+        # All non-root runs for stats; depth-1 filtering happens inside
+        # build_question_cache
         non_root_runs = [r for r in runs_list if not r.get("is_root")]
 
         cache = build_question_cache(
@@ -624,12 +719,95 @@ def run_qa_cache_job(
 
     # For questions without traces, create minimal cache from NDJSON
     traced_indices = {c["questionIndex"] for c in cache_files}
-    for result in question_results[:max_questions]:
+    limit = (
+        max_questions
+        if max_questions and max_questions > 0
+        else len(question_results)
+    )
+    for result in question_results[:limit]:
         q_idx = result.get("questionIndex", -1)
         if q_idx not in traced_indices:
-            cache_files.append({
+            cache_files.append(
+                {
+                    "question": result.get("question", ""),
+                    "questionIndex": q_idx,
+                    "traceId": "",
+                    "trace": _minimal_trace_from_result(
+                        result, receipts_lookup
+                    ),
+                    "stats": {
+                        "llmCalls": result.get("llmCalls", 0),
+                        "toolInvocations": result.get("toolInvocations", 0),
+                        "receiptsProcessed": result.get("receiptCount", 0),
+                        "cost": result.get("cost", 0),
+                    },
+                }
+            )
+
+    cache_files.sort(key=lambda c: c["questionIndex"])
+
+    # Write to S3
+    _write_cache_files(
+        s3_client,
+        cache_bucket,
+        cache_files,
+        question_results,
+        execution_id,
+        langchain_project,
+    )
+
+
+def _minimal_trace_from_result(
+    result: dict[str, Any], receipts_lookup: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Build a minimal trace from NDJSON result when parquet trace is
+    unavailable."""
+    steps: list[dict[str, Any]] = [
+        {"type": "plan", "content": "Question classified", "detail": ""},
+        {"type": "agent", "content": "Retrieved receipt data", "detail": ""},
+        {
+            "type": "shape",
+            "content": f"{result.get('receiptCount', 0)} receipts shaped",
+            "detail": "",
+        },
+    ]
+
+    answer = result.get("answer", "")
+    evidence = result.get("evidence", [])
+    steps.append(
+        {
+            "type": "synthesize",
+            "content": answer if answer else "Answer generated",
+            "detail": f"{result.get('receiptCount', 0)} receipts identified",
+            "receipts": _enrich_evidence(evidence, receipts_lookup),
+        }
+    )
+
+    return steps
+
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+def _write_cache_from_ndjson(
+    s3_client: Any,
+    cache_bucket: str,
+    question_results: list[dict],
+    receipts_lookup: dict,
+    execution_id: str,
+    max_questions: int = 0,
+    langchain_project: str = "",
+) -> None:
+    """Write cache files from NDJSON only (fallback when no parquet traces)."""
+    # pylint: enable=too-many-arguments,too-many-positional-arguments
+    cache_files = []
+    selected_results = (
+        question_results[:max_questions]
+        if max_questions and max_questions > 0
+        else question_results
+    )
+    for result in selected_results:
+        cache_files.append(
+            {
                 "question": result.get("question", ""),
-                "questionIndex": q_idx,
+                "questionIndex": result.get("questionIndex", 0),
                 "traceId": "",
                 "trace": _minimal_trace_from_result(result, receipts_lookup),
                 "stats": {
@@ -638,64 +816,16 @@ def run_qa_cache_job(
                     "receiptsProcessed": result.get("receiptCount", 0),
                     "cost": result.get("cost", 0),
                 },
-            })
-
-    cache_files.sort(key=lambda c: c["questionIndex"])
-
-    # Write to S3
-    _write_cache_files(
-        s3_client, cache_bucket, cache_files, question_results,
-        execution_id, langchain_project,
-    )
-
-
-def _minimal_trace_from_result(result: dict, receipts_lookup: dict) -> list[dict]:
-    """Build a minimal trace from NDJSON result when parquet trace is unavailable."""
-    steps = [
-        {"type": "plan", "content": "Question classified", "detail": ""},
-        {"type": "agent", "content": "Retrieved receipt data", "detail": ""},
-        {"type": "shape", "content": f"{result.get('receiptCount', 0)} receipts shaped", "detail": ""},
-    ]
-
-    answer = result.get("answer", "")
-    evidence = result.get("evidence", [])
-    steps.append({
-        "type": "synthesize",
-        "content": answer if answer else "Answer generated",
-        "detail": f"{result.get('receiptCount', 0)} receipts identified",
-        "receipts": _enrich_evidence(evidence, receipts_lookup),
-    })
-
-    return steps
-
-
-def _write_cache_from_ndjson(
-    s3_client: Any,
-    cache_bucket: str,
-    question_results: list[dict],
-    receipts_lookup: dict,
-    execution_id: str,
-    langchain_project: str = "",
-) -> None:
-    """Write cache files from NDJSON only (fallback when no parquet traces)."""
-    cache_files = []
-    for result in question_results:
-        cache_files.append({
-            "question": result.get("question", ""),
-            "questionIndex": result.get("questionIndex", 0),
-            "traceId": "",
-            "trace": _minimal_trace_from_result(result, receipts_lookup),
-            "stats": {
-                "llmCalls": result.get("llmCalls", 0),
-                "toolInvocations": result.get("toolInvocations", 0),
-                "receiptsProcessed": result.get("receiptCount", 0),
-                "cost": result.get("cost", 0),
-            },
-        })
+            }
+        )
 
     _write_cache_files(
-        s3_client, cache_bucket, cache_files, question_results,
-        execution_id, langchain_project,
+        s3_client,
+        cache_bucket,
+        cache_files,
+        selected_results,
+        execution_id,
+        langchain_project,
     )
 
 
@@ -708,6 +838,7 @@ def _write_cache_files(
     langchain_project: str = "",
 ) -> None:
     """Write per-question JSON files and metadata to S3."""
+
     # Write individual question files in parallel
     def upload_question(cache: dict) -> str:
         key = f"questions/question-{cache['questionIndex']}.json"
@@ -729,20 +860,36 @@ def _write_cache_files(
             try:
                 future.result()
                 written += 1
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 idx = futures[future]
                 logger.exception("Failed to write question-%d.json", idx)
 
-    logger.info("Wrote %d question cache files to s3://%s/questions/", written, cache_bucket)
+    logger.info(
+        "Wrote %d question cache files to s3://%s/questions/",
+        written,
+        cache_bucket,
+    )
 
     # Write metadata.json
-    total_cost = sum(r.get("cost", 0) for r in question_results)
-    total_questions = len(question_results)
+    cached_indices = {c["questionIndex"] for c in cache_files}
+    cached_results = [
+        r for r in question_results if r.get("questionIndex") in cached_indices
+    ]
+    total_cost = sum(r.get("cost", 0) for r in cached_results)
+    total_questions = len(cache_files)
+    source_questions = len(question_results)
+    success_count = sum(1 for r in cached_results if r.get("success"))
     metadata = {
         "total_questions": total_questions,
-        "success_count": sum(1 for r in question_results if r.get("success")),
+        "cached_questions": total_questions,
+        "source_questions": source_questions,
+        "success_count": success_count,
         "total_cost": round(total_cost, 6),
-        "avg_cost_per_question": round(total_cost / total_questions, 6) if total_questions > 0 else 0,
+        "avg_cost_per_question": (
+            round(total_cost / total_questions, 6)
+            if total_questions > 0
+            else 0
+        ),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "execution_id": execution_id,
         "langsmith_project": langchain_project or "qa-agent-marquee",
@@ -759,14 +906,21 @@ def _write_cache_files(
     s3_client.put_object(
         Bucket=cache_bucket,
         Key="latest.json",
-        Body=json.dumps({"execution_id": execution_id, "generated_at": metadata["generated_at"]}),
+        Body=json.dumps(
+            {
+                "execution_id": execution_id,
+                "generated_at": metadata["generated_at"],
+            }
+        ),
         ContentType="application/json",
     )
 
-    logger.info("Wrote metadata.json and latest.json to s3://%s/", cache_bucket)
+    logger.info(
+        "Wrote metadata.json and latest.json to s3://%s/", cache_bucket
+    )
 
 
-def main() -> None:
+def main() -> int:
     """Entry point for standalone execution."""
     args = parse_args()
 
@@ -786,9 +940,13 @@ def main() -> None:
             execution_id=args.execution_id,
             max_questions=args.max_questions,
         )
+        return 0
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("Job failed")
+        return 1
     finally:
         spark.stop()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

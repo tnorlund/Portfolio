@@ -10,7 +10,7 @@ Each node produces typed outputs that are stored in the trace's
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -63,13 +63,16 @@ class QASynthesizeOutput(BaseModel):
     evidence: list[dict] = Field(default_factory=list)
 
 
+QAStepType = Literal["plan", "agent", "tools", "shape", "synthesize"]
+
+
 class QATraceStep(BaseModel):
     """A single step in the QA trace visualization.
 
     Used by the React component to render the trace timeline.
     """
 
-    type: str  # plan, agent, tools, shape, synthesize
+    type: QAStepType
     content: str = ""
     detail: str = ""
     structured_data: Optional[list[dict]] = None

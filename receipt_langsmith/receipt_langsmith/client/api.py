@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import httpx
 from tenacity import (
@@ -41,7 +41,8 @@ class LangSmithClient:
     including listing projects, listing runs, and managing bulk exports.
 
     Args:
-        api_key: LangSmith API key. If not provided, uses LANGCHAIN_API_KEY env var.
+        api_key: LangSmith API key. If not provided, uses LANGCHAIN_API_KEY
+            env var.
         tenant_id: LangSmith tenant/workspace ID. If not provided, uses
             LANGSMITH_TENANT_ID env var.
         timeout: Request timeout in seconds.
@@ -162,7 +163,7 @@ class LangSmithClient:
         if response.status_code >= 400:
             raise LangSmithAPIError(response.status_code, response.text)
 
-        return response.json()
+        return cast(dict[str, Any] | list[Any], response.json())
 
     async def alist_projects(self) -> list[Project]:
         """List all projects (sessions) in the workspace.
@@ -190,6 +191,7 @@ class LangSmithClient:
                 return project
         return None
 
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
     async def alist_runs(
         self,
         project_name: Optional[str] = None,
@@ -214,6 +216,7 @@ class LangSmithClient:
         Returns:
             List of run dictionaries.
         """
+        # pylint: enable=too-many-arguments,too-many-positional-arguments
         params: dict[str, Any] = {"limit": limit}
 
         if project_name:
@@ -305,22 +308,32 @@ class LangSmithClient:
 
     def list_projects(self) -> list[Project]:
         """List all projects (sync wrapper)."""
-        return self._run_sync(self.alist_projects())
+        return cast(list[Project], self._run_sync(self.alist_projects()))
 
     def get_project(self, project_name: str) -> Optional[Project]:
         """Get a project by name (sync wrapper)."""
-        return self._run_sync(self.aget_project(project_name))
+        return cast(
+            Optional[Project], self._run_sync(self.aget_project(project_name))
+        )
 
     def list_runs(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List runs with filters (sync wrapper)."""
-        return self._run_sync(self.alist_runs(**kwargs))
+        return cast(
+            list[dict[str, Any]], self._run_sync(self.alist_runs(**kwargs))
+        )
 
     def list_recent_traces(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List recent traces (sync wrapper)."""
-        return self._run_sync(self.alist_recent_traces(**kwargs))
+        return cast(
+            list[dict[str, Any]],
+            self._run_sync(self.alist_recent_traces(**kwargs)),
+        )
 
     def get_child_traces(
         self, parent_run_id: str
     ) -> dict[str, dict[str, Any]]:
         """Get child traces (sync wrapper)."""
-        return self._run_sync(self.aget_child_traces(parent_run_id))
+        return cast(
+            dict[str, dict[str, Any]],
+            self._run_sync(self.aget_child_traces(parent_run_id)),
+        )

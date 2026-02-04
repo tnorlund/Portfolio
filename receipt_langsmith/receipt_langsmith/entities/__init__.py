@@ -66,6 +66,11 @@ from receipt_langsmith.entities.label_validation import (
     StepTimingSummary,
 )
 from receipt_langsmith.entities.parquet_schema import LangSmithRunRaw
+from receipt_langsmith.entities.place_id_finder import (
+    PlaceIdFinderInputs,
+    PlaceIdFinderOutputs,
+    ToolCallTrace,
+)
 from receipt_langsmith.entities.qa_trace import (
     QACacheMetadata,
     QAPlanOutput,
@@ -75,11 +80,6 @@ from receipt_langsmith.entities.qa_trace import (
     QATraceRoot,
     QATraceStats,
     QATraceStep,
-)
-from receipt_langsmith.entities.place_id_finder import (
-    PlaceIdFinderInputs,
-    PlaceIdFinderOutputs,
-    ToolCallTrace,
 )
 from receipt_langsmith.entities.validation import (
     EvidenceType,
