@@ -50,6 +50,8 @@ interface QuestionMarqueeProps {
 /**
  * A marquee component that displays receipt-related questions
  * scrolling horizontally in alternating directions across multiple rows.
+ *
+ * On mobile (< 640px), shows a single question with a fade-in transition.
  */
 const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   speed = 30,
@@ -57,15 +59,94 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
   onQuestionClick,
   activeQuestion,
 }) => {
-  // Split questions across rows
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
+  // Track previous question to trigger fade-in on change
+  const [fadeKey, setFadeKey] = useState(0);
+  const prevQuestion = useRef(activeQuestion);
+  useEffect(() => {
+    if (activeQuestion !== prevQuestion.current) {
+      prevQuestion.current = activeQuestion;
+      setFadeKey((k) => k + 1);
+    }
+  }, [activeQuestion]);
+
+  // ---- Mobile: single question with cross-fade ----
+  if (isMobile) {
+    const questionText =
+      activeQuestion != null && activeQuestion >= 0 && activeQuestion < QUESTIONS.length
+        ? QUESTIONS[activeQuestion]
+        : QUESTIONS[0];
+
+    return (
+      <div
+        style={{
+          position: "relative",
+          padding: "0.75rem 0",
+          textAlign: "center",
+          // Reserve height for ~2 lines so the container never collapses
+          minHeight: "3rem",
+        }}
+      >
+        <style>{`
+          @keyframes questionFadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+        `}</style>
+        <span
+          key={fadeKey}
+          style={{
+            display: "inline-block",
+            padding: "0.4rem 0",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            color: "var(--color-text)",
+            animation: "questionFadeIn 0.5s ease-out",
+          }}
+        >
+          {questionText}
+        </span>
+      </div>
+    );
+  }
+
+  // ---- Desktop: full marquee ----
   const questionsPerRow = Math.ceil(QUESTIONS.length / rows);
   const rowQuestions = Array.from({ length: rows }, (_, i) =>
     QUESTIONS.slice(i * questionsPerRow, (i + 1) * questionsPerRow)
   );
 
-  // Determine which row contains the active question
   const activeRow = activeQuestion != null ? Math.floor(activeQuestion / questionsPerRow) : -1;
 
+  return <DesktopMarquee
+    rows={rows}
+    speed={speed}
+    questionsPerRow={questionsPerRow}
+    rowQuestions={rowQuestions}
+    activeRow={activeRow}
+    activeQuestion={activeQuestion}
+    onQuestionClick={onQuestionClick}
+  />;
+};
+
+/** Desktop marquee with centering logic (extracted to avoid running hooks conditionally) */
+const DesktopMarquee: React.FC<{
+  rows: number;
+  speed: number;
+  questionsPerRow: number;
+  rowQuestions: string[][];
+  activeRow: number;
+  activeQuestion?: number;
+  onQuestionClick?: (index: number) => void;
+}> = ({ speed, questionsPerRow, rowQuestions, activeRow, activeQuestion, onQuestionClick }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [centerOffset, setCenterOffset] = useState<number | null>(null);
 
@@ -104,7 +185,6 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
         width: "100%",
         overflow: "hidden",
         padding: "1rem 0",
-        // Fade in/out on left and right edges
         maskImage:
           "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)",
         WebkitMaskImage:
@@ -114,21 +194,12 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
       <style>
         {`
           @keyframes scrollLeft {
-            0% {
-              transform: translateX(0);
-            }
-            100% {
-              transform: translateX(-50%);
-            }
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
           }
-
           @keyframes scrollRight {
-            0% {
-              transform: translateX(-50%);
-            }
-            100% {
-              transform: translateX(0);
-            }
+            0% { transform: translateX(-50%); }
+            100% { transform: translateX(0); }
           }
 
           .marquee-row {
@@ -137,15 +208,12 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
             margin: 0.5rem 0;
             width: fit-content;
           }
-
           .marquee-row-left {
             animation: scrollLeft var(--scroll-speed) linear infinite;
           }
-
           .marquee-row-right {
             animation: scrollRight var(--scroll-speed) linear infinite;
           }
-
           .marquee-row:hover {
             animation-play-state: paused;
           }
@@ -166,7 +234,6 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
       {rowQuestions.map((questions, rowIndex) => {
         const isReversed = rowIndex % 2 === 1;
         const isRowFrozen = rowIndex === activeRow;
-        // Duplicate questions to create seamless loop
         const duplicatedQuestions = [...questions, ...questions];
 
         return (
@@ -184,7 +251,6 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
             } as React.CSSProperties}
           >
             {duplicatedQuestions.map((question, qIndex) => {
-              // Map duplicated index back to original QUESTIONS index
               const originalIdx = (rowIndex * questionsPerRow) + (qIndex % questions.length);
               const isActive = originalIdx === activeQuestion;
               return (

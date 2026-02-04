@@ -223,7 +223,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         const id = setTimeout(() => setShowAnswer(true), stepDurations[trace.length - 1]);
         return () => clearTimeout(id);
       }
-      const id = setTimeout(() => onCycleComplete?.(), 10000);
+      const id = setTimeout(() => {
+        // Reset animation before advancing so the next cycle always starts
+        // fresh — even when consecutive null-data states produce the same
+        // questionIndex (-1 → -1) and the questionIndex effect doesn't fire.
+        setActiveStep(-1);
+        setShowAnswer(false);
+        onCycleComplete?.();
+      }, 10000);
       return () => clearTimeout(id);
     }
 
