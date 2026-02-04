@@ -140,35 +140,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# pylint: disable=too-many-branches
 def validate_args(args: argparse.Namespace) -> None:
     """Validate required arguments based on job type."""
-    # pylint: enable=too-many-branches
-    if args.job_type in ("analytics", "all"):
-        if not args.parquet_input:
-            raise ValueError("--parquet-input required for analytics")
-        if not args.analytics_output:
-            raise ValueError("--analytics-output required for analytics")
+    requirements = {
+        "analytics": {
+            "parquet_input": "--parquet-input required for analytics",
+            "analytics_output": "--analytics-output required for analytics",
+        },
+        "viz-cache": {
+            "batch_bucket": "--batch-bucket required for viz-cache",
+            "cache_bucket": "--cache-bucket required for viz-cache",
+            "execution_id": "--execution-id required for viz-cache",
+        },
+        "qa-cache": {
+            "parquet_input": "--parquet-input required for qa-cache",
+            "cache_bucket": "--cache-bucket required for qa-cache",
+            "results_ndjson": "--results-ndjson required for qa-cache",
+            "receipts_json": "--receipts-json required for qa-cache",
+            "execution_id": "--execution-id required for qa-cache",
+        },
+    }
 
-    if args.job_type in ("viz-cache", "all"):
-        if not args.batch_bucket:
-            raise ValueError("--batch-bucket required for viz-cache")
-        if not args.cache_bucket:
-            raise ValueError("--cache-bucket required for viz-cache")
-        if not args.execution_id:
-            raise ValueError("--execution-id required for viz-cache")
+    job_types = (
+        ("analytics", "viz-cache")
+        if args.job_type == "all"
+        else (args.job_type,)
+    )
 
-    if args.job_type == "qa-cache":
-        if not args.parquet_input:
-            raise ValueError("--parquet-input required for qa-cache")
-        if not args.cache_bucket:
-            raise ValueError("--cache-bucket required for qa-cache")
-        if not args.results_ndjson:
-            raise ValueError("--results-ndjson required for qa-cache")
-        if not args.receipts_json:
-            raise ValueError("--receipts-json required for qa-cache")
-        if not args.execution_id:
-            raise ValueError("--execution-id required for qa-cache")
+    for job_type in job_types:
+        for field, message in requirements.get(job_type, {}).items():
+            if not getattr(args, field, None):
+                raise ValueError(message)
 
 
 # =============================================================================
@@ -814,13 +816,13 @@ def main() -> int:
         if args.job_type == "qa-cache":
             # pylint: disable=import-outside-toplevel
             from receipt_langsmith.spark.qa_viz_cache_job import (
+                QACacheJobConfig,
                 run_qa_cache_job,
             )
             # pylint: enable=import-outside-toplevel
 
             logger.info("Starting qa-cache phase...")
-            run_qa_cache_job(
-                spark=spark,
+            config = QACacheJobConfig(
                 parquet_input=args.parquet_input,
                 cache_bucket=args.cache_bucket,
                 results_ndjson=args.results_ndjson,
@@ -829,6 +831,7 @@ def main() -> int:
                 max_questions=50,
                 langchain_project=args.langchain_project,
             )
+            run_qa_cache_job(spark, config=config)
             logger.info("QA cache phase complete")
 
         logger.info("All phases complete!")
