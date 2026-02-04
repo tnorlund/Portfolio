@@ -43,9 +43,9 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
+from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
-from fix_place_lambda import create_fix_place_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc

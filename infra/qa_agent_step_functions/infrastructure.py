@@ -31,12 +31,8 @@ from pulumi import (
 )
 
 # Import shared components
-try:
-    from codebuild_docker_image import CodeBuildDockerImage
-    from lambda_layer import dynamo_layer
-except ImportError:
-    CodeBuildDockerImage = None  # type: ignore
-    dynamo_layer = None  # type: ignore
+from codebuild_docker_image import CodeBuildDockerImage
+from lambda_layer import dynamo_layer
 
 # Load secrets
 config = Config("portfolio")
@@ -141,29 +137,6 @@ class QAAgentStepFunction(ComponentResource):
             policy_arn=(
                 "arn:aws:iam::aws:policy/service-role/"
                 "AWSLambdaBasicExecutionRole"
-            ),
-            opts=ResourceOptions(parent=lambda_role),
-        )
-
-        # ECR permissions for container Lambda
-        aws.iam.RolePolicy(
-            f"{name}-lambda-ecr-policy",
-            role=lambda_role.id,
-            policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "ecr:GetAuthorizationToken",
-                                "ecr:BatchGetImage",
-                                "ecr:GetDownloadUrlForLayer",
-                            ],
-                            "Resource": "*",
-                        }
-                    ],
-                }
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -348,6 +321,39 @@ class QAAgentStepFunction(ComponentResource):
             ),
         )
 
+        # ECR permissions for container Lambda (scope to this repository)
+        aws.iam.RolePolicy(
+            f"{name}-lambda-ecr-policy",
+            role=lambda_role.id,
+            policy=run_question_image.ecr_repo.arn.apply(
+                lambda repo_arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ecr:GetAuthorizationToken",
+                                ],
+                                "Resource": "*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ecr:BatchGetImage",
+                                    "ecr:GetDownloadUrlForLayer",
+                                ],
+                                "Resource": repo_arn,
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(
+                parent=lambda_role, depends_on=[run_question_image]
+            ),
+        )
+
         self.run_question_lambda = run_question_image.lambda_function
 
         aws.cloudwatch.LogGroup(
@@ -370,6 +376,7 @@ class QAAgentStepFunction(ComponentResource):
                 self.query_metadata_lambda.arn,
                 Output.from_input(trigger_export_lambda_arn),
                 Output.from_input(check_export_lambda_arn),
+                Output.from_input(emr_application_id),
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -378,7 +385,7 @@ class QAAgentStepFunction(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": "lambda:InvokeFunction",
-                                "Resource": list(args),
+                                "Resource": list(args[:-1]),
                             },
                             {
                                 "Effect": "Allow",
@@ -387,7 +394,11 @@ class QAAgentStepFunction(ComponentResource):
                                     "emr-serverless:GetJobRun",
                                     "emr-serverless:CancelJobRun",
                                 ],
-                                "Resource": "*",
+                                "Resource": (
+                                    args[-1]
+                                    if str(args[-1]).startswith("arn:")
+                                    else f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}/*"
+                                ),
                             },
                             {
                                 "Effect": "Allow",

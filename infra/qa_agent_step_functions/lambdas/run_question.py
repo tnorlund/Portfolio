@@ -92,7 +92,9 @@ class CostTrackingCallback(BaseCallbackHandler):
                     cost = cost_details.get("upstream_inference_cost", 0) or 0
                 total_tokens = token_usage.get("total_tokens", 0) or 0
                 prompt_tokens = token_usage.get("prompt_tokens", 0) or 0
-                completion_tokens = token_usage.get("completion_tokens", 0) or 0
+                completion_tokens = (
+                    token_usage.get("completion_tokens", 0) or 0
+                )
 
         with self._lock:
             self.llm_calls += 1
@@ -175,7 +177,9 @@ async def _run_question(
                 "success": True,
             }
         except Exception as e:
-            logger.exception("Error on question %d: %s", question_index, question_text[:60])
+            logger.exception(
+                "Error on question %d: %s", question_index, question_text[:60]
+            )
             return {
                 "questionIndex": question_index,
                 "question": question_text,
@@ -297,7 +301,9 @@ async def _run_all(
         "execution_id": execution_id,
         "batch_bucket": batch_bucket,
         "langchain_project": langchain_project,
-        "receipt_keys": [{"image_id": k[0], "receipt_id": k[1]} for k in receipt_keys],
+        "receipt_keys": [
+            {"image_id": k[0], "receipt_id": k[1]} for k in receipt_keys
+        ],
         "total_questions": len(QUESTIONS),
         "success_count": success_count,
         "results_ndjson_key": ndjson_key,

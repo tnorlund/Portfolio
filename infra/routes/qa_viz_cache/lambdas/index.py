@@ -26,6 +26,7 @@ QUESTIONS_PREFIX = "questions/"
 
 if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
+    raise RuntimeError("S3_CACHE_BUCKET environment variable not set")
 
 s3_client = boto3.client("s3")
 
@@ -94,14 +95,18 @@ def _fetch_all_questions() -> list[dict[str, Any]]:
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
         for key in keys:
-            futures[executor.submit(
-                lambda k: json.loads(
-                    s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=k)["Body"]
-                    .read()
-                    .decode("utf-8")
-                ),
-                key,
-            )] = key
+            futures[
+                executor.submit(
+                    lambda k: json.loads(
+                        s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=k)[
+                            "Body"
+                        ]
+                        .read()
+                        .decode("utf-8")
+                    ),
+                    key,
+                )
+            ] = key
 
         for future in as_completed(futures):
             try:
@@ -140,7 +145,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         return _cors_response(400, {"error": "Invalid event structure"})
 
     if http_method != "GET":
-        return _cors_response(405, {"error": f"Method {http_method} not allowed"})
+        return _cors_response(
+            405, {"error": f"Method {http_method} not allowed"}
+        )
 
     if not S3_CACHE_BUCKET:
         return _cors_response(500, {"error": "S3_CACHE_BUCKET not configured"})
@@ -150,7 +157,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         metadata = _fetch_metadata()
 
         # Single question by index
-        question_index = query_params.get("index") or query_params.get("question_index")
+        question_index = query_params.get("index") or query_params.get(
+            "question_index"
+        )
         if question_index is not None:
             try:
                 idx = int(question_index)
@@ -159,28 +168,39 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
             question = _fetch_question(idx)
             if not question:
-                return _cors_response(404, {"error": f"Question {idx} not found"})
+                return _cors_response(
+                    404, {"error": f"Question {idx} not found"}
+                )
 
-            return _cors_response(200, {
-                "questions": [question],
-                "metadata": metadata,
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            return _cors_response(
+                200,
+                {
+                    "questions": [question],
+                    "metadata": metadata,
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
         # All questions
         if query_params.get("all", "").lower() == "true":
             questions = _fetch_all_questions()
-            return _cors_response(200, {
-                "questions": questions,
-                "metadata": metadata,
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            return _cors_response(
+                200,
+                {
+                    "questions": questions,
+                    "metadata": metadata,
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
         # Metadata only (default)
-        return _cors_response(200, {
-            "metadata": metadata,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-        })
+        return _cors_response(
+            200,
+            {
+                "metadata": metadata,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     except ClientError:
         logger.exception("S3 error")

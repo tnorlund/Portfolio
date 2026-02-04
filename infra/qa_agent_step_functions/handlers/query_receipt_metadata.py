@@ -20,6 +20,10 @@ s3_client = boto3.client("s3")
 
 TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
 
+if not TABLE_NAME:
+    logger.error("DYNAMODB_TABLE_NAME environment variable not set")
+    raise RuntimeError("DYNAMODB_TABLE_NAME environment variable not set")
+
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Query receipt metadata and write lookup JSON to S3.
@@ -51,9 +55,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "image_id": image_id,
                     "receipt_id": receipt_id,
                     "cdn_s3_key": getattr(receipt, "cdn_s3_key", None),
-                    "cdn_webp_s3_key": getattr(receipt, "cdn_webp_s3_key", None),
-                    "cdn_avif_s3_key": getattr(receipt, "cdn_avif_s3_key", None),
-                    "cdn_medium_s3_key": getattr(receipt, "cdn_medium_s3_key", None),
+                    "cdn_webp_s3_key": getattr(
+                        receipt, "cdn_webp_s3_key", None
+                    ),
+                    "cdn_avif_s3_key": getattr(
+                        receipt, "cdn_avif_s3_key", None
+                    ),
+                    "cdn_medium_s3_key": getattr(
+                        receipt, "cdn_medium_s3_key", None
+                    ),
                     "cdn_medium_webp_s3_key": getattr(
                         receipt, "cdn_medium_webp_s3_key", None
                     ),
@@ -64,7 +74,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "height": getattr(receipt, "height", None),
                 }
             else:
-                logger.warning("Receipt not found: %s/%s", image_id, receipt_id)
+                logger.warning(
+                    "Receipt not found: %s/%s", image_id, receipt_id
+                )
         except Exception:
             logger.exception(
                 "Error querying receipt %s/%s", image_id, receipt_id
