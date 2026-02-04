@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, cast
 
@@ -32,6 +33,18 @@ class LangSmithAPIError(Exception):
         self.status_code = status_code
         self.message = message
         super().__init__(f"LangSmith API error {status_code}: {message}")
+
+
+@dataclass(frozen=True)
+class RunListFilters:
+    """Filters for listing LangSmith runs."""
+
+    project_name: Optional[str] = None
+    project_id: Optional[str] = None
+    run_type: Optional[str] = None
+    name_filter: Optional[str] = None
+    start_time: Optional[datetime] = None
+    parent_run_id: Optional[str] = None
 
 
 class LangSmithClient:
@@ -191,49 +204,75 @@ class LangSmithClient:
                 return project
         return None
 
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
     async def alist_runs(
         self,
-        project_name: Optional[str] = None,
-        project_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        name_filter: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        parent_run_id: Optional[str] = None,
+        *legacy_args: Any,
+        filters: Optional[RunListFilters] = None,
         limit: int = 100,
+        **legacy_kwargs: Any,
     ) -> list[dict[str, Any]]:
         """List runs with optional filters.
 
         Args:
-            project_name: Filter by project name.
-            project_id: Filter by project ID.
-            run_type: Filter by run type ('chain', 'llm', 'tool').
-            name_filter: Filter by exact run name.
-            start_time: Only runs after this time.
-            parent_run_id: Filter by parent run ID.
+            filters: RunListFilters object.
+            legacy_args: Legacy positional args in order:
+                project_name, project_id, run_type, name_filter, start_time,
+                parent_run_id.
             limit: Maximum number of runs to return.
+            legacy_kwargs: Legacy keyword args matching RunListFilters fields.
 
         Returns:
             List of run dictionaries.
         """
-        # pylint: enable=too-many-arguments,too-many-positional-arguments
+        if filters is None:
+            filters = RunListFilters()
+
+        legacy_fields = [
+            "project_name",
+            "project_id",
+            "run_type",
+            "name_filter",
+            "start_time",
+            "parent_run_id",
+        ]
+        if len(legacy_args) > len(legacy_fields):
+            raise TypeError(
+                "alist_runs accepts at most 6 positional args: "
+                "project_name, project_id, run_type, name_filter, start_time, "
+                "parent_run_id."
+            )
+
+        if legacy_args:
+            updates = dict(zip(legacy_fields, legacy_args))
+            filters = replace(filters, **updates)
+
+        if legacy_kwargs:
+            unknown = set(legacy_kwargs) - set(legacy_fields)
+            if unknown:
+                raise TypeError(
+                    f"alist_runs got unexpected keyword(s): {unknown}"
+                )
+            filters = replace(filters, **legacy_kwargs)
+
         params: dict[str, Any] = {"limit": limit}
 
-        if project_name:
-            params["project_name"] = project_name
-        if project_id:
-            params["session"] = project_id
-        if run_type:
-            params["run_type"] = run_type
-        if name_filter:
+        if filters.project_name:
+            params["project_name"] = filters.project_name
+        if filters.project_id:
+            params["session"] = filters.project_id
+        if filters.run_type:
+            params["run_type"] = filters.run_type
+        if filters.name_filter:
             # Sanitize name_filter to prevent filter injection
             # Escape backslashes first, then quotes (order matters)
-            sanitized = name_filter.replace("\\", "\\\\").replace('"', '\\"')
+            sanitized = (
+                filters.name_filter.replace("\\", "\\\\").replace('"', '\\"')
+            )
             params["filter"] = f'eq(name, "{sanitized}")'
-        if start_time:
-            params["start_time"] = start_time.isoformat()
-        if parent_run_id:
-            params["parent_run_id"] = parent_run_id
+        if filters.start_time:
+            params["start_time"] = filters.start_time.isoformat()
+        if filters.parent_run_id:
+            params["parent_run_id"] = filters.parent_run_id
 
         data = await self.arequest("GET", "/api/v1/runs", params=params)
         return data if isinstance(data, list) else []
