@@ -55,7 +55,10 @@ GOLDEN_EXAMPLES = [
     },
     {
         "question": "What's my total spending at Costco?",
-        "expected_tools": ["get_receipt_summaries", "get_receipts_by_merchant"],
+        "expected_tools": [
+            "get_receipt_summaries",
+            "get_receipts_by_merchant",
+        ],
         "notes": "Should use merchant filtering",
     },
     {
@@ -80,8 +83,11 @@ def create_dataset():
     # Check if dataset exists
     try:
         dataset = client.read_dataset(dataset_name=dataset_name)
-        logger.info("Dataset '%s' already exists with %d examples",
-                   dataset_name, dataset.example_count)
+        logger.info(
+            "Dataset '%s' already exists with %d examples",
+            dataset_name,
+            dataset.example_count,
+        )
         return dataset
     except Exception:
         pass
@@ -98,19 +104,26 @@ def create_dataset():
             dataset_id=dataset.id,
             inputs={"question": example["question"]},
             outputs={
-                "expected_answer_contains": example.get("expected_answer_contains", []),
+                "expected_answer_contains": example.get(
+                    "expected_answer_contains", []
+                ),
                 "expected_tools": example.get("expected_tools", []),
                 "notes": example.get("notes", ""),
             },
         )
 
-    logger.info("Created dataset '%s' with %d examples", dataset_name, len(GOLDEN_EXAMPLES))
+    logger.info(
+        "Created dataset '%s' with %d examples",
+        dataset_name,
+        len(GOLDEN_EXAMPLES),
+    )
     return dataset
 
 
 # ============================================================================
 # Custom Evaluators
 # ============================================================================
+
 
 def groundedness_evaluator(run: Run, example: Example) -> dict:
     """
@@ -126,29 +139,51 @@ def groundedness_evaluator(run: Run, example: Example) -> dict:
     evidence = run.outputs.get("evidence", []) if run.outputs else []
 
     if not answer:
-        return {"key": "groundedness", "score": 0.0, "comment": "No answer provided"}
+        return {
+            "key": "groundedness",
+            "score": 0.0,
+            "comment": "No answer provided",
+        }
 
     if not evidence:
         # Check if answer admits no data found
-        if any(phrase in answer.lower() for phrase in ["no data", "couldn't find", "not found"]):
-            return {"key": "groundedness", "score": 1.0, "comment": "Correctly indicated no evidence"}
-        return {"key": "groundedness", "score": 0.5, "comment": "Answer provided without evidence"}
+        if any(
+            phrase in answer.lower()
+            for phrase in ["no data", "couldn't find", "not found"]
+        ):
+            return {
+                "key": "groundedness",
+                "score": 1.0,
+                "comment": "Correctly indicated no evidence",
+            }
+        return {
+            "key": "groundedness",
+            "score": 0.5,
+            "comment": "Answer provided without evidence",
+        }
 
     # Check if monetary amounts in answer appear in evidence
     import re
-    amounts_in_answer = re.findall(r'\$?(\d+\.?\d*)', answer)
+
+    amounts_in_answer = re.findall(r"\$?(\d+\.?\d*)", answer)
 
     evidence_text = json.dumps(evidence)
-    grounded_amounts = sum(1 for amt in amounts_in_answer if amt in evidence_text)
+    grounded_amounts = sum(
+        1 for amt in amounts_in_answer if amt in evidence_text
+    )
 
     if amounts_in_answer:
         score = grounded_amounts / len(amounts_in_answer)
-        reasoning.append(f"{grounded_amounts}/{len(amounts_in_answer)} amounts found in evidence")
+        reasoning.append(
+            f"{grounded_amounts}/{len(amounts_in_answer)} amounts found in evidence"
+        )
 
     return {
         "key": "groundedness",
         "score": score,
-        "comment": "; ".join(reasoning) if reasoning else "Answer appears grounded",
+        "comment": (
+            "; ".join(reasoning) if reasoning else "Answer appears grounded"
+        ),
     }
 
 
@@ -165,14 +200,20 @@ def retrieval_relevance_evaluator(run: Run, example: Example) -> dict:
     if run.child_runs:
         for child in run.child_runs:
             if child.run_type == "tool":
-                tool_calls.append({
-                    "name": child.name,
-                    "inputs": child.inputs,
-                    "outputs": child.outputs,
-                })
+                tool_calls.append(
+                    {
+                        "name": child.name,
+                        "inputs": child.inputs,
+                        "outputs": child.outputs,
+                    }
+                )
 
     if not tool_calls:
-        return {"key": "retrieval_relevance", "score": 0.5, "comment": "No tool calls found"}
+        return {
+            "key": "retrieval_relevance",
+            "score": 0.5,
+            "comment": "No tool calls found",
+        }
 
     # Check if search queries relate to the question
     question_lower = question.lower()
@@ -192,7 +233,11 @@ def retrieval_relevance_evaluator(run: Run, example: Example) -> dict:
                 relevant_searches += 1
 
     if total_searches == 0:
-        return {"key": "retrieval_relevance", "score": 0.7, "comment": "No search calls (may be aggregation query)"}
+        return {
+            "key": "retrieval_relevance",
+            "score": 0.7,
+            "comment": "No search calls (may be aggregation query)",
+        }
 
     score = relevant_searches / total_searches
     return {
@@ -206,10 +251,16 @@ def tool_choice_evaluator(run: Run, example: Example) -> dict:
     """
     Evaluate if the agent chose appropriate tools for the task.
     """
-    expected_tools = example.outputs.get("expected_tools", []) if example.outputs else []
+    expected_tools = (
+        example.outputs.get("expected_tools", []) if example.outputs else []
+    )
 
     if not expected_tools:
-        return {"key": "tool_choice", "score": 1.0, "comment": "No expected tools specified"}
+        return {
+            "key": "tool_choice",
+            "score": 1.0,
+            "comment": "No expected tools specified",
+        }
 
     # Extract actual tool names from run
     actual_tools = set()
@@ -223,7 +274,11 @@ def tool_choice_evaluator(run: Run, example: Example) -> dict:
     matched = actual_tools & expected_set
 
     if not expected_set:
-        return {"key": "tool_choice", "score": 1.0, "comment": "No expected tools"}
+        return {
+            "key": "tool_choice",
+            "score": 1.0,
+            "comment": "No expected tools",
+        }
 
     score = len(matched) / len(expected_set)
     missing = expected_set - actual_tools
@@ -254,15 +309,23 @@ def loop_detection_evaluator(run: Run, example: Example) -> dict:
     MAX_REASONABLE_CALLS = 15
 
     if not run.child_runs:
-        return {"key": "loop_detection", "score": 1.0, "comment": "No child runs"}
+        return {
+            "key": "loop_detection",
+            "score": 1.0,
+            "comment": "No child runs",
+        }
 
     tool_calls = []
     for child in run.child_runs:
         if child.run_type == "tool":
-            tool_calls.append({
-                "name": child.name,
-                "inputs_hash": hash(json.dumps(child.inputs, sort_keys=True, default=str)),
-            })
+            tool_calls.append(
+                {
+                    "name": child.name,
+                    "inputs_hash": hash(
+                        json.dumps(child.inputs, sort_keys=True, default=str)
+                    ),
+                }
+            )
 
     total_calls = len(tool_calls)
 
@@ -302,15 +365,27 @@ def answer_correctness_evaluator(run: Run, example: Example) -> dict:
     """
     Check if the answer contains expected values.
     """
-    expected_contains = example.outputs.get("expected_answer_contains", []) if example.outputs else []
+    expected_contains = (
+        example.outputs.get("expected_answer_contains", [])
+        if example.outputs
+        else []
+    )
 
     if not expected_contains:
-        return {"key": "answer_correctness", "score": 1.0, "comment": "No expected values specified"}
+        return {
+            "key": "answer_correctness",
+            "score": 1.0,
+            "comment": "No expected values specified",
+        }
 
     answer = run.outputs.get("answer", "") if run.outputs else ""
 
     if not answer:
-        return {"key": "answer_correctness", "score": 0.0, "comment": "No answer provided"}
+        return {
+            "key": "answer_correctness",
+            "score": 0.0,
+            "comment": "No answer provided",
+        }
 
     found = sum(1 for val in expected_contains if val in answer)
     score = found / len(expected_contains)
@@ -324,6 +399,9 @@ def answer_correctness_evaluator(run: Run, example: Example) -> dict:
 
 def run_evaluation(env: str, model: str):
     """Run evaluation on the golden dataset."""
+    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_dynamo.data._pulumi import load_env, load_secrets
+
     from receipt_agent.agents.question_answering import (
         answer_question_sync,
         create_qa_graph,
@@ -333,8 +411,6 @@ def run_evaluation(env: str, model: str):
         create_dynamo_client,
         create_embed_fn,
     )
-    from receipt_chroma.data.chroma_client import ChromaClient
-    from receipt_dynamo.data._pulumi import load_env, load_secrets
 
     # Load environment config
     logger.info("Loading %s environment config...", env.upper())
@@ -343,7 +419,9 @@ def run_evaluation(env: str, model: str):
 
     # Merge secrets into config
     for key, value in secrets.items():
-        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        normalized_key = (
+            key.replace("portfolio:", "").lower().replace("-", "_")
+        )
         config[normalized_key] = value
 
     # Set API keys
@@ -371,10 +449,14 @@ def run_evaluation(env: str, model: str):
     logger.info("Using model: %s", model)
 
     # Create clients
-    dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+    dynamo_client = create_dynamo_client(
+        table_name=config["dynamodb_table_name"]
+    )
 
     chroma_cloud_api_key = config.get("chroma_cloud_api_key")
-    chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
+    chroma_cloud_enabled = (
+        config.get("chroma_cloud_enabled", "false").lower() == "true"
+    )
 
     if chroma_cloud_enabled and chroma_cloud_api_key:
         chroma_client = ChromaClient(
@@ -405,7 +487,9 @@ def run_evaluation(env: str, model: str):
         """The function being evaluated."""
         question = inputs["question"]
         result = answer_question_sync(
-            graph, state_holder, question,
+            graph,
+            state_holder,
+            question,
         )
         return result
 
@@ -431,11 +515,24 @@ def run_evaluation(env: str, model: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate QA agent with LangSmith")
-    parser.add_argument("--env", type=str, choices=["dev", "prod"], help="Environment")
-    parser.add_argument("--model", type=str, default="x-ai/grok-4.1-fast", help="Model to evaluate")
-    parser.add_argument("--create-dataset", action="store_true", help="Create golden dataset")
-    parser.add_argument("--evaluate", action="store_true", help="Run evaluation")
+    parser = argparse.ArgumentParser(
+        description="Evaluate QA agent with LangSmith"
+    )
+    parser.add_argument(
+        "--env", type=str, choices=["dev", "prod"], help="Environment"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="x-ai/grok-4.1-fast",
+        help="Model to evaluate",
+    )
+    parser.add_argument(
+        "--create-dataset", action="store_true", help="Create golden dataset"
+    )
+    parser.add_argument(
+        "--evaluate", action="store_true", help="Run evaluation"
+    )
 
     args = parser.parse_args()
 

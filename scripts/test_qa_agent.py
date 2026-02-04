@@ -39,6 +39,11 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
+from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_dynamo.data._pulumi import load_env, load_secrets
+
 from receipt_agent.agents.question_answering import (
     answer_question_sync,
     create_qa_graph,
@@ -48,10 +53,6 @@ from receipt_agent.clients.factory import (
     create_dynamo_client,
     create_embed_fn,
 )
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
-from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.outputs import LLMResult
 
 
 class CostTrackingCallback(BaseCallbackHandler):
@@ -88,7 +89,9 @@ class CostTrackingCallback(BaseCallbackHandler):
                     cost = cost_details.get("upstream_inference_cost", 0) or 0
                 total_tokens = token_usage.get("total_tokens", 0) or 0
                 prompt_tokens = token_usage.get("prompt_tokens", 0) or 0
-                completion_tokens = token_usage.get("completion_tokens", 0) or 0
+                completion_tokens = (
+                    token_usage.get("completion_tokens", 0) or 0
+                )
 
         # Update local counters
         with self._lock:
@@ -102,15 +105,18 @@ class CostTrackingCallback(BaseCallbackHandler):
         if cost > 0:
             try:
                 from langsmith.run_helpers import get_current_run_tree
+
                 run_tree = get_current_run_tree()
                 if run_tree:
                     # usage_metadata with total_cost is what LangSmith uses for cost tracking
-                    run_tree.set(usage_metadata={
-                        "input_tokens": prompt_tokens,
-                        "output_tokens": completion_tokens,
-                        "total_tokens": total_tokens,
-                        "total_cost": cost,
-                    })
+                    run_tree.set(
+                        usage_metadata={
+                            "input_tokens": prompt_tokens,
+                            "output_tokens": completion_tokens,
+                            "total_tokens": total_tokens,
+                            "total_cost": cost,
+                        }
+                    )
             except Exception as e:
                 # Don't fail if LangSmith integration doesn't work
                 logging.debug("Could not add cost to LangSmith run: %s", e)
@@ -202,7 +208,9 @@ def main():
     # Merge secrets into config (normalize keys: portfolio:KEY -> key)
     for key, value in secrets.items():
         # Remove 'portfolio:' prefix and convert to snake_case
-        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        normalized_key = (
+            key.replace("portfolio:", "").lower().replace("-", "_")
+        )
         config[normalized_key] = value
 
     # Set API keys from secrets if not already in environment
@@ -225,9 +233,13 @@ def main():
         os.environ["LANGSMITH_API_KEY"] = langchain_key
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_PROJECT"] = "question-answering-rag"
-        logger.info("LangSmith tracing ENABLED (project: question-answering-rag)")
+        logger.info(
+            "LangSmith tracing ENABLED (project: question-answering-rag)"
+        )
     else:
-        logger.warning("LANGCHAIN_API_KEY not found - LangSmith tracing disabled")
+        logger.warning(
+            "LANGCHAIN_API_KEY not found - LangSmith tracing disabled"
+        )
 
     # Set OpenRouter model from args
     os.environ["OPENROUTER_MODEL"] = args.model
@@ -244,17 +256,24 @@ def main():
 
     # Create clients
     logger.info("Creating clients...")
-    dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+    dynamo_client = create_dynamo_client(
+        table_name=config["dynamodb_table_name"]
+    )
 
     # Check for Chroma Cloud config first
     chroma_cloud_api_key = config.get("chroma_cloud_api_key")
     chroma_cloud_tenant = config.get("chroma_cloud_tenant")
     chroma_cloud_database = config.get("chroma_cloud_database")
-    chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
+    chroma_cloud_enabled = (
+        config.get("chroma_cloud_enabled", "false").lower() == "true"
+    )
 
     if chroma_cloud_enabled and chroma_cloud_api_key:
-        logger.info("Using Chroma Cloud: tenant=%s, database=%s",
-                    chroma_cloud_tenant, chroma_cloud_database)
+        logger.info(
+            "Using Chroma Cloud: tenant=%s, database=%s",
+            chroma_cloud_tenant,
+            chroma_cloud_database,
+        )
         try:
             chroma_client = ChromaClient(
                 cloud_api_key=chroma_cloud_api_key,
@@ -312,7 +331,9 @@ def main():
         cost_callback.reset()
 
         result = answer_question_sync(
-            graph, state_holder, question,
+            graph,
+            state_holder,
+            question,
             callbacks=[cost_callback],
         )
 
@@ -330,7 +351,9 @@ def main():
         stats = cost_callback.get_stats()
         print(f"\n--- Cost ---")
         print(f"LLM Calls: {stats['llm_calls']}")
-        print(f"Tokens: {stats['total_tokens']} (prompt: {stats['prompt_tokens']}, completion: {stats['completion_tokens']})")
+        print(
+            f"Tokens: {stats['total_tokens']} (prompt: {stats['prompt_tokens']}, completion: {stats['completion_tokens']})"
+        )
         print(f"Cost: ${stats['total_cost']:.6f}")
 
         return result
@@ -350,7 +373,11 @@ def main():
         print("Summary")
         print(f"{'=' * 60}")
         for r in results:
-            answer = r["result"]["answer"][:80] + "..." if len(r["result"]["answer"]) > 80 else r["result"]["answer"]
+            answer = (
+                r["result"]["answer"][:80] + "..."
+                if len(r["result"]["answer"]) > 80
+                else r["result"]["answer"]
+            )
             print(f"Q: {r['question'][:50]}...")
             print(f"A: {answer}")
             print()

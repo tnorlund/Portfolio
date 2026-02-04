@@ -36,19 +36,20 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
+# Removed get_settings import - using enhanced graph with defaults
+from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_dynamo.data._pulumi import load_env, load_secrets
+
 from receipt_agent.agents.question_answering.graph import (
     answer_question,
     create_qa_graph,
 )
-from scripts.test_qa_agent import CostTrackingCallback
 from receipt_agent.clients.factory import (
     create_chroma_client,
     create_dynamo_client,
     create_embed_fn,
 )
-# Removed get_settings import - using enhanced graph with defaults
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
+from scripts.test_qa_agent import CostTrackingCallback
 
 # Configure logging
 logging.basicConfig(
@@ -114,15 +115,19 @@ class QuestionResult:
 _semaphore: Optional[asyncio.Semaphore] = None
 
 
-def setup_langsmith_tracing(config: dict, secrets: dict, project_name: str = "question-answering-marquee") -> None:
+def setup_langsmith_tracing(
+    config: dict,
+    secrets: dict,
+    project_name: str = "question-answering-marquee",
+) -> None:
     """Set up LangSmith tracing environment variables."""
     # Enable tracing
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
     # Set API key
-    langchain_api_key = secrets.get("portfolio:LANGCHAIN_API_KEY") or secrets.get(
-        "LANGCHAIN_API_KEY"
-    )
+    langchain_api_key = secrets.get(
+        "portfolio:LANGCHAIN_API_KEY"
+    ) or secrets.get("LANGCHAIN_API_KEY")
     if langchain_api_key:
         os.environ["LANGCHAIN_API_KEY"] = langchain_api_key
         os.environ["LANGSMITH_API_KEY"] = langchain_api_key
@@ -167,7 +172,9 @@ async def run_question_with_own_graph(
             )
 
             result = await answer_question(
-                graph, state_holder, question,
+                graph,
+                state_holder,
+                question,
                 callbacks=[cost_callback],
             )
             duration = time.time() - start_time
@@ -177,7 +184,10 @@ async def run_question_with_own_graph(
 
             logger.info(
                 "Question %d/%d completed in %.1fs (cost: $%.6f)",
-                index, total, duration, stats["total_cost"]
+                index,
+                total,
+                duration,
+                stats["total_cost"],
             )
             return QuestionResult(
                 question=question,
@@ -192,7 +202,9 @@ async def run_question_with_own_graph(
             )
         except Exception as e:
             duration = time.time() - start_time
-            logger.error("Error running question %d '%s': %s", index, question[:50], e)
+            logger.error(
+                "Error running question %d '%s': %s", index, question[:50], e
+            )
             return QuestionResult(
                 question=question,
                 answer=f"Error: {str(e)}",
@@ -208,14 +220,18 @@ def print_result(result: QuestionResult, index: int) -> None:
     print(f"\n{'='*70}")
     print(f"Question {index}: {result.question}")
     print(f"{'='*70}")
-    print(f"Answer: {result.answer[:500]}{'...' if len(result.answer) > 500 else ''}")
+    print(
+        f"Answer: {result.answer[:500]}{'...' if len(result.answer) > 500 else ''}"
+    )
 
     if result.total_amount is not None:
         print(f"Total Amount: ${result.total_amount:.2f}")
 
     print(f"Receipt Count: {result.receipt_count}")
     print(f"Duration: {result.duration_seconds:.1f}s")
-    print(f"Cost: ${result.cost:.6f} ({result.llm_calls} calls, {result.tokens} tokens)")
+    print(
+        f"Cost: ${result.cost:.6f} ({result.llm_calls} calls, {result.tokens} tokens)"
+    )
 
     if result.error:
         print(f"Error: {result.error}")
@@ -229,7 +245,9 @@ def print_summary(results: list[QuestionResult]) -> None:
 
     total_questions = len(results)
     errors = sum(1 for r in results if r.error)
-    answered = sum(1 for r in results if not r.error and "Error" not in r.answer)
+    answered = sum(
+        1 for r in results if not r.error and "Error" not in r.answer
+    )
     with_amounts = sum(1 for r in results if r.total_amount is not None)
 
     avg_duration = sum(r.duration_seconds for r in results) / total_questions
@@ -260,11 +278,15 @@ def print_summary(results: list[QuestionResult]) -> None:
     print("-" * 85)
 
     for i, r in enumerate(results, 1):
-        q_short = r.question[:37] + "..." if len(r.question) > 40 else r.question
+        q_short = (
+            r.question[:37] + "..." if len(r.question) > 40 else r.question
+        )
         amount = f"${r.total_amount:.2f}" if r.total_amount else "-"
         cost_str = f"${r.cost:.4f}" if r.cost > 0 else "-"
         status = " ERR" if r.error else ""
-        print(f"{i:<3} {q_short:<40} {amount:<10} {r.duration_seconds:.1f}s  {cost_str:<10}{status}")
+        print(
+            f"{i:<3} {q_short:<40} {amount:<10} {r.duration_seconds:.1f}s  {cost_str:<10}{status}"
+        )
 
 
 def main():
@@ -328,7 +350,9 @@ def main():
 
     # Merge secrets into config for API keys
     for key, value in secrets.items():
-        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        normalized_key = (
+            key.replace("portfolio:", "").lower().replace("-", "_")
+        )
         config[normalized_key] = value
 
     # Set OpenRouter API key
@@ -355,13 +379,17 @@ def main():
 
     # Create clients
     logger.info("Creating clients...")
-    dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+    dynamo_client = create_dynamo_client(
+        table_name=config["dynamodb_table_name"]
+    )
 
     # Check for Chroma Cloud config
     chroma_cloud_api_key = config.get("chroma_cloud_api_key")
     chroma_cloud_tenant = config.get("chroma_cloud_tenant")
     chroma_cloud_database = config.get("chroma_cloud_database")
-    chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
+    chroma_cloud_enabled = (
+        config.get("chroma_cloud_enabled", "false").lower() == "true"
+    )
 
     if chroma_cloud_enabled and chroma_cloud_api_key:
         logger.info("Using Chroma Cloud")
@@ -391,7 +419,9 @@ def main():
     print(f"Model: {args.model}")
     print(f"Tracing: {os.environ.get('LANGCHAIN_TRACING_V2')}")
     print(f"Concurrency: {args.concurrency}")
-    print(f"Mode: 5-node ReAct RAG (plan -> agent <-> tools -> shape -> synthesize)")
+    print(
+        f"Mode: 5-node ReAct RAG (plan -> agent <-> tools -> shape -> synthesize)"
+    )
 
     # Run all questions in parallel
     async def run_all_questions():
@@ -412,7 +442,9 @@ def main():
 
         return await asyncio.gather(*tasks)
 
-    logger.info("Starting parallel execution with concurrency=%d", args.concurrency)
+    logger.info(
+        "Starting parallel execution with concurrency=%d", args.concurrency
+    )
     start_time = time.time()
     results = asyncio.run(run_all_questions())
     wall_time = time.time() - start_time

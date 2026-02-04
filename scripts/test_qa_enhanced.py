@@ -37,6 +37,9 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
+from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_dynamo.data._pulumi import load_env, load_secrets
+
 from receipt_agent.agents.question_answering.graph import (
     answer_question,
     create_qa_graph,
@@ -47,8 +50,6 @@ from receipt_agent.clients.factory import (
     create_embed_fn,
 )
 from receipt_agent.config.settings import get_settings
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 # Configure logging
 logging.basicConfig(
@@ -114,15 +115,17 @@ class QuestionResult:
 _semaphore: Optional[asyncio.Semaphore] = None
 
 
-def setup_langsmith_tracing(config: dict, secrets: dict, project_name: str) -> None:
+def setup_langsmith_tracing(
+    config: dict, secrets: dict, project_name: str
+) -> None:
     """Set up LangSmith tracing environment variables."""
     # Enable tracing
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
     # Set API key
-    langchain_api_key = secrets.get("portfolio:LANGCHAIN_API_KEY") or secrets.get(
-        "LANGCHAIN_API_KEY"
-    )
+    langchain_api_key = secrets.get(
+        "portfolio:LANGCHAIN_API_KEY"
+    ) or secrets.get("LANGCHAIN_API_KEY")
     if langchain_api_key:
         os.environ["LANGCHAIN_API_KEY"] = langchain_api_key
         logger.info("LangSmith tracing enabled with API key from Pulumi")
@@ -174,9 +177,13 @@ async def run_question_with_enhanced_graph(
             if classification:
                 if isinstance(classification, dict):
                     question_type = classification.get("question_type")
-                    retrieval_strategy = classification.get("retrieval_strategy")
+                    retrieval_strategy = classification.get(
+                        "retrieval_strategy"
+                    )
                 else:
-                    question_type = getattr(classification, "question_type", None)
+                    question_type = getattr(
+                        classification, "question_type", None
+                    )
                     retrieval_strategy = getattr(
                         classification, "retrieval_strategy", None
                     )
@@ -209,7 +216,9 @@ async def run_question_with_enhanced_graph(
             )
         except Exception as e:
             duration = time.time() - start_time
-            logger.error("Error running question %d '%s': %s", index, question[:50], e)
+            logger.error(
+                "Error running question %d '%s': %s", index, question[:50], e
+            )
             import traceback
 
             traceback.print_exc()
@@ -233,7 +242,9 @@ def print_result(result: QuestionResult, index: int) -> None:
     print(f"{'='*70}")
     print(f"Type: {result.question_type or 'N/A'}")
     print(f"Strategy: {result.retrieval_strategy or 'N/A'}")
-    print(f"Answer: {result.answer[:500]}{'...' if len(result.answer) > 500 else ''}")
+    print(
+        f"Answer: {result.answer[:500]}{'...' if len(result.answer) > 500 else ''}"
+    )
 
     if result.total_amount is not None:
         print(f"Total Amount: ${result.total_amount:.2f}")
@@ -254,7 +265,9 @@ def print_summary(results: list[QuestionResult]) -> None:
 
     total_questions = len(results)
     errors = sum(1 for r in results if r.error)
-    answered = sum(1 for r in results if not r.error and "Error" not in r.answer)
+    answered = sum(
+        1 for r in results if not r.error and "Error" not in r.answer
+    )
     with_amounts = sum(1 for r in results if r.total_amount is not None)
 
     avg_duration = sum(r.duration_seconds for r in results) / total_questions
@@ -289,7 +302,9 @@ def print_summary(results: list[QuestionResult]) -> None:
     print("-" * 80)
 
     for i, r in enumerate(results, 1):
-        q_short = r.question[:32] + "..." if len(r.question) > 35 else r.question
+        q_short = (
+            r.question[:32] + "..." if len(r.question) > 35 else r.question
+        )
         amount = f"${r.total_amount:.2f}" if r.total_amount else "-"
         q_type = (r.question_type or "?")[:10]
         status = "ERR" if r.error else ""
@@ -353,7 +368,9 @@ def main():
 
     # Merge secrets into config for API keys
     for key, value in secrets.items():
-        normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+        normalized_key = (
+            key.replace("portfolio:", "").lower().replace("-", "_")
+        )
         config[normalized_key] = value
 
     # Set OpenRouter API key
@@ -375,13 +392,17 @@ def main():
 
     # Create clients
     logger.info("Creating clients...")
-    dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
+    dynamo_client = create_dynamo_client(
+        table_name=config["dynamodb_table_name"]
+    )
 
     # Check for Chroma Cloud config
     chroma_cloud_api_key = config.get("chroma_cloud_api_key")
     chroma_cloud_tenant = config.get("chroma_cloud_tenant")
     chroma_cloud_database = config.get("chroma_cloud_database")
-    chroma_cloud_enabled = config.get("chroma_cloud_enabled", "false").lower() == "true"
+    chroma_cloud_enabled = (
+        config.get("chroma_cloud_enabled", "false").lower() == "true"
+    )
 
     if chroma_cloud_enabled and chroma_cloud_api_key:
         logger.info("Using Chroma Cloud")
@@ -414,7 +435,9 @@ def main():
     print(f"Project: {args.project}")
     print(f"Tracing: {os.environ.get('LANGCHAIN_TRACING_V2')}")
     print(f"Concurrency: {args.concurrency}")
-    print(f"Workflow: 5-node ReAct RAG (plan → agent ⟷ tools → shape → synthesize)")
+    print(
+        f"Workflow: 5-node ReAct RAG (plan → agent ⟷ tools → shape → synthesize)"
+    )
     print(f"{'='*70}")
 
     # Run all questions in parallel
@@ -438,7 +461,8 @@ def main():
         return await asyncio.gather(*tasks)
 
     logger.info(
-        "Starting enhanced ReAct RAG execution with concurrency=%d", args.concurrency
+        "Starting enhanced ReAct RAG execution with concurrency=%d",
+        args.concurrency,
     )
     start_time = time.time()
     results = asyncio.run(run_all_questions())
