@@ -260,9 +260,23 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
     setMeasuredHeight(0);
   }, [showAnswer, questionIndex]);
 
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const lastSpringHeight = React.useRef(0);
+
   const answerHeightSpring = useSpring({
-    height: measuredHeight > 0 ? measuredHeight : 60,
+    height: measuredHeight,
     config: config.gentle,
+    onChange: (result: { value: { height: number } }) => {
+      const h = result.value.height;
+      const delta = h - lastSpringHeight.current;
+      lastSpringHeight.current = h;
+      if (delta !== 0 && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.bottom < 0) {
+          window.scrollBy(0, delta);
+        }
+      }
+    },
   });
 
   // Compute flame-graph bar target (cumulative width% through the current step)
@@ -684,6 +698,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
 
               return (
                 <animated.div
+                  ref={containerRef}
                   style={{
                     ...answerHeightSpring,
                     overflow: "hidden",
@@ -768,31 +783,6 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
         );
       })()}
 
-      {/* Controls */}
-      <div style={{ textAlign: "center", marginTop: "0.75rem" }}>
-        <button
-          onClick={() => {
-            if (isPlaying) {
-              setIsPlaying(false);
-            } else {
-              setActiveStep(-1);
-              setIsPlaying(true);
-            }
-          }}
-          style={{
-            padding: "0.3rem 0.6rem",
-            fontSize: "0.7rem",
-            backgroundColor: "transparent",
-            border: "1px solid var(--text-color)",
-            borderRadius: "4px",
-            color: "var(--text-color)",
-            cursor: "pointer",
-            opacity: 0.5,
-          }}
-        >
-          {isPlaying ? "⏸ Pause" : "▶ Replay"}
-        </button>
-      </div>
     </div>
   );
 };
