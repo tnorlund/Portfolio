@@ -12,6 +12,7 @@ from receipt_langsmith.parsers.parquet import ParquetReader
 # Label validation helpers (receipt-label-validation project)
 from receipt_langsmith.parsers.trace_helpers import (
     LabelValidationTraceIndex,
+    S3ResultKey,
     TraceIndex,
     build_evaluator_result,
     build_geometric_from_trace,
@@ -48,6 +49,7 @@ __all__ = [
     "get_duration_seconds",
     "get_relative_timing",
     "load_s3_result",
+    "S3ResultKey",
     "build_evaluator_result",
     "build_geometric_result",
     "build_geometric_from_trace",

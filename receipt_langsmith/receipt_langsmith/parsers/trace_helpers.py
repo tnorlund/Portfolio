@@ -10,6 +10,7 @@ This module provides reusable utilities for common trace operations:
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -23,6 +24,35 @@ from receipt_langsmith.entities.visualization import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class S3ResultKey:
+    """S3 key components for evaluator result JSON."""
+
+    bucket: str
+    result_type: str
+    execution_id: str
+    image_id: str
+    receipt_id: int
+
+    @classmethod
+    def from_legacy(
+        cls,
+        bucket: str,
+        result_type: str,
+        execution_id: str,
+        image_id: str,
+        receipt_id: int,
+    ) -> "S3ResultKey":
+        """Build from legacy positional arguments."""
+        return cls(
+            bucket=bucket,
+            result_type=result_type,
+            execution_id=execution_id,
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
 
 
 class TraceIndex:
@@ -244,30 +274,48 @@ def get_relative_timing(
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def load_s3_result(
     s3_client: Any,
-    bucket: str,
-    result_type: str,
-    execution_id: str,
-    image_id: str,
-    receipt_id: int,
+    key: S3ResultKey | str,
+    *legacy: Any,
 ) -> dict[str, Any] | None:
     """Load evaluation result from S3 batch bucket.
 
     Args:
         s3_client: Boto3 S3 client.
-        bucket: S3 bucket name.
-        result_type: Type folder (currency, metadata, financial, results).
-        execution_id: Step Function execution ID.
-        image_id: Receipt image ID.
-        receipt_id: Receipt ID within image.
+        key: S3ResultKey or legacy bucket string.
+        legacy: Legacy positional args (result_type, execution_id, image_id,
+            receipt_id) when bucket is passed positionally.
 
     Returns:
         Parsed JSON dict or None if not found.
     """
-    # pylint: enable=too-many-arguments,too-many-positional-arguments
-    key = f"{result_type}/{execution_id}/{image_id}_{receipt_id}.json"
+    if isinstance(key, S3ResultKey):
+        result_key = key
+    else:
+        if not isinstance(key, str) or len(legacy) != 4:
+            raise TypeError(
+                "load_s3_result expects S3ResultKey or legacy signature "
+                "(bucket, result_type, execution_id, image_id, receipt_id)"
+            )
+        bucket = key
+        result_type, execution_id, image_id, receipt_id = legacy
+        result_key = S3ResultKey.from_legacy(
+            bucket=str(bucket),
+            result_type=str(result_type),
+            execution_id=str(execution_id),
+            image_id=str(image_id),
+            receipt_id=int(receipt_id),
+        )
+
+    key = (
+        f"{result_key.result_type}/{result_key.execution_id}/"
+        f"{result_key.image_id}_{result_key.receipt_id}.json"
+    )
 
     try:
-        response = s3_client.get_object(Bucket=bucket, Key=key)
+        response = s3_client.get_object(
+            Bucket=result_key.bucket,
+            Key=key,
+        )
         payload = response["Body"].read().decode("utf-8")
         data = json.loads(payload)
         return data if isinstance(data, dict) else None
@@ -279,7 +327,12 @@ def load_s3_result(
         json.JSONDecodeError,
         UnicodeDecodeError,
     ):
-        logger.debug("Failed to load s3://%s/%s", bucket, key, exc_info=True)
+        logger.debug(
+            "Failed to load s3://%s/%s",
+            result_key.bucket,
+            key,
+            exc_info=True,
+        )
         return None
 
 
