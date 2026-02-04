@@ -99,7 +99,9 @@ class QARunMetadata:
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     question: str = ""
     question_type: Optional[str] = None
-    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    start_time: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     end_time: Optional[datetime] = None
     duration_ms: Optional[float] = None
 
@@ -124,7 +126,9 @@ class QARunMetadata:
             "run_id": self.run_id,
             "question": self.question,
             "question_type": self.question_type,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "start_time": (
+                self.start_time.isoformat() if self.start_time else None
+            ),
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "duration_ms": self.duration_ms,
             "retrieval_strategy": self.retrieval_strategy,
@@ -185,7 +189,11 @@ class QARunContext:
                     run_type="chain",
                     project_name=self.project,
                     inputs={"question": self.metadata.question},
-                    extra={"metadata": {"question_type": self.metadata.question_type}},
+                    extra={
+                        "metadata": {
+                            "question_type": self.metadata.question_type
+                        }
+                    },
                 )
             except Exception as e:
                 logger.warning("Failed to create LangSmith run: %s", e)
@@ -330,7 +338,9 @@ def trace_qa_run(
                 start = datetime.now(timezone.utc)
                 try:
                     result = fn(*args, **kwargs)
-                    duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+                    duration = (
+                        datetime.now(timezone.utc) - start
+                    ).total_seconds() * 1000
                     logger.info(
                         "QA trace [%s]: duration=%.1fms, success=True",
                         trace_name,
@@ -338,7 +348,9 @@ def trace_qa_run(
                     )
                     return result
                 except Exception as e:
-                    duration = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+                    duration = (
+                        datetime.now(timezone.utc) - start
+                    ).total_seconds() * 1000
                     logger.error(
                         "QA trace [%s]: duration=%.1fms, error=%s",
                         trace_name,
@@ -498,7 +510,9 @@ def log_qa_example_to_dataset(
             },
         )
 
-        logger.info("Added example to dataset %s: %s", dataset_name, question[:50])
+        logger.info(
+            "Added example to dataset %s: %s", dataset_name, question[:50]
+        )
         return True
 
     except Exception as e:
@@ -543,19 +557,23 @@ def trace_qa_batch(
 
         def record_result(self, question: str, result: dict) -> None:
             """Record a successful result."""
-            self.results.append({
-                "question": question,
-                "answer": result.get("answer"),
-                "total_amount": result.get("total_amount"),
-                "receipt_count": result.get("receipt_count"),
-            })
+            self.results.append(
+                {
+                    "question": question,
+                    "answer": result.get("answer"),
+                    "total_amount": result.get("total_amount"),
+                    "receipt_count": result.get("receipt_count"),
+                }
+            )
 
         def record_error(self, question: str, error: str) -> None:
             """Record an error."""
-            self.errors.append({
-                "question": question,
-                "error": error,
-            })
+            self.errors.append(
+                {
+                    "question": question,
+                    "error": error,
+                }
+            )
 
         @property
         def success_rate(self) -> float:

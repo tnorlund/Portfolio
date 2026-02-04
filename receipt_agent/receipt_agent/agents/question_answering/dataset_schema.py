@@ -35,7 +35,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ==============================================================================
 # Receipt Identifier
 # ==============================================================================
@@ -61,10 +60,9 @@ class ReceiptIdentifier(BaseModel):
         if isinstance(other, tuple):
             return (self.image_id, self.receipt_id) == other
         if isinstance(other, dict):
-            return (
-                self.image_id == other.get("image_id")
-                and self.receipt_id == other.get("receipt_id")
-            )
+            return self.image_id == other.get(
+                "image_id"
+            ) and self.receipt_id == other.get("receipt_id")
         return False
 
 
@@ -389,10 +387,12 @@ class QARAGDatasetExample(BaseModel):
         relevant_ids = []
         for e in result.get("evidence", []):
             if e.get("image_id") and e.get("receipt_id") is not None:
-                relevant_ids.append(ReceiptIdentifier(
-                    image_id=e["image_id"],
-                    receipt_id=e["receipt_id"],
-                ))
+                relevant_ids.append(
+                    ReceiptIdentifier(
+                        image_id=e["image_id"],
+                        receipt_id=e["receipt_id"],
+                    )
+                )
 
         # Deduplicate
         seen = set()
@@ -471,7 +471,9 @@ def parse_from_langsmith_dataset(
             reference_outputs=QARAGDatasetReference(
                 expected_answer=outputs_data.get("expected_answer"),
                 expected_amount=outputs_data.get("expected_amount"),
-                expected_receipt_count=outputs_data.get("expected_receipt_count"),
+                expected_receipt_count=outputs_data.get(
+                    "expected_receipt_count"
+                ),
                 relevant_receipt_ids=relevant_ids,
                 expected_tools=outputs_data.get("expected_tools", []),
                 difficulty=outputs_data.get("difficulty", "medium"),

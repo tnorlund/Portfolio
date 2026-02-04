@@ -97,10 +97,15 @@ def infer_question_type(question: str) -> str:
     if any(word in q_lower for word in ["show", "list", "all", "every"]):
         return "list_query"
 
-    if any(word in q_lower for word in ["when", "date", "week", "month", "year"]):
+    if any(
+        word in q_lower for word in ["when", "date", "week", "month", "year"]
+    ):
         return "time_based"
 
-    if any(word in q_lower for word in ["which", "what store", "merchant", "where"]):
+    if any(
+        word in q_lower
+        for word in ["which", "what store", "merchant", "where"]
+    ):
         return "metadata_query"
 
     if "compare" in q_lower or "vs" in q_lower or "difference" in q_lower:
@@ -122,7 +127,10 @@ def infer_difficulty(question: str, receipt_count: int) -> str:
     q_lower = question.lower()
 
     # Hard: comparisons, complex aggregations, time-based
-    if any(word in q_lower for word in ["compare", "vs", "difference", "most", "least"]):
+    if any(
+        word in q_lower
+        for word in ["compare", "vs", "difference", "most", "least"]
+    ):
         return "hard"
 
     if receipt_count > 5:
@@ -211,7 +219,9 @@ def create_example_from_result(
         return None
 
     # Get or infer question type
-    question_type = result.get("question_type") or infer_question_type(question)
+    question_type = result.get("question_type") or infer_question_type(
+        question
+    )
 
     # Extract evidence to get relevant receipts
     relevant_ids = []
@@ -253,7 +263,9 @@ def create_example_from_result(
     return example
 
 
-def interactive_review(example: QARAGDatasetExample) -> Optional[QARAGDatasetExample]:
+def interactive_review(
+    example: QARAGDatasetExample,
+) -> Optional[QARAGDatasetExample]:
     """Interactive review and editing of an example.
 
     Args:
@@ -293,7 +305,9 @@ def interactive_review(example: QARAGDatasetExample) -> Optional[QARAGDatasetExa
         ).strip()
         if new_count:
             try:
-                example.reference_outputs.expected_receipt_count = int(new_count)
+                example.reference_outputs.expected_receipt_count = int(
+                    new_count
+                )
             except ValueError:
                 pass
 
@@ -369,7 +383,12 @@ def upload_to_langsmith(
             except Exception as e:
                 logger.error("Failed to upload example: %s", e)
 
-        logger.info("Uploaded %d/%d examples to %s", uploaded, len(examples), dataset_name)
+        logger.info(
+            "Uploaded %d/%d examples to %s",
+            uploaded,
+            len(examples),
+            dataset_name,
+        )
         return uploaded > 0
 
     except ImportError:
@@ -482,11 +501,17 @@ def main():
     # Filter if requested
     if args.filter_type:
         results = [
-            r for r in results
-            if (r.get("question_type") or infer_question_type(r.get("question", "")))
+            r
+            for r in results
+            if (
+                r.get("question_type")
+                or infer_question_type(r.get("question", ""))
+            )
             == args.filter_type
         ]
-        logger.info("Filtered to %d results of type %s", len(results), args.filter_type)
+        logger.info(
+            "Filtered to %d results of type %s", len(results), args.filter_type
+        )
 
     # Build examples
     mode = "auto" if args.auto else "interactive"

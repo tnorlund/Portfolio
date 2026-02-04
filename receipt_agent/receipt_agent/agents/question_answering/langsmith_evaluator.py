@@ -60,14 +60,18 @@ class RetrievalMetrics:
         """Precision = TP / (TP + FP)."""
         if self.true_positives + self.false_positives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_positives)
+        return self.true_positives / (
+            self.true_positives + self.false_positives
+        )
 
     @property
     def recall(self) -> float:
         """Recall = TP / (TP + FN)."""
         if self.true_positives + self.false_negatives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_negatives)
+        return self.true_positives / (
+            self.true_positives + self.false_negatives
+        )
 
     @property
     def f1_score(self) -> float:
@@ -301,9 +305,11 @@ def answer_groundedness_evaluator(
     # Convert evidence to context format
     contexts = []
     for e in evidence:
-        contexts.append({
-            "text": f"{e.get('item', '')} {e.get('amount', '')}",
-        })
+        contexts.append(
+            {
+                "text": f"{e.get('item', '')} {e.get('amount', '')}",
+            }
+        )
 
     score = _check_groundedness(answer, contexts)
 
@@ -311,8 +317,7 @@ def answer_groundedness_evaluator(
         "key": "groundedness",
         "score": score,
         "comment": (
-            f"Groundedness: {score:.2%} "
-            f"({len(evidence)} evidence items)"
+            f"Groundedness: {score:.2%} " f"({len(evidence)} evidence items)"
         ),
     }
 
@@ -369,7 +374,11 @@ def answer_amount_accuracy_evaluator(
     # Calculate accuracy with tolerance
     if expected_amount == 0:
         if output_amount == 0:
-            return {"key": "amount_accuracy", "score": 1.0, "comment": "Both zero"}
+            return {
+                "key": "amount_accuracy",
+                "score": 1.0,
+                "comment": "Both zero",
+            }
         else:
             return {
                 "key": "amount_accuracy",
@@ -766,7 +775,5 @@ def create_qa_evaluator(
         return list(all_evaluators.values())
 
     return [
-        all_evaluators[name]
-        for name in evaluators
-        if name in all_evaluators
+        all_evaluators[name] for name in evaluators if name in all_evaluators
     ]

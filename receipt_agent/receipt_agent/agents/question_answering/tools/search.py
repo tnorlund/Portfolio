@@ -63,7 +63,8 @@ def create_qa_tools(
         Priority: VALID status, then most recent by timestamp.
         """
         matching = [
-            lb for lb in labels
+            lb
+            for lb in labels
             if lb.line_id == line_id and lb.word_id == word_id
         ]
         if not matching:
@@ -72,14 +73,20 @@ def create_qa_tools(
         # Prefer VALID labels
         valid = [lb for lb in matching if lb.validation_status == "VALID"]
         if valid:
-            valid.sort(key=lambda lb: str(lb.timestamp_added or ""), reverse=True)
+            valid.sort(
+                key=lambda lb: str(lb.timestamp_added or ""), reverse=True
+            )
             return valid[0].label
 
         # Fall back to most recent
-        matching.sort(key=lambda lb: str(lb.timestamp_added or ""), reverse=True)
+        matching.sort(
+            key=lambda lb: str(lb.timestamp_added or ""), reverse=True
+        )
         return matching[0].label
 
-    def _fetch_receipt_details(image_id: str, receipt_id: int) -> Optional[dict]:
+    def _fetch_receipt_details(
+        image_id: str, receipt_id: int
+    ) -> Optional[dict]:
         """Fetch receipt details with structured word/label data.
 
         Returns dict with:
@@ -93,7 +100,10 @@ def create_qa_tools(
         if key in state_holder["fetched_receipt_keys"]:
             # Return existing
             for r in state_holder["retrieved_receipts"]:
-                if r.get("image_id") == image_id and r.get("receipt_id") == receipt_id:
+                if (
+                    r.get("image_id") == image_id
+                    and r.get("receipt_id") == receipt_id
+                ):
                     return r
             return None
 
@@ -109,16 +119,20 @@ def create_qa_tools(
             word_contexts = []
             for word in details.words:
                 centroid = word.calculate_centroid()
-                label = _get_effective_label(details.labels, word.line_id, word.word_id)
-                word_contexts.append({
-                    "text": word.text,
-                    "label": label,
-                    "y": centroid[1],
-                    "x": centroid[0],
-                    "line_id": word.line_id,
-                    "word_id": word.word_id,
-                    "bounding_box": word.bounding_box,
-                })
+                label = _get_effective_label(
+                    details.labels, word.line_id, word.word_id
+                )
+                word_contexts.append(
+                    {
+                        "text": word.text,
+                        "label": label,
+                        "y": centroid[1],
+                        "x": centroid[0],
+                        "line_id": word.line_id,
+                        "word_id": word.word_id,
+                        "bounding_box": word.bounding_box,
+                    }
+                )
 
             if not word_contexts:
                 result = {
@@ -143,7 +157,9 @@ def create_qa_tools(
                 if w["bounding_box"] and w["bounding_box"].get("height")
             ]
             y_tolerance = (
-                max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
+                max(0.01, statistics.median(heights) * 0.75)
+                if heights
+                else 0.015
             )
 
             visual_lines: list[list[dict]] = []
@@ -153,7 +169,9 @@ def create_qa_tools(
             for w in sorted_words[1:]:
                 if abs(w["y"] - current_y) <= y_tolerance:
                     current_line.append(w)
-                    current_y = sum(c["y"] for c in current_line) / len(current_line)
+                    current_y = sum(c["y"] for c in current_line) / len(
+                        current_line
+                    )
                 else:
                     current_line.sort(key=lambda c: c["x"])
                     visual_lines.append(current_line)
@@ -189,14 +207,18 @@ def create_qa_tools(
                 for w in line_words:
                     if w["label"] in currency_labels:
                         try:
-                            amount = float(w["text"].replace("$", "").replace(",", ""))
-                            amounts.append({
-                                "label": w["label"],
-                                "text": w["text"],
-                                "amount": amount,
-                                "line_idx": line_idx,
-                                "word_id": w["word_id"],
-                            })
+                            amount = float(
+                                w["text"].replace("$", "").replace(",", "")
+                            )
+                            amounts.append(
+                                {
+                                    "label": w["label"],
+                                    "text": w["text"],
+                                    "amount": amount,
+                                    "line_idx": line_idx,
+                                    "word_id": w["word_id"],
+                                }
+                            )
                         except ValueError:
                             pass
 
@@ -209,7 +231,9 @@ def create_qa_tools(
                         line_parts.append(f"{w['text']}[{w['label']}]")
                     else:
                         line_parts.append(w["text"])
-                formatted_lines.append(f"Line {line_idx}: {' '.join(line_parts)}")
+                formatted_lines.append(
+                    f"Line {line_idx}: {' '.join(line_parts)}"
+                )
 
             formatted_receipt = "\n".join(formatted_lines)
 
@@ -229,16 +253,20 @@ def create_qa_tools(
             return result
 
         except Exception as e:
-            logger.error("Error fetching receipt %s:%s: %s", image_id, receipt_id, e)
+            logger.error(
+                "Error fetching receipt %s:%s: %s", image_id, receipt_id, e
+            )
             return None
 
     def _track_search(query: str, search_type: str, result_count: int) -> None:
         """Track a search to avoid redundant searches."""
-        state_holder["searches"].append({
-            "query": query,
-            "type": search_type,
-            "result_count": result_count,
-        })
+        state_holder["searches"].append(
+            {
+                "query": query,
+                "type": search_type,
+                "result_count": result_count,
+            }
+        )
 
     @tool
     def search_receipts(
@@ -284,7 +312,10 @@ def create_qa_tools(
                 )
 
                 for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (meta.get("image_id"), meta.get("receipt_id"))
+                    receipt_key = (
+                        meta.get("image_id"),
+                        meta.get("receipt_id"),
+                    )
                     if receipt_key not in unique_receipts:
                         unique_receipts[receipt_key] = {
                             "image_id": meta.get("image_id"),
@@ -311,7 +342,10 @@ def create_qa_tools(
                 )
 
                 for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (meta.get("image_id"), meta.get("receipt_id"))
+                    receipt_key = (
+                        meta.get("image_id"),
+                        meta.get("receipt_id"),
+                    )
                     if receipt_key not in unique_receipts:
                         unique_receipts[receipt_key] = {
                             "image_id": meta.get("image_id"),
@@ -332,7 +366,10 @@ def create_qa_tools(
                 lines_collection = chroma_client.get_collection("lines")
                 query_embeddings = _embed_fn([query])
                 if not query_embeddings or not query_embeddings[0]:
-                    return {"error": "Failed to generate query embedding", "results": []}
+                    return {
+                        "error": "Failed to generate query embedding",
+                        "results": [],
+                    }
 
                 results = lines_collection.query(
                     query_embeddings=query_embeddings,
@@ -344,7 +381,10 @@ def create_qa_tools(
                     for idx, (id_, meta) in enumerate(
                         zip(results["ids"][0], results["metadatas"][0])
                     ):
-                        receipt_key = (meta.get("image_id"), meta.get("receipt_id"))
+                        receipt_key = (
+                            meta.get("image_id"),
+                            meta.get("receipt_id"),
+                        )
                         distance = (
                             results["distances"][0][idx]
                             if results["distances"]
@@ -377,7 +417,10 @@ def create_qa_tools(
                 )
 
                 for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (meta.get("image_id"), meta.get("receipt_id"))
+                    receipt_key = (
+                        meta.get("image_id"),
+                        meta.get("receipt_id"),
+                    )
                     if receipt_key not in unique_receipts:
                         unique_receipts[receipt_key] = {
                             "image_id": meta.get("image_id"),
@@ -399,7 +442,9 @@ def create_qa_tools(
             # Auto-fetch top N receipts
             if search_result and auto_fetch > 0:
                 fetched_count = 0
-                for receipt_info in search_result.get("results", [])[:auto_fetch]:
+                for receipt_info in search_result.get("results", [])[
+                    :auto_fetch
+                ]:
                     image_id = receipt_info.get("image_id")
                     receipt_id = receipt_info.get("receipt_id")
                     if image_id and receipt_id is not None:
@@ -446,7 +491,9 @@ def create_qa_tools(
         """
         result = _fetch_receipt_details(image_id, receipt_id)
         if result is None:
-            return {"error": f"Failed to fetch receipt {image_id}:{receipt_id}"}
+            return {
+                "error": f"Failed to fetch receipt {image_id}:{receipt_id}"
+            }
         return result
 
     @tool
@@ -495,7 +542,10 @@ def create_qa_tools(
                 for idx, (id_, meta) in enumerate(
                     zip(results["ids"][0], results["metadatas"][0])
                 ):
-                    receipt_key = (meta.get("image_id"), meta.get("receipt_id"))
+                    receipt_key = (
+                        meta.get("image_id"),
+                        meta.get("receipt_id"),
+                    )
                     distance = (
                         results["distances"][0][idx]
                         if results["distances"]
@@ -506,18 +556,20 @@ def create_qa_tools(
                     if similarity < min_similarity:
                         continue
 
-                    if receipt_key not in unique_receipts or similarity > unique_receipts[
-                        receipt_key
-                    ].get("similarity", 0):
+                    if (
+                        receipt_key not in unique_receipts
+                        or similarity
+                        > unique_receipts[receipt_key].get("similarity", 0)
+                    ):
                         unique_receipts[receipt_key] = {
                             "image_id": meta.get("image_id"),
                             "receipt_id": meta.get("receipt_id"),
                             "matched_text": meta.get("text", "")[:150],
                             "similarity": round(similarity, 3),
                             "confidence": (
-                                "high" if similarity > 0.7
-                                else "medium" if similarity > 0.5
-                                else "low"
+                                "high"
+                                if similarity > 0.7
+                                else "medium" if similarity > 0.5 else "low"
                             ),
                         }
 
@@ -622,32 +674,44 @@ def create_qa_tools(
                     line_words = words_by_line.get(line_idx, [])
                     # Collect PRODUCT_NAME words or unlabeled words
                     product_words = [
-                        w for w in line_words
+                        w
+                        for w in line_words
                         if w.get("label") == "PRODUCT_NAME"
                     ]
                     if product_words:
-                        product_name = " ".join(w["text"] for w in product_words)
+                        product_name = " ".join(
+                            w["text"] for w in product_words
+                        )
                     else:
                         # Use unlabeled words (excluding price)
                         price_word_id = amt.get("word_id")
                         unlabeled = [
-                            w for w in line_words
+                            w
+                            for w in line_words
                             if w.get("word_id") != price_word_id
-                            and w.get("label") not in (
-                                "TAX", "SUBTOTAL", "GRAND_TOTAL",
-                                "LINE_TOTAL", "UNIT_PRICE",
+                            and w.get("label")
+                            not in (
+                                "TAX",
+                                "SUBTOTAL",
+                                "GRAND_TOTAL",
+                                "LINE_TOTAL",
+                                "UNIT_PRICE",
                             )
                         ]
                         product_name = " ".join(w["text"] for w in unlabeled)
 
-                breakdown.append({
-                    "image_id": receipt.get("image_id"),
-                    "receipt_id": receipt.get("receipt_id"),
-                    "merchant": receipt.get("merchant", "Unknown"),
-                    "amount": amount_value,
-                    "text": amt.get("text"),
-                    "product": product_name.strip() if product_name else None,
-                })
+                breakdown.append(
+                    {
+                        "image_id": receipt.get("image_id"),
+                        "receipt_id": receipt.get("receipt_id"),
+                        "merchant": receipt.get("merchant", "Unknown"),
+                        "amount": amount_value,
+                        "text": amt.get("text"),
+                        "product": (
+                            product_name.strip() if product_name else None
+                        ),
+                    }
+                )
 
         return {
             "label_type": label_type,
@@ -729,10 +793,12 @@ def create_qa_tools(
             last_key = None
 
             while True:
-                places, last_key = dynamo_client.get_receipt_places_by_merchant(
-                    merchant_name=merchant_name,
-                    limit=1000,
-                    last_evaluated_key=last_key,
+                places, last_key = (
+                    dynamo_client.get_receipt_places_by_merchant(
+                        merchant_name=merchant_name,
+                        limit=1000,
+                        last_evaluated_key=last_key,
+                    )
                 )
                 all_places.extend(places)
 
@@ -740,8 +806,7 @@ def create_qa_tools(
                     break
 
             receipts = [
-                [place.image_id, place.receipt_id]
-                for place in all_places
+                [place.image_id, place.receipt_id] for place in all_places
             ]
 
             return {
@@ -780,7 +845,7 @@ def create_qa_tools(
             lines_collection = chroma_client.get_collection("lines")
 
             def extract_price(text: str) -> Optional[float]:
-                matches = re.findall(r'\d+\.\d{2}', text)
+                matches = re.findall(r"\d+\.\d{2}", text)
                 if matches:
                     return float(matches[-1])
                 return None
@@ -830,21 +895,27 @@ def create_qa_tools(
                     if similarity < 0.25:
                         continue
 
-                    items.append({
-                        "text": text,
-                        "price": extract_price(text),
-                        "similarity": round(similarity, 3),
-                        "has_price_label": meta.get("label_LINE_TOTAL", False),
-                        "merchant": meta.get("merchant_name", "Unknown"),
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                    })
+                    items.append(
+                        {
+                            "text": text,
+                            "price": extract_price(text),
+                            "similarity": round(similarity, 3),
+                            "has_price_label": meta.get(
+                                "label_LINE_TOTAL", False
+                            ),
+                            "merchant": meta.get("merchant_name", "Unknown"),
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        }
+                    )
 
                 items.sort(key=lambda x: -x.get("similarity", 0))
                 items = items[:limit]
 
                 total = sum(
-                    item["price"] for item in items if item["price"] is not None
+                    item["price"]
+                    for item in items
+                    if item["price"] is not None
                 )
 
                 # Auto-fetch unique receipts
@@ -902,20 +973,28 @@ def create_qa_tools(
                         continue
                     seen.add(item_key)
 
-                    items.append({
-                        "text": text,
-                        "price": extract_price(text),
-                        "has_price_label": meta.get("label_LINE_TOTAL", False),
-                        "merchant": meta.get("merchant_name", "Unknown"),
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                    })
+                    items.append(
+                        {
+                            "text": text,
+                            "price": extract_price(text),
+                            "has_price_label": meta.get(
+                                "label_LINE_TOTAL", False
+                            ),
+                            "merchant": meta.get("merchant_name", "Unknown"),
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        }
+                    )
 
-                items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
+                items.sort(
+                    key=lambda x: (x["price"] is None, -(x["price"] or 0))
+                )
                 items = items[:limit]
 
                 total = sum(
-                    item["price"] for item in items if item["price"] is not None
+                    item["price"]
+                    for item in items
+                    if item["price"] is not None
                 )
 
                 # Auto-fetch unique receipts
@@ -1026,14 +1105,18 @@ def create_qa_tools(
                 if merchant_filter:
                     if not record.merchant_name:
                         continue
-                    if merchant_filter.lower() not in record.merchant_name.lower():
+                    if (
+                        merchant_filter.lower()
+                        not in record.merchant_name.lower()
+                    ):
                         continue
 
                 if category_filter:
                     category_match = False
                     if (
                         merchant_category
-                        and category_filter.lower() in merchant_category.lower()
+                        and category_filter.lower()
+                        in merchant_category.lower()
                     ):
                         category_match = True
                     if place and place.merchant_types:

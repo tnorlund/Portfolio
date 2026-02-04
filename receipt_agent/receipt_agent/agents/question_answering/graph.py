@@ -195,10 +195,12 @@ def create_agent_node(
         # Add context about what's been searched (helps avoid redundant searches)
         searches = state_holder.get("searches", [])
         if searches:
-            search_summary = "\n".join([
-                f"- {s['type']} search for '{s['query']}': {s['result_count']} results"
-                for s in searches[-10:]  # Last 10 searches
-            ])
+            search_summary = "\n".join(
+                [
+                    f"- {s['type']} search for '{s['query']}': {s['result_count']} results"
+                    for s in searches[-10:]  # Last 10 searches
+                ]
+            )
             context_msg = f"\n\nSearches already performed:\n{search_summary}"
 
             # Append to system message if present
@@ -290,7 +292,8 @@ def _extract_line_items_from_structured(
 
         # Collect PRODUCT_NAME words (sorted by x position, left to right)
         product_words = [
-            w for w in sorted(line_words, key=lambda w: w.get("x", 0))
+            w
+            for w in sorted(line_words, key=lambda w: w.get("x", 0))
             if w.get("label") == "PRODUCT_NAME"
         ]
 
@@ -302,11 +305,17 @@ def _extract_line_items_from_structured(
             # (excluding the price word itself and common non-product labels)
             price_word_id = amt.get("word_id")
             non_product_labels = {
-                "TAX", "SUBTOTAL", "GRAND_TOTAL", "LINE_TOTAL",
-                "UNIT_PRICE", "QUANTITY", "MERCHANT_NAME",
+                "TAX",
+                "SUBTOTAL",
+                "GRAND_TOTAL",
+                "LINE_TOTAL",
+                "UNIT_PRICE",
+                "QUANTITY",
+                "MERCHANT_NAME",
             }
             unlabeled_words = [
-                w for w in sorted(line_words, key=lambda w: w.get("x", 0))
+                w
+                for w in sorted(line_words, key=lambda w: w.get("x", 0))
                 if w.get("word_id") != price_word_id
                 and w.get("label") not in non_product_labels
             ]
@@ -316,14 +325,17 @@ def _extract_line_items_from_structured(
         product_name = product_name.strip()
         # Remove leading numbers (SKU codes)
         import re
+
         product_name = re.sub(r"^\d+\s*", "", product_name).strip()
 
         if product_name and amount_value > 0:
-            line_items.append(AmountItem(
-                label=label,
-                amount=amount_value,
-                item_text=product_name,
-            ))
+            line_items.append(
+                AmountItem(
+                    label=label,
+                    amount=amount_value,
+                    item_text=product_name,
+                )
+            )
 
     return line_items
 
@@ -372,7 +384,9 @@ def create_shape_node(state_holder: dict) -> Callable:
                     tax = amount_value
 
             # Extract line items using structured data
-            line_items = _extract_line_items_from_structured(words_by_line, amounts)
+            line_items = _extract_line_items_from_structured(
+                words_by_line, amounts
+            )
 
             # Collect labels found from structured data
             labels_found = set()
@@ -381,15 +395,17 @@ def create_shape_node(state_holder: dict) -> Callable:
                     if w.get("label"):
                         labels_found.add(w["label"])
 
-            summaries.append(ReceiptSummary(
-                image_id=receipt.get("image_id", ""),
-                receipt_id=receipt.get("receipt_id", 0),
-                merchant=receipt.get("merchant", "Unknown"),
-                grand_total=grand_total,
-                tax=tax,
-                line_items=line_items,
-                labels_found=list(labels_found),
-            ))
+            summaries.append(
+                ReceiptSummary(
+                    image_id=receipt.get("image_id", ""),
+                    receipt_id=receipt.get("receipt_id", 0),
+                    merchant=receipt.get("merchant", "Unknown"),
+                    grand_total=grand_total,
+                    tax=tax,
+                    line_items=line_items,
+                    labels_found=list(labels_found),
+                )
+            )
 
         # Limit to reasonable number of receipts
         MAX_RECEIPTS = 50
@@ -429,7 +445,9 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
     def synthesize_node(state: QAState) -> dict:
         """Generate final answer from structured receipt summaries."""
         summaries = state.shaped_summaries
-        logger.info("Synthesizing answer from %d receipt summaries", len(summaries))
+        logger.info(
+            "Synthesizing answer from %d receipt summaries", len(summaries)
+        )
 
         # Build structured context for the LLM
         context_parts = []
@@ -438,8 +456,11 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             items_str = ""
             if summary.line_items:
                 items = [
-                    f"  - {item.item_text}: ${item.amount:.2f}"
-                    if item.item_text else f"  - ${item.amount:.2f}"
+                    (
+                        f"  - {item.item_text}: ${item.amount:.2f}"
+                        if item.item_text
+                        else f"  - ${item.amount:.2f}"
+                    )
                     for item in summary.line_items
                 ]
                 items_str = "\n" + "\n".join(items)
@@ -458,12 +479,18 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
 
             context_parts.append(receipt_info)
 
-        context_str = "\n\n".join(context_parts) if context_parts else "(No receipts found)"
+        context_str = (
+            "\n\n".join(context_parts)
+            if context_parts
+            else "(No receipts found)"
+        )
 
         # Check for pre-computed aggregation
         aggregated = state_holder.get("aggregated_amount")
         if aggregated:
-            context_str += f"\n\nPre-computed Total: ${aggregated.get('total', 0):.2f}"
+            context_str += (
+                f"\n\nPre-computed Total: ${aggregated.get('total', 0):.2f}"
+            )
 
         # Build synthesis prompt
         messages = [
@@ -476,7 +503,9 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
         ]
 
         response = llm.invoke(messages)
-        answer_text = response.content if hasattr(response, "content") else str(response)
+        answer_text = (
+            response.content if hasattr(response, "content") else str(response)
+        )
 
         # Extract amount from aggregation if available
         total_amount = None
@@ -487,13 +516,15 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
         evidence = []
         for summary in summaries:
             for item in summary.line_items:
-                evidence.append({
-                    "image_id": summary.image_id,
-                    "receipt_id": summary.receipt_id,
-                    "merchant": summary.merchant,
-                    "item": item.item_text or "",
-                    "amount": item.amount,
-                })
+                evidence.append(
+                    {
+                        "image_id": summary.image_id,
+                        "receipt_id": summary.receipt_id,
+                        "merchant": summary.merchant,
+                        "item": item.item_text or "",
+                        "amount": item.amount,
+                    }
+                )
 
         # Store in state_holder for extraction
         state_holder["answer"] = {
@@ -754,10 +785,13 @@ async def answer_question(
 
     try:
         import os
+
         model_name = os.environ.get("OPENROUTER_MODEL") or os.environ.get(
             "RECEIPT_AGENT_OPENROUTER_MODEL", "x-ai/grok-4.1-fast"
         )
-        provider = model_name.split("/")[0] if "/" in model_name else "openrouter"
+        provider = (
+            model_name.split("/")[0] if "/" in model_name else "openrouter"
+        )
 
         config = {
             "recursion_limit": 30,

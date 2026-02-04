@@ -277,7 +277,9 @@ def create_llm(
 
     logger.debug(
         "Creating OpenRouter LLM: model=%s, base_url=%s, reasoning=%s",
-        _model, _base_url, reasoning
+        _model,
+        _base_url,
+        reasoning,
     )
 
     default_headers = kwargs.pop("default_headers", {})

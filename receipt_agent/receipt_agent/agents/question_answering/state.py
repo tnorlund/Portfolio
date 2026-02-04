@@ -50,7 +50,9 @@ class QuestionClassification(BaseModel):
 class AmountItem(BaseModel):
     """A labeled amount from a receipt."""
 
-    label: str = Field(description="Label type: LINE_TOTAL, GRAND_TOTAL, TAX, etc.")
+    label: str = Field(
+        description="Label type: LINE_TOTAL, GRAND_TOTAL, TAX, etc."
+    )
     amount: float = Field(description="Dollar amount")
     item_text: Optional[str] = Field(
         default=None,
