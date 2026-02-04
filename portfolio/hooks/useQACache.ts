@@ -1,40 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-
-/** Trace step from the QA cache API */
-interface TraceStep {
-  type: "plan" | "agent" | "tools" | "shape" | "synthesize";
-  content: string;
-  detail?: string;
-  /** Step duration in milliseconds (from LangSmith trace timestamps) */
-  durationMs?: number;
-  receipts?: {
-    imageId: string;
-    merchant: string;
-    item: string;
-    amount: number;
-    thumbnailKey: string;
-    width: number;
-    height: number;
-  }[];
-  structuredData?: {
-    merchant: string;
-    items: { name: string; amount: number }[];
-  }[];
-}
-
-/** Per-question data from the QA cache API */
-export interface QAQuestionData {
-  question: string;
-  questionIndex: number;
-  traceId?: string;
-  trace: TraceStep[];
-  stats: {
-    llmCalls: number;
-    toolInvocations: number;
-    receiptsProcessed: number;
-    cost: number;
-  };
-}
+import type { QAQuestionData } from "./qaTypes";
 
 interface UseQACacheResult {
   data: QAQuestionData | null;

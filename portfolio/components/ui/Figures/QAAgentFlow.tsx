@@ -1,20 +1,13 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
-
-/** Data for a single question from the QA cache API */
-export interface QAQuestionData {
-  question: string;
-  questionIndex: number;
-  traceId?: string;
-  trace: TraceStep[];
-  stats: {
-    llmCalls: number;
-    toolInvocations: number;
-    receiptsProcessed: number;
-    cost: number;
-  };
-}
+import type {
+  QAQuestionData,
+  StepType,
+  TraceStep,
+  ReceiptEvidence,
+  StructuredReceipt,
+} from "../../../hooks/qaTypes";
 
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
@@ -25,34 +18,6 @@ interface QAAgentFlowProps {
   onCycleComplete?: () => void;
   /** Content rendered at the top of the card (e.g. QuestionMarquee) */
   children?: React.ReactNode;
-}
-
-// 5-node workflow step types
-type StepType = "plan" | "agent" | "tools" | "shape" | "synthesize";
-
-interface TraceStep {
-  type: StepType;
-  content: string;
-  detail?: string;
-  /** Step duration in milliseconds (from LangSmith trace timestamps) */
-  durationMs?: number;
-  receipts?: ReceiptEvidence[];
-  structuredData?: StructuredReceipt[];
-}
-
-interface ReceiptEvidence {
-  imageId: string;
-  merchant: string;
-  item: string;
-  amount: number;
-  thumbnailKey: string;
-  width: number;
-  height: number;
-}
-
-interface StructuredReceipt {
-  merchant: string;
-  items: { name: string; amount: number }[];
 }
 
 // Real receipts with coffee products from the database
@@ -191,8 +156,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   React.useEffect(() => {
     setActiveStep(-1);
     setShowAnswer(false);
-    setIsPlaying(true);
-  }, [questionIndex]);
+    setIsPlaying(autoPlay);
+  }, [questionIndex, autoPlay]);
 
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
@@ -281,10 +246,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
 
   // Compute flame-graph bar target (cumulative width% through the current step)
   const barWidths = React.useMemo(() => {
-    const totalMs = trace.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
-    return trace.map((s) =>
-      totalMs > 0 ? ((s.durationMs ?? 0) / totalMs) * 100 : 100 / trace.length,
+    const totalMs = trace.reduce(
+      (sum, s) => sum + (s.durationMs ?? DEFAULT_STEP_MS),
+      0,
     );
+    return trace.map((s) => {
+      const duration = s.durationMs ?? DEFAULT_STEP_MS;
+      return totalMs > 0 ? (duration / totalMs) * 100 : 100 / trace.length;
+    });
   }, [trace]);
 
   const barTarget = React.useMemo(() => {

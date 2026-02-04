@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import type { QAQuestionData } from "./useQACache";
+import type { QAQuestionData } from "./qaTypes";
 
 function getApiBase(): string {
   if (typeof window === "undefined") return "";
@@ -69,6 +69,7 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
   const order = useRef<number[]>([]);
   const cursor = useRef(0);
   const inflightRef = useRef<Set<number>>(new Set());
+  const latestRequestedIndexRef = useRef<number | null>(null);
 
   // Pre-fetch upcoming questions into the cache (fire-and-forget)
   const prefetch = useCallback(
@@ -91,6 +92,7 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
   // Load a question by its API index — from cache or fetch
   const loadQuestion = useCallback(
     (idx: number) => {
+      latestRequestedIndexRef.current = idx;
       setQuestionIndex(idx);
       const cached = cache.current.get(idx);
       if (cached) {
@@ -100,6 +102,7 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
       setData(null);
       fetchQuestion(idx).then((d) => {
         if (d) {
+          if (latestRequestedIndexRef.current !== idx) return;
           cache.current.set(idx, d);
           setData(d);
         }
