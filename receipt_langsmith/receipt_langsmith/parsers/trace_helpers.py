@@ -13,6 +13,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from botocore.exceptions import BotoCoreError, ClientError
+
 from receipt_langsmith.entities.visualization import (
     DecisionCounts,
     EvaluatorResult,
@@ -271,7 +273,12 @@ def load_s3_result(
         return data if isinstance(data, dict) else None
     except s3_client.exceptions.NoSuchKey:
         return None
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (
+        ClientError,
+        BotoCoreError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
         logger.debug("Failed to load s3://%s/%s", bucket, key, exc_info=True)
         return None
 

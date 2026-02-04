@@ -791,7 +791,6 @@ def main() -> int:
 
     spark = None
 
-    # pylint: disable=broad-except
     # Job entrypoint: ensure any unexpected failure logs clearly and exits
     # non-zero so EMR marks the step failed and surfaces the stack trace.
     try:
@@ -844,12 +843,8 @@ def main() -> int:
     ):
         logger.exception("Job failed")
         return 1
-    except Exception:
-        logger.exception("Job failed")
-        return 1
 
     finally:
-        # pylint: enable=broad-except
         if spark:
             spark.stop()
 

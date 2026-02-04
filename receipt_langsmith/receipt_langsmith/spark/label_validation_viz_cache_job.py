@@ -36,8 +36,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.utils import AnalysisException
 from pyspark.sql.types import LongType
 
 logging.basicConfig(
@@ -162,7 +165,7 @@ def find_latest_export_prefix(  # pylint: disable=too-many-locals
                         logger.info(
                             "Found export: %s at %s", export_id, prefix
                         )
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (ClientError, BotoCoreError):
             logger.warning("Failed to search %s", search_prefix)
 
     if not all_exports:
@@ -736,7 +739,7 @@ def write_cache(  # pylint: disable=too-many-locals
                         len(uploaded_keys),
                         len(receipts),
                     )
-            except Exception:
+            except (ClientError, BotoCoreError):
                 failed_count += 1
                 logger.exception("Failed to upload receipt")
 
@@ -870,7 +873,16 @@ def main() -> int:
 
         return 0
 
-    except Exception:
+    except (
+        AnalysisException,
+        Py4JJavaError,
+        ClientError,
+        BotoCoreError,
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ):
         logger.exception("Cache generation failed")
         return 1
 

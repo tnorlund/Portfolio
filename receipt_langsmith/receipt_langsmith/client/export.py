@@ -4,8 +4,6 @@ This module provides utilities for managing LangSmith bulk exports,
 including triggering exports, checking status, and waiting for completion.
 """
 
-# pylint: disable=import-outside-toplevel,protected-access
-
 from __future__ import annotations
 
 import asyncio
@@ -166,18 +164,13 @@ class BulkExportManager:
             end_time.isoformat(),
         )
 
-        http_client = await self.client._get_async_client()
-        response = await http_client.post(
+        data = await self.client.arequest(
+            "POST",
             "/api/v1/bulk-exports",
             json=request_body,
         )
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected response payload for bulk export")
         job = self._parse_export_job(data)
 
         logger.info("Export job created: %s (status=%s)", job.id, job.status)
@@ -192,15 +185,12 @@ class BulkExportManager:
         Returns:
             ExportJob with current status.
         """
-        http_client = await self.client._get_async_client()
-        response = await http_client.get(f"/api/v1/bulk-exports/{export_id}")
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        data = response.json()
+        data = await self.client.arequest(
+            "GET",
+            f"/api/v1/bulk-exports/{export_id}",
+        )
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected response payload for export status")
         return self._parse_export_job(data)
 
     async def await_completion(
@@ -262,18 +252,14 @@ class BulkExportManager:
         Returns:
             List of ExportJob objects.
         """
-        http_client = await self.client._get_async_client()
-        response = await http_client.get(
+        data = await self.client.arequest(
+            "GET",
             "/api/v1/bulk-exports",
             params={"limit": limit},
         )
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        return [self._parse_export_job(data) for data in response.json()]
+        if not isinstance(data, list):
+            return []
+        return [self._parse_export_job(item) for item in data]
 
     # Sync wrappers
 

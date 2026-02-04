@@ -8,7 +8,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from langsmith import Client
+from langsmith.utils import LangSmithError
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ def query_recent_receipt_traces(
         )
         # Filter to only runs with outputs
         return [run for run in runs if run.outputs]
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (LangSmithError, httpx.HTTPError):
         logger.exception("Error querying LangSmith traces")
         return []
 
@@ -69,7 +71,7 @@ def get_child_traces(client: Client, parent_run_id: str) -> dict[str, dict]:
     try:
         children = client.list_runs(parent_run_id=parent_run_id)
         return {run.name: run.outputs for run in children if run.outputs}
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (LangSmithError, httpx.HTTPError):
         logger.exception("Error getting child traces for %s", parent_run_id)
         return {}
 

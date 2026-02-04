@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Iterator, Optional, Union
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import pyarrow
 import pyarrow.parquet as pq
+from pydantic import ValidationError
 
 from receipt_langsmith.entities.base import LangSmithRun
 from receipt_langsmith.entities.parquet_schema import LangSmithRunRaw
@@ -125,12 +127,15 @@ class ParquetReader:
                 for row in table.to_pylist():
                     try:
                         yield LangSmithRunRaw(**row)
-                    # pylint: disable=broad-exception-caught
-                    except Exception as e:
+                    except (ValidationError, TypeError, ValueError) as e:
                         logger.debug("Failed to parse row: %s", e)
                         continue
-                    # pylint: enable=broad-exception-caught
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (
+                pyarrow.ArrowInvalid,
+                OSError,
+                ClientError,
+                BotoCoreError,
+            ):
                 logger.exception("Error reading %s", k)
                 continue
 
@@ -150,7 +155,7 @@ class ParquetReader:
         for raw in self.read_raw_traces(key):
             try:
                 yield self._parse_raw_trace(raw)
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except (ValidationError, ValueError, TypeError) as e:
                 logger.debug("Failed to parse trace %s: %s", raw.id, e)
                 continue
 
@@ -258,7 +263,12 @@ def read_traces_from_parquet(
         try:
             table = reader.read_parquet_table(key)
             traces.extend(table.to_pylist())
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (
+            pyarrow.ArrowInvalid,
+            OSError,
+            ClientError,
+            BotoCoreError,
+        ):
             logger.exception("Error reading %s", key)
             continue
 

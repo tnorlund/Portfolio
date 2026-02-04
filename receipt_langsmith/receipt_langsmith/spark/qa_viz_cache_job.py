@@ -37,10 +37,12 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
+from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType
+from pyspark.sql.utils import AnalysisException
 
 from receipt_langsmith.spark.utils import parse_s3_path, to_s3a
 
@@ -193,7 +195,7 @@ def find_latest_export_prefix(
                         latest_key = sub_prefix
 
         return latest_key
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (ClientError, BotoCoreError):
         logger.exception("Failed to find latest export prefix")
         return None
 
@@ -364,7 +366,7 @@ def _compute_duration_ms(run: dict) -> Optional[int]:
         # Numeric (epoch seconds)
         if isinstance(start, (int, float)) and isinstance(end, (int, float)):
             return max(int((end - start) * 1000), 0)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (ValueError, TypeError, AttributeError, OverflowError):
         return None
 
     return None
@@ -574,7 +576,13 @@ def run_qa_cache_job(
             .option("mergeSchema", "true")
             .parquet(spark_path)
         )
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (
+        AnalysisException,
+        Py4JJavaError,
+        OSError,
+        ClientError,
+        BotoCoreError,
+    ):
         logger.exception(
             "Failed to read parquet from %s — falling back to NDJSON",
             spark_path,
@@ -860,7 +868,7 @@ def _write_cache_files(
             try:
                 future.result()
                 written += 1
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (ClientError, BotoCoreError):
                 idx = futures[future]
                 logger.exception("Failed to write question-%d.json", idx)
 
@@ -941,7 +949,16 @@ def main() -> int:
             max_questions=args.max_questions,
         )
         return 0
-    except Exception:  # pylint: disable=broad-exception-caught
+    except (
+        AnalysisException,
+        Py4JJavaError,
+        ClientError,
+        BotoCoreError,
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ):
         logger.exception("Job failed")
         return 1
     finally:

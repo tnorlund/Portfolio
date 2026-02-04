@@ -149,7 +149,7 @@ class LangSmithClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(httpx.HTTPError),
     )
-    async def _arequest(
+    async def arequest(
         self,
         method: str,
         path: str,
@@ -171,7 +171,7 @@ class LangSmithClient:
         Returns:
             List of Project objects.
         """
-        data = await self._arequest("GET", "/api/v1/sessions")
+        data = await self.arequest("GET", "/api/v1/sessions")
         if isinstance(data, list):
             return [Project(**p) for p in data]
         return []
@@ -235,7 +235,7 @@ class LangSmithClient:
         if parent_run_id:
             params["parent_run_id"] = parent_run_id
 
-        data = await self._arequest("GET", "/api/v1/runs", params=params)
+        data = await self.arequest("GET", "/api/v1/runs", params=params)
         return data if isinstance(data, list) else []
 
     async def alist_recent_traces(
