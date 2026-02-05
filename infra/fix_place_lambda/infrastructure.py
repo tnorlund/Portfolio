@@ -75,7 +75,7 @@ class FixPlaceLambda(ComponentResource):
         # ============================================================
         lambda_role = Role(
             f"{name}-lambda-role",
-            name=f"{name}-lambda-role",
+            # Let Pulumi auto-generate unique name (exported for MCP server use)
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -206,12 +206,14 @@ class FixPlaceLambda(ComponentResource):
 
         self.lambda_function = docker_image.lambda_function
         self.lambda_arn = self.lambda_function.arn
+        self.lambda_role_name = lambda_role.name
 
         # Register outputs
         self.register_outputs(
             {
                 "lambda_arn": self.lambda_arn,
                 "lambda_name": self.lambda_function.name,
+                "lambda_role_name": self.lambda_role_name,
             }
         )
 

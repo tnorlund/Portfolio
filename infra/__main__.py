@@ -1284,6 +1284,7 @@ fix_place_lambda = create_fix_place_lambda(
 )
 pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
+pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
