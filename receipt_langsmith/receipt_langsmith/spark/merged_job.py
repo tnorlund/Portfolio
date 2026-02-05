@@ -33,7 +33,6 @@ Data Sources:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from datetime import datetime, timezone
@@ -56,7 +55,13 @@ from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
 from receipt_langsmith.spark.processor import LangSmithSparkProcessor
-from receipt_langsmith.spark.utils import parse_s3_path, to_s3a
+from receipt_langsmith.spark.s3_io import (
+    load_json_from_s3,
+    ReceiptsCachePointer,
+    write_receipt_cache_index,
+    write_receipt_json,
+)
+from receipt_langsmith.spark.utils import to_s3a
 
 logging.basicConfig(
     level=logging.INFO,
@@ -339,10 +344,8 @@ def read_json_df(
 
 def read_legacy_lookup_json(legacy_receipts_json: str) -> dict[str, Any]:
     """Read legacy receipts lookup JSON from S3."""
-    bucket, key = parse_s3_path(legacy_receipts_json)
     s3_client = boto3.client("s3")
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    payload = json.loads(response["Body"].read().decode("utf-8"))
+    payload = load_json_from_s3(s3_client, legacy_receipts_json)
     if not isinstance(payload, dict):
         raise ValueError("Legacy receipts lookup must be a JSON object")
     return payload
@@ -607,12 +610,7 @@ def write_viz_cache_parallel(df: Any, bucket: str, execution_id: str) -> None:
                 f"{receipt['receipt_id']}.json"
             )
             try:
-                s3_client.put_object(
-                    Bucket=bucket,
-                    Key=key,
-                    Body=json.dumps(receipt, default=str),
-                    ContentType="application/json",
-                )
+                write_receipt_json(s3_client, bucket, key, receipt)
             except (ClientError, BotoCoreError, TypeError, ValueError) as exc:
                 logger.warning(
                     "Failed to upload receipt %s_%s: %s",
@@ -643,25 +641,10 @@ def write_viz_cache_metadata(
         "receipts_with_issues": receipts_with_issues,
         "cached_at": timestamp.isoformat(),
     }
-    s3_client.put_object(
-        Bucket=bucket,
-        Key="metadata.json",
-        Body=json.dumps(metadata, indent=2),
-        ContentType="application/json",
+    pointer = ReceiptsCachePointer(
+        cache_version, receipts_prefix, timestamp.isoformat()
     )
-
-    latest = {
-        "version": cache_version,
-        "receipts_prefix": receipts_prefix,
-        "metadata_key": "metadata.json",
-        "updated_at": timestamp.isoformat(),
-    }
-    s3_client.put_object(
-        Bucket=bucket,
-        Key="latest.json",
-        Body=json.dumps(latest, indent=2),
-        ContentType="application/json",
-    )
+    write_receipt_cache_index(s3_client, bucket, metadata, pointer)
 
     logger.info(
         "Viz-cache metadata written. Version: %s, Receipts: %d",

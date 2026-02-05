@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 
 def to_s3a(path: str) -> str:
     """Convert s3:// URIs to s3a:// for Spark."""
@@ -21,3 +24,26 @@ def parse_s3_path(s3_path: str) -> tuple[str, str]:
     if not bucket or not key:
         raise ValueError(f"Invalid S3 path: {s3_path}")
     return bucket, key
+
+
+TRACE_BASE_COLUMNS: list[str] = [
+    "id",
+    "trace_id",
+    "parent_run_id",
+    "name",
+    "run_type",
+    "status",
+]
+
+
+def parse_json_object(payload: Any) -> dict[str, Any]:
+    """Parse a JSON object from a dict or JSON string."""
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}

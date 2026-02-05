@@ -16,7 +16,18 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType
 from pyspark.sql.utils import AnalysisException
 
-from receipt_langsmith.spark.utils import parse_s3_path, to_s3a
+from receipt_langsmith.spark.s3_io import (
+    load_json_from_s3,
+    write_json_with_default,
+    write_latest_json,
+    write_metadata_json,
+)
+from receipt_langsmith.spark.utils import (
+    parse_json_object,
+    parse_s3_path,
+    TRACE_BASE_COLUMNS,
+    to_s3a,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +105,7 @@ def load_receipts_lookup(s3_client: Any, receipts_json: str) -> dict[str, Any]:
         dict mapping "{image_id}_{receipt_id}" to receipt metadata.
     """
     try:
-        bucket, key = parse_s3_path(receipts_json)
-        response = s3_client.get_object(Bucket=bucket, Key=key)
-        payload = response["Body"].read().decode("utf-8")
-        receipts = json.loads(payload)
+        receipts = load_json_from_s3(s3_client, receipts_json)
         if not isinstance(receipts, dict):
             raise ValueError("receipts lookup payload must be a JSON object")
     except (ClientError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
@@ -207,14 +215,7 @@ def derive_trace_steps(
     for run in child_runs:
         name = run.get("name", "").lower()
         run_type = run.get("run_type", "")
-        outputs = run.get("outputs")
-        if isinstance(outputs, str):
-            try:
-                outputs = json.loads(outputs)
-            except json.JSONDecodeError:
-                outputs = {}
-        if not isinstance(outputs, dict):
-            outputs = {}
+        outputs = parse_json_object(run.get("outputs"))
 
         step_type = _classify_run(name, run_type)
         if not step_type:
@@ -488,12 +489,7 @@ def collect_traces(
 ) -> tuple[dict[str, list[dict]], dict[str, dict]]:
     """Collect traces and root runs into dictionaries."""
     runs = df.select(
-        "id",
-        "trace_id",
-        "parent_run_id",
-        "name",
-        "run_type",
-        "status",
+        *TRACE_BASE_COLUMNS,
         "dotted_order",
         "is_root",
         "inputs",
@@ -517,15 +513,7 @@ def collect_traces(
 
 
 def _parse_inputs_value(raw_inputs: Any) -> dict[str, Any]:
-    if isinstance(raw_inputs, str):
-        try:
-            parsed = json.loads(raw_inputs)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    if isinstance(raw_inputs, dict):
-        return raw_inputs
-    return {}
+    return parse_json_object(raw_inputs)
 
 
 def _extract_question_text(inputs: dict[str, Any]) -> str:
@@ -759,23 +747,20 @@ def write_cache_files(
         write_ctx.langchain_project,
     )
 
-    s3_client.put_object(
-        Bucket=cache_bucket,
-        Key="metadata.json",
-        Body=json.dumps(metadata, indent=2),
-        ContentType="application/json",
+    write_metadata_json(
+        s3_client,
+        cache_bucket,
+        metadata,
     )
 
-    s3_client.put_object(
-        Bucket=cache_bucket,
-        Key="latest.json",
-        Body=json.dumps(
-            {
-                "execution_id": write_ctx.execution_id,
-                "generated_at": metadata["generated_at"],
-            }
-        ),
-        ContentType="application/json",
+    write_latest_json(
+        s3_client,
+        cache_bucket,
+        {
+            "execution_id": write_ctx.execution_id,
+            "generated_at": metadata["generated_at"],
+        },
+        indent=None,
     )
 
     logger.info(
@@ -790,11 +775,11 @@ def _write_question_files(
 ) -> int:
     def upload_question(cache: dict) -> str:
         key = f"questions/question-{cache['questionIndex']}.json"
-        s3_client.put_object(
-            Bucket=cache_bucket,
-            Key=key,
-            Body=json.dumps(cache, default=str),
-            ContentType="application/json",
+        write_json_with_default(
+            s3_client,
+            cache_bucket,
+            key,
+            cache,
         )
         return key
 
