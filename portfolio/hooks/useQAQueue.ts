@@ -1,25 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import type { QAQuestionData } from "./qaTypes";
-
-function getApiBase(): string {
-  if (typeof window === "undefined") return "";
-  const host = window.location.hostname;
-  if (
-    host === "localhost" ||
-    host.startsWith("127.") ||
-    host.startsWith("192.168.") ||
-    host.startsWith("10.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-  ) {
-    return "https://dev-api.tylernorlund.com";
-  }
-  // Production: use the prod API
-  return "https://api.tylernorlund.com";
-}
+import { API_CONFIG } from "../services/api/config";
 
 async function fetchQuestion(index: number): Promise<QAQuestionData | null> {
   try {
-    const res = await fetch(`${getApiBase()}/qa/visualization?index=${index}`);
+    const res = await fetch(`${API_CONFIG.baseUrl}/qa/visualization?index=${index}`);
     if (!res.ok) return null;
     const json = await res.json();
     const questions = json.questions;
@@ -115,7 +100,7 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
   // 1. On mount — fetch metadata, shuffle, kick off first question + pre-fetches
   useEffect(() => {
     let cancelled = false;
-    fetch(`${getApiBase()}/qa/visualization`)
+    fetch(`${API_CONFIG.baseUrl}/qa/visualization`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;

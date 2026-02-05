@@ -1,26 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import type { QAQuestionData } from "./qaTypes";
+import { API_CONFIG } from "../services/api/config";
 
 interface UseQACacheResult {
   data: QAQuestionData | null;
   loading: boolean;
   error: Error | null;
-}
-
-function getApiBase(): string {
-  if (typeof window === "undefined") return "";
-  const host = window.location.hostname;
-  if (
-    host === "localhost" ||
-    host.startsWith("127.") ||
-    host.startsWith("192.168.") ||
-    host.startsWith("10.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-  ) {
-    return "https://dev-api.tylernorlund.com";
-  }
-  // Production: use the prod API
-  return "https://api.tylernorlund.com";
 }
 
 /**
@@ -50,7 +35,7 @@ export function useQACache(questionIndex?: number): UseQACacheResult {
     const fetchData = async () => {
       try {
         const response = await fetch(
-          `${getApiBase()}/qa/visualization?index=${questionIndex}`
+          `${API_CONFIG.baseUrl}/qa/visualization?index=${questionIndex}`
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
