@@ -732,7 +732,7 @@ def _build_state_machine_definition(
                     "Name.$": "States.Format('qa-viz-cache-{}', $.init.execution_id)",
                     "JobDriver": {
                         "SparkSubmit": {
-                            "EntryPoint": f"s3://{spark_artifacts_bucket}/scripts/merged_job.py",
+                            "EntryPoint": f"s3://{spark_artifacts_bucket}/spark/merged_job.py",
                             "EntryPointArguments.$": (
                                 "States.Array("
                                 "'--job-type', 'qa-cache', "
