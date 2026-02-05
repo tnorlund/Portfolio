@@ -55,6 +55,7 @@ from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
 from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+from receipt_langsmith.spark.cli import configure_logging
 from receipt_langsmith.spark.s3_io import (
     load_json_from_s3,
     ReceiptsCachePointer,
@@ -63,10 +64,7 @@ from receipt_langsmith.spark.s3_io import (
 )
 from receipt_langsmith.spark.utils import to_s3a
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -799,20 +797,17 @@ def main() -> int:
         if args.job_type == "qa-cache":
             # pylint: disable=import-outside-toplevel
             from receipt_langsmith.spark.qa_viz_cache_job import (
-                QACacheJobConfig,
                 run_qa_cache_job,
+            )
+            from receipt_langsmith.spark.qa_viz_cache_helpers import (
+                qa_cache_config_from_args,
             )
             # pylint: enable=import-outside-toplevel
 
             logger.info("Starting qa-cache phase...")
-            config = QACacheJobConfig(
-                parquet_input=args.parquet_input,
-                cache_bucket=args.cache_bucket,
-                results_ndjson=args.results_ndjson,
-                receipts_json=args.receipts_json,
-                execution_id=args.execution_id or "",
-                max_questions=50,
-                langchain_project=args.langchain_project,
+            config = qa_cache_config_from_args(
+                args,
+                default_max_questions=50,
             )
             run_qa_cache_job(spark, config=config)
             logger.info("QA cache phase complete")

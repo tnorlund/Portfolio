@@ -28,18 +28,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
+from receipt_langsmith.spark.cli import (
+    add_cache_bucket_arg,
+    add_receipts_json_arg,
+    configure_logging,
+)
 from receipt_langsmith.spark.label_validation_viz_cache_helpers import (
     run_label_validation_cache,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
 
 
 # --- Argument Parsing ---
@@ -61,16 +61,8 @@ def parse_args() -> argparse.Namespace:
         help="Parquet prefix (default: traces/)."
         " If not a specific export_id, the latest export is used.",
     )
-    parser.add_argument(
-        "--cache-bucket",
-        required=True,
-        help="S3 bucket to write visualization cache",
-    )
-    parser.add_argument(
-        "--receipts-json",
-        required=True,
-        help="S3 path to receipts-lookup.json (CDN keys from DynamoDB)",
-    )
+    add_cache_bucket_arg(parser)
+    add_receipts_json_arg(parser)
     parser.add_argument(
         "--max-receipts",
         type=int,

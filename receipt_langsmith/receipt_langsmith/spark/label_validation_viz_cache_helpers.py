@@ -10,19 +10,22 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import LongType
-from pyspark.sql.utils import AnalysisException
 
+from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
     load_json_from_s3,
     ReceiptsCachePointer,
     write_receipt_cache_index,
     write_receipt_json,
 )
-from receipt_langsmith.spark.utils import parse_json_object, TRACE_BASE_COLUMNS
+from receipt_langsmith.spark.trace_df import (
+    TraceReadOptions,
+    normalize_trace_df,
+    trace_columns,
+)
+from receipt_langsmith.spark.utils import parse_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -176,42 +179,14 @@ def read_traces(spark: SparkSession, parquet_files: list[str]) -> Any:
 
     logger.info("Available columns in parquet: %s", sorted(available_columns))
 
-    # Convert timestamps if needed (before adding synthetic columns)
-    if "start_time" in available_columns and isinstance(
-        df.schema["start_time"].dataType, LongType
-    ):
-        df = df.withColumn(
-            "start_time",
-            (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-        ).withColumn(
-            "end_time",
-            (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-        )
-
-    # Add missing columns with appropriate defaults
-    # trace_id: use 'id' if trace_id doesn't exist (for root traces)
-    if "trace_id" not in available_columns:
-        df = df.withColumn("trace_id", F.col("id"))
-
-    # parent_run_id: add as null if missing
-    if "parent_run_id" not in available_columns:
-        df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
-
-    # inputs: add as null if missing
-    if "inputs" not in available_columns:
-        df = df.withColumn("inputs", F.lit(None).cast("string"))
-
-    # Select the columns we need for analysis
-    needed_columns = [
-        *TRACE_BASE_COLUMNS,
-        "start_time",
-        "end_time",
-        "extra",
-        "inputs",
-        "outputs",
-    ]
-
-    df = df.select(*needed_columns)
+    options = TraceReadOptions(
+        include_inputs=True,
+        include_outputs=True,
+        include_extra=True,
+        include_tokens=False,
+    )
+    df = normalize_trace_df(df, options)
+    df = df.select(*trace_columns(options))
 
     logger.info("Read %d traces", df.count())
     return df
@@ -879,7 +854,7 @@ def run_label_validation_cache(args: Any) -> int:
         "LabelValidationVizCache"
     ).getOrCreate()
 
-    try:
+    def job() -> int:
         df = read_traces(spark, parquet_files)
         viz_receipts = _build_viz_receipts(
             df,
@@ -900,18 +875,9 @@ def run_label_validation_cache(args: Any) -> int:
         )
         return 0
 
-    except (
-        AnalysisException,
-        Py4JJavaError,
-        ClientError,
-        BotoCoreError,
-        OSError,
-        ValueError,
-        TypeError,
-        KeyError,
-    ):
-        logger.exception("Cache generation failed")
-        return 1
-
-    finally:
-        spark.stop()
+    return run_spark_job(
+        spark,
+        job,
+        logger=logger,
+        error_message="Cache generation failed",
+    )

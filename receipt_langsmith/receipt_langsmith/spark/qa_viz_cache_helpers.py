@@ -98,6 +98,23 @@ class QACacheJobConfig:
         return cls(**data)
 
 
+def qa_cache_config_from_args(
+    args: Any,
+    *,
+    default_max_questions: int = 50,
+) -> QACacheJobConfig:
+    """Build QACacheJobConfig from argparse args."""
+    return QACacheJobConfig(
+        parquet_input=args.parquet_input,
+        cache_bucket=args.cache_bucket,
+        results_ndjson=args.results_ndjson,
+        receipts_json=args.receipts_json,
+        execution_id=getattr(args, "execution_id", "") or "",
+        max_questions=getattr(args, "max_questions", default_max_questions),
+        langchain_project=getattr(args, "langchain_project", ""),
+    )
+
+
 def load_receipts_lookup(s3_client: Any, receipts_json: str) -> dict[str, Any]:
     """Load receipts-lookup.json from S3.
 

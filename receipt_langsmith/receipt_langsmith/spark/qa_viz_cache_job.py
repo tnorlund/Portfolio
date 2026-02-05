@@ -34,25 +34,26 @@ import sys
 from typing import Any, Optional
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
-from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
-from pyspark.sql.utils import AnalysisException
 
+from receipt_langsmith.spark.cli import (
+    add_cache_bucket_arg,
+    add_receipts_json_arg,
+    configure_logging,
+    run_spark_job,
+)
 from receipt_langsmith.spark.qa_viz_cache_helpers import (
     QACacheJobConfig,
     QACacheWriteContext,
     build_cache_files_from_parquet,
     load_question_results,
     load_receipts_lookup,
+    qa_cache_config_from_args,
     write_cache_files,
     write_cache_from_ndjson,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -66,21 +67,13 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="S3 path to LangSmith Parquet exports",
     )
-    parser.add_argument(
-        "--cache-bucket",
-        required=True,
-        help="S3 bucket to write visualization cache",
-    )
+    add_cache_bucket_arg(parser)
     parser.add_argument(
         "--results-ndjson",
         required=True,
         help="S3 path to question-results.ndjson from Step Function",
     )
-    parser.add_argument(
-        "--receipts-json",
-        required=True,
-        help="S3 path to receipts-lookup.json (CDN keys from DynamoDB)",
-    )
+    add_receipts_json_arg(parser)
     parser.add_argument(
         "--execution-id",
         default="",
@@ -172,31 +165,16 @@ def main() -> int:
         .getOrCreate()
     )
 
-    try:
-        config = QACacheJobConfig(
-            parquet_input=args.parquet_input,
-            cache_bucket=args.cache_bucket,
-            results_ndjson=args.results_ndjson,
-            receipts_json=args.receipts_json,
-            execution_id=args.execution_id,
-            max_questions=args.max_questions,
-        )
+    def job() -> None:
+        config = qa_cache_config_from_args(args)
         run_qa_cache_job(spark, config=config)
-        return 0
-    except (
-        AnalysisException,
-        Py4JJavaError,
-        ClientError,
-        BotoCoreError,
-        OSError,
-        ValueError,
-        TypeError,
-        KeyError,
-    ):
-        logger.exception("Job failed")
-        return 1
-    finally:
-        spark.stop()
+
+    return run_spark_job(
+        spark,
+        job,
+        logger=logger,
+        error_message="Job failed",
+    )
 
 
 if __name__ == "__main__":
