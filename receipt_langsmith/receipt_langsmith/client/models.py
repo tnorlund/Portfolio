@@ -1,6 +1,7 @@
 """API request/response models for LangSmith client."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -66,6 +67,15 @@ class BulkExportRequest(BaseModel):
     """Specific fields to export (None = all)."""
 
 
+class ExportStatus(str, Enum):
+    """Bulk export job status."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class BulkExportResponse(BaseModel):
     """Response from triggering a bulk export."""
 
@@ -78,7 +88,7 @@ class BulkExportResponse(BaseModel):
     session_id: Optional[str] = None
     """Project/session ID if filtered."""
 
-    status: str
+    status: ExportStatus
     """Job status: 'pending', 'running', 'completed', 'failed'."""
 
     start_time: datetime

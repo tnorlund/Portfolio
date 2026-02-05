@@ -10,58 +10,16 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import BaseModel
+from receipt_langsmith.client.models import BulkExportResponse, ExportStatus
 
 if TYPE_CHECKING:
     from receipt_langsmith.client.api import LangSmithClient
 
 logger = logging.getLogger(__name__)
 
-
-class ExportStatus(str, Enum):
-    """Bulk export job status."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class ExportJob(BaseModel):
-    """Bulk export job status and metadata."""
-
-    id: str
-    """Export job UUID."""
-
-    bulk_export_destination_id: str
-    """Destination ID."""
-
-    session_id: Optional[str] = None
-    """Project/session ID if filtered."""
-
-    status: ExportStatus
-    """Current job status."""
-
-    start_time: datetime
-    """Export time range start."""
-
-    end_time: datetime
-    """Export time range end."""
-
-    created_at: datetime
-    """When the export was triggered."""
-
-    completed_at: Optional[datetime] = None
-    """When the export completed."""
-
-    error_message: Optional[str] = None
-    """Error message if failed."""
-
-    runs_exported: Optional[int] = None
-    """Number of runs exported (if completed)."""
+ExportJob = BulkExportResponse
 
 
 class BulkExportManager:
