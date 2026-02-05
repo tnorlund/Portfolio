@@ -6,7 +6,7 @@ the LabelEvaluatorVisualization React component.
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DecisionCounts(BaseModel):
@@ -16,15 +16,19 @@ class DecisionCounts(BaseModel):
     and financial evaluations.
     """
 
-    model_config = {"extra": "ignore"}
+    model_config = ConfigDict(
+        extra="ignore",
+        populate_by_name=True,
+        serialize_by_alias=True,
+    )
 
-    VALID: int = 0
+    valid: int = Field(default=0, alias="VALID")
     """Number of VALID decisions."""
 
-    INVALID: int = 0
+    invalid: int = Field(default=0, alias="INVALID")
     """Number of INVALID decisions."""
 
-    NEEDS_REVIEW: int = 0
+    needs_review: int = Field(default=0, alias="NEEDS_REVIEW")
     """Number of NEEDS_REVIEW decisions."""
 
 

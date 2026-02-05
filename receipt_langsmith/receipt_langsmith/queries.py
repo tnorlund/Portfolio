@@ -8,7 +8,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from langsmith import Client
+from langsmith.utils import LangSmithError
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ def query_recent_receipt_traces(
         )
         # Filter to only runs with outputs
         return [run for run in runs if run.outputs]
-    except Exception:
+    except (LangSmithError, httpx.HTTPError):
         logger.exception("Error querying LangSmith traces")
         return []
 
@@ -69,7 +71,7 @@ def get_child_traces(client: Client, parent_run_id: str) -> dict[str, dict]:
     try:
         children = client.list_runs(parent_run_id=parent_run_id)
         return {run.name: run.outputs for run in children if run.outputs}
-    except Exception:
+    except (LangSmithError, httpx.HTTPError):
         logger.exception("Error getting child traces for %s", parent_run_id)
         return {}
 
@@ -125,7 +127,8 @@ def find_receipts_with_anomalies(
             # Extract execution_id from metadata
             execution_id = metadata.get("execution_id", "")
 
-            # If execution_id not in metadata, try to extract from trace name/tags
+            # If execution_id not in metadata, try to extract from trace
+            # name/tags
             if not execution_id:
                 # Fallback: use run_id as execution_id
                 execution_id = str(trace.id)[:8]
@@ -151,7 +154,7 @@ def find_receipts_with_anomalies(
     return receipts_with_anomalies
 
 
-def find_receipts_with_llm_decisions(
+def find_receipts_with_llm_decisions(  # pylint: disable=too-many-locals
     project_name: str,
     hours_back: int = 168,
 ) -> list[dict[str, Any]]:

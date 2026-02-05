@@ -9,8 +9,10 @@ This module provides:
 
 from receipt_langsmith.parsers.json_fields import parse_extra, parse_json
 from receipt_langsmith.parsers.parquet import ParquetReader
-from receipt_langsmith.parsers.trace_helpers import (  # Label validation helpers (receipt-label-validation project)
+# Label validation helpers (receipt-label-validation project)
+from receipt_langsmith.parsers.trace_helpers import (
     LabelValidationTraceIndex,
+    S3ResultKey,
     TraceIndex,
     build_evaluator_result,
     build_geometric_from_trace,
@@ -32,6 +34,8 @@ from receipt_langsmith.parsers.trace_helpers import (  # Label validation helper
 )
 from receipt_langsmith.parsers.trace_tree import TraceTreeBuilder
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     "ParquetReader",
     "TraceTreeBuilder",
@@ -47,6 +51,7 @@ __all__ = [
     "get_duration_seconds",
     "get_relative_timing",
     "load_s3_result",
+    "S3ResultKey",
     "build_evaluator_result",
     "build_geometric_result",
     "build_geometric_from_trace",
@@ -59,3 +64,4 @@ __all__ = [
     "get_merchant_resolution_result",
     "get_step_timings",
 ]
+# pylint: enable=duplicate-code

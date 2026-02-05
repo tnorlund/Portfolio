@@ -25,10 +25,14 @@ def parse_json(value: Optional[str]) -> Optional[dict[str, Any] | list[Any]]:
     if not value:
         return None
     try:
-        return json.loads(value)
+        parsed = json.loads(value)
     except json.JSONDecodeError as e:
         logger.debug("Failed to parse JSON: %s", e)
         return None
+
+    if isinstance(parsed, (dict, list)):
+        return parsed
+    return None
 
 
 def parse_extra(

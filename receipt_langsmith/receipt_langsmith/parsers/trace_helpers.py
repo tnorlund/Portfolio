@@ -10,8 +10,11 @@ This module provides reusable utilities for common trace operations:
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+from botocore.exceptions import BotoCoreError, ClientError
 
 from receipt_langsmith.entities.visualization import (
     DecisionCounts,
@@ -21,6 +24,17 @@ from receipt_langsmith.entities.visualization import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class S3ResultKey:
+    """S3 key components for evaluator result JSON."""
+
+    bucket: str
+    result_type: str
+    execution_id: str
+    image_id: str
+    receipt_id: int
 
 
 class TraceIndex:
@@ -127,7 +141,9 @@ def build_receipt_identifier(
     )
 
 
-def count_decisions(decisions: list[dict[str, Any]]) -> DecisionCounts:
+def count_decisions(  # pylint: disable=invalid-name
+    decisions: list[dict[str, Any]],
+) -> DecisionCounts:
     """Count VALID/INVALID/NEEDS_REVIEW decisions.
 
     Handles both nested (llm_review.decision) and flat (decision) formats.
@@ -145,11 +161,11 @@ def count_decisions(decisions: list[dict[str, Any]]) -> DecisionCounts:
         decision = llm_review.get("decision", d.get("decision", ""))
 
         if decision == "VALID":
-            counts.VALID += 1
+            counts.valid += 1
         elif decision == "INVALID":
-            counts.INVALID += 1
+            counts.invalid += 1
         elif decision == "NEEDS_REVIEW":
-            counts.NEEDS_REVIEW += 1
+            counts.needs_review += 1
 
     return counts
 
@@ -166,7 +182,7 @@ def is_all_needs_review(decisions: list[dict[str, Any]]) -> bool:
     if not decisions:
         return False
     counts = count_decisions(decisions)
-    return counts.NEEDS_REVIEW == len(decisions)
+    return counts.needs_review == len(decisions)
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -237,37 +253,68 @@ def get_relative_timing(
 
     return (start_ms, duration_ms)
 
-
+# pylint: disable=too-many-arguments,too-many-positional-arguments
 def load_s3_result(
     s3_client: Any,
-    bucket: str,
-    result_type: str,
-    execution_id: str,
-    image_id: str,
-    receipt_id: int,
+    key: S3ResultKey | str,
+    *legacy: Any,
 ) -> dict[str, Any] | None:
     """Load evaluation result from S3 batch bucket.
 
     Args:
         s3_client: Boto3 S3 client.
-        bucket: S3 bucket name.
-        result_type: Type folder (currency, metadata, financial, results).
-        execution_id: Step Function execution ID.
-        image_id: Receipt image ID.
-        receipt_id: Receipt ID within image.
+        key: S3ResultKey or legacy bucket string.
+        legacy: Legacy positional args (result_type, execution_id, image_id,
+            receipt_id) when bucket is passed positionally.
 
     Returns:
         Parsed JSON dict or None if not found.
     """
-    key = f"{result_type}/{execution_id}/{image_id}_{receipt_id}.json"
+    if isinstance(key, S3ResultKey):
+        result_key = key
+    else:
+        if not isinstance(key, str) or len(legacy) != 4:
+            raise TypeError(
+                "load_s3_result expects S3ResultKey or legacy signature "
+                "(bucket, result_type, execution_id, image_id, receipt_id)"
+            )
+        bucket = key
+        result_type, execution_id, image_id, receipt_id = legacy
+        result_key = S3ResultKey(
+            bucket=str(bucket),
+            result_type=str(result_type),
+            execution_id=str(execution_id),
+            image_id=str(image_id),
+            receipt_id=int(receipt_id),
+        )
+
+    key = (
+        f"{result_key.result_type}/{result_key.execution_id}/"
+        f"{result_key.image_id}_{result_key.receipt_id}.json"
+    )
 
     try:
-        response = s3_client.get_object(Bucket=bucket, Key=key)
-        return json.loads(response["Body"].read().decode("utf-8"))
+        response = s3_client.get_object(
+            Bucket=result_key.bucket,
+            Key=key,
+        )
+        payload = response["Body"].read().decode("utf-8")
+        data = json.loads(payload)
+        return data if isinstance(data, dict) else None
     except s3_client.exceptions.NoSuchKey:
         return None
-    except Exception:
-        logger.debug("Failed to load s3://%s/%s", bucket, key, exc_info=True)
+    except (
+        ClientError,
+        BotoCoreError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        logger.debug(
+            "Failed to load s3://%s/%s",
+            result_key.bucket,
+            key,
+            exc_info=True,
+        )
         return None
 
 
@@ -358,7 +405,10 @@ def get_decisions_from_trace(
     """
     child = children_by_name.get(trace_name, {})
     outputs = child.get("outputs", {}) or {}
-    return outputs.get(decisions_key, [])
+    raw_decisions = outputs.get(decisions_key, [])
+    if isinstance(raw_decisions, list):
+        return [d for d in raw_decisions if isinstance(d, dict)]
+    return []
 
 
 # ============================================================================
@@ -374,7 +424,8 @@ class LabelValidationTraceIndex(TraceIndex):
 
     Args:
         traces: List of raw trace dicts from Parquet.
-        parent_name_filter: Parent trace name filter (default: receipt_processing).
+        parent_name_filter: Parent trace name filter (default:
+            receipt_processing).
 
     Example:
         ```python
@@ -517,11 +568,11 @@ def get_merchant_resolution_result(
 
     # Check in priority order
     for tier in tier_order:
-        trace = by_tier.get(tier)
-        if not trace:
+        resolved_trace = by_tier.get(tier)
+        if not resolved_trace:
             continue
 
-        outputs = trace.get("outputs", {}) or {}
+        outputs = resolved_trace.get("outputs", {}) or {}
         if outputs.get("found"):
             return {
                 "merchant_name": outputs.get("merchant_name"),
@@ -593,7 +644,7 @@ def build_merchant_resolution_summary(
     Returns:
         Dict with resolution attempt results by tier.
     """
-    summary = {
+    summary: dict[str, Any] = {
         "phone_attempted": False,
         "phone_success": False,
         "address_attempted": False,
@@ -639,6 +690,7 @@ def get_step_timings(
     Returns:
         Dict mapping step type to timing info.
     """
+    _ = parent
     timings: dict[str, dict[str, Any]] = {
         "s3_download": {"duration_ms": 0, "count": 0},
         "embedding": {"duration_ms": 0, "count": 0},

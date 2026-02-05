@@ -47,6 +47,7 @@ dev = [
     "black==26.1.0",
     "pylint>=3.0.0,<5.0.0",
     "mypy>=1.19.0",
+    "pyarrow-stubs>=15.0.0",
     "isort==7.0.0",
 ]
 
@@ -71,8 +72,15 @@ target-version = ["py312"]
 profile = "black"
 line_length = 79
 
+[tool.pylint.format]
+max-line-length = 79
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["py4j", "py4j.*"]
+ignore_missing_imports = true

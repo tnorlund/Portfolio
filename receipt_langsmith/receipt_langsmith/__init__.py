@@ -42,6 +42,13 @@ Example:
     ```
 """
 
+from typing import TYPE_CHECKING
+
+from receipt_langsmith._lazy_imports import (
+    resolve_parquet_reader,
+    resolve_pyspark_attr,
+)
+
 __version__ = "0.3.0"  # Remove pyarrow dependency, cleanup dead code
 
 # Client (always available)
@@ -57,7 +64,9 @@ from receipt_langsmith.client import (
 )
 
 # Core entities (always available)
-from receipt_langsmith.entities import (  # Base; Validation agent; Label evaluator; Other agents; Label validation entities (receipt-label-validation project)
+# Base; Validation agent; Label evaluator; Other agents; Label validation
+# entities (receipt-label-validation project)
+from receipt_langsmith.entities import (
     AgenticValidationInputs,
     AgenticValidationOutputs,
     BoundingBox,
@@ -131,7 +140,8 @@ from receipt_langsmith.entities import (  # Base; Validation agent; Label evalua
 )
 
 # Parsers (always available)
-from receipt_langsmith.parsers import (  # Label validation helpers (receipt-label-validation project)
+# Label validation helpers (receipt-label-validation project)
+from receipt_langsmith.parsers import (
     LabelValidationTraceIndex,
     TraceTreeBuilder,
     build_label_validation_summary,
@@ -152,60 +162,36 @@ from receipt_langsmith.queries import (
     query_recent_receipt_traces,
 )
 
+if TYPE_CHECKING:
+    from receipt_langsmith.parsers.parquet import read_traces_from_parquet
+    from receipt_langsmith.spark.label_validation_processor import (
+        LabelValidationSparkProcessor,
+    )
+    from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+    from receipt_langsmith.spark.schemas import (
+        LABEL_VALIDATION_DECISION_SCHEMA,
+        LABEL_VALIDATION_RECEIPT_SCHEMA,
+        LABEL_VALIDATION_STEP_TIMING_SCHEMA,
+        LANGSMITH_PARQUET_SCHEMA,
+        MERCHANT_RESOLUTION_SCHEMA,
+    )
+
 
 # Lazy imports for optional dependencies
 def __getattr__(name: str):
     """Lazy import for optional dependencies (PySpark)."""
-    # PySpark processor dependencies
-    if name == "LangSmithSparkProcessor":
-        try:
-            from receipt_langsmith.spark.processor import (
-                LangSmithSparkProcessor,
-            )
+    resolved = resolve_parquet_reader(name)
+    if resolved is not None:
+        return resolved
 
-            return LangSmithSparkProcessor
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    if name == "LabelValidationSparkProcessor":
-        try:
-            from receipt_langsmith.spark.label_validation_processor import (
-                LabelValidationSparkProcessor,
-            )
-
-            return LabelValidationSparkProcessor
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    # PySpark schema dependencies
-    schema_names = [
-        "LANGSMITH_PARQUET_SCHEMA",
-        "LABEL_VALIDATION_RECEIPT_SCHEMA",
-        "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
-        "LABEL_VALIDATION_DECISION_SCHEMA",
-        "MERCHANT_RESOLUTION_SCHEMA",
-    ]
-
-    if name in schema_names:
-        try:
-            from receipt_langsmith.spark import schemas
-
-            return getattr(schemas, name)
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
+    resolved = resolve_pyspark_attr(name)
+    if resolved is not None:
+        return resolved
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     "__version__",
     # Base entities
@@ -286,9 +272,6 @@ __all__ = [
     "find_receipts_with_llm_decisions",
     # Legacy Parquet-based queries (backward compatibility)
     "read_traces_from_parquet",
-    "find_receipts_with_decisions_from_parquet",
-    "find_receipts_with_anomalies_from_parquet",
-    "find_visualization_receipts_from_parquet",
     # Label validation entities (receipt-label-validation project)
     "ChromaDBUpsertOutputs",
     "LabelValidationInputs",
@@ -325,3 +308,4 @@ __all__ = [
     "LABEL_VALIDATION_DECISION_SCHEMA",
     "MERCHANT_RESOLUTION_SCHEMA",
 ]
+# pylint: enable=duplicate-code

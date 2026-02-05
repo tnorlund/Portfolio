@@ -1,17 +1,23 @@
 """PySpark processor for receipt-label-validation analytics.
 
-This module provides analytics for the receipt-label-validation LangSmith project,
-including receipt-level metrics, step timing, validation decisions, and merchant
-resolution success rates.
+This module provides analytics for the receipt-label-validation LangSmith
+project, including receipt-level metrics, step timing, validation decisions,
+and merchant resolution success rates.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+
+from receipt_langsmith.spark.analytics_helpers import (
+    build_trace_stats,
+    duration_stats,
+    step_timing_stats,
+)
+from receipt_langsmith.spark.base_processor import BaseSparkProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +41,7 @@ ALL_STEP_NAMES = [name for names in STEP_PATTERNS.values() for name in names]
 COST_PER_1K_EMBEDDING_TOKENS = 0.00002
 
 
-class LabelValidationSparkProcessor:
+class LabelValidationSparkProcessor(BaseSparkProcessor):
     """PySpark processor for receipt-label-validation project analytics.
 
     This processor reads Parquet exports from the receipt-label-validation
@@ -50,7 +56,9 @@ class LabelValidationSparkProcessor:
 
     Example:
         ```python
-        spark = SparkSession.builder.appName("LabelValidationAnalytics").getOrCreate()
+        spark = SparkSession.builder.appName(
+            "LabelValidationAnalytics"
+        ).getOrCreate()
         processor = LabelValidationSparkProcessor(spark)
 
         df = processor.read_parquet("s3://bucket/traces/")
@@ -64,143 +72,12 @@ class LabelValidationSparkProcessor:
         ```
     """
 
-    def __init__(self, spark: SparkSession):
-        self.spark = spark
+    include_inputs = True
 
-    def read_parquet(self, path: str) -> DataFrame:
-        """Read Parquet files from S3 or local path.
-
-        Uses native Spark distributed reading for scalability.
-        Handles flexible schema - adds missing columns with nulls when they
-        don't exist in the source parquet (e.g., trace_id, token columns).
-
-        Args:
-            path: S3 URI or local path to Parquet files.
-
-        Returns:
-            DataFrame with raw trace data.
-        """
-        logger.info("Reading Parquet from: %s", path)
-
-        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
-        spark_path = (
-            path.replace("s3://", "s3a://")
-            if path.startswith("s3://")
-            else path
-        )
-
-        # Read with recursive lookup to handle nested directory structures
-        df = self.spark.read.option("recursiveFileLookup", "true").parquet(
-            spark_path
-        )
-        available_columns = set(df.columns)
-
-        logger.info(
-            "Available columns in parquet: %s", sorted(available_columns)
-        )
-
-        # Import LongType for timestamp conversion check
-        from pyspark.sql.types import LongType
-
-        # Convert timestamp columns from nanoseconds (Long) to timestamp
-        if "start_time" in available_columns and isinstance(
-            df.schema["start_time"].dataType, LongType
-        ):
-            df = df.withColumn(
-                "start_time",
-                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-            ).withColumn(
-                "end_time",
-                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-            )
-
-        # Add missing columns with appropriate defaults
-        # trace_id: use 'id' if trace_id doesn't exist (for root traces)
-        if "trace_id" not in available_columns:
-            df = df.withColumn("trace_id", F.col("id"))
-
-        # Token columns: add as null if missing
-        if "total_tokens" not in available_columns:
-            df = df.withColumn("total_tokens", F.lit(None).cast("long"))
-        if "prompt_tokens" not in available_columns:
-            df = df.withColumn("prompt_tokens", F.lit(None).cast("long"))
-        if "completion_tokens" not in available_columns:
-            df = df.withColumn("completion_tokens", F.lit(None).cast("long"))
-
-        # parent_run_id: add as null if missing
-        if "parent_run_id" not in available_columns:
-            df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
-
-        # inputs: add as null if missing
-        if "inputs" not in available_columns:
-            df = df.withColumn("inputs", F.lit(None).cast("string"))
-
-        # Select the columns we need for analytics
-        needed_columns = [
-            "id",
-            "trace_id",
-            "parent_run_id",
-            "name",
-            "run_type",
-            "status",
-            "start_time",
-            "end_time",
-            "extra",
-            "inputs",
-            "outputs",
-            "total_tokens",
-            "prompt_tokens",
-            "completion_tokens",
-        ]
-
-        df = df.select(*needed_columns)
-
-        logger.info(
-            "Read Parquet with %d partitions", df.rdd.getNumPartitions()
-        )
-        return df
-
-    def parse_json_fields(self, df: DataFrame) -> DataFrame:
-        """Parse JSON string columns and extract metadata.
-
-        Extracts metadata and computes duration for the receipt-label-validation
-        project traces.
-
-        Args:
-            df: DataFrame with raw trace data.
-
-        Returns:
-            DataFrame with extracted metadata columns.
-        """
+    def _augment_parsed_fields(self, df: DataFrame) -> DataFrame:
+        """Add receipt-label-validation specific parsed fields."""
         return (
             df.withColumn(
-                "metadata_execution_id",
-                F.get_json_object(F.col("extra"), "$.metadata.execution_id"),
-            )
-            .withColumn(
-                "metadata_merchant_name",
-                F.get_json_object(F.col("extra"), "$.metadata.merchant_name"),
-            )
-            .withColumn(
-                "metadata_image_id",
-                F.get_json_object(F.col("extra"), "$.metadata.image_id"),
-            )
-            .withColumn(
-                "metadata_receipt_id",
-                F.get_json_object(
-                    F.col("extra"), "$.metadata.receipt_id"
-                ).cast("int"),
-            )
-            .withColumn(
-                "duration_ms",
-                (
-                    F.col("end_time").cast("double")
-                    - F.col("start_time").cast("double")
-                )
-                * 1000,
-            )
-            # Extract output fields for validation traces
-            .withColumn(
                 "validation_source",
                 F.get_json_object(F.col("outputs"), "$.validation_source"),
             )
@@ -218,7 +95,6 @@ class LabelValidationSparkProcessor:
                 "predicted_label",
                 F.get_json_object(F.col("outputs"), "$.predicted_label"),
             )
-            # Extract merchant resolution fields
             .withColumn(
                 "resolution_tier",
                 F.get_json_object(F.col("outputs"), "$.resolution_tier"),
@@ -248,13 +124,7 @@ class LabelValidationSparkProcessor:
         receipts = df.filter(F.col("name") == "receipt_processing")
 
         # Get all runs in each trace for aggregation
-        trace_stats = df.groupBy("trace_id").agg(
-            F.sum("duration_ms").alias("total_duration_ms"),
-            F.sum("total_tokens").alias("total_tokens"),
-            F.sum("prompt_tokens").alias("prompt_tokens"),
-            F.sum("completion_tokens").alias("completion_tokens"),
-            F.count("*").alias("run_count"),
-            # Count by step type
+        extra_aggs = [
             F.sum(F.when(F.col("name").like("s3_%"), 1).otherwise(0)).alias(
                 "s3_runs"
             ),
@@ -269,7 +139,6 @@ class LabelValidationSparkProcessor:
                     F.col("name").like("merchant_resolution%"), 1
                 ).otherwise(0)
             ).alias("merchant_runs"),
-            # Sum duration by step type
             F.sum(
                 F.when(
                     F.col("name").like("s3_%"), F.col("duration_ms")
@@ -300,7 +169,8 @@ class LabelValidationSparkProcessor:
                     F.col("duration_ms"),
                 ).otherwise(0)
             ).alias("merchant_duration_ms"),
-        )
+        ]
+        trace_stats = build_trace_stats(df, extra_aggs=extra_aggs)
 
         # Extract root trace output fields
         receipts_with_outputs = (
@@ -442,23 +312,7 @@ class LabelValidationSparkProcessor:
         steps = steps.withColumn("step_type", step_type_expr)
 
         result = (
-            steps.groupBy("name", "step_type")
-            .agg(
-                F.avg("duration_ms").alias("avg_duration_ms"),
-                F.expr("percentile_approx(duration_ms, 0.5)").alias(
-                    "p50_duration_ms"
-                ),
-                F.expr("percentile_approx(duration_ms, 0.95)").alias(
-                    "p95_duration_ms"
-                ),
-                F.expr("percentile_approx(duration_ms, 0.99)").alias(
-                    "p99_duration_ms"
-                ),
-                F.min("duration_ms").alias("min_duration_ms"),
-                F.max("duration_ms").alias("max_duration_ms"),
-                F.count("*").alias("total_runs"),
-                F.sum("total_tokens").alias("total_tokens"),
-            )
+            step_timing_stats(steps, group_cols=["name", "step_type"])
             .withColumnRenamed("name", "step_name")
         )
 
@@ -541,16 +395,14 @@ class LabelValidationSparkProcessor:
         result = (
             merchant.groupBy("tier")
             .agg(
+                F.sum(F.when(F.col("merchant_found"), 1).otherwise(0)).alias(
+                    "success_count"
+                ),
                 F.sum(
-                    F.when(F.col("merchant_found") == True, 1).otherwise(0)
-                ).alias("success_count"),
-                F.sum(
-                    F.when(F.col("merchant_found") == False, 1).otherwise(0)
+                    F.when(~F.col("merchant_found"), 1).otherwise(0)
                 ).alias("failure_count"),
                 F.avg(
-                    F.when(
-                        F.col("merchant_found") == True, F.col("confidence")
-                    )
+                    F.when(F.col("merchant_found"), F.col("confidence"))
                 ).alias("avg_confidence"),
                 F.count("*").alias("total_attempts"),
             )
@@ -586,51 +438,13 @@ class LabelValidationSparkProcessor:
             .otherwise("unknown"),
         )
 
-        result = s3_downloads.groupBy("collection").agg(
-            F.avg("duration_ms").alias("avg_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias(
-                "p50_duration_ms"
-            ),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias(
-                "p95_duration_ms"
-            ),
-            F.min("duration_ms").alias("min_duration_ms"),
-            F.max("duration_ms").alias("max_duration_ms"),
-            F.count("*").alias("total_downloads"),
+        result = duration_stats(
+            s3_downloads,
+            group_cols=["collection"],
+            percentiles=(0.5, 0.95),
+            include_tokens=False,
+            count_alias="total_downloads",
         )
 
         logger.info("Computed S3 download metrics")
         return result
-
-    def write_analytics(
-        self,
-        df: DataFrame,
-        output_path: str,
-        partition_by: Optional[list[str]] = None,
-        mode: str = "overwrite",
-    ) -> None:
-        """Write analytics results to S3 or local path.
-
-        Args:
-            df: DataFrame to write.
-            output_path: S3 URI or local path.
-            partition_by: Columns to partition by.
-            mode: Write mode ('overwrite', 'append').
-        """
-        logger.info("Writing analytics to: %s", output_path)
-
-        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
-        spark_path = (
-            output_path.replace("s3://", "s3a://")
-            if output_path.startswith("s3://")
-            else output_path
-        )
-
-        writer = df.write.mode(mode)
-
-        if partition_by:
-            writer = writer.partitionBy(*partition_by)
-
-        writer.parquet(spark_path)
-
-        logger.info("Analytics written successfully")

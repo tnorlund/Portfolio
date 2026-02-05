@@ -2,6 +2,7 @@ import { GetStaticProps } from "next";
 import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
+import { useQAQueue } from "../hooks/useQAQueue";
 import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
@@ -18,6 +19,7 @@ import {
   LayoutLMInferenceVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
+  QAAgentFlow,
   QuestionMarquee,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
@@ -83,6 +85,9 @@ export default function ReceiptPage({
   //   );
   //   setUploadDiagramChars(chars);
   // }, []);
+
+  // --- QA Agent live data ---
+  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   // --- Receipt Upload State & Handlers ---
   const [files, setFiles] = useState<File[]>([]);
@@ -359,7 +364,9 @@ M1LK 2%           1    $4.4g`}</code>
         formats it differently. I needed a shared vocabulary.
       </p>
 
-      <LabelWordCloud />
+      <ClientOnly>
+        <LabelWordCloud />
+      </ClientOnly>
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label, then
@@ -497,7 +504,9 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <QuestionMarquee rows={4} speed={25} />
+        <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
+          <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
+        </QAAgentFlow>
       </ClientOnly>
 
       <p>

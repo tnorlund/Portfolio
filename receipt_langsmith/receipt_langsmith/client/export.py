@@ -10,58 +10,16 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import BaseModel
+from receipt_langsmith.client.models import BulkExportResponse, ExportStatus
 
 if TYPE_CHECKING:
     from receipt_langsmith.client.api import LangSmithClient
 
 logger = logging.getLogger(__name__)
 
-
-class ExportStatus(str, Enum):
-    """Bulk export job status."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class ExportJob(BaseModel):
-    """Bulk export job status and metadata."""
-
-    id: str
-    """Export job UUID."""
-
-    bulk_export_destination_id: str
-    """Destination ID."""
-
-    session_id: Optional[str] = None
-    """Project/session ID if filtered."""
-
-    status: ExportStatus
-    """Current job status."""
-
-    start_time: datetime
-    """Export time range start."""
-
-    end_time: datetime
-    """Export time range end."""
-
-    created_at: datetime
-    """When the export was triggered."""
-
-    completed_at: Optional[datetime] = None
-    """When the export completed."""
-
-    error_message: Optional[str] = None
-    """Error message if failed."""
-
-    runs_exported: Optional[int] = None
-    """Number of runs exported (if completed)."""
+ExportJob = BulkExportResponse
 
 
 class BulkExportManager:
@@ -134,7 +92,8 @@ class BulkExportManager:
 
         Args:
             project_id: Project/session ID to export (None = all projects).
-            days_back: Number of days back to export (ignored if start_time set).
+            days_back: Number of days back to export (ignored if start_time
+                set).
             start_time: Export runs starting from this time.
             end_time: Export runs until this time (default: now).
 
@@ -163,18 +122,13 @@ class BulkExportManager:
             end_time.isoformat(),
         )
 
-        http_client = await self.client._get_async_client()
-        response = await http_client.post(
+        data = await self.client.arequest(
+            "POST",
             "/api/v1/bulk-exports",
             json=request_body,
         )
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected response payload for bulk export")
         job = self._parse_export_job(data)
 
         logger.info("Export job created: %s (status=%s)", job.id, job.status)
@@ -189,15 +143,12 @@ class BulkExportManager:
         Returns:
             ExportJob with current status.
         """
-        http_client = await self.client._get_async_client()
-        response = await http_client.get(f"/api/v1/bulk-exports/{export_id}")
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        data = response.json()
+        data = await self.client.arequest(
+            "GET",
+            f"/api/v1/bulk-exports/{export_id}",
+        )
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected response payload for export status")
         return self._parse_export_job(data)
 
     async def await_completion(
@@ -259,18 +210,14 @@ class BulkExportManager:
         Returns:
             List of ExportJob objects.
         """
-        http_client = await self.client._get_async_client()
-        response = await http_client.get(
+        data = await self.client.arequest(
+            "GET",
             "/api/v1/bulk-exports",
             params={"limit": limit},
         )
-
-        if response.status_code >= 400:
-            from receipt_langsmith.client.api import LangSmithAPIError
-
-            raise LangSmithAPIError(response.status_code, response.text)
-
-        return [self._parse_export_job(data) for data in response.json()]
+        if not isinstance(data, list):
+            return []
+        return [self._parse_export_job(item) for item in data]
 
     # Sync wrappers
 

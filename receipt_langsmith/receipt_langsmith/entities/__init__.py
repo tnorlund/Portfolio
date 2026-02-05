@@ -71,6 +71,16 @@ from receipt_langsmith.entities.place_id_finder import (
     PlaceIdFinderOutputs,
     ToolCallTrace,
 )
+from receipt_langsmith.entities.qa_trace import (
+    QACacheMetadata,
+    QAPlanOutput,
+    QAQuestionCache,
+    QAShapeOutput,
+    QASynthesizeOutput,
+    QATraceRoot,
+    QATraceStats,
+    QATraceStep,
+)
 from receipt_langsmith.entities.validation import (
     EvidenceType,
     MerchantCandidateTrace,
@@ -95,6 +105,8 @@ from receipt_langsmith.entities.visualization import (
     WordWithLabel,
 )
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     # Base schemas
     "LangSmithRun",
@@ -175,4 +187,14 @@ __all__ = [
     "ReceiptProcessingInputs",
     "ReceiptProcessingOutputs",
     "StepTimingSummary",
+    # QA Agent traces
+    "QATraceRoot",
+    "QAPlanOutput",
+    "QAShapeOutput",
+    "QASynthesizeOutput",
+    "QATraceStep",
+    "QATraceStats",
+    "QAQuestionCache",
+    "QACacheMetadata",
 ]
+# pylint: enable=duplicate-code

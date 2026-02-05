@@ -10,9 +10,17 @@ from receipt_agent.agents.label_evaluator import (
     run_label_evaluator,
     run_label_evaluator_sync,
 )
+from receipt_agent.agents.question_answering import (
+    answer_question,
+    answer_question_sync,
+    create_qa_graph,
+)
 
 __all__ = [
     "create_label_evaluator_graph",
     "run_label_evaluator",
     "run_label_evaluator_sync",
+    "answer_question",
+    "answer_question_sync",
+    "create_qa_graph",
 ]

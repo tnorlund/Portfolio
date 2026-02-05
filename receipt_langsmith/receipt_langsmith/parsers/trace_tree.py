@@ -104,8 +104,8 @@ class TraceTreeBuilder:
             run_id: Parent run ID.
 
         Returns:
-            Dict mapping child name to run.
-            Note: If multiple children have the same name, only one is returned.
+            Dict mapping child name to run. If multiple children have the same
+            name, only one is returned.
         """
         return {c.name: c for c in self.get_children(run_id)}
 

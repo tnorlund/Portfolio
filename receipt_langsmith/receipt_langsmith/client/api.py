@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import httpx
 from tenacity import (
@@ -34,6 +35,18 @@ class LangSmithAPIError(Exception):
         super().__init__(f"LangSmith API error {status_code}: {message}")
 
 
+@dataclass(frozen=True)
+class RunListFilters:
+    """Filters for listing LangSmith runs."""
+
+    project_name: Optional[str] = None
+    project_id: Optional[str] = None
+    run_type: Optional[str] = None
+    name_filter: Optional[str] = None
+    start_time: Optional[datetime] = None
+    parent_run_id: Optional[str] = None
+
+
 class LangSmithClient:
     """Async/sync LangSmith API client with retry logic.
 
@@ -41,7 +54,8 @@ class LangSmithClient:
     including listing projects, listing runs, and managing bulk exports.
 
     Args:
-        api_key: LangSmith API key. If not provided, uses LANGCHAIN_API_KEY env var.
+        api_key: LangSmith API key. If not provided, uses LANGCHAIN_API_KEY
+            env var.
         tenant_id: LangSmith tenant/workspace ID. If not provided, uses
             LANGSMITH_TENANT_ID env var.
         timeout: Request timeout in seconds.
@@ -148,7 +162,7 @@ class LangSmithClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(httpx.HTTPError),
     )
-    async def _arequest(
+    async def arequest(
         self,
         method: str,
         path: str,
@@ -162,7 +176,7 @@ class LangSmithClient:
         if response.status_code >= 400:
             raise LangSmithAPIError(response.status_code, response.text)
 
-        return response.json()
+        return cast(dict[str, Any] | list[Any], response.json())
 
     async def alist_projects(self) -> list[Project]:
         """List all projects (sessions) in the workspace.
@@ -170,7 +184,7 @@ class LangSmithClient:
         Returns:
             List of Project objects.
         """
-        data = await self._arequest("GET", "/api/v1/sessions")
+        data = await self.arequest("GET", "/api/v1/sessions")
         if isinstance(data, list):
             return [Project(**p) for p in data]
         return []
@@ -192,47 +206,75 @@ class LangSmithClient:
 
     async def alist_runs(
         self,
-        project_name: Optional[str] = None,
-        project_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        name_filter: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        parent_run_id: Optional[str] = None,
+        *legacy_args: Any,
+        filters: Optional[RunListFilters] = None,
         limit: int = 100,
+        **legacy_kwargs: Any,
     ) -> list[dict[str, Any]]:
         """List runs with optional filters.
 
         Args:
-            project_name: Filter by project name.
-            project_id: Filter by project ID.
-            run_type: Filter by run type ('chain', 'llm', 'tool').
-            name_filter: Filter by exact run name.
-            start_time: Only runs after this time.
-            parent_run_id: Filter by parent run ID.
+            filters: RunListFilters object.
+            legacy_args: Legacy positional args in order:
+                project_name, project_id, run_type, name_filter, start_time,
+                parent_run_id.
             limit: Maximum number of runs to return.
+            legacy_kwargs: Legacy keyword args matching RunListFilters fields.
 
         Returns:
             List of run dictionaries.
         """
+        if filters is None:
+            filters = RunListFilters()
+
+        legacy_fields = [
+            "project_name",
+            "project_id",
+            "run_type",
+            "name_filter",
+            "start_time",
+            "parent_run_id",
+        ]
+        if len(legacy_args) > len(legacy_fields):
+            raise TypeError(
+                "alist_runs accepts at most 6 positional args: "
+                "project_name, project_id, run_type, name_filter, start_time, "
+                "parent_run_id."
+            )
+
+        if legacy_args:
+            updates = dict(zip(legacy_fields, legacy_args))
+            filters = replace(filters, **updates)
+
+        if legacy_kwargs:
+            unknown = set(legacy_kwargs) - set(legacy_fields)
+            if unknown:
+                raise TypeError(
+                    f"alist_runs got unexpected keyword(s): {unknown}"
+                )
+            filters = replace(filters, **legacy_kwargs)
+
         params: dict[str, Any] = {"limit": limit}
 
-        if project_name:
-            params["project_name"] = project_name
-        if project_id:
-            params["session"] = project_id
-        if run_type:
-            params["run_type"] = run_type
-        if name_filter:
+        if filters.project_name:
+            params["project_name"] = filters.project_name
+        if filters.project_id:
+            params["session"] = filters.project_id
+        if filters.run_type:
+            params["run_type"] = filters.run_type
+        if filters.name_filter:
             # Sanitize name_filter to prevent filter injection
             # Escape backslashes first, then quotes (order matters)
-            sanitized = name_filter.replace("\\", "\\\\").replace('"', '\\"')
+            sanitized = (
+                filters.name_filter.replace("\\", "\\\\").replace('"', '\\"')
+            )
             params["filter"] = f'eq(name, "{sanitized}")'
-        if start_time:
-            params["start_time"] = start_time.isoformat()
-        if parent_run_id:
-            params["parent_run_id"] = parent_run_id
+        if filters.start_time:
+            params["start_time"] = filters.start_time.isoformat()
+        if filters.parent_run_id:
+            params["parent_run_id"] = filters.parent_run_id
 
-        data = await self._arequest("GET", "/api/v1/runs", params=params)
+        data = await self.arequest("GET", "/api/v1/runs", params=params)
         return data if isinstance(data, list) else []
 
     async def alist_recent_traces(
@@ -305,22 +347,32 @@ class LangSmithClient:
 
     def list_projects(self) -> list[Project]:
         """List all projects (sync wrapper)."""
-        return self._run_sync(self.alist_projects())
+        return cast(list[Project], self._run_sync(self.alist_projects()))
 
     def get_project(self, project_name: str) -> Optional[Project]:
         """Get a project by name (sync wrapper)."""
-        return self._run_sync(self.aget_project(project_name))
+        return cast(
+            Optional[Project], self._run_sync(self.aget_project(project_name))
+        )
 
     def list_runs(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List runs with filters (sync wrapper)."""
-        return self._run_sync(self.alist_runs(**kwargs))
+        return cast(
+            list[dict[str, Any]], self._run_sync(self.alist_runs(**kwargs))
+        )
 
     def list_recent_traces(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List recent traces (sync wrapper)."""
-        return self._run_sync(self.alist_recent_traces(**kwargs))
+        return cast(
+            list[dict[str, Any]],
+            self._run_sync(self.alist_recent_traces(**kwargs)),
+        )
 
     def get_child_traces(
         self, parent_run_id: str
     ) -> dict[str, dict[str, Any]]:
         """Get child traces (sync wrapper)."""
-        return self._run_sync(self.aget_child_traces(parent_run_id))
+        return cast(
+            dict[str, dict[str, Any]],
+            self._run_sync(self.aget_child_traces(parent_run_id)),
+        )

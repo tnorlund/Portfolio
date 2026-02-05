@@ -43,9 +43,9 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
+from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
-from fix_place_lambda import create_fix_place_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1284,6 +1284,7 @@ fix_place_lambda = create_fix_place_lambda(
 )
 pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
+pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
@@ -1579,6 +1580,66 @@ if hasattr(api_gateway, "api"):
         "label_validation_viz_lambda_permission",
         action="lambda:InvokeFunction",
         function=label_validation_viz_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )
+
+# QA Agent Step Function pipeline
+from qa_agent_step_functions import QAAgentStepFunction
+
+qa_agent_sf = QAAgentStepFunction(
+    f"qa-agent-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    # EMR Serverless
+    emr_application_id=emr_analytics.emr_application.id,
+    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
+    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+    analytics_output_bucket=emr_analytics.analytics_bucket.id,
+    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+    # LangSmith export lambdas — use the langsmith_bulk_export component's trigger
+    # (correct SSM_PREFIX → correct destination → correct S3 bucket)
+    trigger_export_lambda_arn=langsmith_bulk_export.trigger_lambda.arn,
+    check_export_lambda_arn=label_validation_viz_cache.check_export_lambda.arn,
+)
+
+pulumi.export("qa_agent_sf_arn", qa_agent_sf.state_machine_arn)
+pulumi.export("qa_agent_batch_bucket_name", qa_agent_sf.batch_bucket_name)
+
+# QA Visualization Cache API
+from routes.qa_viz_cache.infra import create_qa_viz_cache
+
+if hasattr(api_gateway, "api"):
+    qa_viz_cache = create_qa_viz_cache(
+        cache_bucket_name=qa_agent_sf.batch_bucket_name,
+    )
+    pulumi.export("qa_viz_cache_bucket", qa_agent_sf.batch_bucket_name)
+
+    # QA visualization endpoint
+    integration_qa_viz = aws.apigatewayv2.Integration(
+        "qa_viz_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=qa_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_qa_viz = aws.apigatewayv2.Route(
+        "qa_viz_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /qa/visualization",
+        target=integration_qa_viz.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "qa_viz_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=qa_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
         source_arn=api_gateway.api.execution_arn.apply(
             lambda arn: f"{arn}/*/*"
