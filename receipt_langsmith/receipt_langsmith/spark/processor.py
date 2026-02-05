@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import logging
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import LongType
+
+from receipt_langsmith.spark.analytics_helpers import (
+    build_trace_stats,
+    step_timing_stats,
+)
+from receipt_langsmith.spark.base_processor import BaseSparkProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,7 @@ COST_PER_1K_PROMPT_TOKENS = 0.0015  # GPT-4o-mini input
 COST_PER_1K_COMPLETION_TOKENS = 0.006  # GPT-4o-mini output
 
 
-class LangSmithSparkProcessor:
+class LangSmithSparkProcessor(BaseSparkProcessor):
     """PySpark processor for large-scale LangSmith analytics.
 
     This processor reads Parquet exports and computes various analytics:
@@ -52,153 +57,6 @@ class LangSmithSparkProcessor:
         )
         ```
     """
-
-    def __init__(self, spark: SparkSession):
-        self.spark = spark
-
-    def read_parquet(self, path: str) -> DataFrame:
-        """Read Parquet files from S3 or local path.
-
-        Uses native Spark distributed reading for scalability.
-        Requires spark.sql.legacy.parquet.nanosAsLong=true for nanosecond
-        timestamp handling.
-
-        Handles flexible schema - adds missing columns with nulls when they
-        don't exist in the source parquet (e.g., trace_id, token columns).
-
-        Args:
-            path: S3 URI or local path to Parquet files.
-
-        Returns:
-            DataFrame with raw trace data.
-        """
-        logger.info("Reading Parquet from: %s", path)
-
-        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
-        spark_path = (
-            path.replace("s3://", "s3a://")
-            if path.startswith("s3://")
-            else path
-        )
-
-        # Read all parquet files recursively
-        # Use recursiveFileLookup=true to handle mixed partition/non-partition
-        # directory structures (e.g., traces/export_id=X/.../runs/year=Y/...)
-        # NOTE: Requires spark.sql.parquet.enableVectorizedReader=false and
-        # spark.sql.legacy.parquet.nanosAsLong=true to handle schema
-        # differences across exports (some files have timestamp[ns], others
-        # have binary)
-        df = self.spark.read.option("recursiveFileLookup", "true").parquet(
-            spark_path
-        )
-        available_columns = set(df.columns)
-
-        logger.info(
-            "Available columns in parquet: %s", sorted(available_columns)
-        )
-
-        # Convert timestamp columns from nanoseconds (Long) to timestamp
-        # With spark.sql.legacy.parquet.nanosAsLong=true and non-vectorized
-        # reader, timestamps are read as Long (nanoseconds since epoch)
-        if "start_time" in available_columns and isinstance(
-            df.schema["start_time"].dataType, LongType
-        ):
-            # Nanoseconds to timestamp conversion
-            df = df.withColumn(
-                "start_time",
-                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
-            ).withColumn(
-                "end_time",
-                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
-            )
-
-        # Add missing columns with appropriate defaults
-        # trace_id: use 'id' if trace_id doesn't exist (for root traces)
-        if "trace_id" not in available_columns:
-            df = df.withColumn("trace_id", F.col("id"))
-
-        # Token columns: add as null if missing
-        if "total_tokens" not in available_columns:
-            df = df.withColumn("total_tokens", F.lit(None).cast("long"))
-        if "prompt_tokens" not in available_columns:
-            df = df.withColumn("prompt_tokens", F.lit(None).cast("long"))
-        if "completion_tokens" not in available_columns:
-            df = df.withColumn("completion_tokens", F.lit(None).cast("long"))
-
-        # parent_run_id: add as null if missing (needed for hierarchy
-        # validation)
-        if "parent_run_id" not in available_columns:
-            df = df.withColumn("parent_run_id", F.lit(None).cast("string"))
-
-        # Select the columns we need for analytics
-        needed_columns = [
-            "id",
-            "trace_id",
-            "parent_run_id",
-            "name",
-            "run_type",
-            "status",
-            "start_time",
-            "end_time",
-            "extra",
-            "outputs",
-            "total_tokens",
-            "prompt_tokens",
-            "completion_tokens",
-        ]
-
-        df = df.select(*needed_columns)
-
-        logger.info(
-            "Read Parquet with %d partitions", df.rdd.getNumPartitions()
-        )
-        return df
-
-    def parse_json_fields(self, df: DataFrame) -> DataFrame:
-        """Parse JSON string columns and extract metadata.
-
-        Extracts commonly used fields from the `extra` JSON:
-        - execution_id
-        - merchant_name
-        - image_id
-        - receipt_id
-
-        Args:
-            df: DataFrame with raw trace data.
-
-        Returns:
-            DataFrame with extracted metadata columns.
-        """
-        return (
-            df.withColumn(
-                "metadata_execution_id",
-                F.get_json_object(F.col("extra"), "$.metadata.execution_id"),
-            )
-            .withColumn(
-                "metadata_merchant_name",
-                F.get_json_object(F.col("extra"), "$.metadata.merchant_name"),
-            )
-            .withColumn(
-                "metadata_image_id",
-                F.get_json_object(F.col("extra"), "$.metadata.image_id"),
-            )
-            .withColumn(
-                "metadata_receipt_id",
-                F.get_json_object(
-                    F.col("extra"), "$.metadata.receipt_id"
-                ).cast("int"),
-            )
-            .withColumn(
-                "duration_ms",
-                # Use timestamp arithmetic as doubles to preserve millisecond
-                # precision (unix_timestamp loses sub-second precision)
-                (
-                    F.col("end_time").cast("double")
-                    - F.col("start_time").cast("double")
-                )
-                * 1000,
-            )
-        )
 
     def compute_job_analytics(self, df: DataFrame) -> DataFrame:
         """Compute per-job analytics for both Phase 1 and Phase 2.
@@ -313,16 +171,7 @@ class LangSmithSparkProcessor:
         receipts = df.filter(F.col("name") == "ReceiptEvaluation")
 
         # Get all runs in each trace for aggregation
-        trace_stats = df.groupBy("trace_id").agg(
-            F.sum("duration_ms").alias("total_duration_ms"),
-            F.sum("total_tokens").alias("total_tokens"),
-            F.sum("prompt_tokens").alias("prompt_tokens"),
-            F.sum("completion_tokens").alias("completion_tokens"),
-            F.count("*").alias("run_count"),
-            F.sum(F.when(F.col("run_type") == "llm", 1).otherwise(0)).alias(
-                "llm_run_count"
-            ),
-        )
+        trace_stats = build_trace_stats(df, include_llm_runs=True)
 
         # Join with receipt metadata
         # Select only needed columns from receipts to avoid duplicate columns
@@ -406,22 +255,7 @@ class LangSmithSparkProcessor:
 
         steps = df.filter(F.col("name").isin(step_names))
 
-        result = steps.groupBy("name").agg(
-            F.avg("duration_ms").alias("avg_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias(
-                "p50_duration_ms"
-            ),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias(
-                "p95_duration_ms"
-            ),
-            F.expr("percentile_approx(duration_ms, 0.99)").alias(
-                "p99_duration_ms"
-            ),
-            F.min("duration_ms").alias("min_duration_ms"),
-            F.max("duration_ms").alias("max_duration_ms"),
-            F.count("*").alias("total_runs"),
-            F.sum("total_tokens").alias("total_tokens"),
-        )
+        result = step_timing_stats(steps, group_cols=["name"])
 
         result = result.withColumnRenamed("name", "step_name")
 
@@ -672,39 +506,6 @@ class LangSmithSparkProcessor:
 
         logger.info("Computed token usage")
         return result
-
-    def write_analytics(
-        self,
-        df: DataFrame,
-        output_path: str,
-        partition_by: list[str] | None = None,
-        mode: str = "overwrite",
-    ) -> None:
-        """Write analytics results to S3 or local path.
-
-        Args:
-            df: DataFrame to write.
-            output_path: S3 URI or local path.
-            partition_by: Columns to partition by.
-            mode: Write mode ('overwrite', 'append').
-        """
-        logger.info("Writing analytics to: %s", output_path)
-
-        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
-        spark_path = (
-            output_path.replace("s3://", "s3a://")
-            if output_path.startswith("s3://")
-            else output_path
-        )
-
-        writer = df.write.mode(mode)
-
-        if partition_by:
-            writer = writer.partitionBy(*partition_by)
-
-        writer.parquet(spark_path)
-
-        logger.info("Analytics written successfully")
 
     def extract_langgraph_receipts(self, df: DataFrame) -> list[dict]:
         """Extract LangGraph trace outputs for visualization cache.
