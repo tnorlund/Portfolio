@@ -36,24 +36,6 @@ class S3ResultKey:
     image_id: str
     receipt_id: int
 
-    @classmethod
-    def from_legacy(
-        cls,
-        bucket: str,
-        result_type: str,
-        execution_id: str,
-        image_id: str,
-        receipt_id: int,
-    ) -> "S3ResultKey":
-        """Build from legacy positional arguments."""
-        return cls(
-            bucket=bucket,
-            result_type=result_type,
-            execution_id=execution_id,
-            image_id=image_id,
-            receipt_id=receipt_id,
-        )
-
 
 class TraceIndex:
     """Index of traces by parent ID for efficient child lookups.
@@ -179,11 +161,11 @@ def count_decisions(  # pylint: disable=invalid-name
         decision = llm_review.get("decision", d.get("decision", ""))
 
         if decision == "VALID":
-            counts.VALID += 1
+            counts.valid += 1
         elif decision == "INVALID":
-            counts.INVALID += 1
+            counts.invalid += 1
         elif decision == "NEEDS_REVIEW":
-            counts.NEEDS_REVIEW += 1
+            counts.needs_review += 1
 
     return counts
 
@@ -200,7 +182,7 @@ def is_all_needs_review(decisions: list[dict[str, Any]]) -> bool:
     if not decisions:
         return False
     counts = count_decisions(decisions)
-    return counts.NEEDS_REVIEW == len(decisions)
+    return counts.needs_review == len(decisions)
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -298,7 +280,7 @@ def load_s3_result(
             )
         bucket = key
         result_type, execution_id, image_id, receipt_id = legacy
-        result_key = S3ResultKey.from_legacy(
+        result_key = S3ResultKey(
             bucket=str(bucket),
             result_type=str(result_type),
             execution_id=str(execution_id),
