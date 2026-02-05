@@ -395,9 +395,12 @@ class QAAgentStepFunction(ComponentResource):
                                     "emr-serverless:CancelJobRun",
                                 ],
                                 "Resource": (
-                                    args[-1]
+                                    [args[-1], f"{args[-1]}/*"]
                                     if str(args[-1]).startswith("arn:")
-                                    else f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}/*"
+                                    else [
+                                        f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}",
+                                        f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}/*",
+                                    ]
                                 ),
                             },
                             {
