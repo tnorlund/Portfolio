@@ -415,6 +415,14 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        _status_route = aws.apigatewayv2.Route(
+            f"{name}-status-route",
+            api_id=api.id,
+            route_key="GET /upload-status",
+            target=upload_int.id.apply(lambda id: f"integrations/{id}"),
+            opts=ResourceOptions(parent=self),
+        )
+
         _upload_permission = aws.lambda_.Permission(
             f"{name}-upload-permission",
             action="lambda:InvokeFunction",
