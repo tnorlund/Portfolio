@@ -34,6 +34,8 @@ from receipt_langsmith.parsers.trace_helpers import (
 )
 from receipt_langsmith.parsers.trace_tree import TraceTreeBuilder
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     "ParquetReader",
     "TraceTreeBuilder",
@@ -62,3 +64,4 @@ __all__ = [
     "get_merchant_resolution_result",
     "get_step_timings",
 ]
+# pylint: enable=duplicate-code

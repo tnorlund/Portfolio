@@ -18,6 +18,8 @@ from receipt_langsmith.client.models import (
     Project,
 )
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     "LangSmithClient",
     "BulkExportManager",
@@ -28,3 +30,4 @@ __all__ = [
     "BulkExportResponse",
     "Project",
 ]
+# pylint: enable=duplicate-code

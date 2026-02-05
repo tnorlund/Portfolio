@@ -89,6 +89,8 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     # Processors
     "LangSmithSparkProcessor",
@@ -100,3 +102,4 @@ __all__ = [
     "LABEL_VALIDATION_DECISION_SCHEMA",
     "MERCHANT_RESOLUTION_SCHEMA",
 ]
+# pylint: enable=duplicate-code

@@ -105,6 +105,8 @@ from receipt_langsmith.entities.visualization import (
     WordWithLabel,
 )
 
+# Public re-export list is intentionally duplicated to keep a stable API.
+# pylint: disable=duplicate-code
 __all__ = [
     # Base schemas
     "LangSmithRun",
@@ -195,3 +197,4 @@ __all__ = [
     "QAQuestionCache",
     "QACacheMetadata",
 ]
+# pylint: enable=duplicate-code
