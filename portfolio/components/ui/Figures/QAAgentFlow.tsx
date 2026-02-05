@@ -644,6 +644,8 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               const uniqueReceipts: ReceiptEvidence[] = [];
               const seenIds = new Set<string>();
               for (const r of allReceipts) {
+                // Skip receipts with null/undefined imageId (incomplete data from API)
+                if (!r.imageId) continue;
                 if (!seenIds.has(r.imageId)) {
                   seenIds.add(r.imageId);
                   uniqueReceipts.push(r);
