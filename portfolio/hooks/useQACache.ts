@@ -19,7 +19,8 @@ function getApiBase(): string {
   ) {
     return "https://dev-api.tylernorlund.com";
   }
-  return "";
+  // Production: use the prod API
+  return "https://api.tylernorlund.com";
 }
 
 /**
