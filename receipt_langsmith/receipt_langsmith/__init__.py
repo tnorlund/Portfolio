@@ -44,6 +44,11 @@ Example:
 
 from typing import TYPE_CHECKING
 
+from receipt_langsmith._lazy_imports import (
+    resolve_parquet_reader,
+    resolve_pyspark_attr,
+)
+
 __version__ = "0.3.0"  # Remove pyarrow dependency, cleanup dead code
 
 # Client (always available)
@@ -175,68 +180,13 @@ if TYPE_CHECKING:
 # Lazy imports for optional dependencies
 def __getattr__(name: str):
     """Lazy import for optional dependencies (PySpark)."""
-    # pylint: disable=import-outside-toplevel
-    if name == "read_traces_from_parquet":
-        try:
-            from receipt_langsmith.parsers.parquet import (
-                read_traces_from_parquet,
-            )
+    resolved = resolve_parquet_reader(name)
+    if resolved is not None:
+        return resolved
 
-            return read_traces_from_parquet
-        except ImportError as e:
-            raise ImportError(
-                "PyArrow not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    # PySpark processor dependencies
-    if name == "LangSmithSparkProcessor":
-        try:
-            from receipt_langsmith.spark.processor import (
-                LangSmithSparkProcessor,
-            )
-
-            return LangSmithSparkProcessor
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    if name == "LabelValidationSparkProcessor":
-        try:
-            from receipt_langsmith.spark.label_validation_processor import (
-                LabelValidationSparkProcessor,
-            )
-
-            return LabelValidationSparkProcessor
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    # PySpark schema dependencies
-    schema_names = [
-        "LANGSMITH_PARQUET_SCHEMA",
-        "LABEL_VALIDATION_RECEIPT_SCHEMA",
-        "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
-        "LABEL_VALIDATION_DECISION_SCHEMA",
-        "MERCHANT_RESOLUTION_SCHEMA",
-    ]
-
-    if name in schema_names:
-        try:
-            from receipt_langsmith.spark import schemas
-
-            return getattr(schemas, name)
-        except ImportError as e:
-            raise ImportError(
-                "PySpark not available. Install with: "
-                "pip install receipt-langsmith[pyspark]"
-            ) from e
-
-    # pylint: enable=import-outside-toplevel
+    resolved = resolve_pyspark_attr(name)
+    if resolved is not None:
+        return resolved
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
