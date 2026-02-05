@@ -382,11 +382,14 @@ def _enrich_evidence(
     - thumbnailKey: string (S3 key for CDN)
     - width: number
     - height: number
+
+    Handles both snake_case (from NDJSON) and camelCase (legacy) input keys.
     """
     enriched = []
     for e in evidence:
-        receipt_id = e.get("receiptId")
-        image_id = e.get("imageId")
+        # Handle both snake_case and camelCase keys
+        receipt_id = e.get("receipt_id") or e.get("receiptId")
+        image_id = e.get("image_id") or e.get("imageId")
         if not image_id:
             continue
         key = f"{image_id}_{receipt_id}"
