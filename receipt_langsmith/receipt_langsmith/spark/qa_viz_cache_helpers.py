@@ -372,18 +372,38 @@ def _extract_tool_info(outputs: dict) -> tuple[str, str]:
 def _enrich_evidence(
     evidence: list[dict], receipts_lookup: dict[str, Any]
 ) -> list[dict[str, Any]]:
+    """Enrich evidence with receipt metadata for the frontend.
+
+    Output matches the ReceiptEvidence TypeScript interface:
+    - imageId: string
+    - merchant: string
+    - item: string
+    - amount: number
+    - thumbnailKey: string (S3 key for CDN)
+    - width: number
+    - height: number
+    """
     enriched = []
     for e in evidence:
         receipt_id = e.get("receiptId")
         image_id = e.get("imageId")
+        if not image_id:
+            continue
         key = f"{image_id}_{receipt_id}"
         receipt = receipts_lookup.get(key, {})
+        # Skip if no receipt metadata found
+        if not receipt:
+            continue
         enriched.append(
             {
-                "receiptId": receipt_id,
                 "imageId": image_id,
-                "receiptKey": receipt.get("cdn_key", ""),
-                "evidence": e.get("evidence", ""),
+                "merchant": e.get("merchant", ""),
+                "item": e.get("item", ""),
+                "amount": e.get("amount", 0),
+                "thumbnailKey": receipt.get("cdn_webp_s3_key", "")
+                or receipt.get("cdn_s3_key", ""),
+                "width": receipt.get("width", 0),
+                "height": receipt.get("height", 0),
             }
         )
     return enriched
