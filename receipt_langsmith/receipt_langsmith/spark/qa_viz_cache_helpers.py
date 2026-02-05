@@ -220,7 +220,10 @@ def find_latest_export_prefix(
 
 # pylint: disable=too-many-locals
 def derive_trace_steps(
-    child_runs: list[dict], question_result: dict, receipts_lookup: dict
+    child_runs: list[dict],
+    question_result: dict,
+    receipts_lookup: dict,
+    all_runs: list[dict] | None = None,
 ) -> list[dict]:
     """Derive trace steps from child runs for the React component.
 
@@ -235,6 +238,27 @@ def derive_trace_steps(
         outputs = parse_json_object(run.get("outputs"))
 
         step_type = _classify_run(name, run_type)
+
+        # Expand ToolNode wrappers: depth-1 "tools" node has run_type="chain",
+        # but its depth-2 children have run_type="tool" with individual details.
+        if step_type is None and "tool" in name and all_runs is not None:
+            wrapper_id = run.get("id", "")
+            tool_children = sorted(
+                [r for r in all_runs if r.get("parent_run_id") == wrapper_id],
+                key=lambda r: r.get("dotted_order", ""),
+            )
+            for child in tool_children:
+                if child.get("run_type") == "tool":
+                    child_inputs = parse_json_object(child.get("inputs"))
+                    steps.append({
+                        "type": "tools",
+                        "content": child.get("name", "Tool"),
+                        "detail": json.dumps(child_inputs, default=str) if child_inputs else "",
+                        "durationMs": _compute_duration_ms(child),
+                    })
+            if tool_children:
+                continue
+
         if not step_type:
             continue
 
@@ -455,7 +479,7 @@ def build_question_cache(
         "questionIndex": question_result.get("questionIndex", 0),
         "traceId": trace_id,
         "trace": derive_trace_steps(
-            depth1_runs, question_result, receipts_lookup
+            depth1_runs, question_result, receipts_lookup, all_runs=all_runs
         ),
         "stats": compute_stats(all_runs, question_result),
     }
@@ -710,6 +734,7 @@ def _minimal_trace_from_result(
     steps: list[dict[str, Any]] = [
         {"type": "plan", "content": "Question classified", "detail": ""},
         {"type": "agent", "content": "Retrieved receipt data", "detail": ""},
+        {"type": "tools", "content": "Tool", "detail": ""},
         {
             "type": "shape",
             "content": f"{result.get('receiptCount', 0)} receipts shaped",
