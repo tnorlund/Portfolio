@@ -540,6 +540,7 @@ def _run_words_pipeline_worker(
                             if llm_result and llm_result.decision in (
                                 "VALID",
                                 "INVALID",
+                                "NEEDS_REVIEW",
                             ):
                                 if llm_result.decision == "VALID":
                                     # VALID: just update status on existing label
@@ -547,6 +548,15 @@ def _run_words_pipeline_worker(
                                         ValidationStatus.VALID.value
                                     )
                                     label.label_proposed_by = "llm_valid"
+                                    if llm_result.reasoning:
+                                        label.reasoning = llm_result.reasoning
+                                    dynamo.update_receipt_word_label(label)
+                                    llm_validated += 1
+                                elif llm_result.decision == "NEEDS_REVIEW":
+                                    label.validation_status = (
+                                        ValidationStatus.NEEDS_REVIEW.value
+                                    )
+                                    label.label_proposed_by = "llm_needs_review"
                                     if llm_result.reasoning:
                                         label.reasoning = llm_result.reasoning
                                     dynamo.update_receipt_word_label(label)

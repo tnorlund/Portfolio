@@ -84,7 +84,7 @@ export function useUploadProgress(apiUrl: string) {
             } else {
               const allMerchant = data.receipts.every((r) => r.merchant_found);
               const allLabelsValidated = data.receipts.every(
-                (r) => r.total_labels > 0 && r.validated_labels >= r.total_labels,
+                (r) => r.total_labels === 0 || r.validated_labels >= r.total_labels,
               );
               if (allMerchant && allLabelsValidated) {
                 stage = "complete";
