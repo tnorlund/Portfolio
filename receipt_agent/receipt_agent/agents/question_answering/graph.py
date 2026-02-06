@@ -373,6 +373,12 @@ def create_shape_node(state_holder: dict) -> Callable:
         seen_keys: set[tuple] = set()
         summaries: list[ReceiptSummary] = []
 
+        # Build lookup from summary-tier for enriching detail-tier
+        summary_lookup: dict[tuple, dict] = {}
+        for s in summary_receipts:
+            skey = (s.get("image_id"), s.get("receipt_id"))
+            summary_lookup[skey] = s
+
         # TIER 1: Detail-shaped receipts (have line items)
         for receipt in retrieved_receipts:
             key = (receipt.get("image_id"), receipt.get("receipt_id"))
@@ -403,6 +409,9 @@ def create_shape_node(state_holder: dict) -> Callable:
                     if w.get("label"):
                         labels_found.add(w["label"])
 
+            # Enrich with summary-tier metadata if available
+            summary_data = summary_lookup.get(key, {})
+
             summaries.append(
                 ReceiptSummary(
                     image_id=receipt.get("image_id", ""),
@@ -410,6 +419,9 @@ def create_shape_node(state_holder: dict) -> Callable:
                     merchant=receipt.get("merchant", "Unknown"),
                     grand_total=grand_total,
                     tax=tax,
+                    tip=summary_data.get("tip"),
+                    date=summary_data.get("date"),
+                    item_count=summary_data.get("item_count"),
                     line_items=line_items,
                     labels_found=list(labels_found),
                 )
