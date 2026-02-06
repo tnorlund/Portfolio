@@ -54,6 +54,8 @@
 - [ReceiptWordLabel](interfaces/ReceiptWordLabel.md)
 - [TrainingMetricsEpoch](interfaces/TrainingMetricsEpoch.md)
 - [TrainingMetricsResponse](interfaces/TrainingMetricsResponse.md)
+- [UploadReceiptProgress](interfaces/UploadReceiptProgress.md)
+- [UploadStatusResponse](interfaces/UploadStatusResponse.md)
 - [Word](interfaces/Word.md)
 - [WordSimilarityResponse](interfaces/WordSimilarityResponse.md)
 
