@@ -905,6 +905,8 @@ echo "🎉 Parallel function updates completed!"'''
         pipeline = Pipeline(
             f"{self.name}-pipeline-{stack_name}",  # Pulumi logical name with stack
             role_arn=pipeline_role.arn,
+            pipeline_type="V2",
+            execution_mode="SUPERSEDED",
             artifact_stores=[
                 PipelineArtifactStoreArgs(
                     type="S3",

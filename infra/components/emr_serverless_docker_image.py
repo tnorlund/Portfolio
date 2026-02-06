@@ -687,6 +687,8 @@ echo "Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         pipeline = Pipeline(
             f"{self.name}-emr-pipeline",
             role_arn=pipeline_role.arn,
+            pipeline_type="V2",
+            execution_mode="SUPERSEDED",
             artifact_stores=[
                 PipelineArtifactStoreArgs(
                     type="S3",
