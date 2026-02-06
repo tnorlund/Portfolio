@@ -49,6 +49,60 @@ Tracks answer quality across code iterations. Each column is a run tied to a spe
 | Q30 | What's my average tip at restaurants? | D | C | B- |
 | Q31 | Find receipts with handwritten notes | C | C | C+ |
 
+## Iteration History
+
+### Step 1: Baseline
+
+The 5-node ReAct RAG workflow (plan → agent ↔ tools → shape → synthesize) with the original shape node. The shape node only processed detail-tier receipts (those with `words_by_line` data from `get_receipt`) and capped at 50. The synthesizer received shaped receipt data and the question, but no agent reasoning and no pre-computed aggregates.
+
+**Problems identified:**
+- Shape node dropped most receipts (only 14-50 survived shaping), causing massive data loss
+- Synthesizer re-derived totals from the truncated shaped data, often producing wrong numbers
+- No summary-tier receipts (from `get_receipt_summaries`) passed through to synthesis
+- Pre-computed aggregates from tool calls were discarded
+
+### Step 2: Hybrid Shaping
+
+Added two-tier shaping and aggregate pass-through.
+
+**Changes (`state.py`, `search.py`, `graph.py`):**
+1. Added `tip`, `date`, `item_count` fields to `ReceiptSummary` state
+2. Shape node now has two tiers: detail-tier (receipts with `words_by_line`) and summary-tier (lightweight summaries from `get_receipt_summaries` with merchant, date, total, tax, tip, item count)
+3. Increased `MAX_RECEIPTS` from 50 to 200
+4. `search.py` stores `summary_receipts` and `aggregates` in `state_holder` for the shape and synthesize nodes to consume
+5. Synthesizer formats date, tip, and item count in receipt context; appends pre-computed aggregates
+
+**Result:** D → C+ average. Eliminated all F grades (9 → 0). But 7 D-grade questions remained where the synthesizer contradicted the agent's correct reasoning.
+
+### Step 3: Synth Reasoning
+
+Passed the agent's last reasoning message to the synthesizer so it builds on the agent's analysis rather than re-deriving from scratch.
+
+**Changes (`graph.py` only):**
+1. Extract the last `AIMessage` content from `state.messages` (truncated to 3000 chars)
+2. Updated `SYNTHESIZE_SYSTEM_PROMPT` to instruct the synthesizer to trust agent reasoning, respect item exclusions, and use receipt data for citations only
+3. Include agent reasoning as an "Agent Analysis" section in the `HumanMessage` sent to the synthesizer
+
+**Root cause addressed:** `synthesize_node` built its LLM prompt from shaped summaries, aggregates, and the question — but never read `state.messages`. The agent's AIMessage (with its analysis, tool results, item exclusions, and conclusions) was invisible to the synthesizer.
+
+**Result:** C+ → B average. Key fixes:
+- Q7 (D → A-): Synth now trusts agent's $413 finding instead of saying $50.65
+- Q12 (D+ → B): Synth respects agent's chocolate chips exclusion
+- Q15 (D → A-): Synth reports 5 duplicate categories instead of "no duplicates found"
+- Q25 (D → A): Synth reports Vons loyalty points instead of "none found"
+- Q27 (D → B+): Synth reports actual returns instead of denying them
+- Q20 (D → B-): Synth no longer misreads Home Depot loyalty total as receipt total
+
+### Remaining Issues
+
+| Category | Questions | Description |
+|----------|-----------|-------------|
+| Date handling | Q21 | Agent fabricates date anchors; null-dated receipts pollute date-filtered queries |
+| Search limits | Q9 | `search_product_lines` hits 100-item limit, missing majority of matches |
+| Data quality | Q0 | $250 OCR misread, duplicate scans, null-dated receipts in date-filtered results |
+| Agent recall | Q8, Q27 | Agent misses some matching receipts (Harbor Freight, DICK'S returns) |
+| Day-of-week math | Q29 | Agent fabricates per-day spending breakdown |
+
 ## Run Log
 
 | Run | Commit | Date | Branch | LangSmith Project | Notes |
