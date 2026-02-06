@@ -127,16 +127,16 @@ export function useUploadProgress(apiUrl: string) {
         return next;
       });
 
-      // Read current file from state
-      let file: File | null = null;
-      setFileStates((prev) => {
-        file = prev[fileIndex]?.file ?? null;
-        return prev;
-      });
-      if (!file) return;
-      const currentFile: File = file;
-
       try {
+        // Read current file from state
+        let file: File | null = null;
+        setFileStates((prev) => {
+          file = prev[fileIndex]?.file ?? null;
+          return prev;
+        });
+        if (!file) return;
+        const currentFile: File = file;
+
         // 1. Get presigned URL
         const presignRes = await fetch(`${apiUrl}/upload-receipt`, {
           method: "POST",
