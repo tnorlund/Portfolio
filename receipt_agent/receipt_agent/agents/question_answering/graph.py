@@ -88,17 +88,21 @@ IMPORTANT: For category queries (coffee, groceries, etc.), use BOTH:
 2. get_receipt_summaries with merchant_filter for known merchants
 """
 
-SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing an answer about receipts based on retrieved context.
+SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing a final answer about receipts.
 
-You have been given shaped context containing relevant receipt information.
-Generate a clear, accurate answer with citations to specific receipts.
+You have been given:
+1. **Agent Analysis** — the reasoning and conclusions from the retrieval agent that searched the receipt database. This analysis has seen ALL tool results, not just the shaped subset below.
+2. **Receipt Data** — structured receipt summaries for evidence and citation.
+3. **Pre-computed Aggregates** — verified totals from the database.
 
-## Guidelines
-1. Be precise with amounts - use exact numbers from the receipts
-2. Cite specific receipts by merchant name when possible
-3. For "how much" questions, always state the total
-4. If context is insufficient, acknowledge what's missing
-5. Structure list responses clearly
+## Critical Rules
+1. **Trust the agent's analysis.** The agent saw the full tool output. If the agent concluded a total of $X across Y receipts, use that figure — do not re-derive a different total from the receipt data below.
+2. **If the agent excluded items** (e.g., "excluding baking chocolate chips"), respect those exclusions. Do not re-include them.
+3. **Use receipt data for evidence/citations**, not for re-computing totals that the agent already computed.
+4. **Use pre-computed aggregates** when available — they are database-verified totals.
+5. Be precise with amounts — use exact numbers.
+6. For "how much" questions, always state the total.
+7. If the agent found nothing relevant, say so clearly.
 
 ## Evidence Format
 Include evidence array with:
@@ -348,47 +352,51 @@ def create_shape_node(state_holder: dict) -> Callable:
     """
 
     def shape_node(state: QAState) -> dict:
-        """Convert retrieved receipts to structured summaries."""
+        """Convert retrieved receipts to structured summaries.
+
+        Uses two tiers:
+        1. Detail-tier: auto-fetched receipts with line items (words_by_line)
+        2. Summary-tier: lightweight summaries from get_receipt_summaries
+           (has merchant, date, grand_total, tax, tip, item_count — no line items)
+
+        Detail-tier receipts take priority; summary-tier fills in the rest.
+        """
         retrieved_receipts = state_holder.get("retrieved_receipts", [])
+        summary_receipts = state_holder.get("summary_receipts", [])
 
         logger.info(
-            "Shaping %d retrieved receipts into structured summaries",
+            "Shaping %d detail + %d summary receipts",
             len(retrieved_receipts),
+            len(summary_receipts),
         )
 
-        # Dedupe by (image_id, receipt_id)
         seen_keys: set[tuple] = set()
         summaries: list[ReceiptSummary] = []
 
+        # TIER 1: Detail-shaped receipts (have line items)
         for receipt in retrieved_receipts:
             key = (receipt.get("image_id"), receipt.get("receipt_id"))
             if key in seen_keys:
                 continue
             seen_keys.add(key)
 
-            # Get structured data
             words_by_line = receipt.get("words_by_line", {})
             amounts = receipt.get("amounts", [])
 
-            # Extract GRAND_TOTAL and TAX
             grand_total = None
             tax = None
-
             for amt in amounts:
                 label = amt.get("label", "")
                 amount_value = amt.get("amount")
-
                 if label == "GRAND_TOTAL" and amount_value is not None:
                     grand_total = amount_value
                 elif label == "TAX" and amount_value is not None:
                     tax = amount_value
 
-            # Extract line items using structured data
             line_items = _extract_line_items_from_structured(
                 words_by_line, amounts
             )
 
-            # Collect labels found from structured data
             labels_found = set()
             for line_words in words_by_line.values():
                 for w in line_words:
@@ -407,20 +415,44 @@ def create_shape_node(state_holder: dict) -> Callable:
                 )
             )
 
-        # Limit to reasonable number of receipts
-        MAX_RECEIPTS = 50
+        # TIER 2: Summary-only receipts (no line items, but have totals/date/tip)
+        for s in summary_receipts:
+            key = (s.get("image_id"), s.get("receipt_id"))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            summaries.append(
+                ReceiptSummary(
+                    image_id=s.get("image_id", ""),
+                    receipt_id=s.get("receipt_id", 0),
+                    merchant=s.get("merchant_name") or "Unknown",
+                    grand_total=s.get("grand_total"),
+                    tax=s.get("tax"),
+                    tip=s.get("tip"),
+                    date=s.get("date"),
+                    item_count=s.get("item_count"),
+                    line_items=[],
+                    labels_found=[],
+                )
+            )
+
+        # Limit to reasonable number — summaries are ~100 chars each
+        MAX_RECEIPTS = 200
         limited_summaries = summaries[:MAX_RECEIPTS]
 
-        # Log summary stats
         total_line_items = sum(len(s.line_items) for s in limited_summaries)
+        detail_count = sum(1 for s in limited_summaries if s.line_items)
+        summary_only_count = len(limited_summaries) - detail_count
         logger.info(
-            "Shaped to %d receipts with %d line items",
+            "Shaped to %d receipts (%d detail, %d summary-only, %d line items)",
             len(limited_summaries),
+            detail_count,
+            summary_only_count,
             total_line_items,
         )
 
-        # Check if we need to retry (empty after shaping)
-        if not limited_summaries and retrieved_receipts:
+        if not limited_summaries and (retrieved_receipts or summary_receipts):
             logger.warning("No summaries after shaping, may need retry")
 
         return {
@@ -449,6 +481,17 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             "Synthesizing answer from %d receipt summaries", len(summaries)
         )
 
+        # Extract agent's reasoning from the last AIMessage
+        agent_reasoning = ""
+        for msg in reversed(state.messages):
+            if isinstance(msg, AIMessage) and msg.content:
+                content = str(msg.content)
+                # Truncate to avoid blowing up the context
+                if len(content) > 3000:
+                    content = content[:3000] + "\n[... truncated]"
+                agent_reasoning = content
+                break
+
         # Build structured context for the LLM
         context_parts = []
         for i, summary in enumerate(summaries):
@@ -470,10 +513,16 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                 f"Receipt {i + 1}: {summary.merchant}\n"
                 f"  ID: {summary.image_id}:{summary.receipt_id}"
             )
+            if summary.date:
+                receipt_info += f"\n  Date: {summary.date}"
             if summary.grand_total is not None:
                 receipt_info += f"\n  Total: ${summary.grand_total:.2f}"
             if summary.tax is not None:
                 receipt_info += f"\n  Tax: ${summary.tax:.2f}"
+            if summary.tip is not None and summary.tip > 0:
+                receipt_info += f"\n  Tip: ${summary.tip:.2f}"
+            if summary.item_count is not None and not summary.line_items:
+                receipt_info += f"\n  Items: {summary.item_count}"
             if items_str:
                 receipt_info += f"\n  Items:{items_str}"
 
@@ -492,11 +541,32 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                 f"\n\nPre-computed Total: ${aggregated.get('total', 0):.2f}"
             )
 
+        # Append pre-computed aggregates from tool calls
+        aggregates = state_holder.get("aggregates", [])
+        if aggregates:
+            agg_parts = ["\n\nPre-computed Aggregates:"]
+            for agg in aggregates:
+                avg_str = (
+                    f", avg=${agg['average_receipt']:.2f}"
+                    if agg.get("average_receipt")
+                    else ""
+                )
+                agg_parts.append(
+                    f"  {agg['source']}: {agg['count']} receipts, "
+                    f"total=${agg['total_spending']:.2f}{avg_str}"
+                )
+            context_str += "\n".join(agg_parts)
+
         # Build synthesis prompt
+        agent_section = ""
+        if agent_reasoning:
+            agent_section = f"Agent Analysis:\n{agent_reasoning}\n\n"
+
         messages = [
             SystemMessage(content=SYNTHESIZE_SYSTEM_PROMPT),
             HumanMessage(
                 content=f"Question: {state.question}\n\n"
+                f"{agent_section}"
                 f"Receipt Data:\n{context_str}\n\n"
                 f"Generate a clear answer with specific amounts and evidence."
             ),
@@ -769,6 +839,9 @@ async def answer_question(
     state_holder["iteration_count"] = 0
     state_holder["retrieval_complete"] = False
     state_holder["retrieved_receipts"] = []
+    state_holder["summary_receipts"] = []
+    state_holder["_summary_keys"] = set()
+    state_holder["aggregates"] = []
     state_holder["searches"] = []
     state_holder["fetched_receipt_keys"] = set()
 
