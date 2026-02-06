@@ -1,7 +1,7 @@
 # Makefile for Portfolio project
 
 .PHONY: help format lint test test-fast test-integration test-e2e pre-push install-hooks clean
-.PHONY: export-sample-data test-local validate-pipeline
+.PHONY: export-sample-data
 
 help:
 	@echo "Available commands:"
@@ -17,10 +17,6 @@ help:
 	@echo ""
 	@echo "Local Development Commands:"
 	@echo "  make export-sample-data - Export sample receipt data for local testing"
-	@echo "  make test-local      - Run tests with local data and stubbed APIs"
-	@echo "  make test-pattern-detection - Test pattern detection enhancements"
-	@echo "  make compare-pattern-optimizations - Compare optimization levels"
-	@echo "  make validate-pipeline - Run end-to-end pipeline validation"
 
 format:
 	@echo "Installing latest formatters to match CI..."
@@ -94,15 +90,3 @@ export-sample-data:
 	@echo "Creating sample dataset of 20 receipts..."
 	python scripts/export_receipt_data.py sample --size 20 --output-dir ./receipt_data
 	@echo "✅ Sample data exported to ./receipt_data"
-
-test-local:
-	@echo "No local receipt_label pipeline tests remain."
-
-validate-pipeline:
-	@echo "Legacy receipt_label pipeline validation removed."
-
-test-pattern-detection:
-	@echo "Legacy receipt_label pattern detection removed."
-
-compare-pattern-optimizations:
-	@echo "Legacy receipt_label optimization comparison removed."
