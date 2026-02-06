@@ -160,14 +160,12 @@ def _handle_status(event):
         item_type = item.get("TYPE", {}).get("S", "")
         sk = item.get("SK", {}).get("S", "")
 
-        if item_type == "OCR_JOB":
-            job_type = item.get("job_type", {}).get("S", "")
+        if item_type == "OCR_ROUTING_DECISION":
             status = item.get("status", {}).get("S", "")
-            if job_type == "FIRST_PASS":
-                if status in ("COMPLETED", "completed"):
-                    ocr_status = "COMPLETED"
-                elif status in ("FAILED", "failed"):
-                    ocr_status = "FAILED"
+            if status in ("COMPLETED", "completed"):
+                ocr_status = "COMPLETED"
+            elif status in ("FAILED", "failed"):
+                ocr_status = "FAILED"
 
         elif item_type == "RECEIPT":
             parts = sk.split("#")
