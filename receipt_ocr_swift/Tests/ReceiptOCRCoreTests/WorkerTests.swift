@@ -95,6 +95,7 @@ final class WorkerTests: XCTestCase {
         XCTAssertTrue(hadMessages)
         XCTAssertEqual(dynamo.routing.count, 1)
         XCTAssertEqual(dynamo.jobs["\(imageId):\(jobId)"]?.status, .completed)
+        XCTAssertEqual(dynamo.stages["\(imageId):\(jobId)"], "UPLOADING_RESULTS")
     }
 }
 

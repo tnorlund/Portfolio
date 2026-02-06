@@ -23,7 +23,7 @@ dynamo = DynamoClient(TABLE_NAME)
 
 # Status priority: terminal states cannot be overwritten by non-terminal ones.
 # Higher value = higher priority.
-_STATUS_PRIORITY = {"PENDING": 0, "COMPLETED": 1, "FAILED": 1}
+_STATUS_PRIORITY = {"PENDING": 0, "COMPLETED": 1, "FAILED": 2}
 
 
 def handler(event, _):

@@ -225,7 +225,11 @@ public final class OCRWorker {
             logger.info("job_start image_id=\(imageId) job_id=\(jobId)")
             let job = try await Retry.withBackoff { try await self.dynamo.getOCRJob(imageId: imageId, jobId: jobId) }
             // Update processing stage to DOWNLOADING
-            try? await self.dynamo.updateOCRJobStage(imageId: imageId, jobId: jobId, stage: "DOWNLOADING")
+            do {
+                try await self.dynamo.updateOCRJobStage(imageId: imageId, jobId: jobId, stage: "DOWNLOADING")
+            } catch {
+                logger.debug("stage_update_failed image_id=\(imageId) stage=DOWNLOADING error=\(error)")
+            }
             logger.debug("download_image bucket=\(job.s3Bucket) key=\(job.s3Key)")
             // Download image
             let imageData = try await Retry.withBackoff { try await self.s3.getObject(bucket: job.s3Bucket, key: job.s3Key) }
@@ -242,7 +246,11 @@ public final class OCRWorker {
 
         // Update all jobs to OCR_RUNNING stage
         for ctx in contexts {
-            try? await dynamo.updateOCRJobStage(imageId: ctx.imageId, jobId: ctx.jobId, stage: "OCR_RUNNING")
+            do {
+                try await dynamo.updateOCRJobStage(imageId: ctx.imageId, jobId: ctx.jobId, stage: "OCR_RUNNING")
+            } catch {
+                logger.debug("stage_update_failed image_id=\(ctx.imageId) stage=OCR_RUNNING error=\(error)")
+            }
         }
 
         // Run OCR engine with parallel processing (uses CPU count)
@@ -254,7 +262,11 @@ public final class OCRWorker {
         let now = Date()
         for (resultURL, ctx) in zip(ocrResults, contexts) {
             // Update processing stage to UPLOADING_RESULTS
-            try? await dynamo.updateOCRJobStage(imageId: ctx.imageId, jobId: ctx.jobId, stage: "UPLOADING_RESULTS")
+            do {
+                try await dynamo.updateOCRJobStage(imageId: ctx.imageId, jobId: ctx.jobId, stage: "UPLOADING_RESULTS")
+            } catch {
+                logger.debug("stage_update_failed image_id=\(ctx.imageId) stage=UPLOADING_RESULTS error=\(error)")
+            }
 
             // Parse the OCR result JSON to get receipt info
             let jsonData = try Data(contentsOf: resultURL)

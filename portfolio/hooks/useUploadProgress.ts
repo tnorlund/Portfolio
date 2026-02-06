@@ -33,6 +33,7 @@ export function useUploadProgress(apiUrl: string) {
   const activeUploads = useRef(0);
   const uploadQueue = useRef<string[]>([]);
   const mountedRef = useRef(true);
+  const drainQueueRef = useRef<() => void>(() => {});
   // Store File objects in a ref so processUpload can read them synchronously
   const filesRef = useRef<Map<string, File>>(new Map());
 
@@ -193,7 +194,7 @@ export function useUploadProgress(apiUrl: string) {
         updateFile(fileId, { stage: "failed", error: errorMsg });
       } finally {
         activeUploads.current--;
-        drainQueue();
+        drainQueueRef.current();
       }
     },
     [apiUrl, updateFile, pollStatus],
@@ -206,6 +207,9 @@ export function useUploadProgress(apiUrl: string) {
       processUpload(nextId);
     }
   }, [processUpload]);
+
+  // Keep ref in sync so processUpload always calls the latest drainQueue
+  drainQueueRef.current = drainQueue;
 
   const addFiles = useCallback(
     (newFiles: File[]) => {
