@@ -25,6 +25,7 @@ from .llm_factory import create_resilient_llm  # alias for create_llm_invoker
 from .llm_factory import is_fallback_error  # alias for is_retriable_error
 from .llm_factory import is_server_error  # alias for is_service_error
 from .llm_factory import (  # Primary exports; Backward compatibility aliases (kept for existing code)
+    CostTrackingCallback,
     EmptyResponseError,
     LLMInvoker,
     LLMRateLimitError,
@@ -59,6 +60,7 @@ __all__ = [
     "query_label_evidence",
     "query_similar_words",
     # LLM Factory - Primary
+    "CostTrackingCallback",
     "LLMRateLimitError",
     "LLMInvoker",
     "EmptyResponseError",

@@ -48,6 +48,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -390,6 +391,98 @@ def _is_empty_response(response: Any) -> bool:
 
 
 # =============================================================================
+# Cost Tracking Callback
+# =============================================================================
+
+
+class CostTrackingCallback:
+    """Tracks OpenRouter API costs via LangChain's callback mechanism.
+
+    Extracts cost from OpenRouter's token_usage response field.
+    Thread-safe for concurrent use across asyncio tasks.
+
+    Works with or without LangSmith auto-tracing enabled.
+    When LangSmith is available, costs are pushed to the run tree.
+    Costs are always tracked in-memory regardless.
+    """
+
+    def __init__(self):
+        from langchain_core.callbacks import BaseCallbackHandler
+
+        self.total_cost = 0.0
+        self.total_tokens = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.llm_calls = 0
+        self._lock = Lock()
+
+        outer = self
+
+        class _Handler(BaseCallbackHandler):
+            def on_llm_end(handler_self, response, **kwargs):
+                outer._on_llm_end(response, **kwargs)
+
+        self._handler = _Handler()
+
+    @property
+    def handler(self) -> Any:
+        """The underlying BaseCallbackHandler for LangChain config."""
+        return self._handler
+
+    def _on_llm_end(self, response, **kwargs):
+        """Track cost from LLM response."""
+        cost = 0.0
+        p_tokens = 0
+        c_tokens = 0
+        t_tokens = 0
+
+        if response.llm_output:
+            token_usage = response.llm_output.get("token_usage", {})
+            if token_usage:
+                cost = token_usage.get("cost", 0) or 0
+                if cost == 0:
+                    cost_details = token_usage.get("cost_details", {})
+                    cost = cost_details.get("upstream_inference_cost", 0) or 0
+                t_tokens = token_usage.get("total_tokens", 0) or 0
+                p_tokens = token_usage.get("prompt_tokens", 0) or 0
+                c_tokens = token_usage.get("completion_tokens", 0) or 0
+
+        with self._lock:
+            self.llm_calls += 1
+            self.total_cost += cost
+            self.total_tokens += t_tokens
+            self.prompt_tokens += p_tokens
+            self.completion_tokens += c_tokens
+
+        if cost > 0:
+            try:
+                from langsmith.run_helpers import get_current_run_tree
+
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    run_tree.set(
+                        usage_metadata={
+                            "input_tokens": p_tokens,
+                            "output_tokens": c_tokens,
+                            "total_tokens": t_tokens,
+                            "total_cost": cost,
+                        }
+                    )
+            except Exception:
+                logger.debug("Could not add cost to LangSmith run")
+
+    def get_stats(self) -> dict:
+        with self._lock:
+            return {
+                "total_cost": self.total_cost,
+                "total_tokens": self.total_tokens,
+                "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens,
+                "llm_calls": self.llm_calls,
+            }
+
+
+# =============================================================================
 # LLM Invoker with Jitter and Retry
 # =============================================================================
 
@@ -420,6 +513,26 @@ class LLMInvoker:
     consecutive_errors: int = field(default=0, init=False)
     total_errors: int = field(default=0, init=False)
     _async_lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
+    _cost_callback: Optional[CostTrackingCallback] = field(
+        default=None, init=False, repr=False
+    )
+
+    def __post_init__(self):
+        try:
+            self._cost_callback = CostTrackingCallback()
+        except Exception:
+            logger.debug("Could not create CostTrackingCallback")
+            self._cost_callback = None
+
+    def _inject_cost_callback(self, config: Optional[dict]) -> dict:
+        """Merge the cost tracking callback into a LangChain config dict."""
+        if self._cost_callback is None:
+            return config or {}
+        merged = dict(config) if config else {}
+        callbacks = list(merged.get("callbacks", []))
+        callbacks.append(self._cost_callback.handler)
+        merged["callbacks"] = callbacks
+        return merged
 
     def _get_async_lock(self) -> asyncio.Lock:
         """Get or create the async lock (lazy initialization).
@@ -461,16 +574,16 @@ class LLMInvoker:
             LLMRateLimitError: If rate limit hit after all retries
         """
         last_error = None
+        merged_config = self._inject_cost_callback(config)
 
         for attempt in range(self.max_retries):
             self._apply_jitter()
             self.call_count += 1
 
             try:
-                if config:
-                    response = self.llm.invoke(messages, config=config, **kwargs)
-                else:
-                    response = self.llm.invoke(messages, **kwargs)
+                response = self.llm.invoke(
+                    messages, config=merged_config, **kwargs
+                )
 
                 # Check for empty response
                 if _is_empty_response(response):
@@ -542,6 +655,7 @@ class LLMInvoker:
             LLMRateLimitError: If rate limit hit after all retries
         """
         last_error = None
+        merged_config = self._inject_cost_callback(config)
 
         for attempt in range(self.max_retries):
             # Apply jitter outside the lock to avoid blocking other coroutines
@@ -550,10 +664,9 @@ class LLMInvoker:
                 self.call_count += 1
 
             try:
-                if config:
-                    response = await self.llm.ainvoke(messages, config=config, **kwargs)
-                else:
-                    response = await self.llm.ainvoke(messages, **kwargs)
+                response = await self.llm.ainvoke(
+                    messages, config=merged_config, **kwargs
+                )
 
                 # Check for empty response
                 if _is_empty_response(response):
@@ -642,21 +755,27 @@ class LLMInvoker:
             )
             structured_llm = self.llm
 
-        return LLMInvoker(
+        child = LLMInvoker(
             llm=structured_llm,
             max_jitter_seconds=self.max_jitter_seconds,
             max_retries=self.max_retries,
         )
+        # Share the parent's cost callback so stats roll up
+        child._cost_callback = self._cost_callback
+        return child
 
     def get_stats(self) -> dict[str, Any]:
-        """Get invoker statistics."""
-        return {
+        """Get invoker statistics including cost tracking."""
+        stats = {
             "call_count": self.call_count,
             "consecutive_errors": self.consecutive_errors,
             "total_errors": self.total_errors,
             "max_jitter_seconds": self.max_jitter_seconds,
             "max_retries": self.max_retries,
         }
+        if self._cost_callback:
+            stats.update(self._cost_callback.get_stats())
+        return stats
 
 
 # Backward compatibility alias
