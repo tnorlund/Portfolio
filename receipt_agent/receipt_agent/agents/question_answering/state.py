@@ -78,6 +78,18 @@ class ReceiptSummary(BaseModel):
         default=None,
         description="Tax amount",
     )
+    tip: Optional[float] = Field(
+        default=None,
+        description="Tip amount (from summary records)",
+    )
+    date: Optional[str] = Field(
+        default=None,
+        description="Receipt date as ISO string",
+    )
+    item_count: Optional[int] = Field(
+        default=None,
+        description="Number of items on the receipt",
+    )
     line_items: list[AmountItem] = Field(
         default_factory=list,
         description="Individual line items with amounts",
