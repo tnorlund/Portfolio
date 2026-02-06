@@ -76,6 +76,28 @@ def test_update_row_labels_sets_auto_suggested_for_pending_only():
 
 
 @pytest.mark.unit
+def test_update_row_labels_ignores_non_core_pending_labels():
+    """Pending labels with non-CORE names must not set auto_suggested."""
+    collection = Mock()
+    logger = Mock()
+    metadata = {"row_line_ids": "[1]"}
+    receipt_labels = [MockLabelEntity(1, "my_garbage_note", "PENDING")]
+
+    updated_count = _update_row_labels(
+        collection=collection,
+        chromadb_id="IMAGE#img#RECEIPT#00001#LINE#00001",
+        metadata=metadata,
+        receipt_labels=receipt_labels,
+        logger=logger,
+    )
+
+    assert updated_count == 1
+    update_kwargs = collection.update.call_args.kwargs
+    new_metadata = update_kwargs["metadatas"][0]
+    assert new_metadata["label_status"] == "unvalidated"
+
+
+@pytest.mark.unit
 def test_update_row_labels_sets_unvalidated_when_no_labels_match():
     """Rows with no matching labels should be marked unvalidated."""
     collection = Mock()

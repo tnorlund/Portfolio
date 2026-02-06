@@ -279,3 +279,13 @@ class TestEnrichRowMetadataWithLabels:
 
         assert "label_LINE_TOTAL" not in enriched
         assert enriched["label_status"] == "auto_suggested"
+
+    def test_non_core_pending_label_does_not_set_auto_suggested(self):
+        """Pending labels with non-CORE names must not set auto_suggested."""
+        metadata = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+        labels = [MockReceiptWordLabel(1, 1, "my_garbage_note", "PENDING")]
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert enriched["label_status"] == "unvalidated"

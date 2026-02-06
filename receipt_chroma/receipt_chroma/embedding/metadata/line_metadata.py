@@ -314,15 +314,16 @@ def enrich_row_metadata_with_labels(
     # - Must fit within Chroma Cloud's 36-byte key limit
     for lbl in row_labels:
         status = lbl.validation_status
-        if status == ValidationStatus.PENDING.value:
-            has_pending = True
-            continue
-        # Skip garbage labels (notes, values stored as label names)
+        # Filter non-core labels before checking status so that
+        # garbage label names never influence label_status.
         if lbl.label not in CORE_LABELS:
             continue
         field_name = f"label_{lbl.label}"
         # Defensive check for Chroma Cloud quota
         if len(field_name.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+            continue
+        if status == ValidationStatus.PENDING.value:
+            has_pending = True
             continue
         if status == ValidationStatus.VALID.value:
             metadata[field_name] = True  # type: ignore[literal-required]

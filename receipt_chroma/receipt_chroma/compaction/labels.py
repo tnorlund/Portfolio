@@ -380,15 +380,17 @@ def _update_row_labels(
         status = str(getattr(label_entity, "validation_status", ""))
         label_name = str(getattr(label_entity, "label", ""))
 
-        if status == ValidationStatus.PENDING.value:
-            has_pending = True
-            continue
-
+        # Filter non-core labels before checking status so that
+        # garbage label names never influence label_status.
         if label_name not in CORE_LABELS:
             continue
 
         label_key = f"label_{label_name}"
         if len(label_key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+            continue
+
+        if status == ValidationStatus.PENDING.value:
+            has_pending = True
             continue
 
         if status == ValidationStatus.VALID.value:
