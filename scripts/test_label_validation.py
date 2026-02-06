@@ -147,7 +147,9 @@ def main():
         "--receipt-id", type=int, default=1, help="Receipt ID (default: 1)"
     )
     parser.add_argument(
-        "--prompt-only", action="store_true", help="Just print the prompt, don't call LLM"
+        "--prompt-only",
+        action="store_true",
+        help="Just print the prompt, don't call LLM",
     )
     parser.add_argument(
         "--all-labels",
@@ -198,12 +200,12 @@ def main():
         print(f"    [{p['line_id']}:{p['word_id']}] '{p['word_text']}' -> {p['label']}")
 
     # Build prompt
-    from receipt_upload.label_validation.llm_validator import build_validation_prompt
+    from receipt_upload.label_validation.llm_validator import (
+        build_validation_prompt,
+    )
 
     # Empty evidence (we skip ChromaDB in local test)
-    similar_evidence = {
-        f"{l['line_id']}_{l['word_id']}": [] for l in pending
-    }
+    similar_evidence = {f"{l['line_id']}_{l['word_id']}": [] for l in pending}
 
     prompt = build_validation_prompt(
         pending_labels=pending,

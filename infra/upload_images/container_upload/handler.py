@@ -33,14 +33,13 @@ def handler(event, _):
 
     if method == "GET" and path == "/upload-status":
         return _handle_status(event)
-    elif method == "POST" and path == "/upload-receipt":
+    if method == "POST" and path == "/upload-receipt":
         return _handle_upload(event)
-    else:
-        return {
-            "statusCode": 404,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Not found"}),
-        }
+    return {
+        "statusCode": 404,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"error": "Not found"}),
+    }
 
 
 def _handle_upload(event):
@@ -116,7 +115,11 @@ def _handle_status(event):
             "TableName": TABLE_NAME,
             "KeyConditionExpression": "PK = :pk",
             "FilterExpression": "#t IN (:t1, :t2, :t3, :t4, :t5)",
-            "ProjectionExpression": "SK, #t, #s, receipt_count, validation_status, merchant_name, job_type, processing_stage",
+            "ProjectionExpression": (
+                "SK, #t, #s, receipt_count,"
+                " validation_status, merchant_name,"
+                " job_type, processing_stage"
+            ),
             "ExpressionAttributeNames": {"#t": "TYPE", "#s": "status"},
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
@@ -138,7 +141,8 @@ def _handle_status(event):
     # Derive status from entities
     ocr_status = "PENDING"
     processing_stage = None
-    receipts_map = {}  # receipt_id -> {merchant_found, merchant_name, total_labels, validated_labels}
+    # receipt_id -> {merchant_found, merchant_name, ...}
+    receipts_map = {}
 
     for item in items:
         item_type = item.get("TYPE", {}).get("S", "")
@@ -151,7 +155,8 @@ def _handle_status(event):
 
         elif item_type == "OCR_ROUTING_DECISION":
             status = item.get("status", {}).get("S", "").upper()
-            if _STATUS_PRIORITY.get(status, 0) > _STATUS_PRIORITY.get(ocr_status, 0):
+            cur = _STATUS_PRIORITY.get(ocr_status, 0)
+            if _STATUS_PRIORITY.get(status, 0) > cur:
                 ocr_status = status
 
         elif item_type == "RECEIPT":
@@ -191,7 +196,7 @@ def _handle_status(event):
                     receipts_map[rid]["merchant_name"] = merchant
 
         elif item_type == "RECEIPT_WORD_LABEL":
-            # Expected SK pattern: RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>
+            # SK: RECEIPT#<rid>#LINE#<lid>#WORD#<wid>#LABEL#<l>
             parts = sk.split("#")
             rid = None
             for i, p in enumerate(parts):
@@ -200,13 +205,12 @@ def _handle_status(event):
                         rid = int(parts[i + 1])
                     except ValueError:
                         logger.warning(
-                            "Failed to parse receipt_id from RECEIPT_WORD_LABEL SK: %s", sk
+                            "Bad receipt_id in SK: %s",
+                            sk,
                         )
                     break
             if rid is None:
-                logger.warning(
-                    "Could not extract receipt_id from RECEIPT_WORD_LABEL SK: %s", sk
-                )
+                logger.warning("No receipt_id in SK: %s", sk)
                 continue
             if rid not in receipts_map:
                 receipts_map[rid] = {
@@ -223,22 +227,26 @@ def _handle_status(event):
     receipts_list = []
     for rid in sorted(receipts_map.keys()):
         r = receipts_map[rid]
-        receipts_list.append({
-            "receipt_id": rid,
-            "merchant_found": r["merchant_found"],
-            "merchant_name": r["merchant_name"],
-            "total_labels": r["total_labels"],
-            "validated_labels": r["validated_labels"],
-        })
+        receipts_list.append(
+            {
+                "receipt_id": rid,
+                "merchant_found": r["merchant_found"],
+                "merchant_name": r["merchant_name"],
+                "total_labels": r["total_labels"],
+                "validated_labels": r["validated_labels"],
+            }
+        )
 
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "image_id": image_id,
-            "ocr_status": ocr_status,
-            "processing_stage": processing_stage,
-            "receipt_count": len(receipts_map),
-            "receipts": receipts_list,
-        }),
+        "body": json.dumps(
+            {
+                "image_id": image_id,
+                "ocr_status": ocr_status,
+                "processing_stage": processing_stage,
+                "receipt_count": len(receipts_map),
+                "receipts": receipts_list,
+            }
+        ),
     }
