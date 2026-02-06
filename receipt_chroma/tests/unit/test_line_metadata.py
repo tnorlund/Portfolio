@@ -289,3 +289,13 @@ class TestEnrichRowMetadataWithLabels:
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
         assert enriched["label_status"] == "unvalidated"
+
+    def test_no_labels_sets_unvalidated(self):
+        """Rows with no matching labels should be marked unvalidated."""
+        metadata = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+        labels = []
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert enriched["label_status"] == "unvalidated"

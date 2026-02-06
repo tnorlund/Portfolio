@@ -459,9 +459,12 @@ def _get_line_query_embedding(
                 embedding = embedding.tolist()
             if isinstance(embedding, list) and embedding:
                 return embedding, line_chroma_id
-    except Exception:
-        # Continue to row-based fallback lookup
-        pass
+    except Exception as exc:
+        logger.debug(
+            "Direct line lookup failed for %s, trying row fallback: %s",
+            line_chroma_id,
+            exc,
+        )
 
     # Row-based fallback: line_id may not be the row's primary line id.
     try:
