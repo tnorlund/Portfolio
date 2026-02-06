@@ -235,18 +235,26 @@ class TestLLMInvoker:
         assert invoker.consecutive_errors == 0
 
     def test_invoke_with_config(self):
-        """Test invoke with config dict."""
+        """Test invoke with config dict merges cost callback."""
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.content = "test response"
         mock_llm.invoke.return_value = mock_response
 
         invoker = LLMInvoker(llm=mock_llm)
-        config = {"callbacks": []}
+        config = {"callbacks": [MagicMock()]}
         response = invoker.invoke("test message", config=config)
 
         assert response == mock_response
-        mock_llm.invoke.assert_called_once_with("test message", config=config)
+        mock_llm.invoke.assert_called_once()
+        actual_config = mock_llm.invoke.call_args[1]["config"]
+        # Original callback preserved
+        assert config["callbacks"][0] in actual_config["callbacks"]
+        # Cost handler appended
+        assert invoker._cost_callback is not None
+        assert invoker._cost_callback.handler in actual_config["callbacks"]
+        # Original config not mutated
+        assert len(config["callbacks"]) == 1
 
     def test_invoke_retry_on_rate_limit(self):
         """Test that rate limit errors trigger retry."""
