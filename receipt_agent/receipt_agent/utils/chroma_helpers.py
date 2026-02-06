@@ -557,7 +557,7 @@ def _query_label_evidence_for_collection(
         distances = distance_rows[0] if distance_rows else []
 
         evidence_list: list[LabelEvidence] = []
-        for metadata, distance in zip(metadatas, distances):
+        for metadata, distance in zip(metadatas, distances, strict=True):
             if not isinstance(metadata, dict):
                 continue
 

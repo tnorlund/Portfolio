@@ -1049,224 +1049,245 @@ async def unified_receipt_evaluator(
                     )
 
                 if chroma_client is None and chromadb_bucket:
+                    chroma_root = os.environ.get(
+                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+                        "/tmp/chromadb",
+                    )
+                    # Download each snapshot independently so a missing
+                    # collection doesn't block the other.
+                    words_path = os.path.join(chroma_root, "words")
+                    has_words = False
                     try:
-                        chroma_root = os.environ.get(
-                            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
-                            "/tmp/chromadb",
-                        )
-                        lines_path = os.path.join(chroma_root, "lines")
-                        words_path = os.path.join(chroma_root, "words")
-                        download_chromadb_snapshot(
-                            s3, chromadb_bucket, "lines", lines_path
-                        )
                         download_chromadb_snapshot(
                             s3, chromadb_bucket, "words", words_path
                         )
                         os.environ[
-                            "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
-                        ] = lines_path
-                        os.environ[
                             "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
                         ] = words_path
-
-                        from receipt_agent.clients.factory import (
-                            create_chroma_client,
-                        )
-
-                        chroma_client = create_chroma_client(mode="read")
-                        logger.info(
-                            "Using S3 snapshot evidence lookup "
-                            "(lines=%s, words=%s)",
-                            lines_path,
-                            words_path,
-                        )
+                        has_words = True
                     except Exception as e:
                         logger.warning(
-                            "Could not initialize local ChromaDB snapshots: %s",
-                            e,
+                            "Could not download words snapshot: %s", e
                         )
+
+                    lines_path = os.path.join(chroma_root, "lines")
+                    has_lines = False
+                    try:
+                        download_chromadb_snapshot(
+                            s3, chromadb_bucket, "lines", lines_path
+                        )
+                        os.environ[
+                            "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
+                        ] = lines_path
+                        has_lines = True
+                    except Exception as e:
+                        logger.warning(
+                            "Could not download lines snapshot: %s", e
+                        )
+
+                    if has_words or has_lines:
+                        try:
+                            from receipt_agent.clients.factory import (
+                                create_chroma_client,
+                            )
+
+                            chroma_client = create_chroma_client(mode="read")
+                            logger.info(
+                                "Using S3 snapshot evidence lookup "
+                                "(words=%s, lines=%s)",
+                                has_words,
+                                has_lines,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "Could not initialize local ChromaDB "
+                                "snapshots: %s",
+                                e,
+                            )
 
                 # Get issues from geometric result
                 geometric_issues = geometric_result.get("issues", [])
 
-                if geometric_issues and chroma_client:
-                    from langchain_core.messages import HumanMessage
-                    from receipt_agent.agents.label_evaluator.llm_review import (
-                        assemble_receipt_text,
-                    )
-                    from receipt_agent.prompts.label_evaluator import (
-                        build_receipt_context_prompt,
-                        parse_batched_llm_response,
-                    )
-                    from receipt_agent.utils.chroma_helpers import (
-                        compute_label_consensus,
-                        format_label_evidence_for_prompt,
-                        query_label_evidence,
-                    )
+                try:
+                    if geometric_issues and chroma_client:
+                        from langchain_core.messages import HumanMessage
+                        from receipt_agent.agents.label_evaluator.llm_review import (
+                            assemble_receipt_text,
+                        )
+                        from receipt_agent.prompts.label_evaluator import (
+                            build_receipt_context_prompt,
+                            parse_batched_llm_response,
+                        )
+                        from receipt_agent.utils.chroma_helpers import (
+                            compute_label_consensus,
+                            format_label_evidence_for_prompt,
+                            query_label_evidence,
+                        )
 
-                    # Gather context for issues using targeted boolean queries
-                    issues_with_context = []
-                    for issue in geometric_issues[:15]:  # Limit to 15
-                        line_id = issue.get("line_id", 0)
-                        word_id = issue.get("word_id", 0)
-                        current_label = issue.get("current_label", "")
+                        # Gather context for issues using targeted boolean queries
+                        issues_with_context = []
+                        for issue in geometric_issues[:15]:  # Limit to 15
+                            line_id = issue.get("line_id", 0)
+                            word_id = issue.get("word_id", 0)
+                            current_label = issue.get("current_label", "")
 
-                        try:
-                            # Use targeted query for the specific label being reviewed
-                            if current_label and current_label != "O":
-                                label_evidence = query_label_evidence(
-                                    chroma_client=chroma_client,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    line_id=line_id,
-                                    word_id=word_id,
-                                    target_label=current_label,
-                                    target_merchant=merchant_name,
-                                    n_results_per_query=15,
-                                    min_similarity=0.70,
-                                    include_collections=("words", "lines"),
-                                )
-
-                                # Format evidence for prompt
-                                evidence_text = (
-                                    format_label_evidence_for_prompt(
-                                        label_evidence,
+                            try:
+                                # Use targeted query for the specific label being reviewed
+                                if current_label and current_label != "O":
+                                    label_evidence = query_label_evidence(
+                                        chroma_client=chroma_client,
+                                        image_id=image_id,
+                                        receipt_id=receipt_id,
+                                        line_id=line_id,
+                                        word_id=word_id,
                                         target_label=current_label,
-                                        max_positive=5,
-                                        max_negative=3,
+                                        target_merchant=merchant_name,
+                                        n_results_per_query=15,
+                                        min_similarity=0.70,
+                                        include_collections=("words", "lines"),
                                     )
+
+                                    # Format evidence for prompt
+                                    evidence_text = (
+                                        format_label_evidence_for_prompt(
+                                            label_evidence,
+                                            target_label=current_label,
+                                            max_positive=5,
+                                            max_negative=3,
+                                        )
+                                    )
+
+                                    # Compute consensus for decision support
+                                    consensus, pos_count, neg_count = (
+                                        compute_label_consensus(label_evidence)
+                                    )
+                                else:
+                                    label_evidence = []
+                                    evidence_text = (
+                                        "No evidence needed for O labels."
+                                    )
+                                    consensus, pos_count, neg_count = 0.0, 0, 0
+
+                                issues_with_context.append(
+                                    {
+                                        "issue": issue,
+                                        "label_evidence": label_evidence,
+                                        "evidence_text": evidence_text,
+                                        "consensus": consensus,
+                                        "positive_count": pos_count,
+                                        "negative_count": neg_count,
+                                    }
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    "Error gathering context for %s: %s",
+                                    current_label,
+                                    e,
+                                )
+                                issues_with_context.append(
+                                    {
+                                        "issue": issue,
+                                        "label_evidence": [],
+                                        "evidence_text": f"Error: {e}",
+                                        "consensus": 0.0,
+                                        "positive_count": 0,
+                                        "negative_count": 0,
+                                    }
                                 )
 
-                                # Compute consensus for decision support
-                                consensus, pos_count, neg_count = (
-                                    compute_label_consensus(label_evidence)
+                        if issues_with_context:
+                            # Build prompt and call LLM
+                            highlight_words = [
+                                (
+                                    item["issue"].get("line_id"),
+                                    item["issue"].get("word_id"),
                                 )
-                            else:
-                                label_evidence = []
-                                evidence_text = (
-                                    "No evidence needed for O labels."
-                                )
-                                consensus, pos_count, neg_count = 0.0, 0, 0
+                                for item in issues_with_context
+                            ]
 
-                            issues_with_context.append(
-                                {
-                                    "issue": issue,
-                                    "label_evidence": label_evidence,
-                                    "evidence_text": evidence_text,
-                                    "consensus": consensus,
-                                    "positive_count": pos_count,
-                                    "negative_count": neg_count,
-                                }
+                            # Convert objects to dicts for assemble_receipt_text
+                            words_as_dicts = [serialize_word(w) for w in words]
+                            labels_as_dicts = [
+                                serialize_label(lbl) for lbl in labels
+                            ]
+                            receipt_text = assemble_receipt_text(
+                                words=words_as_dicts,
+                                labels=labels_as_dicts,
+                                highlight_words=highlight_words,
+                                max_lines=60,
                             )
+
+                            prompt = build_receipt_context_prompt(
+                                receipt_text=receipt_text,
+                                issues_with_context=issues_with_context,
+                                merchant_name=merchant_name,
+                                merchant_receipt_count=0,  # Not available here
+                                line_item_patterns=line_item_patterns,
+                            )
+
+                            llm_config = (
+                                review_ctx.get_langchain_config()
+                                if review_ctx
+                                else None
+                            )
+
+                            # Make async LLM call
+                            response = await llm_invoker.ainvoke(
+                                [HumanMessage(content=prompt)],
+                                config=llm_config,
+                            )
+
+                            # Parse response
+                            response_text = (
+                                response.content
+                                if hasattr(response, "content")
+                                else str(response)
+                            )
+                            chunk_reviews = parse_batched_llm_response(
+                                response_text.strip(),
+                                expected_count=len(issues_with_context),
+                                raise_on_parse_error=False,
+                            )
+
+                            # Format results
+                            llm_review_result = []
+                            for i, review_result in enumerate(chunk_reviews):
+                                meta = issues_with_context[i]
+                                llm_review_result.append(
+                                    {
+                                        "image_id": image_id,
+                                        "receipt_id": receipt_id,
+                                        "issue": meta["issue"],
+                                        "llm_review": review_result,
+                                    }
+                                )
+
+                            # Apply LLM review decisions
+                            if dynamo_table:
+                                invalid_reviewed = [
+                                    d
+                                    for d in llm_review_result
+                                    if d.get("llm_review", {}).get("decision")
+                                    == "INVALID"
+                                ]
+                                if invalid_reviewed:
+                                    dynamo_client = DynamoClient(
+                                        table_name=dynamo_table
+                                    )
+                                    apply_llm_decisions(
+                                        reviewed_issues=invalid_reviewed,
+                                        dynamo_client=dynamo_client,
+                                        execution_id=execution_id,
+                                    )
+                finally:
+                    if chroma_client and hasattr(chroma_client, "close"):
+                        try:
+                            chroma_client.close()
                         except Exception as e:
                             logger.warning(
-                                "Error gathering context for %s: %s",
-                                current_label,
+                                "Failed to close Chroma client cleanly: %s",
                                 e,
                             )
-                            issues_with_context.append(
-                                {
-                                    "issue": issue,
-                                    "label_evidence": [],
-                                    "evidence_text": f"Error: {e}",
-                                    "consensus": 0.0,
-                                    "positive_count": 0,
-                                    "negative_count": 0,
-                                }
-                            )
-
-                    if issues_with_context:
-                        # Build prompt and call LLM
-                        highlight_words = [
-                            (
-                                item["issue"].get("line_id"),
-                                item["issue"].get("word_id"),
-                            )
-                            for item in issues_with_context
-                        ]
-
-                        # Convert objects to dicts for assemble_receipt_text
-                        words_as_dicts = [serialize_word(w) for w in words]
-                        labels_as_dicts = [
-                            serialize_label(lbl) for lbl in labels
-                        ]
-                        receipt_text = assemble_receipt_text(
-                            words=words_as_dicts,
-                            labels=labels_as_dicts,
-                            highlight_words=highlight_words,
-                            max_lines=60,
-                        )
-
-                        prompt = build_receipt_context_prompt(
-                            receipt_text=receipt_text,
-                            issues_with_context=issues_with_context,
-                            merchant_name=merchant_name,
-                            merchant_receipt_count=0,  # Not available here
-                            line_item_patterns=line_item_patterns,
-                        )
-
-                        llm_config = (
-                            review_ctx.get_langchain_config()
-                            if review_ctx
-                            else None
-                        )
-
-                        # Make async LLM call
-                        response = await llm_invoker.ainvoke(
-                            [HumanMessage(content=prompt)],
-                            config=llm_config,
-                        )
-
-                        # Parse response
-                        response_text = (
-                            response.content
-                            if hasattr(response, "content")
-                            else str(response)
-                        )
-                        chunk_reviews = parse_batched_llm_response(
-                            response_text.strip(),
-                            expected_count=len(issues_with_context),
-                            raise_on_parse_error=False,
-                        )
-
-                        # Format results
-                        llm_review_result = []
-                        for i, review_result in enumerate(chunk_reviews):
-                            meta = issues_with_context[i]
-                            llm_review_result.append(
-                                {
-                                    "image_id": image_id,
-                                    "receipt_id": receipt_id,
-                                    "issue": meta["issue"],
-                                    "llm_review": review_result,
-                                }
-                            )
-
-                        # Apply LLM review decisions
-                        if dynamo_table:
-                            invalid_reviewed = [
-                                d
-                                for d in llm_review_result
-                                if d.get("llm_review", {}).get("decision")
-                                == "INVALID"
-                            ]
-                            if invalid_reviewed:
-                                dynamo_client = DynamoClient(
-                                    table_name=dynamo_table
-                                )
-                                apply_llm_decisions(
-                                    reviewed_issues=invalid_reviewed,
-                                    dynamo_client=dynamo_client,
-                                    execution_id=execution_id,
-                                )
-                if chroma_client and hasattr(chroma_client, "close"):
-                    try:
-                        chroma_client.close()
-                    except Exception as e:
-                        logger.warning(
-                            "Failed to close Chroma client cleanly: %s",
-                            e,
-                        )
                 review_duration = time.time() - review_start
 
         # 10. Aggregate results

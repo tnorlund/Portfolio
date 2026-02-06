@@ -17,7 +17,7 @@ from receipt_chroma.data.operations import (
     remove_word_labels,
     update_word_labels,
 )
-from receipt_dynamo.constants import CORE_LABELS, ChromaDBCollection
+from receipt_dynamo.constants import CORE_LABELS, ChromaDBCollection, ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 _MAX_METADATA_KEY_BYTES = 36
@@ -376,7 +376,7 @@ def _update_row_labels(
         status = str(getattr(label_entity, "validation_status", ""))
         label_name = str(getattr(label_entity, "label", ""))
 
-        if status == "PENDING":
+        if status == ValidationStatus.PENDING.value:
             has_pending = True
             continue
 
@@ -387,10 +387,10 @@ def _update_row_labels(
         if len(label_key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
             continue
 
-        if status == "VALID":
+        if status == ValidationStatus.VALID.value:
             label_flags[label_key] = True
             has_validated = True
-        elif status == "INVALID":
+        elif status == ValidationStatus.INVALID.value:
             label_flags.setdefault(label_key, False)
             has_validated = True
 
