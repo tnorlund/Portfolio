@@ -201,7 +201,9 @@ def is_retriable_error(error: Exception) -> bool:
         True if this error should trigger a retry
     """
     return (
-        is_rate_limit_error(error) or is_service_error(error) or is_timeout_error(error)
+        is_rate_limit_error(error)
+        or is_service_error(error)
+        or is_timeout_error(error)
     )
 
 
@@ -251,7 +253,9 @@ def create_llm(
     _model = (
         model
         or os.environ.get("OPENROUTER_MODEL")
-        or os.environ.get("RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b")
+        or os.environ.get(
+            "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b"
+        )
     )
     _base_url = (
         base_url
@@ -280,7 +284,9 @@ def create_llm(
     )
 
     default_headers = kwargs.pop("default_headers", {})
-    default_headers.setdefault("HTTP-Referer", "https://github.com/tnorlund/Portfolio")
+    default_headers.setdefault(
+        "HTTP-Referer", "https://github.com/tnorlund/Portfolio"
+    )
     default_headers.setdefault("X-Title", "Receipt Agent")
 
     # Build extra_body for OpenRouter-specific parameters
@@ -468,8 +474,8 @@ class CostTrackingCallback:
                             "total_cost": cost,
                         }
                     )
-            except Exception:
-                logger.debug("Could not add cost to LangSmith run")
+            except Exception as e:
+                logger.debug("Could not add cost to LangSmith run: %s", e)
 
     def get_stats(self) -> dict:
         with self._lock:
@@ -512,7 +518,9 @@ class LLMInvoker:
     call_count: int = field(default=0, init=False)
     consecutive_errors: int = field(default=0, init=False)
     total_errors: int = field(default=0, init=False)
-    _async_lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
+    _async_lock: Optional[asyncio.Lock] = field(
+        default=None, init=False, repr=False
+    )
     _cost_callback: Optional[CostTrackingCallback] = field(
         default=None, init=False, repr=False
     )
@@ -529,7 +537,15 @@ class LLMInvoker:
         if self._cost_callback is None:
             return config or {}
         merged = dict(config) if config else {}
-        callbacks = list(merged.get("callbacks", []))
+        existing = merged.get("callbacks", [])
+        # CallbackManager is not iterable; leave it as-is and append via API
+        if existing and not isinstance(existing, list):
+            try:
+                existing.add_handler(self._cost_callback.handler)
+            except Exception:
+                logger.debug("Could not add cost handler to CallbackManager")
+            return merged
+        callbacks = list(existing)
         callbacks.append(self._cost_callback.handler)
         merged["callbacks"] = callbacks
         return merged
@@ -558,7 +574,9 @@ class LLMInvoker:
             if jitter > 0:
                 await asyncio.sleep(jitter)
 
-    def invoke(self, messages: Any, config: Optional[dict] = None, **kwargs) -> Any:
+    def invoke(
+        self, messages: Any, config: Optional[dict] = None, **kwargs
+    ) -> Any:
         """
         Invoke the LLM with retry logic.
 
@@ -587,7 +605,9 @@ class LLMInvoker:
 
                 # Check for empty response
                 if _is_empty_response(response):
-                    raise EmptyResponseError("OpenRouter", "Empty response received")
+                    raise EmptyResponseError(
+                        "OpenRouter", "Empty response received"
+                    )
 
                 # Success - reset consecutive errors
                 self.consecutive_errors = 0
@@ -670,7 +690,9 @@ class LLMInvoker:
 
                 # Check for empty response
                 if _is_empty_response(response):
-                    raise EmptyResponseError("OpenRouter", "Empty response received")
+                    raise EmptyResponseError(
+                        "OpenRouter", "Empty response received"
+                    )
 
                 # Success - reset consecutive errors
                 async with self._get_async_lock():
