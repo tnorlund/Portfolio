@@ -537,7 +537,7 @@ class LLMInvoker:
         if self._cost_callback is None:
             return config or {}
         merged = dict(config) if config else {}
-        existing = merged.get("callbacks", [])
+        existing = merged.get("callbacks") or []
         # CallbackManager is not iterable; leave it as-is and append via API
         if existing and not isinstance(existing, list):
             try:

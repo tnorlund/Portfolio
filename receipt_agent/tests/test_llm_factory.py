@@ -251,8 +251,8 @@ class TestLLMInvoker:
         # Original callback preserved
         assert config["callbacks"][0] in actual_config["callbacks"]
         # Cost handler appended
-        if invoker._cost_callback:
-            assert invoker._cost_callback.handler in actual_config["callbacks"]
+        assert invoker._cost_callback is not None
+        assert invoker._cost_callback.handler in actual_config["callbacks"]
         # Original config not mutated
         assert len(config["callbacks"]) == 1
 
