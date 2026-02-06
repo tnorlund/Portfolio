@@ -745,6 +745,8 @@ echo "✅ Uploaded source.zip"
         pipeline = Pipeline(
             f"{self.name}-fn-pipeline-{pulumi.get_stack()}",
             role_arn=pipeline_role.arn,
+            pipeline_type="V2",
+            execution_mode="SUPERSEDED",
             artifact_stores=[
                 PipelineArtifactStoreArgs(
                     type="S3",
