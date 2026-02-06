@@ -372,6 +372,151 @@ Create a compatible venv using Python 3.12:
 
 **Note:** Even with Python 3.12, you may see warnings about version compatibility. These are typically non-fatal.
 
+## QA Agent Evaluation Workflow
+
+The QA agent answers 32 marquee questions about receipt data. We iterate on answer quality using a deploy → run → evaluate → grade loop.
+
+### Architecture
+
+```
+Code Change → Pulumi Deploy → Step Function (32 Qs) → S3/LangSmith
+                                                           ↓
+                                              Dev API (/qa/visualization)
+                                                           ↓
+                                              Claude Code agents (8x parallel)
+                                                           ↓
+                                              q00.md-q31.md + SCORECARD.md
+```
+
+### Key Files
+
+| Component | Path |
+|-----------|------|
+| QA graph (plan/agent/tools/shape/synthesize) | `receipt_agent/receipt_agent/agents/question_answering/graph.py` |
+| QA state schema | `receipt_agent/receipt_agent/agents/question_answering/state.py` |
+| QA tools (search, get_receipt, etc.) | `receipt_agent/receipt_agent/agents/question_answering/tools/search.py` |
+| Agent system prompt | `receipt_agent/receipt_agent/agents/question_answering/tools/__init__.py` |
+| Step function infra | `infra/qa_agent_step_functions/infrastructure.py` |
+| Run-question Lambda | `infra/qa_agent_step_functions/lambdas/run_question.py` |
+| Viz cache API handler | `infra/routes/qa_viz_cache/lambdas/index.py` |
+| Scorecard | `SCORECARD.md` |
+| Per-question evals | `qa-eval-q{NN}/qa_evaluation/q{NN}.md` (git worktrees) |
+
+### Step-by-Step Process
+
+#### 1. Make code changes
+
+Edit files in `receipt_agent/receipt_agent/agents/question_answering/`. The main files are `graph.py` (workflow nodes and prompts), `state.py` (state schema), and `tools/search.py` (tool implementations and state_holder population).
+
+#### 2. Deploy to dev
+
+```bash
+cd infra && pulumi up --stack dev --yes
+```
+
+This rebuilds container images via CodeBuild if source files changed (~5 min). The QA agent Lambda image includes `receipt_agent`, `receipt_dynamo`, and `receipt_chroma`.
+
+#### 3. Run the step function
+
+```bash
+aws stepfunctions start-execution \
+  --state-machine-arn "arn:aws:states:us-east-1:681647709217:stateMachine:qa-agent-dev" \
+  --input '{"langsmith_project": "qa-eval-<descriptive-name>"}' \
+  --region us-east-1
+```
+
+The step function runs all 32 questions, queries receipt metadata, exports LangSmith traces, and runs an EMR Spark job to build the viz cache. Takes ~20-25 min total.
+
+Monitor with:
+```bash
+aws stepfunctions describe-execution \
+  --execution-arn "<execution-arn>" --region us-east-1 \
+  --query '{status: status, startDate: startDate, stopDate: stopDate}'
+```
+
+#### 4. Verify the viz cache is ready
+
+```bash
+curl -s "https://dev-api.tylernorlund.com/qa/visualization" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(json.dumps(d.get('metadata', {}), indent=2))
+"
+```
+
+Check that `cached_questions` is 32 and the `execution_id` matches your run.
+
+#### 5. Evaluate all 32 questions with parallel agents
+
+Spawn a team with 8 agents, each handling 4 consecutive questions (Q0-Q3, Q4-Q7, ..., Q28-Q31). Each agent:
+
+1. Fetches the question result: `curl -s "https://dev-api.tylernorlund.com/qa/visualization?index=N"`
+2. Parses the `trace` array to extract plan, tool calls, agent reasoning, shape info, and final answer
+3. Reads the existing evaluation from the git worktree: `/path/to/qa-eval-q{NN}/qa_evaluation/q{NN}.md`
+4. Verifies answer correctness using MCP receipt tools (`search_receipts`, `search_product_lines`, `get_receipt_summaries`, `get_receipt`, etc.)
+5. Writes the updated evaluation with grade, correct answer, issues, and comparison to previous run
+6. Reports grades back to the team lead
+
+Use `subagent_type: general-purpose` with `mode: bypassPermissions` and `run_in_background: true`. Each agent needs access to bash (for curl), file read/write (for q*.md files), and MCP receipt tools (for verification).
+
+#### 6. Update the scorecard
+
+After all agents complete, update `SCORECARD.md` with:
+- New column in the Scores table
+- New row in the Run Log with commit hash, date, LangSmith project
+- New row in the Summary table with grade distribution counts
+- New step in the Iteration History section explaining what changed and why
+
+#### 7. Commit and push
+
+Commit `SCORECARD.md` to the evaluation branch. The per-question `q*.md` files live in separate git worktrees on their own branches (`chore/qa-eval-q{NN}`).
+
+### Dev API Reference
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /qa/visualization` | Metadata only (question count, costs, execution ID) |
+| `GET /qa/visualization?index=N` | Single question with full trace |
+| `GET /qa/visualization?all=true` | All 32 questions |
+
+Response `trace` array items have `type` field: `plan`, `agent`, `tools`, `shape`, `synthesize`.
+
+### Evaluation Format
+
+Each `q{NN}.md` follows this structure:
+
+```markdown
+# Q{N}: {question text}
+
+## Metadata
+| Field | Value |
+| Question Index / Trace ID / Cost / LLM Calls / Tool Invocations / Receipts |
+
+## Plan
+## Tool Calls
+## Agent Reasoning
+## Shape
+## Final Answer
+### Evidence
+
+## Evaluation
+**Grade:** {A-F with +/-}
+**Correct Answer:** {MCP-verified ground truth}
+**Tool Efficiency:** {N} calls ({assessment})
+**Issues:** {numbered list}
+**Improvements from Baseline:** {comparison to previous run}
+```
+
+### Grading Scale
+
+- **A**: Correct answer with proper evidence, matches MCP verification
+- **B**: Mostly correct, minor issues (slightly off amounts, missing some evidence)
+- **C**: Partially correct or missing important context
+- **D**: Significant errors in answer or evidence
+- **F**: Wrong answer or critical data loss
+
+When grading, pay special attention to whether the synthesizer agrees with the agent's reasoning. If the agent is correct but the synthesizer contradicts it, that's a D or F (synthesis override bug). If they agree, focus on whether the agent's own analysis is correct.
+
 ## Related Issues
 
 - #645: Auto-queue CoreML export after training completion (implemented in #646)
