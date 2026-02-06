@@ -32,6 +32,8 @@ export function useUploadProgress(apiUrl: string) {
   const activeUploads = useRef(0);
   const uploadQueue = useRef<string[]>([]);
   const mountedRef = useRef(true);
+  // Store File objects in a ref so processUpload can read them synchronously
+  const filesRef = useRef<Map<string, File>>(new Map());
 
   // Cleanup on unmount
   useEffect(() => {
@@ -123,23 +125,18 @@ export function useUploadProgress(apiUrl: string) {
       );
 
       try {
-        // Read current file from state
-        let file: File | null = null;
-        setFileStates((prev) => {
-          const entry = prev.find((f) => f.id === fileId);
-          file = entry?.file ?? null;
-          return prev;
-        });
-        if (!file) return;
-        const currentFile: File = file;
+        // Read file from ref (synchronous, no React batching issues)
+        const currentFile = filesRef.current.get(fileId);
+        if (!currentFile) return;
 
         // 1. Get presigned URL
+        const contentType = currentFile.type || "image/png";
         const presignRes = await fetch(`${apiUrl}/upload-receipt`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename: currentFile.name,
-            content_type: currentFile.type,
+            content_type: contentType,
           }),
         });
 
@@ -154,7 +151,7 @@ export function useUploadProgress(apiUrl: string) {
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open("PUT", upload_url);
-          xhr.setRequestHeader("Content-Type", currentFile.type);
+          xhr.setRequestHeader("Content-Type", contentType);
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && mountedRef.current) {
@@ -212,8 +209,9 @@ export function useUploadProgress(apiUrl: string) {
         error: null,
       }));
 
-      // Queue new file IDs for upload
+      // Store File objects in ref for synchronous access
       for (const state of newStates) {
+        filesRef.current.set(state.id, state.file);
         uploadQueue.current.push(state.id);
       }
 
@@ -226,7 +224,15 @@ export function useUploadProgress(apiUrl: string) {
   );
 
   const clearCompleted = useCallback(() => {
-    setFileStates((prev) => prev.filter((f) => f.stage !== "complete" && f.stage !== "failed"));
+    setFileStates((prev) => {
+      const kept = prev.filter((f) => f.stage !== "complete" && f.stage !== "failed");
+      // Clean up file refs for removed entries
+      const keptIds = new Set(kept.map((f) => f.id));
+      filesRef.current.forEach((_, id) => {
+        if (!keptIds.has(id)) filesRef.current.delete(id);
+      });
+      return kept;
+    });
   }, []);
 
   const clearAll = useCallback(() => {
@@ -237,6 +243,7 @@ export function useUploadProgress(apiUrl: string) {
     pollTimers.current.clear();
     // Clear pending upload queue
     uploadQueue.current = [];
+    filesRef.current.clear();
     setFileStates([]);
   }, []);
 
