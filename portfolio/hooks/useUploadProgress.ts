@@ -258,8 +258,9 @@ export function useUploadProgress(apiUrl: string) {
       clearInterval(timer);
     });
     pollTimers.current.clear();
-    // Clear pending upload queue
+    // Clear pending upload queue and reset concurrency counter
     uploadQueue.current = [];
+    activeUploads.current = 0;
     filesRef.current.clear();
     setFileStates([]);
   }, []);
