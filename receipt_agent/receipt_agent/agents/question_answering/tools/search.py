@@ -49,7 +49,10 @@ def create_qa_tools(
     state_holder: dict[str, Any] = {
         "searches": [],  # [{query, type, result_count}, ...]
         "retrieved_receipts": [],  # Full receipt details for synthesize
+        "summary_receipts": [],  # Lightweight summaries from get_receipt_summaries
+        "_summary_keys": set(),  # Dedup keys for summary_receipts
         "fetched_receipt_keys": set(),  # (image_id, receipt_id) to avoid re-fetching
+        "aggregates": [],  # Pre-computed aggregates from get_receipt_summaries
     }
 
     def _get_effective_label(
@@ -1141,10 +1144,38 @@ def create_qa_tools(
                 if len(filtered) >= limit:
                     break
 
+            # Store all summary dicts for the shape node
+            for s in filtered:
+                key = (s.get("image_id"), s.get("receipt_id"))
+                if key not in state_holder.get("_summary_keys", set()):
+                    state_holder.setdefault("_summary_keys", set()).add(key)
+                    state_holder["summary_receipts"].append(s)
+
             total_spending = sum(s["grand_total"] or 0 for s in filtered)
             total_tax = sum(s["tax"] or 0 for s in filtered)
             total_tip = sum(s["tip"] or 0 for s in filtered)
             receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
+
+            # Store aggregates for synthesizer
+            state_holder.setdefault("aggregates", []).append({
+                "source": (
+                    f"get_receipt_summaries("
+                    f"merchant={merchant_filter}, "
+                    f"category={category_filter}, "
+                    f"start={start_date}, "
+                    f"end={end_date})"
+                ),
+                "count": len(filtered),
+                "total_spending": round(total_spending, 2),
+                "total_tax": round(total_tax, 2),
+                "total_tip": round(total_tip, 2),
+                "receipts_with_totals": receipts_with_totals,
+                "average_receipt": (
+                    round(total_spending / receipts_with_totals, 2)
+                    if receipts_with_totals > 0
+                    else None
+                ),
+            })
 
             # Auto-fetch a few sample receipts
             fetched_count = 0
