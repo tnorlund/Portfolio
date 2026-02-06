@@ -17,7 +17,11 @@ from receipt_chroma.data.operations import (
     remove_word_labels,
     update_word_labels,
 )
-from receipt_dynamo.constants import CORE_LABELS, ChromaDBCollection, ValidationStatus
+from receipt_dynamo.constants import (
+    CORE_LABELS,
+    ChromaDBCollection,
+    ValidationStatus,
+)
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 _MAX_METADATA_KEY_BYTES = 36
