@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import urllib.parse
 import uuid
@@ -13,10 +14,16 @@ BUCKET_NAME = os.environ["BUCKET_NAME"]
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
 OCR_QUEUE = os.environ["OCR_JOB_QUEUE_URL"]
 
+logger = logging.getLogger(__name__)
+
 s3 = boto3.client("s3")
 sqs = boto3.client("sqs")
 dynamodb = boto3.client("dynamodb")
 dynamo = DynamoClient(TABLE_NAME)
+
+# Status priority: terminal states cannot be overwritten by non-terminal ones.
+# Higher value = higher priority.
+_STATUS_PRIORITY = {"PENDING": 0, "COMPLETED": 1, "FAILED": 1}
 
 
 def handler(event, _):
@@ -138,11 +145,9 @@ def _handle_status(event):
         sk = item.get("SK", {}).get("S", "")
 
         if item_type == "OCR_ROUTING_DECISION":
-            status = item.get("status", {}).get("S", "")
-            if status in ("COMPLETED", "completed"):
-                ocr_status = "COMPLETED"
-            elif status in ("FAILED", "failed"):
-                ocr_status = "FAILED"
+            status = item.get("status", {}).get("S", "").upper()
+            if _STATUS_PRIORITY.get(status, 0) > _STATUS_PRIORITY.get(ocr_status, 0):
+                ocr_status = status
 
         elif item_type == "RECEIPT":
             # SK format: RECEIPT#<receipt_id>
@@ -182,7 +187,7 @@ def _handle_status(event):
                     receipts_map[rid]["merchant_name"] = merchant
 
         elif item_type == "RECEIPT_WORD_LABEL":
-            # SK format varies; extract receipt_id from SK
+            # Expected SK pattern: RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>#LABEL#<label>
             parts = sk.split("#")
             rid = None
             for i, p in enumerate(parts):
@@ -190,9 +195,14 @@ def _handle_status(event):
                     try:
                         rid = int(parts[i + 1])
                     except ValueError:
-                        pass
+                        logger.warning(
+                            "Failed to parse receipt_id from RECEIPT_WORD_LABEL SK: %s", sk
+                        )
                     break
             if rid is None:
+                logger.warning(
+                    "Could not extract receipt_id from RECEIPT_WORD_LABEL SK: %s", sk
+                )
                 continue
             if rid not in receipts_map:
                 receipts_map[rid] = {

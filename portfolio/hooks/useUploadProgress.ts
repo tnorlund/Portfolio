@@ -11,6 +11,7 @@ export type UploadStage =
   | "failed";
 
 export interface FileUploadState {
+  id: string;
   file: File;
   stage: UploadStage;
   uploadPercent: number;
@@ -28,7 +29,7 @@ export function useUploadProgress(apiUrl: string) {
   const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const activeUploads = useRef(0);
-  const uploadQueue = useRef<number[]>([]);
+  const uploadQueue = useRef<string[]>([]);
   const mountedRef = useRef(true);
 
   // Cleanup on unmount
@@ -43,19 +44,15 @@ export function useUploadProgress(apiUrl: string) {
     };
   }, []);
 
-  const updateFile = useCallback((index: number, updates: Partial<FileUploadState>) => {
+  const updateFile = useCallback((id: string, updates: Partial<FileUploadState>) => {
     if (!mountedRef.current) return;
-    setFileStates((prev) => {
-      const next = [...prev];
-      if (index < next.length) {
-        next[index] = { ...next[index], ...updates };
-      }
-      return next;
-    });
+    setFileStates((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
+    );
   }, []);
 
   const pollStatus = useCallback(
-    (imageId: string, fileIndex: number) => {
+    (imageId: string, fileId: string) => {
       if (pollTimers.current.has(imageId)) return;
 
       const timer = setInterval(async () => {
@@ -94,7 +91,7 @@ export function useUploadProgress(apiUrl: string) {
             }
           }
 
-          updateFile(fileIndex, {
+          updateFile(fileId, {
             stage,
             receiptCount: data.receipt_count,
             receipts: data.receipts,
@@ -116,22 +113,19 @@ export function useUploadProgress(apiUrl: string) {
   );
 
   const processUpload = useCallback(
-    async (fileIndex: number) => {
+    async (fileId: string) => {
       if (!mountedRef.current) return;
 
-      setFileStates((prev) => {
-        const next = [...prev];
-        if (fileIndex < next.length) {
-          next[fileIndex] = { ...next[fileIndex], stage: "uploading" };
-        }
-        return next;
-      });
+      setFileStates((prev) =>
+        prev.map((f) => (f.id === fileId ? { ...f, stage: "uploading" as UploadStage } : f)),
+      );
 
       try {
         // Read current file from state
         let file: File | null = null;
         setFileStates((prev) => {
-          file = prev[fileIndex]?.file ?? null;
+          const entry = prev.find((f) => f.id === fileId);
+          file = entry?.file ?? null;
           return prev;
         });
         if (!file) return;
@@ -152,7 +146,7 @@ export function useUploadProgress(apiUrl: string) {
         }
 
         const { upload_url, image_id, job_id } = await presignRes.json();
-        updateFile(fileIndex, { imageId: image_id, jobId: job_id });
+        updateFile(fileId, { imageId: image_id, jobId: job_id });
 
         // 2. Upload via XHR for progress tracking
         await new Promise<void>((resolve, reject) => {
@@ -163,7 +157,7 @@ export function useUploadProgress(apiUrl: string) {
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && mountedRef.current) {
               const percent = Math.round((e.loaded / e.total) * 100);
-              updateFile(fileIndex, { uploadPercent: percent });
+              updateFile(fileId, { uploadPercent: percent });
             }
           };
 
@@ -180,11 +174,11 @@ export function useUploadProgress(apiUrl: string) {
         });
 
         // 3. Upload complete, start polling
-        updateFile(fileIndex, { stage: "ocr", uploadPercent: 100 });
-        pollStatus(image_id, fileIndex);
+        updateFile(fileId, { stage: "ocr", uploadPercent: 100 });
+        pollStatus(image_id, fileId);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Upload failed";
-        updateFile(fileIndex, { stage: "failed", error: errorMsg });
+        updateFile(fileId, { stage: "failed", error: errorMsg });
       } finally {
         activeUploads.current--;
         drainQueue();
@@ -195,37 +189,35 @@ export function useUploadProgress(apiUrl: string) {
 
   const drainQueue = useCallback(() => {
     while (activeUploads.current < MAX_CONCURRENT && uploadQueue.current.length > 0) {
-      const nextIndex = uploadQueue.current.shift()!;
+      const nextId = uploadQueue.current.shift()!;
       activeUploads.current++;
-      processUpload(nextIndex);
+      processUpload(nextId);
     }
   }, [processUpload]);
 
   const addFiles = useCallback(
     (newFiles: File[]) => {
-      setFileStates((prev) => {
-        const startIndex = prev.length;
-        const newStates: FileUploadState[] = newFiles.map((file) => ({
-          file,
-          stage: "pending" as UploadStage,
-          uploadPercent: 0,
-          imageId: null,
-          jobId: null,
-          receiptCount: 0,
-          receipts: [],
-          error: null,
-        }));
+      const newStates: FileUploadState[] = newFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        stage: "pending" as UploadStage,
+        uploadPercent: 0,
+        imageId: null,
+        jobId: null,
+        receiptCount: 0,
+        receipts: [],
+        error: null,
+      }));
 
-        // Queue new files for upload
-        for (let i = 0; i < newFiles.length; i++) {
-          uploadQueue.current.push(startIndex + i);
-        }
+      // Queue new file IDs for upload
+      for (const state of newStates) {
+        uploadQueue.current.push(state.id);
+      }
 
-        // Kick off queue processing after state update
-        setTimeout(() => drainQueue(), 0);
+      setFileStates((prev) => [...prev, ...newStates]);
 
-        return [...prev, ...newStates];
-      });
+      // Kick off queue processing after state update
+      setTimeout(() => drainQueue(), 0);
     },
     [drainQueue],
   );
@@ -240,6 +232,8 @@ export function useUploadProgress(apiUrl: string) {
       clearInterval(timer);
     });
     pollTimers.current.clear();
+    // Clear pending upload queue
+    uploadQueue.current = [];
     setFileStates([]);
   }, []);
 

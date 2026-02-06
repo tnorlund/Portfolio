@@ -108,8 +108,8 @@ export default function UploadProgressPanel({
           </button>
         </div>
         <div className={styles.uploadPanelScroll}>
-          {fileStates.map((state, i) => (
-            <FileCard key={`${state.file.name}-${i}`} state={state} />
+          {fileStates.map((state) => (
+            <FileCard key={state.id} state={state} />
           ))}
         </div>
       </div>
