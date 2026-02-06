@@ -60,6 +60,7 @@ class LineMetadata(TypedDict, total=False):
     normalized_url: str  # Optional, only if anchors exist
     # Row-based fields (v2)
     row_line_ids: str  # JSON array of line IDs in the visual row
+    label_status: str  # Optional: validated, auto_suggested, unvalidated
 
 
 def create_line_metadata(
@@ -278,12 +279,13 @@ def enrich_row_metadata_with_labels(
 ) -> LineMetadata:
     """Enrich row metadata with aggregated label fields from all words in the row.
 
-    Aggregates VALID labels from all words in the visual row into boolean
-    metadata fields. For example, if any word in the row has a VALID
-    PRODUCT_NAME label, the row metadata will have `label_PRODUCT_NAME: True`.
+    Aggregates VALID/INVALID labels from all words in the visual row into
+    boolean metadata fields:
+    - `label_X=True` if any word in row has VALID for X
+    - `label_X=False` if no VALID exists but at least one INVALID for X
 
-    This enables efficient ChromaDB metadata filtering for RAG queries:
-        collection.query(where={"label_PRODUCT_NAME": True})
+    VALID takes precedence over INVALID for the same label, preserving
+    "positive evidence wins" semantics when mixed decisions exist in a row.
 
     Args:
         metadata: Base metadata dictionary to enrich
@@ -303,12 +305,17 @@ def enrich_row_metadata_with_labels(
         if (lbl.line_id, lbl.word_id) in row_word_keys
     ]
 
-    # Aggregate VALID labels into boolean fields
-    # Only VALID labels with valid names are included:
+    has_validated = False
+    has_pending = False
+
+    # Aggregate VALID/INVALID labels into boolean fields.
+    # Only labels with valid names are included:
     # - Must be in CORE_LABELS (not garbage/notes)
     # - Must fit within Chroma Cloud's 36-byte key limit
     for lbl in row_labels:
-        if lbl.validation_status != ValidationStatus.VALID.value:
+        status = lbl.validation_status
+        if status == ValidationStatus.PENDING.value:
+            has_pending = True
             continue
         # Skip garbage labels (notes, values stored as label names)
         if lbl.label not in CORE_LABELS:
@@ -317,6 +324,19 @@ def enrich_row_metadata_with_labels(
         # Defensive check for Chroma Cloud quota
         if len(field_name.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
             continue
-        metadata[field_name] = True  # type: ignore[literal-required]
+        if status == ValidationStatus.VALID.value:
+            metadata[field_name] = True  # type: ignore[literal-required]
+            has_validated = True
+        elif status == ValidationStatus.INVALID.value:
+            # VALID takes precedence if both states exist for a label.
+            metadata.setdefault(field_name, False)
+            has_validated = True
+
+    if has_validated:
+        metadata["label_status"] = "validated"
+    elif has_pending:
+        metadata["label_status"] = "auto_suggested"
+    else:
+        metadata["label_status"] = "unvalidated"
 
     return metadata  # type: ignore[return-value]

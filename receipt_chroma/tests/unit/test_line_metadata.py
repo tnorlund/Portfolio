@@ -7,6 +7,7 @@ import pytest
 from receipt_chroma.embedding.metadata.line_metadata import (
     create_line_metadata,
     enrich_line_metadata_with_anchors,
+    enrich_row_metadata_with_labels,
 )
 
 
@@ -45,9 +46,29 @@ class MockReceiptWord:
         self,
         text: str,
         extracted_data: dict | None = None,
+        line_id: int = 1,
+        word_id: int = 1,
     ):
         self.text = text
         self.extracted_data = extracted_data or {}
+        self.line_id = line_id
+        self.word_id = word_id
+
+
+class MockReceiptWordLabel:
+    """Mock ReceiptWordLabel for testing row aggregation."""
+
+    def __init__(
+        self,
+        line_id: int,
+        word_id: int,
+        label: str,
+        validation_status: str,
+    ):
+        self.line_id = line_id
+        self.word_id = word_id
+        self.label = label
+        self.validation_status = validation_status
 
 
 @pytest.mark.unit
@@ -210,3 +231,51 @@ class TestEnrichLineMetadataWithAnchors:
         # Should not raise exception
         enriched = enrich_line_metadata_with_anchors(metadata, [word])
         assert enriched == metadata
+
+
+@pytest.mark.unit
+class TestEnrichRowMetadataWithLabels:
+    """Test row-level label metadata aggregation."""
+
+    def test_sets_true_and_false_flags(self):
+        """Row metadata should include VALID=True and INVALID=False flags."""
+        metadata = {"text": "row text"}
+        row_words = [
+            MockReceiptWord("A", line_id=1, word_id=1),
+            MockReceiptWord("B", line_id=2, word_id=1),
+        ]
+        labels = [
+            MockReceiptWordLabel(1, 1, "TOTAL", "VALID"),
+            MockReceiptWordLabel(2, 1, "TAX", "INVALID"),
+        ]
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert enriched["label_TOTAL"] is True
+        assert enriched["label_TAX"] is False
+        assert enriched["label_status"] == "validated"
+
+    def test_valid_takes_precedence_for_same_label(self):
+        """VALID should override INVALID when both exist for one label."""
+        metadata = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+        labels = [
+            MockReceiptWordLabel(1, 1, "TOTAL", "INVALID"),
+            MockReceiptWordLabel(1, 1, "TOTAL", "VALID"),
+        ]
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert enriched["label_TOTAL"] is True
+        assert enriched["label_status"] == "validated"
+
+    def test_pending_only_sets_auto_suggested(self):
+        """Rows with only pending labels should be marked auto_suggested."""
+        metadata = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+        labels = [MockReceiptWordLabel(1, 1, "TOTAL", "PENDING")]
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert "label_TOTAL" not in enriched
+        assert enriched["label_status"] == "auto_suggested"

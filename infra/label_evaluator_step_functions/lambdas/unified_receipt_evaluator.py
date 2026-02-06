@@ -1003,30 +1003,88 @@ async def unified_receipt_evaluator(
         if geometric_issues_found > 0:
             with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
                 review_start = time.time()
-                # Setup ChromaDB if available
+                # Setup ChromaDB client (Cloud preferred, S3 snapshot fallback)
                 chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
                 chroma_client = None
+                use_chroma_cloud = (
+                    os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower()
+                    == "true"
+                )
+                cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
+                cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT") or None
+                cloud_database = (
+                    os.environ.get("CHROMA_CLOUD_DATABASE") or None
+                )
 
-                if chromadb_bucket:
+                from receipt_chroma import ChromaClient
+
+                if use_chroma_cloud and cloud_api_key:
                     try:
-                        chroma_path = os.environ.get(
+                        chroma_client = ChromaClient(
+                            cloud_api_key=cloud_api_key,
+                            cloud_tenant=cloud_tenant,
+                            cloud_database=cloud_database,
+                            mode="read",
+                            metadata_only=True,
+                        )
+                        chroma_client.get_collection("words")
+                        chroma_client.get_collection("lines")
+                        logger.info(
+                            "Using Chroma Cloud for evidence lookup "
+                            "(tenant=%s, database=%s)",
+                            cloud_tenant or "default",
+                            cloud_database or "default",
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Could not initialize Chroma Cloud client: %s",
+                            e,
+                        )
+                        chroma_client = None
+                elif use_chroma_cloud:
+                    logger.warning(
+                        "CHROMA_CLOUD_ENABLED=true but "
+                        "CHROMA_CLOUD_API_KEY is empty; "
+                        "falling back to S3 snapshot"
+                    )
+
+                if chroma_client is None and chromadb_bucket:
+                    try:
+                        chroma_root = os.environ.get(
                             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
                             "/tmp/chromadb",
                         )
+                        lines_path = os.path.join(chroma_root, "lines")
+                        words_path = os.path.join(chroma_root, "words")
                         download_chromadb_snapshot(
-                            s3, chromadb_bucket, "words", chroma_path
+                            s3, chromadb_bucket, "lines", lines_path
+                        )
+                        download_chromadb_snapshot(
+                            s3, chromadb_bucket, "words", words_path
                         )
                         os.environ[
-                            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"
-                        ] = chroma_path
+                            "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
+                        ] = lines_path
+                        os.environ[
+                            "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
+                        ] = words_path
 
-                        from receipt_chroma import ChromaClient
+                        from receipt_agent.clients.factory import (
+                            create_chroma_client,
+                        )
 
-                        chroma_client = ChromaClient(
-                            persist_directory=chroma_path
+                        chroma_client = create_chroma_client(mode="read")
+                        logger.info(
+                            "Using S3 snapshot evidence lookup "
+                            "(lines=%s, words=%s)",
+                            lines_path,
+                            words_path,
                         )
                     except Exception as e:
-                        logger.warning("Could not initialize ChromaDB: %s", e)
+                        logger.warning(
+                            "Could not initialize local ChromaDB snapshots: %s",
+                            e,
+                        )
 
                 # Get issues from geometric result
                 geometric_issues = geometric_result.get("issues", [])
@@ -1066,6 +1124,7 @@ async def unified_receipt_evaluator(
                                     target_merchant=merchant_name,
                                     n_results_per_query=15,
                                     min_similarity=0.70,
+                                    include_collections=("words", "lines"),
                                 )
 
                                 # Format evidence for prompt
@@ -1200,6 +1259,14 @@ async def unified_receipt_evaluator(
                                     dynamo_client=dynamo_client,
                                     execution_id=execution_id,
                                 )
+                if chroma_client and hasattr(chroma_client, "close"):
+                    try:
+                        chroma_client.close()
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to close Chroma client cleanly: %s",
+                            e,
+                        )
                 review_duration = time.time() - review_start
 
         # 10. Aggregate results

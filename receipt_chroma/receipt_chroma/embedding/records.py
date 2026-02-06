@@ -20,6 +20,7 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     create_row_metadata,
     enrich_line_metadata_with_anchors,
     enrich_row_metadata_with_anchors,
+    enrich_row_metadata_with_labels,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
     WordMetadata,
@@ -232,6 +233,7 @@ def build_word_payload(
 def build_row_payload(
     records: Iterable[RowEmbeddingRecord],
     all_words: List[ReceiptWord],
+    all_labels: Optional[List[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
 ) -> Dict[str, List]:
     """Create Chroma-ready payloads for row-based line embeddings.
@@ -243,6 +245,7 @@ def build_row_payload(
     Args:
         records: Row embedding records to build payloads for
         all_words: All words in the receipt (for anchor enrichment)
+        all_labels: Optional labels for row-level label enrichment
         merchant_name: Optional merchant name
 
     Returns:
@@ -269,6 +272,13 @@ def build_row_payload(
         row_metadata = enrich_row_metadata_with_anchors(
             row_metadata, row_words
         )
+
+        if all_labels is not None:
+            row_metadata = enrich_row_metadata_with_labels(
+                row_metadata,
+                row_words,
+                all_labels,
+            )
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)
