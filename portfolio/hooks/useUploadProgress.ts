@@ -25,10 +25,11 @@ export interface FileUploadState {
 
 const MAX_CONCURRENT = 3;
 const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_DURATION_MS = 20 * 60 * 1000; // 20 minutes
 
 export function useUploadProgress(apiUrl: string) {
   const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
-  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const pollTimers = useRef<Map<string, { timer: ReturnType<typeof setInterval>; startTime: number }>>(new Map());
   const activeUploads = useRef(0);
   const uploadQueue = useRef<string[]>([]);
   const mountedRef = useRef(true);
@@ -40,7 +41,7 @@ export function useUploadProgress(apiUrl: string) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      pollTimers.current.forEach((timer) => {
+      pollTimers.current.forEach(({ timer }) => {
         clearInterval(timer);
       });
       pollTimers.current.clear();
@@ -58,10 +59,22 @@ export function useUploadProgress(apiUrl: string) {
     (imageId: string, fileId: string) => {
       if (pollTimers.current.has(imageId)) return;
 
+      const startTime = Date.now();
       const timer = setInterval(async () => {
         if (!mountedRef.current) {
           clearInterval(timer);
           pollTimers.current.delete(imageId);
+          return;
+        }
+
+        // Timeout: stop polling after MAX_POLL_DURATION_MS
+        if (Date.now() - startTime > MAX_POLL_DURATION_MS) {
+          clearInterval(timer);
+          pollTimers.current.delete(imageId);
+          updateFile(fileId, {
+            stage: "failed",
+            error: "Processing timed out",
+          });
           return;
         }
 
@@ -111,7 +124,7 @@ export function useUploadProgress(apiUrl: string) {
         }
       }, POLL_INTERVAL_MS);
 
-      pollTimers.current.set(imageId, timer);
+      pollTimers.current.set(imageId, { timer, startTime });
     },
     [apiUrl, updateFile],
   );
@@ -237,7 +250,7 @@ export function useUploadProgress(apiUrl: string) {
 
   const clearAll = useCallback(() => {
     // Stop all polling
-    pollTimers.current.forEach((timer) => {
+    pollTimers.current.forEach(({ timer }) => {
       clearInterval(timer);
     });
     pollTimers.current.clear();

@@ -138,7 +138,6 @@ def _handle_status(event):
     # Derive status from entities
     ocr_status = "PENDING"
     processing_stage = None
-    receipt_count = 0
     receipts_map = {}  # receipt_id -> {merchant_found, merchant_name, total_labels, validated_labels}
 
     for item in items:
@@ -163,7 +162,6 @@ def _handle_status(event):
                     rid = int(parts[1])
                 except ValueError:
                     continue
-                receipt_count += 1
                 if rid not in receipts_map:
                     receipts_map[rid] = {
                         "merchant_found": False,
@@ -240,7 +238,7 @@ def _handle_status(event):
             "image_id": image_id,
             "ocr_status": ocr_status,
             "processing_stage": processing_stage,
-            "receipt_count": receipt_count,
+            "receipt_count": len(receipts_map),
             "receipts": receipts_list,
         }),
     }

@@ -75,6 +75,11 @@ function FileCard({ state }: { state: FileUploadState }) {
           <div
             className={styles.progressBarFill}
             style={{ width: `${state.uploadPercent}%` }}
+            role="progressbar"
+            aria-valuenow={state.uploadPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Uploading ${state.file.name}`}
           />
         </div>
       )}
