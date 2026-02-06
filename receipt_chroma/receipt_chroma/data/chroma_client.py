@@ -568,26 +568,37 @@ class ChromaClient:
     def get(
         self,
         collection_name: str,
-        ids: List[str],
+        ids: Optional[List[str]] = None,
         include: Optional[List[str]] = None,
+        where: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Get vectors by their IDs.
+        Get vectors by IDs or metadata filter.
 
         Args:
             collection_name: Name of the collection
-            ids: List of IDs to retrieve
+            ids: Optional list of IDs to retrieve
             include: Fields to include in results
+            where: Optional metadata filter
 
         Returns:
             Results dictionary
         """
+        if ids is None and where is None:
+            raise ValueError("Either ids or where must be provided")
+
         collection = self.get_collection(collection_name)
 
         if include is None:
             include = ["metadatas", "documents", "embeddings"]
 
-        result = collection.get(ids=ids, include=include)
+        get_args: Dict[str, Any] = {"include": include}
+        if ids is not None:
+            get_args["ids"] = ids
+        if where is not None:
+            get_args["where"] = where
+
+        result = collection.get(**get_args)
         return result  # type: ignore[no-any-return]
 
     def delete(
