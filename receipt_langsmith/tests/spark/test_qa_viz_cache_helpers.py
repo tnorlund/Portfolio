@@ -243,7 +243,7 @@ class TestClassifyRunUnchanged:
 
 class TestBuildQuestionCacheIncludesToolSteps:
     def test_tool_steps_in_trace(self):
-        root = _make_run(
+        _make_run(
             id="root-1", name="qa_graph", run_type="chain",
             is_root=True, dotted_order="1",
         )
