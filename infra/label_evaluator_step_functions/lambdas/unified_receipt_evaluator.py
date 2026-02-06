@@ -1283,8 +1283,11 @@ async def unified_receipt_evaluator(
 
                             # Format results
                             llm_review_result = []
-                            for i, review_result in enumerate(chunk_reviews):
-                                meta = issues_with_context[i]
+                            for meta, review_result in zip(
+                                issues_with_context,
+                                chunk_reviews,
+                                strict=True,
+                            ):
                                 llm_review_result.append(
                                     {
                                         "image_id": image_id,
