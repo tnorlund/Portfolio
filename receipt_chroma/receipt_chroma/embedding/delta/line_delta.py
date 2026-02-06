@@ -171,7 +171,7 @@ def save_line_embeddings_as_delta(
             row_metadata, row_words
         )
 
-        # Label enrichment: aggregate VALID labels from all words in row
+        # Label enrichment: aggregate VALID/INVALID labels from all words in row
         row_metadata = enrich_row_metadata_with_labels(
             row_metadata, row_words, labels
         )

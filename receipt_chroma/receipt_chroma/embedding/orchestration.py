@@ -573,6 +573,7 @@ def _build_payloads_traced(
         line_payload = build_row_payload(
             row_records,
             receipt_words,
+            all_labels=word_labels or [],
             merchant_name=merchant_name,
         )
 
@@ -759,6 +760,7 @@ def _build_lines_payload_traced(
         line_payload = build_row_payload(
             row_records,
             receipt_words,
+            all_labels=[],
             merchant_name=merchant_name,
         )
 

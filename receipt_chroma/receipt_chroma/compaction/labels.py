@@ -17,8 +17,14 @@ from receipt_chroma.data.operations import (
     remove_word_labels,
     update_word_labels,
 )
-from receipt_dynamo.constants import ChromaDBCollection
+from receipt_dynamo.constants import (
+    CORE_LABELS,
+    ChromaDBCollection,
+    ValidationStatus,
+)
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+_MAX_METADATA_KEY_BYTES = 36
 
 
 def apply_label_updates(
@@ -361,15 +367,38 @@ def _update_row_labels(
     row_line_ids_set = set(row_line_ids)
 
     # Filter receipt labels to only those in this row's lines
-    # Aggregate into boolean flags (only VALID labels)
+    # Aggregate into boolean flags:
+    # - True for VALID
+    # - False for INVALID (unless a VALID exists for same label)
     label_flags: dict[str, bool] = {}
+    has_validated = False
+    has_pending = False
     for label_entity in receipt_labels:
-        if (
-            label_entity.line_id in row_line_ids_set
-            and label_entity.validation_status == "VALID"
-        ):
-            label_key = f"label_{label_entity.label}"
+        if label_entity.line_id not in row_line_ids_set:
+            continue
+
+        status = str(getattr(label_entity, "validation_status", ""))
+        label_name = str(getattr(label_entity, "label", ""))
+
+        # Filter non-core labels before checking status so that
+        # garbage label names never influence label_status.
+        if label_name not in CORE_LABELS:
+            continue
+
+        label_key = f"label_{label_name}"
+        if len(label_key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+            continue
+
+        if status == ValidationStatus.PENDING.value:
+            has_pending = True
+            continue
+
+        if status == ValidationStatus.VALID.value:
             label_flags[label_key] = True
+            has_validated = True
+        elif status == ValidationStatus.INVALID.value:
+            label_flags.setdefault(label_key, False)
+            has_validated = True
 
     # Update metadata with label flags
     # Remove any existing label_ fields and add new ones
@@ -377,6 +406,12 @@ def _update_row_labels(
         k: v for k, v in metadata.items() if not k.startswith("label_")
     }
     new_metadata.update(label_flags)
+    if has_validated:
+        new_metadata["label_status"] = "validated"
+    elif has_pending:
+        new_metadata["label_status"] = "auto_suggested"
+    else:
+        new_metadata["label_status"] = "unvalidated"
 
     # Update the embedding
     collection.update(ids=[chromadb_id], metadatas=[new_metadata])

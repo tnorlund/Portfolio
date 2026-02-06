@@ -6,6 +6,7 @@ from S3 and initializing clients, as well as query functions for semantic
 similarity search on receipt words.
 """
 
+import json
 import logging
 import os
 import tempfile
@@ -243,6 +244,14 @@ def build_word_chroma_id(
     )
 
 
+def build_line_chroma_id(image_id: str, receipt_id: int, line_id: int) -> str:
+    """Build ChromaDB ID for a visual-row line embedding."""
+    return (
+        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+        f"#LINE#{line_id:05d}"
+    )
+
+
 def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
     """
     Parse a ChromaDB word ID into components.
@@ -319,17 +328,287 @@ def parse_labels_from_metadata(
 
 @dataclass
 class LabelEvidence:
-    """Evidence for or against a specific label from a similar word."""
+    """Evidence for or against a specific label from a similar embedding."""
 
     word_text: str
     similarity_score: float
     chroma_id: str
-    label_valid: bool  # True = validated AS this label, False = validated NOT this label
+    label_valid: bool  # True = validated AS this label, False = NOT this label
     merchant_name: str
     is_same_merchant: bool
     position_description: str
     left_neighbor: str
     right_neighbor: str
+    evidence_source: str = "words"  # "words" or "lines"
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Safely convert a value to int."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_row_line_ids(metadata: dict[str, Any]) -> set[int]:
+    """Extract row line IDs from line metadata."""
+    row_line_ids_raw = metadata.get("row_line_ids")
+    row_line_ids: list[int] = []
+
+    if isinstance(row_line_ids_raw, str) and row_line_ids_raw:
+        try:
+            parsed = json.loads(row_line_ids_raw)
+            if isinstance(parsed, list):
+                row_line_ids = [_safe_int(v) for v in parsed]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            row_line_ids = []
+
+    if not row_line_ids:
+        line_id = _safe_int(metadata.get("line_id"), default=-1)
+        if line_id >= 0:
+            row_line_ids = [line_id]
+
+    return {line_id for line_id in row_line_ids if line_id >= 0}
+
+
+def _result_chroma_id_for_metadata(
+    collection_name: str, metadata: dict[str, Any]
+) -> str:
+    """Construct Chroma ID from metadata for words or lines collections."""
+    image_id = str(metadata.get("image_id", ""))
+    receipt_id = _safe_int(metadata.get("receipt_id"))
+    line_id = _safe_int(metadata.get("line_id"))
+
+    if collection_name == "words":
+        return build_word_chroma_id(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=_safe_int(metadata.get("word_id")),
+        )
+
+    return build_line_chroma_id(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+    )
+
+
+def _get_word_query_embedding(
+    chroma_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+) -> tuple[list[float], str] | None:
+    """Load the query word embedding and canonical ID."""
+    word_chroma_id = build_word_chroma_id(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+        word_id=word_id,
+    )
+    try:
+        result = chroma_client.get(
+            collection_name="words",
+            ids=[word_chroma_id],
+            include=["embeddings"],
+        )
+    except Exception as exc:
+        logger.warning("Error getting embedding for %s: %s", word_chroma_id, exc)
+        return None
+
+    embeddings = result.get("embeddings")
+    if not embeddings:
+        logger.warning("No embedding found for %s", word_chroma_id)
+        return None
+
+    embedding = embeddings[0]
+    if hasattr(embedding, "tolist"):
+        embedding = embedding.tolist()
+
+    if not isinstance(embedding, list) or not embedding:
+        logger.warning("Invalid embedding format for %s", word_chroma_id)
+        return None
+
+    return embedding, word_chroma_id
+
+
+def _get_line_query_embedding(
+    chroma_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+) -> tuple[list[float], str] | None:
+    """Load line embedding for a line_id, including row-based fallback lookup."""
+    line_chroma_id = build_line_chroma_id(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+    )
+    try:
+        direct_result = chroma_client.get(
+            collection_name="lines",
+            ids=[line_chroma_id],
+            include=["embeddings"],
+        )
+        direct_embeddings = direct_result.get("embeddings")
+        if direct_embeddings:
+            embedding = direct_embeddings[0]
+            if hasattr(embedding, "tolist"):
+                embedding = embedding.tolist()
+            if isinstance(embedding, list) and embedding:
+                return embedding, line_chroma_id
+    except Exception as exc:
+        logger.debug(
+            "Direct line lookup failed for %s, trying row fallback: %s",
+            line_chroma_id,
+            exc,
+        )
+
+    # Row-based fallback: line_id may not be the row's primary line id.
+    try:
+        fallback_result = chroma_client.get(
+            collection_name="lines",
+            where={
+                "$and": [
+                    {"image_id": image_id},
+                    {"receipt_id": receipt_id},
+                ]
+            },
+            include=["metadatas", "embeddings"],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Error looking up row embedding for line %s: %s",
+            line_chroma_id,
+            exc,
+        )
+        return None
+
+    fallback_metadatas = fallback_result.get("metadatas") or []
+    fallback_embeddings = fallback_result.get("embeddings") or []
+    fallback_ids = fallback_result.get("ids") or []
+    target_line_id = _safe_int(line_id, default=-1)
+
+    for idx, metadata in enumerate(fallback_metadatas):
+        if not isinstance(metadata, dict):
+            continue
+        row_line_ids = _extract_row_line_ids(metadata)
+        if target_line_id not in row_line_ids:
+            continue
+
+        if idx >= len(fallback_embeddings):
+            continue
+        embedding = fallback_embeddings[idx]
+        if hasattr(embedding, "tolist"):
+            embedding = embedding.tolist()
+        if not isinstance(embedding, list) or not embedding:
+            continue
+
+        if idx < len(fallback_ids):
+            matched_id = str(fallback_ids[idx])
+        else:
+            matched_id = _result_chroma_id_for_metadata("lines", metadata)
+        return embedding, matched_id
+
+    logger.warning(
+        "No line embedding found for IMAGE#%s RECEIPT#%s LINE#%s",
+        image_id,
+        receipt_id,
+        line_id,
+    )
+    return None
+
+
+def _query_label_evidence_for_collection(
+    chroma_client: Any,
+    collection_name: str,
+    query_embedding: list[float],
+    exclude_chroma_id: str,
+    target_label: str,
+    target_merchant: str,
+    n_results_per_query: int,
+    min_similarity: float,
+) -> list[LabelEvidence]:
+    """Query one collection for positive and negative label evidence."""
+    label_field = f"label_{target_label}"
+
+    def _query_single_value(label_value: bool) -> list[LabelEvidence]:
+        try:
+            results = chroma_client.query(
+                collection_name=collection_name,
+                query_embeddings=[query_embedding],
+                n_results=n_results_per_query,
+                where={label_field: label_value},
+                include=["metadatas", "distances"],
+            )
+        except Exception as exc:
+            logger.warning(
+                "Error querying %s in %s for %s=%s: %s",
+                collection_name,
+                target_label,
+                label_field,
+                label_value,
+                exc,
+            )
+            return []
+
+        metadata_rows = results.get("metadatas", [[]])
+        distance_rows = results.get("distances", [[]])
+        metadatas = metadata_rows[0] if metadata_rows else []
+        distances = distance_rows[0] if distance_rows else []
+
+        evidence_list: list[LabelEvidence] = []
+        for metadata, distance in zip(metadatas, distances, strict=True):
+            if not isinstance(metadata, dict):
+                continue
+
+            result_id = _result_chroma_id_for_metadata(collection_name, metadata)
+            if result_id == exclude_chroma_id:
+                continue
+
+            try:
+                distance_val = float(distance)
+            except (TypeError, ValueError):
+                continue
+            similarity = max(0.0, 1.0 - (distance_val / 2.0))
+            if similarity < min_similarity:
+                continue
+
+            merchant = str(metadata.get("merchant_name", "Unknown"))
+            is_same = merchant.lower() == target_merchant.lower()
+            left_neighbor = str(
+                metadata.get("left", metadata.get("prev_line", "<EDGE>"))
+            )
+            right_neighbor = str(
+                metadata.get("right", metadata.get("next_line", "<EDGE>"))
+            )
+            try:
+                pos_x = float(metadata.get("x", 0.5))
+                pos_y = float(metadata.get("y", 0.5))
+            except (TypeError, ValueError):
+                pos_x = 0.5
+                pos_y = 0.5
+
+            evidence_list.append(
+                LabelEvidence(
+                    word_text=str(metadata.get("text", "")),
+                    similarity_score=round(similarity, 3),
+                    chroma_id=result_id,
+                    label_valid=label_value,
+                    merchant_name=merchant,
+                    is_same_merchant=is_same,
+                    position_description=describe_position(pos_x, pos_y),
+                    left_neighbor=left_neighbor,
+                    right_neighbor=right_neighbor,
+                    evidence_source=collection_name,
+                )
+            )
+
+        return evidence_list
+
+    return _query_single_value(True) + _query_single_value(False)
 
 
 def query_label_evidence(
@@ -342,128 +621,79 @@ def query_label_evidence(
     target_merchant: str,
     n_results_per_query: int = 15,
     min_similarity: float = 0.70,
+    include_collections: tuple[str, ...] = ("words", "lines"),
 ) -> list[LabelEvidence]:
     """
     Query ChromaDB for evidence FOR and AGAINST a specific label.
 
-    Uses targeted boolean metadata filters to efficiently fetch only
-    relevant evidence for validating a single label. Runs two queries:
-    1. Words where label was validated as TRUE (positive evidence)
-    2. Words where label was validated as FALSE (negative evidence)
-
-    This is more efficient than fetching all labels and filtering client-side.
+    Uses targeted boolean metadata filters across one or more collections.
+    For each collection, runs two queries:
+    1. Embeddings where label was validated as TRUE (positive evidence)
+    2. Embeddings where label was validated as FALSE (negative evidence)
 
     Args:
         chroma_client: ChromaDB client
-        image_id: Image ID of the word being validated
-        receipt_id: Receipt ID of the word
-        line_id: Line ID of the word
-        word_id: Word ID of the word
-        target_label: The specific label to find evidence for (e.g., "GRAND_TOTAL")
+        image_id: Image ID of the target word
+        receipt_id: Receipt ID of the target word
+        line_id: Line ID of the target word
+        word_id: Word ID of the target word
+        target_label: Label to find evidence for (e.g., "GRAND_TOTAL")
         target_merchant: Merchant name for same-merchant identification
-        n_results_per_query: Max results per query (positive + negative)
+        n_results_per_query: Max results per polarity, per collection
         min_similarity: Minimum similarity threshold (0-1)
+        include_collections: Collections to query ("words", "lines")
 
     Returns:
-        List of LabelEvidence sorted by: same_merchant, then similarity (descending)
+        LabelEvidence sorted by same_merchant then similarity descending
     """
-    word_chroma_id = build_word_chroma_id(
-        image_id, receipt_id, line_id, word_id
-    )
-    label_field = f"label_{target_label}"
+    all_evidence: list[LabelEvidence] = []
 
-    # Get the word's embedding
-    try:
-        word_result = chroma_client.get(
-            collection_name="words",
-            ids=[word_chroma_id],
-            include=["embeddings"],
+    if "words" in include_collections:
+        word_query = _get_word_query_embedding(
+            chroma_client=chroma_client,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
         )
-
-        embeddings = word_result.get("embeddings")
-        if embeddings is None or len(embeddings) == 0:
-            logger.warning("No embedding found for %s", word_chroma_id)
-            return []
-
-        embedding = embeddings[0]
-        if hasattr(embedding, "tolist"):
-            embedding = embedding.tolist()
-
-    except Exception as e:
-        logger.warning("Error getting embedding for %s: %s", word_chroma_id, e)
-        return []
-
-    def _query_single_value(label_value: bool) -> list[LabelEvidence]:
-        """Query for words with a specific label value (True or False)."""
-        try:
-            results = chroma_client.query(
-                collection_name="words",
-                query_embeddings=[embedding],
-                n_results=n_results_per_query,
-                where={
-                    "$and": [
-                        {"label_status": "validated"},
-                        {label_field: label_value},
-                    ]
-                },
-                include=["metadatas", "distances"],
+        if word_query:
+            word_embedding, word_chroma_id = word_query
+            all_evidence.extend(
+                _query_label_evidence_for_collection(
+                    chroma_client=chroma_client,
+                    collection_name="words",
+                    query_embedding=word_embedding,
+                    exclude_chroma_id=word_chroma_id,
+                    target_label=target_label,
+                    target_merchant=target_merchant,
+                    n_results_per_query=n_results_per_query,
+                    min_similarity=min_similarity,
+                )
             )
 
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-
-            evidence_list: list[LabelEvidence] = []
-            for metadata, distance in zip(metadatas, distances, strict=True):
-                # Build result ID to check for self
-                result_id = build_word_chroma_id(
-                    metadata.get("image_id", ""),
-                    metadata.get("receipt_id", 0),
-                    metadata.get("line_id", 0),
-                    metadata.get("word_id", 0),
+    if "lines" in include_collections:
+        line_query = _get_line_query_embedding(
+            chroma_client=chroma_client,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+        )
+        if line_query:
+            line_embedding, line_chroma_id = line_query
+            all_evidence.extend(
+                _query_label_evidence_for_collection(
+                    chroma_client=chroma_client,
+                    collection_name="lines",
+                    query_embedding=line_embedding,
+                    exclude_chroma_id=line_chroma_id,
+                    target_label=target_label,
+                    target_merchant=target_merchant,
+                    n_results_per_query=n_results_per_query,
+                    min_similarity=min_similarity,
                 )
-                if result_id == word_chroma_id:
-                    continue
-
-                # Convert L2 distance to similarity
-                similarity = max(0.0, 1.0 - (distance / 2.0))
-                if similarity < min_similarity:
-                    continue
-
-                merchant = metadata.get("merchant_name", "Unknown")
-                is_same = merchant.lower() == target_merchant.lower()
-
-                evidence_list.append(
-                    LabelEvidence(
-                        word_text=metadata.get("text", ""),
-                        similarity_score=round(similarity, 3),
-                        chroma_id=result_id,
-                        label_valid=label_value,
-                        merchant_name=merchant,
-                        is_same_merchant=is_same,
-                        position_description=describe_position(
-                            metadata.get("x", 0.5), metadata.get("y", 0.5)
-                        ),
-                        left_neighbor=metadata.get("left", "<EDGE>"),
-                        right_neighbor=metadata.get("right", "<EDGE>"),
-                    )
-                )
-
-            return evidence_list
-
-        except Exception as e:
-            logger.warning(
-                "Error querying %s=%s: %s", label_field, label_value, e
             )
-            return []
 
-    # Query for positive evidence (validated AS this label)
-    positive = _query_single_value(True)
-
-    # Query for negative evidence (validated as NOT this label)
-    negative = _query_single_value(False)
-
-    # Combine and sort by: same merchant first, then similarity descending
-    combined = positive + negative
+    combined = all_evidence
     combined.sort(
         key=lambda e: (e.is_same_merchant, e.similarity_score),
         reverse=True,
@@ -538,7 +768,7 @@ def format_label_evidence_for_prompt(
         Formatted string for LLM prompt
     """
     if not evidence:
-        return f"No similar validated words found for {target_label}."
+        return f"No similar validated evidence found for {target_label}."
 
     positive = [e for e in evidence if e.label_valid][:max_positive]
     negative = [e for e in evidence if not e.label_valid][:max_negative]
@@ -546,20 +776,22 @@ def format_label_evidence_for_prompt(
     lines = []
 
     if positive:
-        lines.append(f"Words validated AS {target_label}:")
+        lines.append(f"Evidence validated AS {target_label}:")
         for e in positive:
             merchant_tag = "(same merchant)" if e.is_same_merchant else ""
+            source_tag = "[WORD]" if e.evidence_source == "words" else "[LINE]"
             lines.append(
-                f'  - "{e.word_text}" [{e.position_description}] '
+                f'  - {source_tag} "{e.word_text}" [{e.position_description}] '
                 f"{e.similarity_score:.0%} similar {merchant_tag}"
             )
 
     if negative:
-        lines.append(f"Words validated as NOT {target_label}:")
+        lines.append(f"Evidence validated as NOT {target_label}:")
         for e in negative:
             merchant_tag = "(same merchant)" if e.is_same_merchant else ""
+            source_tag = "[WORD]" if e.evidence_source == "words" else "[LINE]"
             lines.append(
-                f'  - "{e.word_text}" [{e.position_description}] '
+                f'  - {source_tag} "{e.word_text}" [{e.position_description}] '
                 f"{e.similarity_score:.0%} similar {merchant_tag}"
             )
 
