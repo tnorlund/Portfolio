@@ -245,13 +245,13 @@ class TestEnrichRowMetadataWithLabels:
             MockReceiptWord("B", line_id=2, word_id=1),
         ]
         labels = [
-            MockReceiptWordLabel(1, 1, "TOTAL", "VALID"),
+            MockReceiptWordLabel(1, 1, "LINE_TOTAL", "VALID"),
             MockReceiptWordLabel(2, 1, "TAX", "INVALID"),
         ]
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert enriched["label_TOTAL"] is True
+        assert enriched["label_LINE_TOTAL"] is True
         assert enriched["label_TAX"] is False
         assert enriched["label_status"] == "validated"
 
@@ -260,22 +260,22 @@ class TestEnrichRowMetadataWithLabels:
         metadata = {"text": "row text"}
         row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
         labels = [
-            MockReceiptWordLabel(1, 1, "TOTAL", "INVALID"),
-            MockReceiptWordLabel(1, 1, "TOTAL", "VALID"),
+            MockReceiptWordLabel(1, 1, "LINE_TOTAL", "INVALID"),
+            MockReceiptWordLabel(1, 1, "LINE_TOTAL", "VALID"),
         ]
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert enriched["label_TOTAL"] is True
+        assert enriched["label_LINE_TOTAL"] is True
         assert enriched["label_status"] == "validated"
 
     def test_pending_only_sets_auto_suggested(self):
         """Rows with only pending labels should be marked auto_suggested."""
         metadata = {"text": "row text"}
         row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
-        labels = [MockReceiptWordLabel(1, 1, "TOTAL", "PENDING")]
+        labels = [MockReceiptWordLabel(1, 1, "LINE_TOTAL", "PENDING")]
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert "label_TOTAL" not in enriched
+        assert "label_LINE_TOTAL" not in enriched
         assert enriched["label_status"] == "auto_suggested"

@@ -27,9 +27,9 @@ def test_update_row_labels_applies_valid_and_invalid_flags():
         "merchant_name": "Test Merchant",
     }
     receipt_labels = [
-        MockLabelEntity(1, "TOTAL", "VALID"),
+        MockLabelEntity(1, "LINE_TOTAL", "VALID"),
         MockLabelEntity(2, "TAX", "INVALID"),
-        MockLabelEntity(9, "TOTAL", "VALID"),  # Different row, ignored
+        MockLabelEntity(9, "LINE_TOTAL", "VALID"),  # Different row, ignored
     ]
 
     updated_count = _update_row_labels(
@@ -44,7 +44,7 @@ def test_update_row_labels_applies_valid_and_invalid_flags():
     collection.update.assert_called_once()
     update_kwargs = collection.update.call_args.kwargs
     new_metadata = update_kwargs["metadatas"][0]
-    assert new_metadata["label_TOTAL"] is True
+    assert new_metadata["label_LINE_TOTAL"] is True
     assert new_metadata["label_TAX"] is False
     assert new_metadata["label_status"] == "validated"
     assert "label_OLD" not in new_metadata
@@ -57,7 +57,7 @@ def test_update_row_labels_sets_auto_suggested_for_pending_only():
     collection = Mock()
     logger = Mock()
     metadata = {"row_line_ids": "[1]"}
-    receipt_labels = [MockLabelEntity(1, "TOTAL", "PENDING")]
+    receipt_labels = [MockLabelEntity(1, "LINE_TOTAL", "PENDING")]
 
     updated_count = _update_row_labels(
         collection=collection,
@@ -72,7 +72,7 @@ def test_update_row_labels_sets_auto_suggested_for_pending_only():
     update_kwargs = collection.update.call_args.kwargs
     new_metadata = update_kwargs["metadatas"][0]
     assert new_metadata["label_status"] == "auto_suggested"
-    assert "label_TOTAL" not in new_metadata
+    assert "label_LINE_TOTAL" not in new_metadata
 
 
 @pytest.mark.unit
@@ -82,7 +82,7 @@ def test_update_row_labels_sets_unvalidated_when_no_labels_match():
     logger = Mock()
     metadata = {"row_line_ids": "[1]"}
     # Label for a different line — won't match row
-    receipt_labels = [MockLabelEntity(99, "TOTAL", "VALID")]
+    receipt_labels = [MockLabelEntity(99, "LINE_TOTAL", "VALID")]
 
     updated_count = _update_row_labels(
         collection=collection,
