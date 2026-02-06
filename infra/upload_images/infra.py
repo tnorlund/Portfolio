@@ -128,7 +128,7 @@ class UploadImages(ComponentResource):
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
             name=f"{name}-{stack}-ocr-results-queue",
-            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (600s for container-based process_ocr)
+            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (900s for container-based process_ocr)
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
             redrive_policy=None,  # No DLQ for now
@@ -451,7 +451,7 @@ class UploadImages(ComponentResource):
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
             "role_arn": process_ocr_role.arn,
-            "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
+            "timeout": 900,  # 15 minutes (longer for merchant validation + embedding)
             "memory_size": 3072,  # 3GB - optimal for ~2.2GB actual usage
             "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
             "environment": {
@@ -473,7 +473,7 @@ class UploadImages(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
@@ -684,7 +684,7 @@ class UploadImages(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)

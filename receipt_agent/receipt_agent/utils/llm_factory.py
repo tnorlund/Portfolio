@@ -349,6 +349,12 @@ def _is_empty_response(response: Any) -> bool:
     if response is None:
         return True
 
+    # Pydantic structured output responses (e.g. LabelValidationResponse) have
+    # model_dump but no .content attribute — they are never empty.
+    # AIMessage also has model_dump but DOES have .content, so it falls through.
+    if hasattr(response, "model_dump") and not hasattr(response, "content"):
+        return False
+
     # Get content from response
     content = None
     if hasattr(response, "content"):
