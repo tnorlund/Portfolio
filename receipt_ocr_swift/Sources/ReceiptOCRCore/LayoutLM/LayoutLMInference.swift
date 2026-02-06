@@ -43,9 +43,6 @@ public class LayoutLMInference {
     /// Maximum sequence length
     public let maxSeqLength: Int
 
-    /// URL to the compiled model (cleaned up in deinit)
-    private let compiledModelURL: URL
-
     // MARK: - Initialization
 
     /// Initialize from a model bundle directory.
@@ -55,10 +52,16 @@ public class LayoutLMInference {
     /// - vocab.txt (tokenizer vocabulary)
     /// - config.json (model configuration with labels)
     ///
+    /// On first init the .mlpackage is compiled and the resulting .mlmodelc
+    /// is persisted next to the .mlpackage so subsequent launches skip the
+    /// expensive compilation step.
+    ///
     /// - Parameter bundlePath: URL to the model bundle directory
     public init(bundlePath: URL) throws {
+        let fileManager = FileManager.default
+
         // Find CoreML model by scanning for .mlpackage in bundle
-        let contents = try FileManager.default.contentsOfDirectory(
+        let contents = try fileManager.contentsOfDirectory(
             at: bundlePath,
             includingPropertiesForKeys: nil
         )
@@ -66,32 +69,43 @@ public class LayoutLMInference {
             throw LayoutLMError.modelNotFound(path: bundlePath.path)
         }
 
-        // Compile model (creates temp file) and load it
-        // Store compiledURL for cleanup in deinit - MLModel may reference on-disk artifacts
-        let compiledURL = try MLModel.compileModel(at: modelURL)
-        self.compiledModelURL = compiledURL
-        self.model = try MLModel(contentsOf: compiledURL)
+        // Persistent path for the compiled model (.mlmodelc) next to the .mlpackage
+        let compiledName = modelURL.deletingPathExtension().lastPathComponent + ".mlmodelc"
+        let persistentCompiledURL = bundlePath.appendingPathComponent(compiledName)
+
+        if fileManager.fileExists(atPath: persistentCompiledURL.path) {
+            // Reuse previously compiled model — instant load
+            self.model = try MLModel(contentsOf: persistentCompiledURL)
+        } else {
+            // First run: compile .mlpackage → temp .mlmodelc, then persist it
+            let tempCompiledURL = try MLModel.compileModel(at: modelURL)
+            do {
+                try fileManager.moveItem(at: tempCompiledURL, to: persistentCompiledURL)
+            } catch {
+                // Move failed — another process may have won the race, or
+                // move isn't supported (cross-volume).  Best-effort copy;
+                // if the destination already exists we just use it.
+                try? fileManager.copyItem(at: tempCompiledURL, to: persistentCompiledURL)
+                try? fileManager.removeItem(at: tempCompiledURL)
+            }
+            self.model = try MLModel(contentsOf: persistentCompiledURL)
+        }
 
         // Load tokenizer
         let vocabURL = bundlePath.appendingPathComponent("vocab.txt")
-        guard FileManager.default.fileExists(atPath: vocabURL.path) else {
+        guard fileManager.fileExists(atPath: vocabURL.path) else {
             throw LayoutLMError.vocabNotFound(path: vocabURL.path)
         }
         self.tokenizer = try BertTokenizer(vocabURL: vocabURL)
 
         // Load config
         let configURL = bundlePath.appendingPathComponent("config.json")
-        guard FileManager.default.fileExists(atPath: configURL.path) else {
+        guard fileManager.fileExists(atPath: configURL.path) else {
             throw LayoutLMError.configNotFound(path: configURL.path)
         }
         self.config = try LayoutLMConfig.load(from: configURL)
 
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
-    }
-
-    deinit {
-        // Clean up compiled model temp file
-        try? FileManager.default.removeItem(at: compiledModelURL)
     }
 
     // MARK: - Prediction
