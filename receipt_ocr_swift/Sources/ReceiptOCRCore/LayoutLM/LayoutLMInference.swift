@@ -82,11 +82,10 @@ public class LayoutLMInference {
             do {
                 try fileManager.moveItem(at: tempCompiledURL, to: persistentCompiledURL)
             } catch {
-                // Another process may have already placed the compiled model,
-                // or the move failed for another reason (e.g. cross-volume).
-                if !fileManager.fileExists(atPath: persistentCompiledURL.path) {
-                    try fileManager.copyItem(at: tempCompiledURL, to: persistentCompiledURL)
-                }
+                // Move failed — another process may have won the race, or
+                // move isn't supported (cross-volume).  Best-effort copy;
+                // if the destination already exists we just use it.
+                try? fileManager.copyItem(at: tempCompiledURL, to: persistentCompiledURL)
                 try? fileManager.removeItem(at: tempCompiledURL)
             }
             self.model = try MLModel(contentsOf: persistentCompiledURL)
