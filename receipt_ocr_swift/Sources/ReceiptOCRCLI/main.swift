@@ -1,6 +1,34 @@
 import ArgumentParser
 import Foundation
+import Logging
 import ReceiptOCRCore
+
+/// Purge the CoreML E5RT execution-plan cache that grows unboundedly with
+/// every `MLModel.prediction()` call.  The cache lives under
+/// `~/Library/Caches/<bundle>/com.apple.e5rt.e5bundlecache/` and Apple
+/// provides no API to cap its size, so we delete it periodically.
+private func purgeE5RTCache(logger: Logger) {
+    let fm = FileManager.default
+    // The cache root depends on the process bundle identifier.
+    // For a CLI tool without a bundle ID, CoreML uses the executable name.
+    let cacheBase = fm.urls(for: .cachesDirectory, in: .userDomainMask).first
+    guard let cacheBase else { return }
+
+    let candidates = [
+        cacheBase.appendingPathComponent("receipt-ocr/com.apple.e5rt.e5bundlecache"),
+        cacheBase.appendingPathComponent("com.apple.e5rt.e5bundlecache"),
+    ]
+
+    for dir in candidates {
+        guard fm.fileExists(atPath: dir.path) else { continue }
+        do {
+            try fm.removeItem(at: dir)
+            logger.info("purged_e5rt_cache path=\(dir.path)")
+        } catch {
+            logger.warning("purge_e5rt_cache_failed path=\(dir.path) error=\(error)")
+        }
+    }
+}
 
 @main
 struct ReceiptOCR: AsyncParsableCommand {
@@ -63,10 +91,15 @@ struct ReceiptOCR: AsyncParsableCommand {
             #endif
             _ = try engine.process(images: [imageURL], outputDirectory: outURL)
         } else {
+            var cacheLogger = Logger(label: "receipt.ocr.cache")
+            cacheLogger.logLevel = .from(string: effectiveConfig.logLevel)
+
             let worker = try await OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
             if continuous {
                 print("Running continuously until queue is empty...")
                 var batchCount = 0
+                // Purge every 50 batches (~500 receipts) to keep cache bounded
+                let purgeCadence = 50
                 while true {
                     batchCount += 1
                     print("Processing batch \(batchCount)...")
@@ -75,11 +108,17 @@ struct ReceiptOCR: AsyncParsableCommand {
                         print("Queue is empty, stopping.")
                         break
                     }
+                    if batchCount % purgeCadence == 0 {
+                        purgeE5RTCache(logger: cacheLogger)
+                    }
                     // Small delay between batches to avoid tight loops
                     try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                 }
+                // Final purge before exit
+                purgeE5RTCache(logger: cacheLogger)
             } else {
                 _ = try await worker.processBatch()
+                purgeE5RTCache(logger: cacheLogger)
             }
         }
     }
