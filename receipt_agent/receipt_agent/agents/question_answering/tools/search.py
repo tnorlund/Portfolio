@@ -1147,8 +1147,8 @@ def create_qa_tools(
             # Store all summary dicts for the shape node
             for s in filtered:
                 key = (s.get("image_id"), s.get("receipt_id"))
-                if key not in state_holder.get("_summary_keys", set()):
-                    state_holder.setdefault("_summary_keys", set()).add(key)
+                if key not in state_holder["_summary_keys"]:
+                    state_holder["_summary_keys"].add(key)
                     state_holder["summary_receipts"].append(s)
 
             total_spending = sum(s["grand_total"] or 0 for s in filtered)
@@ -1157,7 +1157,7 @@ def create_qa_tools(
             receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
 
             # Store aggregates for synthesizer
-            state_holder.setdefault("aggregates", []).append({
+            state_holder["aggregates"].append({
                 "source": (
                     f"get_receipt_summaries("
                     f"merchant={merchant_filter}, "

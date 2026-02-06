@@ -378,7 +378,7 @@ The QA agent answers 32 marquee questions about receipt data. We iterate on answ
 
 ### Architecture
 
-```
+```text
 Code Change → Pulumi Deploy → Step Function (32 Qs) → S3/LangSmith
                                                            ↓
                                               Dev API (/qa/visualization)
@@ -420,7 +420,7 @@ This rebuilds container images via CodeBuild if source files changed (~5 min). T
 
 ```bash
 aws stepfunctions start-execution \
-  --state-machine-arn "arn:aws:states:us-east-1:681647709217:stateMachine:qa-agent-dev" \
+  --state-machine-arn "arn:aws:states:us-east-1:<account-id>:stateMachine:qa-agent-dev" \
   --input '{"langsmith_project": "qa-eval-<descriptive-name>"}' \
   --region us-east-1
 ```

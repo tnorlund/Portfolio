@@ -117,4 +117,4 @@ Passed the agent's last reasoning message to the synthesizer so it builds on the
 |-----|---|---|---|---|---|-----|
 | Baseline (Q0-Q31) | 0 | 4 | 7 | 12 | 9 | D |
 | Hybrid Shaping (Q0-Q31) | 5 | 11 | 9 | 7 | 0 | C+ |
-| Synth Reasoning (Q0-Q31) | 9 | 19 | 3 | 1 | 0 | B |
+| Synth Reasoning (Q0-Q31) | 9 | 20 | 2 | 1 | 0 | B |
