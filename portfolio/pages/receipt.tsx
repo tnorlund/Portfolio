@@ -3,6 +3,8 @@ import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
 import { useQAQueue } from "../hooks/useQAQueue";
+import { useUploadProgress } from "../hooks/useUploadProgress";
+import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
@@ -90,9 +92,6 @@ export default function ReceiptPage({
   const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   // --- Receipt Upload State & Handlers ---
-  const [files, setFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
   const [apiUrl, setApiUrl] = useState("");
 
@@ -105,70 +104,18 @@ export default function ReceiptPage({
     );
   }, []);
 
-  const uploadToS3Internal = useCallback(
-    async (selectedFiles: File[]) => {
-      if (selectedFiles.length === 0) return;
-      setUploading(true);
-      setMessage("");
-
-      try {
-        for (const file of selectedFiles) {
-          // 1. Ask backend for a presigned PUT URL (and create the job)
-          const presignRes = await fetch(`${apiUrl}/upload-receipt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              filename: file.name,
-              content_type: file.type,
-            }),
-          });
-
-          if (!presignRes.ok) {
-            throw new Error(
-              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`,
-            );
-          }
-
-          const { upload_url } = await presignRes.json();
-
-          // 2. Upload the file directly to S3
-          const putRes = await fetch(upload_url, {
-            method: "PUT",
-            headers: { "Content-Type": file.type },
-            body: file,
-          });
-
-          if (!putRes.ok) {
-            throw new Error(`Upload failed for file ${file.name}`);
-          }
-        }
-
-        setMessage(
-          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`,
-        );
-        setFiles([]);
-      } catch (err) {
-        console.error(err);
-        setMessage("Upload failed");
-      } finally {
-        setUploading(false);
-      }
-    },
-    [apiUrl],
-  );
+  const { fileStates, addFiles, clearAll } = useUploadProgress(apiUrl);
 
   const handleDrop = useCallback(
-    async (e: DragEvent) => {
+    (e: DragEvent) => {
       e.preventDefault();
       setDragging(false);
       const dt = e.dataTransfer;
-      if (dt && dt.files) {
-        const newFiles = Array.from(dt.files);
-        setFiles((prev) => [...prev, ...newFiles]);
-        await uploadToS3Internal(newFiles);
+      if (dt && dt.files && dt.files.length > 0) {
+        addFiles(Array.from(dt.files));
       }
     },
-    [uploadToS3Internal],
+    [addFiles],
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -180,23 +127,13 @@ export default function ReceiptPage({
     setDragging(false);
   }, []);
 
-  const uploadToS3 = useCallback(() => {
-    // Use functional update to get current files without adding to dependencies
-    setFiles((currentFiles) => {
-      uploadToS3Internal(currentFiles);
-      return []; // Clear files after initiating upload
-    });
-  }, [uploadToS3Internal]);
-
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files) {
-        const newFiles = Array.from(e.target.files);
-        setFiles((prev) => [...prev, ...newFiles]);
-        uploadToS3Internal(newFiles);
+      if (e.target.files && e.target.files.length > 0) {
+        addFiles(Array.from(e.target.files));
       }
     },
-    [uploadToS3Internal],
+    [addFiles],
   );
 
   useEffect(() => {
@@ -699,56 +636,7 @@ M1LK 2%           1    $4.4g`}</code>
         </p>
       </div>
 
-      {files.length > 0 && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            width: "100%",
-            background: "var(--background-color)",
-            padding: "1rem",
-            boxShadow: "0 -2px 6px rgba(0,0,0,0.2)",
-            borderTop: "1px solid var(--text-color)",
-            zIndex: 999,
-          }}
-        >
-          <div style={{ maxWidth: "1024px", margin: "0 auto" }}>
-            <h4 style={{ margin: "0 0 0.5rem 0" }}>Files to upload:</h4>
-            <ul
-              style={{
-                margin: "0.5rem 0",
-                maxHeight: "100px",
-                overflowY: "auto",
-              }}
-            >
-              {files.map((f, i) => (
-                <li key={i} style={{ fontSize: "0.9rem" }}>
-                  {f.name}
-                </li>
-              ))}
-            </ul>
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-              <button onClick={uploadToS3} disabled={uploading}>
-                {uploading ? "Uploading..." : "Upload to S3"}
-              </button>
-              {message && (
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.9rem",
-                    color: message.includes("successful")
-                      ? "var(--color-green)"
-                      : "var(--color-red)",
-                  }}
-                >
-                  {message}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadProgressPanel fileStates={fileStates} onClear={clearAll} />
     </div>
   );
 }

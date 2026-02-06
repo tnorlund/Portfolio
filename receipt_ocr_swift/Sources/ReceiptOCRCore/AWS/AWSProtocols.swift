@@ -25,6 +25,7 @@ public protocol S3ClientProtocol {
 public protocol DynamoClientProtocol {
     func getOCRJob(imageId: String, jobId: String) async throws -> OCRJob
     func updateOCRJob(_ job: OCRJob) async throws
+    func updateOCRJobStage(imageId: String, jobId: String, stage: String) async throws
     func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws
     func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws
 }

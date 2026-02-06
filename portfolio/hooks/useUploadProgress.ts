@@ -1,0 +1,269 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { UploadReceiptProgress, UploadStatusResponse } from "../types/api";
+
+export type UploadStage =
+  | "pending"
+  | "uploading"
+  | "uploaded"
+  | "ocr"
+  | "processing"
+  | "complete"
+  | "failed";
+
+export interface FileUploadState {
+  id: string;
+  file: File;
+  stage: UploadStage;
+  processingStage: string | null;
+  uploadPercent: number;
+  imageId: string | null;
+  jobId: string | null;
+  receiptCount: number;
+  receipts: UploadReceiptProgress[];
+  error: string | null;
+}
+
+const MAX_CONCURRENT = 3;
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_DURATION_MS = 20 * 60 * 1000; // 20 minutes
+
+export function useUploadProgress(apiUrl: string) {
+  const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
+  const pollTimers = useRef<Map<string, { timer: ReturnType<typeof setInterval>; startTime: number }>>(new Map());
+  const activeUploads = useRef(0);
+  const uploadQueue = useRef<string[]>([]);
+  const mountedRef = useRef(true);
+  const drainQueueRef = useRef<() => void>(() => {});
+  // Store File objects in a ref so processUpload can read them synchronously
+  const filesRef = useRef<Map<string, File>>(new Map());
+
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      pollTimers.current.forEach(({ timer }) => {
+        clearInterval(timer);
+      });
+      pollTimers.current.clear();
+    };
+  }, []);
+
+  const updateFile = useCallback((id: string, updates: Partial<FileUploadState>) => {
+    if (!mountedRef.current) return;
+    setFileStates((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
+    );
+  }, []);
+
+  const pollStatus = useCallback(
+    (imageId: string, fileId: string) => {
+      if (pollTimers.current.has(imageId)) return;
+
+      const startTime = Date.now();
+      const timer = setInterval(async () => {
+        if (!mountedRef.current) {
+          clearInterval(timer);
+          pollTimers.current.delete(imageId);
+          return;
+        }
+
+        // Timeout: stop polling after MAX_POLL_DURATION_MS
+        if (Date.now() - startTime > MAX_POLL_DURATION_MS) {
+          clearInterval(timer);
+          pollTimers.current.delete(imageId);
+          updateFile(fileId, {
+            stage: "failed",
+            error: "Processing timed out",
+          });
+          return;
+        }
+
+        try {
+          const res = await fetch(
+            `${apiUrl}/upload-status?image_id=${encodeURIComponent(imageId)}`,
+          );
+          if (!res.ok) return;
+
+          const data: UploadStatusResponse = await res.json();
+
+          // Derive stage from status
+          let stage: UploadStage = "ocr";
+          if (data.ocr_status === "FAILED") {
+            stage = "failed";
+          } else if (data.ocr_status === "COMPLETED") {
+            if (data.receipt_count === 0) {
+              // NATIVE image or no receipts — done
+              stage = "complete";
+            } else {
+              const allMerchant = data.receipts.every((r) => r.merchant_found);
+              const allLabelsValidated = data.receipts.every(
+                (r) => r.total_labels === 0 || r.validated_labels >= r.total_labels,
+              );
+              if (allMerchant && allLabelsValidated) {
+                stage = "complete";
+              } else {
+                stage = "processing";
+              }
+            }
+          }
+
+          updateFile(fileId, {
+            stage,
+            processingStage: data.processing_stage,
+            receiptCount: data.receipt_count,
+            receipts: data.receipts,
+          });
+
+          // Stop polling when terminal
+          if (stage === "complete" || stage === "failed") {
+            clearInterval(timer);
+            pollTimers.current.delete(imageId);
+          }
+        } catch {
+          // Silently retry on next interval
+        }
+      }, POLL_INTERVAL_MS);
+
+      pollTimers.current.set(imageId, { timer, startTime });
+    },
+    [apiUrl, updateFile],
+  );
+
+  const processUpload = useCallback(
+    async (fileId: string) => {
+      if (!mountedRef.current) return;
+
+      setFileStates((prev) =>
+        prev.map((f) => (f.id === fileId ? { ...f, stage: "uploading" as UploadStage } : f)),
+      );
+
+      try {
+        // Read file from ref (synchronous, no React batching issues)
+        const currentFile = filesRef.current.get(fileId);
+        if (!currentFile) return;
+
+        // 1. Get presigned URL
+        const contentType = currentFile.type || "image/png";
+        const presignRes = await fetch(`${apiUrl}/upload-receipt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: currentFile.name,
+            content_type: contentType,
+          }),
+        });
+
+        if (!presignRes.ok) {
+          throw new Error(`Failed to request upload URL (status ${presignRes.status})`);
+        }
+
+        const { upload_url, image_id, job_id } = await presignRes.json();
+        updateFile(fileId, { imageId: image_id, jobId: job_id });
+
+        // 2. Upload via XHR for progress tracking
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", upload_url);
+          xhr.setRequestHeader("Content-Type", contentType);
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && mountedRef.current) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              updateFile(fileId, { uploadPercent: percent });
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`Upload failed (status ${xhr.status})`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error("Upload network error"));
+          xhr.send(currentFile);
+        });
+
+        // 3. Upload complete, start polling
+        updateFile(fileId, { stage: "ocr", uploadPercent: 100 });
+        pollStatus(image_id, fileId);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Upload failed";
+        updateFile(fileId, { stage: "failed", error: errorMsg });
+      } finally {
+        activeUploads.current--;
+        drainQueueRef.current();
+      }
+    },
+    [apiUrl, updateFile, pollStatus],
+  );
+
+  const drainQueue = useCallback(() => {
+    while (activeUploads.current < MAX_CONCURRENT && uploadQueue.current.length > 0) {
+      const nextId = uploadQueue.current.shift()!;
+      activeUploads.current++;
+      processUpload(nextId);
+    }
+  }, [processUpload]);
+
+  // Keep ref in sync so processUpload always calls the latest drainQueue
+  drainQueueRef.current = drainQueue;
+
+  const addFiles = useCallback(
+    (newFiles: File[]) => {
+      const newStates: FileUploadState[] = newFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        stage: "pending" as UploadStage,
+        processingStage: null,
+        uploadPercent: 0,
+        imageId: null,
+        jobId: null,
+        receiptCount: 0,
+        receipts: [],
+        error: null,
+      }));
+
+      // Store File objects in ref for synchronous access
+      for (const state of newStates) {
+        filesRef.current.set(state.id, state.file);
+        uploadQueue.current.push(state.id);
+      }
+
+      setFileStates((prev) => [...prev, ...newStates]);
+
+      // Kick off queue processing after state update
+      setTimeout(() => drainQueue(), 0);
+    },
+    [drainQueue],
+  );
+
+  const clearCompleted = useCallback(() => {
+    setFileStates((prev) => {
+      const kept = prev.filter((f) => f.stage !== "complete" && f.stage !== "failed");
+      // Clean up file refs for removed entries
+      const keptIds = new Set(kept.map((f) => f.id));
+      filesRef.current.forEach((_, id) => {
+        if (!keptIds.has(id)) filesRef.current.delete(id);
+      });
+      return kept;
+    });
+  }, []);
+
+  const clearAll = useCallback(() => {
+    // Stop all polling
+    pollTimers.current.forEach(({ timer }) => {
+      clearInterval(timer);
+    });
+    pollTimers.current.clear();
+    // Clear pending upload queue and reset concurrency counter
+    uploadQueue.current = [];
+    activeUploads.current = 0;
+    filesRef.current.clear();
+    setFileStates([]);
+  }, []);
+
+  return { fileStates, addFiles, clearCompleted, clearAll };
+}

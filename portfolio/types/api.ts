@@ -1,3 +1,21 @@
+// Upload Progress Tracking Types
+
+export interface UploadReceiptProgress {
+  receipt_id: number;
+  merchant_found: boolean;
+  merchant_name: string | null;
+  total_labels: number;
+  validated_labels: number;
+}
+
+export interface UploadStatusResponse {
+  image_id: string;
+  ocr_status: "PENDING" | "COMPLETED" | "FAILED";
+  processing_stage: string | null;
+  receipt_count: number;
+  receipts: UploadReceiptProgress[];
+}
+
 export interface LabelValidationCountResponse {
   [key: string]: {
     [key: string]: number;
