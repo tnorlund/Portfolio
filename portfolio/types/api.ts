@@ -11,6 +11,7 @@ export interface UploadReceiptProgress {
 export interface UploadStatusResponse {
   image_id: string;
   ocr_status: "PENDING" | "COMPLETED" | "FAILED";
+  processing_stage: string | null;
   receipt_count: number;
   receipts: UploadReceiptProgress[];
 }

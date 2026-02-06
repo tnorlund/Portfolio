@@ -116,7 +116,7 @@ def _handle_status(event):
             "TableName": TABLE_NAME,
             "KeyConditionExpression": "PK = :pk",
             "FilterExpression": "#t IN (:t1, :t2, :t3, :t4, :t5)",
-            "ProjectionExpression": "SK, #t, #s, receipt_count, validation_status, merchant_name, job_type",
+            "ProjectionExpression": "SK, #t, #s, receipt_count, validation_status, merchant_name, job_type, processing_stage",
             "ExpressionAttributeNames": {"#t": "TYPE", "#s": "status"},
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
@@ -137,6 +137,7 @@ def _handle_status(event):
 
     # Derive status from entities
     ocr_status = "PENDING"
+    processing_stage = None
     receipt_count = 0
     receipts_map = {}  # receipt_id -> {merchant_found, merchant_name, total_labels, validated_labels}
 
@@ -144,7 +145,12 @@ def _handle_status(event):
         item_type = item.get("TYPE", {}).get("S", "")
         sk = item.get("SK", {}).get("S", "")
 
-        if item_type == "OCR_ROUTING_DECISION":
+        if item_type == "OCR_JOB":
+            stage = item.get("processing_stage", {}).get("S")
+            if stage:
+                processing_stage = stage
+
+        elif item_type == "OCR_ROUTING_DECISION":
             status = item.get("status", {}).get("S", "").upper()
             if _STATUS_PRIORITY.get(status, 0) > _STATUS_PRIORITY.get(ocr_status, 0):
                 ocr_status = status
@@ -233,6 +239,7 @@ def _handle_status(event):
         "body": json.dumps({
             "image_id": image_id,
             "ocr_status": ocr_status,
+            "processing_stage": processing_stage,
             "receipt_count": receipt_count,
             "receipts": receipts_list,
         }),

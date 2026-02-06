@@ -136,6 +136,25 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         _ = try await dynamo.updateItem(req)
     }
 
+    public func updateOCRJobStage(imageId: String, jobId: String, stage: String) async throws {
+        let key: [String: DynamoDB.AttributeValue] = [
+            "PK": .s("IMAGE#\(imageId)"),
+            "SK": .s("OCR_JOB#\(jobId)")
+        ]
+        let expr = "SET processing_stage = :ps, updated_at = :u"
+        let values: [String: DynamoDB.AttributeValue] = [
+            ":ps": .s(stage),
+            ":u": .s(ISO8601Python.format(Date()))
+        ]
+        let req = DynamoDB.UpdateItemInput(
+            expressionAttributeValues: values,
+            key: key,
+            tableName: tableName,
+            updateExpression: expr
+        )
+        _ = try await dynamo.updateItem(req)
+    }
+
     public func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws {
         var updatedAttr: DynamoDB.AttributeValue
         if let updated = decision.updatedAt { updatedAttr = .s(ISO8601Python.format(updated)) } else { updatedAttr = .null(true) }

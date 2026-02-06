@@ -26,7 +26,20 @@ function stageDotClass(stage: UploadStage): string {
   }
 }
 
-function stageLabel(stage: UploadStage): string {
+function processingStageLabel(processingStage: string | null): string {
+  switch (processingStage) {
+    case "DOWNLOADING":
+      return "Downloading...";
+    case "OCR_RUNNING":
+      return "OCR Running...";
+    case "UPLOADING_RESULTS":
+      return "Uploading Results...";
+    default:
+      return "Waiting for worker...";
+  }
+}
+
+function stageLabel(stage: UploadStage, processingStage: string | null): string {
   switch (stage) {
     case "pending":
       return "Waiting...";
@@ -35,7 +48,7 @@ function stageLabel(stage: UploadStage): string {
     case "uploaded":
       return "Uploaded";
     case "ocr":
-      return "OCR Running...";
+      return processingStageLabel(processingStage);
     case "processing":
       return "Processing";
     case "complete":
@@ -53,7 +66,7 @@ function FileCard({ state }: { state: FileUploadState }) {
       <div className={styles.uploadFileHeader}>
         <span className={`${styles.stageDot} ${stageDotClass(state.stage)}`} />
         <span className={styles.uploadFileName}>{state.file.name}</span>
-        <span className={styles.uploadStageLabel}>{stageLabel(state.stage)}</span>
+        <span className={styles.uploadStageLabel}>{stageLabel(state.stage, state.processingStage)}</span>
       </div>
 
       {/* Progress bar during upload */}

@@ -14,6 +14,7 @@ export interface FileUploadState {
   id: string;
   file: File;
   stage: UploadStage;
+  processingStage: string | null;
   uploadPercent: number;
   imageId: string | null;
   jobId: string | null;
@@ -93,6 +94,7 @@ export function useUploadProgress(apiUrl: string) {
 
           updateFile(fileId, {
             stage,
+            processingStage: data.processing_stage,
             receiptCount: data.receipt_count,
             receipts: data.receipts,
           });
@@ -201,6 +203,7 @@ export function useUploadProgress(apiUrl: string) {
         id: crypto.randomUUID(),
         file,
         stage: "pending" as UploadStage,
+        processingStage: null,
         uploadPercent: 0,
         imageId: null,
         jobId: null,
