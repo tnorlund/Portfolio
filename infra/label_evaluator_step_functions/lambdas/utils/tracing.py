@@ -954,7 +954,8 @@ def create_execution_trace(
         ExecutionTraceInfo with trace_id, root_run_id, and run_tree
     """
     trace_id = generate_trace_id(execution_arn)
-    root_run_id = generate_root_run_id(execution_arn)
+    # Root run ID must equal trace_id for LangSmith dotted_order validation.
+    root_run_id = trace_id
 
     if not enable_tracing:
         logger.info("Tracing disabled, skipping trace creation")
@@ -1094,9 +1095,10 @@ def create_receipt_trace(
         ReceiptTraceInfo with trace_id, root_run_id, and run_tree
     """
     trace_id = generate_receipt_trace_id(execution_arn, image_id, receipt_id)
-    root_run_id = generate_receipt_root_run_id(
-        execution_arn, image_id, receipt_id
-    )
+    # Root run ID must equal trace_id for LangSmith dotted_order validation.
+    # When LANGCHAIN_TRACING_V2=true, the dotted_order starts with the run_id,
+    # and LangSmith requires it to match trace_id for root runs.
+    root_run_id = trace_id
 
     # Build base trace info (returned even if tracing disabled)
     base_info = ReceiptTraceInfo(
