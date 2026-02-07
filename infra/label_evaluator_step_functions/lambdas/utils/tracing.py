@@ -565,11 +565,15 @@ def resume_trace(
         return
 
     try:
-        # NOTE: We intentionally do NOT use _tracing_context here.
-        # Using _tracing_context(parent=child_headers) after child_run.post() causes
-        # LangSmith to create duplicate trace entries with the same run_id,
-        # resulting in "dotted_order appears more than once" errors.
-        yield ctx
+        # Use tracing_context with the RunTree object (not headers) so that
+        # LLM calls made inside this block are auto-traced as children.
+        # Passing parent=child_run (not parent=headers) avoids the duplicate
+        # dotted_order issue that the previous approach caused.
+        if _tracing_context is not None:
+            with _tracing_context(parent=child_run):
+                yield ctx
+        else:
+            yield ctx
     finally:
         if child_run is not None:
             try:
@@ -659,8 +663,15 @@ def child_trace(
         return
 
     try:
-        # NOTE: We intentionally do NOT use _tracing_context here.
-        yield ctx
+        # Use tracing_context with the RunTree object (not headers) so that
+        # LLM calls made inside this block are auto-traced as children.
+        # Passing parent=child (not parent=headers) avoids the duplicate
+        # dotted_order issue that the previous approach caused.
+        if _tracing_context is not None:
+            with _tracing_context(parent=child):
+                yield ctx
+        else:
+            yield ctx
     finally:
         if child is not None:
             try:
@@ -1532,11 +1543,15 @@ def receipt_state_trace(
         return
 
     try:
-        # NOTE: We intentionally do NOT use _tracing_context here.
-        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
-        # LangSmith to create duplicate trace entries with the same run_id,
-        # resulting in "dotted_order appears more than once" errors.
-        yield ctx
+        # Use tracing_context with the RunTree object (not headers) so that
+        # LLM calls made inside this block are auto-traced as children.
+        # Passing parent=run_tree (not parent=headers) avoids the duplicate
+        # dotted_order issue that the previous approach caused.
+        if _tracing_context is not None:
+            with _tracing_context(parent=run_tree):
+                yield ctx
+        else:
+            yield ctx
     finally:
         if run_tree is not None:
             try:
@@ -1719,11 +1734,15 @@ def state_trace(
         return
 
     try:
-        # NOTE: We intentionally do NOT use _tracing_context here.
-        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
-        # LangSmith to create duplicate trace entries with the same run_id,
-        # resulting in "dotted_order appears more than once" errors.
-        yield ctx
+        # Use tracing_context with the RunTree object (not headers) so that
+        # LLM calls made inside this block are auto-traced as children.
+        # Passing parent=run_tree (not parent=headers) avoids the duplicate
+        # dotted_order issue that the previous approach caused.
+        if _tracing_context is not None:
+            with _tracing_context(parent=run_tree):
+                yield ctx
+        else:
+            yield ctx
     finally:
         if run_tree is not None:
             try:

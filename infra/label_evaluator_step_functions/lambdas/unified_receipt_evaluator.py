@@ -32,6 +32,7 @@ import time
 from typing import Any
 
 import boto3
+from langsmith import tracing_context
 
 # Import tracing utilities - works in both container and local environments
 try:
@@ -1298,17 +1299,11 @@ async def unified_receipt_evaluator(
                                 line_item_patterns=line_item_patterns,
                             )
 
-                            llm_config = (
-                                review_ctx.get_langchain_config()
-                                if review_ctx
-                                else None
-                            )
-
-                            # Make async LLM call
-                            response = await llm_invoker.ainvoke(
-                                [HumanMessage(content=prompt)],
-                                config=llm_config,
-                            )
+                            # Make async LLM call (tracing_context links it to the trace)
+                            with tracing_context(parent=review_ctx.run_tree):
+                                response = await llm_invoker.ainvoke(
+                                    [HumanMessage(content=prompt)],
+                                )
 
                             # Parse response
                             response_text = (
