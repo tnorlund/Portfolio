@@ -484,7 +484,7 @@ async def unified_receipt_evaluator(
             f"patterns/{execution_id}/{merchant_hash}.json"
         )
         line_item_patterns_s3_key = event.get("line_item_patterns_s3_key") or (
-            f"line_item_patterns/{merchant_hash}.json"
+            f"line_item_patterns/{execution_id}/{merchant_hash}.json"
         )
 
         # Create child traces for parallel operations
@@ -884,9 +884,8 @@ async def unified_receipt_evaluator(
                 },
             )
 
-        # 7. Apply Phase 1 corrections to DynamoDB
-        applied_stats_currency = None
-        applied_stats_metadata = None
+        # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
+        applied_stats_phase1 = None
 
         if dynamo_table:
             with child_trace("apply_phase1_corrections", trace_ctx):
@@ -898,30 +897,72 @@ async def unified_receipt_evaluator(
                 if dynamo_table:
                     dynamo_client = DynamoClient(table_name=dynamo_table)
 
-                    # Apply currency corrections
+                    # Collect all INVALID decisions from both evaluators
                     invalid_currency = [
                         d
                         for d in currency_result
                         if d.get("llm_review", {}).get("decision") == "INVALID"
                     ]
-                    if invalid_currency:
-                        applied_stats_currency = apply_llm_decisions(
-                            reviewed_issues=invalid_currency,
-                            dynamo_client=dynamo_client,
-                            execution_id=f"currency-{execution_id}",
-                        )
-
-                    # Apply metadata corrections
                     invalid_metadata = [
                         d
                         for d in metadata_result
                         if d.get("llm_review", {}).get("decision") == "INVALID"
                     ]
-                    if invalid_metadata:
-                        applied_stats_metadata = apply_llm_decisions(
-                            reviewed_issues=invalid_metadata,
+
+                    # Deduplicate by (line_id, word_id) — if both evaluators
+                    # flag the same word, prefer higher confidence or the
+                    # currency evaluator (more accurate for financial labels)
+                    CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+                    FINANCIAL_LABELS = {
+                        "GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL",
+                        "UNIT_PRICE", "QUANTITY", "DISCOUNT",
+                    }
+
+                    merged: dict[tuple, dict] = {}
+                    for d in invalid_currency:
+                        issue = d.get("issue", {})
+                        key = (issue.get("line_id"), issue.get("word_id"))
+                        merged[key] = d
+
+                    for d in invalid_metadata:
+                        issue = d.get("issue", {})
+                        key = (issue.get("line_id"), issue.get("word_id"))
+                        if key not in merged:
+                            merged[key] = d
+                        else:
+                            # Resolve conflict: prefer higher confidence
+                            existing = merged[key]
+                            existing_conf = CONFIDENCE_RANK.get(
+                                existing.get("llm_review", {}).get("confidence", "low"), 1
+                            )
+                            new_conf = CONFIDENCE_RANK.get(
+                                d.get("llm_review", {}).get("confidence", "low"), 1
+                            )
+                            if new_conf > existing_conf:
+                                merged[key] = d
+                            elif new_conf == existing_conf:
+                                # Equal confidence: prefer financial label suggestion
+                                existing_label = existing.get("llm_review", {}).get("suggested_label")
+                                new_label = d.get("llm_review", {}).get("suggested_label")
+                                if new_label in FINANCIAL_LABELS and existing_label not in FINANCIAL_LABELS:
+                                    merged[key] = d
+
+                    merged_invalid = list(merged.values())
+                    dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(merged_invalid)
+                    if dedup_removed > 0:
+                        logger.info(
+                            "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
+                            dedup_removed,
+                            len(invalid_currency),
+                            len(invalid_metadata),
+                            len(merged_invalid),
+                        )
+
+                    if merged_invalid:
+                        applied_stats_phase1 = apply_llm_decisions(
+                            reviewed_issues=merged_invalid,
                             dynamo_client=dynamo_client,
-                            execution_id=f"metadata-{execution_id}",
+                            execution_id=f"phase1-{execution_id}",
                         )
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
@@ -1396,8 +1437,7 @@ async def unified_receipt_evaluator(
                 "review_all_decisions": llm_review_result or [],
                 "review_duration_seconds": review_duration,
                 "applied_stats": {
-                    "currency": applied_stats_currency,
-                    "metadata": applied_stats_metadata,
+                    "phase1": applied_stats_phase1,
                 },
                 "duration_seconds": time.time() - start_time,
             }

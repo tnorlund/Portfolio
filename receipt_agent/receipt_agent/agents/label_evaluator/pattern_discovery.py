@@ -511,7 +511,7 @@ def build_discovery_prompt(
     """
     # Format receipt data for the prompt
     simplified = []
-    for receipt in receipts_data[:2]:
+    for receipt in receipts_data[:3]:
         lines = []
         # Include more lines now that we're focused on line items section
         for line in receipt["lines"][:60]:
@@ -672,7 +672,7 @@ def _call_llm_direct(
             json={
                 "model": config.openrouter_model,
                 "messages": llm_inputs["messages"],
-                "temperature": 0.1,
+                "temperature": 0.0,
             },
         )
         response.raise_for_status()
@@ -720,7 +720,7 @@ def _call_llm_with_tracing(
                 json={
                     "model": config.openrouter_model,
                     "messages": llm_inputs["messages"],
-                    "temperature": 0.1,
+                    "temperature": 0.0,
                 },
             )
             response.raise_for_status()

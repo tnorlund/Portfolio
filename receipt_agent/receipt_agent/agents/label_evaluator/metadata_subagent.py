@@ -426,6 +426,13 @@ def build_metadata_evaluation_prompt(
 {json.dumps(place_data, indent=2)}
 ```
 """
+    else:
+        place_context = """
+## Google Places Data
+No Google Places data is available for this merchant. Evaluate labels based on
+format patterns and receipt context only. Be more conservative — prefer
+NEEDS_REVIEW over INVALID when uncertain about metadata labels.
+"""
 
     # Build metadata words table
     words_table = []
