@@ -1191,7 +1191,7 @@ def handler(event, context):
     """Trigger LangSmith bulk export."""
     logger.info("Event: %s", json.dumps(event))
 
-    langchain_project = event.get("langchain_project", "label-evaluator")
+    langchain_project = event.get("langchain_project") or event.get("project_name", "label-evaluator")
     api_key = os.environ["LANGCHAIN_API_KEY"]
     tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
     stack = os.environ.get("STACK", "dev")
