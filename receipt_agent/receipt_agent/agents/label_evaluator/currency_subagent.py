@@ -748,8 +748,7 @@ async def evaluate_currency_labels_async(
                     # Use ainvoke for async call
                     if hasattr(structured_llm, "ainvoke"):
                         response: CurrencyEvaluationResponse = (
-                            await structured_llm.ainvoke(
-                                prompt                            )
+                            await structured_llm.ainvoke(prompt)
                         )
                     else:
                         # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
@@ -776,7 +775,8 @@ async def evaluate_currency_labels_async(
                     else:
                         # Run sync invoke in thread pool to avoid blocking event loop
                         response = await asyncio.to_thread(
-                            llm.invoke, prompt                        )
+                            llm.invoke, prompt,
+                        )
                     response_text = (
                         response.content
                         if hasattr(response, "content")
@@ -792,7 +792,8 @@ async def evaluate_currency_labels_async(
                 else:
                     # Run sync invoke in thread pool to avoid blocking event loop
                     response = await asyncio.to_thread(
-                        llm.invoke, prompt                    )
+                        llm.invoke, prompt,
+                    )
                 response_text = (
                     response.content
                     if hasattr(response, "content")

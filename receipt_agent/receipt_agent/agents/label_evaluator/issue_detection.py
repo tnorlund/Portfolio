@@ -330,11 +330,8 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
     if label == "ADDRESS_LINE":
         # Reject purely numeric text that doesn't match address patterns
         if text_stripped.isdigit():
-            # Zip codes (5 or 9 digits) and street numbers are valid
-            if len(text_stripped) in (5, 9):
-                return True
-            # Street numbers are typically 1-5 digits
-            if len(text_stripped) <= 5:
+            # Street numbers (1-5 digits) and zip codes (5 or 9 digits)
+            if len(text_stripped) <= 5 or len(text_stripped) == 9:
                 return True
             # Long pure numbers are unlikely address parts
             return False
@@ -365,10 +362,8 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
         # State abbreviations (2 letters)
         if len(text_stripped) == 2 and text_stripped.isalpha():
             return True
-        # Reject if it looks like a currency value
-        if CURRENCY_PATTERN.match(text_stripped):
-            return False
-        return True  # Be permissive for other address parts
+        # Reject if it looks like a currency value, permissive otherwise
+        return not CURRENCY_PATTERN.match(text_stripped)
 
     if label == "PHONE_NUMBER":
         # Contains multiple digits
@@ -377,16 +372,11 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
 
     if label == "PRODUCT_NAME":
         # Reject if text looks like a pure currency value
-        if CURRENCY_PATTERN.match(text_stripped):
-            return False
-        return True  # Almost anything else can be a product name
+        return not CURRENCY_PATTERN.match(text_stripped)
 
     if label in ("UNIT_PRICE", "LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"):
         # Must contain at least one digit
-        has_digit = any(c.isdigit() for c in text)
-        if not has_digit:
-            return False
-        return True
+        return any(c.isdigit() for c in text)
 
     if label == "QUANTITY":
         # Typically a number
@@ -643,8 +633,6 @@ def evaluate_word_contexts(
     # Cap issues per type to prevent runaway processing on abnormal receipts
     # (e.g., 200 geometric_anomaly issues all for the same systematic reason)
     MAX_ISSUES_PER_TYPE = 20
-
-    from collections import Counter
 
     type_counts = Counter(issue.issue_type for issue in issues)
     if any(count > MAX_ISSUES_PER_TYPE for count in type_counts.values()):
