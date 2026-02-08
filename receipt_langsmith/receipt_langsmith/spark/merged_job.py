@@ -777,7 +777,8 @@ def run_evaluator_viz_cache(
     """Run evaluator viz-cache helpers and write results to S3.
 
     Calls each of the 6 evaluator helpers independently. If one helper
-    fails the remaining helpers still run.
+    fails, remaining helpers still run so logs are complete, and the phase
+    fails at the end.
     """
     # Import helpers at call-time so the module can be loaded even when the
     # helper packages are not installed (mirrors the qa-cache pattern).
@@ -814,19 +815,37 @@ def run_evaluator_viz_cache(
         ("dedup", build_dedup_cache, False),
     ]
 
+    failures: list[str] = []
+
     for prefix, helper_fn, is_merchant_keyed in helpers:
         try:
             logger.info("Running evaluator viz-cache helper: %s", prefix)
             results = helper_fn(parquet_dir)
+            if not isinstance(results, list):
+                raise TypeError(
+                    f"Helper '{prefix}' returned {type(results).__name__}, expected list"
+                )
 
             count = 0
             for item in results:
                 if is_merchant_keyed:
-                    slug = _slugify(item.get("merchant_name", "unknown"))
+                    merchant_name = item.get("merchant_name")
+                    if not merchant_name:
+                        logger.warning(
+                            "Skipping %s item without merchant_name", prefix
+                        )
+                        continue
+                    slug = _slugify(str(merchant_name))
                     key = f"{prefix}/{slug}.json"
                 else:
-                    image_id = item.get("image_id", "unknown")
-                    receipt_id = item.get("receipt_id", "unknown")
+                    image_id = item.get("image_id")
+                    receipt_id = item.get("receipt_id")
+                    if image_id in (None, "") or receipt_id is None:
+                        logger.warning(
+                            "Skipping %s item without image_id/receipt_id",
+                            prefix,
+                        )
+                        continue
                     key = f"{prefix}/{image_id}_{receipt_id}.json"
 
                 s3_client.put_object(
@@ -839,6 +858,7 @@ def run_evaluator_viz_cache(
 
             # Write metadata for this viz type
             metadata = {
+                "prefix": prefix,
                 "count": count,
                 "execution_id": execution_id,
                 "cached_at": timestamp,
@@ -856,11 +876,18 @@ def run_evaluator_viz_cache(
             )
 
         except Exception:
+            failures.append(prefix)
             logger.exception(
                 "Evaluator viz-cache helper '%s' failed; continuing with "
                 "remaining helpers",
                 prefix,
             )
+
+    if failures:
+        failed = ", ".join(failures)
+        raise RuntimeError(
+            f"Evaluator viz-cache failed for helper(s): {failed}"
+        )
 
 
 # =============================================================================
