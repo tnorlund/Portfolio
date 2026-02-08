@@ -8,36 +8,53 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
-import pyarrow as pa
 import pyarrow.parquet as pq
+
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
 
-def _read_all_parquet(parquet_dir: str) -> pa.Table:
-    """Read all parquet files from a directory tree into one Arrow table."""
-    import glob
-    import os
+def _read_all_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
+    """Read all parquet rows from local paths or S3 paths."""
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
 
-    pattern = os.path.join(parquet_dir, "**", "*.parquet")
-    files = sorted(glob.glob(pattern, recursive=True))
+        # pylint: enable=import-outside-toplevel
+
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        return [row.asDict(recursive=True) for row in df.toLocalIterator()]
+
+    root = Path(parquet_dir)
+    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
     if not files:
         raise FileNotFoundError(f"No parquet files found under {parquet_dir}")
 
     logger.info("Reading %d parquet files from %s", len(files), parquet_dir)
-    tables: list[pa.Table] = []
-    for f in files:
-        pf = pq.ParquetFile(f)
-        tables.append(pf.read())
+    rows: list[dict[str, Any]] = []
+    for path in files:
+        table = pq.ParquetFile(str(path)).read()
+        rows.extend(table.to_pylist())
+    return rows
 
-    return pa.concat_tables(tables, promote_options="permissive")
 
-
-def _parse_json(raw: str | None) -> Any:
+def _parse_json(raw: Any) -> Any:
     """Safely parse a JSON string, returning None on failure."""
+    if isinstance(raw, dict):
+        return raw
     if not raw:
+        return None
+    if not isinstance(raw, str):
         return None
     try:
         return json.loads(raw)
@@ -75,11 +92,13 @@ def _build_involved_word(
     decision: dict,
     word_lookup: dict[tuple[int, int], dict],
 ) -> dict[str, Any]:
-    """Build an involved-word entry from a single financial validation decision."""
-    issue = decision["issue"]
-    lid = issue["line_id"]
-    wid = issue["word_id"]
-    word = word_lookup.get((lid, wid), {})
+    """Build an involved-word entry from one financial validation decision."""
+    issue = decision.get("issue", {})
+    lid = issue.get("line_id")
+    wid = issue.get("word_id")
+    word: dict[str, Any] = {}
+    if lid is not None and wid is not None:
+        word = word_lookup.get((lid, wid), {})
 
     llm_review = decision.get("llm_review", {})
 
@@ -88,7 +107,11 @@ def _build_involved_word(
         "word_id": wid,
         "word_text": issue.get("word_text", ""),
         "current_label": issue.get("current_label", ""),
-        "bbox": _extract_bbox(word) if word else {"x": 0, "y": 0, "width": 0, "height": 0},
+        "bbox": (
+            _extract_bbox(word)
+            if word
+            else {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}
+        ),
         "decision": llm_review.get("decision"),
         "confidence": llm_review.get("confidence"),
         "reasoning": llm_review.get("reasoning"),
@@ -107,16 +130,14 @@ def _build_equations(
     # Group by description
     groups: dict[str, list[dict]] = {}
     for d in decisions:
-        desc = d["issue"]["description"]
+        desc = d.get("issue", {}).get("description", "<unknown>")
         groups.setdefault(desc, []).append(d)
 
     equations: list[dict[str, Any]] = []
     for desc, group in groups.items():
         # All decisions in a group share the same equation metadata
-        first_issue = group[0]["issue"]
-        involved_words = [
-            _build_involved_word(d, word_lookup) for d in group
-        ]
+        first_issue = group[0].get("issue", {})
+        involved_words = [_build_involved_word(d, word_lookup) for d in group]
         equations.append(
             {
                 "issue_type": first_issue.get("issue_type", ""),
@@ -150,32 +171,35 @@ def _build_summary(equations: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_financial_math_cache(parquet_dir: str) -> list[dict]:
-    """Read local parquet traces and return financial math viz-cache dicts.
+def build_financial_math_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
+    """Return financial math viz-cache dicts.
 
     Each dict represents one receipt that had financial validation issues
     and follows the output format documented in the task spec.
 
     Args:
-        parquet_dir: Path to directory containing LangSmith parquet exports.
+        parquet_dir: Path containing LangSmith parquet exports.
+        rows: Optional preloaded trace rows.
 
     Returns:
         List of viz-cache dicts, one per receipt with financial issues.
     """
-    table = _read_all_parquet(parquet_dir)
+    if rows is None:
+        if parquet_dir is None:
+            raise ValueError("Either parquet_dir or rows must be provided")
+        rows = _read_all_parquet_rows(parquet_dir)
 
-    names = table.column("name").to_pylist()
-    trace_ids_col = table.column("trace_id").to_pylist()
-    inputs_col = table.column("inputs").to_pylist()
-    outputs_col = table.column("outputs").to_pylist()
-    extra_col = table.column("extra").to_pylist()
-
-    # --- Build root ReceiptEvaluation metadata lookup: trace_id -> metadata ---
+    # Build root ReceiptEvaluation metadata lookup: trace_id -> metadata.
     root_meta: dict[str, dict[str, Any]] = {}
-    for i, name in enumerate(names):
+    for row in rows:
+        name = row.get("name")
         if name == "ReceiptEvaluation":
-            tid = trace_ids_col[i]
-            extra = _parse_json(extra_col[i])
+            tid = row.get("trace_id")
+            extra = _parse_json(row.get("extra"))
             if extra and tid:
                 meta = extra.get("metadata", {})
                 root_meta[tid] = {
@@ -188,18 +212,19 @@ def build_financial_math_cache(parquet_dir: str) -> list[dict]:
 
     # --- Process financial_validation spans ---
     results: list[dict] = []
-    for i, name in enumerate(names):
+    for row in rows:
+        name = row.get("name")
         if name != "financial_validation":
             continue
 
-        outputs = _parse_json(outputs_col[i])
+        outputs = _parse_json(row.get("outputs"))
         if not outputs:
             continue
         output_list = outputs.get("output", [])
         if not output_list:
             continue
 
-        inputs = _parse_json(inputs_col[i])
+        inputs = _parse_json(row.get("inputs"))
         if not inputs:
             continue
 
@@ -207,13 +232,14 @@ def build_financial_math_cache(parquet_dir: str) -> list[dict]:
         image_id = inputs.get("image_id")
         receipt_id = inputs.get("receipt_id")
         merchant_name = inputs.get("merchant_name")
-        trace_id = trace_ids_col[i]
+        trace_id = row.get("trace_id")
 
         # Fallback to root metadata if inputs lack identity
         if not image_id and trace_id in root_meta:
             meta = root_meta[trace_id]
             image_id = image_id or meta.get("image_id")
-            receipt_id = receipt_id if receipt_id is not None else meta.get("receipt_id")
+            if receipt_id is None:
+                receipt_id = meta.get("receipt_id")
             merchant_name = merchant_name or meta.get("merchant_name")
 
         if not image_id:

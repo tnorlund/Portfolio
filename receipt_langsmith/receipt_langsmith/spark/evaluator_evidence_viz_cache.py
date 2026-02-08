@@ -1,9 +1,8 @@
-"""Helper to extract ChromaDB evidence data for visualization cache.
+"""Helper to extract ChromaDB evidence data from LangSmith traces.
 
-Preferred source is unified evaluator JSON rows (contains
-``review_all_decisions`` with per-issue evidence). For backwards
-compatibility, this helper can also parse LangSmith trace exports from
-``phase3_llm_review`` child spans when that payload is present.
+Reads parquet trace exports, finds ``ReceiptEvaluation`` root spans and their
+``phase3_llm_review`` children, then returns per-receipt evidence summaries
+suitable for visualization cache generation.
 """
 
 from __future__ import annotations
@@ -229,47 +228,6 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Unified results parsing (preferred source)
-# ---------------------------------------------------------------------------
-
-
-def _build_from_unified_rows(
-    unified_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Build evidence payloads from unified evaluator output rows."""
-    results: list[dict[str, Any]] = []
-
-    for row in unified_rows:
-        decisions = row.get("review_all_decisions")
-        if not isinstance(decisions, list) or not decisions:
-            continue
-
-        image_id = row.get("image_id")
-        receipt_id = row.get("receipt_id")
-        if image_id in (None, "") or receipt_id is None:
-            continue
-
-        issues = [
-            _build_issue_entry(d) for d in decisions if isinstance(d, dict)
-        ]
-        if not issues:
-            continue
-
-        results.append(
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "merchant_name": row.get("merchant_name", ""),
-                "trace_id": row.get("trace_id", ""),
-                "issues_with_evidence": issues,
-                "summary": _build_summary(issues),
-            }
-        )
-
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -278,42 +236,22 @@ def build_evidence_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
-    unified_rows: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build per-receipt evidence cache.
+    """Build per-receipt evidence cache from LangSmith parquet exports.
 
     Args:
         parquet_dir: Path to a directory containing parquet files
             (or a single parquet file).
         rows: Optional preloaded trace rows.
-        unified_rows: Optional preloaded unified evaluator rows.
-            If this yields evidence payloads, it is used as the
-            source of truth.
 
     Returns:
         List of per-receipt dicts with ``image_id``, ``receipt_id``,
         ``merchant_name``, ``trace_id``, ``issues_with_evidence``,
         and ``summary``.
     """
-    if unified_rows:
-        unified_results = _build_from_unified_rows(unified_rows)
-        if unified_results:
-            logger.info(
-                "Built evidence cache for %d receipts from unified rows",
-                len(unified_results),
-            )
-            return unified_results
-
-        logger.info(
-            "Unified rows provided but no evidence records found; "
-            "falling back to trace parsing",
-        )
-
     if rows is None:
         if parquet_dir is None:
-            raise ValueError(
-                "Provide unified_rows or (parquet_dir / rows) for evidence",
-            )
+            raise ValueError("Either parquet_dir or rows must be provided")
         rows = _read_all_rows(parquet_dir)
     if not rows:
         return []

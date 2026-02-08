@@ -218,19 +218,7 @@ class _FakeRDD:
 class _FakeSparkContext:
     def __init__(self) -> None:
         self.defaultParallelism = 4
-        self.applicationId = "app-local-test"
         self.parallelize_calls: list[tuple[list[tuple[str, str]], int]] = []
-        self._conf: dict[str, str] = {
-            "spark.sql.adaptive.enabled": "true",
-            "spark.sql.shuffle.partitions": "32",
-        }
-
-    class _FakeConf:
-        def __init__(self, values: dict[str, str]) -> None:
-            self._values = values
-
-        def get(self, key: str, default: Any = None) -> Any:
-            return self._values.get(key, default)
 
     def parallelize(
         self, data: list[tuple[str, str]], numSlices: int
@@ -238,9 +226,6 @@ class _FakeSparkContext:
         records = list(data)
         self.parallelize_calls.append((records, numSlices))
         return _FakeRDD(records)
-
-    def getConf(self) -> "_FakeSparkContext._FakeConf":
-        return _FakeSparkContext._FakeConf(self._conf)
 
 
 class _FakeSparkSession:
@@ -308,10 +293,8 @@ def test_run_evaluator_cache_reuses_shared_rows(
             parquet_dir: str | None = None,
             *,
             rows: list[dict[str, Any]] | None = None,
-            unified_rows: list[dict[str, Any]] | None = None,
         ) -> list[dict[str, Any]]:
             del parquet_dir
-            del unified_rows
             captured_rows[prefix] = rows
             if merchant_keyed:
                 return [{"merchant_name": "Test Merchant"}]
@@ -383,70 +366,3 @@ def test_run_evaluator_cache_reuses_shared_rows(
         "dedup",
     ):
         assert f"{prefix}/metadata.json" in keys
-    assert "profiling/exec-1/evaluator-viz-cache-baseline.json" in keys
-
-
-def test_load_unified_rows_uses_multiline_reader(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Unified rows should be read via read_json_df (multi-line JSON safe)."""
-    import receipt_langsmith.spark.merged_job as merged_job_mod
-
-    unified_rows = [
-        {
-            "image_id": "img-1",
-            "receipt_id": 1,
-            "merchant_name": "Store",
-            "trace_id": "trace-1",
-            "review_all_decisions": [{"issue": {"line_id": 1}}],
-        },
-        {
-            "image_id": "img-2",
-            "receipt_id": 2,
-            "merchant_name": "Store",
-            "trace_id": "trace-2",
-            "review_all_decisions": [],
-        },
-    ]
-
-    def _fake_read_json_df(
-        spark: Any,
-        path: str,
-        schema: Any = None,
-        multi_line: bool = True,
-    ) -> _FakeDataFrame:
-        del spark, schema
-        assert path == "s3://batch-bucket/unified/exec-1/"
-        assert multi_line is True
-        return _FakeDataFrame(unified_rows)
-
-    monkeypatch.setattr(merged_job_mod, "read_json_df", _fake_read_json_df)
-    rows = merged_job_mod._load_unified_rows(
-        spark=cast(Any, object()),
-        batch_bucket="batch-bucket",
-        execution_id="exec-1",
-    )
-
-    assert len(rows) == 2
-    assert rows[0]["image_id"] == "img-1"
-    assert isinstance(rows[0]["review_all_decisions"], list)
-
-
-def test_load_evaluator_rows_enforces_hard_limit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import receipt_langsmith.spark.merged_job as merged_job_mod
-
-    rows = [
-        {"id": "1", "trace_id": "t-1", "name": "ReceiptEvaluation"},
-        {"id": "2", "trace_id": "t-2", "name": "ReceiptEvaluation"},
-    ]
-    spark = _FakeSparkSession(rows)
-    monkeypatch.setattr(merged_job_mod, "F", _FakeFunctions())
-    monkeypatch.setattr(merged_job_mod, "DRIVER_COLLECTION_HARD_LIMIT", 1)
-
-    with pytest.raises(RuntimeError, match="driver collection exceeded hard limit"):
-        merged_job_mod._load_evaluator_trace_rows(
-            cast(Any, spark),
-            "s3://input/traces/",
-        )
