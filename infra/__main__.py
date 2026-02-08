@@ -1527,6 +1527,27 @@ if hasattr(api_gateway, "api"):
         ),
     )
 
+    # Additional label evaluator visualization endpoints (same Lambda, different paths)
+    for viz_name in ["financial_math", "diff", "journey", "patterns", "evidence", "dedup"]:
+        _integration = aws.apigatewayv2.Integration(
+            f"label_evaluator_{viz_name}_integration",
+            api_id=api_gateway.api.id,
+            integration_type="AWS_PROXY",
+            integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+            integration_method="POST",
+            payload_format_version="2.0",
+        )
+        aws.apigatewayv2.Route(
+            f"label_evaluator_{viz_name}_route",
+            api_id=api_gateway.api.id,
+            route_key=f"GET /label_evaluator/{viz_name}",
+            target=_integration.id.apply(lambda id: f"integrations/{id}"),
+            opts=pulumi.ResourceOptions(
+                replace_on_changes=["route_key", "target"],
+                delete_before_replace=True,
+            ),
+        )
+
     # Label Validation Visualization Cache (uses label_validation_project_name)
     from routes.label_validation_viz_cache import (
         create_label_validation_viz_cache,
