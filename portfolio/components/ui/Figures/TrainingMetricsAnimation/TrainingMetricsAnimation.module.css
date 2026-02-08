@@ -228,6 +228,12 @@
   width: 100%;
 }
 
+.labelBarGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .labelRow {
   display: flex;
   align-items: center;
@@ -271,6 +277,53 @@
   font-variant-numeric: tabular-nums;
   min-width: 32px;
   text-align: left;
+}
+
+/* Distribution (support) bar */
+.labelBarDistribution {
+  display: flex;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.labelBarDistFilled {
+  height: 100%;
+  background: var(--color-blue);
+}
+
+.labelBarDistEmpty {
+  height: 100%;
+  background: rgba(var(--color-blue-rgb), 0.2);
+}
+
+/* Bar Legend */
+.barLegend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.legendEntry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legendLabel {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: rgba(var(--text-color-rgb), 0.5);
 }
 
 /* Confusion Matrix Heatmap */
@@ -485,6 +538,10 @@
     gap: 0.35rem;
   }
 
+  .labelBarGroup {
+    gap: 2px;
+  }
+
   .labelRow {
     height: 16px;
     gap: 0.35rem;
@@ -500,9 +557,22 @@
     min-width: 40px;
   }
 
+  .labelBarDistribution {
+    height: 4px;
+    min-width: 40px;
+  }
+
   .labelBarValue {
     font-size: 0.65rem;
     min-width: 28px;
+  }
+
+  .barLegend {
+    gap: 0.75rem;
+  }
+
+  .legendLabel {
+    font-size: 0.55rem;
   }
 
   /* Center confusion matrix */
