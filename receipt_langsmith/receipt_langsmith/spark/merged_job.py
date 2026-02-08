@@ -7,7 +7,8 @@ viz-cache (from S3 JSON files), eliminating the need for separate job scripts.
 Job Types:
     analytics: Run only analytics (computes job/receipt/step metrics)
     viz-cache: Run only viz-cache generation (reads from S3 JSON files)
-    all: Run both analytics and viz-cache
+    evaluator-viz-cache: Run evaluator viz-cache (from Parquet traces)
+    all: Run analytics, viz-cache, and evaluator viz-cache
 
 Usage:
     spark-submit \\
@@ -30,9 +31,12 @@ Data Sources:
     - CDN keys: receipts_lookup JSONL dataset
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from datetime import datetime, timezone
@@ -54,11 +58,11 @@ from pyspark.sql.types import (
 from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
-from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.cli import configure_logging
+from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.s3_io import (
-    load_json_from_s3,
     ReceiptsCachePointer,
+    load_json_from_s3,
     write_receipt_cache_index,
     write_receipt_json,
 )
@@ -76,7 +80,13 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--job-type",
-        choices=["analytics", "viz-cache", "qa-cache", "all"],
+        choices=[
+            "analytics",
+            "viz-cache",
+            "qa-cache",
+            "evaluator-viz-cache",
+            "all",
+        ],
         default="all",
         help="Type of job to run (default: all)",
     )
@@ -161,6 +171,13 @@ def validate_args(args: argparse.Namespace) -> None:
             "results_ndjson": "--results-ndjson required for qa-cache",
             "receipts_json": "--receipts-json required for qa-cache",
             "execution_id": "--execution-id required for qa-cache",
+        },
+        "evaluator-viz-cache": {
+            "parquet_input": (
+                "--parquet-input required for evaluator-viz-cache"
+            ),
+            "cache_bucket": "--cache-bucket required for evaluator-viz-cache",
+            "execution_id": "--execution-id required for evaluator-viz-cache",
         },
     }
 
@@ -755,6 +772,230 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
 
 
 # =============================================================================
+# Evaluator Viz-Cache Functions
+# =============================================================================
+
+
+def _slugify(name: str) -> str:
+    """Convert a merchant name to a filename-safe slug."""
+    return name.lower().replace(" ", "-").replace("/", "-").replace("\\", "-")
+
+
+EVALUATOR_TRACE_NAMES = frozenset(
+    {
+        "ReceiptEvaluation",
+        "currency_evaluation",
+        "metadata_evaluation",
+        "financial_validation",
+        "flag_geometric_anomalies",
+        "phase3_llm_review",
+        "apply_phase1_corrections",
+        "UnifiedPatternBuilder",
+        "llm_pattern_discovery",
+    }
+)
+
+EVALUATOR_TRACE_COLUMNS = (
+    "id",
+    "trace_id",
+    "parent_run_id",
+    "is_root",
+    "name",
+    "inputs",
+    "outputs",
+    "extra",
+    "start_time",
+    "end_time",
+)
+
+
+def _load_evaluator_trace_rows(
+    spark: SparkSession, parquet_dir: str
+) -> list[dict[str, Any]]:
+    """Load evaluator trace rows once via Spark and keep required columns."""
+    df = spark.read.parquet(to_s3a(parquet_dir))
+    if "name" in df.columns:
+        df = df.filter(F.col("name").isin(*sorted(EVALUATOR_TRACE_NAMES)))
+
+    for column_name in EVALUATOR_TRACE_COLUMNS:
+        if column_name not in df.columns:
+            df = df.withColumn(column_name, F.lit(None))
+
+    selected_df = df.select(*EVALUATOR_TRACE_COLUMNS)
+    rows = [
+        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
+    ]
+    logger.info("Loaded %d evaluator spans from %s", len(rows), parquet_dir)
+    return rows
+
+
+def _build_evaluator_item_key(
+    prefix: str, item: dict[str, Any], is_merchant_keyed: bool
+) -> str | None:
+    """Build S3 object key for evaluator helper output."""
+    if is_merchant_keyed:
+        merchant_name = item.get("merchant_name")
+        if not merchant_name:
+            logger.warning("Skipping %s item without merchant_name", prefix)
+            return None
+        slug = _slugify(str(merchant_name))
+        return f"{prefix}/{slug}.json"
+
+    image_id = item.get("image_id")
+    receipt_id = item.get("receipt_id")
+    if image_id in (None, "") or receipt_id is None:
+        logger.warning(
+            "Skipping %s item without image_id/receipt_id",
+            prefix,
+        )
+        return None
+    return f"{prefix}/{image_id}_{receipt_id}.json"
+
+
+def _write_evaluator_cache_parallel(
+    spark: SparkSession,
+    bucket: str,
+    prefix: str,
+    is_merchant_keyed: bool,
+    items: list[dict[str, Any]],
+) -> int:
+    """Write evaluator helper payloads to S3 in parallel."""
+    records: list[tuple[str, str]] = []
+    for item in items:
+        key = _build_evaluator_item_key(prefix, item, is_merchant_keyed)
+        if key is None:
+            continue
+        records.append((key, json.dumps(item, default=str)))
+
+    if not records:
+        return 0
+
+    default_parallelism = max(1, spark.sparkContext.defaultParallelism)
+    num_slices = min(len(records), default_parallelism * 2)
+
+    def upload_partition(rows):
+        s3_client = boto3.client("s3")
+        for key, payload in rows:
+            try:
+                s3_client.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=payload.encode("utf-8"),
+                    ContentType="application/json",
+                )
+            except (ClientError, BotoCoreError, TypeError, ValueError) as exc:
+                logger.warning("Failed to upload %s: %s", key, exc)
+
+    spark.sparkContext.parallelize(
+        records, numSlices=num_slices
+    ).foreachPartition(upload_partition)
+    return len(records)
+
+
+def run_evaluator_viz_cache(
+    spark: SparkSession,
+    parquet_dir: str,
+    cache_bucket: str,
+    execution_id: str,
+) -> None:  # pylint: disable=too-many-locals
+    """Run evaluator viz-cache helpers and write results to S3.
+
+    Trace rows are loaded from parquet once and reused across all helpers.
+    If one helper fails, remaining helpers still run so logs are complete,
+    and the phase fails at the end.
+    """
+    # Import helpers at call-time so the module can be loaded even when the
+    # helper packages are not installed (mirrors the qa-cache pattern).
+    # pylint: disable=import-outside-toplevel
+    from receipt_langsmith.spark.evaluator_dedup_viz_cache import (
+        build_dedup_cache,
+    )
+    from receipt_langsmith.spark.evaluator_diff_viz_cache import (
+        build_diff_cache,
+    )
+    from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
+        build_evidence_cache,
+    )
+    from receipt_langsmith.spark.evaluator_financial_math_viz_cache import (
+        build_financial_math_cache,
+    )
+    from receipt_langsmith.spark.evaluator_journey_viz_cache import (
+        build_journey_cache,
+    )
+    from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+        build_patterns_cache,
+    )
+
+    # pylint: enable=import-outside-toplevel
+
+    s3_client = boto3.client("s3")
+    timestamp = datetime.now(timezone.utc).isoformat()
+    trace_rows = _load_evaluator_trace_rows(spark, parquet_dir)
+
+    helpers: list[tuple[str, Any, bool]] = [
+        ("financial-math", build_financial_math_cache, False),
+        ("diff", build_diff_cache, False),
+        ("journey", build_journey_cache, False),
+        ("patterns", build_patterns_cache, True),
+        ("evidence", build_evidence_cache, False),
+        ("dedup", build_dedup_cache, False),
+    ]
+
+    failures: list[str] = []
+
+    for prefix, helper_fn, is_merchant_keyed in helpers:
+        try:
+            logger.info("Running evaluator viz-cache helper: %s", prefix)
+            results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
+            if not isinstance(results, list):
+                raise TypeError(
+                    f"Helper '{prefix}' returned "
+                    f"{type(results).__name__}, expected list"
+                )
+
+            count = _write_evaluator_cache_parallel(
+                spark=spark,
+                bucket=cache_bucket,
+                prefix=prefix,
+                is_merchant_keyed=is_merchant_keyed,
+                items=results,
+            )
+
+            # Write metadata for this viz type
+            metadata = {
+                "prefix": prefix,
+                "count": count,
+                "execution_id": execution_id,
+                "cached_at": timestamp,
+            }
+            s3_client.put_object(
+                Bucket=cache_bucket,
+                Key=f"{prefix}/metadata.json",
+                Body=json.dumps(metadata, default=str).encode("utf-8"),
+                ContentType="application/json",
+            )
+            logger.info(
+                "Evaluator viz-cache '%s' complete: %d items written",
+                prefix,
+                count,
+            )
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            failures.append(prefix)
+            logger.exception(
+                "Evaluator viz-cache helper '%s' failed; continuing with "
+                "remaining helpers",
+                prefix,
+            )
+
+    if failures:
+        failed = ", ".join(failures)
+        raise RuntimeError(
+            f"Evaluator viz-cache failed for helper(s): {failed}"
+        )
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -793,15 +1034,38 @@ def main() -> int:
             run_viz_cache(spark, args)
             logger.info("Viz-cache phase complete")
 
+        # Run evaluator viz-cache if requested (standalone)
+        if args.job_type == "evaluator-viz-cache":
+            logger.info("Starting evaluator viz-cache phase...")
+            run_evaluator_viz_cache(
+                spark=spark,
+                parquet_dir=args.parquet_input,
+                cache_bucket=args.cache_bucket,
+                execution_id=args.execution_id,
+            )
+            logger.info("Evaluator viz-cache phase complete")
+
+        # Run evaluator viz-cache as part of "all" if parquet is available
+        if args.job_type == "all" and getattr(args, "parquet_input", None):
+            logger.info("Starting evaluator viz-cache phase...")
+            run_evaluator_viz_cache(
+                spark=spark,
+                parquet_dir=args.parquet_input,
+                cache_bucket=args.cache_bucket,
+                execution_id=args.execution_id,
+            )
+            logger.info("Evaluator viz-cache phase complete")
+
         # Run QA cache if requested
         if args.job_type == "qa-cache":
             # pylint: disable=import-outside-toplevel
-            from receipt_langsmith.spark.qa_viz_cache_job import (
-                run_qa_cache_job,
-            )
             from receipt_langsmith.spark.qa_viz_cache_helpers import (
                 qa_cache_config_from_args,
             )
+            from receipt_langsmith.spark.qa_viz_cache_job import (
+                run_qa_cache_job,
+            )
+
             # pylint: enable=import-outside-toplevel
 
             logger.info("Starting qa-cache phase...")
@@ -821,6 +1085,7 @@ def main() -> int:
         AnalysisException,
         BotoCoreError,
         ClientError,
+        RuntimeError,
     ):
         logger.exception("Job failed")
         return 1
