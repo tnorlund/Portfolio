@@ -9,12 +9,11 @@ visualization.
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
-from receipt_langsmith.spark.utils import to_s3a
+from receipt_langsmith.spark.utils import parse_json_object
+from receipt_langsmith.spark.utils import read_all_parquet_rows
 
 logger = logging.getLogger(__name__)
 
@@ -27,58 +26,9 @@ PHASE_NAMES = (
 PHASE_ORDER = {name: i for i, name in enumerate(PHASE_NAMES)}
 
 
-def _read_all_parquet(parquet_dir: str) -> list[dict[str, Any]]:
-    """Read parquet rows from local paths or S3 paths.
-
-    Supports:
-        - local directory trees containing parquet files
-        - local single parquet file
-        - s3:// / s3a:// parquet paths (via active Spark session)
-    """
-    if parquet_dir.startswith(("s3://", "s3a://")):
-        # Import lazily so local unit tests do not require pyspark.
-        # pylint: disable=import-outside-toplevel
-        from pyspark.sql import SparkSession
-        # pylint: enable=import-outside-toplevel
-
-        spark = SparkSession.getActiveSession()
-        if spark is None:
-            raise RuntimeError(
-                "SparkSession is required for S3 parquet input paths"
-            )
-        df = spark.read.parquet(to_s3a(parquet_dir))
-        return [row.asDict(recursive=True) for row in df.toLocalIterator()]
-
-    root = Path(parquet_dir)
-    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
-
-    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
-    if not files:
-        raise FileNotFoundError(f"No parquet files found under {parquet_dir}")
-
-    rows: list[dict[str, Any]] = []
-    for path in files:
-        table = pq.ParquetFile(str(path)).read()
-        rows.extend(table.to_pylist())
-    return rows
-
-
-def _parse_json_object(raw: Any) -> dict[str, Any]:
-    """Parse JSON object-like values into a dict."""
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
 def _extract_root_metadata(row: dict[str, Any]) -> dict[str, Any]:
     """Pull image_id, receipt_id, merchant_name from a ReceiptEvaluation root."""
-    extra = _parse_json_object(row.get("extra"))
+    extra = parse_json_object(row.get("extra"))
     meta = extra.get("metadata", {})
     return {
         "image_id": meta.get("image_id"),
@@ -94,7 +44,7 @@ def _parse_phase_decisions(
     raw = row.get("outputs")
     if not raw:
         return []
-    parsed = _parse_json_object(raw)
+    parsed = parse_json_object(raw)
     output_list = parsed.get("output", [])
     if not isinstance(output_list, list):
         return []
@@ -150,7 +100,7 @@ def build_journey_cache(
     if rows is None:
         if parquet_dir is None:
             raise ValueError("Either parquet_dir or rows must be provided")
-        rows = _read_all_parquet(parquet_dir)
+        rows = read_all_parquet_rows(parquet_dir)
     logger.info("Loaded %d spans from parquet", len(rows))
 
     # Index root ReceiptEvaluation runs by trace_id

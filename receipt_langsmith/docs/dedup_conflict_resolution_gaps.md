@@ -74,7 +74,7 @@ It should record:
 
 ### Inputs
 
-```python
+```json
 {
     "currency_decisions": [
         {
@@ -99,7 +99,7 @@ It should record:
 
 ### Outputs
 
-```python
+```json
 {
     "resolutions": [
         {

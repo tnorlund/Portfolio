@@ -18,7 +18,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-import pyarrow.parquet as pq
 from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
@@ -61,6 +60,8 @@ def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
         )
     logger.info("Reading %d parquet files from %s", len(files), parquet_dir)
 
+    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
+
     rows: list[dict[str, Any]] = []
     for path in files:
         table = pq.ParquetFile(str(path)).read()
@@ -94,10 +95,14 @@ def _extract_words_from_input(
                 before_label = cl
 
             bbox = w.get("bounding_box", {})
+            line_id = w.get("line_id")
+            word_id = w.get("word_id")
+            if line_id is None or word_id is None:
+                continue
             words.append(
                 {
-                    "line_id": w.get("line_id"),
-                    "word_id": w.get("word_id"),
+                    "line_id": line_id,
+                    "word_id": word_id,
                     "text": w.get("text", ""),
                     "bbox": {
                         "x": bbox.get("x", 0),

@@ -199,7 +199,9 @@ def _build_receipt_entry(
 
     inputs = parse_json_object(phase1_span.get("inputs"))
     outputs = parse_json_object(phase1_span.get("outputs"))
-    resolutions = outputs.get("resolutions", [])
+    resolutions = _normalize_resolutions(
+        outputs.get("resolutions", []), trace_id
+    )
 
     dedup_stats = {
         "currency_invalid_count": inputs.get("currency_invalid_count", 0),
@@ -222,6 +224,34 @@ def _build_receipt_entry(
         "resolutions": resolutions,
         "summary": _build_summary(resolutions),
     }
+
+
+def _normalize_resolutions(
+    raw_resolutions: Any,
+    trace_id: str,
+) -> list[dict[str, Any]]:
+    """Normalize resolutions payload to a safe list of dicts."""
+    if isinstance(raw_resolutions, dict):
+        candidates = [raw_resolutions]
+    elif isinstance(raw_resolutions, list):
+        candidates = raw_resolutions
+    else:
+        logger.warning(
+            "Ignoring non-list resolutions payload for trace %s (type=%s)",
+            trace_id,
+            type(raw_resolutions).__name__,
+        )
+        return []
+
+    normalized = [item for item in candidates if isinstance(item, dict)]
+    dropped = len(candidates) - len(normalized)
+    if dropped:
+        logger.warning(
+            "Dropped %d non-dict resolution item(s) for trace %s",
+            dropped,
+            trace_id,
+        )
+    return normalized
 
 
 def _find_phase1_span(

@@ -84,6 +84,13 @@ def _parse_pattern_from_raw_response(raw_response: str) -> dict[str, Any] | None
         return None
 
 
+def _is_root(row: dict[str, Any]) -> bool:
+    """Return True when the row looks like a root span."""
+    if row.get("is_root"):
+        return True
+    return row.get("parent_run_id") in (None, "")
+
+
 # ---------------------------------------------------------------------------
 # Core builders
 # ---------------------------------------------------------------------------
@@ -99,7 +106,7 @@ def _build_merchant_patterns(
     # Map trace_id -> merchant_name via root UnifiedPatternBuilder spans
     trace_merchant: dict[str, str] = {}
     for row in rows:
-        if row.get("is_root") and row.get("name") == "UnifiedPatternBuilder":
+        if _is_root(row) and row.get("name") == "UnifiedPatternBuilder":
             trace_id = row.get("trace_id")
             if not trace_id:
                 continue
@@ -160,7 +167,7 @@ def _build_geometric_summary(
     # Map trace_id -> merchant_name via root ReceiptEvaluation spans
     trace_merchant: dict[str, str] = {}
     for row in rows:
-        if row.get("is_root") and row.get("name") == "ReceiptEvaluation":
+        if _is_root(row) and row.get("name") == "ReceiptEvaluation":
             trace_id = row.get("trace_id")
             if not trace_id:
                 continue

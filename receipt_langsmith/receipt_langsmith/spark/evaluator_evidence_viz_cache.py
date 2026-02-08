@@ -12,7 +12,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pyarrow.parquet as pq
 from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
@@ -61,6 +60,8 @@ def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
         return []
 
     rows: list[dict[str, Any]] = []
+    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
+
     for path in files:
         try:
             table = pq.ParquetFile(str(path)).read()
