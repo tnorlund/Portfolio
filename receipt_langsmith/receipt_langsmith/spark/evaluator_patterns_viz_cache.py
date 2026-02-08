@@ -100,8 +100,11 @@ def _build_merchant_patterns(
     trace_merchant: dict[str, str] = {}
     for row in rows:
         if row.get("is_root") and row.get("name") == "UnifiedPatternBuilder":
+            trace_id = row.get("trace_id")
+            if not trace_id:
+                continue
             merchant = _extract_merchant_from_extra(row.get("extra"))
-            trace_merchant[row["trace_id"]] = merchant
+            trace_merchant[trace_id] = merchant
 
     # Parse patterns from llm_pattern_discovery outputs
     patterns: dict[str, dict[str, Any]] = {}
@@ -158,8 +161,11 @@ def _build_geometric_summary(
     trace_merchant: dict[str, str] = {}
     for row in rows:
         if row.get("is_root") and row.get("name") == "ReceiptEvaluation":
+            trace_id = row.get("trace_id")
+            if not trace_id:
+                continue
             merchant = _extract_merchant_from_extra(row.get("extra"))
-            trace_merchant[row["trace_id"]] = merchant
+            trace_merchant[trace_id] = merchant
 
     summaries: dict[str, dict[str, Any]] = defaultdict(
         lambda: {

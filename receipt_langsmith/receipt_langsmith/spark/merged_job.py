@@ -1071,6 +1071,7 @@ def main() -> int:
         AnalysisException,
         BotoCoreError,
         ClientError,
+        RuntimeError,
     ):
         logger.exception("Job failed")
         return 1

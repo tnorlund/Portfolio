@@ -14,7 +14,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pyarrow.parquet as pq
 from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
@@ -51,6 +50,8 @@ def _read_all_parquet(parquet_dir: str) -> list[dict[str, Any]]:
         return [row.asDict(recursive=True) for row in df.toLocalIterator()]
 
     root = Path(parquet_dir)
+    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
+
     files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
     if not files:
         raise FileNotFoundError(f"No parquet files found under {parquet_dir}")

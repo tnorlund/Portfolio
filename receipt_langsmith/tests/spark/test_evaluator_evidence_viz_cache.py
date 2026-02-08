@@ -297,7 +297,7 @@ class TestWriteSampleOutput:
 
         results = build_evidence_cache(str(tmp_path))
 
-        output_dir = Path("/tmp/viz-cache-output/evidence")
+        output_dir = tmp_path / "viz-cache-output" / "evidence"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for receipt in results:

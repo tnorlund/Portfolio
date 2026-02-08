@@ -91,10 +91,12 @@ def _build_involved_word(
     word_lookup: dict[tuple[int, int], dict],
 ) -> dict[str, Any]:
     """Build an involved-word entry from a single financial validation decision."""
-    issue = decision["issue"]
-    lid = issue["line_id"]
-    wid = issue["word_id"]
-    word = word_lookup.get((lid, wid), {})
+    issue = decision.get("issue", {})
+    lid = issue.get("line_id")
+    wid = issue.get("word_id")
+    word: dict[str, Any] = {}
+    if lid is not None and wid is not None:
+        word = word_lookup.get((lid, wid), {})
 
     llm_review = decision.get("llm_review", {})
 
@@ -106,7 +108,7 @@ def _build_involved_word(
         "bbox": (
             _extract_bbox(word)
             if word
-            else {"x": 0, "y": 0, "width": 0, "height": 0}
+            else {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}
         ),
         "decision": llm_review.get("decision"),
         "confidence": llm_review.get("confidence"),
@@ -126,13 +128,13 @@ def _build_equations(
     # Group by description
     groups: dict[str, list[dict]] = {}
     for d in decisions:
-        desc = d["issue"]["description"]
+        desc = d.get("issue", {}).get("description", "<unknown>")
         groups.setdefault(desc, []).append(d)
 
     equations: list[dict[str, Any]] = []
     for desc, group in groups.items():
         # All decisions in a group share the same equation metadata
-        first_issue = group[0]["issue"]
+        first_issue = group[0].get("issue", {})
         involved_words = [
             _build_involved_word(d, word_lookup) for d in group
         ]

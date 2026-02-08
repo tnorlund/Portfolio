@@ -88,9 +88,8 @@ def _read_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
         logger.info("Read %d rows from S3 parquet path %s", len(rows), parquet_dir)
         return rows
 
-    import pyarrow.parquet as pq  # noqa: PLC0415
-
-    from pathlib import Path  # noqa: PLC0415
+    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
 
     root = Path(parquet_dir)
     files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
@@ -127,9 +126,8 @@ def _partition_spans(
         if name == "ReceiptEvaluation" and _is_root(row):
             roots.append(row)
         else:
-            tid = row.get("trace_id", "")
-            if tid:
-                children_by_trace.setdefault(tid, []).append(row)
+            if trace_id:
+                children_by_trace.setdefault(trace_id, []).append(row)
 
     return roots, children_by_trace
 

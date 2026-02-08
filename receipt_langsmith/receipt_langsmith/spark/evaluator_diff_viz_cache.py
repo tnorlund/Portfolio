@@ -280,6 +280,9 @@ def build_diff_cache(
         name = row.get("name")
         if name != "ReceiptEvaluation":
             continue
+        parent_run_id = row.get("parent_run_id")
+        if parent_run_id not in (None, ""):
+            continue
         extra = _safe_json(row.get("extra"))
         meta = extra.get("metadata", {})
         img = meta.get("image_id")

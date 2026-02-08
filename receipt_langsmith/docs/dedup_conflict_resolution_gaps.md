@@ -60,8 +60,8 @@ The `apply_phase1_corrections` span in **all 588 traces** has:
 
 Both inputs and outputs are empty dicts. This means:
 
-1. **No record of which evaluator "won"** when currency and metadata disagree.
-2. **No record of the resolution logic** -- was it last-writer-wins, confidence
+1. **No record exists of which evaluator "won"** when currency and metadata disagree.
+2. **Resolution logic is not recorded** -- was it last-writer-wins, confidence
    comparison, phase priority, or something else?
 3. **No confidence comparison** between the competing decisions.
 4. **No audit trail** for corrections applied to DynamoDB labels.

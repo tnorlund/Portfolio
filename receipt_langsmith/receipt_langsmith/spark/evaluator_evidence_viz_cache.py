@@ -65,7 +65,7 @@ def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
         try:
             table = pq.ParquetFile(str(path)).read()
             rows.extend(table.to_pylist())
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("Failed to read %s", path)
     logger.info("Read %d rows from %d parquet files", len(rows), len(files))
     return rows
@@ -94,10 +94,23 @@ def _find_root_spans(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         if row.get("name") != "ReceiptEvaluation":
             continue
-        if row.get("parent_run_id") is not None:
+        if row.get("parent_run_id") not in (None, ""):
             continue
         roots.append(row)
     return roots
+
+
+def _index_rows_by_trace(
+    rows: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Build a trace_id -> rows index for efficient per-trace lookups."""
+    trace_index: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        trace_id = row.get("trace_id")
+        if not trace_id:
+            continue
+        trace_index.setdefault(trace_id, []).append(row)
+    return trace_index
 
 
 def _extract_metadata(row: dict[str, Any]) -> dict[str, Any]:
@@ -112,15 +125,15 @@ def _extract_metadata(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find_child_span(
-    rows: list[dict[str, Any]],
-    trace_id: str,
+    trace_rows: list[dict[str, Any]],
     child_name: str,
 ) -> dict[str, Any] | None:
-    """Find the first child span matching *child_name* in the same trace."""
-    for row in rows:
-        if row.get("trace_id") != trace_id:
-            continue
-        if row.get("name") == child_name and row.get("parent_run_id") is not None:
+    """Find the first child span matching *child_name* in one trace."""
+    for row in trace_rows:
+        if (
+            row.get("name") == child_name
+            and row.get("parent_run_id") not in (None, "")
+        ):
             return row
     return None
 
@@ -232,14 +245,19 @@ def build_evidence_cache(
         return []
 
     roots = _find_root_spans(rows)
+    rows_by_trace = _index_rows_by_trace(rows)
     logger.info("Found %d ReceiptEvaluation root spans", len(roots))
 
     results: list[dict[str, Any]] = []
     for root in roots:
         trace_id = root.get("trace_id", "")
         meta = _extract_metadata(root)
+        if not trace_id:
+            continue
 
-        child = _find_child_span(rows, trace_id, "phase3_llm_review")
+        child = _find_child_span(
+            rows_by_trace.get(trace_id, []), "phase3_llm_review"
+        )
         if child is None:
             continue
 

@@ -148,7 +148,7 @@ class TestOutputWriting:
             f"Expected >= 19 files written (18 merchants + index), got {len(written)}"
         )
 
-    def test_print_merchant_summary(self, patterns_cache: list[dict], capsys):
+    def test_print_merchant_summary(self, patterns_cache: list[dict]):
         print("\n--- Merchant Pattern Summary ---")
         for entry in patterns_cache:
             name = entry["merchant_name"]

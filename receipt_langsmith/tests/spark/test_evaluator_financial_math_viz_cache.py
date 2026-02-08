@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 
 import pytest
 
@@ -151,9 +150,10 @@ def test_write_sample_outputs(cache_results):
     # Pick first 3
     samples = cache_results[:3]
     for i, receipt in enumerate(samples):
+        image_id = str(receipt.get("image_id") or "none")
         path = os.path.join(
             OUTPUT_DIR,
-            f"sample_{i}_{receipt['image_id'][:8]}.json",
+            f"sample_{i}_{image_id[:8]}.json",
         )
         with open(path, "w") as f:
             json.dump(receipt, f, indent=2)
@@ -164,7 +164,7 @@ def test_write_sample_outputs(cache_results):
     assert len(written) >= 3, f"Expected at least 3 sample files, got {len(written)}"
 
 
-def test_print_summary_stats(cache_results, capsys):
+def test_print_summary_stats(cache_results):
     """Print summary statistics for inspection."""
     total_equations = sum(r["summary"]["total_equations"] for r in cache_results)
     total_words = sum(

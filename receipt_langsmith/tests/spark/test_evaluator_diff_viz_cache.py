@@ -8,7 +8,10 @@ from collections import Counter, defaultdict
 
 import pytest
 
-from receipt_langsmith.spark.evaluator_diff_viz_cache import build_diff_cache
+from receipt_langsmith.spark.evaluator_diff_viz_cache import (
+    _merge_decisions,
+    build_diff_cache,
+)
 
 PARQUET_DIR = "/tmp/langsmith-traces/"
 OUTPUT_DIR = "/tmp/viz-cache-output/before-after-diff/"
@@ -17,6 +20,8 @@ OUTPUT_DIR = "/tmp/viz-cache-output/before-after-diff/"
 @pytest.fixture(scope="module")
 def diff_cache() -> list[dict]:
     """Build the diff cache once for all tests."""
+    if not os.path.isdir(PARQUET_DIR):
+        pytest.skip("Trace parquet data not available at /tmp/langsmith-traces/")
     return build_diff_cache(PARQUET_DIR)
 
 
@@ -80,13 +85,29 @@ def test_unchanged_words_no_extra_keys(diff_cache: list[dict]) -> None:
                 assert "reasoning" not in w
 
 
-def test_priority_financial_over_others(diff_cache: list[dict]) -> None:
-    """If a word was flagged by financial_validation, that source wins."""
-    for receipt in diff_cache:
-        for w in receipt["words"]:
-            if w.get("change_source") == "financial_validation":
-                # It's fine -- highest priority.
-                pass
+def test_priority_financial_over_others() -> None:
+    """financial_validation should override lower-priority sources."""
+    target = {
+        (1, 1): {
+            "change_source": "metadata_evaluation",
+            "after_label": "SUBTOTAL",
+            "confidence": "LOW",
+            "reasoning": "metadata",
+        }
+    }
+    incoming = {
+        (1, 1): {
+            "change_source": "financial_validation",
+            "after_label": "LINE_TOTAL",
+            "confidence": "HIGH",
+            "reasoning": "financial",
+        }
+    }
+
+    _merge_decisions(target, incoming)
+
+    assert target[(1, 1)]["change_source"] == "financial_validation"
+    assert target[(1, 1)]["after_label"] == "LINE_TOTAL"
 
 
 def test_diff_payload_schema(diff_cache: list[dict]) -> None:
@@ -158,12 +179,12 @@ def test_write_samples_and_summary(diff_cache: list[dict]) -> None:
                 transitions[(before, after)] += 1
                 source_counts[w["change_source"]] += 1
 
-    print(f"\n=== Label Transition Summary ===")
+    print("\n=== Label Transition Summary ===")
     print(f"Total changes: {sum(transitions.values())}")
-    print(f"\nBy source:")
+    print("\nBy source:")
     for source, count in source_counts.most_common():
         print(f"  {source}: {count}")
-    print(f"\nTop 20 transitions (before -> after):")
+    print("\nTop 20 transitions (before -> after):")
     for (before, after), count in transitions.most_common(20):
         print(f"  {before} -> {after}: {count}")
 

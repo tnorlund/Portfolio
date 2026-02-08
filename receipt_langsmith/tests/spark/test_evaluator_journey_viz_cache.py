@@ -17,6 +17,10 @@ from receipt_langsmith.spark.evaluator_journey_viz_cache import (
 
 PARQUET_DIR = "/tmp/langsmith-traces/"
 OUTPUT_DIR = "/tmp/viz-cache-output/journey"
+pytestmark = pytest.mark.skipif(
+    not os.path.isdir(PARQUET_DIR),
+    reason=f"Trace data not available at {PARQUET_DIR}",
+)
 
 
 @pytest.fixture(scope="module")
@@ -134,12 +138,12 @@ def test_print_conflict_statistics(journey_cache: list[dict]) -> None:
     print(f"Total words evaluated: {total_words}")
     print(f"Multi-phase words: {total_multi_phase}")
     print(f"Words with conflicts: {total_conflicts}")
-    print(f"\nConflicts by label:")
+    print("\nConflicts by label:")
     for label, count in sorted(
         label_conflicts.items(), key=lambda x: x[1], reverse=True
     ):
         print(f"  {label}: {count}")
-    print(f"\nConflicts by phase pair:")
+    print("\nConflicts by phase pair:")
     for (p1, p2), count in sorted(
         phase_pair_conflicts.items(), key=lambda x: x[1], reverse=True
     ):
@@ -157,7 +161,7 @@ def test_print_conflict_statistics(journey_cache: list[dict]) -> None:
                     phase_decisions[pname].get(dec, 0) + 1
                 )
 
-    print(f"\nDecisions by phase:")
+    print("\nDecisions by phase:")
     for pname in (
         "currency_evaluation",
         "metadata_evaluation",
