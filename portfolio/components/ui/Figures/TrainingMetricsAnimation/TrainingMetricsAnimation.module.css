@@ -231,7 +231,7 @@
 .labelBarGroup {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0;
 }
 
 .labelRow {
@@ -539,7 +539,7 @@
   }
 
   .labelBarGroup {
-    gap: 2px;
+    gap: 0;
   }
 
   .labelRow {
