@@ -367,12 +367,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
         UTILS_DIR = os.path.join(CURRENT_DIR, "lambdas", "utils")
 
         # Common environment for tracing
-        # NOTE: LANGCHAIN_TRACING_V2 is set to "false" to disable LangChain's auto-tracing.
-        # We handle tracing manually via create_receipt_trace, child_trace, etc.
-        # Auto-tracing conflicts with manual traces, causing duplicate dotted_order errors.
+        # LANGCHAIN_TRACING_V2=true enables LangChain auto-tracing so LLM calls
+        # get full inputs/outputs/tokens/structured-output detail in LangSmith.
+        # Manual per-receipt RunTree traces still work because child_trace and
+        # related context managers use tracing_context(parent=run_tree) to set
+        # the correct parent for auto-traced LLM runs.
         tracing_env = {
             "LANGCHAIN_API_KEY": langchain_api_key,
-            "LANGCHAIN_TRACING_V2": "false",
+            "LANGCHAIN_TRACING_V2": "true",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
             "LANGCHAIN_PROJECT": config.get("langchain_project")
             or "label-evaluator",
@@ -1191,7 +1193,7 @@ def handler(event, context):
     """Trigger LangSmith bulk export."""
     logger.info("Event: %s", json.dumps(event))
 
-    langchain_project = event.get("langchain_project", "label-evaluator")
+    langchain_project = event.get("langchain_project") or event.get("project_name", "label-evaluator")
     api_key = os.environ["LANGCHAIN_API_KEY"]
     tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
     stack = os.environ.get("STACK", "dev")

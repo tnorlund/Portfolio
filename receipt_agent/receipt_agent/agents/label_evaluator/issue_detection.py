@@ -13,15 +13,11 @@ Provides functions to detect potential labeling issues in receipt words:
 
 import logging
 import math
+import re
 import statistics
 from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Tuple
 
-from receipt_agent.agents.label_evaluator.geometry import (
-    calculate_angle_degrees,
-    calculate_distance,
-    convert_polar_to_cartesian,
-)
 from receipt_agent.agents.label_evaluator.state import (
     DrillDownWord,
     EvaluationIssue,
@@ -42,52 +38,8 @@ def check_position_anomaly(
     patterns: Optional[MerchantPatterns],
     std_threshold: float = 2.5,
 ) -> Optional[EvaluationIssue]:
-    """
-    Check if a labeled word's position is anomalous for its label type.
-
-    Compares the word's y-position against the expected distribution
-    from other receipts of the same merchant.
-
-    Args:
-        ctx: WordContext to check
-        patterns: MerchantPatterns from other receipts (may be None)
-        std_threshold: Number of standard deviations for anomaly detection
-
-    Returns:
-        EvaluationIssue if anomaly detected, None otherwise
-    """
-    if ctx.current_label is None or patterns is None:
-        return None
-
-    label = ctx.current_label.label
-    if label not in patterns.label_positions:
-        return None
-
-    positions = patterns.label_positions[label]
-    if len(positions) < 2:
-        return None  # Not enough data for statistics
-
-    mean_y = statistics.mean(positions)
-    std_y = statistics.stdev(positions)
-
-    if std_y == 0:
-        return None  # All positions identical, can't detect anomaly
-
-    z_score = abs(ctx.normalized_y - mean_y) / std_y
-    if z_score > std_threshold:
-        return EvaluationIssue(
-            issue_type="position_anomaly",
-            word=ctx.word,
-            current_label=label,
-            suggested_status="NEEDS_REVIEW",
-            reasoning=(
-                f"{label} at y={ctx.normalized_y:.2f} but typically "
-                f"appears at y={mean_y:.2f}\u00b1{std_y:.2f} for this "
-                f"merchant (z-score={z_score:.1f})"
-            ),
-            word_context=ctx,
-        )
-
+    """Disabled: ~89% false positive rate. Returns None unconditionally."""
+    # TODO: Re-enable after improving position normalization across receipt formats
     return None
 
 
@@ -96,115 +48,9 @@ def check_unexpected_label_pair(
     all_contexts: List[WordContext],
     patterns: Optional[MerchantPatterns],
 ) -> Optional[EvaluationIssue]:
-    """
-    Check if a labeled word appears in an unexpected label pair combination.
-
-    Flags when a label pair exists on the receipt but never appeared together
-    in any of the training receipts from the same merchant. This can indicate
-    mislabeling or unusual receipt structure.
-
-    Args:
-        ctx: WordContext to check
-        all_contexts: All WordContext objects on the receipt
-        patterns: MerchantPatterns from other receipts
-
-    Returns:
-        EvaluationIssue if unexpected label pair detected, None otherwise
-    """
-    if ctx.current_label is None or patterns is None:
-        return None
-
-    # Skip if we have very few training receipts (need confidence)
-    if patterns.receipt_count < 2:
-        return None
-
-    label = ctx.current_label.label
-
-    # Find all other labels present on this receipt
-    other_labels = set()
-    for other_ctx in all_contexts:
-        if other_ctx is not ctx and other_ctx.current_label:
-            other_labels.add(other_ctx.current_label.label)
-
-    if not other_labels:
-        return None
-
-    # Check if any label pair is unexpected (never seen in training data)
-    for other_label in other_labels:
-        # Special handling for self-comparisons (same label appearing multiple
-        # times)
-        if label == other_label:
-            # If this label type never appears multiple times in training data,
-            # flag it. Use receipt-wide multiplicity (not same-line).
-            if label not in patterns.labels_with_receipt_multiplicity:
-                # Only flag if we have good training data
-                if patterns.receipt_count >= 5:
-                    return EvaluationIssue(
-                        issue_type="unexpected_label_multiplicity",
-                        word=ctx.word,
-                        current_label=label,
-                        suggested_status="NEEDS_REVIEW",
-                        reasoning=(
-                            f"'{ctx.word.text}' labeled {label} appears "
-                            "multiple times on receipt, but "
-                            f"{label} never appears multiple times in "
-                            f"{patterns.receipt_count} training receipts for "
-                            "this merchant. This may indicate mislabeling."
-                        ),
-                        word_context=ctx,
-                    )
-            # Label appears multiple times in training data, so this is
-            # expected
-            continue
-
-        pair = tuple(sorted([label, other_label]))
-
-        # If this pair never appeared in training receipts, it's unexpected
-        if pair not in patterns.all_observed_pairs:
-            # But be permissive: only flag if we have good training data
-            # coverage
-            # (need confidence from multiple receipts)
-            if patterns.receipt_count >= 5:
-                return EvaluationIssue(
-                    issue_type="unexpected_label_pair",
-                    word=ctx.word,
-                    current_label=label,
-                    suggested_status="NEEDS_REVIEW",
-                    reasoning=(
-                        f"'{ctx.word.text}' labeled {label} appears with "
-                        f"{other_label}, a combination never seen in "
-                        f"{patterns.receipt_count} training receipts for this "
-                        "merchant. This may indicate mislabeling or unusual "
-                        "structure."
-                    ),
-                    word_context=ctx,
-                )
-
+    """Disabled: 100% false positive rate. Returns None unconditionally."""
+    # TODO: Re-enable with better pair frequency thresholds
     return None
-
-
-def _get_adaptive_threshold(geometry: "LabelPairGeometry") -> float:
-    """
-    Determine adaptive threshold based on pattern tightness.
-
-    Tighter patterns (lower std deviation) -> stricter thresholds
-    Looser patterns (higher std deviation) -> more lenient thresholds
-
-    Args:
-        geometry: The LabelPairGeometry to evaluate
-
-    Returns:
-        Threshold in standard deviations (1.5-2.5 sigma)
-    """
-    if geometry.std_deviation is None:
-        return 2.0  # Default
-
-    # Classify based on standard deviation
-    if geometry.std_deviation < 0.1:
-        return 1.5  # TIGHT pattern - be strict
-    if geometry.std_deviation < 0.2:
-        return 2.0  # MODERATE pattern - balanced
-    return 2.5  # LOOSE pattern - be lenient
 
 
 def check_geometric_anomaly(
@@ -212,353 +58,8 @@ def check_geometric_anomaly(
     all_contexts: List[WordContext],
     patterns: Optional[MerchantPatterns],
 ) -> Optional[EvaluationIssue]:
-    """
-    Check if a labeled word has geometric anomalies relative to other labels.
-
-    Uses Cartesian coordinate space for robust anomaly detection that avoids
-    angle wrap-around issues. Compares the deviation from expected position
-    against learned patterns from the same merchant.
-
-    With LLM batching enabled, checks patterns hierarchically:
-    1. HAPPY patterns (conflict-free receipts): 1.5 sigma threshold (strict, HIGH
-       confidence)
-    2. AMBIGUOUS patterns (format variations): 2.0 sigma threshold (moderate,
-       MEDIUM confidence)
-    3. ANTI-PATTERN patterns (problematic receipts): 3.0 sigma threshold (lenient,
-       LOW confidence)
-
-    Without batching, uses adaptive thresholds based on pattern tightness:
-    - TIGHT patterns (std < 0.1): 1.5 sigma threshold
-    - MODERATE patterns (std 0.1-0.2): 2.0 sigma threshold
-    - LOOSE patterns (std > 0.2): 2.5 sigma threshold
-
-    Args:
-        ctx: WordContext to check
-        all_contexts: All WordContext objects on the receipt
-        patterns: MerchantPatterns from other receipts (may be None)
-
-    Returns:
-        EvaluationIssue if geometric anomaly detected, None otherwise
-    """
-    if ctx.current_label is None or patterns is None:
-        return None
-
-    label = ctx.current_label.label
-
-    # Find all other labels present on this receipt
-    other_labels = set()
-    for other_ctx in all_contexts:
-        if other_ctx is not ctx and other_ctx.current_label:
-            other_labels.add(other_ctx.current_label.label)
-
-    if not other_labels:
-        return None  # No other labels to compare against
-
-    # Check if we have batch-specific patterns (LLM batching enabled)
-    has_batch_patterns = (
-        patterns.happy_label_pair_geometry
-        or patterns.ambiguous_label_pair_geometry
-        or patterns.anti_label_pair_geometry
-    )
-
-    if has_batch_patterns:
-        # Use batch-specific patterns with hierarchical checking
-        # First try HAPPY patterns (strict, high confidence)
-        issue = _check_geometry_against_batch(
-            ctx, all_contexts, patterns, "happy", threshold_multiplier=1.5
-        )
-        if issue:
-            return issue
-
-        # Then try AMBIGUOUS patterns (moderate, medium confidence)
-        issue = _check_geometry_against_batch(
-            ctx, all_contexts, patterns, "ambiguous", threshold_multiplier=2.0
-        )
-        if issue:
-            return issue
-
-        # Finally try ANTI-PATTERN patterns (lenient, low confidence)
-        issue = _check_geometry_against_batch(
-            ctx, all_contexts, patterns, "anti", threshold_multiplier=3.0
-        )
-        if issue:
-            return issue
-    else:
-        # Use original patterns with adaptive thresholds (fallback if no
-        # batching)
-        if not patterns.label_pair_geometry:
-            return None
-
-        # Check geometry for each label pair
-        for other_label in other_labels:
-            pair = tuple(sorted([label, other_label]))
-
-            # Check if we have learned geometry for this pair
-            if pair not in patterns.label_pair_geometry:
-                continue
-
-            geometry = patterns.label_pair_geometry[pair]
-            # Skip if we don't have Cartesian statistics (shouldn't happen with
-            # new code)
-            if (
-                geometry.mean_dx is None
-                or geometry.mean_dy is None
-                or geometry.std_deviation is None
-            ):
-                continue
-
-            # Get adaptive threshold based on pattern tightness
-            threshold_std = _get_adaptive_threshold(geometry)
-
-            issue = _compute_geometric_issue(
-                ctx, all_contexts, label, other_label, geometry, threshold_std
-            )
-            if issue:
-                return issue
-
-    return None
-
-
-def _check_geometry_against_batch(
-    ctx: WordContext,
-    all_contexts: List[WordContext],
-    patterns: MerchantPatterns,
-    batch_type: str,
-    threshold_multiplier: float,
-) -> Optional[EvaluationIssue]:
-    """
-    Check geometry against batch-specific patterns.
-
-    Args:
-        ctx: WordContext to check
-        all_contexts: All WordContext objects on the receipt
-        patterns: MerchantPatterns with batch-specific geometry
-        batch_type: "happy", "ambiguous", or "anti"
-        threshold_multiplier: Multiplier for standard deviations (1.5, 2.0, or
-            3.0)
-
-    Returns:
-        EvaluationIssue if geometric anomaly detected, None otherwise
-    """
-    # Get the appropriate batch geometry dictionary
-    if batch_type == "happy":
-        batch_geometry = patterns.happy_label_pair_geometry
-        confidence = "HIGH"
-    elif batch_type == "ambiguous":
-        batch_geometry = patterns.ambiguous_label_pair_geometry
-        confidence = "MEDIUM"
-    else:  # anti
-        batch_geometry = patterns.anti_label_pair_geometry
-        confidence = "LOW"
-
-    if not batch_geometry:
-        return None
-
-    if ctx.current_label is None:
-        return None
-    label = ctx.current_label.label
-
-    # Find all other labels present on this receipt
-    other_labels = set()
-    for other_ctx in all_contexts:
-        if other_ctx is not ctx and other_ctx.current_label:
-            other_labels.add(other_ctx.current_label.label)
-
-    if not other_labels:
-        return None
-
-    # Check geometry for each label pair
-    for other_label in other_labels:
-        pair = tuple(sorted([label, other_label]))
-
-        # Check if we have learned geometry for this batch
-        if pair not in batch_geometry:
-            continue
-
-        geometry = batch_geometry[pair]
-        # Skip if we don't have Cartesian statistics
-        if (
-            geometry.mean_dx is None
-            or geometry.mean_dy is None
-            or geometry.std_deviation is None
-        ):
-            continue
-
-        # For batch-specific checks, use fixed threshold multiplier
-        threshold_std = threshold_multiplier
-
-        # Calculate actual geometry on this receipt (using word centroids)
-        label_words = [
-            c.word
-            for c in all_contexts
-            if c.current_label and c.current_label.label == label
-        ]
-        other_words = [
-            c.word
-            for c in all_contexts
-            if c.current_label and c.current_label.label == other_label
-        ]
-
-        if not label_words or not other_words:
-            continue
-
-        # Calculate centroids
-        x_coords_label = [w.calculate_centroid()[0] for w in label_words]
-        y_coords_label = [w.calculate_centroid()[1] for w in label_words]
-        centroid_label = (
-            sum(x_coords_label) / len(x_coords_label),
-            sum(y_coords_label) / len(y_coords_label),
-        )
-
-        x_coords_other = [w.calculate_centroid()[0] for w in other_words]
-        y_coords_other = [w.calculate_centroid()[1] for w in other_words]
-        centroid_other = (
-            sum(x_coords_other) / len(x_coords_other),
-            sum(y_coords_other) / len(y_coords_other),
-        )
-
-        # Calculate actual geometry
-        actual_angle = calculate_angle_degrees(centroid_label, centroid_other)
-        actual_distance = calculate_distance(centroid_label, centroid_other)
-
-        # Convert to Cartesian coordinates
-        actual_dx, actual_dy = convert_polar_to_cartesian(
-            actual_angle, actual_distance
-        )
-
-        # Compute deviation from expected position in Cartesian space
-        deviation = math.sqrt(
-            (actual_dx - geometry.mean_dx) ** 2
-            + (actual_dy - geometry.mean_dy) ** 2
-        )
-
-        # Check if deviation is anomalous
-        if geometry.std_deviation and geometry.std_deviation > 0:
-            deviation_z_score = deviation / geometry.std_deviation
-            if deviation_z_score > threshold_std:
-                batch_label = (
-                    "conflict-free (HAPPY)"
-                    if batch_type == "happy"
-                    else (
-                        "format variation (AMBIGUOUS)"
-                        if batch_type == "ambiguous"
-                        else "problematic (ANTI_PATTERN)"
-                    )
-                )
-                return EvaluationIssue(
-                    issue_type="geometric_anomaly",
-                    word=ctx.word,
-                    current_label=label,
-                    suggested_status="NEEDS_REVIEW",
-                    reasoning=(
-                        f"[{confidence} confidence] '{ctx.word.text}' labeled "
-                        f"{label} has unusual geometric relationship with "
-                        f"{other_label} (patterns from {batch_label} "
-                        "receipts). Expected position "
-                        f"({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
-                        f"actual ({actual_dx:.2f}, {actual_dy:.2f}), "
-                        f"deviation "
-                        f"{deviation:.3f} (threshold: {threshold_std}\u03c3 = "
-                        f"{threshold_std * geometry.std_deviation:.3f}). "
-                        "This may indicate mislabeling."
-                    ),
-                    word_context=ctx,
-                )
-
-    return None
-
-
-def _compute_geometric_issue(
-    ctx: WordContext,
-    all_contexts: List[WordContext],
-    label: str,
-    other_label: str,
-    geometry: LabelPairGeometry,
-    threshold_std: float,
-) -> Optional[EvaluationIssue]:
-    """
-    Helper to compute geometric issue for a given label pair.
-
-    Args:
-        ctx: WordContext to check
-        all_contexts: All WordContext objects on the receipt
-        label: Label of the word being checked
-        other_label: Other label to compare against
-        geometry: LabelPairGeometry pattern
-        threshold_std: Threshold in standard deviations
-
-    Returns:
-        EvaluationIssue if anomaly detected, None otherwise
-    """
-    # Calculate actual geometry on this receipt (using word centroids)
-    label_words = [
-        c.word
-        for c in all_contexts
-        if c.current_label and c.current_label.label == label
-    ]
-    other_words = [
-        c.word
-        for c in all_contexts
-        if c.current_label and c.current_label.label == other_label
-    ]
-
-    if not label_words or not other_words:
-        return None
-
-    # Calculate centroids
-    x_coords_label = [w.calculate_centroid()[0] for w in label_words]
-    y_coords_label = [w.calculate_centroid()[1] for w in label_words]
-    centroid_label = (
-        sum(x_coords_label) / len(x_coords_label),
-        sum(y_coords_label) / len(y_coords_label),
-    )
-
-    x_coords_other = [w.calculate_centroid()[0] for w in other_words]
-    y_coords_other = [w.calculate_centroid()[1] for w in other_words]
-    centroid_other = (
-        sum(x_coords_other) / len(x_coords_other),
-        sum(y_coords_other) / len(y_coords_other),
-    )
-
-    # Calculate actual geometry
-    actual_angle = calculate_angle_degrees(centroid_label, centroid_other)
-    actual_distance = calculate_distance(centroid_label, centroid_other)
-
-    # Convert to Cartesian coordinates
-    actual_dx, actual_dy = convert_polar_to_cartesian(
-        actual_angle, actual_distance
-    )
-
-    # Compute deviation from expected position in Cartesian space
-    if geometry.mean_dx is None or geometry.mean_dy is None:
-        return None
-    deviation = math.sqrt(
-        (actual_dx - geometry.mean_dx) ** 2
-        + (actual_dy - geometry.mean_dy) ** 2
-    )
-
-    # Check if deviation is anomalous
-    if geometry.std_deviation and geometry.std_deviation > 0:
-        deviation_z_score = deviation / geometry.std_deviation
-        if deviation_z_score > threshold_std:
-            return EvaluationIssue(
-                issue_type="geometric_anomaly",
-                word=ctx.word,
-                current_label=label,
-                suggested_status="NEEDS_REVIEW",
-                reasoning=(
-                    f"'{ctx.word.text}' labeled {label} has unusual geometric "
-                    f"relationship with {other_label}. Expected position "
-                    f"({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
-                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), "
-                    f"deviation {deviation:.3f} (adaptive threshold: "
-                    f"{threshold_std}\u03c3 = "
-                    f"{threshold_std * geometry.std_deviation:.3f}). "
-                    "This may indicate mislabeling."
-                ),
-                word_context=ctx,
-            )
-
+    """Disabled: 89% false positive rate. Returns None unconditionally."""
+    # TODO: Re-enable after improving geometric pattern quality thresholds
     return None
 
 
@@ -568,164 +69,8 @@ def check_constellation_anomaly(
     patterns: Optional[MerchantPatterns],
     threshold_std: float = 2.0,
 ) -> Optional[EvaluationIssue]:
-    """
-    Check if a labeled word is anomalously positioned within its constellation.
-
-    Unlike pairwise checks that only examine A<->B relationships, constellation
-    checks examine the holistic structure of label groups (n-tuples).
-
-    For each constellation the word's label belongs to:
-    1. Check if all labels in the constellation are present on the receipt
-    2. Compute the constellation centroid from actual positions
-    3. Check if this word's offset from centroid matches expected pattern
-
-    This catches anomalies that pairwise checks miss:
-    - A-B ok, B-C ok, but A is displaced relative to the group
-    - Cluster is stretched/compressed
-    - One label missing from expected group
-
-    Args:
-        ctx: WordContext to check
-        all_contexts: All WordContext objects on the receipt
-        patterns: MerchantPatterns with constellation_geometry
-        threshold_std: Standard deviations for anomaly detection
-
-    Returns:
-        EvaluationIssue if constellation anomaly detected, None otherwise
-    """
-    if ctx.current_label is None or patterns is None:
-        return None
-
-    if not patterns.constellation_geometry:
-        return None
-
-    label = ctx.current_label.label
-
-    # Find constellations that include this label
-    relevant_constellations = [
-        (constellation, geom)
-        for constellation, geom in patterns.constellation_geometry.items()
-        if label in constellation
-    ]
-
-    if not relevant_constellations:
-        return None
-
-    # Build label -> centroid mapping for this receipt
-    label_centroids: Dict[str, Tuple[float, float]] = {}
-    labels_by_type: Dict[str, List[WordContext]] = defaultdict(list)
-
-    for other_ctx in all_contexts:
-        if other_ctx.current_label:
-            labels_by_type[other_ctx.current_label.label].append(other_ctx)
-
-    for label_type, contexts in labels_by_type.items():
-        if contexts:
-            centroids = [c.word.calculate_centroid() for c in contexts]
-            label_centroids[label_type] = (
-                sum(c[0] for c in centroids) / len(centroids),
-                sum(c[1] for c in centroids) / len(centroids),
-            )
-
-    # Check each relevant constellation
-    for constellation, geom in relevant_constellations:
-        # Check if all labels in constellation are present
-        if not all(lbl in label_centroids for lbl in constellation):
-            continue
-
-        # Compute actual constellation centroid
-        all_x = [label_centroids[lbl][0] for lbl in constellation]
-        all_y = [label_centroids[lbl][1] for lbl in constellation]
-        actual_centroid = (
-            sum(all_x) / len(all_x),
-            sum(all_y) / len(all_y),
-        )
-
-        # Get this label's position and expected relative position
-        actual_pos = label_centroids[label]
-        actual_dx = actual_pos[0] - actual_centroid[0]
-        actual_dy = actual_pos[1] - actual_centroid[1]
-
-        expected = geom.relative_positions.get(label)
-        if expected is None or expected.std_deviation is None:
-            continue
-        if expected.std_deviation <= 0:
-            continue
-
-        # Compute deviation from expected position
-        deviation = math.sqrt(
-            (actual_dx - expected.mean_dx) ** 2
-            + (actual_dy - expected.mean_dy) ** 2
-        )
-
-        z_score = deviation / expected.std_deviation
-        if z_score > threshold_std:
-            constellation_str = " + ".join(constellation)
-
-            # Compute drill-down for all words with the flagged label
-            # This identifies which specific word(s) are likely culprits
-            drill_down_words: List[DrillDownWord] = []
-            culprit_threshold = threshold_std * expected.std_deviation
-
-            for other_ctx in all_contexts:
-                if (
-                    other_ctx.current_label is None
-                    or other_ctx.current_label.label != label
-                ):
-                    continue
-
-                # Get this word's actual offset from constellation centroid
-                word_centroid = other_ctx.word.calculate_centroid()
-                word_offset = (
-                    word_centroid[0] - actual_centroid[0],
-                    word_centroid[1] - actual_centroid[1],
-                )
-
-                # Calculate deviation from expected position
-                word_deviation = math.sqrt(
-                    (word_offset[0] - expected.mean_dx) ** 2
-                    + (word_offset[1] - expected.mean_dy) ** 2
-                )
-
-                drill_down_words.append(
-                    DrillDownWord(
-                        word_id=other_ctx.word.word_id,
-                        line_id=other_ctx.word.line_id,
-                        text=other_ctx.word.text,
-                        position=(
-                            other_ctx.normalized_x,
-                            other_ctx.normalized_y,
-                        ),
-                        expected_offset=(expected.mean_dx, expected.mean_dy),
-                        actual_offset=word_offset,
-                        deviation=word_deviation,
-                        is_culprit=word_deviation > culprit_threshold,
-                    )
-                )
-
-            # Sort by deviation descending (highest deviation first)
-            drill_down_words.sort(key=lambda w: w.deviation, reverse=True)
-
-            return EvaluationIssue(
-                issue_type="constellation_anomaly",
-                word=ctx.word,
-                current_label=label,
-                suggested_status="NEEDS_REVIEW",
-                reasoning=(
-                    f"'{ctx.word.text}' labeled {label} has unusual position "
-                    f"within constellation [{constellation_str}]. Expected "
-                    f"offset ({expected.mean_dx:.3f}, "
-                    f"{expected.mean_dy:.3f}) from cluster center, actual "
-                    f"({actual_dx:.3f}, {actual_dy:.3f}). Deviation "
-                    f"{deviation:.3f} exceeds {threshold_std}\u03c3 threshold "
-                    f"({threshold_std * expected.std_deviation:.3f}). This "
-                    "suggests the label may be misplaced relative to its "
-                    "group."
-                ),
-                word_context=ctx,
-                drill_down=drill_down_words,
-            )
-
+    """Disabled: 89% false positive rate. Returns None unconditionally."""
+    # TODO: Re-enable after improving constellation pattern quality
     return None
 
 
@@ -965,6 +310,9 @@ def check_missing_label_in_cluster(
     return None
 
 
+CURRENCY_PATTERN = re.compile(r"^\$?\d{1,3}(,\d{3})*\.\d{2}$")
+
+
 def _is_plausible_for_label(text: str, label: str) -> bool:
     """
     Quick heuristic check if text could plausibly have a specific label.
@@ -977,14 +325,16 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
         True if the text is plausibly this label type
     """
     text_lower = text.lower().strip()
+    text_stripped = text.strip()
 
     if label == "ADDRESS_LINE":
-        # Zip codes (5 or 9 digits)
-        if text.isdigit() and len(text) in (5, 9):
-            return True
-        # Street numbers
-        if text.isdigit():
-            return True
+        # Reject purely numeric text that doesn't match address patterns
+        if text_stripped.isdigit():
+            # Street numbers (1-5 digits) and zip codes (5 or 9 digits)
+            if len(text_stripped) <= 5 or len(text_stripped) == 9:
+                return True
+            # Long pure numbers are unlikely address parts
+            return False
         # Common address abbreviations
         if text_lower in (
             "st",
@@ -1010,9 +360,10 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
         ):
             return True
         # State abbreviations (2 letters)
-        if len(text) == 2 and text.isalpha():
+        if len(text_stripped) == 2 and text_stripped.isalpha():
             return True
-        return True  # Be permissive for address parts
+        # Reject if it looks like a currency value, permissive otherwise
+        return not CURRENCY_PATTERN.match(text_stripped)
 
     if label == "PHONE_NUMBER":
         # Contains multiple digits
@@ -1020,17 +371,16 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
         return digits >= 3  # Part of phone number
 
     if label == "PRODUCT_NAME":
-        return True  # Almost anything can be a product name
+        # Reject if text looks like a pure currency value
+        return not CURRENCY_PATTERN.match(text_stripped)
 
     if label in ("UNIT_PRICE", "LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"):
-        # Should contain digits or currency symbols
-        has_digit = any(c.isdigit() for c in text)
-        has_currency = "$" in text or "." in text
-        return has_digit or has_currency
+        # Must contain at least one digit
+        return any(c.isdigit() for c in text)
 
     if label == "QUANTITY":
         # Typically a number
-        return text.replace(".", "").isdigit() or text_lower in (
+        return text_stripped.replace(".", "").isdigit() or text_lower in (
             "ea",
             "each",
             "lb",
@@ -1129,14 +479,44 @@ def check_missing_constellation_member(
         if expected_rel is None:
             continue
 
-        # Compute the constellation centroid from present labels
+        # Compute present-label centroid (used in both branches)
         present_positions = [
             label_centroids[lbl] for lbl in present_in_constellation
         ]
-        constellation_centroid = (
+        present_centroid = (
             sum(p[0] for p in present_positions) / len(present_positions),
             sum(p[1] for p in present_positions) / len(present_positions),
         )
+
+        # Use the full constellation centroid from training patterns
+        # to avoid bias when a label is missing (present-only centroid shifts)
+        if (
+            geom.mean_centroid_x is not None
+            and geom.mean_centroid_y is not None
+        ):
+            # Compute the expected centroid of present labels from training data
+            training_present_dx = []
+            training_present_dy = []
+            for lbl in present_in_constellation:
+                rel = geom.relative_positions.get(lbl)
+                if rel is not None:
+                    training_present_dx.append(rel.mean_dx)
+                    training_present_dy.append(rel.mean_dy)
+
+            if training_present_dx:
+                # Training centroid offset of present labels
+                training_present_offset_x = sum(training_present_dx) / len(training_present_dx)
+                training_present_offset_y = sum(training_present_dy) / len(training_present_dy)
+
+                # Estimate the full constellation centroid from present labels
+                constellation_centroid = (
+                    present_centroid[0] - training_present_offset_x,
+                    present_centroid[1] - training_present_offset_y,
+                )
+            else:
+                constellation_centroid = present_centroid
+        else:
+            constellation_centroid = present_centroid
 
         # Compute expected absolute position for the missing label
         expected_pos = (
@@ -1245,8 +625,6 @@ def evaluate_word_contexts(
     # Cap issues per type to prevent runaway processing on abnormal receipts
     # (e.g., 200 geometric_anomaly issues all for the same systematic reason)
     MAX_ISSUES_PER_TYPE = 20
-
-    from collections import Counter
 
     type_counts = Counter(issue.issue_type for issue in issues)
     if any(count > MAX_ISSUES_PER_TYPE for count in type_counts.values()):

@@ -515,7 +515,7 @@ if __name__ == "__main__":
 
 ```text
 infra/label_evaluator_step_functions/
-├── infrastructure.py              # LANGCHAIN_TRACING_V2=false
+├── infrastructure.py              # LANGCHAIN_TRACING_V2=true
 ├── step_function_states.py        # ✅ Pass trace context through SF
 └── lambdas/
     ├── utils/tracing.py           # ✅ Fixed post/patch order, added patch() to child_trace

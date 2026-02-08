@@ -41,46 +41,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langsmith.run_trees import RunTree
+from langsmith import traceable
 from pydantic import ValidationError
-
-
-@dataclass
-class TraceContext:
-    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
-
-    run_tree: RunTree | None = None
-    headers: dict | None = None
-    trace_id: str | None = None
-    root_run_id: str | None = None
-
-    def get_langchain_config(self) -> dict | None:
-        """Get a LangChain-compatible config for passing to LLM invoke calls.
-
-        Returns config that links LLM calls to this trace context in LangSmith.
-        """
-        if self.run_tree is None:
-            return None
-        try:
-            headers = (
-                self.run_tree.to_headers()
-                if hasattr(self.run_tree, "to_headers")
-                else self.headers
-            )
-            if not headers:
-                return None
-            return {
-                "callbacks": [],
-                "metadata": {
-                    "langsmith_trace_id": self.trace_id,
-                    "langsmith_parent_run_id": (
-                        self.run_tree.id if self.run_tree else None
-                    ),
-                },
-                "configurable": {"langsmith_headers": headers},
-            }
-        except Exception:
-            return None
 
 
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
@@ -219,8 +181,9 @@ def check_grand_total_math(
     values: dict[str, list[FinancialValue]],
 ) -> MathIssue | None:
     """
-    Check: GRAND_TOTAL = SUBTOTAL + TAX
+    Check: GRAND_TOTAL = sum(SUBTOTAL) + sum(TAX)
 
+    Sums all subtotals and taxes to handle receipts with multiple entries.
     Returns MathIssue if math doesn't match, None otherwise.
     """
     grand_totals = values.get("GRAND_TOTAL", [])
@@ -230,13 +193,11 @@ def check_grand_total_math(
     if not grand_totals or not subtotals:
         return None
 
-    # Use the first of each (most receipts have one)
     grand_total = grand_totals[0]
-    subtotal = subtotals[0]
-    tax = taxes[0] if taxes else None
+    subtotal_sum = sum(s.numeric_value for s in subtotals)
+    tax_sum = sum(t.numeric_value for t in taxes)
 
-    tax_value = tax.numeric_value if tax else 0.0
-    expected = subtotal.numeric_value + tax_value
+    expected = subtotal_sum + tax_sum
     actual = grand_total.numeric_value
     difference = actual - expected
 
@@ -245,9 +206,11 @@ def check_grand_total_math(
     if abs(difference) <= FLOAT_EPSILON:
         return None
 
-    involved = [grand_total, subtotal]
-    if tax:
-        involved.append(tax)
+    involved = [grand_total] + subtotals + taxes
+
+    # Build description showing all components
+    subtotal_desc = " + ".join(f"{s.numeric_value:.2f}" for s in subtotals)
+    tax_desc = " + ".join(f"{t.numeric_value:.2f}" for t in taxes) if taxes else "0.00"
 
     return MathIssue(
         issue_type="GRAND_TOTAL_MISMATCH",
@@ -256,8 +219,8 @@ def check_grand_total_math(
         difference=difference,
         involved_values=involved,
         description=(
-            f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal.numeric_value:.2f}) "
-            f"+ TAX ({tax_value:.2f}) = {expected:.2f}. Difference: {difference:.2f}"
+            f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal_desc}) "
+            f"+ TAX ({tax_desc}) = {expected:.2f}. Difference: {difference:.2f}"
         ),
     )
 
@@ -465,15 +428,27 @@ Consider:
 4. **Receipt structure**: Totals usually appear at bottom, line items in middle.
 5. **Context clues**: Which value "looks wrong" based on surrounding text.
 
-Respond with a JSON array:
+Respond with a JSON array containing one decision per involved value.
+Use `value_index` to indicate which value within the issue (0-based index into the
+"Values involved" list above).
 
 ```json
 [
   {{
     "index": 0,
+    "value_index": 0,
+    "issue_type": "GRAND_TOTAL_MISMATCH",
+    "decision": "VALID",
+    "reasoning": "The GRAND_TOTAL value looks correct based on receipt context...",
+    "suggested_label": null,
+    "confidence": "medium"
+  }},
+  {{
+    "index": 0,
+    "value_index": 1,
     "issue_type": "GRAND_TOTAL_MISMATCH",
     "decision": "INVALID",
-    "reasoning": "The GRAND_TOTAL appears to have an OCR error...",
+    "reasoning": "The SUBTOTAL appears to have an OCR error...",
     "suggested_label": null,
     "confidence": "medium"
   }},
@@ -482,11 +457,13 @@ Respond with a JSON array:
 ```
 
 ## Decision Guide
-- VALID: The discrepancy is acceptable (e.g., rounding) OR the labeled value is correct
+- VALID: The discrepancy is acceptable (e.g., rounding) OR this specific value is correct
 - INVALID: This specific value's label is wrong (suggest correction if applicable)
 - NEEDS_REVIEW: Cannot determine if the discrepancy is acceptable or which value is wrong
 
-For each issue, evaluate ALL involved values. Return one decision per involved value.
+Return one decision per involved value in each issue (using `value_index`).
+For example, if issue [0] has 3 involved values, return 3 decisions with
+index=0 and value_index=0, 1, 2.
 
 Respond ONLY with the JSON array, no other text.
 """
@@ -495,9 +472,19 @@ Respond ONLY with the JSON array, no other text.
 
 def parse_financial_evaluation_response(
     response_text: str,
-    num_issues: int,
+    num_values: int,
+    math_issues: list[MathIssue] | None = None,
 ) -> list[dict]:
-    """Parse the LLM response into a list of decisions."""
+    """Parse the LLM response into a list of per-value decisions.
+
+    Args:
+        response_text: Raw LLM response text
+        num_values: Total number of involved values across all issues
+        math_issues: The math issues (used to map per-issue fallback to per-value)
+
+    Returns:
+        List of per-value decisions (one per involved value across all issues)
+    """
     response_text = extract_json_from_response(response_text)
 
     fallback = {
@@ -513,16 +500,21 @@ def parse_financial_evaluation_response(
         parsed = json.loads(response_text)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse LLM response as JSON: %s", e)
-        return [fallback.copy() for _ in range(num_issues)]
+        return [fallback.copy() for _ in range(num_values)]
 
     # Try structured parsing with Pydantic
     try:
         if isinstance(parsed, list):
-            parsed = {"evaluations": parsed}
+            parsed_obj = {"evaluations": parsed}
+        else:
+            parsed_obj = parsed
         structured_response = FinancialEvaluationResponse.model_validate(
-            parsed
+            parsed_obj
         )
-        return structured_response.to_ordered_list(num_issues)
+        # Convert to per-value decision list
+        return _structured_to_per_value(
+            structured_response.evaluations, num_values, math_issues
+        )
     except ValidationError as e:
         logger.debug(
             "Structured parsing failed, falling back to manual parsing: %s", e
@@ -538,31 +530,116 @@ def parse_financial_evaluation_response(
             logger.warning(
                 "Decisions is not a list: %s", type(decisions).__name__
             )
-            return [fallback.copy() for _ in range(num_issues)]
+            return [fallback.copy() for _ in range(num_values)]
 
-        result = []
-        for i in range(num_issues):
-            decision = next(
-                (d for d in decisions if d.get("index") == i), None
-            )
-            if decision:
-                result.append(
-                    {
-                        "decision": decision.get("decision", "NEEDS_REVIEW"),
-                        "reasoning": decision.get("reasoning", ""),
-                        "suggested_label": decision.get("suggested_label"),
-                        "confidence": decision.get("confidence", "medium"),
-                        "issue_type": decision.get("issue_type", "UNKNOWN"),
-                    }
-                )
-            else:
-                result.append(fallback.copy())
-
-        return result
+        return _raw_to_per_value(decisions, num_values, math_issues)
 
     except TypeError as e:
         logger.warning("Failed to process parsed response: %s", e)
-        return [fallback.copy() for _ in range(num_issues)]
+        return [fallback.copy() for _ in range(num_values)]
+
+
+def _structured_to_per_value(
+    evaluations: list,
+    num_values: int,
+    math_issues: list[MathIssue] | None,
+) -> list[dict]:
+    """Convert structured FinancialEvaluation list to per-value decisions."""
+    result: list[dict | None] = [None] * num_values
+
+    # Build mapping: (issue_index, value_index) -> flat index
+    flat_idx = 0
+    issue_value_to_flat: dict[tuple[int, int], int] = {}
+    if math_issues:
+        for issue_idx, issue in enumerate(math_issues):
+            for val_idx in range(len(issue.involved_values)):
+                issue_value_to_flat[(issue_idx, val_idx)] = flat_idx
+                flat_idx += 1
+
+    for eval_item in evaluations:
+        d = eval_item.to_dict()
+        issue_idx = d.get("index", 0)
+        val_idx = d.get("value_index", 0)
+        flat = issue_value_to_flat.get((issue_idx, val_idx))
+        if flat is not None and flat < num_values:
+            result[flat] = d
+
+    # Fill gaps with NEEDS_REVIEW
+    fallback = {
+        "decision": "NEEDS_REVIEW",
+        "reasoning": "No per-value decision from LLM",
+        "suggested_label": None,
+        "confidence": "low",
+        "issue_type": "UNKNOWN",
+    }
+    return [r if r is not None else fallback.copy() for r in result]
+
+
+def _raw_to_per_value(
+    decisions: list[dict],
+    num_values: int,
+    math_issues: list[MathIssue] | None,
+) -> list[dict]:
+    """Convert raw LLM decision list to per-value decisions."""
+    result: list[dict | None] = [None] * num_values
+
+    # Build mapping: (issue_index, value_index) -> flat index
+    flat_idx = 0
+    issue_value_to_flat: dict[tuple[int, int], int] = {}
+    if math_issues:
+        for issue_idx, issue in enumerate(math_issues):
+            for val_idx in range(len(issue.involved_values)):
+                issue_value_to_flat[(issue_idx, val_idx)] = flat_idx
+                flat_idx += 1
+
+    # Check if decisions have value_index (per-value) or not (per-issue)
+    has_value_index = any(
+        "value_index" in d for d in decisions if isinstance(d, dict)
+    )
+
+    if has_value_index:
+        # Per-value decisions: map by (index, value_index)
+        for d in decisions:
+            if not isinstance(d, dict):
+                continue
+            issue_idx = d.get("index", 0)
+            val_idx = d.get("value_index", 0)
+            flat = issue_value_to_flat.get((issue_idx, val_idx))
+            if flat is not None and flat < num_values:
+                result[flat] = {
+                    "decision": d.get("decision", "NEEDS_REVIEW"),
+                    "reasoning": d.get("reasoning", ""),
+                    "suggested_label": d.get("suggested_label"),
+                    "confidence": d.get("confidence", "medium"),
+                    "issue_type": d.get("issue_type", "UNKNOWN"),
+                }
+    else:
+        # Legacy per-issue decisions: apply to first value only, NEEDS_REVIEW for rest
+        if math_issues:
+            for d in decisions:
+                if not isinstance(d, dict):
+                    continue
+                issue_idx = d.get("index", 0)
+                # Apply decision to first involved value only
+                flat = issue_value_to_flat.get((issue_idx, 0))
+                if flat is not None and flat < num_values:
+                    result[flat] = {
+                        "decision": d.get("decision", "NEEDS_REVIEW"),
+                        "reasoning": d.get("reasoning", ""),
+                        "suggested_label": d.get("suggested_label"),
+                        "confidence": d.get("confidence", "medium"),
+                        "issue_type": d.get("issue_type", "UNKNOWN"),
+                    }
+
+    # Fill gaps with NEEDS_REVIEW
+    fallback = {
+        "decision": "NEEDS_REVIEW",
+        "reasoning": "No per-value decision from LLM",
+        "suggested_label": None,
+        "confidence": "low",
+        "issue_type": "UNKNOWN",
+    }
+    return [r if r is not None else fallback.copy() for r in result]
 
 
 # =============================================================================
@@ -572,30 +649,30 @@ def parse_financial_evaluation_response(
 
 def _pad_decisions(
     decisions: list[dict] | None,
-    num_issues: int,
+    num_values: int,
 ) -> list[dict]:
     """
-    Pad decisions list to match number of issues.
+    Pad decisions list to match total number of involved values.
 
-    If the LLM returns fewer decisions than issues, pad with NEEDS_REVIEW fallbacks.
+    If the LLM returns fewer decisions than values, pad with NEEDS_REVIEW fallbacks.
     If it returns more, truncate to match.
 
     Args:
         decisions: List of decision dicts from LLM (may be None or short)
-        num_issues: Number of issues that need decisions
+        num_values: Total number of involved values that need decisions
 
     Returns:
-        List of exactly num_issues decisions
+        List of exactly num_values decisions
     """
     num_decisions = len(decisions) if decisions else 0
-    if num_decisions != num_issues:
+    if num_decisions != num_values:
         logger.warning(
-            "Decision count mismatch: %d issues, %d decisions",
-            num_issues,
+            "Decision count mismatch: %d values, %d decisions",
+            num_values,
             num_decisions,
         )
         decisions = decisions or []
-        while len(decisions) < num_issues:
+        while len(decisions) < num_values:
             decisions.append(
                 {
                     "decision": "NEEDS_REVIEW",
@@ -605,7 +682,7 @@ def _pad_decisions(
                     "issue_type": "UNKNOWN",
                 }
             )
-        decisions = decisions[:num_issues]
+        decisions = decisions[:num_values]
     return decisions
 
 
@@ -616,13 +693,14 @@ def _format_financial_results(
     receipt_id: int,
 ) -> list[dict]:
     """
-    Format financial validation results from issues and decisions.
+    Format financial validation results from issues and per-value decisions.
 
-    Creates one result entry per involved value in each issue.
+    Creates one result entry per involved value in each issue, using the
+    corresponding per-value decision.
 
     Args:
         math_issues: List of detected math issues
-        decisions: List of LLM decisions (one per issue)
+        decisions: List of LLM decisions (one per involved value, flattened)
         image_id: Receipt image ID
         receipt_id: Receipt ID
 
@@ -630,8 +708,19 @@ def _format_financial_results(
         List of result dicts ready for apply_llm_decisions()
     """
     results = []
-    for issue, decision in zip(math_issues, decisions, strict=False):
+    decision_idx = 0
+    for issue in math_issues:
         for fv in issue.involved_values:
+            decision = (
+                decisions[decision_idx]
+                if decision_idx < len(decisions)
+                else {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision available",
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
             wc = fv.word_context
             results.append(
                 {
@@ -656,6 +745,7 @@ def _format_financial_results(
                     },
                 }
             )
+            decision_idx += 1
 
     # Log summary
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
@@ -673,6 +763,7 @@ def _format_financial_results(
 # =============================================================================
 
 
+@traceable(name="financial_validation", run_type="chain")
 def evaluate_financial_math(
     visual_lines: list[VisualLine],
     llm: BaseChatModel,
@@ -716,7 +807,7 @@ def evaluate_financial_math(
 
     # Try structured output first, fall back to text parsing
     max_retries = 3
-    num_issues = len(math_issues)
+    num_values = sum(len(issue.involved_values) for issue in math_issues)
     use_structured = hasattr(llm, "with_structured_output")
 
     try:
@@ -732,7 +823,9 @@ def evaluate_financial_math(
                         response: FinancialEvaluationResponse = (
                             structured_llm.invoke(prompt)
                         )
-                        decisions = response.to_ordered_list(num_issues)
+                        decisions = _structured_to_per_value(
+                            response.evaluations, num_values, math_issues
+                        )
                         logger.debug(
                             "Structured output succeeded with %d evaluations",
                             len(decisions),
@@ -755,7 +848,7 @@ def evaluate_financial_math(
                     else str(response)
                 )
                 decisions = parse_financial_evaluation_response(
-                    response_text, num_issues
+                    response_text, num_values, math_issues
                 )
 
                 # Check if all decisions failed to parse
@@ -794,11 +887,10 @@ def evaluate_financial_math(
                     inner_err,
                 )
 
-        # Step 3: Use decisions (either from structured or text parsing)
-        # Note: LLM returns one decision per issue, but each issue has multiple values
-        decisions = _pad_decisions(decisions, len(math_issues))
+        # Step 3: Pad decisions to match total involved values
+        decisions = _pad_decisions(decisions, num_values)
 
-        # Step 4: Format output - create one result per involved value
+        # Step 4: Format output - one result per involved value with matching decision
         return _format_financial_results(
             math_issues, decisions, image_id, receipt_id
         )
@@ -852,13 +944,13 @@ def evaluate_financial_math(
 # =============================================================================
 
 
+@traceable(name="financial_validation", run_type="chain")
 async def evaluate_financial_math_async(
     visual_lines: list[VisualLine],
     llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: TraceContext | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_financial_math.
@@ -866,19 +958,19 @@ async def evaluate_financial_math_async(
     Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
     or any LLM that supports ainvoke().
 
+    Decorated with @traceable so LLM calls auto-nest under this span in
+    LangSmith when called inside a tracing_context(parent=root).
+
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
         llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
-        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
 
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Get LangChain config for trace linking (passed to LLM calls)
-    llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
 
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
@@ -900,7 +992,7 @@ async def evaluate_financial_math_async(
 
     # Step 3: Call LLM asynchronously
     max_retries = 3
-    num_issues = len(math_issues)
+    num_values = sum(len(issue.involved_values) for issue in math_issues)
     use_structured = hasattr(llm, "with_structured_output")
 
     try:
@@ -916,8 +1008,7 @@ async def evaluate_financial_math_async(
                         if hasattr(structured_llm, "ainvoke"):
                             response: FinancialEvaluationResponse = (
                                 await structured_llm.ainvoke(
-                                    prompt, config=llm_config
-                                )
+                                    prompt                                )
                             )
                         else:
                             # Run sync invoke in thread pool to avoid blocking event loop
@@ -925,10 +1016,11 @@ async def evaluate_financial_math_async(
                                 await asyncio.to_thread(
                                     structured_llm.invoke,
                                     prompt,
-                                    config=llm_config,
                                 )
                             )
-                        decisions = response.to_ordered_list(num_issues)
+                        decisions = _structured_to_per_value(
+                            response.evaluations, num_values, math_issues
+                        )
                         logger.debug(
                             "Structured output succeeded with %d evaluations",
                             len(decisions),
@@ -944,19 +1036,18 @@ async def evaluate_financial_math_async(
 
                 # Text parsing fallback
                 if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt, config=llm_config)
+                    response = await llm.ainvoke(prompt)
                 else:
                     # Run sync invoke in thread pool to avoid blocking event loop
                     response = await asyncio.to_thread(
-                        llm.invoke, prompt, config=llm_config
-                    )
+                        llm.invoke, prompt                    )
                 response_text = (
                     response.content
                     if hasattr(response, "content")
                     else str(response)
                 )
                 decisions = parse_financial_evaluation_response(
-                    response_text, num_issues
+                    response_text, num_values, math_issues
                 )
 
                 parse_failures = sum(
@@ -995,7 +1086,7 @@ async def evaluate_financial_math_async(
                 )
 
         # Step 4: Format output
-        decisions = _pad_decisions(decisions, len(math_issues))
+        decisions = _pad_decisions(decisions, num_values)
         return _format_financial_results(
             math_issues, decisions, image_id, receipt_id
         )

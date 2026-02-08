@@ -84,7 +84,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     {
         "execution_id": "abc123",
         "merchant_name": "Home Depot",
-        "line_item_patterns_s3_key": "line_item_patterns/{hash}.json",
+        "line_item_patterns_s3_key": "line_item_patterns/{exec}/{hash}.json",
         "patterns_s3_key": "patterns/{exec}/{hash}.json",
         "receipt_count": 45,
         "pattern_stats": {...}
@@ -113,7 +113,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         raise ValueError("batch_bucket is required")
 
     merchant_hash = get_merchant_hash(merchant_name)
-    line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+    line_item_patterns_s3_key = f"line_item_patterns/{execution_id}/{merchant_hash}.json"
     patterns_s3_key = f"patterns/{execution_id}/{merchant_hash}.json"
 
     # Create root merchant trace for Phase 1 (pattern computation)

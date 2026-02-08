@@ -1,0 +1,16 @@
+language: en-US
+reviews:
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |
+        Use snake_case for variable and function names (PEP 8 / pylint convention).
+        Do not flag snake_case as a naming convention violation.
+    - path: "**/*.ts"
+      instructions: |
+        Use camelCase for variable and function names (TypeScript convention).
+    - path: "**/*.tsx"
+      instructions: |
+        Use camelCase for variable and function names (React/TypeScript convention).
+    - path: "**/*.swift"
+      instructions: |
+        Use camelCase for variable and function names (Swift convention).

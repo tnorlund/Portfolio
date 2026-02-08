@@ -390,6 +390,10 @@ class FinancialEvaluation(BaseModel):
     index: int = Field(
         description="The index of the issue being evaluated (0-based)"
     )
+    value_index: int = Field(
+        default=0,
+        description="Which involved value this decision applies to (0-based within the issue's involved values list)",
+    )
     issue_type: MathIssueTypeEnum = Field(
         description="Type of math issue detected"
     )
@@ -410,6 +414,8 @@ class FinancialEvaluation(BaseModel):
     def to_dict(self) -> dict:
         """Convert to dict format for backwards compatibility."""
         return {
+            "index": self.index,
+            "value_index": self.value_index,
             "issue_type": self.issue_type.value,
             "decision": self.decision.value,
             "reasoning": self.reasoning,

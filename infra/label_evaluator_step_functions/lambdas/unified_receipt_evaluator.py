@@ -32,6 +32,7 @@ import time
 from typing import Any
 
 import boto3
+from langsmith import tracing_context
 
 # Import tracing utilities - works in both container and local environments
 try:
@@ -42,10 +43,8 @@ try:
         child_trace,
         create_historical_span,
         create_receipt_trace,
-        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
-        start_child_trace,
     )
 
     from utils.s3_helpers import (
@@ -72,10 +71,8 @@ except ImportError:
         child_trace,
         create_historical_span,
         create_receipt_trace,
-        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
-        start_child_trace,
     )
 
     sys.path.insert(
@@ -484,24 +481,7 @@ async def unified_receipt_evaluator(
             f"patterns/{execution_id}/{merchant_hash}.json"
         )
         line_item_patterns_s3_key = event.get("line_item_patterns_s3_key") or (
-            f"line_item_patterns/{merchant_hash}.json"
-        )
-
-        # Create child traces for parallel operations
-        load_patterns_trace_ctx = start_child_trace(
-            "load_patterns",
-            trace_ctx,
-            metadata={"patterns_s3_key": patterns_s3_key},
-        )
-        build_visual_lines_trace_ctx = start_child_trace(
-            "build_visual_lines",
-            trace_ctx,
-            metadata={"word_count": len(words), "label_count": len(labels)},
-        )
-        setup_llm_trace_ctx = start_child_trace(
-            "setup_llm",
-            trace_ctx,
-            metadata={"temperature": 0.0, "timeout": 120},
+            f"line_item_patterns/{execution_id}/{merchant_hash}.json"
         )
 
         # Define async functions for parallel execution
@@ -552,55 +532,32 @@ async def unified_receipt_evaluator(
         visual_lines: list = []
         llm_invoker = None
 
-        try:
-            # Run all three setup operations concurrently
-            (
-                (patterns_data, line_item_patterns_data),
-                visual_lines,
-                llm_invoker,
-            ) = await asyncio.gather(
-                load_patterns_async(),
-                build_visual_lines_async(),
-                setup_llm_async(),
-            )
+        # Run all three setup operations concurrently
+        (
+            (patterns_data, line_item_patterns_data),
+            visual_lines,
+            llm_invoker,
+        ) = await asyncio.gather(
+            load_patterns_async(),
+            build_visual_lines_async(),
+            setup_llm_async(),
+        )
 
-            # Deserialize patterns after loading
-            if patterns_data:
-                patterns = deserialize_patterns(patterns_data)
-            if line_item_patterns_data:
-                if "patterns" in line_item_patterns_data:
-                    line_item_patterns = line_item_patterns_data["patterns"]
-                else:
-                    line_item_patterns = line_item_patterns_data
+        # Deserialize patterns after loading
+        if patterns_data:
+            patterns = deserialize_patterns(patterns_data)
+        if line_item_patterns_data:
+            if "patterns" in line_item_patterns_data:
+                line_item_patterns = line_item_patterns_data["patterns"]
+            else:
+                line_item_patterns = line_item_patterns_data
 
-            logger.info(
-                "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
-                len(visual_lines),
-                patterns is not None,
-                line_item_patterns is not None,
-            )
-        finally:
-            # End child traces
-            end_child_trace(
-                load_patterns_trace_ctx,
-                outputs={
-                    "has_patterns": patterns_data is not None,
-                    "has_line_item_patterns": line_item_patterns_data
-                    is not None,
-                },
-            )
-            end_child_trace(
-                build_visual_lines_trace_ctx,
-                outputs={
-                    "visual_line_count": len(visual_lines),
-                },
-            )
-            end_child_trace(
-                setup_llm_trace_ctx,
-                outputs={
-                    "invoker_ready": llm_invoker is not None,
-                },
-            )
+        logger.info(
+            "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
+            len(visual_lines),
+            patterns is not None,
+            line_item_patterns is not None,
+        )
 
         # Create historical spans for pattern computation (from batch Phase 1)
         # These show up in the trace as if they happened during this receipt's evaluation
@@ -745,33 +702,7 @@ async def unified_receipt_evaluator(
             EvaluatorState,
         )
 
-        # Create child traces for parallel evaluations (visible as siblings in LangSmith)
-        currency_trace_ctx = start_child_trace(
-            "currency_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={
-                "merchant_name": merchant_name,
-                "num_visual_lines": len(visual_lines),
-            },
-        )
-        metadata_trace_ctx = start_child_trace(
-            "metadata_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={
-                "merchant_name": merchant_name,
-                "has_place": place is not None,
-            },
-        )
-        geometric_trace_ctx = start_child_trace(
-            "geometric_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={"num_words": len(words), "num_labels": len(labels)},
-        )
-
-        # Initialize results before try block for clean finally handling
+        # Initialize results
         currency_result: list[dict] = []
         metadata_result: list[dict] = []
         geometric_result: dict = {"issues_found": 0}
@@ -779,70 +710,63 @@ async def unified_receipt_evaluator(
         metadata_duration = 0.0
         geometric_duration = 0.0
 
-        try:
+        async def timed_eval(coro):
+            start = time.time()
+            result = await coro
+            return result, time.time() - start
 
-            async def timed_eval(coro):
-                start = time.time()
-                result = await coro
-                return result, time.time() - start
-
-            # Run currency and metadata concurrently (both use LLM)
-            currency_task = timed_eval(
-                evaluate_currency_labels_async(
-                    visual_lines=visual_lines,
-                    patterns=line_item_patterns,
-                    llm=llm_invoker,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    merchant_name=merchant_name,
-                    trace_ctx=currency_trace_ctx,
-                )
-            )
-
-            metadata_task = timed_eval(
-                evaluate_metadata_labels_async(
-                    visual_lines=visual_lines,
-                    place=place,
-                    llm=llm_invoker,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    merchant_name=merchant_name,
-                    trace_ctx=metadata_trace_ctx,
-                )
-            )
-
-            # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
-            # Create EvaluatorState for geometric evaluation
-            geometric_state = EvaluatorState(
+        # Run currency and metadata concurrently (both use LLM)
+        # @traceable decorators on subagents auto-nest under receipt root
+        currency_task = timed_eval(
+            evaluate_currency_labels_async(
+                visual_lines=visual_lines,
+                patterns=line_item_patterns,
+                llm=llm_invoker,
                 image_id=image_id,
                 receipt_id=receipt_id,
-                words=words,
-                labels=labels,
+                merchant_name=merchant_name,
+            )
+        )
+
+        metadata_task = timed_eval(
+            evaluate_metadata_labels_async(
+                visual_lines=visual_lines,
                 place=place,
-                other_receipt_data=[],
-                merchant_patterns=patterns,
-                skip_llm_review=True,
+                llm=llm_invoker,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                merchant_name=merchant_name,
             )
+        )
 
-            # Run geometric evaluation concurrently with LLM calls using to_thread
-            geometric_graph = create_compute_only_graph()
-            geometric_config = (
-                geometric_trace_ctx.get_langchain_config()
-                if geometric_trace_ctx
-                else None
+        # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
+        geometric_state = EvaluatorState(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            words=words,
+            labels=labels,
+            place=place,
+            other_receipt_data=[],
+            merchant_patterns=patterns,
+            skip_llm_review=True,
+        )
+
+        geometric_graph = create_compute_only_graph()
+
+        async def run_geometric() -> tuple[dict, float]:
+            start = time.time()
+            result = await asyncio.to_thread(
+                run_compute_only_sync,
+                geometric_graph,
+                geometric_state,
+                None,
             )
+            return result, time.time() - start
 
-            async def run_geometric() -> tuple[dict, float]:
-                start = time.time()
-                result = await asyncio.to_thread(
-                    run_compute_only_sync,
-                    geometric_graph,
-                    geometric_state,
-                    geometric_config,
-                )
-                return result, time.time() - start
-
-            # Wait for all evaluations concurrently
+        # Wait for all evaluations concurrently
+        # tracing_context propagates through asyncio.gather so @traceable
+        # subagents auto-nest as children of the ReceiptEvaluation root trace
+        with tracing_context(parent=receipt_trace.run_tree):
             (
                 (currency_result, currency_duration),
                 (
@@ -857,72 +781,169 @@ async def unified_receipt_evaluator(
                 currency_task, metadata_task, run_geometric()
             )
 
-            logger.info(
-                "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
-                len(currency_result),
-                len(metadata_result),
-                geometric_result.get("issues_found", 0),
-            )
-        finally:
-            # End child traces with outputs
-            end_child_trace(
-                currency_trace_ctx,
-                outputs={
-                    "decisions_count": len(currency_result),
-                },
-            )
-            end_child_trace(
-                metadata_trace_ctx,
-                outputs={
-                    "decisions_count": len(metadata_result),
-                },
-            )
-            end_child_trace(
-                geometric_trace_ctx,
-                outputs={
-                    "issues_found": geometric_result.get("issues_found", 0),
-                },
-            )
+        logger.info(
+            "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
+            len(currency_result),
+            len(metadata_result),
+            geometric_result.get("issues_found", 0),
+        )
 
-        # 7. Apply Phase 1 corrections to DynamoDB
-        applied_stats_currency = None
-        applied_stats_metadata = None
+        # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
+        applied_stats_phase1 = None
 
         if dynamo_table:
-            with child_trace("apply_phase1_corrections", trace_ctx):
+            # Index both result sets by (line_id, word_id) to detect overlaps
+            currency_by_word: dict[tuple, dict] = {}
+            for d in currency_result:
+                issue = d.get("issue", {})
+                key = (issue.get("line_id"), issue.get("word_id"))
+                currency_by_word[key] = d
+
+            metadata_by_word: dict[tuple, dict] = {}
+            for d in metadata_result:
+                issue = d.get("issue", {})
+                key = (issue.get("line_id"), issue.get("word_id"))
+                metadata_by_word[key] = d
+
+            overlapping_keys = set(currency_by_word) & set(metadata_by_word)
+            conflicting_keys = [
+                k for k in overlapping_keys
+                if currency_by_word[k].get("llm_review", {}).get("decision")
+                != metadata_by_word[k].get("llm_review", {}).get("decision")
+            ]
+
+            invalid_currency = [
+                d
+                for d in currency_result
+                if d.get("llm_review", {}).get("decision") == "INVALID"
+            ]
+            invalid_metadata = [
+                d
+                for d in metadata_result
+                if d.get("llm_review", {}).get("decision") == "INVALID"
+            ]
+
+            with child_trace(
+                "apply_phase1_corrections",
+                trace_ctx,
+                inputs={
+                    "currency_invalid_count": len(invalid_currency),
+                    "metadata_invalid_count": len(invalid_metadata),
+                    "overlapping_words": len(overlapping_keys),
+                    "conflicting_words": len(conflicting_keys),
+                },
+            ) as correction_ctx:
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
                 )
                 from receipt_dynamo import DynamoClient
 
-                if dynamo_table:
-                    dynamo_client = DynamoClient(table_name=dynamo_table)
+                dynamo_client = DynamoClient(table_name=dynamo_table)
 
-                    # Apply currency corrections
-                    invalid_currency = [
-                        d
-                        for d in currency_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
-                    ]
-                    if invalid_currency:
-                        applied_stats_currency = apply_llm_decisions(
-                            reviewed_issues=invalid_currency,
-                            dynamo_client=dynamo_client,
-                            execution_id=f"currency-{execution_id}",
-                        )
+                # Deduplicate by (line_id, word_id) — if both evaluators
+                # flag the same word, prefer higher confidence or the
+                # currency evaluator (more accurate for financial labels)
+                CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+                FINANCIAL_LABELS = {
+                    "GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL",
+                    "UNIT_PRICE", "QUANTITY", "DISCOUNT",
+                }
 
-                    # Apply metadata corrections
-                    invalid_metadata = [
-                        d
-                        for d in metadata_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
-                    ]
-                    if invalid_metadata:
-                        applied_stats_metadata = apply_llm_decisions(
-                            reviewed_issues=invalid_metadata,
-                            dynamo_client=dynamo_client,
-                            execution_id=f"metadata-{execution_id}",
+                merged: dict[tuple, dict] = {}
+                resolutions: list[dict] = []
+
+                for d in invalid_currency:
+                    issue = d.get("issue", {})
+                    key = (issue.get("line_id"), issue.get("word_id"))
+                    merged[key] = d
+
+                for d in invalid_metadata:
+                    issue = d.get("issue", {})
+                    key = (issue.get("line_id"), issue.get("word_id"))
+                    if key not in merged:
+                        merged[key] = d
+                    else:
+                        # Resolve conflict: prefer higher confidence
+                        existing = merged[key]
+                        existing_conf = CONFIDENCE_RANK.get(
+                            existing.get("llm_review", {}).get("confidence", "low"), 1
                         )
+                        new_conf = CONFIDENCE_RANK.get(
+                            d.get("llm_review", {}).get("confidence", "low"), 1
+                        )
+                        if new_conf > existing_conf:
+                            merged[key] = d
+                            resolutions.append({
+                                "line_id": key[0],
+                                "word_id": key[1],
+                                "word_text": issue.get("word_text", ""),
+                                "current_label": issue.get("current_label", ""),
+                                "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                "winner": "metadata",
+                                "resolution_reason": "higher_confidence",
+                                "applied_label": d.get("llm_review", {}).get("suggested_label"),
+                            })
+                        elif new_conf == existing_conf:
+                            # Equal confidence: prefer financial label suggestion
+                            existing_label = existing.get("llm_review", {}).get("suggested_label")
+                            new_label = d.get("llm_review", {}).get("suggested_label")
+                            if new_label in FINANCIAL_LABELS and existing_label not in FINANCIAL_LABELS:
+                                merged[key] = d
+                                resolutions.append({
+                                    "line_id": key[0],
+                                    "word_id": key[1],
+                                    "word_text": issue.get("word_text", ""),
+                                    "current_label": issue.get("current_label", ""),
+                                    "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                    "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                    "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                    "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                    "winner": "metadata",
+                                    "resolution_reason": "financial_label_priority",
+                                    "applied_label": new_label,
+                                })
+                            else:
+                                resolutions.append({
+                                    "line_id": key[0],
+                                    "word_id": key[1],
+                                    "word_text": issue.get("word_text", ""),
+                                    "current_label": issue.get("current_label", ""),
+                                    "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                    "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                    "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                    "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                    "winner": "currency",
+                                    "resolution_reason": "currency_priority_default",
+                                    "applied_label": existing_label,
+                                })
+
+                merged_invalid = list(merged.values())
+                dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(merged_invalid)
+                if dedup_removed > 0:
+                    logger.info(
+                        "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
+                        dedup_removed,
+                        len(invalid_currency),
+                        len(invalid_metadata),
+                        len(merged_invalid),
+                    )
+
+                if merged_invalid:
+                    applied_stats_phase1 = apply_llm_decisions(
+                        reviewed_issues=merged_invalid,
+                        dynamo_client=dynamo_client,
+                        execution_id=f"phase1-{execution_id}",
+                    )
+
+                correction_ctx.set_outputs({
+                    "resolutions": resolutions,
+                    "total_corrections_applied": len(merged_invalid),
+                    "dedup_removed": dedup_removed,
+                    "resolution_strategy": "confidence_priority",
+                })
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
         financial_result = None
@@ -930,7 +951,7 @@ async def unified_receipt_evaluator(
         if dynamo_table:
             with child_trace(
                 "phase2_financial_validation", trace_ctx
-            ) as financial_ctx:
+            ):
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
@@ -973,7 +994,6 @@ async def unified_receipt_evaluator(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
-                    trace_ctx=financial_ctx,
                 )
                 financial_duration = time.time() - financial_start
 
@@ -1162,17 +1182,30 @@ async def unified_receipt_evaluator(
                             line_id = issue.get("line_id", 0)
                             word_id = issue.get("word_id", 0)
                             current_label = issue.get("current_label", "")
+                            suggested_label = issue.get(
+                                "suggested_label", ""
+                            )
+
+                            # Use current_label if set, otherwise
+                            # fall back to suggested_label (for
+                            # missing_label_cluster and
+                            # missing_constellation_member issues
+                            # where the word is unlabeled).
+                            target_label = (
+                                current_label
+                                if (current_label and current_label != "O")
+                                else suggested_label
+                            )
 
                             try:
-                                # Use targeted query for the specific label being reviewed
-                                if current_label and current_label != "O":
+                                if target_label and target_label != "O":
                                     label_evidence = query_label_evidence(
                                         chroma_client=chroma_client,
                                         image_id=image_id,
                                         receipt_id=receipt_id,
                                         line_id=line_id,
                                         word_id=word_id,
-                                        target_label=current_label,
+                                        target_label=target_label,
                                         target_merchant=merchant_name,
                                         n_results_per_query=15,
                                         min_similarity=0.70,
@@ -1183,7 +1216,7 @@ async def unified_receipt_evaluator(
                                     evidence_text = (
                                         format_label_evidence_for_prompt(
                                             label_evidence,
-                                            target_label=current_label,
+                                            target_label=target_label,
                                             max_positive=5,
                                             max_negative=3,
                                         )
@@ -1257,16 +1290,10 @@ async def unified_receipt_evaluator(
                                 line_item_patterns=line_item_patterns,
                             )
 
-                            llm_config = (
-                                review_ctx.get_langchain_config()
-                                if review_ctx
-                                else None
-                            )
-
-                            # Make async LLM call
+                            # Make async LLM call (child_trace sets tracing_context
+                            # so LLM calls auto-nest under phase3_llm_review span)
                             response = await llm_invoker.ainvoke(
                                 [HumanMessage(content=prompt)],
-                                config=llm_config,
                             )
 
                             # Parse response
@@ -1281,21 +1308,76 @@ async def unified_receipt_evaluator(
                                 raise_on_parse_error=False,
                             )
 
-                            # Format results
+                            # Format results with per-issue evidence
                             llm_review_result = []
+                            total_evidence_count = 0
+                            words_with_evidence = 0
+                            similarity_scores: list[float] = []
+                            consensus_scores: list[float] = []
+
                             for meta, review_result in zip(
                                 issues_with_context,
                                 chunk_reviews,
                                 strict=True,
                             ):
+                                # Build per-issue evidence summary
+                                label_evidence = meta.get("label_evidence", [])
+                                issue_evidence = [
+                                    {
+                                        "word_text": getattr(e, "word_text", ""),
+                                        "similarity_score": getattr(e, "similarity_score", 0.0),
+                                        "label_valid": getattr(e, "label_valid", False),
+                                        "evidence_source": getattr(e, "evidence_source", "words"),
+                                        "is_same_merchant": getattr(e, "is_same_merchant", False),
+                                    }
+                                    for e in label_evidence[:10]
+                                ]
+                                total_evidence_count += len(label_evidence)
+                                if label_evidence:
+                                    words_with_evidence += 1
+                                    similarity_scores.extend(
+                                        getattr(e, "similarity_score", 0.0)
+                                        for e in label_evidence
+                                    )
+                                consensus_scores.append(meta.get("consensus", 0.0))
+
                                 llm_review_result.append(
                                     {
                                         "image_id": image_id,
                                         "receipt_id": receipt_id,
                                         "issue": meta["issue"],
                                         "llm_review": review_result,
+                                        "similar_word_count": len(label_evidence),
+                                        "evidence": issue_evidence,
+                                        "consensus_score": meta.get("consensus", 0.0),
                                     }
                                 )
+
+                            # Record evidence summary in trace span
+                            avg_sim = (
+                                sum(similarity_scores) / len(similarity_scores)
+                                if similarity_scores else 0.0
+                            )
+                            avg_cons = (
+                                sum(consensus_scores) / len(consensus_scores)
+                                if consensus_scores else 0.0
+                            )
+                            decision_summary: dict[str, int] = {}
+                            for r in llm_review_result:
+                                dec = r.get("llm_review", {}).get("decision", "UNKNOWN")
+                                decision_summary[dec] = decision_summary.get(dec, 0) + 1
+
+                            review_ctx.set_outputs({
+                                "issues_reviewed": len(llm_review_result),
+                                "decisions": decision_summary,
+                                "evidence_summary": {
+                                    "total_evidence_items": total_evidence_count,
+                                    "words_with_evidence": words_with_evidence,
+                                    "words_without_evidence": len(llm_review_result) - words_with_evidence,
+                                    "avg_similarity": round(avg_sim, 4),
+                                    "avg_consensus": round(avg_cons, 4),
+                                },
+                            })
 
                             # Apply LLM review decisions
                             if dynamo_table:
@@ -1396,8 +1478,7 @@ async def unified_receipt_evaluator(
                 "review_all_decisions": llm_review_result or [],
                 "review_duration_seconds": review_duration,
                 "applied_stats": {
-                    "currency": applied_stats_currency,
-                    "metadata": applied_stats_metadata,
+                    "phase1": applied_stats_phase1,
                 },
                 "duration_seconds": time.time() - start_time,
             }

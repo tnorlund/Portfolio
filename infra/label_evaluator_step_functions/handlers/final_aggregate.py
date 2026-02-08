@@ -128,6 +128,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         total_issues,
     )
 
+    # Count succeeded vs failed receipts
+    total_succeeded = status_counter.get("completed", 0)
+    total_failed = sum(
+        count for status, count in status_counter.items()
+        if status in ("error", "failed")
+    )
+
     # Build grand summary
     grand_summary = {
         "execution_id": execution_id,
@@ -135,6 +142,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "successful_merchants": successful_merchants,
         "failed_merchants": failed_merchants,
         "total_receipts": total_receipts,
+        "total_succeeded": total_succeeded,
+        "total_failed": total_failed,
         "total_issues": total_issues,
         "by_issue_type": dict(issue_type_counter.most_common()),
         "by_status": dict(status_counter.most_common()),
@@ -168,6 +177,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": execution_id,
         "total_merchants": total_merchants,
         "total_receipts": total_receipts,
+        "total_succeeded": total_succeeded,
+        "total_failed": total_failed,
         "total_issues": total_issues,
         "by_issue_type": dict(issue_type_counter.most_common(10)),
         "report_s3_key": report_key,
