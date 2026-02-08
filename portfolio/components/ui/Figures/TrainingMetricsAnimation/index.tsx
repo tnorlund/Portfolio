@@ -303,9 +303,9 @@ const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }
   });
 
   return (
-    <div className={styles.labelBarGroup}>
-      <div className={styles.labelRow}>
-        <span className={styles.labelName}>{formatLabel(label)}</span>
+    <div className={styles.labelRow}>
+      <span className={styles.labelName}>{formatLabel(label)}</span>
+      <div className={styles.labelBarStack}>
         <div className={styles.labelBarSegmented}>
           <animated.div
             className={styles.labelBarFilled}
@@ -316,12 +316,6 @@ const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }
             style={{ width: spring.width.to((w) => `${100 - w}%`) }}
           />
         </div>
-        <animated.span className={styles.labelBarValue}>
-          {spring.displayValue.to((v) => v.toFixed(2))}
-        </animated.span>
-      </div>
-      <div className={styles.labelDistRow}>
-        <span className={styles.labelName} />
         <div className={styles.labelBarDistribution}>
           <animated.div
             className={styles.labelBarDistFilled}
@@ -332,8 +326,10 @@ const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }
             style={{ width: spring.distWidth.to((w) => `${100 - w}%`) }}
           />
         </div>
-        <span className={styles.labelBarValue} />
       </div>
+      <animated.span className={styles.labelBarValue}>
+        {spring.displayValue.to((v) => v.toFixed(2))}
+      </animated.span>
     </div>
   );
 };

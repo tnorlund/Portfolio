@@ -228,17 +228,18 @@
   width: 100%;
 }
 
-.labelBarGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
 .labelRow {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  height: 20px;
+}
+
+.labelBarStack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 0;
+  min-width: 60px;
 }
 
 .labelName {
@@ -253,11 +254,9 @@
 
 .labelBarSegmented {
   display: flex;
-  flex: 1;
   height: 6px;
   border-radius: 3px;
   overflow: hidden;
-  min-width: 60px;
 }
 
 .labelBarFilled {
@@ -279,21 +278,11 @@
   text-align: left;
 }
 
-/* Distribution (support) bar row — compact, just bar height */
-.labelDistRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 6px;
-}
-
 .labelBarDistribution {
   display: flex;
-  flex: 1;
   height: 6px;
   border-radius: 3px;
   overflow: hidden;
-  min-width: 60px;
 }
 
 .labelBarDistFilled {
@@ -545,12 +534,7 @@
     gap: 0.35rem;
   }
 
-  .labelBarGroup {
-    gap: 0;
-  }
-
   .labelRow {
-    height: 16px;
     gap: 0.35rem;
   }
 
@@ -559,19 +543,16 @@
     font-size: 0.6rem;
   }
 
-  .labelBarSegmented {
-    height: 4px;
+  .labelBarStack {
     min-width: 40px;
   }
 
-  .labelDistRow {
-    gap: 0.35rem;
+  .labelBarSegmented {
     height: 4px;
   }
 
   .labelBarDistribution {
     height: 4px;
-    min-width: 40px;
   }
 
   .labelBarValue {
