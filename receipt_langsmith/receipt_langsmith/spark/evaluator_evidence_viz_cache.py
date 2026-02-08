@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,29 @@ def _list_parquet_files(parquet_dir: str) -> list[Path]:
 
 
 def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
-    """Read every row from all parquet files into a list of dicts."""
+    """Read every row from parquet into a list of dicts.
+
+    Supports:
+        - local directory trees containing parquet files
+        - local single parquet file
+        - s3:// / s3a:// parquet paths (via active Spark session)
+    """
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
+        # pylint: enable=import-outside-toplevel
+
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
+        logger.info("Read %d rows from S3 parquet path %s", len(rows), parquet_dir)
+        return rows
+
     files = _list_parquet_files(parquet_dir)
     if not files:
         logger.warning("No parquet files found in %s", parquet_dir)
@@ -40,7 +63,7 @@ def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for path in files:
         try:
-            table = pq.read_table(str(path))
+            table = pq.ParquetFile(str(path)).read()
             rows.extend(table.to_pylist())
         except Exception:  # noqa: BLE001
             logger.exception("Failed to read %s", path)
