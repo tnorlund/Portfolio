@@ -829,6 +829,58 @@ def _load_evaluator_trace_rows(
     return rows
 
 
+def _load_unified_rows(
+    spark: SparkSession,
+    batch_bucket: str | None,
+    execution_id: str,
+) -> list[dict[str, Any]]:
+    """Load unified evaluator rows for one execution.
+
+    These rows include ``review_all_decisions`` which contains per-issue
+    evidence details needed by the evidence visualization helper.
+    """
+    if not batch_bucket:
+        logger.info(
+            "No batch bucket provided for evaluator cache; "
+            "skipping unified row load",
+        )
+        return []
+
+    unified_path = f"s3://{batch_bucket}/unified/{execution_id}/"
+    try:
+        # Unified files are one pretty-printed JSON object per file.
+        # Reuse the shared reader with multiLine=True so Spark does not
+        # interpret each line as a separate record.
+        df = read_json_df(spark, unified_path)
+    except AnalysisException:
+        logger.warning(
+            "Could not read unified evaluator rows from %s", unified_path
+        )
+        return []
+
+    wanted_cols = (
+        "image_id",
+        "receipt_id",
+        "merchant_name",
+        "trace_id",
+        "review_all_decisions",
+    )
+    for column_name in wanted_cols:
+        if column_name not in df.columns:
+            df = df.withColumn(column_name, F.lit(None))
+
+    selected_df = df.select(*wanted_cols)
+    rows = [
+        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
+    ]
+    logger.info(
+        "Loaded %d unified evaluator rows from %s",
+        len(rows),
+        unified_path,
+    )
+    return rows
+
+
 def _build_evaluator_item_key(
     prefix: str, item: dict[str, Any], is_merchant_keyed: bool
 ) -> str | None:
@@ -892,12 +944,14 @@ def _write_evaluator_cache_parallel(
     return len(records)
 
 
+# pylint: disable-next=too-many-locals
 def run_evaluator_viz_cache(
     spark: SparkSession,
     parquet_dir: str,
     cache_bucket: str,
     execution_id: str,
-) -> None:  # pylint: disable=too-many-locals
+    batch_bucket: str | None = None,
+) -> None:
     """Run evaluator viz-cache helpers and write results to S3.
 
     Trace rows are loaded from parquet once and reused across all helpers.
@@ -931,6 +985,7 @@ def run_evaluator_viz_cache(
     s3_client = boto3.client("s3")
     timestamp = datetime.now(timezone.utc).isoformat()
     trace_rows = _load_evaluator_trace_rows(spark, parquet_dir)
+    unified_rows = _load_unified_rows(spark, batch_bucket, execution_id)
 
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
@@ -946,7 +1001,14 @@ def run_evaluator_viz_cache(
     for prefix, helper_fn, is_merchant_keyed in helpers:
         try:
             logger.info("Running evaluator viz-cache helper: %s", prefix)
-            results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
+            if prefix == "evidence":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    unified_rows=unified_rows,
+                )
+            else:
+                results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
             if not isinstance(results, list):
                 raise TypeError(
                     f"Helper '{prefix}' returned "
@@ -1042,6 +1104,7 @@ def main() -> int:
                 parquet_dir=args.parquet_input,
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
+                batch_bucket=args.batch_bucket,
             )
             logger.info("Evaluator viz-cache phase complete")
 
@@ -1053,6 +1116,7 @@ def main() -> int:
                 parquet_dir=args.parquet_input,
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
+                batch_bucket=args.batch_bucket,
             )
             logger.info("Evaluator viz-cache phase complete")
 
