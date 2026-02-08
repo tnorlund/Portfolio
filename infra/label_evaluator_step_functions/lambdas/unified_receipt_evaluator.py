@@ -43,10 +43,8 @@ try:
         child_trace,
         create_historical_span,
         create_receipt_trace,
-        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
-        start_child_trace,
     )
 
     from utils.s3_helpers import (
@@ -73,10 +71,8 @@ except ImportError:
         child_trace,
         create_historical_span,
         create_receipt_trace,
-        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
-        start_child_trace,
     )
 
     sys.path.insert(
@@ -488,23 +484,6 @@ async def unified_receipt_evaluator(
             f"line_item_patterns/{execution_id}/{merchant_hash}.json"
         )
 
-        # Create child traces for parallel operations
-        load_patterns_trace_ctx = start_child_trace(
-            "load_patterns",
-            trace_ctx,
-            metadata={"patterns_s3_key": patterns_s3_key},
-        )
-        build_visual_lines_trace_ctx = start_child_trace(
-            "build_visual_lines",
-            trace_ctx,
-            metadata={"word_count": len(words), "label_count": len(labels)},
-        )
-        setup_llm_trace_ctx = start_child_trace(
-            "setup_llm",
-            trace_ctx,
-            metadata={"temperature": 0.0, "timeout": 120},
-        )
-
         # Define async functions for parallel execution
         async def load_patterns_async() -> tuple[dict | None, dict | None]:
             """Load geometric and line item patterns from S3."""
@@ -553,55 +532,32 @@ async def unified_receipt_evaluator(
         visual_lines: list = []
         llm_invoker = None
 
-        try:
-            # Run all three setup operations concurrently
-            (
-                (patterns_data, line_item_patterns_data),
-                visual_lines,
-                llm_invoker,
-            ) = await asyncio.gather(
-                load_patterns_async(),
-                build_visual_lines_async(),
-                setup_llm_async(),
-            )
+        # Run all three setup operations concurrently
+        (
+            (patterns_data, line_item_patterns_data),
+            visual_lines,
+            llm_invoker,
+        ) = await asyncio.gather(
+            load_patterns_async(),
+            build_visual_lines_async(),
+            setup_llm_async(),
+        )
 
-            # Deserialize patterns after loading
-            if patterns_data:
-                patterns = deserialize_patterns(patterns_data)
-            if line_item_patterns_data:
-                if "patterns" in line_item_patterns_data:
-                    line_item_patterns = line_item_patterns_data["patterns"]
-                else:
-                    line_item_patterns = line_item_patterns_data
+        # Deserialize patterns after loading
+        if patterns_data:
+            patterns = deserialize_patterns(patterns_data)
+        if line_item_patterns_data:
+            if "patterns" in line_item_patterns_data:
+                line_item_patterns = line_item_patterns_data["patterns"]
+            else:
+                line_item_patterns = line_item_patterns_data
 
-            logger.info(
-                "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
-                len(visual_lines),
-                patterns is not None,
-                line_item_patterns is not None,
-            )
-        finally:
-            # End child traces
-            end_child_trace(
-                load_patterns_trace_ctx,
-                outputs={
-                    "has_patterns": patterns_data is not None,
-                    "has_line_item_patterns": line_item_patterns_data
-                    is not None,
-                },
-            )
-            end_child_trace(
-                build_visual_lines_trace_ctx,
-                outputs={
-                    "visual_line_count": len(visual_lines),
-                },
-            )
-            end_child_trace(
-                setup_llm_trace_ctx,
-                outputs={
-                    "invoker_ready": llm_invoker is not None,
-                },
-            )
+        logger.info(
+            "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
+            len(visual_lines),
+            patterns is not None,
+            line_item_patterns is not None,
+        )
 
         # Create historical spans for pattern computation (from batch Phase 1)
         # These show up in the trace as if they happened during this receipt's evaluation
@@ -746,33 +702,7 @@ async def unified_receipt_evaluator(
             EvaluatorState,
         )
 
-        # Create child traces for parallel evaluations (visible as siblings in LangSmith)
-        currency_trace_ctx = start_child_trace(
-            "currency_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={
-                "merchant_name": merchant_name,
-                "num_visual_lines": len(visual_lines),
-            },
-        )
-        metadata_trace_ctx = start_child_trace(
-            "metadata_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={
-                "merchant_name": merchant_name,
-                "has_place": place is not None,
-            },
-        )
-        geometric_trace_ctx = start_child_trace(
-            "geometric_evaluation",
-            trace_ctx,
-            metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={"num_words": len(words), "num_labels": len(labels)},
-        )
-
-        # Initialize results before try block for clean finally handling
+        # Initialize results
         currency_result: list[dict] = []
         metadata_result: list[dict] = []
         geometric_result: dict = {"issues_found": 0}
@@ -780,70 +710,63 @@ async def unified_receipt_evaluator(
         metadata_duration = 0.0
         geometric_duration = 0.0
 
-        try:
+        async def timed_eval(coro):
+            start = time.time()
+            result = await coro
+            return result, time.time() - start
 
-            async def timed_eval(coro):
-                start = time.time()
-                result = await coro
-                return result, time.time() - start
-
-            # Run currency and metadata concurrently (both use LLM)
-            currency_task = timed_eval(
-                evaluate_currency_labels_async(
-                    visual_lines=visual_lines,
-                    patterns=line_item_patterns,
-                    llm=llm_invoker,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    merchant_name=merchant_name,
-                    trace_ctx=currency_trace_ctx,
-                )
-            )
-
-            metadata_task = timed_eval(
-                evaluate_metadata_labels_async(
-                    visual_lines=visual_lines,
-                    place=place,
-                    llm=llm_invoker,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    merchant_name=merchant_name,
-                    trace_ctx=metadata_trace_ctx,
-                )
-            )
-
-            # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
-            # Create EvaluatorState for geometric evaluation
-            geometric_state = EvaluatorState(
+        # Run currency and metadata concurrently (both use LLM)
+        # @traceable decorators on subagents auto-nest under receipt root
+        currency_task = timed_eval(
+            evaluate_currency_labels_async(
+                visual_lines=visual_lines,
+                patterns=line_item_patterns,
+                llm=llm_invoker,
                 image_id=image_id,
                 receipt_id=receipt_id,
-                words=words,
-                labels=labels,
+                merchant_name=merchant_name,
+            )
+        )
+
+        metadata_task = timed_eval(
+            evaluate_metadata_labels_async(
+                visual_lines=visual_lines,
                 place=place,
-                other_receipt_data=[],
-                merchant_patterns=patterns,
-                skip_llm_review=True,
+                llm=llm_invoker,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                merchant_name=merchant_name,
             )
+        )
 
-            # Run geometric evaluation concurrently with LLM calls using to_thread
-            geometric_graph = create_compute_only_graph()
-            geometric_config = (
-                geometric_trace_ctx.get_langchain_config()
-                if geometric_trace_ctx
-                else None
+        # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
+        geometric_state = EvaluatorState(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            words=words,
+            labels=labels,
+            place=place,
+            other_receipt_data=[],
+            merchant_patterns=patterns,
+            skip_llm_review=True,
+        )
+
+        geometric_graph = create_compute_only_graph()
+
+        async def run_geometric() -> tuple[dict, float]:
+            start = time.time()
+            result = await asyncio.to_thread(
+                run_compute_only_sync,
+                geometric_graph,
+                geometric_state,
+                None,
             )
+            return result, time.time() - start
 
-            async def run_geometric() -> tuple[dict, float]:
-                start = time.time()
-                result = await asyncio.to_thread(
-                    run_compute_only_sync,
-                    geometric_graph,
-                    geometric_state,
-                    geometric_config,
-                )
-                return result, time.time() - start
-
-            # Wait for all evaluations concurrently
+        # Wait for all evaluations concurrently
+        # tracing_context propagates through asyncio.gather so @traceable
+        # subagents auto-nest as children of the ReceiptEvaluation root trace
+        with tracing_context(parent=receipt_trace.run_tree):
             (
                 (currency_result, currency_duration),
                 (
@@ -858,32 +781,12 @@ async def unified_receipt_evaluator(
                 currency_task, metadata_task, run_geometric()
             )
 
-            logger.info(
-                "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
-                len(currency_result),
-                len(metadata_result),
-                geometric_result.get("issues_found", 0),
-            )
-        finally:
-            # End child traces with outputs
-            end_child_trace(
-                currency_trace_ctx,
-                outputs={
-                    "decisions_count": len(currency_result),
-                },
-            )
-            end_child_trace(
-                metadata_trace_ctx,
-                outputs={
-                    "decisions_count": len(metadata_result),
-                },
-            )
-            end_child_trace(
-                geometric_trace_ctx,
-                outputs={
-                    "issues_found": geometric_result.get("issues_found", 0),
-                },
-            )
+        logger.info(
+            "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
+            len(currency_result),
+            len(metadata_result),
+            geometric_result.get("issues_found", 0),
+        )
 
         # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
         applied_stats_phase1 = None
@@ -972,7 +875,7 @@ async def unified_receipt_evaluator(
         if dynamo_table:
             with child_trace(
                 "phase2_financial_validation", trace_ctx
-            ) as financial_ctx:
+            ):
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
@@ -1015,7 +918,6 @@ async def unified_receipt_evaluator(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
-                    trace_ctx=financial_ctx,
                 )
                 financial_duration = time.time() - financial_start
 
@@ -1043,7 +945,7 @@ async def unified_receipt_evaluator(
         geometric_issues_found = geometric_result.get("issues_found", 0)
 
         if geometric_issues_found > 0:
-            with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
+            with child_trace("phase3_llm_review", trace_ctx):
                 review_start = time.time()
                 # Setup ChromaDB client (Cloud preferred, S3 snapshot fallback)
                 chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
@@ -1299,11 +1201,11 @@ async def unified_receipt_evaluator(
                                 line_item_patterns=line_item_patterns,
                             )
 
-                            # Make async LLM call (tracing_context links it to the trace)
-                            with tracing_context(parent=review_ctx.run_tree):
-                                response = await llm_invoker.ainvoke(
-                                    [HumanMessage(content=prompt)],
-                                )
+                            # Make async LLM call (child_trace sets tracing_context
+                            # so LLM calls auto-nest under phase3_llm_review span)
+                            response = await llm_invoker.ainvoke(
+                                [HumanMessage(content=prompt)],
+                            )
 
                             # Parse response
                             response_text = (

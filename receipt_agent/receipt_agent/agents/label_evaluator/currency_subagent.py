@@ -36,47 +36,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langsmith.run_trees import RunTree
+from langsmith import traceable
 from pydantic import ValidationError
-
-
-@dataclass
-class TraceContext:
-    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
-
-    run_tree: RunTree | None = None
-    headers: dict | None = None
-    trace_id: str | None = None
-    root_run_id: str | None = None
-
-    def get_langchain_config(self) -> dict | None:
-        """Get a LangChain-compatible config for passing to LLM invoke calls.
-
-        Returns config that links LLM calls to this trace context in LangSmith.
-        """
-        if self.run_tree is None:
-            return None
-        try:
-            headers = (
-                self.run_tree.to_headers()
-                if hasattr(self.run_tree, "to_headers")
-                else self.headers
-            )
-            if not headers:
-                return None
-            return {
-                "callbacks": [],
-                "metadata": {
-                    "langsmith_trace_id": self.trace_id,
-                    "langsmith_parent_run_id": (
-                        self.run_tree.id if self.run_tree else None
-                    ),
-                },
-                "configurable": {"langsmith_headers": headers},
-            }
-        except Exception:
-            return None
-
 
 from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.prompts.structured_outputs import (
@@ -712,6 +673,7 @@ def evaluate_currency_labels(
 # =============================================================================
 
 
+@traceable(name="currency_evaluation", run_type="chain")
 async def evaluate_currency_labels_async(
     visual_lines: list[VisualLine],
     patterns: dict | None,
@@ -719,13 +681,15 @@ async def evaluate_currency_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: TraceContext | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_currency_labels.
 
     Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
     or any LLM that supports ainvoke().
+
+    Decorated with @traceable so LLM calls auto-nest under this span in
+    LangSmith when called inside a tracing_context(parent=root).
 
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
@@ -734,13 +698,10 @@ async def evaluate_currency_labels_async(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
-        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
 
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Get LangChain config for trace linking (passed to LLM calls)
-    llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
 
     # Step 1: Identify line item rows
     line_item_rows = identify_line_item_rows(visual_lines, patterns)
@@ -787,8 +748,7 @@ async def evaluate_currency_labels_async(
                     if hasattr(structured_llm, "ainvoke"):
                         response: CurrencyEvaluationResponse = (
                             await structured_llm.ainvoke(
-                                prompt, config=llm_config
-                            )
+                                prompt                            )
                         )
                     else:
                         # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
@@ -796,7 +756,6 @@ async def evaluate_currency_labels_async(
                             await asyncio.to_thread(
                                 structured_llm.invoke,
                                 prompt,
-                                config=llm_config,
                             )
                         )
                     decisions = response.to_ordered_list(num_words)
@@ -812,12 +771,11 @@ async def evaluate_currency_labels_async(
                         struct_err,
                     )
                     if hasattr(llm, "ainvoke"):
-                        response = await llm.ainvoke(prompt, config=llm_config)
+                        response = await llm.ainvoke(prompt)
                     else:
                         # Run sync invoke in thread pool to avoid blocking event loop
                         response = await asyncio.to_thread(
-                            llm.invoke, prompt, config=llm_config
-                        )
+                            llm.invoke, prompt                        )
                     response_text = (
                         response.content
                         if hasattr(response, "content")
@@ -829,12 +787,11 @@ async def evaluate_currency_labels_async(
             else:
                 # Use ainvoke if available, otherwise fall back to invoke
                 if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt, config=llm_config)
+                    response = await llm.ainvoke(prompt)
                 else:
                     # Run sync invoke in thread pool to avoid blocking event loop
                     response = await asyncio.to_thread(
-                        llm.invoke, prompt, config=llm_config
-                    )
+                        llm.invoke, prompt                    )
                 response_text = (
                     response.content
                     if hasattr(response, "content")

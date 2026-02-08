@@ -41,46 +41,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langsmith.run_trees import RunTree
+from langsmith import traceable
 from pydantic import ValidationError
-
-
-@dataclass
-class TraceContext:
-    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
-
-    run_tree: RunTree | None = None
-    headers: dict | None = None
-    trace_id: str | None = None
-    root_run_id: str | None = None
-
-    def get_langchain_config(self) -> dict | None:
-        """Get a LangChain-compatible config for passing to LLM invoke calls.
-
-        Returns config that links LLM calls to this trace context in LangSmith.
-        """
-        if self.run_tree is None:
-            return None
-        try:
-            headers = (
-                self.run_tree.to_headers()
-                if hasattr(self.run_tree, "to_headers")
-                else self.headers
-            )
-            if not headers:
-                return None
-            return {
-                "callbacks": [],
-                "metadata": {
-                    "langsmith_trace_id": self.trace_id,
-                    "langsmith_parent_run_id": (
-                        self.run_tree.id if self.run_tree else None
-                    ),
-                },
-                "configurable": {"langsmith_headers": headers},
-            }
-        except Exception:
-            return None
 
 
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
@@ -981,13 +943,13 @@ def evaluate_financial_math(
 # =============================================================================
 
 
+@traceable(name="financial_validation", run_type="chain")
 async def evaluate_financial_math_async(
     visual_lines: list[VisualLine],
     llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: TraceContext | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_financial_math.
@@ -995,19 +957,19 @@ async def evaluate_financial_math_async(
     Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
     or any LLM that supports ainvoke().
 
+    Decorated with @traceable so LLM calls auto-nest under this span in
+    LangSmith when called inside a tracing_context(parent=root).
+
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
         llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
-        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
 
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Get LangChain config for trace linking (passed to LLM calls)
-    llm_config = trace_ctx.get_langchain_config() if trace_ctx else None
 
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
@@ -1045,8 +1007,7 @@ async def evaluate_financial_math_async(
                         if hasattr(structured_llm, "ainvoke"):
                             response: FinancialEvaluationResponse = (
                                 await structured_llm.ainvoke(
-                                    prompt, config=llm_config
-                                )
+                                    prompt                                )
                             )
                         else:
                             # Run sync invoke in thread pool to avoid blocking event loop
@@ -1054,7 +1015,6 @@ async def evaluate_financial_math_async(
                                 await asyncio.to_thread(
                                     structured_llm.invoke,
                                     prompt,
-                                    config=llm_config,
                                 )
                             )
                         decisions = _structured_to_per_value(
@@ -1075,12 +1035,11 @@ async def evaluate_financial_math_async(
 
                 # Text parsing fallback
                 if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt, config=llm_config)
+                    response = await llm.ainvoke(prompt)
                 else:
                     # Run sync invoke in thread pool to avoid blocking event loop
                     response = await asyncio.to_thread(
-                        llm.invoke, prompt, config=llm_config
-                    )
+                        llm.invoke, prompt                    )
                 response_text = (
                     response.content
                     if hasattr(response, "content")
