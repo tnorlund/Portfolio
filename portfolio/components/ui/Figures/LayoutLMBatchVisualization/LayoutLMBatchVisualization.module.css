@@ -180,6 +180,9 @@
 /* Mobile legend - hidden by default, shown on mobile */
 .legendMobile {
   display: none;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
 }
 
 .legendItem {
@@ -321,15 +324,10 @@
 
   .entityLegend {
     width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: center;
     gap: 0.75rem;
     padding: 0;
-    justify-content: center;
-  }
-
-  .legendItem {
-    flex: 0 0 auto;
   }
 
   /* Show mobile legend, hide desktop legend */
@@ -338,7 +336,7 @@
   }
 
   .legendMobile {
-    display: contents;
+    display: grid;
   }
 
   .inferenceTime {
