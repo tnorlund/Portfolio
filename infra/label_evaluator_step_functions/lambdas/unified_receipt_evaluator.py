@@ -792,82 +792,158 @@ async def unified_receipt_evaluator(
         applied_stats_phase1 = None
 
         if dynamo_table:
-            with child_trace("apply_phase1_corrections", trace_ctx):
+            # Index both result sets by (line_id, word_id) to detect overlaps
+            currency_by_word: dict[tuple, dict] = {}
+            for d in currency_result:
+                issue = d.get("issue", {})
+                key = (issue.get("line_id"), issue.get("word_id"))
+                currency_by_word[key] = d
+
+            metadata_by_word: dict[tuple, dict] = {}
+            for d in metadata_result:
+                issue = d.get("issue", {})
+                key = (issue.get("line_id"), issue.get("word_id"))
+                metadata_by_word[key] = d
+
+            overlapping_keys = set(currency_by_word) & set(metadata_by_word)
+            conflicting_keys = [
+                k for k in overlapping_keys
+                if currency_by_word[k].get("llm_review", {}).get("decision")
+                != metadata_by_word[k].get("llm_review", {}).get("decision")
+            ]
+
+            invalid_currency = [
+                d
+                for d in currency_result
+                if d.get("llm_review", {}).get("decision") == "INVALID"
+            ]
+            invalid_metadata = [
+                d
+                for d in metadata_result
+                if d.get("llm_review", {}).get("decision") == "INVALID"
+            ]
+
+            with child_trace(
+                "apply_phase1_corrections",
+                trace_ctx,
+                inputs={
+                    "currency_invalid_count": len(invalid_currency),
+                    "metadata_invalid_count": len(invalid_metadata),
+                    "overlapping_words": len(overlapping_keys),
+                    "conflicting_words": len(conflicting_keys),
+                },
+            ) as correction_ctx:
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
                 )
                 from receipt_dynamo import DynamoClient
 
-                if dynamo_table:
-                    dynamo_client = DynamoClient(table_name=dynamo_table)
+                dynamo_client = DynamoClient(table_name=dynamo_table)
 
-                    # Collect all INVALID decisions from both evaluators
-                    invalid_currency = [
-                        d
-                        for d in currency_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
-                    ]
-                    invalid_metadata = [
-                        d
-                        for d in metadata_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
-                    ]
+                # Deduplicate by (line_id, word_id) — if both evaluators
+                # flag the same word, prefer higher confidence or the
+                # currency evaluator (more accurate for financial labels)
+                CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+                FINANCIAL_LABELS = {
+                    "GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL",
+                    "UNIT_PRICE", "QUANTITY", "DISCOUNT",
+                }
 
-                    # Deduplicate by (line_id, word_id) — if both evaluators
-                    # flag the same word, prefer higher confidence or the
-                    # currency evaluator (more accurate for financial labels)
-                    CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
-                    FINANCIAL_LABELS = {
-                        "GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL",
-                        "UNIT_PRICE", "QUANTITY", "DISCOUNT",
-                    }
+                merged: dict[tuple, dict] = {}
+                resolutions: list[dict] = []
 
-                    merged: dict[tuple, dict] = {}
-                    for d in invalid_currency:
-                        issue = d.get("issue", {})
-                        key = (issue.get("line_id"), issue.get("word_id"))
+                for d in invalid_currency:
+                    issue = d.get("issue", {})
+                    key = (issue.get("line_id"), issue.get("word_id"))
+                    merged[key] = d
+
+                for d in invalid_metadata:
+                    issue = d.get("issue", {})
+                    key = (issue.get("line_id"), issue.get("word_id"))
+                    if key not in merged:
                         merged[key] = d
-
-                    for d in invalid_metadata:
-                        issue = d.get("issue", {})
-                        key = (issue.get("line_id"), issue.get("word_id"))
-                        if key not in merged:
+                    else:
+                        # Resolve conflict: prefer higher confidence
+                        existing = merged[key]
+                        existing_conf = CONFIDENCE_RANK.get(
+                            existing.get("llm_review", {}).get("confidence", "low"), 1
+                        )
+                        new_conf = CONFIDENCE_RANK.get(
+                            d.get("llm_review", {}).get("confidence", "low"), 1
+                        )
+                        if new_conf > existing_conf:
                             merged[key] = d
-                        else:
-                            # Resolve conflict: prefer higher confidence
-                            existing = merged[key]
-                            existing_conf = CONFIDENCE_RANK.get(
-                                existing.get("llm_review", {}).get("confidence", "low"), 1
-                            )
-                            new_conf = CONFIDENCE_RANK.get(
-                                d.get("llm_review", {}).get("confidence", "low"), 1
-                            )
-                            if new_conf > existing_conf:
+                            resolutions.append({
+                                "line_id": key[0],
+                                "word_id": key[1],
+                                "word_text": issue.get("word_text", ""),
+                                "current_label": issue.get("current_label", ""),
+                                "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                "winner": "metadata",
+                                "resolution_reason": "higher_confidence",
+                                "applied_label": d.get("llm_review", {}).get("suggested_label"),
+                            })
+                        elif new_conf == existing_conf:
+                            # Equal confidence: prefer financial label suggestion
+                            existing_label = existing.get("llm_review", {}).get("suggested_label")
+                            new_label = d.get("llm_review", {}).get("suggested_label")
+                            if new_label in FINANCIAL_LABELS and existing_label not in FINANCIAL_LABELS:
                                 merged[key] = d
-                            elif new_conf == existing_conf:
-                                # Equal confidence: prefer financial label suggestion
-                                existing_label = existing.get("llm_review", {}).get("suggested_label")
-                                new_label = d.get("llm_review", {}).get("suggested_label")
-                                if new_label in FINANCIAL_LABELS and existing_label not in FINANCIAL_LABELS:
-                                    merged[key] = d
+                                resolutions.append({
+                                    "line_id": key[0],
+                                    "word_id": key[1],
+                                    "word_text": issue.get("word_text", ""),
+                                    "current_label": issue.get("current_label", ""),
+                                    "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                    "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                    "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                    "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                    "winner": "metadata",
+                                    "resolution_reason": "financial_label_priority",
+                                    "applied_label": new_label,
+                                })
+                            else:
+                                resolutions.append({
+                                    "line_id": key[0],
+                                    "word_id": key[1],
+                                    "word_text": issue.get("word_text", ""),
+                                    "current_label": issue.get("current_label", ""),
+                                    "currency_decision": existing.get("llm_review", {}).get("decision"),
+                                    "currency_confidence": existing.get("llm_review", {}).get("confidence"),
+                                    "metadata_decision": d.get("llm_review", {}).get("decision"),
+                                    "metadata_confidence": d.get("llm_review", {}).get("confidence"),
+                                    "winner": "currency",
+                                    "resolution_reason": "currency_priority_default",
+                                    "applied_label": existing_label,
+                                })
 
-                    merged_invalid = list(merged.values())
-                    dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(merged_invalid)
-                    if dedup_removed > 0:
-                        logger.info(
-                            "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
-                            dedup_removed,
-                            len(invalid_currency),
-                            len(invalid_metadata),
-                            len(merged_invalid),
-                        )
+                merged_invalid = list(merged.values())
+                dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(merged_invalid)
+                if dedup_removed > 0:
+                    logger.info(
+                        "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
+                        dedup_removed,
+                        len(invalid_currency),
+                        len(invalid_metadata),
+                        len(merged_invalid),
+                    )
 
-                    if merged_invalid:
-                        applied_stats_phase1 = apply_llm_decisions(
-                            reviewed_issues=merged_invalid,
-                            dynamo_client=dynamo_client,
-                            execution_id=f"phase1-{execution_id}",
-                        )
+                if merged_invalid:
+                    applied_stats_phase1 = apply_llm_decisions(
+                        reviewed_issues=merged_invalid,
+                        dynamo_client=dynamo_client,
+                        execution_id=f"phase1-{execution_id}",
+                    )
+
+                correction_ctx.set_outputs({
+                    "resolutions": resolutions,
+                    "total_corrections_applied": len(merged_invalid),
+                    "dedup_removed": dedup_removed,
+                    "resolution_strategy": "confidence_priority",
+                })
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
         financial_result = None
@@ -945,7 +1021,7 @@ async def unified_receipt_evaluator(
         geometric_issues_found = geometric_result.get("issues_found", 0)
 
         if geometric_issues_found > 0:
-            with child_trace("phase3_llm_review", trace_ctx):
+            with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
                 review_start = time.time()
                 # Setup ChromaDB client (Cloud preferred, S3 snapshot fallback)
                 chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
@@ -1219,21 +1295,76 @@ async def unified_receipt_evaluator(
                                 raise_on_parse_error=False,
                             )
 
-                            # Format results
+                            # Format results with per-issue evidence
                             llm_review_result = []
+                            total_evidence_count = 0
+                            words_with_evidence = 0
+                            similarity_scores: list[float] = []
+                            consensus_scores: list[float] = []
+
                             for meta, review_result in zip(
                                 issues_with_context,
                                 chunk_reviews,
                                 strict=True,
                             ):
+                                # Build per-issue evidence summary
+                                label_evidence = meta.get("label_evidence", [])
+                                issue_evidence = [
+                                    {
+                                        "word_text": getattr(e, "word_text", ""),
+                                        "similarity_score": getattr(e, "similarity_score", 0.0),
+                                        "label_valid": getattr(e, "label_valid", False),
+                                        "evidence_source": getattr(e, "evidence_source", "words"),
+                                        "is_same_merchant": getattr(e, "is_same_merchant", False),
+                                    }
+                                    for e in label_evidence[:10]
+                                ]
+                                total_evidence_count += len(label_evidence)
+                                if label_evidence:
+                                    words_with_evidence += 1
+                                    similarity_scores.extend(
+                                        getattr(e, "similarity_score", 0.0)
+                                        for e in label_evidence
+                                    )
+                                consensus_scores.append(meta.get("consensus", 0.0))
+
                                 llm_review_result.append(
                                     {
                                         "image_id": image_id,
                                         "receipt_id": receipt_id,
                                         "issue": meta["issue"],
                                         "llm_review": review_result,
+                                        "similar_word_count": len(label_evidence),
+                                        "evidence": issue_evidence,
+                                        "consensus_score": meta.get("consensus", 0.0),
                                     }
                                 )
+
+                            # Record evidence summary in trace span
+                            avg_sim = (
+                                sum(similarity_scores) / len(similarity_scores)
+                                if similarity_scores else 0.0
+                            )
+                            avg_cons = (
+                                sum(consensus_scores) / len(consensus_scores)
+                                if consensus_scores else 0.0
+                            )
+                            decision_summary: dict[str, int] = {}
+                            for r in llm_review_result:
+                                dec = r.get("llm_review", {}).get("decision", "UNKNOWN")
+                                decision_summary[dec] = decision_summary.get(dec, 0) + 1
+
+                            review_ctx.set_outputs({
+                                "issues_reviewed": len(llm_review_result),
+                                "decisions": decision_summary,
+                                "evidence_summary": {
+                                    "total_evidence_items": total_evidence_count,
+                                    "words_with_evidence": words_with_evidence,
+                                    "words_without_evidence": len(llm_review_result) - words_with_evidence,
+                                    "avg_similarity": round(avg_sim, 4),
+                                    "avg_consensus": round(avg_cons, 4),
+                                },
+                            })
 
                             # Apply LLM review decisions
                             if dynamo_table:

@@ -419,7 +419,7 @@ def _get_word_query_embedding(
         return None
 
     embeddings = result.get("embeddings")
-    if not embeddings:
+    if embeddings is None or len(embeddings) == 0:
         logger.warning("No embedding found for %s", word_chroma_id)
         return None
 
@@ -427,7 +427,7 @@ def _get_word_query_embedding(
     if hasattr(embedding, "tolist"):
         embedding = embedding.tolist()
 
-    if not isinstance(embedding, list) or not embedding:
+    if not isinstance(embedding, list) or len(embedding) == 0:
         logger.warning("Invalid embedding format for %s", word_chroma_id)
         return None
 
@@ -453,11 +453,11 @@ def _get_line_query_embedding(
             include=["embeddings"],
         )
         direct_embeddings = direct_result.get("embeddings")
-        if direct_embeddings:
+        if direct_embeddings is not None and len(direct_embeddings) > 0:
             embedding = direct_embeddings[0]
             if hasattr(embedding, "tolist"):
                 embedding = embedding.tolist()
-            if isinstance(embedding, list) and embedding:
+            if isinstance(embedding, list) and len(embedding) > 0:
                 return embedding, line_chroma_id
     except Exception as exc:
         logger.debug(
@@ -503,7 +503,7 @@ def _get_line_query_embedding(
         embedding = fallback_embeddings[idx]
         if hasattr(embedding, "tolist"):
             embedding = embedding.tolist()
-        if not isinstance(embedding, list) or not embedding:
+        if not isinstance(embedding, list) or len(embedding) == 0:
             continue
 
         if idx < len(fallback_ids):
