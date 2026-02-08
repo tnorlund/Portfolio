@@ -1,0 +1,250 @@
+"""Viz-cache helper for Pattern Discovery and Geometric Anomaly data.
+
+Reads LangSmith trace parquet exports and extracts:
+  - Per-merchant patterns from ``llm_pattern_discovery`` spans (via
+    ``UnifiedPatternBuilder`` root traces).
+  - Geometric anomaly summaries from ``flag_geometric_anomalies`` spans
+    (inside ``ReceiptEvaluation`` root traces), aggregated by merchant.
+
+The public entry point is :func:`build_patterns_cache` which returns a
+list of per-merchant pattern dicts ready for JSON serialization.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+from collections import Counter, defaultdict
+from typing import Any
+
+from receipt_langsmith.spark.utils import parse_json_object
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_all_parquet(parquet_dir: str) -> "list[dict[str, Any]]":
+    """Read all parquet files under *parquet_dir* into a list of row dicts.
+
+    Uses ``pyarrow`` directly (no Spark dependency) so the helper can run
+    in lightweight test / CLI environments.
+    """
+    import pyarrow.parquet as pq  # local import to keep module importable
+
+    rows: list[dict[str, Any]] = []
+    for root, _dirs, files in os.walk(parquet_dir):
+        for fname in sorted(files):
+            if not fname.endswith(".parquet"):
+                continue
+            path = os.path.join(root, fname)
+            table = pq.ParquetFile(path).read()
+            rows.extend(table.to_pandas().to_dict(orient="records"))
+    return rows
+
+
+def _extract_merchant_from_extra(extra_raw: Any) -> str:
+    """Return ``merchant_name`` from the ``extra.metadata`` JSON blob."""
+    extra = parse_json_object(extra_raw)
+    metadata = extra.get("metadata", {})
+    return metadata.get("merchant_name", "Unknown")
+
+
+def _parse_pattern_from_raw_response(raw_response: str) -> dict[str, Any] | None:
+    """Parse the JSON object embedded in an LLM raw_response string."""
+    start = raw_response.find("{")
+    end = raw_response.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        return json.loads(raw_response[start : end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Core builders
+# ---------------------------------------------------------------------------
+
+
+def _build_merchant_patterns(
+    rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Extract per-merchant patterns from ``llm_pattern_discovery`` spans.
+
+    Returns a dict mapping merchant_name -> pattern dict.
+    """
+    # Map trace_id -> merchant_name via root UnifiedPatternBuilder spans
+    trace_merchant: dict[str, str] = {}
+    for row in rows:
+        if row.get("is_root") and row.get("name") == "UnifiedPatternBuilder":
+            merchant = _extract_merchant_from_extra(row.get("extra"))
+            trace_merchant[row["trace_id"]] = merchant
+
+    # Parse patterns from llm_pattern_discovery outputs
+    patterns: dict[str, dict[str, Any]] = {}
+    trace_ids_per_merchant: dict[str, list[str]] = defaultdict(list)
+
+    for row in rows:
+        if row.get("name") != "llm_pattern_discovery":
+            continue
+        outputs = parse_json_object(row.get("outputs"))
+        raw = outputs.get("raw_response", "")
+        if not raw:
+            continue
+        parsed = _parse_pattern_from_raw_response(raw)
+        if parsed is None:
+            continue
+
+        # Determine merchant from parsed output or trace root
+        merchant = parsed.get("merchant", "Unknown")
+        trace_id = row.get("trace_id", "")
+        if merchant == "Unknown" and trace_id in trace_merchant:
+            merchant = trace_merchant[trace_id]
+
+        trace_ids_per_merchant[merchant].append(trace_id)
+        patterns[merchant] = parsed
+
+    # Attach trace_ids
+    result: dict[str, dict[str, Any]] = {}
+    for merchant, pattern in patterns.items():
+        result[merchant] = {
+            "trace_ids": trace_ids_per_merchant.get(merchant, []),
+            "pattern": {
+                "receipt_type": pattern.get("receipt_type"),
+                "receipt_type_reason": pattern.get("receipt_type_reason"),
+                "item_structure": pattern.get("item_structure"),
+                "lines_per_item": pattern.get("lines_per_item"),
+                "label_positions": pattern.get("label_positions"),
+                "barcode_pattern": pattern.get("barcode_pattern"),
+                "special_markers": pattern.get("special_markers"),
+                "grouping_rule": pattern.get("grouping_rule"),
+            },
+        }
+
+    return result
+
+
+def _build_geometric_summary(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], int]:
+    """Aggregate geometric anomaly issues per merchant.
+
+    Returns ``(merchant_summaries, total_issue_count)``.
+    """
+    # Map trace_id -> merchant_name via root ReceiptEvaluation spans
+    trace_merchant: dict[str, str] = {}
+    for row in rows:
+        if row.get("is_root") and row.get("name") == "ReceiptEvaluation":
+            merchant = _extract_merchant_from_extra(row.get("extra"))
+            trace_merchant[row["trace_id"]] = merchant
+
+    summaries: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "total_issues": 0,
+            "issue_types": Counter(),
+            "top_suggested_labels": Counter(),
+        }
+    )
+    total_issues = 0
+
+    for row in rows:
+        if row.get("name") != "flag_geometric_anomalies":
+            continue
+        outputs = parse_json_object(row.get("outputs"))
+        issues = outputs.get("issues_found", [])
+        if not issues:
+            continue
+
+        trace_id = row.get("trace_id", "")
+        merchant = trace_merchant.get(trace_id, "Unknown")
+        summary = summaries[merchant]
+
+        for issue in issues:
+            total_issues += 1
+            summary["total_issues"] += 1
+            issue_type = issue.get("issue_type", "unknown")
+            summary["issue_types"][issue_type] += 1
+            suggested = issue.get("suggested_label")
+            if suggested:
+                summary["top_suggested_labels"][suggested] += 1
+
+    # Convert Counters to plain dicts for JSON serialization
+    result: dict[str, dict[str, Any]] = {}
+    for merchant, summary in summaries.items():
+        result[merchant] = {
+            "total_issues": summary["total_issues"],
+            "issue_types": dict(summary["issue_types"]),
+            "top_suggested_labels": dict(summary["top_suggested_labels"]),
+        }
+
+    return result, total_issues
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def build_patterns_cache(parquet_dir: str) -> list[dict[str, Any]]:
+    """Build per-merchant pattern discovery cache from parquet trace exports.
+
+    Parameters
+    ----------
+    parquet_dir:
+        Path to the root directory containing LangSmith parquet exports
+        (traversed recursively).
+
+    Returns
+    -------
+    list[dict]
+        One dict per merchant containing ``merchant_name``, ``trace_ids``,
+        ``pattern``, and ``geometric_summary`` fields.
+    """
+    logger.info("Reading parquet traces from %s", parquet_dir)
+    rows = _read_all_parquet(parquet_dir)
+    logger.info("Loaded %d trace rows", len(rows))
+
+    merchant_patterns = _build_merchant_patterns(rows)
+    logger.info("Extracted patterns for %d merchants", len(merchant_patterns))
+
+    geo_summaries, total_geo_issues = _build_geometric_summary(rows)
+    logger.info(
+        "Aggregated %d geometric issues across %d merchants",
+        total_geo_issues,
+        len(geo_summaries),
+    )
+
+    # Merge patterns + geometric summaries into per-merchant output
+    all_merchants = set(merchant_patterns.keys()) | set(geo_summaries.keys())
+    cache: list[dict[str, Any]] = []
+
+    for merchant in sorted(all_merchants):
+        entry: dict[str, Any] = {"merchant_name": merchant}
+
+        pat = merchant_patterns.get(merchant)
+        if pat:
+            entry["trace_ids"] = pat["trace_ids"]
+            entry["pattern"] = pat["pattern"]
+        else:
+            entry["trace_ids"] = []
+            entry["pattern"] = None
+
+        geo = geo_summaries.get(merchant)
+        if geo:
+            entry["geometric_summary"] = geo
+        else:
+            entry["geometric_summary"] = {
+                "total_issues": 0,
+                "issue_types": {},
+                "top_suggested_labels": {},
+            }
+
+        cache.append(entry)
+
+    logger.info("Built cache for %d merchants", len(cache))
+    return cache
