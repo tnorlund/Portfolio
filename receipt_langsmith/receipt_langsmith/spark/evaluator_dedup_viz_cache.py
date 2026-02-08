@@ -8,6 +8,7 @@ from collections import Counter
 from typing import Any
 
 from receipt_langsmith.spark.utils import parse_json_object
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +54,47 @@ def build_dedup_cache(parquet_dir: str) -> list[dict]:
 
 
 def _read_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
-    """Read all parquet files in *parquet_dir* via pyarrow."""
+    """Read parquet rows from local paths or S3 paths.
+
+    Supports:
+        - local directory trees containing parquet files
+        - local single parquet file
+        - s3:// / s3a:// parquet paths (via active Spark session)
+    """
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
+        # pylint: enable=import-outside-toplevel
+
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
+        logger.info("Read %d rows from S3 parquet path %s", len(rows), parquet_dir)
+        return rows
+
     import pyarrow.parquet as pq  # noqa: PLC0415
 
-    try:
-        table = pq.read_table(parquet_dir)
-    except Exception:
-        logger.exception("Failed to read parquet from %s", parquet_dir)
+    from pathlib import Path  # noqa: PLC0415
+
+    root = Path(parquet_dir)
+    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
+    if not files:
+        logger.warning("No parquet files found in %s", parquet_dir)
         return []
 
-    return table.to_pylist()
+    rows: list[dict[str, Any]] = []
+    for path in files:
+        try:
+            table = pq.ParquetFile(str(path)).read()
+            rows.extend(table.to_pylist())
+        except Exception:
+            logger.exception("Failed to read parquet file %s", path)
+    return rows
 
 
 # ---------------------------------------------------------------------------
