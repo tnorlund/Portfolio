@@ -50,7 +50,8 @@ if not os.environ.get("OPENROUTER_API_KEY"):
     print("Run: export OPENROUTER_API_KEY=your_api_key_here")
     sys.exit(1)
 
-# Disable auto-tracing — this is the production setting for label evaluator
+# Disable auto-tracing — production now uses LANGCHAIN_TRACING_V2=true,
+# but this test intentionally disables it to verify manual tracing behavior.
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["LANGCHAIN_PROJECT"] = "dev-llm-trace-test"
 
@@ -255,16 +256,16 @@ time.sleep(1)  # Give the flush a moment
 print("\n" + "=" * 70)
 print("ALL TESTS COMPLETE")
 print("=" * 70)
-print(f"\nCheck traces at: https://smith.langchain.com")
-print(f"Project: dev-llm-trace-test")
+print("\nCheck traces at: https://smith.langchain.com")
+print("Project: dev-llm-trace-test")
 print(f"Trace ID: {root.trace_id}")
-print(f"\nExpected hierarchy:")
-print(f"  dev_llm_trace_root")
-print(f"    ├── test_1_baseline (child_trace)")
-print(f"    │     └── (LLM call — MISSING, expected)")
-print(f"    ├── test_2_with_tracing_context (child_trace)")
-print(f"    │     └── ChatOpenAI (auto-traced LLM call — PRESENT)")
-print(f"    ├── test_3_async_tracing_context (child_trace)")
-print(f"    │     └── ChatOpenAI (auto-traced LLM call — PRESENT)")
-print(f"    └── test_4_llm_invoker (child_trace)")
-print(f"          └── ChatOpenAI (auto-traced LLM call — PRESENT, with costs)")
+print("\nExpected hierarchy:")
+print("  dev_llm_trace_root")
+print("    ├── test_1_baseline (child_trace)")
+print("    │     └── (LLM call — MISSING, expected)")
+print("    ├── test_2_with_tracing_context (child_trace)")
+print("    │     └── ChatOpenAI (auto-traced LLM call — PRESENT)")
+print("    ├── test_3_async_tracing_context (child_trace)")
+print("    │     └── ChatOpenAI (auto-traced LLM call — PRESENT)")
+print("    └── test_4_llm_invoker (child_trace)")
+print("          └── ChatOpenAI (auto-traced LLM call — PRESENT, with costs)")

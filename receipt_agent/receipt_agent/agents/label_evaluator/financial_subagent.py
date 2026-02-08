@@ -763,6 +763,7 @@ def _format_financial_results(
 # =============================================================================
 
 
+@traceable(name="financial_validation", run_type="chain")
 def evaluate_financial_math(
     visual_lines: list[VisualLine],
     llm: BaseChatModel,

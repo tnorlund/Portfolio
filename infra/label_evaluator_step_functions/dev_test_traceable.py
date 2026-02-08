@@ -128,6 +128,7 @@ def discover_line_item_patterns(words: list[str], merchant_name: str) -> dict:
     return {
         "line_item_patterns": 3,
         "merchant_name": merchant_name,
+        "word_count": len(words),
     }
 
 
@@ -352,7 +353,7 @@ async def main():
     print("ALL DONE")
     print("=" * 70)
     print(f"\nProject: {PROJECT_NAME}")
-    print(f"\nTraces created:")
+    print("\nTraces created:")
     print(f"  Merchant:  {str(merchant_root.trace_id)[:12]}... (PatternComputation)")
     for i, root in enumerate(receipt_roots):
         img_id, rcpt_id, _ = receipts[i]

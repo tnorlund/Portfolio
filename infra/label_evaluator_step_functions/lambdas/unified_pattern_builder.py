@@ -84,7 +84,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     {
         "execution_id": "abc123",
         "merchant_name": "Home Depot",
-        "line_item_patterns_s3_key": "line_item_patterns/{hash}.json",
+        "line_item_patterns_s3_key": "line_item_patterns/{exec}/{hash}.json",
         "patterns_s3_key": "patterns/{exec}/{hash}.json",
         "receipt_count": 45,
         "pattern_stats": {...}

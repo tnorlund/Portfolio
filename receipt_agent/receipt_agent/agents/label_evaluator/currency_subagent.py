@@ -433,6 +433,7 @@ def parse_currency_evaluation_response(
 # =============================================================================
 
 
+@traceable(name="currency_evaluation", run_type="chain")
 def evaluate_currency_labels(
     visual_lines: list[VisualLine],
     patterns: dict | None,

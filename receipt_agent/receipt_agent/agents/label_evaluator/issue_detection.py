@@ -310,7 +310,7 @@ def check_missing_label_in_cluster(
     return None
 
 
-CURRENCY_PATTERN = re.compile(r"^\$?\d+\.\d{2}$")
+CURRENCY_PATTERN = re.compile(r"^\$?\d{1,3}(,\d{3})*\.\d{2}$")
 
 
 def _is_plausible_for_label(text: str, label: str) -> bool:
