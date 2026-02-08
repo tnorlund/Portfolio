@@ -7,7 +7,8 @@ viz-cache (from S3 JSON files), eliminating the need for separate job scripts.
 Job Types:
     analytics: Run only analytics (computes job/receipt/step metrics)
     viz-cache: Run only viz-cache generation (reads from S3 JSON files)
-    all: Run both analytics and viz-cache
+    evaluator-viz-cache: Run evaluator viz-cache (from Parquet traces)
+    all: Run analytics, viz-cache, and evaluator viz-cache
 
 Usage:
     spark-submit \\
@@ -33,6 +34,7 @@ Data Sources:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from datetime import datetime, timezone
@@ -76,7 +78,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--job-type",
-        choices=["analytics", "viz-cache", "qa-cache", "all"],
+        choices=["analytics", "viz-cache", "qa-cache", "evaluator-viz-cache", "all"],
         default="all",
         help="Type of job to run (default: all)",
     )
@@ -161,6 +163,11 @@ def validate_args(args: argparse.Namespace) -> None:
             "results_ndjson": "--results-ndjson required for qa-cache",
             "receipts_json": "--receipts-json required for qa-cache",
             "execution_id": "--execution-id required for qa-cache",
+        },
+        "evaluator-viz-cache": {
+            "parquet_input": "--parquet-input required for evaluator-viz-cache",
+            "cache_bucket": "--cache-bucket required for evaluator-viz-cache",
+            "execution_id": "--execution-id required for evaluator-viz-cache",
         },
     }
 
@@ -755,6 +762,100 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
 
 
 # =============================================================================
+# Evaluator Viz-Cache Functions
+# =============================================================================
+
+
+def _slugify(name: str) -> str:
+    """Convert a merchant name to a filename-safe slug."""
+    return name.lower().replace(" ", "-").replace("/", "-").replace("\\", "-")
+
+
+def run_evaluator_viz_cache(
+    parquet_dir: str, cache_bucket: str, execution_id: str
+) -> None:
+    """Run evaluator viz-cache helpers and write results to S3.
+
+    Calls each of the 4 evaluator helpers independently. If one helper
+    fails the remaining helpers still run.
+    """
+    # Import helpers at call-time so the module can be loaded even when the
+    # helper packages are not installed (mirrors the qa-cache pattern).
+    # pylint: disable=import-outside-toplevel
+    from receipt_langsmith.spark.evaluator_financial_math_viz_cache import (
+        build_financial_math_cache,
+    )
+    from receipt_langsmith.spark.evaluator_diff_viz_cache import (
+        build_diff_cache,
+    )
+    from receipt_langsmith.spark.evaluator_journey_viz_cache import (
+        build_journey_cache,
+    )
+    from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+        build_patterns_cache,
+    )
+    # pylint: enable=import-outside-toplevel
+
+    s3_client = boto3.client("s3")
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    helpers: list[tuple[str, Any, bool]] = [
+        ("financial-math", build_financial_math_cache, False),
+        ("diff", build_diff_cache, False),
+        ("journey", build_journey_cache, False),
+        ("patterns", build_patterns_cache, True),
+    ]
+
+    for prefix, helper_fn, is_merchant_keyed in helpers:
+        try:
+            logger.info("Running evaluator viz-cache helper: %s", prefix)
+            results = helper_fn(parquet_dir)
+
+            count = 0
+            for item in results:
+                if is_merchant_keyed:
+                    slug = _slugify(item.get("merchant_name", "unknown"))
+                    key = f"{prefix}/{slug}.json"
+                else:
+                    image_id = item.get("image_id", "unknown")
+                    receipt_id = item.get("receipt_id", "unknown")
+                    key = f"{prefix}/{image_id}_{receipt_id}.json"
+
+                s3_client.put_object(
+                    Bucket=cache_bucket,
+                    Key=key,
+                    Body=json.dumps(item, default=str).encode("utf-8"),
+                    ContentType="application/json",
+                )
+                count += 1
+
+            # Write metadata for this viz type
+            metadata = {
+                "count": count,
+                "execution_id": execution_id,
+                "cached_at": timestamp,
+            }
+            s3_client.put_object(
+                Bucket=cache_bucket,
+                Key=f"{prefix}/metadata.json",
+                Body=json.dumps(metadata, default=str).encode("utf-8"),
+                ContentType="application/json",
+            )
+            logger.info(
+                "Evaluator viz-cache '%s' complete: %d items written",
+                prefix,
+                count,
+            )
+
+        except Exception:
+            logger.exception(
+                "Evaluator viz-cache helper '%s' failed; continuing with "
+                "remaining helpers",
+                prefix,
+            )
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -792,6 +893,26 @@ def main() -> int:
             logger.info("Starting viz-cache phase...")
             run_viz_cache(spark, args)
             logger.info("Viz-cache phase complete")
+
+        # Run evaluator viz-cache if requested (standalone)
+        if args.job_type == "evaluator-viz-cache":
+            logger.info("Starting evaluator viz-cache phase...")
+            run_evaluator_viz_cache(
+                parquet_dir=args.parquet_input,
+                cache_bucket=args.cache_bucket,
+                execution_id=args.execution_id,
+            )
+            logger.info("Evaluator viz-cache phase complete")
+
+        # Run evaluator viz-cache as part of "all" if parquet is available
+        if args.job_type == "all" and getattr(args, "parquet_input", None):
+            logger.info("Starting evaluator viz-cache phase...")
+            run_evaluator_viz_cache(
+                parquet_dir=args.parquet_input,
+                cache_bucket=args.cache_bucket,
+                execution_id=args.execution_id,
+            )
+            logger.info("Evaluator viz-cache phase complete")
 
         # Run QA cache if requested
         if args.job_type == "qa-cache":
