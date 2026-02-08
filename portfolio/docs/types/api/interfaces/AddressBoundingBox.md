@@ -6,7 +6,7 @@
 
 # Interface: AddressBoundingBox
 
-Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/b46b48a429fb42d97fc6174a55de07958205db51/portfolio/types/api.ts#L88)
+Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/2a20c7a2c9e66d447ac56a13220f53123304ed08/portfolio/types/api.ts#L88)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/b46b48a
 
 > **bl**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:91](https://github.com/tnorlund/Portfolio/blob/b46b48a429fb42d97fc6174a55de07958205db51/portfolio/types/api.ts#L91)
+Defined in: [types/api.ts:91](https://github.com/tnorlund/Portfolio/blob/2a20c7a2c9e66d447ac56a13220f53123304ed08/portfolio/types/api.ts#L91)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:91](https://github.com/tnorlund/Portfolio/blob/b46b48a
 
 > **br**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:92](https://github.com/tnorlund/Portfolio/blob/b46b48a429fb42d97fc6174a55de07958205db51/portfolio/types/api.ts#L92)
+Defined in: [types/api.ts:92](https://github.com/tnorlund/Portfolio/blob/2a20c7a2c9e66d447ac56a13220f53123304ed08/portfolio/types/api.ts#L92)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:92](https://github.com/tnorlund/Portfolio/blob/b46b48a
 
 > **tl**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/b46b48a429fb42d97fc6174a55de07958205db51/portfolio/types/api.ts#L89)
+Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/2a20c7a2c9e66d447ac56a13220f53123304ed08/portfolio/types/api.ts#L89)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/b46b48a
 
 > **tr**: [`Point`](Point.md)
 
-Defined in: [types/api.ts:90](https://github.com/tnorlund/Portfolio/blob/b46b48a429fb42d97fc6174a55de07958205db51/portfolio/types/api.ts#L90)
+Defined in: [types/api.ts:90](https://github.com/tnorlund/Portfolio/blob/2a20c7a2c9e66d447ac56a13220f53123304ed08/portfolio/types/api.ts#L90)
