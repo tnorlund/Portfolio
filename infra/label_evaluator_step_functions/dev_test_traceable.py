@@ -167,7 +167,8 @@ async def validate_financial(llm, merchant_name: str) -> dict:
         f"Receipt from {merchant_name}: total $45.67, line items sum $42.50, "
         "tax $3.17. Is the math correct? YES or NO with explanation."
     )
-    return {"response": resp.content[:100], "valid": "YES" in resp.content.upper()}
+    text = resp.content if hasattr(resp, "content") else str(resp)
+    return {"response": text[:100], "valid": "YES" in text.upper()}
 
 
 @traceable(name="llm_review", run_type="chain")

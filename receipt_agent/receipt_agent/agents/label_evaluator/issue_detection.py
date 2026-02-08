@@ -479,22 +479,21 @@ def check_missing_constellation_member(
         if expected_rel is None:
             continue
 
+        # Compute present-label centroid (used in both branches)
+        present_positions = [
+            label_centroids[lbl] for lbl in present_in_constellation
+        ]
+        present_centroid = (
+            sum(p[0] for p in present_positions) / len(present_positions),
+            sum(p[1] for p in present_positions) / len(present_positions),
+        )
+
         # Use the full constellation centroid from training patterns
         # to avoid bias when a label is missing (present-only centroid shifts)
         if (
             geom.mean_centroid_x is not None
             and geom.mean_centroid_y is not None
         ):
-            # Scale the training centroid to the receipt's coordinate space
-            # by computing the offset between training and present-label centroids
-            present_positions = [
-                label_centroids[lbl] for lbl in present_in_constellation
-            ]
-            present_centroid = (
-                sum(p[0] for p in present_positions) / len(present_positions),
-                sum(p[1] for p in present_positions) / len(present_positions),
-            )
-
             # Compute the expected centroid of present labels from training data
             training_present_dx = []
             training_present_dy = []
@@ -517,14 +516,7 @@ def check_missing_constellation_member(
             else:
                 constellation_centroid = present_centroid
         else:
-            # Fallback: use present labels centroid
-            present_positions = [
-                label_centroids[lbl] for lbl in present_in_constellation
-            ]
-            constellation_centroid = (
-                sum(p[0] for p in present_positions) / len(present_positions),
-                sum(p[1] for p in present_positions) / len(present_positions),
-            )
+            constellation_centroid = present_centroid
 
         # Compute expected absolute position for the missing label
         expected_pos = (
