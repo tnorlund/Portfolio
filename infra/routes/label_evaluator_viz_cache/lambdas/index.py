@@ -25,9 +25,17 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
-RECEIPTS_PREFIX = "receipts/"
 DEFAULT_BATCH_SIZE = 20
 MAX_BATCH_SIZE = 50
+
+# Map viz_type (last path segment) to S3 prefix
+VIZ_TYPE_PREFIXES = {
+    "visualization": "receipts/",
+    "financial_math": "financial-math/",
+    "diff": "diff/",
+    "journey": "journey/",
+    "patterns": "patterns/",
+}
 
 if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
@@ -36,8 +44,11 @@ if not S3_CACHE_BUCKET:
 s3_client = boto3.client("s3")
 
 
-def _list_cached_receipts() -> list[str]:
+def _list_cached_receipts(prefix: str) -> list[str]:
     """List all cached receipt keys from S3 using paginator.
+
+    Args:
+        prefix: S3 key prefix to list under.
 
     Returns:
         List of S3 keys for cached receipt files.
@@ -46,11 +57,13 @@ def _list_cached_receipts() -> list[str]:
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
         for page in paginator.paginate(
-            Bucket=S3_CACHE_BUCKET, Prefix=RECEIPTS_PREFIX
+            Bucket=S3_CACHE_BUCKET, Prefix=prefix
         ):
             for obj in page.get("Contents", []):
                 key = obj.get("Key", "")
-                if key.endswith(".json"):
+                if key.endswith(".json") and not key.endswith(
+                    "metadata.json"
+                ):
                     keys.append(key)
     except ClientError:
         logger.exception("Error listing cached receipts")
@@ -166,6 +179,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             },
         }
 
+    # Determine S3 prefix from the API path (last segment)
+    path = event["requestContext"]["http"]["path"]
+    viz_type = path.rstrip("/").split("/")[-1]
+    prefix = VIZ_TYPE_PREFIXES.get(viz_type, "receipts/")
+
     if not S3_CACHE_BUCKET:
         logger.error("S3_CACHE_BUCKET environment variable not set")
         return {
@@ -210,9 +228,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
 
         # List all cached receipts
-        cached_keys = _list_cached_receipts()
+        cached_keys = _list_cached_receipts(prefix)
         if not cached_keys:
-            logger.warning("No cached receipts found in %s", RECEIPTS_PREFIX)
+            logger.warning("No cached receipts found in %s", prefix)
             return {
                 "statusCode": 404,
                 "body": json.dumps(

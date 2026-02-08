@@ -295,6 +295,106 @@ const baseApi = {
     return response.json();
   },
 
+  async fetchLabelEvaluatorFinancialMath(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/financial_math?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorDiff(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/diff?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorJourney(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/journey?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorPatterns(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/patterns?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
   async fetchLabelValidationVisualization(
     batchSize: number = 20,
     seed?: number,
