@@ -580,6 +580,97 @@ export interface LabelEvaluatorResponse {
   fetched_at?: string;
 }
 
+// Label Evaluator Specialized Viz-Cache Types
+
+export interface LabelEvaluatorCacheAggregateStats {
+  total_receipts_in_pool: number;
+  batch_size: number;
+  avg_issues?: number;
+  max_issues?: number;
+  receipts_with_issues?: number;
+}
+
+export interface LabelEvaluatorCacheResponse<TReceipt> {
+  receipts: TReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: LabelEvaluatorCacheAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}
+
+export interface LabelEvaluatorFinancialMathReceipt {
+  image_id: string;
+  receipt_id: number | null;
+  merchant_name?: string | null;
+  trace_id?: string;
+  equations: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+}
+
+export interface LabelEvaluatorDiffReceipt {
+  image_id: string;
+  receipt_id: number | null;
+  merchant_name?: string | null;
+  trace_id?: string;
+  word_count: number;
+  change_count: number;
+  words: Record<string, unknown>[];
+  label_summary: {
+    before: Record<string, number>;
+    after: Record<string, number>;
+  };
+}
+
+export interface LabelEvaluatorJourneyReceipt {
+  image_id: string;
+  receipt_id: number | null;
+  merchant_name?: string | null;
+  trace_id?: string;
+  journeys: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+}
+
+export interface LabelEvaluatorPatternEntry {
+  merchant_name: string;
+  trace_ids: string[];
+  pattern: Record<string, unknown> | null;
+  geometric_summary: {
+    total_issues: number;
+    issue_types: Record<string, number>;
+    top_suggested_labels: Record<string, number>;
+  };
+}
+
+export interface LabelEvaluatorEvidenceReceipt {
+  image_id: string;
+  receipt_id: number | null;
+  merchant_name?: string | null;
+  trace_id?: string;
+  issues_with_evidence: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+}
+
+export interface LabelEvaluatorDedupReceipt {
+  image_id: string;
+  receipt_id: number | null;
+  merchant_name?: string | null;
+  trace_id?: string;
+  dedup_stats: Record<string, unknown> | null;
+  resolutions: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+}
+
+export type LabelEvaluatorFinancialMathResponse = LabelEvaluatorCacheResponse<LabelEvaluatorFinancialMathReceipt>;
+export type LabelEvaluatorDiffResponse = LabelEvaluatorCacheResponse<LabelEvaluatorDiffReceipt>;
+export type LabelEvaluatorJourneyResponse = LabelEvaluatorCacheResponse<LabelEvaluatorJourneyReceipt>;
+export type LabelEvaluatorPatternsResponse = LabelEvaluatorCacheResponse<LabelEvaluatorPatternEntry>;
+export type LabelEvaluatorEvidenceResponse = LabelEvaluatorCacheResponse<LabelEvaluatorEvidenceReceipt>;
+export type LabelEvaluatorDedupResponse = LabelEvaluatorCacheResponse<LabelEvaluatorDedupReceipt>;
+
 // ============================================================================
 // Label Validation Visualization Types (receipt-label-validation project)
 // ============================================================================

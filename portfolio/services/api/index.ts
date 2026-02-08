@@ -15,6 +15,12 @@ import {
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
+  LabelEvaluatorFinancialMathResponse,
+  LabelEvaluatorDiffResponse,
+  LabelEvaluatorJourneyResponse,
+  LabelEvaluatorPatternsResponse,
+  LabelEvaluatorEvidenceResponse,
+  LabelEvaluatorDedupResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 import { API_CONFIG } from "./config";
@@ -299,7 +305,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorFinancialMathResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());
@@ -324,7 +330,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorDiffResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());
@@ -349,7 +355,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorJourneyResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());
@@ -374,7 +380,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorPatternsResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());
@@ -399,7 +405,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorEvidenceResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());
@@ -424,7 +430,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<LabelEvaluatorDedupResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());

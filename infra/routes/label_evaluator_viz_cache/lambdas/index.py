@@ -38,12 +38,27 @@ VIZ_TYPE_PREFIXES = {
     "evidence": "evidence/",
     "dedup": "dedup/",
 }
+NON_DATA_FILENAMES = frozenset(
+    {"metadata.json", "latest.json", "_index.json"}
+)
 
 if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
 
 # Initialize S3 client
 s3_client = boto3.client("s3")
+
+
+def _is_data_key(key: str, prefix: str) -> bool:
+    """Return True when key looks like a data payload for the given prefix."""
+    if not key.endswith(".json"):
+        return False
+    if not key.startswith(prefix):
+        return False
+    filename = key.rsplit("/", 1)[-1]
+    if filename in NON_DATA_FILENAMES:
+        return False
+    return True
 
 
 def _list_cached_receipts(prefix: str) -> list[str]:
@@ -63,9 +78,7 @@ def _list_cached_receipts(prefix: str) -> list[str]:
         ):
             for obj in page.get("Contents", []):
                 key = obj.get("Key", "")
-                if key.endswith(".json") and not key.endswith(
-                    "metadata.json"
-                ):
+                if _is_data_key(key, prefix):
                     keys.append(key)
     except ClientError:
         logger.exception("Error listing cached receipts")
@@ -89,21 +102,26 @@ def _fetch_receipt(key: str) -> dict[str, Any] | None:
         return None
 
 
-def _fetch_metadata() -> dict[str, Any]:
-    """Fetch pool metadata from S3.
+def _fetch_metadata(prefix: str) -> dict[str, Any]:
+    """Fetch metadata for a prefix from S3.
 
     Returns:
-        Metadata dict with version, execution_id, total_receipts, etc.
-        Empty dict if metadata file not found.
+        Metadata dict (prefix-level if available, fallback to root metadata).
+        Empty dict if metadata files are not found.
     """
-    try:
-        response = s3_client.get_object(
-            Bucket=S3_CACHE_BUCKET, Key="metadata.json"
-        )
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except ClientError:
-        logger.warning("Could not fetch metadata.json")
-        return {}
+    keys_to_try = (f"{prefix.rstrip('/')}/metadata.json", "metadata.json")
+    for metadata_key in keys_to_try:
+        try:
+            response = s3_client.get_object(
+                Bucket=S3_CACHE_BUCKET, Key=metadata_key
+            )
+            metadata = json.loads(response["Body"].read().decode("utf-8"))
+            if isinstance(metadata, dict):
+                return metadata
+            logger.warning("%s is not a JSON object", metadata_key)
+        except ClientError:
+            logger.info("Could not fetch %s", metadata_key)
+    return {}
 
 
 def _calculate_aggregate_stats(
@@ -121,7 +139,17 @@ def _calculate_aggregate_stats(
     if not receipts:
         return {"total_receipts_in_pool": pool_size, "batch_size": 0}
 
-    issues = [r.get("issues_found", 0) for r in receipts]
+    # Some viz types don't have "issues_found" in their payload schema.
+    issues = [
+        r.get("issues_found")
+        for r in receipts
+        if isinstance(r.get("issues_found"), (int, float))
+    ]
+    if not issues:
+        return {
+            "total_receipts_in_pool": pool_size,
+            "batch_size": len(receipts),
+        }
     return {
         "total_receipts_in_pool": pool_size,
         "batch_size": len(receipts),
@@ -229,9 +257,34 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset
         )
 
+        metadata = _fetch_metadata(prefix)
+
         # List all cached receipts
         cached_keys = _list_cached_receipts(prefix)
         if not cached_keys:
+            # A helper may legitimately produce an empty cache with metadata
+            # (for example evidence when no evidence is present in traces).
+            if metadata.get("count") == 0:
+                response_data = {
+                    "receipts": [],
+                    "total_count": 0,
+                    "offset": 0,
+                    "has_more": False,
+                    "seed": seed,
+                    "aggregate_stats": _calculate_aggregate_stats([], 0),
+                    "execution_id": metadata.get("execution_id"),
+                    "cached_at": metadata.get("cached_at"),
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                }
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps(response_data, default=str),
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                }
+
             logger.warning("No cached receipts found in %s", prefix)
             return {
                 "statusCode": 404,
@@ -288,8 +341,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             if key_to_receipt.get(key)
         ]
 
-        # Get metadata and build response
-        metadata = _fetch_metadata()
+        # Build response
         aggregate_stats = _calculate_aggregate_stats(receipts, total_count)
 
         response_data = {
