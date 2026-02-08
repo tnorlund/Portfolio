@@ -35,6 +35,8 @@ VIZ_TYPE_PREFIXES = {
     "diff": "diff/",
     "journey": "journey/",
     "patterns": "patterns/",
+    "evidence": "evidence/",
+    "dedup": "dedup/",
 }
 
 if not S3_CACHE_BUCKET:
