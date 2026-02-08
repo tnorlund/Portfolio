@@ -517,6 +517,102 @@ Each `q{NN}.md` follows this structure:
 
 When grading, pay special attention to whether the synthesizer agrees with the agent's reasoning. If the agent is correct but the synthesizer contradicts it, that's a D or F (synthesis override bug). If they agree, focus on whether the agent's own analysis is correct.
 
+## PR Screenshots for Frontend Changes
+
+When a PR includes visual changes to the Next.js frontend (`portfolio/`), capture before/after screenshots at desktop and mobile widths using Playwright.
+
+### Prerequisites
+
+Playwright is available as a transitive dependency via `@playwright/test` in `portfolio/`. Scripts must run from the `portfolio/` directory so Node resolves `playwright-core` from `node_modules/`.
+
+### Screenshot Script
+
+Create a temporary `portfolio/screenshot.mjs` (delete before committing):
+
+```js
+import { chromium } from "playwright-core";
+
+const BASE = "http://localhost:3000/receipt"; // or whatever page
+const prefix = process.argv[2] || "screenshot";
+const outDir = "/path/to/temp/screenshots";
+
+const browser = await chromium.launch();
+
+async function shot(name, width, height) {
+  const ctx = await browser.newContext({ viewport: { width, height } });
+  const page = await ctx.newPage();
+  await page.goto(BASE, { waitUntil: "networkidle" });
+
+  // Hide Next.js dev overlay
+  await page.evaluate(() => {
+    document.querySelectorAll('nextjs-portal').forEach(el => el.remove());
+    for (const el of document.querySelectorAll('*')) {
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' && parseInt(style.zIndex) > 1000) {
+        el.style.display = 'none';
+      }
+    }
+  });
+
+  // Scroll to target component and wait for render
+  const el = await page.locator("text=Some Heading").first();
+  if (await el.isVisible()) await el.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(3000);
+
+  // Re-hide overlays after page settles
+  await page.evaluate(() => {
+    document.querySelectorAll('nextjs-portal').forEach(el => el.remove());
+    for (const el of document.querySelectorAll('*')) {
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' && parseInt(style.zIndex) > 1000) {
+        el.style.display = 'none';
+      }
+    }
+  });
+
+  // Screenshot just the component (or full page)
+  const container = await page.locator('[class*="ComponentName"]').first();
+  if (await container.isVisible()) {
+    await container.screenshot({ path: `${outDir}/${prefix}-${name}.png` });
+  } else {
+    await page.screenshot({ path: `${outDir}/${prefix}-${name}.png` });
+  }
+  await ctx.close();
+}
+
+await shot("desktop", 1280, 900);
+await shot("mobile", 375, 812);
+await browser.close();
+```
+
+### Workflow
+
+1. Start dev server: `cd portfolio && npm run dev`
+2. **Before screenshots**: checkout `main`, run `node screenshot.mjs before`
+3. **After screenshots**: checkout feature branch, run `node screenshot.mjs after`
+4. Delete `screenshot.mjs` before committing
+
+### Hosting Screenshots for PR Descriptions
+
+**Do NOT commit screenshots to the repo** — they bloat git history across PRs.
+
+Instead, temporarily commit them to the feature branch, reference the raw GitHub URLs in the PR body (using the commit SHA for permanent links), then add a final commit removing the `screenshots/` directory before merging. The images remain accessible at the prior commit SHA even after deletion.
+
+```markdown
+| Before | After |
+|--------|-------|
+| ![before](https://raw.githubusercontent.com/tnorlund/Portfolio/<sha>/screenshots/before-desktop.png) | ![after](https://raw.githubusercontent.com/tnorlund/Portfolio/<sha>/screenshots/after-desktop.png) |
+```
+
+Use **squash merge** so the intermediate screenshot commits collapse into one clean commit on `main`.
+
+### Important Notes
+
+- The `react-markdown` package may need to be installed (`npm install react-markdown`) for the dev server to render the receipt page
+- Always hide the Next.js dev overlay before capturing (the script above handles this)
+- `@playwright/test` bundles `playwright-core` — use that import, not `playwright`
+- Run the script from `portfolio/` so Node resolves the dependency
+
 ## Related Issues
 
 - #645: Auto-queue CoreML export after training completion (implemented in #646)
