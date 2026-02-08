@@ -208,7 +208,11 @@ def _build_geometric_summary(
 # ---------------------------------------------------------------------------
 
 
-def build_patterns_cache(parquet_dir: str) -> list[dict[str, Any]]:
+def build_patterns_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Build per-merchant pattern discovery cache from parquet trace exports.
 
     Parameters
@@ -216,6 +220,8 @@ def build_patterns_cache(parquet_dir: str) -> list[dict[str, Any]]:
     parquet_dir:
         Path to the root directory containing LangSmith parquet exports
         (traversed recursively).
+    rows:
+        Optional preloaded trace rows.
 
     Returns
     -------
@@ -223,8 +229,11 @@ def build_patterns_cache(parquet_dir: str) -> list[dict[str, Any]]:
         One dict per merchant containing ``merchant_name``, ``trace_ids``,
         ``pattern``, and ``geometric_summary`` fields.
     """
-    logger.info("Reading parquet traces from %s", parquet_dir)
-    rows = _read_all_parquet(parquet_dir)
+    if rows is None:
+        if parquet_dir is None:
+            raise ValueError("Either parquet_dir or rows must be provided")
+        logger.info("Reading parquet traces from %s", parquet_dir)
+        rows = _read_all_parquet(parquet_dir)
     logger.info("Loaded %d trace rows", len(rows))
 
     merchant_patterns = _build_merchant_patterns(rows)

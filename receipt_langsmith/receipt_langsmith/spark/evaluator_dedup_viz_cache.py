@@ -13,7 +13,11 @@ from receipt_langsmith.spark.utils import to_s3a
 logger = logging.getLogger(__name__)
 
 
-def build_dedup_cache(parquet_dir: str) -> list[dict]:
+def build_dedup_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> list[dict]:
     """Build dedup conflict resolution cache from LangSmith trace parquet.
 
     Reads all parquet files under *parquet_dir*, finds ``ReceiptEvaluation``
@@ -22,13 +26,20 @@ def build_dedup_cache(parquet_dir: str) -> list[dict]:
 
     Args:
         parquet_dir: Local directory containing LangSmith parquet exports.
+        rows: Optional preloaded trace rows.
 
     Returns:
         List of per-receipt dicts with dedup stats and resolutions.
     """
-    rows = _read_parquet_rows(parquet_dir)
+    if rows is None:
+        if parquet_dir is None:
+            raise ValueError("Either parquet_dir or rows must be provided")
+        rows = _read_parquet_rows(parquet_dir)
     if not rows:
-        logger.warning("No rows found in %s", parquet_dir)
+        if parquet_dir is None:
+            logger.warning("No rows provided to build_dedup_cache")
+        else:
+            logger.warning("No rows found in %s", parquet_dir)
         return []
 
     roots, children_by_trace = _partition_spans(rows)

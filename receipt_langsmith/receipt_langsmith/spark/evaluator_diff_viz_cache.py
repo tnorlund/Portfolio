@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
-import pyarrow as pa
 import pyarrow.parquet as pq
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -37,50 +37,37 @@ _SOURCE_PRIORITY: dict[str, int] = {
 # Parquet I/O
 # ---------------------------------------------------------------------------
 
-def _read_all_traces(parquet_dir: str) -> pa.Table:
-    """Read and concatenate all parquet files under *parquet_dir*."""
-    files: list[str] = []
-    for root, _dirs, fnames in os.walk(parquet_dir):
-        for fname in fnames:
-            if fname.endswith(".parquet"):
-                files.append(os.path.join(root, fname))
+def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
+    """Read and concatenate all parquet rows under *parquet_dir*."""
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
+        # pylint: enable=import-outside-toplevel
+
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        return [row.asDict(recursive=True) for row in df.toLocalIterator()]
+
+    root = Path(parquet_dir)
+    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
     if not files:
         raise FileNotFoundError(
             f"No parquet files found under {parquet_dir}"
         )
     logger.info("Reading %d parquet files from %s", len(files), parquet_dir)
 
-    tables: list[pa.Table] = []
+    rows: list[dict[str, Any]] = []
     for path in files:
-        t = pq.ParquetFile(path).read()
-        # Normalise dictionary-encoded columns to plain strings so that
-        # concat_tables does not choke on schema mismatches.
-        for i, field in enumerate(t.schema):
-            if pa.types.is_dictionary(field.type):
-                t = t.set_column(
-                    i, field.name, t.column(field.name).cast(pa.string())
-                )
-        tables.append(t)
+        table = pq.ParquetFile(str(path)).read()
+        rows.extend(table.to_pylist())
 
-    combined = pa.concat_tables(tables)
-    logger.info("Total trace rows: %d", len(combined))
-    return combined
-
-
-# ---------------------------------------------------------------------------
-# Index helpers
-# ---------------------------------------------------------------------------
-
-def _index_by_trace(
-    table: pa.Table,
-) -> dict[str, list[int]]:
-    """Return {trace_id -> [row indices]} for fast look-ups."""
-    trace_ids = table.column("trace_id").to_pylist()
-    idx: dict[str, list[int]] = defaultdict(list)
-    for i, tid in enumerate(trace_ids):
-        if tid is not None:
-            idx[tid].append(i)
-    return idx
+    logger.info("Total trace rows: %d", len(rows))
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -272,47 +259,41 @@ def _build_receipt_diff(
 # Public entry point
 # ---------------------------------------------------------------------------
 
-_EVALUATOR_NAMES = frozenset(
-    {
-        "ReceiptEvaluation",
-        "currency_evaluation",
-        "metadata_evaluation",
-        "flag_geometric_anomalies",
-        "financial_validation",
-    }
-)
-
-
-def build_diff_cache(parquet_dir: str) -> list[dict[str, Any]]:
-    """Read local parquet traces and build before/after diff payloads.
+def build_diff_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build before/after diff payloads.
 
     Returns one dict per receipt (see module docstring for schema).
     """
-    table = _read_all_traces(parquet_dir)
-
-    names = table.column("name").to_pylist()
-    trace_ids = table.column("trace_id").to_pylist()
-    inputs_col = table.column("inputs").to_pylist()
-    outputs_col = table.column("outputs").to_pylist()
-    extras_col = table.column("extra").to_pylist()
+    if rows is None:
+        if parquet_dir is None:
+            raise ValueError("Either parquet_dir or rows must be provided")
+        rows = _read_all_traces(parquet_dir)
 
     # ---- pass 1: collect root ReceiptEvaluation metadata ----
     # {trace_id -> (image_id, receipt_id, merchant_name)}
     root_meta: dict[str, tuple[str, int, str | None]] = {}
-    for i, name in enumerate(names):
+    for row in rows:
+        name = row.get("name")
         if name != "ReceiptEvaluation":
             continue
-        extra = _safe_json(extras_col[i])
+        extra = _safe_json(row.get("extra"))
         meta = extra.get("metadata", {})
         img = meta.get("image_id")
         rid = meta.get("receipt_id")
+        trace_id = row.get("trace_id")
         if img is None or rid is None:
             continue
-        root_meta[trace_ids[i]] = (
-            img,
-            int(rid),
-            meta.get("merchant_name"),
-        )
+        if trace_id in (None, ""):
+            continue
+        try:
+            receipt_id = int(rid)
+        except (TypeError, ValueError):
+            continue
+        root_meta[str(trace_id)] = (img, receipt_id, meta.get("merchant_name"))
 
     logger.info("Found %d ReceiptEvaluation roots", len(root_meta))
 
@@ -322,29 +303,30 @@ def build_diff_cache(parquet_dir: str) -> list[dict[str, Any]]:
     # decisions: accumulate per source, respecting priority
     trace_decisions: dict[str, dict[tuple[int, int], _Decision]] = defaultdict(dict)
 
-    for i, name in enumerate(names):
-        tid = trace_ids[i]
+    for row in rows:
+        name = row.get("name")
+        tid = row.get("trace_id")
         if tid not in root_meta:
             continue
 
         if name in ("currency_evaluation", "metadata_evaluation"):
             # Extract words from input if we haven't already
             if tid not in trace_words:
-                inp = _safe_json(inputs_col[i])
+                inp = _safe_json(row.get("inputs"))
                 trace_words[tid] = _extract_words_from_input(inp)
 
             # Extract decisions from output
-            out = _safe_json(outputs_col[i])
+            out = _safe_json(row.get("outputs"))
             new_decisions = _extract_llm_decisions(out, name)
             _merge_decisions(trace_decisions[tid], new_decisions)
 
         elif name == "flag_geometric_anomalies":
-            out = _safe_json(outputs_col[i])
+            out = _safe_json(row.get("outputs"))
             new_decisions = _extract_geometric_decisions(out)
             _merge_decisions(trace_decisions[tid], new_decisions)
 
         elif name == "financial_validation":
-            out = _safe_json(outputs_col[i])
+            out = _safe_json(row.get("outputs"))
             new_decisions = _extract_llm_decisions(out, name)
             _merge_decisions(trace_decisions[tid], new_decisions)
 

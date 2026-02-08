@@ -771,14 +771,126 @@ def _slugify(name: str) -> str:
     return name.lower().replace(" ", "-").replace("/", "-").replace("\\", "-")
 
 
+EVALUATOR_TRACE_NAMES = frozenset(
+    {
+        "ReceiptEvaluation",
+        "currency_evaluation",
+        "metadata_evaluation",
+        "financial_validation",
+        "flag_geometric_anomalies",
+        "phase3_llm_review",
+        "apply_phase1_corrections",
+        "UnifiedPatternBuilder",
+        "llm_pattern_discovery",
+    }
+)
+
+EVALUATOR_TRACE_COLUMNS = (
+    "id",
+    "trace_id",
+    "parent_run_id",
+    "is_root",
+    "name",
+    "inputs",
+    "outputs",
+    "extra",
+    "start_time",
+    "end_time",
+)
+
+
+def _load_evaluator_trace_rows(
+    spark: SparkSession, parquet_dir: str
+) -> list[dict[str, Any]]:
+    """Load evaluator trace rows once via Spark and keep required columns."""
+    df = spark.read.parquet(to_s3a(parquet_dir))
+    if "name" in df.columns:
+        df = df.filter(F.col("name").isin(*sorted(EVALUATOR_TRACE_NAMES)))
+
+    for column_name in EVALUATOR_TRACE_COLUMNS:
+        if column_name not in df.columns:
+            df = df.withColumn(column_name, F.lit(None))
+
+    selected_df = df.select(*EVALUATOR_TRACE_COLUMNS)
+    rows = [row.asDict(recursive=True) for row in selected_df.toLocalIterator()]
+    logger.info("Loaded %d evaluator spans from %s", len(rows), parquet_dir)
+    return rows
+
+
+def _build_evaluator_item_key(
+    prefix: str, item: dict[str, Any], is_merchant_keyed: bool
+) -> str | None:
+    """Build S3 object key for evaluator helper output."""
+    if is_merchant_keyed:
+        merchant_name = item.get("merchant_name")
+        if not merchant_name:
+            logger.warning("Skipping %s item without merchant_name", prefix)
+            return None
+        slug = _slugify(str(merchant_name))
+        return f"{prefix}/{slug}.json"
+
+    image_id = item.get("image_id")
+    receipt_id = item.get("receipt_id")
+    if image_id in (None, "") or receipt_id is None:
+        logger.warning(
+            "Skipping %s item without image_id/receipt_id",
+            prefix,
+        )
+        return None
+    return f"{prefix}/{image_id}_{receipt_id}.json"
+
+
+def _write_evaluator_cache_parallel(
+    spark: SparkSession,
+    bucket: str,
+    prefix: str,
+    is_merchant_keyed: bool,
+    items: list[dict[str, Any]],
+) -> int:
+    """Write evaluator helper payloads to S3 in parallel."""
+    records: list[tuple[str, str]] = []
+    for item in items:
+        key = _build_evaluator_item_key(prefix, item, is_merchant_keyed)
+        if key is None:
+            continue
+        records.append((key, json.dumps(item, default=str)))
+
+    if not records:
+        return 0
+
+    default_parallelism = max(1, spark.sparkContext.defaultParallelism)
+    num_slices = min(len(records), default_parallelism * 2)
+
+    def upload_partition(rows):
+        s3_client = boto3.client("s3")
+        for key, payload in rows:
+            try:
+                s3_client.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=payload.encode("utf-8"),
+                    ContentType="application/json",
+                )
+            except (ClientError, BotoCoreError, TypeError, ValueError) as exc:
+                logger.warning("Failed to upload %s: %s", key, exc)
+
+    spark.sparkContext.parallelize(
+        records, numSlices=num_slices
+    ).foreachPartition(upload_partition)
+    return len(records)
+
+
 def run_evaluator_viz_cache(
-    parquet_dir: str, cache_bucket: str, execution_id: str
+    spark: SparkSession,
+    parquet_dir: str,
+    cache_bucket: str,
+    execution_id: str,
 ) -> None:
     """Run evaluator viz-cache helpers and write results to S3.
 
-    Calls each of the 6 evaluator helpers independently. If one helper
-    fails, remaining helpers still run so logs are complete, and the phase
-    fails at the end.
+    Trace rows are loaded from parquet once and reused across all helpers.
+    If one helper fails, remaining helpers still run so logs are complete,
+    and the phase fails at the end.
     """
     # Import helpers at call-time so the module can be loaded even when the
     # helper packages are not installed (mirrors the qa-cache pattern).
@@ -805,6 +917,7 @@ def run_evaluator_viz_cache(
 
     s3_client = boto3.client("s3")
     timestamp = datetime.now(timezone.utc).isoformat()
+    trace_rows = _load_evaluator_trace_rows(spark, parquet_dir)
 
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
@@ -820,41 +933,20 @@ def run_evaluator_viz_cache(
     for prefix, helper_fn, is_merchant_keyed in helpers:
         try:
             logger.info("Running evaluator viz-cache helper: %s", prefix)
-            results = helper_fn(parquet_dir)
+            results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
             if not isinstance(results, list):
                 raise TypeError(
-                    f"Helper '{prefix}' returned {type(results).__name__}, expected list"
+                    f"Helper '{prefix}' returned "
+                    f"{type(results).__name__}, expected list"
                 )
 
-            count = 0
-            for item in results:
-                if is_merchant_keyed:
-                    merchant_name = item.get("merchant_name")
-                    if not merchant_name:
-                        logger.warning(
-                            "Skipping %s item without merchant_name", prefix
-                        )
-                        continue
-                    slug = _slugify(str(merchant_name))
-                    key = f"{prefix}/{slug}.json"
-                else:
-                    image_id = item.get("image_id")
-                    receipt_id = item.get("receipt_id")
-                    if image_id in (None, "") or receipt_id is None:
-                        logger.warning(
-                            "Skipping %s item without image_id/receipt_id",
-                            prefix,
-                        )
-                        continue
-                    key = f"{prefix}/{image_id}_{receipt_id}.json"
-
-                s3_client.put_object(
-                    Bucket=cache_bucket,
-                    Key=key,
-                    Body=json.dumps(item, default=str).encode("utf-8"),
-                    ContentType="application/json",
-                )
-                count += 1
+            count = _write_evaluator_cache_parallel(
+                spark=spark,
+                bucket=cache_bucket,
+                prefix=prefix,
+                is_merchant_keyed=is_merchant_keyed,
+                items=results,
+            )
 
             # Write metadata for this viz type
             metadata = {
@@ -933,6 +1025,7 @@ def main() -> int:
         if args.job_type == "evaluator-viz-cache":
             logger.info("Starting evaluator viz-cache phase...")
             run_evaluator_viz_cache(
+                spark=spark,
                 parquet_dir=args.parquet_input,
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
@@ -943,6 +1036,7 @@ def main() -> int:
         if args.job_type == "all" and getattr(args, "parquet_input", None):
             logger.info("Starting evaluator viz-cache phase...")
             run_evaluator_viz_cache(
+                spark=spark,
                 parquet_dir=args.parquet_input,
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,

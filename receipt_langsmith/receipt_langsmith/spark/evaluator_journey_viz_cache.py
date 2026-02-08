@@ -126,13 +126,19 @@ def _parse_phase_decisions(
     return decisions
 
 
-def build_journey_cache(parquet_dir: str) -> list[dict]:
+def build_journey_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> list[dict]:
     """Build decision journey cache from parquet trace exports.
 
     Parameters
     ----------
     parquet_dir:
         Root directory containing LangSmith parquet exports.
+    rows:
+        Optional preloaded trace rows.
 
     Returns
     -------
@@ -140,7 +146,10 @@ def build_journey_cache(parquet_dir: str) -> list[dict]:
         One dict per receipt with the structure documented in the module
         docstring.
     """
-    rows = _read_all_parquet(parquet_dir)
+    if rows is None:
+        if parquet_dir is None:
+            raise ValueError("Either parquet_dir or rows must be provided")
+        rows = _read_all_parquet(parquet_dir)
     logger.info("Loaded %d spans from parquet", len(rows))
 
     # Index root ReceiptEvaluation runs by trace_id
