@@ -486,9 +486,15 @@ def _get_line_query_embedding(
         )
         return None
 
-    fallback_metadatas = fallback_result.get("metadatas") or []
-    fallback_embeddings = fallback_result.get("embeddings") or []
-    fallback_ids = fallback_result.get("ids") or []
+    fallback_metadatas = fallback_result.get("metadatas")
+    if fallback_metadatas is None:
+        fallback_metadatas = []
+    fallback_embeddings = fallback_result.get("embeddings")
+    if fallback_embeddings is None:
+        fallback_embeddings = []
+    fallback_ids = fallback_result.get("ids")
+    if fallback_ids is None:
+        fallback_ids = []
     target_line_id = _safe_int(line_id, default=-1)
 
     for idx, metadata in enumerate(fallback_metadatas):
