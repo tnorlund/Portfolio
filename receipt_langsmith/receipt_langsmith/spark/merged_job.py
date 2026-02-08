@@ -776,7 +776,7 @@ def run_evaluator_viz_cache(
 ) -> None:
     """Run evaluator viz-cache helpers and write results to S3.
 
-    Calls each of the 4 evaluator helpers independently. If one helper
+    Calls each of the 6 evaluator helpers independently. If one helper
     fails the remaining helpers still run.
     """
     # Import helpers at call-time so the module can be loaded even when the
@@ -794,6 +794,12 @@ def run_evaluator_viz_cache(
     from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
         build_patterns_cache,
     )
+    from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
+        build_evidence_cache,
+    )
+    from receipt_langsmith.spark.evaluator_dedup_viz_cache import (
+        build_dedup_cache,
+    )
     # pylint: enable=import-outside-toplevel
 
     s3_client = boto3.client("s3")
@@ -804,6 +810,8 @@ def run_evaluator_viz_cache(
         ("diff", build_diff_cache, False),
         ("journey", build_journey_cache, False),
         ("patterns", build_patterns_cache, True),
+        ("evidence", build_evidence_cache, False),
+        ("dedup", build_dedup_cache, False),
     ]
 
     for prefix, helper_fn, is_merchant_keyed in helpers:
