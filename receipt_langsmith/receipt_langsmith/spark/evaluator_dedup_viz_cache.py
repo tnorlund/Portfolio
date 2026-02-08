@@ -121,7 +121,11 @@ def _partition_spans(
 
     for row in rows:
         name = row.get("name", "")
-        trace_id = row.get("trace_id") or row.get("id", "")
+        trace_id = row.get("trace_id")
+        if not trace_id:
+            # Some exports omit trace_id on rows where id is still stable per
+            # trace; keep this fallback so children remain grouped with roots.
+            trace_id = row.get("id", "")
 
         if name == "ReceiptEvaluation" and _is_root(row):
             roots.append(row)
@@ -136,9 +140,7 @@ def _is_root(row: dict[str, Any]) -> bool:
     """Return True when the row looks like a root span."""
     if row.get("is_root"):
         return True
-    if not row.get("parent_run_id"):
-        return True
-    return False
+    return row.get("parent_run_id") in (None, "")
 
 
 # ---------------------------------------------------------------------------

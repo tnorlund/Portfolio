@@ -134,6 +134,13 @@ def _build_merchant_patterns(
         if merchant == "Unknown" and trace_id in trace_merchant:
             merchant = trace_merchant[trace_id]
 
+        if merchant in patterns:
+            logger.warning(
+                "Overwriting existing pattern for merchant=%s trace_id=%s parsed=%s",
+                merchant,
+                trace_id,
+                parsed,
+            )
         trace_ids_per_merchant[merchant].append(trace_id)
         patterns[merchant] = parsed
 
