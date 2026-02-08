@@ -320,7 +320,7 @@ const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }
           {spring.displayValue.to((v) => v.toFixed(2))}
         </animated.span>
       </div>
-      <div className={styles.labelRow}>
+      <div className={styles.labelDistRow}>
         <span className={styles.labelName} />
         <div className={styles.labelBarDistribution}>
           <animated.div

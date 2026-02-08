@@ -279,7 +279,14 @@
   text-align: left;
 }
 
-/* Distribution (support) bar */
+/* Distribution (support) bar row — compact, just bar height */
+.labelDistRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 6px;
+}
+
 .labelBarDistribution {
   display: flex;
   flex: 1;
@@ -555,6 +562,11 @@
   .labelBarSegmented {
     height: 4px;
     min-width: 40px;
+  }
+
+  .labelDistRow {
+    gap: 0.35rem;
+    height: 4px;
   }
 
   .labelBarDistribution {
