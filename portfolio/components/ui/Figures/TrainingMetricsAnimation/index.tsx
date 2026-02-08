@@ -265,12 +265,21 @@ interface PerLabelBarsProps {
 
 const PerLabelBars: React.FC<PerLabelBarsProps> = ({ perLabel }) => {
   const labels = Object.keys(perLabel).filter((l) => l !== "O");
+  const maxSupport = Math.max(...labels.map((l) => perLabel[l]?.support || 0), 1);
 
   return (
     <div className={styles.perLabelContainer}>
       {labels.map((label) => {
-        const f1 = perLabel[label]?.f1 || 0;
-        return <LabelBar key={label} label={label} value={f1} />;
+        const { f1 = 0, support = 0 } = perLabel[label] || {};
+        return (
+          <LabelBar
+            key={label}
+            label={label}
+            value={f1}
+            support={support}
+            maxSupport={maxSupport}
+          />
+        );
       })}
     </div>
   );
@@ -279,26 +288,44 @@ const PerLabelBars: React.FC<PerLabelBarsProps> = ({ perLabel }) => {
 interface LabelBarProps {
   label: string;
   value: number;
+  support: number;
+  maxSupport: number;
 }
 
-const LabelBar: React.FC<LabelBarProps> = ({ label, value }) => {
+const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }) => {
   const spring = useSpring({
-    to: { width: value * 100, displayValue: value },
+    to: {
+      width: value * 100,
+      displayValue: value,
+      distWidth: (support / maxSupport) * 100,
+    },
     config: SPRING_CONFIG,
   });
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
-      <div className={styles.labelBarSegmented}>
-        <animated.div
-          className={styles.labelBarFilled}
-          style={{ width: spring.width.to((w) => `${w}%`) }}
-        />
-        <animated.div
-          className={styles.labelBarEmpty}
-          style={{ width: spring.width.to((w) => `${100 - w}%`) }}
-        />
+      <div className={styles.labelBarStack}>
+        <div className={styles.labelBarSegmented}>
+          <animated.div
+            className={styles.labelBarFilled}
+            style={{ width: spring.width.to((w) => `${w}%`) }}
+          />
+          <animated.div
+            className={styles.labelBarEmpty}
+            style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+          />
+        </div>
+        <div className={styles.labelBarDistribution}>
+          <animated.div
+            className={styles.labelBarDistFilled}
+            style={{ width: spring.distWidth.to((w) => `${w}%`) }}
+          />
+          <animated.div
+            className={styles.labelBarDistEmpty}
+            style={{ width: spring.distWidth.to((w) => `${100 - w}%`) }}
+          />
+        </div>
       </div>
       <animated.span className={styles.labelBarValue}>
         {spring.displayValue.to((v) => v.toFixed(2))}
@@ -306,6 +333,26 @@ const LabelBar: React.FC<LabelBarProps> = ({ label, value }) => {
     </div>
   );
 };
+
+// Bar Legend Component
+const BarLegend: React.FC = () => (
+  <div className={styles.barLegend}>
+    <div className={styles.legendEntry}>
+      <span
+        className={styles.legendSwatch}
+        style={{ background: "var(--text-color)" }}
+      />
+      <span className={styles.legendLabel}>F1 Score</span>
+    </div>
+    <div className={styles.legendEntry}>
+      <span
+        className={styles.legendSwatch}
+        style={{ background: "var(--color-blue)" }}
+      />
+      <span className={styles.legendLabel}>Support</span>
+    </div>
+  </div>
+);
 
 // Confusion Matrix Heatmap Component
 interface ConfusionMatrixProps {
@@ -507,6 +554,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       <div className={styles.leftPanel}>
         <F1Gauge value={currentEpoch.metrics.val_f1} />
         <PerLabelBars perLabel={currentEpoch.per_label} />
+        <BarLegend />
       </div>
 
       <div className={styles.rightPanel}>
