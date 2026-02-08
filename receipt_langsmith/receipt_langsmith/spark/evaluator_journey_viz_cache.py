@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -24,29 +25,59 @@ PHASE_NAMES = (
     "financial_validation",
     "phase3_llm_review",
 )
+PHASE_ORDER = {name: i for i, name in enumerate(PHASE_NAMES)}
 
 
-def _read_all_parquet(parquet_dir: str):
-    """Read all parquet files under *parquet_dir* into a single pandas DataFrame."""
-    import pandas as pd
+def _read_all_parquet(parquet_dir: str) -> list[dict[str, Any]]:
+    """Read parquet rows from local paths or S3 paths.
 
-    frames = []
-    for root, _dirs, files in os.walk(parquet_dir):
-        for fname in sorted(files):
-            if not fname.endswith(".parquet"):
-                continue
-            path = os.path.join(root, fname)
-            table = pq.ParquetFile(path).read()
-            frames.append(table.to_pandas())
+    Supports:
+        - local directory trees containing parquet files
+        - local single parquet file
+        - s3:// / s3a:// parquet paths (via active Spark session)
+    """
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
+        # pylint: enable=import-outside-toplevel
 
-    if not frames:
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        return [row.asDict(recursive=True) for row in df.toLocalIterator()]
+
+    root = Path(parquet_dir)
+    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
+    if not files:
         raise FileNotFoundError(f"No parquet files found under {parquet_dir}")
-    return pd.concat(frames, ignore_index=True)
+
+    rows: list[dict[str, Any]] = []
+    for path in files:
+        table = pq.ParquetFile(str(path)).read()
+        rows.extend(table.to_pylist())
+    return rows
 
 
-def _extract_root_metadata(row) -> dict[str, Any]:
+def _parse_json_object(raw: Any) -> dict[str, Any]:
+    """Parse JSON object-like values into a dict."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _extract_root_metadata(row: dict[str, Any]) -> dict[str, Any]:
     """Pull image_id, receipt_id, merchant_name from a ReceiptEvaluation root."""
-    extra = json.loads(row["extra"]) if row["extra"] else {}
+    extra = _parse_json_object(row.get("extra"))
     meta = extra.get("metadata", {})
     return {
         "image_id": meta.get("image_id"),
@@ -56,13 +87,13 @@ def _extract_root_metadata(row) -> dict[str, Any]:
 
 
 def _parse_phase_decisions(
-    row, phase_name: str
+    row: dict[str, Any], phase_name: str
 ) -> list[dict[str, Any]]:
     """Parse the output list from a phase span into flat decision dicts."""
-    raw = row["outputs"]
+    raw = row.get("outputs")
     if not raw:
         return []
-    parsed = json.loads(raw) if isinstance(raw, str) else raw
+    parsed = _parse_json_object(raw)
     output_list = parsed.get("output", [])
     if not isinstance(output_list, list):
         return []
@@ -81,8 +112,16 @@ def _parse_phase_decisions(
             "confidence": llm_review.get("confidence"),
             "reasoning": llm_review.get("reasoning"),
             "suggested_label": llm_review.get("suggested_label"),
-            "start_time": str(row["start_time"]) if row["start_time"] is not None else None,
-            "end_time": str(row["end_time"]) if row["end_time"] is not None else None,
+            "start_time": (
+                str(row.get("start_time"))
+                if row.get("start_time") is not None
+                else None
+            ),
+            "end_time": (
+                str(row.get("end_time"))
+                if row.get("end_time") is not None
+                else None
+            ),
         })
     return decisions
 
@@ -101,27 +140,38 @@ def build_journey_cache(parquet_dir: str) -> list[dict]:
         One dict per receipt with the structure documented in the module
         docstring.
     """
-    df = _read_all_parquet(parquet_dir)
-    logger.info("Loaded %d spans from parquet", len(df))
+    rows = _read_all_parquet(parquet_dir)
+    logger.info("Loaded %d spans from parquet", len(rows))
 
     # Index root ReceiptEvaluation runs by trace_id
-    roots = df[df["name"] == "ReceiptEvaluation"]
+    roots = [
+        row
+        for row in rows
+        if row.get("name") == "ReceiptEvaluation"
+        and row.get("parent_run_id") in (None, "")
+    ]
     root_by_trace: dict[str, dict[str, Any]] = {}
-    for _, row in roots.iterrows():
-        root_by_trace[row["trace_id"]] = _extract_root_metadata(row)
+    for row in roots:
+        trace_id = row.get("trace_id")
+        if not trace_id:
+            continue
+        root_by_trace[trace_id] = _extract_root_metadata(row)
 
     logger.info("Found %d root ReceiptEvaluation traces", len(root_by_trace))
 
     # Collect all decisions across phases, grouped by trace_id
     # trace_id -> list of flat decision dicts
     decisions_by_trace: dict[str, list[dict[str, Any]]] = {}
-    for phase in PHASE_NAMES:
-        phase_df = df[df["name"] == phase]
-        for _, row in phase_df.iterrows():
-            trace_id = row["trace_id"]
-            decs = _parse_phase_decisions(row, phase)
-            if decs:
-                decisions_by_trace.setdefault(trace_id, []).extend(decs)
+    for row in rows:
+        phase = row.get("name")
+        if phase not in PHASE_NAMES:
+            continue
+        trace_id = row.get("trace_id")
+        if not trace_id:
+            continue
+        decs = _parse_phase_decisions(row, phase)
+        if decs:
+            decisions_by_trace.setdefault(trace_id, []).extend(decs)
 
     logger.info(
         "Collected decisions for %d traces across %d phases",
@@ -137,14 +187,17 @@ def build_journey_cache(parquet_dir: str) -> list[dict]:
         # Group decisions by (line_id, word_id)
         word_groups: dict[tuple[int, int], list[dict]] = {}
         for dec in all_decisions:
-            key = (dec["line_id"], dec["word_id"])
+            line_id = dec.get("line_id")
+            word_id = dec.get("word_id")
+            if line_id is None or word_id is None:
+                continue
+            key = (line_id, word_id)
             word_groups.setdefault(key, []).append(dec)
 
         journeys: list[dict] = []
         for (line_id, word_id), phases_list in sorted(word_groups.items()):
             # Sort phases by predefined order
-            phase_order = {name: i for i, name in enumerate(PHASE_NAMES)}
-            phases_list.sort(key=lambda d: phase_order.get(d["phase"], 99))
+            phases_list.sort(key=lambda d: PHASE_ORDER.get(d["phase"], 99))
 
             # Detect conflicts: different non-null decisions across phases
             unique_decisions = {
