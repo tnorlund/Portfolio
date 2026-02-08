@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 from receipt_langsmith.spark.utils import parse_json_object
+from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +30,38 @@ logger = logging.getLogger(__name__)
 
 
 def _read_all_parquet(parquet_dir: str) -> "list[dict[str, Any]]":
-    """Read all parquet files under *parquet_dir* into a list of row dicts.
+    """Read parquet rows from local paths or S3 paths.
 
-    Uses ``pyarrow`` directly (no Spark dependency) so the helper can run
-    in lightweight test / CLI environments.
+    Supports:
+        - local directory trees containing parquet files
+        - local single parquet file
+        - s3:// / s3a:// parquet paths (via active Spark session)
     """
+    if parquet_dir.startswith(("s3://", "s3a://")):
+        # Import lazily so local unit tests do not require pyspark.
+        # pylint: disable=import-outside-toplevel
+        from pyspark.sql import SparkSession
+        # pylint: enable=import-outside-toplevel
+
+        spark = SparkSession.getActiveSession()
+        if spark is None:
+            raise RuntimeError(
+                "SparkSession is required for S3 parquet input paths"
+            )
+        df = spark.read.parquet(to_s3a(parquet_dir))
+        return [row.asDict(recursive=True) for row in df.toLocalIterator()]
+
     import pyarrow.parquet as pq  # local import to keep module importable
 
+    root = Path(parquet_dir)
+    files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
+    if not files:
+        return []
+
     rows: list[dict[str, Any]] = []
-    for root, _dirs, files in os.walk(parquet_dir):
-        for fname in sorted(files):
-            if not fname.endswith(".parquet"):
-                continue
-            path = os.path.join(root, fname)
-            table = pq.ParquetFile(path).read()
-            rows.extend(table.to_pandas().to_dict(orient="records"))
+    for path in files:
+        table = pq.ParquetFile(str(path)).read()
+        rows.extend(table.to_pylist())
     return rows
 
 
