@@ -11,7 +11,6 @@ import os
 
 import pytest
 
-
 PARQUET_DIR = "/tmp/langsmith-traces/"
 OUTPUT_DIR = "/tmp/viz-cache-output/financial-math/"
 
@@ -34,17 +33,17 @@ def cache_results():
 
 def test_expected_receipt_count(cache_results):
     """We expect 58 receipts with financial validation issues."""
-    assert len(cache_results) == 58, (
-        f"Expected 58 receipts with financial issues, got {len(cache_results)}"
-    )
+    assert (
+        len(cache_results) == 58
+    ), f"Expected 58 receipts with financial issues, got {len(cache_results)}"
 
 
 def test_each_receipt_has_at_least_one_equation(cache_results):
     """Every receipt in the cache should have at least one equation."""
     for receipt in cache_results:
-        assert len(receipt["equations"]) >= 1, (
-            f"Receipt {receipt['image_id']}_{receipt['receipt_id']} has no equations"
-        )
+        assert (
+            len(receipt["equations"]) >= 1
+        ), f"Receipt {receipt['image_id']}_{receipt['receipt_id']} has no equations"
 
 
 def test_receipt_structure(cache_results):
@@ -58,9 +57,9 @@ def test_receipt_structure(cache_results):
         "summary",
     }
     for receipt in cache_results:
-        assert required_keys.issubset(receipt.keys()), (
-            f"Missing keys: {required_keys - receipt.keys()}"
-        )
+        assert required_keys.issubset(
+            receipt.keys()
+        ), f"Missing keys: {required_keys - receipt.keys()}"
 
 
 def test_equation_structure(cache_results):
@@ -75,9 +74,9 @@ def test_equation_structure(cache_results):
     }
     for receipt in cache_results:
         for eq in receipt["equations"]:
-            assert equation_keys.issubset(eq.keys()), (
-                f"Equation missing keys: {equation_keys - eq.keys()}"
-            )
+            assert equation_keys.issubset(
+                eq.keys()
+            ), f"Equation missing keys: {equation_keys - eq.keys()}"
             assert len(eq["involved_words"]) >= 1
 
 
@@ -96,9 +95,9 @@ def test_involved_word_structure(cache_results):
     for receipt in cache_results:
         for eq in receipt["equations"]:
             for w in eq["involved_words"]:
-                assert word_keys.issubset(w.keys()), (
-                    f"Word missing keys: {word_keys - w.keys()}"
-                )
+                assert word_keys.issubset(
+                    w.keys()
+                ), f"Word missing keys: {word_keys - w.keys()}"
                 # bbox must have x, y, width, height
                 bbox = w["bbox"]
                 for field in ("x", "y", "width", "height"):
@@ -127,9 +126,9 @@ def test_valid_issue_types(cache_results):
     }
     for receipt in cache_results:
         for eq in receipt["equations"]:
-            assert eq["issue_type"] in known_types, (
-                f"Unknown issue_type: {eq['issue_type']}"
-            )
+            assert (
+                eq["issue_type"] in known_types
+            ), f"Unknown issue_type: {eq['issue_type']}"
 
 
 def test_valid_decisions(cache_results):
@@ -138,9 +137,9 @@ def test_valid_decisions(cache_results):
     for receipt in cache_results:
         for eq in receipt["equations"]:
             for w in eq["involved_words"]:
-                assert w["decision"] in valid_decisions, (
-                    f"Unknown decision: {w['decision']}"
-                )
+                assert (
+                    w["decision"] in valid_decisions
+                ), f"Unknown decision: {w['decision']}"
 
 
 def test_write_sample_outputs(cache_results):
@@ -158,15 +157,17 @@ def test_write_sample_outputs(cache_results):
         with open(path, "w") as f:
             json.dump(receipt, f, indent=2)
 
-    written = [
-        f for f in os.listdir(OUTPUT_DIR) if f.endswith(".json")
-    ]
-    assert len(written) >= 3, f"Expected at least 3 sample files, got {len(written)}"
+    written = [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".json")]
+    assert (
+        len(written) >= 3
+    ), f"Expected at least 3 sample files, got {len(written)}"
 
 
 def test_print_summary_stats(cache_results):
     """Print summary statistics for inspection."""
-    total_equations = sum(r["summary"]["total_equations"] for r in cache_results)
+    total_equations = sum(
+        r["summary"]["total_equations"] for r in cache_results
+    )
     total_words = sum(
         len(w)
         for r in cache_results
@@ -174,14 +175,10 @@ def test_print_summary_stats(cache_results):
         for w in [eq["involved_words"]]
     )
     invalid_count = sum(
-        1
-        for r in cache_results
-        if r["summary"]["has_invalid"]
+        1 for r in cache_results if r["summary"]["has_invalid"]
     )
     needs_review_count = sum(
-        1
-        for r in cache_results
-        if r["summary"]["has_needs_review"]
+        1 for r in cache_results if r["summary"]["has_needs_review"]
     )
 
     # Collect issue type distribution

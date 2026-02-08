@@ -15,7 +15,6 @@ from receipt_langsmith.spark.evaluator_dedup_viz_cache import (
     build_dedup_cache,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,13 +89,15 @@ def _root_row(
         "run_type": "chain",
         "status": "success",
         "is_root": True,
-        "extra": json.dumps({
-            "metadata": {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "merchant_name": merchant_name,
+        "extra": json.dumps(
+            {
+                "metadata": {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "merchant_name": merchant_name,
+                }
             }
-        }),
+        ),
         "inputs": "{}",
         "outputs": "{}",
     }
@@ -266,7 +267,9 @@ class TestSummaryBreakdown:
 
         assert summary["resolution_breakdown"]["higher_confidence"] == 2
         assert summary["resolution_breakdown"]["financial_label_priority"] == 1
-        assert summary["resolution_breakdown"]["currency_priority_default"] == 0
+        assert (
+            summary["resolution_breakdown"]["currency_priority_default"] == 0
+        )
 
     def test_winner_breakdown_matches(self):
         resolutions = [

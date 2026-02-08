@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from collections import Counter
 from typing import Any
 
-from receipt_langsmith.spark.utils import parse_json_object
-from receipt_langsmith.spark.utils import to_s3a
+from receipt_langsmith.spark.utils import parse_json_object, to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +74,7 @@ def _read_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()
@@ -84,12 +83,15 @@ def _read_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
                 "SparkSession is required for S3 parquet input paths"
             )
         df = spark.read.parquet(to_s3a(parquet_dir))
-        rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
-        logger.info("Read %d rows from S3 parquet path %s", len(rows), parquet_dir)
-        return rows
+        s3_rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
+        logger.info(
+            "Read %d rows from S3 parquet path %s", len(s3_rows), parquet_dir
+        )
+        return s3_rows
+
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
 
     import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
-    from pathlib import Path  # pylint: disable=import-outside-toplevel
 
     root = Path(parquet_dir)
     files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
@@ -97,14 +99,14 @@ def _read_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
         logger.warning("No parquet files found in %s", parquet_dir)
         return []
 
-    rows: list[dict[str, Any]] = []
+    local_rows: list[dict[str, Any]] = []
     for path in files:
         try:
             table = pq.ParquetFile(str(path)).read()
-            rows.extend(table.to_pylist())
-        except Exception:
+            local_rows.extend(table.to_pylist())
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Failed to read parquet file %s", path)
-    return rows
+    return local_rows
 
 
 # ---------------------------------------------------------------------------

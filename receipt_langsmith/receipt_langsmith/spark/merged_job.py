@@ -31,6 +31,8 @@ Data Sources:
     - CDN keys: receipts_lookup JSONL dataset
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import argparse
@@ -56,11 +58,11 @@ from pyspark.sql.types import (
 from pyspark.sql.utils import AnalysisException
 from pyspark.storagelevel import StorageLevel
 
-from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.cli import configure_logging
+from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.s3_io import (
-    load_json_from_s3,
     ReceiptsCachePointer,
+    load_json_from_s3,
     write_receipt_cache_index,
     write_receipt_json,
 )
@@ -78,7 +80,13 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--job-type",
-        choices=["analytics", "viz-cache", "qa-cache", "evaluator-viz-cache", "all"],
+        choices=[
+            "analytics",
+            "viz-cache",
+            "qa-cache",
+            "evaluator-viz-cache",
+            "all",
+        ],
         default="all",
         help="Type of job to run (default: all)",
     )
@@ -165,7 +173,9 @@ def validate_args(args: argparse.Namespace) -> None:
             "execution_id": "--execution-id required for qa-cache",
         },
         "evaluator-viz-cache": {
-            "parquet_input": "--parquet-input required for evaluator-viz-cache",
+            "parquet_input": (
+                "--parquet-input required for evaluator-viz-cache"
+            ),
             "cache_bucket": "--cache-bucket required for evaluator-viz-cache",
             "execution_id": "--execution-id required for evaluator-viz-cache",
         },
@@ -812,7 +822,9 @@ def _load_evaluator_trace_rows(
             df = df.withColumn(column_name, F.lit(None))
 
     selected_df = df.select(*EVALUATOR_TRACE_COLUMNS)
-    rows = [row.asDict(recursive=True) for row in selected_df.toLocalIterator()]
+    rows = [
+        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
+    ]
     logger.info("Loaded %d evaluator spans from %s", len(rows), parquet_dir)
     return rows
 
@@ -885,7 +897,7 @@ def run_evaluator_viz_cache(
     parquet_dir: str,
     cache_bucket: str,
     execution_id: str,
-) -> None:
+) -> None:  # pylint: disable=too-many-locals
     """Run evaluator viz-cache helpers and write results to S3.
 
     Trace rows are loaded from parquet once and reused across all helpers.
@@ -895,11 +907,17 @@ def run_evaluator_viz_cache(
     # Import helpers at call-time so the module can be loaded even when the
     # helper packages are not installed (mirrors the qa-cache pattern).
     # pylint: disable=import-outside-toplevel
-    from receipt_langsmith.spark.evaluator_financial_math_viz_cache import (
-        build_financial_math_cache,
+    from receipt_langsmith.spark.evaluator_dedup_viz_cache import (
+        build_dedup_cache,
     )
     from receipt_langsmith.spark.evaluator_diff_viz_cache import (
         build_diff_cache,
+    )
+    from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
+        build_evidence_cache,
+    )
+    from receipt_langsmith.spark.evaluator_financial_math_viz_cache import (
+        build_financial_math_cache,
     )
     from receipt_langsmith.spark.evaluator_journey_viz_cache import (
         build_journey_cache,
@@ -907,12 +925,7 @@ def run_evaluator_viz_cache(
     from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
         build_patterns_cache,
     )
-    from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
-        build_evidence_cache,
-    )
-    from receipt_langsmith.spark.evaluator_dedup_viz_cache import (
-        build_dedup_cache,
-    )
+
     # pylint: enable=import-outside-toplevel
 
     s3_client = boto3.client("s3")
@@ -967,7 +980,7 @@ def run_evaluator_viz_cache(
                 count,
             )
 
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             failures.append(prefix)
             logger.exception(
                 "Evaluator viz-cache helper '%s' failed; continuing with "
@@ -1046,12 +1059,13 @@ def main() -> int:
         # Run QA cache if requested
         if args.job_type == "qa-cache":
             # pylint: disable=import-outside-toplevel
-            from receipt_langsmith.spark.qa_viz_cache_job import (
-                run_qa_cache_job,
-            )
             from receipt_langsmith.spark.qa_viz_cache_helpers import (
                 qa_cache_config_from_args,
             )
+            from receipt_langsmith.spark.qa_viz_cache_job import (
+                run_qa_cache_job,
+            )
+
             # pylint: enable=import-outside-toplevel
 
             logger.info("Starting qa-cache phase...")

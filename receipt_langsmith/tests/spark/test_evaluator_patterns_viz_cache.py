@@ -19,20 +19,24 @@ OUTPUT_DIR = "/tmp/viz-cache-output/patterns/"
 def patterns_cache() -> list[dict]:
     """Build the patterns cache once for all tests in this module."""
     if not os.path.isdir(PARQUET_DIR):
-        pytest.skip("Trace parquet data not available at /tmp/langsmith-traces/")
+        pytest.skip(
+            "Trace parquet data not available at /tmp/langsmith-traces/"
+        )
     return build_patterns_cache(PARQUET_DIR)
 
 
 class TestMerchantPatterns:
     """Verify pattern extraction from llm_pattern_discovery spans."""
 
-    def test_finds_at_least_18_merchant_patterns(self, patterns_cache: list[dict]):
+    def test_finds_at_least_18_merchant_patterns(
+        self, patterns_cache: list[dict]
+    ):
         merchants_with_patterns = [
             e for e in patterns_cache if e.get("pattern") is not None
         ]
-        assert len(merchants_with_patterns) >= 18, (
-            f"Expected >= 18 merchants with patterns, got {len(merchants_with_patterns)}"
-        )
+        assert (
+            len(merchants_with_patterns) >= 18
+        ), f"Expected >= 18 merchants with patterns, got {len(merchants_with_patterns)}"
 
     def test_pattern_has_required_fields(self, patterns_cache: list[dict]):
         merchants_with_patterns = [
@@ -46,22 +50,27 @@ class TestMerchantPatterns:
         for entry in merchants_with_patterns:
             pattern = entry["pattern"]
             for field in required_fields:
-                assert field in pattern, (
-                    f"Missing field '{field}' in pattern for {entry['merchant_name']}"
-                )
+                assert (
+                    field in pattern
+                ), f"Missing field '{field}' in pattern for {entry['merchant_name']}"
 
     def test_known_merchants_present(self, patterns_cache: list[dict]):
         merchant_names = {e["merchant_name"] for e in patterns_cache}
-        expected = {"Urbane Cafe", "CVS", "Costco Wholesale", "In-N-Out Burger"}
+        expected = {
+            "Urbane Cafe",
+            "CVS",
+            "Costco Wholesale",
+            "In-N-Out Burger",
+        }
         missing = expected - merchant_names
         assert not missing, f"Expected merchants not found: {missing}"
 
     def test_trace_ids_present(self, patterns_cache: list[dict]):
         for entry in patterns_cache:
             if entry.get("pattern") is not None:
-                assert len(entry["trace_ids"]) >= 1, (
-                    f"No trace_ids for {entry['merchant_name']}"
-                )
+                assert (
+                    len(entry["trace_ids"]) >= 1
+                ), f"No trace_ids for {entry['merchant_name']}"
 
 
 class TestGeometricSummary:
@@ -71,31 +80,37 @@ class TestGeometricSummary:
         total_issues = sum(
             e["geometric_summary"]["total_issues"] for e in patterns_cache
         )
-        assert total_issues == 1608, (
-            f"Expected 1608 total geometric issues, got {total_issues}"
-        )
+        assert (
+            total_issues == 1608
+        ), f"Expected 1608 total geometric issues, got {total_issues}"
 
     def test_issue_type_breakdown(self, patterns_cache: list[dict]):
         global_types: dict[str, int] = {}
         for entry in patterns_cache:
-            for issue_type, count in entry["geometric_summary"]["issue_types"].items():
-                global_types[issue_type] = global_types.get(issue_type, 0) + count
+            for issue_type, count in entry["geometric_summary"][
+                "issue_types"
+            ].items():
+                global_types[issue_type] = (
+                    global_types.get(issue_type, 0) + count
+                )
 
-        assert global_types.get("missing_label_cluster", 0) == 1073, (
-            f"Expected 1073 missing_label_cluster, got {global_types.get('missing_label_cluster', 0)}"
-        )
-        assert global_types.get("missing_constellation_member", 0) == 346, (
-            f"Expected 346 missing_constellation_member, got {global_types.get('missing_constellation_member', 0)}"
-        )
-        assert global_types.get("text_label_conflict", 0) == 189, (
-            f"Expected 189 text_label_conflict, got {global_types.get('text_label_conflict', 0)}"
-        )
+        assert (
+            global_types.get("missing_label_cluster", 0) == 1073
+        ), f"Expected 1073 missing_label_cluster, got {global_types.get('missing_label_cluster', 0)}"
+        assert (
+            global_types.get("missing_constellation_member", 0) == 346
+        ), f"Expected 346 missing_constellation_member, got {global_types.get('missing_constellation_member', 0)}"
+        assert (
+            global_types.get("text_label_conflict", 0) == 189
+        ), f"Expected 189 text_label_conflict, got {global_types.get('text_label_conflict', 0)}"
 
-    def test_geometric_summary_always_present(self, patterns_cache: list[dict]):
+    def test_geometric_summary_always_present(
+        self, patterns_cache: list[dict]
+    ):
         for entry in patterns_cache:
-            assert "geometric_summary" in entry, (
-                f"Missing geometric_summary for {entry['merchant_name']}"
-            )
+            assert (
+                "geometric_summary" in entry
+            ), f"Missing geometric_summary for {entry['merchant_name']}"
             assert "total_issues" in entry["geometric_summary"]
             assert "issue_types" in entry["geometric_summary"]
 
@@ -141,12 +156,10 @@ class TestOutputWriting:
             json.dump(index, f, indent=2)
 
         # Verify files were written
-        written = [
-            f for f in os.listdir(OUTPUT_DIR) if f.endswith(".json")
-        ]
-        assert len(written) >= 19, (
-            f"Expected >= 19 files written (18 merchants + index), got {len(written)}"
-        )
+        written = [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".json")]
+        assert (
+            len(written) >= 19
+        ), f"Expected >= 19 files written (18 merchants + index), got {len(written)}"
 
     def test_print_merchant_summary(self, patterns_cache: list[dict]):
         print("\n--- Merchant Pattern Summary ---")
@@ -156,7 +169,9 @@ class TestOutputWriting:
             geo_issues = entry["geometric_summary"]["total_issues"]
             receipt_type = ""
             if has_pattern:
-                receipt_type = f" [{entry['pattern'].get('receipt_type', '?')}]"
+                receipt_type = (
+                    f" [{entry['pattern'].get('receipt_type', '?')}]"
+                )
             if has_pattern or geo_issues > 0:
                 print(
                     f"  {name}: pattern={'yes' if has_pattern else 'no'}"
@@ -168,5 +183,7 @@ class TestOutputWriting:
         merchants_with_patterns = len(
             [e for e in patterns_cache if e.get("pattern") is not None]
         )
-        print(f"\nTotal: {merchants_with_patterns} patterns, {total} geometric issues")
+        print(
+            f"\nTotal: {merchants_with_patterns} patterns, {total} geometric issues"
+        )
         print(f"Merchants in cache: {len(patterns_cache)}")

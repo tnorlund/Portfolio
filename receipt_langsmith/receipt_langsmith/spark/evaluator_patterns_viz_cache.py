@@ -18,8 +18,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from receipt_langsmith.spark.utils import parse_json_object
-from receipt_langsmith.spark.utils import to_s3a
+from receipt_langsmith.spark.utils import parse_json_object, to_s3a
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,7 @@ def _read_all_parquet(parquet_dir: str) -> "list[dict[str, Any]]":
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()
@@ -51,7 +51,10 @@ def _read_all_parquet(parquet_dir: str) -> "list[dict[str, Any]]":
         df = spark.read.parquet(to_s3a(parquet_dir))
         return [row.asDict(recursive=True) for row in df.toLocalIterator()]
 
+    # pylint: disable=import-outside-toplevel
     import pyarrow.parquet as pq  # local import to keep module importable
+
+    # pylint: enable=import-outside-toplevel
 
     root = Path(parquet_dir)
     files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
@@ -68,18 +71,24 @@ def _read_all_parquet(parquet_dir: str) -> "list[dict[str, Any]]":
 def _extract_merchant_from_extra(extra_raw: Any) -> str:
     """Return ``merchant_name`` from the ``extra.metadata`` JSON blob."""
     extra = parse_json_object(extra_raw)
-    metadata = extra.get("metadata", {})
-    return metadata.get("merchant_name", "Unknown")
+    metadata_raw = extra.get("metadata", {})
+    if not isinstance(metadata_raw, dict):
+        return "Unknown"
+    merchant = metadata_raw.get("merchant_name")
+    return merchant if isinstance(merchant, str) and merchant else "Unknown"
 
 
-def _parse_pattern_from_raw_response(raw_response: str) -> dict[str, Any] | None:
+def _parse_pattern_from_raw_response(
+    raw_response: str,
+) -> dict[str, Any] | None:
     """Parse the JSON object embedded in an LLM raw_response string."""
     start = raw_response.find("{")
     end = raw_response.rfind("}")
     if start < 0 or end <= start:
         return None
     try:
-        return json.loads(raw_response[start : end + 1])
+        parsed = json.loads(raw_response[start : end + 1])
+        return parsed if isinstance(parsed, dict) else None
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -136,7 +145,10 @@ def _build_merchant_patterns(
 
         if merchant in patterns:
             logger.warning(
-                "Overwriting existing pattern for merchant=%s trace_id=%s parsed=%s",
+                (
+                    "Overwriting existing pattern for merchant=%s "
+                    "trace_id=%s parsed=%s"
+                ),
                 merchant,
                 trace_id,
                 parsed,

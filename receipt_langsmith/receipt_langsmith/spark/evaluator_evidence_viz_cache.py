@@ -1,4 +1,4 @@
-"""Helper to extract ChromaDB evidence data from LangSmith trace parquet exports.
+"""Helper to extract ChromaDB evidence data from LangSmith traces.
 
 Reads parquet trace exports, finds ``ReceiptEvaluation`` root spans and their
 ``phase3_llm_review`` children, then returns per-receipt evidence summaries
@@ -42,6 +42,7 @@ def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()
@@ -50,26 +51,32 @@ def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
                 "SparkSession is required for S3 parquet input paths"
             )
         df = spark.read.parquet(to_s3a(parquet_dir))
-        rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
-        logger.info("Read %d rows from S3 parquet path %s", len(rows), parquet_dir)
-        return rows
+        s3_rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
+        logger.info(
+            "Read %d rows from S3 parquet path %s", len(s3_rows), parquet_dir
+        )
+        return s3_rows
 
     files = _list_parquet_files(parquet_dir)
     if not files:
         logger.warning("No parquet files found in %s", parquet_dir)
         return []
 
-    rows: list[dict[str, Any]] = []
+    local_rows: list[dict[str, Any]] = []
     import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
 
     for path in files:
         try:
             table = pq.ParquetFile(str(path)).read()
-            rows.extend(table.to_pylist())
-        except Exception:
+            local_rows.extend(table.to_pylist())
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Failed to read %s", path)
-    logger.info("Read %d rows from %d parquet files", len(rows), len(files))
-    return rows
+    logger.info(
+        "Read %d rows from %d parquet files",
+        len(local_rows),
+        len(files),
+    )
+    return local_rows
 
 
 def _parse_json(value: Any) -> Any:
@@ -131,9 +138,9 @@ def _find_child_span(
 ) -> dict[str, Any] | None:
     """Find the first child span matching *child_name* in one trace."""
     for row in trace_rows:
-        if (
-            row.get("name") == child_name
-            and row.get("parent_run_id") not in (None, "")
+        if row.get("name") == child_name and row.get("parent_run_id") not in (
+            None,
+            "",
         ):
             return row
     return None
@@ -180,7 +187,9 @@ def _build_issue_entry(decision: dict[str, Any]) -> dict[str, Any]:
 def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
     """Build aggregate summary from the list of issue entries."""
     total = len(issues)
-    with_evidence = sum(1 for i in issues if i.get("similar_word_count", 0) > 0)
+    with_evidence = sum(
+        1 for i in issues if i.get("similar_word_count", 0) > 0
+    )
 
     consensus_scores = [
         i["consensus_score"]
@@ -188,7 +197,9 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(i.get("consensus_score"), (int, float))
     ]
     avg_consensus = (
-        sum(consensus_scores) / len(consensus_scores) if consensus_scores else 0.0
+        sum(consensus_scores) / len(consensus_scores)
+        if consensus_scores
+        else 0.0
     )
 
     all_top_sims: list[float] = []
@@ -268,14 +279,16 @@ def build_evidence_cache(
 
         issues = [_build_issue_entry(d) for d in decisions]
 
-        results.append({
-            "image_id": meta["image_id"],
-            "receipt_id": meta["receipt_id"],
-            "merchant_name": meta["merchant_name"],
-            "trace_id": trace_id,
-            "issues_with_evidence": issues,
-            "summary": _build_summary(issues),
-        })
+        results.append(
+            {
+                "image_id": meta["image_id"],
+                "receipt_id": meta["receipt_id"],
+                "merchant_name": meta["merchant_name"],
+                "trace_id": trace_id,
+                "issues_with_evidence": issues,
+                "summary": _build_summary(issues),
+            }
+        )
 
     logger.info("Built evidence cache for %d receipts", len(results))
     return results

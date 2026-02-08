@@ -21,7 +21,9 @@ OUTPUT_DIR = "/tmp/viz-cache-output/before-after-diff/"
 def diff_cache() -> list[dict]:
     """Build the diff cache once for all tests."""
     if not os.path.isdir(PARQUET_DIR):
-        pytest.skip("Trace parquet data not available at /tmp/langsmith-traces/")
+        pytest.skip(
+            "Trace parquet data not available at /tmp/langsmith-traces/"
+        )
     return build_diff_cache(PARQUET_DIR)
 
 
@@ -33,9 +35,9 @@ def diff_cache() -> list[dict]:
 def test_receipts_with_changes(diff_cache: list[dict]) -> None:
     """We should see at least 415 receipts with label changes."""
     with_changes = [r for r in diff_cache if r["change_count"] > 0]
-    assert len(with_changes) >= 415, (
-        f"Expected >= 415 receipts with changes, got {len(with_changes)}"
-    )
+    assert (
+        len(with_changes) >= 415
+    ), f"Expected >= 415 receipts with changes, got {len(with_changes)}"
 
 
 def test_total_receipt_count(diff_cache: list[dict]) -> None:
@@ -68,12 +70,12 @@ def test_changed_words_have_source(diff_cache: list[dict]) -> None:
     for receipt in diff_cache:
         for w in receipt["words"]:
             if w["changed"]:
-                assert w.get("change_source") is not None, (
-                    f"Missing change_source for {w}"
-                )
-                assert w.get("reasoning") is not None, (
-                    f"Missing reasoning for {w}"
-                )
+                assert (
+                    w.get("change_source") is not None
+                ), f"Missing change_source for {w}"
+                assert (
+                    w.get("reasoning") is not None
+                ), f"Missing reasoning for {w}"
 
 
 def test_unchanged_words_no_extra_keys(diff_cache: list[dict]) -> None:
@@ -123,20 +125,27 @@ def test_diff_payload_schema(diff_cache: list[dict]) -> None:
         "label_summary",
     }
     for receipt in diff_cache[:20]:
-        assert required_keys <= set(receipt.keys()), (
-            f"Missing keys: {required_keys - set(receipt.keys())}"
-        )
+        assert required_keys <= set(
+            receipt.keys()
+        ), f"Missing keys: {required_keys - set(receipt.keys())}"
 
 
 def test_word_schema(diff_cache: list[dict]) -> None:
     """Each word dict must have the expected fields."""
-    required = {"line_id", "word_id", "text", "before_label", "after_label",
-                "changed", "bbox"}
+    required = {
+        "line_id",
+        "word_id",
+        "text",
+        "before_label",
+        "after_label",
+        "changed",
+        "bbox",
+    }
     for receipt in diff_cache[:20]:
         for w in receipt["words"]:
-            assert required <= set(w.keys()), (
-                f"Missing word keys: {required - set(w.keys())}"
-            )
+            assert required <= set(
+                w.keys()
+            ), f"Missing word keys: {required - set(w.keys())}"
             assert isinstance(w["bbox"], dict)
             assert "x" in w["bbox"] and "y" in w["bbox"]
 

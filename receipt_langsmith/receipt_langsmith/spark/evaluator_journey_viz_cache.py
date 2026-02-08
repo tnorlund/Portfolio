@@ -12,8 +12,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from receipt_langsmith.spark.utils import parse_json_object
-from receipt_langsmith.spark.utils import read_all_parquet_rows
+from receipt_langsmith.spark.utils import (
+    parse_json_object,
+    read_all_parquet_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ PHASE_ORDER = {name: i for i, name in enumerate(PHASE_NAMES)}
 
 
 def _extract_root_metadata(row: dict[str, Any]) -> dict[str, Any]:
-    """Pull image_id, receipt_id, merchant_name from a ReceiptEvaluation root."""
+    """Pull image_id, receipt_id, merchant_name from a root span."""
     extra = parse_json_object(row.get("extra"))
     meta = extra.get("metadata", {})
     return {
@@ -53,27 +55,29 @@ def _parse_phase_decisions(
     for item in output_list:
         issue = item.get("issue", {})
         llm_review = item.get("llm_review", {})
-        decisions.append({
-            "phase": phase_name,
-            "line_id": issue.get("line_id"),
-            "word_id": issue.get("word_id"),
-            "word_text": issue.get("word_text", ""),
-            "current_label": issue.get("current_label", ""),
-            "decision": llm_review.get("decision"),
-            "confidence": llm_review.get("confidence"),
-            "reasoning": llm_review.get("reasoning"),
-            "suggested_label": llm_review.get("suggested_label"),
-            "start_time": (
-                str(row.get("start_time"))
-                if row.get("start_time") is not None
-                else None
-            ),
-            "end_time": (
-                str(row.get("end_time"))
-                if row.get("end_time") is not None
-                else None
-            ),
-        })
+        decisions.append(
+            {
+                "phase": phase_name,
+                "line_id": issue.get("line_id"),
+                "word_id": issue.get("word_id"),
+                "word_text": issue.get("word_text", ""),
+                "current_label": issue.get("current_label", ""),
+                "decision": llm_review.get("decision"),
+                "confidence": llm_review.get("confidence"),
+                "reasoning": llm_review.get("reasoning"),
+                "suggested_label": llm_review.get("suggested_label"),
+                "start_time": (
+                    str(row.get("start_time"))
+                    if row.get("start_time") is not None
+                    else None
+                ),
+                "end_time": (
+                    str(row.get("end_time"))
+                    if row.get("end_time") is not None
+                    else None
+                ),
+            }
+        )
     return decisions
 
 
@@ -81,7 +85,7 @@ def build_journey_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
-) -> list[dict]:
+) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Build decision journey cache from parquet trace exports.
 
     Parameters
@@ -161,9 +165,7 @@ def build_journey_cache(
 
             # Detect conflicts: different non-null decisions across phases
             unique_decisions = {
-                d["decision"]
-                for d in phases_list
-                if d["decision"] is not None
+                d["decision"] for d in phases_list if d["decision"] is not None
             }
             has_conflict = len(unique_decisions) > 1
 
@@ -172,45 +174,47 @@ def build_journey_cache(
 
             phase_entries = []
             for d in phases_list:
-                phase_entries.append({
-                    "phase": d["phase"],
-                    "decision": d["decision"],
-                    "confidence": d["confidence"],
-                    "reasoning": d["reasoning"],
-                    "suggested_label": d["suggested_label"],
-                    "start_time": d["start_time"],
-                    "end_time": d["end_time"],
-                })
+                phase_entries.append(
+                    {
+                        "phase": d["phase"],
+                        "decision": d["decision"],
+                        "confidence": d["confidence"],
+                        "reasoning": d["reasoning"],
+                        "suggested_label": d["suggested_label"],
+                        "start_time": d["start_time"],
+                        "end_time": d["end_time"],
+                    }
+                )
 
-            journeys.append({
-                "line_id": line_id,
-                "word_id": word_id,
-                "word_text": phases_list[0]["word_text"],
-                "current_label": phases_list[0]["current_label"],
-                "phases": phase_entries,
-                "has_conflict": has_conflict,
-                "final_outcome": final_outcome,
-            })
+            journeys.append(
+                {
+                    "line_id": line_id,
+                    "word_id": word_id,
+                    "word_text": phases_list[0]["word_text"],
+                    "current_label": phases_list[0]["current_label"],
+                    "phases": phase_entries,
+                    "has_conflict": has_conflict,
+                    "final_outcome": final_outcome,
+                }
+            )
 
-        multi_phase_words = sum(
-            1 for j in journeys if len(j["phases"]) > 1
+        multi_phase_words = sum(1 for j in journeys if len(j["phases"]) > 1)
+        words_with_conflicts = sum(1 for j in journeys if j["has_conflict"])
+
+        results.append(
+            {
+                "image_id": root_meta.get("image_id"),
+                "receipt_id": root_meta.get("receipt_id"),
+                "merchant_name": root_meta.get("merchant_name"),
+                "trace_id": trace_id,
+                "journeys": journeys,
+                "summary": {
+                    "total_words_evaluated": len(journeys),
+                    "multi_phase_words": multi_phase_words,
+                    "words_with_conflicts": words_with_conflicts,
+                },
+            }
         )
-        words_with_conflicts = sum(
-            1 for j in journeys if j["has_conflict"]
-        )
-
-        results.append({
-            "image_id": root_meta.get("image_id"),
-            "receipt_id": root_meta.get("receipt_id"),
-            "merchant_name": root_meta.get("merchant_name"),
-            "trace_id": trace_id,
-            "journeys": journeys,
-            "summary": {
-                "total_words_evaluated": len(journeys),
-                "multi_phase_words": multi_phase_words,
-                "words_with_conflicts": words_with_conflicts,
-            },
-        })
 
     logger.info("Built journey cache for %d receipts", len(results))
     return results

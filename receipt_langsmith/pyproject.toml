@@ -84,3 +84,7 @@ disallow_untyped_defs = false
 [[tool.mypy.overrides]]
 module = ["py4j", "py4j.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true

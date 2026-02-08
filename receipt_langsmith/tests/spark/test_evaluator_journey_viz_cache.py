@@ -31,9 +31,9 @@ def journey_cache() -> list[dict]:
 
 def test_receipt_count(journey_cache: list[dict]) -> None:
     """We should get data for 588 receipts (one per ReceiptEvaluation root)."""
-    assert len(journey_cache) == 588, (
-        f"Expected 588 receipts, got {len(journey_cache)}"
-    )
+    assert (
+        len(journey_cache) == 588
+    ), f"Expected 588 receipts, got {len(journey_cache)}"
 
 
 def test_multi_phase_words(journey_cache: list[dict]) -> None:
@@ -41,9 +41,9 @@ def test_multi_phase_words(journey_cache: list[dict]) -> None:
     multi_phase_total = 0
     for receipt in journey_cache:
         multi_phase_total += receipt["summary"]["multi_phase_words"]
-    assert multi_phase_total >= 401, (
-        f"Expected >= 401 multi-phase words, got {multi_phase_total}"
-    )
+    assert (
+        multi_phase_total >= 401
+    ), f"Expected >= 401 multi-phase words, got {multi_phase_total}"
 
 
 def test_journeys_have_required_fields(journey_cache: list[dict]) -> None:
@@ -80,7 +80,8 @@ def test_write_sample_outputs(journey_cache: list[dict]) -> None:
         r for r in journey_cache if r["summary"]["words_with_conflicts"] > 0
     ]
     without_conflicts = [
-        r for r in journey_cache
+        r
+        for r in journey_cache
         if r["summary"]["words_with_conflicts"] == 0
         and r["summary"]["total_words_evaluated"] > 0
     ]

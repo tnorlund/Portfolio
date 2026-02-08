@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -257,7 +257,9 @@ class _FakeFunctions:
         return value
 
 
-def test_run_evaluator_cache_reuses_shared_rows(monkeypatch: pytest.MonkeyPatch):
+def test_run_evaluator_cache_reuses_shared_rows(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """Merged job should read parquet once and reuse rows for all helpers."""
     import receipt_langsmith.spark.evaluator_dedup_viz_cache as dedup_mod
     import receipt_langsmith.spark.evaluator_diff_viz_cache as diff_mod
@@ -338,7 +340,7 @@ def test_run_evaluator_cache_reuses_shared_rows(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(merged_job_mod, "F", _FakeFunctions())
 
     run_evaluator_viz_cache(
-        spark=spark,
+        spark=cast(Any, spark),
         parquet_dir="s3://input/traces/",
         cache_bucket="cache-bucket",
         execution_id="exec-1",

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
+
 from receipt_langsmith.spark.utils import to_s3a
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ def _read_all_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()
@@ -90,7 +92,7 @@ def _build_involved_word(
     decision: dict,
     word_lookup: dict[tuple[int, int], dict],
 ) -> dict[str, Any]:
-    """Build an involved-word entry from a single financial validation decision."""
+    """Build an involved-word entry from one financial validation decision."""
     issue = decision.get("issue", {})
     lid = issue.get("line_id")
     wid = issue.get("word_id")
@@ -135,9 +137,7 @@ def _build_equations(
     for desc, group in groups.items():
         # All decisions in a group share the same equation metadata
         first_issue = group[0].get("issue", {})
-        involved_words = [
-            _build_involved_word(d, word_lookup) for d in group
-        ]
+        involved_words = [_build_involved_word(d, word_lookup) for d in group]
         equations.append(
             {
                 "issue_type": first_issue.get("issue_type", ""),
@@ -175,7 +175,7 @@ def build_financial_math_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
-) -> list[dict]:
+) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Return financial math viz-cache dicts.
 
     Each dict represents one receipt that had financial validation issues
@@ -193,7 +193,7 @@ def build_financial_math_cache(
             raise ValueError("Either parquet_dir or rows must be provided")
         rows = _read_all_parquet_rows(parquet_dir)
 
-    # --- Build root ReceiptEvaluation metadata lookup: trace_id -> metadata ---
+    # Build root ReceiptEvaluation metadata lookup: trace_id -> metadata.
     root_meta: dict[str, dict[str, Any]] = {}
     for row in rows:
         name = row.get("name")

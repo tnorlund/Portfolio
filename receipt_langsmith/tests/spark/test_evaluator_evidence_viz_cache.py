@@ -13,11 +13,10 @@ import pyarrow.parquet as pq
 import pytest
 
 from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
-    build_evidence_cache,
     _build_issue_entry,
     _build_summary,
+    build_evidence_cache,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -231,7 +230,9 @@ class TestIssueEntries:
         rows = _sample_rows()
         _write_parquet(rows, str(tmp_path))
 
-        issue = build_evidence_cache(str(tmp_path))[0]["issues_with_evidence"][0]
+        issue = build_evidence_cache(str(tmp_path))[0]["issues_with_evidence"][
+            0
+        ]
         assert issue["line_id"] == 3
         assert issue["word_id"] == 1
         assert issue["word_text"] == "5.99"
@@ -452,7 +453,11 @@ class TestBuildSummaryUnit:
         assert summary["issues_with_evidence"] == 0
         assert summary["avg_consensus_score"] == 0.0
         assert summary["avg_similarity"] == 0.0
-        assert summary["decisions"] == {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+        assert summary["decisions"] == {
+            "VALID": 0,
+            "INVALID": 0,
+            "NEEDS_REVIEW": 0,
+        }
 
     def test_mixed_decisions(self):
         issues = [
@@ -472,7 +477,10 @@ class TestBuildSummaryUnit:
                 "decision": "NEEDS_REVIEW",
                 "consensus_score": 0.1,
                 "similar_word_count": 2,
-                "evidence": [{"similarity_score": 0.7}, {"similarity_score": 0.5}],
+                "evidence": [
+                    {"similarity_score": 0.7},
+                    {"similarity_score": 0.5},
+                ],
             },
         ]
         summary = _build_summary(issues)
@@ -481,5 +489,7 @@ class TestBuildSummaryUnit:
         assert summary["decisions"]["VALID"] == 1
         assert summary["decisions"]["INVALID"] == 1
         assert summary["decisions"]["NEEDS_REVIEW"] == 1
-        assert summary["avg_consensus_score"] == round((0.8 - 0.6 + 0.1) / 3, 4)
+        assert summary["avg_consensus_score"] == round(
+            (0.8 - 0.6 + 0.1) / 3, 4
+        )
         assert summary["avg_similarity"] == round((0.9 + 0.7 + 0.5) / 3, 4)

@@ -1,5 +1,7 @@
 """Shared Spark job utilities."""
 
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 import json
@@ -62,6 +64,7 @@ def read_all_parquet_rows(parquet_dir: str) -> list[dict[str, Any]]:
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()

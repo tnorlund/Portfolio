@@ -36,12 +36,14 @@ _SOURCE_PRIORITY: dict[str, int] = {
 # Parquet I/O
 # ---------------------------------------------------------------------------
 
+
 def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
     """Read and concatenate all parquet rows under *parquet_dir*."""
     if parquet_dir.startswith(("s3://", "s3a://")):
         # Import lazily so local unit tests do not require pyspark.
         # pylint: disable=import-outside-toplevel
         from pyspark.sql import SparkSession
+
         # pylint: enable=import-outside-toplevel
 
         spark = SparkSession.getActiveSession()
@@ -55,9 +57,7 @@ def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
     root = Path(parquet_dir)
     files = [root] if root.is_file() else sorted(root.rglob("*.parquet"))
     if not files:
-        raise FileNotFoundError(
-            f"No parquet files found under {parquet_dir}"
-        )
+        raise FileNotFoundError(f"No parquet files found under {parquet_dir}")
     logger.info("Reading %d parquet files from %s", len(files), parquet_dir)
 
     import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
@@ -74,6 +74,7 @@ def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Word extraction from evaluation inputs
 # ---------------------------------------------------------------------------
+
 
 def _extract_words_from_input(
     inp: dict[str, Any],
@@ -191,6 +192,7 @@ def _extract_geometric_decisions(
 # Per-receipt diff assembly
 # ---------------------------------------------------------------------------
 
+
 def _build_receipt_diff(
     words: list[dict[str, Any]],
     changes: dict[tuple[int, int], _Decision],
@@ -198,7 +200,9 @@ def _build_receipt_diff(
     receipt_id: int,
     merchant_name: str | None,
     trace_id: str,
-) -> dict[str, Any]:
+) -> dict[
+    str, Any
+]:  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     """Assemble one receipt diff payload."""
     diff_words: list[dict[str, Any]] = []
     change_count = 0
@@ -264,11 +268,14 @@ def _build_receipt_diff(
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 def build_diff_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[
+    dict[str, Any]
+]:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Build before/after diff payloads.
 
     Returns one dict per receipt (see module docstring for schema).
@@ -309,7 +316,9 @@ def build_diff_cache(
     # words: use the first of currency_evaluation / metadata_evaluation
     trace_words: dict[str, list[dict]] = {}
     # decisions: accumulate per source, respecting priority
-    trace_decisions: dict[str, dict[tuple[int, int], _Decision]] = defaultdict(dict)
+    trace_decisions: dict[str, dict[tuple[int, int], _Decision]] = defaultdict(
+        dict
+    )
 
     for row in rows:
         name = row.get("name")
@@ -363,6 +372,7 @@ def build_diff_cache(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _safe_json(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
@@ -385,11 +395,7 @@ def _merge_decisions(
         if existing is None:
             target[key] = decision
         else:
-            existing_prio = _SOURCE_PRIORITY.get(
-                existing["change_source"], -1
-            )
-            incoming_prio = _SOURCE_PRIORITY.get(
-                decision["change_source"], -1
-            )
+            existing_prio = _SOURCE_PRIORITY.get(existing["change_source"], -1)
+            incoming_prio = _SOURCE_PRIORITY.get(decision["change_source"], -1)
             if incoming_prio > existing_prio:
                 target[key] = decision
