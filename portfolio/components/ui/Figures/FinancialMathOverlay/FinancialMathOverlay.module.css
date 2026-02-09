@@ -185,12 +185,8 @@
   opacity: 1;
 }
 
-/* Equation notation */
-.equationNotation {
-  display: flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  flex-wrap: wrap;
+/* Vertical summation */
+.summation {
   font-family: "Monaco", "Menlo", "Consolas", monospace;
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
@@ -198,24 +194,52 @@
   line-height: 1.4;
 }
 
-.equationLhs {
-  opacity: 0.8;
-  word-break: break-all;
+.addends {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
-.equationSymbol {
-  font-weight: 700;
+.addendRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.addendOp {
+  width: 0.7em;
+  text-align: center;
   opacity: 0.5;
+  font-weight: 700;
 }
 
-.equationRhs {
+.addendVal {
+  text-align: right;
   opacity: 0.8;
 }
 
-.equationResult {
+.sumLine {
+  height: 1px;
+  background: var(--text-color);
+  opacity: 0.4;
+  margin: 0.2rem 0;
+}
+
+.resultRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.resultVal {
+  text-align: right;
+  font-weight: 600;
+}
+
+.resultIcon {
   font-size: 0.85rem;
   font-weight: 700;
-  margin-left: 0.2rem;
 }
 
 .resultValid {
@@ -233,6 +257,7 @@
   color: var(--color-red);
   margin-top: 0.15rem;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* Loading / Error states */

@@ -388,48 +388,50 @@ function formatDollar(val: number | string): string {
   return `$${Math.abs(n).toFixed(2)}`;
 }
 
-function buildEquationNotation(eq: FinancialMathEquation): {
-  lhs: string;
-  rhs: string;
-  symbol: string;
-} {
+interface EquationNotation {
+  /** Values being summed (displayed vertically, last one gets "+" prefix) */
+  addends: string[];
+  /** Result value below the line */
+  result: string;
+}
+
+function buildEquationNotation(eq: FinancialMathEquation): EquationNotation {
   const words = eq.involved_words;
   const issueType = eq.issue_type || "";
 
   if (issueType.includes("GRAND_TOTAL")) {
-    // SUBTOTAL + TAX = GRAND_TOTAL
     const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
     const taxes = words.filter((w) => w.current_label === "TAX");
     const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
-    const lhsParts = [
+    const addends = [
       ...subtotals.map((w) => w.word_text),
       ...taxes.map((w) => w.word_text),
     ];
-    const lhs = lhsParts.join(" + ") || formatDollar(eq.expected_value);
-    const rhs =
-      grandTotals.map((w) => w.word_text).join(" + ") ||
+    const result =
+      grandTotals.map((w) => w.word_text).join("") ||
       formatDollar(eq.actual_value);
-    return { lhs, rhs, symbol: "=" };
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result,
+    };
   }
 
   if (issueType.includes("SUBTOTAL")) {
-    // Σ LINE_TOTAL = SUBTOTAL
     const lineItems = words.filter((w) => w.current_label === "LINE_TOTAL");
     const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
-    const lhs =
-      lineItems.map((w) => w.word_text).join(" + ") ||
-      formatDollar(eq.expected_value);
-    const rhs =
-      subtotals.map((w) => w.word_text).join(" + ") ||
+    const addends = lineItems.map((w) => w.word_text);
+    const result =
+      subtotals.map((w) => w.word_text).join("") ||
       formatDollar(eq.actual_value);
-    return { lhs, rhs, symbol: "=" };
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result,
+    };
   }
 
-  // Fallback: expected = actual
   return {
-    lhs: formatDollar(eq.expected_value),
-    rhs: formatDollar(eq.actual_value),
-    symbol: "=",
+    addends: [formatDollar(eq.expected_value)],
+    result: formatDollar(eq.actual_value),
   };
 }
 
@@ -458,7 +460,6 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             ? eq.difference
             : parseFloat(String(eq.difference));
         const hasDiff = !isNaN(diff) && Math.abs(diff) > 0.001;
-        // Use the evaluator's decision, not the raw math difference
         const hasInvalid = eq.involved_words.some(
           (w) => w.decision === "INVALID"
         );
@@ -474,25 +475,41 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             className={`${styles.equationCard} ${isRevealed ? styles.revealed : ""}`}
             style={{ borderColor: isRevealed ? color : undefined }}
           >
-            <div className={styles.equationNotation}>
-              <span className={styles.equationLhs}>{notation.lhs}</span>
-              <span className={styles.equationSymbol}>{notation.symbol}</span>
-              <span className={styles.equationRhs}>{notation.rhs}</span>
-              <span
-                className={`${styles.equationResult} ${isValid ? styles.resultValid : styles.resultInvalid}`}
-              >
-                {isValid ? "\u2713" : "\u2717"}
-              </span>
-            </div>
-            {hasDiff && (
-              <div
-                className={styles.equationDiff}
-                style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
-              >
-                {diff > 0 ? "+" : ""}
-                {diff.toFixed(2)}
+            <div className={styles.summation}>
+              {/* Addends stacked vertically */}
+              <div className={styles.addends}>
+                {notation.addends.map((val, i) => (
+                  <div key={i} className={styles.addendRow}>
+                    <span className={styles.addendOp}>
+                      {i === notation.addends.length - 1 && notation.addends.length > 1
+                        ? "+"
+                        : ""}
+                    </span>
+                    <span className={styles.addendVal}>{val}</span>
+                  </div>
+                ))}
               </div>
-            )}
+              {/* Horizontal rule = the "equals" line */}
+              <div className={styles.sumLine} />
+              {/* Result row with validity indicator */}
+              <div className={styles.resultRow}>
+                <span className={styles.resultVal}>{notation.result}</span>
+                <span
+                  className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+                >
+                  {isValid ? "\u2713" : "\u2717"}
+                </span>
+              </div>
+              {hasDiff && (
+                <div
+                  className={styles.equationDiff}
+                  style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
+                >
+                  {diff > 0 ? "+" : ""}
+                  {diff.toFixed(2)}
+                </div>
+              )}
+            </div>
           </div>
         );
       })}
