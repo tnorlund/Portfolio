@@ -306,10 +306,9 @@ def collect_metadata_words(
                 prefiltered_count += 1
                 continue
 
-            # Check for pattern matches (for unlabeled words only)
-            detected_type = None
-            if not has_metadata_label:
-                detected_type = detect_pattern_type(text)
+            # Check for pattern matches (all words, enables auto-resolve
+            # for labeled words whose format confirms the label)
+            detected_type = detect_pattern_type(text)
 
             # Always check against ReceiptPlace data (provides context for LLM)
             place_match = None
