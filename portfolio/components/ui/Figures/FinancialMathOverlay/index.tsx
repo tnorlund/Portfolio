@@ -380,45 +380,82 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   );
 };
 
+// ─── Equation Notation Builder ──────────────────────────────────────────────
+
+function formatDollar(val: number | string): string {
+  const n = typeof val === "number" ? val : parseFloat(String(val));
+  if (isNaN(n)) return String(val);
+  return `$${Math.abs(n).toFixed(2)}`;
+}
+
+function buildEquationNotation(eq: FinancialMathEquation): {
+  lhs: string;
+  rhs: string;
+  symbol: string;
+} {
+  const words = eq.involved_words;
+  const issueType = eq.issue_type || "";
+
+  if (issueType.includes("GRAND_TOTAL")) {
+    // SUBTOTAL + TAX = GRAND_TOTAL
+    const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
+    const taxes = words.filter((w) => w.current_label === "TAX");
+    const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
+    const lhsParts = [
+      ...subtotals.map((w) => w.word_text),
+      ...taxes.map((w) => w.word_text),
+    ];
+    const lhs = lhsParts.join(" + ") || formatDollar(eq.expected_value);
+    const rhs =
+      grandTotals.map((w) => w.word_text).join(" + ") ||
+      formatDollar(eq.actual_value);
+    return { lhs, rhs, symbol: "=" };
+  }
+
+  if (issueType.includes("SUBTOTAL")) {
+    // Σ LINE_TOTAL = SUBTOTAL
+    const lineItems = words.filter((w) => w.current_label === "LINE_TOTAL");
+    const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
+    const lhs =
+      lineItems.map((w) => w.word_text).join(" + ") ||
+      formatDollar(eq.expected_value);
+    const rhs =
+      subtotals.map((w) => w.word_text).join(" + ") ||
+      formatDollar(eq.actual_value);
+    return { lhs, rhs, symbol: "=" };
+  }
+
+  // Fallback: expected = actual
+  return {
+    lhs: formatDollar(eq.expected_value),
+    rhs: formatDollar(eq.actual_value),
+    symbol: "=",
+  };
+}
+
 // ─── Equation Panel (Right Column) ──────────────────────────────────────────
 
 interface EquationPanelProps {
   equations: FinancialMathEquation[];
   revealedEquationIndices: Set<number>;
-  merchantName: string;
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
   equations,
   revealedEquationIndices,
-  merchantName,
 }) => {
   return (
     <div className={styles.equationPanel}>
       {equations.map((eq, idx) => {
         const color = getEquationColor(eq);
         const isRevealed = revealedEquationIndices.has(idx);
-        const hasInvalid = eq.involved_words.some(
-          (w) => w.decision === "INVALID"
-        );
-        const hasReview = eq.involved_words.some(
-          (w) => w.decision === "NEEDS_REVIEW"
-        );
-        const statusLabel = hasInvalid
-          ? "INVALID"
-          : hasReview
-          ? "REVIEW"
-          : "VALID";
-        const badgeBg = hasInvalid
-          ? "var(--color-red)"
-          : hasReview
-          ? "var(--color-yellow)"
-          : "var(--color-green)";
-        const badgeColor = hasReview ? "#000" : "#fff";
-
         const diff =
-          typeof eq.difference === "number" ? eq.difference : parseFloat(String(eq.difference));
+          typeof eq.difference === "number"
+            ? eq.difference
+            : parseFloat(String(eq.difference));
         const hasDiff = !isNaN(diff) && Math.abs(diff) > 0.001;
+        const isValid = !hasDiff;
+        const notation = buildEquationNotation(eq);
 
         return (
           <div
@@ -426,48 +463,25 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             className={`${styles.equationCard} ${isRevealed ? styles.revealed : ""}`}
             style={{ borderColor: isRevealed ? color : undefined }}
           >
-            <span
-              className={styles.equationBadge}
-              style={{ background: badgeBg, color: badgeColor }}
-            >
-              {statusLabel}
-            </span>
-            <div className={styles.equationDescription}>{eq.description}</div>
-            <div className={styles.equationValues}>
-              <div>
-                <div className={styles.valueLabel}>Exp</div>
-                <div className={styles.valueNumber}>
-                  {typeof eq.expected_value === "number"
-                    ? eq.expected_value.toFixed(2)
-                    : eq.expected_value}
-                </div>
-              </div>
-              <div>
-                <div className={styles.valueLabel}>Act</div>
-                <div className={styles.valueNumber}>
-                  {typeof eq.actual_value === "number"
-                    ? eq.actual_value.toFixed(2)
-                    : eq.actual_value}
-                </div>
-              </div>
-              {hasDiff && (
-                <div>
-                  <div className={styles.valueLabel}>Diff</div>
-                  <div className={`${styles.valueNumber} ${styles.diffHighlight}`}>
-                    {diff > 0 ? "+" : ""}
-                    {diff.toFixed(2)}
-                  </div>
-                </div>
-              )}
+            <div className={styles.equationNotation}>
+              <span className={styles.equationLhs}>{notation.lhs}</span>
+              <span className={styles.equationSymbol}>{notation.symbol}</span>
+              <span className={styles.equationRhs}>{notation.rhs}</span>
+              <span
+                className={`${styles.equationResult} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+              >
+                {isValid ? "\u2713" : "\u2717"}
+              </span>
             </div>
+            {hasDiff && (
+              <div className={styles.equationDiff}>
+                {diff > 0 ? "+" : ""}
+                {diff.toFixed(2)}
+              </div>
+            )}
           </div>
         );
       })}
-
-      <div className={styles.equationSummary}>
-        <span className={styles.summaryLabel}>Merchant</span>
-        <span className={styles.summaryValue}>{merchantName}</span>
-      </div>
     </div>
   );
 };
@@ -798,7 +812,6 @@ export default function FinancialMathOverlay() {
         <EquationPanel
           equations={currentReceipt.equations}
           revealedEquationIndices={revealedEquationIndices}
-          merchantName={currentReceipt.merchant_name}
         />
       </div>
     </div>
