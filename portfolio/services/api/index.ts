@@ -15,6 +15,7 @@ import {
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
+  PatternResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 import { API_CONFIG } from "./config";
@@ -374,7 +375,7 @@ const baseApi = {
     batchSize: number = 20,
     seed?: number,
     offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
+  ): Promise<PatternResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
     params.set("batch_size", batchSize.toString());

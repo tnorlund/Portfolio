@@ -20,6 +20,7 @@ import {
   LabelWordCloud,
   LayoutLMInferenceVisualization,
   PageCurlLetter,
+  PatternDiscovery,
   PrecisionRecallDartboard,
   QAAgentFlow,
   QuestionMarquee,
@@ -313,6 +314,10 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <LabelEvaluatorVisualization />
+      </ClientOnly>
+
+      <ClientOnly>
+        <PatternDiscovery />
       </ClientOnly>
 
       <p>

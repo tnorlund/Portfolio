@@ -670,3 +670,35 @@ export interface LabelValidationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// Pattern Discovery Types
+
+export interface MerchantPattern {
+  receipt_type: string;
+  receipt_type_reason: string;
+  item_structure: string | null;
+  lines_per_item: { typical: number; min: number; max: number } | null;
+  label_positions: Record<string, string> | null;
+  barcode_pattern: string | null;
+  special_markers: string[] | null;
+  grouping_rule: string | null;
+}
+
+export interface PatternEntry {
+  merchant_name: string;
+  trace_ids: string[];
+  pattern: MerchantPattern | null;
+  geometric_summary: {
+    total_issues: number;
+    issue_types: Record<string, number>;
+    top_suggested_labels: Record<string, number>;
+  };
+}
+
+export interface PatternResponse {
+  receipts: PatternEntry[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+}
