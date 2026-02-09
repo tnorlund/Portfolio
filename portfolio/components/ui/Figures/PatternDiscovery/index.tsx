@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../../../../services/api";
 import { PatternEntry, PatternResponse } from "../../../../types/api";
+import {
+  detectImageFormatSupport,
+  FormatSupport,
+  getBestImageUrl,
+} from "../../../../utils/imageFormat";
 import styles from "./PatternDiscovery.module.css";
 
 type SortKey = "merchant_name" | "receipt_type" | "total_issues" | "receipts";
@@ -22,12 +27,17 @@ export default function PatternDiscovery() {
   const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("total_issues");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
 
   useEffect(() => {
     api
       .fetchLabelEvaluatorPatterns(50)
       .then(setData)
       .catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
   const sorted = useMemo(() => {
@@ -187,7 +197,7 @@ export default function PatternDiscovery() {
                         : ""
                     }`}
                   >
-                    <ExpandedDetail entry={entry} />
+                    <ExpandedDetail entry={entry} formatSupport={formatSupport} />
                   </div>
                 </td>
               </tr>
@@ -224,7 +234,7 @@ export default function PatternDiscovery() {
                   : ""
               }`}
             >
-              <ExpandedDetail entry={entry} />
+              <ExpandedDetail entry={entry} formatSupport={formatSupport} />
             </div>
           </div>
         ))}
@@ -233,8 +243,14 @@ export default function PatternDiscovery() {
   );
 }
 
-function ExpandedDetail({ entry }: { entry: PatternEntry }) {
-  const { pattern, geometric_summary } = entry;
+function ExpandedDetail({
+  entry,
+  formatSupport,
+}: {
+  entry: PatternEntry;
+  formatSupport: FormatSupport | null;
+}) {
+  const { pattern, geometric_summary, receipts = [] } = entry;
   const issueMax = Math.max(
     1,
     ...Object.values(geometric_summary.issue_types)
@@ -244,7 +260,20 @@ function ExpandedDetail({ entry }: { entry: PatternEntry }) {
     ...Object.values(geometric_summary.top_suggested_labels)
   );
 
+  const validReceipts = receipts
+    .filter((r) => r.cdn_s3_key !== null)
+    .map((r) => ({
+      receipt_id: r.receipt_id,
+      cdn_s3_key: r.cdn_s3_key!,
+      cdn_webp_s3_key: r.cdn_webp_s3_key ?? undefined,
+      cdn_avif_s3_key: r.cdn_avif_s3_key ?? undefined,
+      cdn_medium_s3_key: r.cdn_medium_s3_key ?? undefined,
+      cdn_medium_webp_s3_key: r.cdn_medium_webp_s3_key ?? undefined,
+      cdn_medium_avif_s3_key: r.cdn_medium_avif_s3_key ?? undefined,
+    }));
+
   return (
+    <>
     <div className={styles.detailInner}>
       {/* Left: Pattern details */}
       <div className={styles.detailSection}>
@@ -411,5 +440,26 @@ function ExpandedDetail({ entry }: { entry: PatternEntry }) {
         )}
       </div>
     </div>
+    <div className={styles.receiptsSection}>
+      <div className={styles.detailSectionTitle}>
+        Receipt Images ({validReceipts.length})
+      </div>
+      {validReceipts.length === 0 ? (
+        <div className={styles.receiptThumbEmpty}>No receipt images</div>
+      ) : formatSupport === null ? null : (
+        <div className={styles.receiptThumbnails}>
+          {validReceipts.map((r) => (
+            <img
+              key={r.receipt_id}
+              className={styles.receiptThumb}
+              src={getBestImageUrl(r, formatSupport, "medium")}
+              alt={`Receipt ${r.receipt_id}`}
+              loading="lazy"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+    </>
   );
 }

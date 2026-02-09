@@ -135,7 +135,7 @@
 }
 
 .detailContentOpen {
-  max-height: 800px;
+  max-height: 1200px;
   opacity: 1;
 }
 
@@ -317,6 +317,45 @@
   font-style: italic;
 }
 
+/* Receipt thumbnails */
+.receiptsSection {
+  padding: 0.75rem 0.75rem 0;
+  border-top: 1px solid var(--border-color, rgba(128, 128, 128, 0.15));
+}
+
+.receiptThumbnails {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scrollbar-width: thin;
+}
+
+.receiptThumbnails::-webkit-scrollbar {
+  height: 6px;
+}
+
+.receiptThumbnails::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 3px;
+}
+
+.receiptThumb {
+  height: 120px;
+  width: auto;
+  border-radius: 6px;
+  flex-shrink: 0;
+  object-fit: contain;
+  background: rgba(128, 128, 128, 0.04);
+}
+
+.receiptThumbEmpty {
+  font-size: 0.8125rem;
+  color: var(--text-color);
+  opacity: 0.35;
+  font-style: italic;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .container {
@@ -389,6 +428,10 @@
 
   .barLabel {
     min-width: 120px;
+  }
+
+  .receiptThumb {
+    height: 90px;
   }
 }
 
