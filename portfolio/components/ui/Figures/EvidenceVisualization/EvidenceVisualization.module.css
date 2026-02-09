@@ -1,156 +1,230 @@
 /* Container */
 .container {
   width: 100%;
-  max-width: 1024px;
+  max-width: 1000px;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 1.5rem;
   background: var(--background-color);
   border-radius: 12px;
 }
 
-/* Summary stats bar */
-.summaryBar {
+/* Main Layout - Three Columns */
+.mainWrapper {
   display: flex;
   gap: 1.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
-  padding: 1rem;
-  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+}
+
+/* Receipt Queue - Left Column */
+.receiptQueue {
+  width: 120px;
+  height: 400px;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.queuedReceipt {
+  position: absolute;
+  width: 100px;
+  border: 1px solid #ccc;
   background: var(--background-color);
-  border: 1px solid var(--text-color);
-  border-opacity: 0.1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  will-change: transform, opacity;
 }
 
-.summaryItem {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.queuedReceipt.flyingOut {
+  opacity: 0;
+  pointer-events: none;
 }
 
-.summaryValue {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-color);
+/* Flying receipt - animates from queue to center */
+.flyingReceipt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  z-index: 10;
+  overflow: hidden;
 }
 
-.summaryLabel {
-  font-size: 0.7rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.flyingReceiptImage {
+  display: block;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-/* Receipt selector */
-.receiptSelector {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+/* Center Column */
+.centerColumn {
+  flex: 1;
+  max-width: 350px;
+  min-width: 0;
+  position: relative;
+  height: 500px;
+  z-index: 2;
 }
 
-.receiptTab {
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--text-color);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-color);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
-  opacity: 0.6;
-  font-family: inherit;
-}
-
-.receiptTab:hover {
-  opacity: 0.8;
-}
-
-.receiptTabActive {
-  opacity: 1;
-  border-color: var(--color-blue);
-  background: rgba(var(--color-blue-rgb, 59, 130, 246), 0.1);
-}
-
-.receiptTabCount {
-  font-size: 0.7rem;
-  opacity: 0.6;
-  margin-left: 0.25rem;
-}
-
-/* Issue cards */
-.issueList {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.issueCard {
-  border: 1px solid var(--text-color);
-  border-radius: 8px;
-  padding: 1rem;
-  background: var(--background-color);
-  transition: border-color 0.2s;
-}
-
-.issueCard:hover {
-  border-color: var(--color-blue);
-}
-
-/* Issue header row */
-.issueHeader {
+/* Receipt container for transitions */
+.receiptContainer {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.75rem;
+  justify-content: center;
 }
 
-.wordText {
-  font-size: 1rem;
+.fadeOut {
+  animation: fadeOut 0.4s ease-out forwards;
+}
+
+.fadeIn {
+  animation: fadeIn 0.4s ease-in forwards;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Next receipt overlaps current during mobile crossfade */
+.nextReceipt {
+  display: none;
+}
+
+/* Flying receipt container - visible on desktop */
+.flyingReceiptContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Active Receipt */
+.activeReceipt {
+  width: 100%;
+  height: 100%;
+}
+
+.receiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptImageInner {
+  position: relative;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  max-height: 500px;
+}
+
+.receiptImage {
+  display: block;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+}
+
+.receiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.svgOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Right Column - Evidence Panel */
+.evidencePanel {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* Issue row in right panel */
+.issueRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  opacity: 0.2;
+  transition: opacity 0.4s ease, border-color 0.3s ease;
+}
+
+.issueRow.revealed {
+  opacity: 1;
+  border-color: #ccc;
+}
+
+.issueRowHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.issueWordText {
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-color);
   font-family: "Monaco", "Menlo", "Consolas", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
 }
 
-.labelArrow {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.8rem;
-}
-
-.labelCurrent {
+.issueLabel {
+  font-size: 0.65rem;
   color: var(--text-color);
   opacity: 0.5;
   font-style: italic;
 }
 
-.labelSuggested {
-  color: var(--color-blue);
-  font-weight: 500;
-}
-
-.arrowIcon {
-  color: var(--text-color);
-  opacity: 0.4;
-}
-
-/* Decision and confidence badges */
-.badgeRow {
-  display: flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-
+/* Decision badges */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.15rem 0.5rem;
-  border-radius: 10px;
-  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  font-size: 0.6rem;
   font-weight: 600;
   color: white;
+  flex-shrink: 0;
 }
 
 .badgeValid {
@@ -166,205 +240,90 @@
   color: #333;
 }
 
-.badgeHigh {
-  background: var(--color-green);
-}
-
-.badgeMedium {
-  background: var(--color-yellow);
-  color: #333;
-}
-
-.badgeLow {
-  background: var(--color-orange);
-}
-
-/* Consensus gauge */
-.consensusSection {
-  margin: 0.75rem 0;
-}
-
-.consensusLabel {
-  font-size: 0.7rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin-bottom: 0.35rem;
-  display: flex;
-  justify-content: space-between;
-}
-
-.consensusGauge {
+/* Consensus gauge (small horizontal bar) */
+.consensusBar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #ef4444 0%, #a3a3a3 50%, #22c55e 100%);
   position: relative;
-  height: 20px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: linear-gradient(to right,
-    #ef4444 0%,
-    #f59e0b 50%,
-    #22c55e 100%
-  );
-}
-
-.consensusTrack {
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  opacity: 0.2;
+  margin-top: 0.15rem;
 }
 
 .consensusMarker {
   position: absolute;
-  top: 0;
+  top: -2px;
   width: 3px;
-  height: 100%;
+  height: 8px;
   background: var(--text-color);
   border-radius: 1px;
   transform: translateX(-50%);
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
-.consensusScore {
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-}
-
-/* Evidence list */
-.evidenceSection {
-  margin-top: 0.75rem;
-}
-
-.evidenceTitle {
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin-bottom: 0.5rem;
-}
-
-.evidenceList {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.evidenceRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  background: rgba(var(--color-blue-rgb, 59, 130, 246), 0.03);
-}
-
-.evidenceWordText {
-  font-size: 0.75rem;
-  color: var(--text-color);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-}
-
-.similarityBarWrapper {
-  width: 60px;
-  height: 6px;
-  background: var(--text-color);
-  opacity: 0.15;
-  border-radius: 3px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.similarityBarFill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--color-blue);
-  transition: width 0.3s ease;
-}
-
-.similarityScore {
-  font-size: 0.65rem;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  color: var(--text-color);
-  opacity: 0.6;
-  width: 36px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.validityIndicator {
-  font-size: 0.75rem;
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-}
-
-.validitySupports {
-  color: var(--color-green);
-}
-
-.validityContradicts {
-  color: var(--color-orange);
-}
-
-.evidenceBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+/* Evidence count */
+.evidenceCount {
   font-size: 0.6rem;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.sameMerchantBadge {
-  background: rgba(var(--color-blue-rgb, 59, 130, 246), 0.12);
-  color: var(--color-blue);
-}
-
-.sourceBadge {
-  background: rgba(var(--color-blue-rgb, 59, 130, 246), 0.08);
   color: var(--text-color);
   opacity: 0.5;
 }
 
-/* Expand/collapse reasoning */
-.reasoningToggle {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--color-blue);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: inherit;
+/* Summary section at bottom of panel */
+.summarySection {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--text-color);
+  opacity: 0.2;
+  transition: opacity 0.4s ease;
 }
 
-.reasoningToggle:hover {
-  text-decoration: underline;
+.summarySection.summaryRevealed {
+  opacity: 1;
 }
 
-.reasoningText {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
+.summaryTitle {
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-color);
-  opacity: 0.8;
-  line-height: 1.5;
-  padding: 0.5rem;
-  border-left: 2px solid var(--color-blue);
-  background: rgba(var(--color-blue-rgb, 59, 130, 246), 0.03);
-  border-radius: 0 4px 4px 0;
+  opacity: 0.6;
+  margin-bottom: 0.35rem;
 }
 
-/* No evidence */
-.noEvidence {
-  font-size: 0.75rem;
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
   color: var(--text-color);
-  opacity: 0.4;
-  font-style: italic;
-  margin-top: 0.5rem;
+  padding: 0.1rem 0;
+}
+
+.summaryValue {
+  font-weight: 600;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.decisionBreakdown {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.decisionStat {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.6rem;
+  color: var(--text-color);
+}
+
+.decisionDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Loading / Error states */
@@ -384,44 +343,113 @@
   opacity: 1;
 }
 
-/* Responsive */
+/* Tablet Responsive */
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
   }
 
-  .summaryBar {
-    gap: 1rem;
-  }
-
-  .issueHeader {
+  .mainWrapper {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+    gap: 1rem;
+    align-items: center;
   }
 
-  .evidenceRow {
-    flex-wrap: wrap;
-    gap: 0.25rem;
+  .receiptQueue {
+    display: none;
   }
 
-  .evidenceWordText {
+  .centerColumn {
     width: 100%;
-    flex: none;
+    max-width: 100%;
+    height: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
-  .similarityBarWrapper {
-    flex: 1;
+  .activeReceipt {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageWrapper {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageInner {
+    max-height: 380px;
+  }
+
+  .receiptImage {
+    max-height: 380px;
+  }
+
+  /* Hide flying receipt on mobile */
+  .flyingReceiptContainer {
+    display: none;
+  }
+
+  .flyingReceipt {
+    display: none;
+  }
+
+  /* Show crossfade next receipt on mobile */
+  .nextReceipt {
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .evidencePanel {
+    width: 100%;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0;
+  }
+
+  .issueRow {
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+
+  .summarySection {
+    flex: 1 1 100%;
+    border-top: none;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
   }
 }
 
+/* Small mobile */
 @media (max-width: 480px) {
-  .summaryBar {
-    flex-direction: column;
-    gap: 0.75rem;
+  .centerColumn {
+    height: 320px;
   }
 
-  .receiptSelector {
+  .receiptImageInner {
+    max-height: 300px;
+  }
+
+  .receiptImage {
+    max-height: 300px;
+  }
+
+  .evidencePanel {
     flex-direction: column;
+  }
+
+  .issueRow {
+    min-width: 0;
   }
 }
