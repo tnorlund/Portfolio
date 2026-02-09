@@ -1,0 +1,332 @@
+.container {
+  width: 100%;
+  max-width: 1024px;
+  margin: 2rem auto;
+  padding: 0;
+}
+
+.summary {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.summaryCard {
+  flex: 1;
+  min-width: 140px;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--text-color);
+  opacity: 0.9;
+  text-align: center;
+}
+
+.summaryLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.7;
+  margin-bottom: 0.25rem;
+}
+
+.summaryValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.receiptCard {
+  border: 1px solid var(--text-color);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  opacity: 0.95;
+}
+
+.receiptHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--text-color);
+  opacity: 0.3;
+  cursor: pointer;
+}
+
+.receiptHeader:hover {
+  opacity: 0.4;
+}
+
+.merchantName {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-color);
+}
+
+.receiptMeta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+.equationCount {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.25rem;
+}
+
+.equationList {
+  padding: 0.75rem 1.25rem 1.25rem;
+}
+
+.equationCard {
+  border: 1px solid var(--text-color);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  opacity: 0.8;
+}
+
+.equationCard:last-child {
+  margin-bottom: 0;
+}
+
+.equationHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.equationHeader:hover {
+  background: var(--text-color);
+  opacity: 0.05;
+}
+
+.issueBadge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.equationDescription {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-color);
+  line-height: 1.4;
+}
+
+.equationValues {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.valueLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.valueNumber {
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-color);
+}
+
+.diffPositive {
+  color: var(--color-red);
+}
+
+.diffNegative {
+  color: var(--color-red);
+}
+
+.equationDetails {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--text-color);
+  opacity: 0.3;
+}
+
+.wordGrid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.wordRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--text-color);
+  opacity: 0.2;
+  font-size: 0.85rem;
+}
+
+.wordText {
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-color);
+}
+
+.wordLabel {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--text-color);
+  opacity: 0.1;
+  color: var(--text-color);
+  font-family: monospace;
+}
+
+.wordDecision {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+}
+
+.wordConfidence {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.6;
+  text-transform: capitalize;
+}
+
+.wordReasoning {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.7;
+  line-height: 1.5;
+  padding-top: 0.25rem;
+  border-top: 1px dashed var(--text-color);
+  opacity: 0.15;
+}
+
+.decisionValid {
+  color: var(--color-green);
+  border: 1px solid var(--color-green);
+}
+
+.decisionInvalid {
+  color: var(--color-red);
+  border: 1px solid var(--color-red);
+}
+
+.decisionReview {
+  color: var(--color-yellow);
+  border: 1px solid var(--color-yellow);
+}
+
+.borderValid {
+  border-left: 3px solid var(--color-green);
+}
+
+.borderInvalid {
+  border-left: 3px solid var(--color-red);
+}
+
+.borderReview {
+  border-left: 3px solid var(--color-yellow);
+}
+
+.loadMore {
+  display: block;
+  margin: 1rem auto;
+  padding: 0.5rem 2rem;
+  border: 1px solid var(--text-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.loadMore:hover {
+  background: var(--text-color);
+  opacity: 0.05;
+}
+
+.loadMore:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.error {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-red);
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+@media (max-width: 640px) {
+  .summary {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .receiptHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .equationHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .equationValues {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .wordRow {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

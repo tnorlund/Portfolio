@@ -15,6 +15,7 @@ import {
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
+  FinancialMathOverlay,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
@@ -313,6 +314,16 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <LabelEvaluatorVisualization />
+      </ClientOnly>
+
+      <p>
+        Beyond labeling, I also check the math. Does the subtotal plus tax
+        equal the grand total? The system runs these equations on every receipt
+        and flags mismatches.
+      </p>
+
+      <ClientOnly>
+        <FinancialMathOverlay />
       </ClientOnly>
 
       <p>

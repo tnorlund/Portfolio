@@ -702,3 +702,46 @@ export interface LabelValidationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// Financial Math Overlay Types
+
+export interface FinancialMathWord {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  decision: string;
+  confidence: string;
+  reasoning: string;
+}
+
+export interface FinancialMathEquation {
+  issue_type: string;
+  description: string;
+  expected_value: number | string;
+  actual_value: number | string;
+  difference: number | string;
+  involved_words: FinancialMathWord[];
+}
+
+export interface FinancialMathReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string;
+  equations: FinancialMathEquation[];
+  summary: {
+    total_equations: number;
+    has_invalid: boolean;
+    has_needs_review: boolean;
+  };
+}
+
+export interface FinancialMathResponse {
+  receipts: FinancialMathReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+}
