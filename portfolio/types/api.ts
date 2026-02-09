@@ -684,6 +684,19 @@ export interface MerchantPattern {
   grouping_rule: string | null;
 }
 
+export interface PatternReceipt {
+  image_id: string;
+  receipt_id: number;
+  cdn_s3_key: string | null;
+  cdn_webp_s3_key: string | null;
+  cdn_avif_s3_key: string | null;
+  cdn_medium_s3_key: string | null;
+  cdn_medium_webp_s3_key: string | null;
+  cdn_medium_avif_s3_key: string | null;
+  width: number;
+  height: number;
+}
+
 export interface PatternEntry {
   merchant_name: string;
   trace_ids: string[];
@@ -693,6 +706,7 @@ export interface PatternEntry {
     issue_types: Record<string, number>;
     top_suggested_labels: Record<string, number>;
   };
+  receipts: PatternReceipt[];
 }
 
 export interface PatternResponse {

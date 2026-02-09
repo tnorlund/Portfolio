@@ -951,6 +951,7 @@ def run_evaluator_viz_cache(
     cache_bucket: str,
     execution_id: str,
     batch_bucket: str | None = None,
+    receipts_lookup_path: str | None = None,
 ) -> None:
     """Run evaluator viz-cache helpers and write results to S3.
 
@@ -987,6 +988,17 @@ def run_evaluator_viz_cache(
     trace_rows = _load_evaluator_trace_rows(spark, parquet_dir)
     unified_rows = _load_unified_rows(spark, batch_bucket, execution_id)
 
+    # Build receipts lookup dict for CDN key enrichment on patterns
+    lookup_rows: dict[tuple[str, int], dict[str, Any]] = {}
+    if receipts_lookup_path:
+        lookup_df = load_receipts_lookup_df(spark, receipts_lookup_path, None)
+        if lookup_df is not None:
+            for row in lookup_df.toLocalIterator():
+                rd = row.asDict(recursive=True)
+                key = (rd.get("image_id"), rd.get("receipt_id"))
+                if key[0] and key[1] is not None:
+                    lookup_rows[key] = rd
+
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
         ("diff", build_diff_cache, False),
@@ -1014,6 +1026,20 @@ def run_evaluator_viz_cache(
                     f"Helper '{prefix}' returned "
                     f"{type(results).__name__}, expected list"
                 )
+
+            # Enrich patterns receipts with CDN keys from lookup
+            if prefix == "patterns" and lookup_rows:
+                for item in results:
+                    for receipt in item.get("receipts", []):
+                        key = (
+                            receipt.get("image_id"),
+                            receipt.get("receipt_id"),
+                        )
+                        lookup = lookup_rows.get(key, {})
+                        cdn_keys = build_cdn_keys_from_row(lookup)
+                        receipt.update(cdn_keys)
+                        receipt["width"] = lookup.get("width") or 0
+                        receipt["height"] = lookup.get("height") or 0
 
             count = _write_evaluator_cache_parallel(
                 spark=spark,
@@ -1105,6 +1131,7 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
+                receipts_lookup_path=args.receipts_lookup,
             )
             logger.info("Evaluator viz-cache phase complete")
 
@@ -1117,6 +1144,7 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
+                receipts_lookup_path=args.receipts_lookup,
             )
             logger.info("Evaluator viz-cache phase complete")
 

@@ -176,6 +176,58 @@ def _build_merchant_patterns(
     return result
 
 
+def _build_merchant_receipts(
+    rows: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Extract ``image_id``/``receipt_id`` pairs per merchant.
+
+    Uses root ``ReceiptEvaluation`` spans (the same spans already used by
+    :func:`_build_geometric_summary`) to map each trace to a merchant and
+    pull out the receipt identifiers from ``extra.metadata``.
+
+    Returns a dict mapping merchant_name -> list of ``{image_id, receipt_id}``
+    dicts, deduplicated by ``(image_id, receipt_id)`` within each merchant.
+    """
+    # Map trace_id -> (merchant, image_id, receipt_id) via root ReceiptEvaluation spans
+    trace_info: dict[str, tuple[str, str, int]] = {}
+    for row in rows:
+        if _is_root(row) and row.get("name") == "ReceiptEvaluation":
+            trace_id = row.get("trace_id")
+            if not trace_id:
+                continue
+            extra = parse_json_object(row.get("extra"))
+            metadata = extra.get("metadata", {})
+            if not isinstance(metadata, dict):
+                continue
+            merchant = metadata.get("merchant_name")
+            image_id = metadata.get("image_id")
+            receipt_id = metadata.get("receipt_id")
+            if (
+                not isinstance(merchant, str)
+                or not merchant
+                or not image_id
+                or receipt_id is None
+            ):
+                continue
+            trace_info[trace_id] = (merchant, str(image_id), int(receipt_id))
+
+    # Group by merchant, dedup by (image_id, receipt_id)
+    merchant_receipts: dict[str, list[dict[str, Any]]] = {}
+    seen: dict[str, set[tuple[str, int]]] = {}
+    for merchant, image_id, receipt_id in trace_info.values():
+        key = (image_id, receipt_id)
+        if merchant not in seen:
+            seen[merchant] = set()
+            merchant_receipts[merchant] = []
+        if key not in seen[merchant]:
+            seen[merchant].add(key)
+            merchant_receipts[merchant].append(
+                {"image_id": image_id, "receipt_id": receipt_id}
+            )
+
+    return merchant_receipts
+
+
 def _build_geometric_summary(
     rows: list[dict[str, Any]],
 ) -> tuple[dict[str, dict[str, Any]], int]:
@@ -278,8 +330,17 @@ def build_patterns_cache(
         len(geo_summaries),
     )
 
-    # Merge patterns + geometric summaries into per-merchant output
-    all_merchants = set(merchant_patterns.keys()) | set(geo_summaries.keys())
+    merchant_receipts = _build_merchant_receipts(rows)
+    logger.info(
+        "Extracted receipt images for %d merchants", len(merchant_receipts)
+    )
+
+    # Merge patterns + geometric summaries + receipts into per-merchant output
+    all_merchants = (
+        set(merchant_patterns.keys())
+        | set(geo_summaries.keys())
+        | set(merchant_receipts.keys())
+    )
     cache: list[dict[str, Any]] = []
 
     for merchant in sorted(all_merchants):
@@ -302,6 +363,8 @@ def build_patterns_cache(
                 "issue_types": {},
                 "top_suggested_labels": {},
             }
+
+        entry["receipts"] = merchant_receipts.get(merchant, [])
 
         cache.append(entry)
 

@@ -8,6 +8,7 @@ import os
 import pytest
 
 from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+    _build_merchant_receipts,
     build_patterns_cache,
 )
 
@@ -71,6 +72,171 @@ class TestMerchantPatterns:
                 assert (
                     len(entry["trace_ids"]) >= 1
                 ), f"No trace_ids for {entry['merchant_name']}"
+
+    def test_receipts_present(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            assert "receipts" in entry, (
+                f"Missing receipts for {entry['merchant_name']}"
+            )
+            assert isinstance(entry["receipts"], list)
+            for receipt in entry["receipts"]:
+                assert "image_id" in receipt, (
+                    f"Missing image_id in receipt for {entry['merchant_name']}"
+                )
+                assert "receipt_id" in receipt, (
+                    f"Missing receipt_id in receipt for {entry['merchant_name']}"
+                )
+
+
+class TestMerchantReceipts:
+    """Unit tests for _build_merchant_receipts."""
+
+    def test_extracts_receipts_from_root_spans(self):
+        rows = [
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t1",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Costco Wholesale",
+                            "image_id": "img-1",
+                            "receipt_id": 10,
+                        }
+                    }
+                ),
+            },
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t2",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Costco Wholesale",
+                            "image_id": "img-2",
+                            "receipt_id": 20,
+                        }
+                    }
+                ),
+            },
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t3",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "CVS",
+                            "image_id": "img-3",
+                            "receipt_id": 30,
+                        }
+                    }
+                ),
+            },
+        ]
+
+        result = _build_merchant_receipts(rows)
+
+        assert "Costco Wholesale" in result
+        assert "CVS" in result
+        assert len(result["Costco Wholesale"]) == 2
+        assert len(result["CVS"]) == 1
+        assert {"image_id": "img-3", "receipt_id": 30} in result["CVS"]
+
+    def test_deduplicates_by_image_receipt_pair(self):
+        rows = [
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t1",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Store",
+                            "image_id": "img-1",
+                            "receipt_id": 1,
+                        }
+                    }
+                ),
+            },
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t2",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Store",
+                            "image_id": "img-1",
+                            "receipt_id": 1,
+                        }
+                    }
+                ),
+            },
+        ]
+
+        result = _build_merchant_receipts(rows)
+        assert len(result["Store"]) == 1
+
+    def test_skips_non_root_spans(self):
+        rows = [
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t1",
+                "is_root": False,
+                "parent_run_id": "parent-1",
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Store",
+                            "image_id": "img-1",
+                            "receipt_id": 1,
+                        }
+                    }
+                ),
+            },
+        ]
+
+        result = _build_merchant_receipts(rows)
+        assert len(result) == 0
+
+    def test_skips_missing_fields(self):
+        rows = [
+            {
+                "name": "ReceiptEvaluation",
+                "trace_id": "t1",
+                "is_root": True,
+                "extra": json.dumps(
+                    {"metadata": {"merchant_name": "Store"}}
+                ),
+            },
+        ]
+
+        result = _build_merchant_receipts(rows)
+        assert len(result) == 0
+
+    def test_returns_empty_for_no_matching_spans(self):
+        rows = [
+            {
+                "name": "UnifiedPatternBuilder",
+                "trace_id": "t1",
+                "is_root": True,
+                "extra": json.dumps(
+                    {
+                        "metadata": {
+                            "merchant_name": "Store",
+                            "image_id": "img-1",
+                            "receipt_id": 1,
+                        }
+                    }
+                ),
+            },
+        ]
+
+        result = _build_merchant_receipts(rows)
+        assert len(result) == 0
 
 
 class TestGeometricSummary:

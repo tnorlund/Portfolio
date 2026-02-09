@@ -299,7 +299,7 @@ def test_run_evaluator_cache_reuses_shared_rows(
             del unified_rows
             captured_rows[prefix] = rows
             if merchant_keyed:
-                return [{"merchant_name": "Test Merchant"}]
+                return [{"merchant_name": "Test Merchant", "receipts": []}]
             return [{"image_id": "img-1", "receipt_id": 1}]
 
         return _helper
@@ -414,3 +414,127 @@ def test_load_unified_rows_uses_multiline_reader(
     assert len(rows) == 2
     assert rows[0]["image_id"] == "img-1"
     assert isinstance(rows[0]["review_all_decisions"], list)
+
+
+def test_patterns_receipts_get_cdn_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patterns receipts should be enriched with CDN keys from lookup."""
+    import receipt_langsmith.spark.evaluator_dedup_viz_cache as dedup_mod
+    import receipt_langsmith.spark.evaluator_diff_viz_cache as diff_mod
+    import receipt_langsmith.spark.evaluator_evidence_viz_cache as evidence_mod
+    import receipt_langsmith.spark.evaluator_financial_math_viz_cache as fm_mod
+    import receipt_langsmith.spark.evaluator_journey_viz_cache as journey_mod
+    import receipt_langsmith.spark.evaluator_patterns_viz_cache as patterns_mod
+    import receipt_langsmith.spark.merged_job as merged_job_mod
+
+    trace_rows = [
+        {
+            "id": "root-1",
+            "trace_id": "trace-1",
+            "parent_run_id": None,
+            "is_root": True,
+            "name": "ReceiptEvaluation",
+            "inputs": "{}",
+            "outputs": "{}",
+            "extra": "{}",
+            "start_time": "2025-01-01T00:00:00",
+            "end_time": "2025-01-01T00:00:01",
+        }
+    ]
+
+    lookup_rows = [
+        {
+            "image_id": "img-A",
+            "receipt_id": 5,
+            "cdn_s3_key": "receipts/img-A_5.jpeg",
+            "cdn_webp_s3_key": None,
+            "cdn_avif_s3_key": None,
+            "cdn_medium_s3_key": None,
+            "cdn_medium_webp_s3_key": None,
+            "cdn_medium_avif_s3_key": None,
+            "width": 1024,
+            "height": 3072,
+        }
+    ]
+
+    spark = _FakeSparkSession(trace_rows)
+    s3_client = _FakeS3Client()
+
+    def _patterns_helper(
+        parquet_dir: str | None = None,
+        *,
+        rows: list[dict[str, Any]] | None = None,
+        unified_rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        del parquet_dir, unified_rows
+        return [
+            {
+                "merchant_name": "Test Merchant",
+                "receipts": [
+                    {"image_id": "img-A", "receipt_id": 5},
+                    {"image_id": "img-B", "receipt_id": 6},
+                ],
+            }
+        ]
+
+    def _noop_helper(
+        parquet_dir: str | None = None,
+        *,
+        rows: list[dict[str, Any]] | None = None,
+        unified_rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        del parquet_dir, unified_rows
+        return [{"image_id": "img-1", "receipt_id": 1}]
+
+    monkeypatch.setattr(
+        fm_mod, "build_financial_math_cache", _noop_helper
+    )
+    monkeypatch.setattr(diff_mod, "build_diff_cache", _noop_helper)
+    monkeypatch.setattr(journey_mod, "build_journey_cache", _noop_helper)
+    monkeypatch.setattr(
+        patterns_mod, "build_patterns_cache", _patterns_helper
+    )
+    monkeypatch.setattr(
+        evidence_mod, "build_evidence_cache", _noop_helper
+    )
+    monkeypatch.setattr(dedup_mod, "build_dedup_cache", _noop_helper)
+    monkeypatch.setattr(
+        merged_job_mod.boto3, "client", lambda _service_name: s3_client
+    )
+    monkeypatch.setattr(merged_job_mod, "F", _FakeFunctions())
+
+    # Fake load_receipts_lookup_df to return lookup data
+    monkeypatch.setattr(
+        merged_job_mod,
+        "load_receipts_lookup_df",
+        lambda _spark, _path, _legacy: _FakeDataFrame(lookup_rows),
+    )
+
+    run_evaluator_viz_cache(
+        spark=cast(Any, spark),
+        parquet_dir="s3://input/traces/",
+        cache_bucket="cache-bucket",
+        execution_id="exec-1",
+        receipts_lookup_path="s3://bucket/lookup/",
+    )
+
+    # Find the patterns item that was written to S3
+    patterns_puts = [
+        p for p in s3_client.puts if p["Key"] == "patterns/test-merchant.json"
+    ]
+    assert len(patterns_puts) == 1
+    written = json.loads(patterns_puts[0]["Body"])
+    receipts = written["receipts"]
+
+    # img-A should have CDN keys from lookup
+    img_a = [r for r in receipts if r["image_id"] == "img-A"][0]
+    assert img_a["cdn_s3_key"] == "receipts/img-A_5.jpeg"
+    assert img_a["width"] == 1024
+    assert img_a["height"] == 3072
+
+    # img-B should have null CDN keys (not in lookup)
+    img_b = [r for r in receipts if r["image_id"] == "img-B"][0]
+    assert img_b["cdn_s3_key"] is None
+    assert img_b["width"] == 0
+    assert img_b["height"] == 0
