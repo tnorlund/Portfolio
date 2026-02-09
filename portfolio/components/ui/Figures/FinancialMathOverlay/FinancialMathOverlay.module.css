@@ -327,6 +327,12 @@
     max-height: none;
     overflow-y: visible;
     padding: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  /* Hide equation panel during receipt crossfade to avoid mismatch */
+  .equationPanelHidden {
+    opacity: 0;
   }
 
   .equationCard {

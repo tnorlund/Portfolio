@@ -438,14 +438,18 @@ function buildEquationNotation(eq: FinancialMathEquation): {
 interface EquationPanelProps {
   equations: FinancialMathEquation[];
   revealedEquationIndices: Set<number>;
+  isTransitioning?: boolean;
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
   equations,
   revealedEquationIndices,
+  isTransitioning = false,
 }) => {
   return (
-    <div className={styles.equationPanel}>
+    <div
+      className={`${styles.equationPanel} ${isTransitioning ? styles.equationPanelHidden : ""}`}
+    >
       {equations.map((eq, idx) => {
         const color = getEquationColor(eq);
         const isRevealed = revealedEquationIndices.has(idx);
@@ -454,7 +458,14 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             ? eq.difference
             : parseFloat(String(eq.difference));
         const hasDiff = !isNaN(diff) && Math.abs(diff) > 0.001;
-        const isValid = !hasDiff;
+        // Use the evaluator's decision, not the raw math difference
+        const hasInvalid = eq.involved_words.some(
+          (w) => w.decision === "INVALID"
+        );
+        const hasReview = eq.involved_words.some(
+          (w) => w.decision === "NEEDS_REVIEW"
+        );
+        const isValid = !hasInvalid && !hasReview;
         const notation = buildEquationNotation(eq);
 
         return (
@@ -474,7 +485,10 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
               </span>
             </div>
             {hasDiff && (
-              <div className={styles.equationDiff}>
+              <div
+                className={styles.equationDiff}
+                style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
+              >
                 {diff > 0 ? "+" : ""}
                 {diff.toFixed(2)}
               </div>
@@ -812,6 +826,7 @@ export default function FinancialMathOverlay() {
         <EquationPanel
           equations={currentReceipt.equations}
           revealedEquationIndices={revealedEquationIndices}
+          isTransitioning={isTransitioning}
         />
       </div>
     </div>
