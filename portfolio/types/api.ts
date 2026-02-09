@@ -581,6 +581,66 @@ export interface LabelEvaluatorResponse {
 }
 
 // ============================================================================
+// ChromaDB Evidence Visualization Types
+// ============================================================================
+
+export interface EvidenceItem {
+  word_text: string;
+  similarity_score: number;
+  label_valid: boolean;
+  evidence_source: string;
+  is_same_merchant: boolean;
+}
+
+export interface EvidenceIssue {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string | null;
+  issue_type: string;
+  suggested_label: string;
+  decision: string;
+  confidence: string;
+  reasoning: string;
+  consensus_score: number;
+  similar_word_count: number;
+  evidence: EvidenceItem[];
+}
+
+export interface EvidenceReceiptSummary {
+  total_issues_reviewed: number;
+  issues_with_evidence: number;
+  avg_consensus_score: number;
+  avg_similarity: number;
+  decisions: {
+    VALID: number;
+    INVALID: number;
+    NEEDS_REVIEW: number;
+  };
+}
+
+export interface EvidenceReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string | null;
+  issues_with_evidence: EvidenceIssue[];
+  summary: EvidenceReceiptSummary;
+}
+
+export interface EvidenceResponse {
+  receipts: EvidenceReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: LabelEvaluatorAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}
+
+// ============================================================================
 // Label Validation Visualization Types (receipt-label-validation project)
 // ============================================================================
 

@@ -15,6 +15,7 @@ import {
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
+  EvidenceVisualization,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
@@ -313,6 +314,10 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <LabelEvaluatorVisualization />
+      </ClientOnly>
+
+      <ClientOnly>
+        <EvidenceVisualization />
       </ClientOnly>
 
       <p>
