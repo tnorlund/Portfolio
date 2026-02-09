@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
+    build_evidence_cache,
     _build_issue_entry,
     _build_summary,
-    build_evidence_cache,
 )
+
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -228,9 +231,7 @@ class TestIssueEntries:
         rows = _sample_rows()
         _write_parquet(rows, str(tmp_path))
 
-        issue = build_evidence_cache(str(tmp_path))[0]["issues_with_evidence"][
-            0
-        ]
+        issue = build_evidence_cache(str(tmp_path))[0]["issues_with_evidence"][0]
         assert issue["line_id"] == 3
         assert issue["word_id"] == 1
         assert issue["word_text"] == "5.99"
@@ -296,7 +297,7 @@ class TestWriteSampleOutput:
 
         results = build_evidence_cache(str(tmp_path))
 
-        output_dir = tmp_path / "viz-cache-output" / "evidence"
+        output_dir = Path("/tmp/viz-cache-output/evidence")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for receipt in results:
@@ -321,46 +322,6 @@ class TestWriteSampleOutput:
 
 class TestEdgeCases:
     """Edge cases that should be handled gracefully."""
-
-    def test_unified_rows_source(self):
-        """Unified rows with review_all_decisions should produce evidence."""
-        unified_rows = [
-            {
-                "image_id": "img-unified",
-                "receipt_id": 9,
-                "merchant_name": "Unified Store",
-                "trace_id": "trace-unified",
-                "review_all_decisions": [REVIEW_DECISION],
-            }
-        ]
-
-        results = build_evidence_cache(unified_rows=unified_rows)
-        assert len(results) == 1
-        assert results[0]["image_id"] == "img-unified"
-        assert results[0]["receipt_id"] == 9
-        assert results[0]["merchant_name"] == "Unified Store"
-        assert len(results[0]["issues_with_evidence"]) == 1
-        assert results[0]["issues_with_evidence"][0]["word_text"] == "5.99"
-        assert results[0]["summary"]["issues_with_evidence"] == 1
-
-    def test_unified_rows_fallback_to_trace_rows(self, tmp_path: Path):
-        """If unified rows have no decisions, trace parsing should still
-        work."""
-        rows = _sample_rows()
-        _write_parquet(rows, str(tmp_path))
-
-        unified_rows = [
-            {
-                "image_id": "img-empty",
-                "receipt_id": 0,
-                "review_all_decisions": [],
-            }
-        ]
-        results = build_evidence_cache(
-            str(tmp_path), unified_rows=unified_rows
-        )
-        assert len(results) == 1
-        assert results[0]["image_id"] == "img-abc"
 
     def test_empty_directory(self, tmp_path: Path):
         results = build_evidence_cache(str(tmp_path))
@@ -491,11 +452,7 @@ class TestBuildSummaryUnit:
         assert summary["issues_with_evidence"] == 0
         assert summary["avg_consensus_score"] == 0.0
         assert summary["avg_similarity"] == 0.0
-        assert summary["decisions"] == {
-            "VALID": 0,
-            "INVALID": 0,
-            "NEEDS_REVIEW": 0,
-        }
+        assert summary["decisions"] == {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
 
     def test_mixed_decisions(self):
         issues = [
@@ -515,10 +472,7 @@ class TestBuildSummaryUnit:
                 "decision": "NEEDS_REVIEW",
                 "consensus_score": 0.1,
                 "similar_word_count": 2,
-                "evidence": [
-                    {"similarity_score": 0.7},
-                    {"similarity_score": 0.5},
-                ],
+                "evidence": [{"similarity_score": 0.7}, {"similarity_score": 0.5}],
             },
         ]
         summary = _build_summary(issues)
@@ -527,7 +481,5 @@ class TestBuildSummaryUnit:
         assert summary["decisions"]["VALID"] == 1
         assert summary["decisions"]["INVALID"] == 1
         assert summary["decisions"]["NEEDS_REVIEW"] == 1
-        assert summary["avg_consensus_score"] == round(
-            (0.8 - 0.6 + 0.1) / 3, 4
-        )
+        assert summary["avg_consensus_score"] == round((0.8 - 0.6 + 0.1) / 3, 4)
         assert summary["avg_similarity"] == round((0.9 + 0.7 + 0.5) / 3, 4)

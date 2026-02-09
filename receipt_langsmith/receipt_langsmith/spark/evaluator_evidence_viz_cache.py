@@ -1,9 +1,8 @@
-"""Helper to extract ChromaDB evidence data for visualization cache.
+"""Helper to extract ChromaDB evidence data from LangSmith trace parquet exports.
 
-Preferred source is unified evaluator JSON rows (contains
-``review_all_decisions`` with per-issue evidence). For backwards
-compatibility, this helper can also parse LangSmith trace exports from
-``phase3_llm_review`` child spans when that payload is present.
+Reads parquet trace exports, finds ``ReceiptEvaluation`` root spans and their
+``phase3_llm_review`` children, then returns per-receipt evidence summaries
+suitable for visualization cache generation.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from receipt_langsmith.spark.utils import to_s3a
+import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
@@ -32,52 +31,21 @@ def _list_parquet_files(parquet_dir: str) -> list[Path]:
 
 
 def _read_all_rows(parquet_dir: str) -> list[dict[str, Any]]:
-    """Read every row from parquet into a list of dicts.
-
-    Supports:
-        - local directory trees containing parquet files
-        - local single parquet file
-        - s3:// / s3a:// parquet paths (via active Spark session)
-    """
-    if parquet_dir.startswith(("s3://", "s3a://")):
-        # Import lazily so local unit tests do not require pyspark.
-        # pylint: disable=import-outside-toplevel
-        from pyspark.sql import SparkSession
-
-        # pylint: enable=import-outside-toplevel
-
-        spark = SparkSession.getActiveSession()
-        if spark is None:
-            raise RuntimeError(
-                "SparkSession is required for S3 parquet input paths"
-            )
-        df = spark.read.parquet(to_s3a(parquet_dir))
-        s3_rows = [row.asDict(recursive=True) for row in df.toLocalIterator()]
-        logger.info(
-            "Read %d rows from S3 parquet path %s", len(s3_rows), parquet_dir
-        )
-        return s3_rows
-
+    """Read every row from all parquet files into a list of dicts."""
     files = _list_parquet_files(parquet_dir)
     if not files:
         logger.warning("No parquet files found in %s", parquet_dir)
         return []
 
-    local_rows: list[dict[str, Any]] = []
-    import pyarrow.parquet as pq  # pylint: disable=import-outside-toplevel
-
+    rows: list[dict[str, Any]] = []
     for path in files:
         try:
-            table = pq.ParquetFile(str(path)).read()
-            local_rows.extend(table.to_pylist())
-        except Exception:  # pylint: disable=broad-exception-caught
+            table = pq.read_table(str(path))
+            rows.extend(table.to_pylist())
+        except Exception:  # noqa: BLE001
             logger.exception("Failed to read %s", path)
-    logger.info(
-        "Read %d rows from %d parquet files",
-        len(local_rows),
-        len(files),
-    )
-    return local_rows
+    logger.info("Read %d rows from %d parquet files", len(rows), len(files))
+    return rows
 
 
 def _parse_json(value: Any) -> Any:
@@ -103,23 +71,10 @@ def _find_root_spans(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         if row.get("name") != "ReceiptEvaluation":
             continue
-        if row.get("parent_run_id") not in (None, ""):
+        if row.get("parent_run_id") is not None:
             continue
         roots.append(row)
     return roots
-
-
-def _index_rows_by_trace(
-    rows: list[dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
-    """Build a trace_id -> rows index for efficient per-trace lookups."""
-    trace_index: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        trace_id = row.get("trace_id")
-        if not trace_id:
-            continue
-        trace_index.setdefault(trace_id, []).append(row)
-    return trace_index
 
 
 def _extract_metadata(row: dict[str, Any]) -> dict[str, Any]:
@@ -134,15 +89,15 @@ def _extract_metadata(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find_child_span(
-    trace_rows: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    trace_id: str,
     child_name: str,
 ) -> dict[str, Any] | None:
-    """Find the first child span matching *child_name* in one trace."""
-    for row in trace_rows:
-        if row.get("name") == child_name and row.get("parent_run_id") not in (
-            None,
-            "",
-        ):
+    """Find the first child span matching *child_name* in the same trace."""
+    for row in rows:
+        if row.get("trace_id") != trace_id:
+            continue
+        if row.get("name") == child_name and row.get("parent_run_id") is not None:
             return row
     return None
 
@@ -188,9 +143,7 @@ def _build_issue_entry(decision: dict[str, Any]) -> dict[str, Any]:
 def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
     """Build aggregate summary from the list of issue entries."""
     total = len(issues)
-    with_evidence = sum(
-        1 for i in issues if i.get("similar_word_count", 0) > 0
-    )
+    with_evidence = sum(1 for i in issues if i.get("similar_word_count", 0) > 0)
 
     consensus_scores = [
         i["consensus_score"]
@@ -198,9 +151,7 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(i.get("consensus_score"), (int, float))
     ]
     avg_consensus = (
-        sum(consensus_scores) / len(consensus_scores)
-        if consensus_scores
-        else 0.0
+        sum(consensus_scores) / len(consensus_scores) if consensus_scores else 0.0
     )
 
     all_top_sims: list[float] = []
@@ -229,109 +180,35 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Unified results parsing (preferred source)
-# ---------------------------------------------------------------------------
-
-
-def _build_from_unified_rows(
-    unified_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Build evidence payloads from unified evaluator output rows."""
-    results: list[dict[str, Any]] = []
-
-    for row in unified_rows:
-        decisions = row.get("review_all_decisions")
-        if not isinstance(decisions, list) or not decisions:
-            continue
-
-        image_id = row.get("image_id")
-        receipt_id = row.get("receipt_id")
-        if image_id in (None, "") or receipt_id is None:
-            continue
-
-        issues = [
-            _build_issue_entry(d) for d in decisions if isinstance(d, dict)
-        ]
-        if not issues:
-            continue
-
-        results.append(
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "merchant_name": row.get("merchant_name", ""),
-                "trace_id": row.get("trace_id", ""),
-                "issues_with_evidence": issues,
-                "summary": _build_summary(issues),
-            }
-        )
-
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def build_evidence_cache(
-    parquet_dir: str | None = None,
-    *,
-    rows: list[dict[str, Any]] | None = None,
-    unified_rows: list[dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
-    """Build per-receipt evidence cache.
+def build_evidence_cache(parquet_dir: str) -> list[dict[str, Any]]:
+    """Build per-receipt evidence cache from LangSmith parquet exports.
 
     Args:
         parquet_dir: Path to a directory containing parquet files
             (or a single parquet file).
-        rows: Optional preloaded trace rows.
-        unified_rows: Optional preloaded unified evaluator rows.
-            If this yields evidence payloads, it is used as the
-            source of truth.
 
     Returns:
         List of per-receipt dicts with ``image_id``, ``receipt_id``,
         ``merchant_name``, ``trace_id``, ``issues_with_evidence``,
         and ``summary``.
     """
-    if unified_rows:
-        unified_results = _build_from_unified_rows(unified_rows)
-        if unified_results:
-            logger.info(
-                "Built evidence cache for %d receipts from unified rows",
-                len(unified_results),
-            )
-            return unified_results
-
-        logger.info(
-            "Unified rows provided but no evidence records found; "
-            "falling back to trace parsing",
-        )
-
-    if rows is None:
-        if parquet_dir is None:
-            raise ValueError(
-                "Provide unified_rows or (parquet_dir / rows) for evidence",
-            )
-        rows = _read_all_rows(parquet_dir)
+    rows = _read_all_rows(parquet_dir)
     if not rows:
         return []
 
     roots = _find_root_spans(rows)
-    rows_by_trace = _index_rows_by_trace(rows)
     logger.info("Found %d ReceiptEvaluation root spans", len(roots))
 
     results: list[dict[str, Any]] = []
     for root in roots:
         trace_id = root.get("trace_id", "")
         meta = _extract_metadata(root)
-        if not trace_id:
-            continue
 
-        child = _find_child_span(
-            rows_by_trace.get(trace_id, []), "phase3_llm_review"
-        )
+        child = _find_child_span(rows, trace_id, "phase3_llm_review")
         if child is None:
             continue
 
@@ -341,16 +218,14 @@ def build_evidence_cache(
 
         issues = [_build_issue_entry(d) for d in decisions]
 
-        results.append(
-            {
-                "image_id": meta["image_id"],
-                "receipt_id": meta["receipt_id"],
-                "merchant_name": meta["merchant_name"],
-                "trace_id": trace_id,
-                "issues_with_evidence": issues,
-                "summary": _build_summary(issues),
-            }
-        )
+        results.append({
+            "image_id": meta["image_id"],
+            "receipt_id": meta["receipt_id"],
+            "merchant_name": meta["merchant_name"],
+            "trace_id": trace_id,
+            "issues_with_evidence": issues,
+            "summary": _build_summary(issues),
+        })
 
     logger.info("Built evidence cache for %d receipts", len(results))
     return results
