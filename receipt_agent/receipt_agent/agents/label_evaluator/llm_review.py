@@ -36,6 +36,8 @@ from receipt_agent.utils.chroma_helpers import (
     compute_merchant_breakdown,
     compute_similarity_distribution,
     enrich_evidence_with_dynamo_reasoning,
+    format_label_evidence_for_prompt,
+    query_cascade_evidence,
     query_similar_words,
 )
 
@@ -558,33 +560,26 @@ def gather_evidence_for_issue(
     if not chroma_client:
         return evidence
 
-    # Query for similar words
+    # Query cascade evidence: words first, lines if inconclusive
     try:
-        similar_evidence = query_similar_words(
-            chroma_client=chroma_client,
-            word_text=issue.get("word_text", ""),
-            image_id=issue.get("image_id", ""),
-            receipt_id=issue.get("receipt_id", 0),
-            line_id=issue.get("line_id", 0),
-            word_id=issue.get("word_id", 0),
-            target_merchant=merchant_name,
-            n_results=n_similar_results,
-        )
-
-        # Enrich with DynamoDB reasoning if available
-        if dynamo_client and similar_evidence:
-            similar_evidence = enrich_evidence_with_dynamo_reasoning(
-                similar_evidence, dynamo_client, limit=20
+        current_label = issue.get("current_label", "")
+        all_evidence, consensus, pos_count, neg_count, lines_used = (
+            query_cascade_evidence(
+                chroma_client=chroma_client,
+                image_id=issue.get("image_id", ""),
+                receipt_id=issue.get("receipt_id", 0),
+                line_id=issue.get("line_id", 0),
+                word_id=issue.get("word_id", 0),
+                target_label=current_label,
+                target_merchant=merchant_name,
             )
-
-        evidence["similar_evidence"] = similar_evidence
-        evidence["similarity_dist"] = compute_similarity_distribution(
-            similar_evidence
         )
-        evidence["label_dist"] = compute_label_distribution(similar_evidence)
-        evidence["merchant_breakdown"] = compute_merchant_breakdown(
-            similar_evidence
+        evidence["evidence_text"] = format_label_evidence_for_prompt(
+            all_evidence, current_label
         )
+        evidence["consensus"] = consensus
+        evidence["positive_count"] = pos_count
+        evidence["negative_count"] = neg_count
 
     except Exception as e:
         logger.warning("Error gathering evidence for issue: %s", e)
