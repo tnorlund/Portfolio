@@ -376,7 +376,6 @@ function PatternOverlay({ receipts }: { receipts: PatternReceipt[] }) {
                     width={w}
                     height={h}
                     fill={LABEL_COLORS[word.label ?? ""] ?? "var(--color-gray, #888)"}
-                    opacity={0.4}
                     rx={2}
                   />
                 );
