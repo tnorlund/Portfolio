@@ -89,20 +89,24 @@ def _fetch_receipt(key: str) -> dict[str, Any] | None:
         return None
 
 
-def _fetch_metadata() -> dict[str, Any]:
+def _fetch_metadata(prefix: str) -> dict[str, Any]:
     """Fetch pool metadata from S3.
+
+    Args:
+        prefix: S3 key prefix (e.g. "financial-math/") to read metadata from.
 
     Returns:
         Metadata dict with version, execution_id, total_receipts, etc.
         Empty dict if metadata file not found.
     """
+    key = f"{prefix}metadata.json"
     try:
         response = s3_client.get_object(
-            Bucket=S3_CACHE_BUCKET, Key="metadata.json"
+            Bucket=S3_CACHE_BUCKET, Key=key
         )
         return json.loads(response["Body"].read().decode("utf-8"))
     except ClientError:
-        logger.warning("Could not fetch metadata.json")
+        logger.warning("Could not fetch %s", key)
         return {}
 
 
@@ -289,7 +293,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         ]
 
         # Get metadata and build response
-        metadata = _fetch_metadata()
+        metadata = _fetch_metadata(prefix)
         aggregate_stats = _calculate_aggregate_stats(receipts, total_count)
 
         response_data = {

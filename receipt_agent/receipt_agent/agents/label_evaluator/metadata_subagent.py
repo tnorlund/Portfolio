@@ -337,6 +337,59 @@ def collect_metadata_words(
     return metadata_words, prefiltered_count
 
 
+def auto_resolve_metadata_words(
+    metadata_words: list[MetadataWord],
+) -> tuple[list[tuple[MetadataWord, dict]], list[MetadataWord]]:
+    """
+    Auto-resolve metadata words where the current label agrees with an
+    independent deterministic signal (regex pattern or Google Places match).
+
+    Words are auto-VALID when current_label matches either:
+    - place_match (Google Places data confirms the label)
+    - detected_type (regex pattern confirms the label)
+
+    All other words (no label, no confirming signal, conflicts, STORE_HOURS,
+    COUPON, LOYALTY_ID) are returned as unresolved for LLM evaluation.
+
+    Returns:
+        (resolved_pairs, unresolved_words) where resolved_pairs is a list of
+        (MetadataWord, decision_dict) tuples.
+    """
+    resolved = []
+    unresolved = []
+
+    for mw in metadata_words:
+        label = mw.current_label
+        if not label:
+            unresolved.append(mw)
+            continue
+
+        confirmed_by = None
+        if label == mw.place_match:
+            confirmed_by = "Google Places match"
+        elif label == mw.detected_type:
+            confirmed_by = "format pattern match"
+
+        if confirmed_by:
+            resolved.append(
+                (
+                    mw,
+                    {
+                        "decision": "VALID",
+                        "reasoning": (
+                            f"Label {label} confirmed by {confirmed_by}"
+                        ),
+                        "suggested_label": None,
+                        "confidence": "high",
+                    },
+                )
+            )
+        else:
+            unresolved.append(mw)
+
+    return resolved, unresolved
+
+
 # =============================================================================
 # LLM Prompt Building
 # =============================================================================
@@ -591,18 +644,52 @@ def evaluate_metadata_labels(
         logger.info("No metadata words found to evaluate")
         return []
 
-    # Step 2: Build prompt and call LLM
+    # Step 1.5: Auto-resolve words where label agrees with deterministic signal
+    resolved_pairs, remaining_words = auto_resolve_metadata_words(
+        metadata_words
+    )
+    if resolved_pairs:
+        logger.info(
+            "Auto-resolved %d/%d metadata words without LLM",
+            len(resolved_pairs),
+            len(metadata_words),
+        )
+
+    # Format auto-resolved results
+    auto_results = []
+    for mw, decision in resolved_pairs:
+        wc = mw.word_context
+        auto_results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": mw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
+    # If all words resolved, skip LLM entirely
+    if not remaining_words:
+        logger.info("All metadata words auto-resolved, skipping LLM call")
+        return auto_results
+
+    # Step 2: Build prompt and call LLM (only for unresolved words)
     prompt = build_metadata_evaluation_prompt(
         visual_lines=visual_lines,
-        metadata_words=metadata_words,
+        metadata_words=remaining_words,
         place=place,
         merchant_name=merchant_name,
     )
 
-    # Try structured output with retries, then fall back to text parsing
-    structured_retries = 3
-    text_retries = 2
-    num_words = len(metadata_words)
+    # Try structured output, then fall back to text parsing
+    structured_retries = 1
+    text_retries = 1
+    num_words = len(remaining_words)
     decisions = None
 
     # Check if LLM supports structured output
@@ -718,10 +805,10 @@ def evaluate_metadata_labels(
         ]
 
     # Step 4: Format output for apply_llm_decisions
-    results = []
-    for mw, decision in zip(metadata_words, decisions, strict=True):
+    llm_results = []
+    for mw, decision in zip(remaining_words, decisions, strict=True):
         wc = mw.word_context
-        results.append(
+        llm_results.append(
             {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
@@ -735,9 +822,12 @@ def evaluate_metadata_labels(
             }
         )
 
+    # Combine auto-resolved + LLM results
+    all_results = auto_results + llm_results
+
     # Log summary
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-    for r in results:
+    for r in all_results:
         decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
         if decision in decision_counts:
             decision_counts[decision] += 1
@@ -745,7 +835,7 @@ def evaluate_metadata_labels(
             decision_counts["NEEDS_REVIEW"] += 1
     logger.info("Metadata evaluation results: %s", decision_counts)
 
-    return results
+    return all_results
 
 
 # =============================================================================
@@ -797,18 +887,52 @@ async def evaluate_metadata_labels_async(
         logger.info("No metadata words found to evaluate")
         return []
 
-    # Step 2: Build prompt
+    # Step 1.5: Auto-resolve words where label agrees with deterministic signal
+    resolved_pairs, remaining_words = auto_resolve_metadata_words(
+        metadata_words
+    )
+    if resolved_pairs:
+        logger.info(
+            "Auto-resolved %d/%d metadata words without LLM",
+            len(resolved_pairs),
+            len(metadata_words),
+        )
+
+    # Format auto-resolved results
+    auto_results = []
+    for mw, decision in resolved_pairs:
+        wc = mw.word_context
+        auto_results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": mw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
+    # If all words resolved, skip LLM entirely
+    if not remaining_words:
+        logger.info("All metadata words auto-resolved, skipping LLM call")
+        return auto_results
+
+    # Step 2: Build prompt (only for unresolved words)
     prompt = build_metadata_evaluation_prompt(
         visual_lines=visual_lines,
-        metadata_words=metadata_words,
+        metadata_words=remaining_words,
         place=place,
         merchant_name=merchant_name,
     )
 
     # Step 3: Call LLM asynchronously
-    max_retries = 3
+    max_retries = 2
     last_decisions = None
-    num_words = len(metadata_words)
+    num_words = len(remaining_words)
 
     use_structured = hasattr(llm, "with_structured_output")
 
@@ -919,10 +1043,10 @@ async def evaluate_metadata_labels_async(
                 "Metadata LLM call failed on attempt %d: %s", attempt + 1, e
             )
             if attempt == max_retries - 1:
-                results = []
-                for mw in metadata_words:
+                llm_results = []
+                for mw in remaining_words:
                     wc = mw.word_context
-                    results.append(
+                    llm_results.append(
                         {
                             "image_id": image_id,
                             "receipt_id": receipt_id,
@@ -940,7 +1064,7 @@ async def evaluate_metadata_labels_async(
                             },
                         }
                     )
-                return results
+                return auto_results + llm_results
 
     decisions = last_decisions or [
         {
@@ -949,14 +1073,14 @@ async def evaluate_metadata_labels_async(
             "suggested_label": None,
             "confidence": "low",
         }
-        for _ in metadata_words
+        for _ in remaining_words
     ]
 
     # Step 4: Format output
-    results = []
-    for mw, decision in zip(metadata_words, decisions, strict=True):
+    llm_results = []
+    for mw, decision in zip(remaining_words, decisions, strict=True):
         wc = mw.word_context
-        results.append(
+        llm_results.append(
             {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
@@ -970,8 +1094,11 @@ async def evaluate_metadata_labels_async(
             }
         )
 
+    # Combine auto-resolved + LLM results
+    all_results = auto_results + llm_results
+
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-    for r in results:
+    for r in all_results:
         decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
         if decision in decision_counts:
             decision_counts[decision] += 1
@@ -979,4 +1106,4 @@ async def evaluate_metadata_labels_async(
             decision_counts["NEEDS_REVIEW"] += 1
     logger.info("Metadata evaluation results: %s", decision_counts)
 
-    return results
+    return all_results
