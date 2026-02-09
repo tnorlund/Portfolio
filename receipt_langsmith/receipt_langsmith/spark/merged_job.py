@@ -978,6 +978,7 @@ def run_evaluator_viz_cache(
         build_journey_cache,
     )
     from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+        _build_receipt_geometric_issues,
         build_patterns_cache,
     )
 
@@ -998,6 +999,27 @@ def run_evaluator_viz_cache(
                 key = (rd.get("image_id"), rd.get("receipt_id"))
                 if key[0] and key[1] is not None:
                     lookup_rows[key] = rd
+
+    # Load receipt data (words + labels) for pattern word enrichment
+    data_rows: dict[tuple[str, int], dict[str, Any]] = {}
+    if batch_bucket:
+        data_path = f"s3://{batch_bucket}/data/{execution_id}/"
+        try:
+            data_df = read_json_df(
+                spark, data_path, schema=DATA_SCHEMA
+            ).select("image_id", "receipt_id", "words", "labels")
+            for row in data_df.toLocalIterator():
+                rd = row.asDict(recursive=True)
+                key = (rd.get("image_id"), rd.get("receipt_id"))
+                if key[0] and key[1] is not None:
+                    data_rows[key] = rd
+        except AnalysisException:
+            logger.warning(
+                "Could not load data rows for pattern enrichment"
+            )
+
+    # Build per-receipt geometric issues
+    receipt_geo_issues = _build_receipt_geometric_issues(trace_rows)
 
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
@@ -1027,7 +1049,7 @@ def run_evaluator_viz_cache(
                     f"{type(results).__name__}, expected list"
                 )
 
-            # Enrich patterns receipts with CDN keys from lookup
+            # Enrich patterns receipts with CDN keys, words, and issues
             if prefix == "patterns" and lookup_rows:
                 for item in results:
                     for receipt in item.get("receipts", []):
@@ -1035,11 +1057,27 @@ def run_evaluator_viz_cache(
                             receipt.get("image_id"),
                             receipt.get("receipt_id"),
                         )
+                        # CDN enrichment (existing)
                         lookup = lookup_rows.get(key, {})
                         cdn_keys = build_cdn_keys_from_row(lookup)
                         receipt.update(cdn_keys)
                         receipt["width"] = lookup.get("width") or 0
                         receipt["height"] = lookup.get("height") or 0
+                        # Attach word data (labeled words only, skip "O")
+                        data = data_rows.get(key, {})
+                        all_words = build_words_with_labels(
+                            data.get("words") or [],
+                            data.get("labels") or [],
+                        )
+                        receipt["words"] = [
+                            w
+                            for w in all_words
+                            if w.get("label") and w["label"] != "O"
+                        ]
+                        # Attach per-receipt geometric issues
+                        receipt["geometric_issues"] = (
+                            receipt_geo_issues.get(key, [])
+                        )
 
             count = _write_evaluator_cache_parallel(
                 spark=spark,

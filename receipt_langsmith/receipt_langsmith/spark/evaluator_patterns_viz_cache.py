@@ -287,6 +287,64 @@ def _build_geometric_summary(
     return result, total_issues
 
 
+def _build_receipt_geometric_issues(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[str, int], list[dict[str, Any]]]:
+    """Extract per-receipt geometric issues from trace rows.
+
+    Uses root ``ReceiptEvaluation`` spans to map each trace to its
+    ``(image_id, receipt_id)`` pair, then collects issues from
+    ``flag_geometric_anomalies`` spans.
+
+    Returns a dict mapping ``(image_id, receipt_id)`` -> list of issue dicts.
+    """
+    # Map trace_id -> (image_id, receipt_id) via root ReceiptEvaluation spans
+    trace_receipt: dict[str, tuple[str, int]] = {}
+    for row in rows:
+        if _is_root(row) and row.get("name") == "ReceiptEvaluation":
+            trace_id = row.get("trace_id")
+            if not trace_id:
+                continue
+            extra = parse_json_object(row.get("extra"))
+            metadata = extra.get("metadata", {})
+            if not isinstance(metadata, dict):
+                continue
+            image_id = metadata.get("image_id")
+            receipt_id = metadata.get("receipt_id")
+            if not image_id or receipt_id is None:
+                continue
+            trace_receipt[trace_id] = (str(image_id), int(receipt_id))
+
+    result: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        if row.get("name") != "flag_geometric_anomalies":
+            continue
+        outputs = parse_json_object(row.get("outputs"))
+        issues = outputs.get("issues_found", [])
+        if not issues:
+            continue
+
+        trace_id = row.get("trace_id", "")
+        key = trace_receipt.get(trace_id)
+        if key is None:
+            continue
+
+        for issue in issues:
+            result[key].append(
+                {
+                    "issue_type": issue.get("issue_type", "unknown"),
+                    "word_text": issue.get("word_text", ""),
+                    "line_id": issue.get("line_id"),
+                    "word_id": issue.get("word_id"),
+                    "current_label": issue.get("current_label"),
+                    "suggested_label": issue.get("suggested_label"),
+                }
+            )
+
+    return dict(result)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

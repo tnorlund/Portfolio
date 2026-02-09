@@ -695,6 +695,17 @@ export interface PatternReceipt {
   cdn_medium_avif_s3_key: string | null;
   width: number;
   height: number;
+  words?: LabelEvaluatorWord[];
+  geometric_issues?: PatternReceiptIssue[];
+}
+
+export interface PatternReceiptIssue {
+  issue_type: string;
+  word_text: string;
+  line_id: number | null;
+  word_id: number | null;
+  current_label: string | null;
+  suggested_label: string | null;
 }
 
 export interface PatternEntry {
