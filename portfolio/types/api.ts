@@ -670,3 +670,52 @@ export interface LabelValidationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// Decision Journey Types
+
+export interface PhaseDecision {
+  phase: string;
+  decision: string;
+  confidence?: string;
+  reasoning?: string;
+  suggested_label?: string | null;
+  start_time?: string;
+  end_time?: string;
+}
+
+export interface WordJourney {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  phases: PhaseDecision[];
+  has_conflict: boolean;
+  final_outcome: string;
+}
+
+export interface JourneyReceiptSummary {
+  total_words_evaluated: number;
+  multi_phase_words: number;
+  words_with_conflicts: number;
+}
+
+export interface JourneyReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string;
+  journeys: WordJourney[];
+  summary?: JourneyReceiptSummary;
+}
+
+export interface JourneyResponse {
+  receipts: JourneyReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats?: LabelEvaluatorAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}

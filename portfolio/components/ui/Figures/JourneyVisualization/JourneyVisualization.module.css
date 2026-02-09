@@ -1,0 +1,435 @@
+/* Container */
+.container {
+  width: 100%;
+  max-width: 1024px;
+  margin: 2rem auto;
+  padding: 0;
+  background: var(--background-color);
+}
+
+/* Loading / Error states */
+.loading, .error {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+.error {
+  color: var(--color-red);
+  opacity: 1;
+}
+
+/* Summary stats bar */
+.summaryBar {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--background-color-secondary, rgba(128, 128, 128, 0.05));
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.15));
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Receipt selector cards */
+.receiptSelector {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.receiptCard {
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  border-radius: 8px;
+  background: var(--background-color);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 160px;
+}
+
+.receiptCard:hover {
+  border-color: var(--color-blue);
+}
+
+.receiptCard.active {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.receiptCardMerchant {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-color);
+  margin-bottom: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receiptCardStats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.conflictBadge {
+  color: var(--color-red);
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.filterToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  border-radius: 6px;
+  background: var(--background-color);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.filterToggle:hover {
+  border-color: var(--color-blue);
+}
+
+.filterToggle.active {
+  background: var(--color-red);
+  color: white;
+  border-color: var(--color-red);
+}
+
+.filterSelect {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  border-radius: 6px;
+  background: var(--background-color);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* Journey list */
+.journeyList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Word row */
+.wordRow {
+  border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.1));
+  transition: background 0.15s;
+}
+
+.wordRow:last-child {
+  border-bottom: none;
+}
+
+.wordRow:hover {
+  background: rgba(128, 128, 128, 0.03);
+}
+
+.wordRow.conflict {
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.wordRow.conflict:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.wordRowHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.expandIcon {
+  font-size: 0.7rem;
+  color: var(--text-color);
+  opacity: 0.4;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+}
+
+.expandIcon.expanded {
+  transform: rotate(90deg);
+}
+
+.wordText {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-color);
+  min-width: 100px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labelBadge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.1);
+  color: var(--text-color);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.conflictIcon {
+  color: var(--color-red);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+/* Phase timeline */
+.phaseTimeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.phaseNode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.phaseConnector {
+  width: 24px;
+  height: 2px;
+  flex-shrink: 0;
+}
+
+.phaseDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.phaseLabel {
+  font-size: 0.55rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  white-space: nowrap;
+  text-align: center;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Expanded detail */
+.wordDetail {
+  padding: 0.5rem 0.75rem 0.75rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.phaseDetail {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.03);
+  border-left: 3px solid;
+}
+
+.phaseDetailHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.phaseDetailName {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.phaseDetailDecision {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  color: white;
+}
+
+.phaseDetailConfidence {
+  font-size: 0.65rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.phaseDetailReasoning {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.8;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.phaseDetailSuggested {
+  font-size: 0.75rem;
+  color: var(--color-orange);
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+/* Outcome badge */
+.outcomeBadge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  color: white;
+  flex-shrink: 0;
+}
+
+/* Empty state */
+.emptyState {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
+
+/* Phase legend */
+.phaseLegend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .summaryBar {
+    gap: 1rem;
+    justify-content: center;
+  }
+
+  .receiptSelector {
+    gap: 0.5rem;
+  }
+
+  .receiptCard {
+    min-width: 140px;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .wordRowHeader {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .phaseTimeline {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    margin-left: 1rem;
+    margin-top: 0.25rem;
+  }
+
+  .wordText {
+    min-width: 80px;
+  }
+
+  .wordDetail {
+    padding-left: 1rem;
+  }
+
+  .phaseDetail {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .phaseDetailHeader {
+    min-width: auto;
+  }
+}
