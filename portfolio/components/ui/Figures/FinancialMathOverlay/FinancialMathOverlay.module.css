@@ -1,332 +1,399 @@
+/* Container */
 .container {
   width: 100%;
-  max-width: 1024px;
+  max-width: 1000px;
   margin: 2rem auto;
-  padding: 0;
+  padding: 1.5rem;
+  background: var(--background-color);
+  border-radius: 12px;
 }
 
-.summary {
+/* Main Layout - Three Columns */
+.mainWrapper {
   display: flex;
   gap: 1.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
 }
 
-.summaryCard {
-  flex: 1;
-  min-width: 140px;
-  padding: 1rem;
-  border-radius: 8px;
-  border: 1px solid var(--text-color);
-  opacity: 0.9;
-  text-align: center;
+/* Receipt Queue - Left Column */
+.receiptQueue {
+  width: 120px;
+  height: 400px;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
 }
 
-.summaryLabel {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.7;
-  margin-bottom: 0.25rem;
-}
-
-.summaryValue {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-color);
-}
-
-.receiptCard {
-  border: 1px solid var(--text-color);
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
+.queuedReceipt {
+  position: absolute;
+  width: 100px;
+  border: 1px solid #ccc;
+  background: var(--background-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   overflow: hidden;
-  opacity: 0.95;
+  will-change: transform, opacity;
 }
 
-.receiptHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--text-color);
-  opacity: 0.3;
-  cursor: pointer;
+.queuedReceipt.flyingOut {
+  opacity: 0;
+  pointer-events: none;
 }
 
-.receiptHeader:hover {
-  opacity: 0.4;
-}
-
-.merchantName {
-  font-weight: 600;
-  font-size: 1.1rem;
-  color: var(--text-color);
-}
-
-.receiptMeta {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  font-size: 0.85rem;
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-.equationCount {
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.statusDot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 0.25rem;
-}
-
-.equationList {
-  padding: 0.75rem 1.25rem 1.25rem;
-}
-
-.equationCard {
-  border: 1px solid var(--text-color);
-  border-radius: 6px;
-  margin-bottom: 0.75rem;
+/* Flying receipt - animates from queue to center */
+.flyingReceipt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  z-index: 10;
   overflow: hidden;
-  opacity: 0.8;
 }
 
-.equationCard:last-child {
-  margin-bottom: 0;
-}
-
-.equationHeader {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  cursor: pointer;
-}
-
-.equationHeader:hover {
-  background: var(--text-color);
-  opacity: 0.05;
-}
-
-.issueBadge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  font-family: monospace;
-}
-
-.equationDescription {
-  flex: 1;
-  font-size: 0.9rem;
-  color: var(--text-color);
-  line-height: 1.4;
-}
-
-.equationValues {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.valueLabel {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  color: var(--text-color);
-  opacity: 0.6;
-}
-
-.valueNumber {
-  font-weight: 600;
-  font-family: monospace;
-  color: var(--text-color);
-}
-
-.diffPositive {
-  color: var(--color-red);
-}
-
-.diffNegative {
-  color: var(--color-red);
-}
-
-.equationDetails {
-  padding: 0.75rem 1rem 1rem;
-  border-top: 1px solid var(--text-color);
-  opacity: 0.3;
-}
-
-.wordGrid {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.wordRow {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  border: 1px solid var(--text-color);
-  opacity: 0.2;
-  font-size: 0.85rem;
-}
-
-.wordText {
-  font-weight: 600;
-  font-family: monospace;
-  color: var(--text-color);
-}
-
-.wordLabel {
-  font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-  background: var(--text-color);
-  opacity: 0.1;
-  color: var(--text-color);
-  font-family: monospace;
-}
-
-.wordDecision {
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 3px;
-}
-
-.wordConfidence {
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  text-transform: capitalize;
-}
-
-.wordReasoning {
-  grid-column: 1 / -1;
-  font-size: 0.8rem;
-  color: var(--text-color);
-  opacity: 0.7;
-  line-height: 1.5;
-  padding-top: 0.25rem;
-  border-top: 1px dashed var(--text-color);
-  opacity: 0.15;
-}
-
-.decisionValid {
-  color: var(--color-green);
-  border: 1px solid var(--color-green);
-}
-
-.decisionInvalid {
-  color: var(--color-red);
-  border: 1px solid var(--color-red);
-}
-
-.decisionReview {
-  color: var(--color-yellow);
-  border: 1px solid var(--color-yellow);
-}
-
-.borderValid {
-  border-left: 3px solid var(--color-green);
-}
-
-.borderInvalid {
-  border-left: 3px solid var(--color-red);
-}
-
-.borderReview {
-  border-left: 3px solid var(--color-yellow);
-}
-
-.loadMore {
+.flyingReceiptImage {
   display: block;
-  margin: 1rem auto;
-  padding: 0.5rem 2rem;
-  border: 1px solid var(--text-color);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 0.9rem;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.loadMore:hover {
-  background: var(--text-color);
-  opacity: 0.05;
+/* Center Column */
+.centerColumn {
+  flex: 1;
+  max-width: 350px;
+  min-width: 0;
+  position: relative;
+  height: 500px;
+  z-index: 2;
 }
 
-.loadMore:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+/* Receipt container for transitions */
+.receiptContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-color);
-  opacity: 0.6;
+.fadeOut {
+  animation: fadeOut 0.4s ease-out forwards;
 }
 
-.error {
-  text-align: center;
-  padding: 2rem;
-  color: var(--color-red);
+.fadeIn {
+  animation: fadeIn 0.4s ease-in forwards;
 }
 
-.chevron {
-  display: inline-block;
-  transition: transform 0.2s ease;
-  font-size: 0.8rem;
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Next receipt overlaps current during mobile crossfade */
+.nextReceipt {
+  display: none;
+}
+
+/* Flying receipt container - visible on desktop */
+.flyingReceiptContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Active Receipt */
+.activeReceipt {
+  width: 100%;
+  height: 100%;
+}
+
+.receiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptImageInner {
+  position: relative;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  max-height: 500px;
+}
+
+.receiptImage {
+  display: block;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+}
+
+.receiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
   color: var(--text-color);
   opacity: 0.5;
 }
 
-.chevronOpen {
-  transform: rotate(90deg);
+.svgOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
-@media (max-width: 640px) {
-  .summary {
-    flex-direction: column;
-    gap: 0.75rem;
+/* Equation Panel - Right Column */
+.equationPanel {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.equationCard {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--text-color-rgb), 0.15);
+  opacity: 0.3;
+  transition: opacity 0.4s ease, border-color 0.4s ease;
+}
+
+.equationCard.revealed {
+  opacity: 1;
+}
+
+.equationBadge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+.equationDescription {
+  font-size: 0.72rem;
+  color: var(--text-color);
+  line-height: 1.35;
+  margin-top: 0.3rem;
+  opacity: 0.8;
+}
+
+.equationValues {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.valueLabel {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.valueNumber {
+  font-weight: 600;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-color);
+  font-size: 0.75rem;
+}
+
+.diffHighlight {
+  color: var(--color-red);
+}
+
+/* Summary at bottom of equation panel */
+.equationSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.2);
+}
+
+.summaryLabel {
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.summaryValue {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-color);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loading / Error states */
+.loading,
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--color-red);
+  opacity: 1;
+}
+
+/* Tablet Responsive - Hide Queue */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
   }
 
-  .receiptHeader {
+  .mainWrapper {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+    gap: 1rem;
+    align-items: center;
   }
 
-  .equationHeader {
-    flex-direction: column;
-    align-items: flex-start;
+  .receiptQueue {
+    display: none;
   }
 
-  .equationValues {
+  .centerColumn {
+    width: 100%;
+    max-width: 100%;
+    height: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .activeReceipt {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageWrapper {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .receiptImageInner {
+    max-height: 380px;
+  }
+
+  .receiptImage {
+    max-height: 380px;
+  }
+
+  /* Hide flying receipt on mobile, use crossfade instead */
+  .flyingReceiptContainer {
+    display: none;
+  }
+
+  .flyingReceipt {
+    display: none;
+  }
+
+  /* Show crossfade next receipt on mobile */
+  .nextReceipt {
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .equationPanel {
+    width: 100%;
+    flex-direction: row;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.5rem;
+    max-height: none;
+    overflow-y: visible;
+    padding: 0;
   }
 
-  .wordRow {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
+  .equationCard {
+    flex: 0 0 auto;
+    min-width: 120px;
+    max-width: 180px;
+  }
+
+  .equationSummary {
+    flex: 1 1 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    border-top: none;
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+  }
+
+  .summaryValue {
+    font-size: 0.9rem;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  .centerColumn {
+    height: 320px;
+  }
+
+  .receiptImageInner {
+    max-height: 300px;
+  }
+
+  .receiptImage {
+    max-height: 300px;
+  }
+
+  .equationPanel {
+    gap: 0.4rem;
+  }
+
+  .equationCard {
+    min-width: 100px;
+    max-width: 150px;
   }
 }
