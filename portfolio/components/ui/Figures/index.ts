@@ -83,3 +83,7 @@ export const LabelValidationVisualization = dynamic(
   () => import("./LabelValidationVisualization"),
   { ssr: false }
 );
+export const DedupVisualization = dynamic(
+  () => import("./DedupVisualization"),
+  { ssr: false }
+);

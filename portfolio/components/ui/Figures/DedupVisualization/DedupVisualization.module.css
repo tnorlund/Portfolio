@@ -1,0 +1,583 @@
+.container {
+  width: 100%;
+  max-width: 1024px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--background-color);
+  border-radius: 12px;
+}
+
+/* Receipt List */
+.receiptList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.receiptItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--text-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  opacity: 0.15;
+}
+
+.receiptItem:hover {
+  opacity: 0.25;
+}
+
+.receiptItem.selected {
+  border-color: var(--color-blue);
+  opacity: 1;
+}
+
+.receiptItem.hasConflicts {
+  border-left: 3px solid var(--color-orange);
+}
+
+.merchantName {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.receiptBadges {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.conflictBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--color-orange);
+  color: white;
+}
+
+.correctionBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--color-blue);
+  color: white;
+}
+
+/* Filter Toggle */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.filterToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  user-select: none;
+}
+
+.filterToggle input {
+  accent-color: var(--color-orange);
+}
+
+.receiptCount {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+/* Detail Panel */
+.detailPanel {
+  margin-top: 1.5rem;
+}
+
+/* Stats Grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--text-color);
+  opacity: 0.15;
+}
+
+.statCard.highlight {
+  border-color: var(--color-orange);
+  opacity: 0.3;
+}
+
+.statLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Resolution Cards */
+.resolutionsSection {
+  margin-top: 1.5rem;
+}
+
+.sectionTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.6;
+  margin: 0 0 1rem 0;
+}
+
+.resolutionCard {
+  border: 1px solid var(--text-color);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  opacity: 0.15;
+}
+
+.resolutionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.wordInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.wordText {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+.currentLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--text-color);
+  color: var(--background-color);
+  opacity: 0.7;
+}
+
+.appliedLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-green);
+  color: white;
+}
+
+/* Side-by-side evaluator columns */
+.evaluatorColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.evaluatorColumn {
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 2px solid transparent;
+}
+
+.evaluatorColumn.currency {
+  background: rgba(var(--color-green-rgb, 76, 175, 80), 0.05);
+  border-color: rgba(var(--color-green-rgb, 76, 175, 80), 0.15);
+}
+
+.evaluatorColumn.metadata {
+  background: rgba(var(--color-purple-rgb, 156, 39, 176), 0.05);
+  border-color: rgba(var(--color-purple-rgb, 156, 39, 176), 0.15);
+}
+
+.evaluatorColumn.winner {
+  border-width: 3px;
+}
+
+.evaluatorColumn.currency.winner {
+  border-color: var(--color-green);
+}
+
+.evaluatorColumn.metadata.winner {
+  border-color: var(--color-purple);
+}
+
+.evaluatorLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.winnerIcon {
+  font-size: 0.9rem;
+}
+
+.evaluatorDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detailRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-color);
+}
+
+.detailKey {
+  opacity: 0.6;
+}
+
+/* Decision badges */
+.decisionBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.decisionBadge.valid {
+  background: var(--color-green);
+  color: white;
+}
+
+.decisionBadge.invalid {
+  background: var(--color-red);
+  color: white;
+}
+
+.decisionBadge.needsReview {
+  background: var(--color-yellow);
+  color: white;
+}
+
+/* Confidence badges */
+.confidenceBadge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--text-color);
+}
+
+.confidenceBadge.high {
+  background: var(--text-color);
+  color: var(--background-color);
+}
+
+.confidenceBadge.medium {
+  border: 1px solid var(--text-color);
+  opacity: 0.7;
+}
+
+.confidenceBadge.low {
+  border: 1px dashed var(--text-color);
+  opacity: 0.5;
+}
+
+/* Resolution reason badge */
+.resolutionFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--text-color);
+  opacity: 0.15;
+}
+
+.reasonBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: white;
+}
+
+.reasonBadge.higherConfidence {
+  background: var(--color-blue);
+}
+
+.reasonBadge.financialLabelPriority {
+  background: var(--color-green);
+}
+
+.reasonBadge.currencyPriorityDefault {
+  background: var(--text-color);
+  opacity: 0.5;
+}
+
+/* No conflicts message */
+.noConflicts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-size: 0.9rem;
+  border: 1px dashed var(--text-color);
+  border-radius: 8px;
+  opacity: 0.15;
+}
+
+/* Summary Section */
+.summarySection {
+  margin-top: 1.5rem;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.summaryCard {
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--text-color);
+  opacity: 0.15;
+}
+
+.summaryCardTitle {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color);
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+}
+
+/* Resolution breakdown bars */
+.breakdownBar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.breakdownLabel {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  min-width: 120px;
+}
+
+.breakdownTrack {
+  flex: 1;
+  height: 6px;
+  background: var(--text-color);
+  opacity: 0.1;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.breakdownFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.breakdownFill.blue {
+  background: var(--color-blue);
+}
+
+.breakdownFill.green {
+  background: var(--color-green);
+}
+
+.breakdownFill.gray {
+  background: var(--text-color);
+  opacity: 0.4;
+}
+
+.breakdownValue {
+  font-size: 0.75rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  color: var(--text-color);
+  min-width: 20px;
+  text-align: right;
+}
+
+/* Winner breakdown donut */
+.winnerDonut {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.donutSvg {
+  flex-shrink: 0;
+}
+
+.donutLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.donutLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-color);
+}
+
+.donutDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Labels affected tags */
+.labelsAffected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.labelTag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--text-color);
+  color: var(--background-color);
+  opacity: 0.7;
+}
+
+/* Load More */
+.loadMore {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.loadMoreButton {
+  padding: 0.5rem 1.5rem;
+  border: 1px solid var(--text-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  opacity: 0.6;
+}
+
+.loadMoreButton:hover {
+  opacity: 1;
+}
+
+.loadMoreButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Loading / Error states */
+.loading,
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--color-red);
+  opacity: 1;
+}
+
+/* Strategy badge */
+.strategyBadge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--text-color);
+  color: var(--background-color);
+  opacity: 0.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .evaluatorColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statValue {
+    font-size: 1.25rem;
+  }
+}

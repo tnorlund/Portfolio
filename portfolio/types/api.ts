@@ -670,3 +670,54 @@ export interface LabelValidationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// Dedup Conflict Resolution Types
+
+export interface DedupResolution {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  currency_decision: string;
+  currency_confidence: string;
+  metadata_decision: string;
+  metadata_confidence: string;
+  winner: string;
+  resolution_reason: string;
+  applied_label: string;
+}
+
+export interface DedupReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string;
+  dedup_stats: {
+    currency_invalid_count: number;
+    metadata_invalid_count: number;
+    overlapping_words: number;
+    conflicting_words: number;
+    dedup_removed: number;
+    total_corrections_applied: number;
+    resolution_strategy: string;
+  } | null;
+  resolutions: DedupResolution[];
+  summary: {
+    has_conflicts: boolean;
+    resolution_breakdown: {
+      higher_confidence: number;
+      financial_label_priority: number;
+      currency_priority_default: number;
+    };
+    winner_breakdown: { currency: number; metadata: number };
+    labels_affected: string[];
+  };
+}
+
+export interface DedupResponse {
+  receipts: DedupReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+}
