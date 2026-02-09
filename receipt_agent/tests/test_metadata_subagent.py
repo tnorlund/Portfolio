@@ -1,7 +1,7 @@
 """
 Unit tests for the metadata subagent.
 
-Tests the auto-resolve logic, pattern detection, and collect_metadata_words.
+Tests the auto-resolve logic, pattern detection, and skip logic.
 """
 
 from datetime import UTC, datetime
@@ -12,7 +12,6 @@ from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     MetadataWord,
     auto_resolve_metadata_words,
-    collect_metadata_words,
     detect_pattern_type,
     should_skip_for_metadata_evaluation,
 )

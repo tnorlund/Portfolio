@@ -800,7 +800,7 @@ def evaluate_metadata_labels(
                 "suggested_label": None,
                 "confidence": "low",
             }
-            for _ in metadata_words
+            for _ in remaining_words
         ]
 
     # Step 4: Format output for apply_llm_decisions
