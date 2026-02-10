@@ -84,8 +84,8 @@ from receipt_agent.prompts.label_evaluator import (
 )
 from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils.chroma_helpers import (
-    enrich_evidence_with_dynamo_reasoning,
-    query_similar_words,
+    format_label_evidence_for_prompt,
+    query_cascade_evidence,
 )
 
 # Lambda-specific S3 utilities
@@ -299,7 +299,23 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
             # 3. Setup ChromaDB
             chroma_client = None
-            if chromadb_bucket:
+            cloud_api_key = os.environ.get(
+                "CHROMA_CLOUD_API_KEY", ""
+            ).strip()
+            if cloud_api_key:
+                with child_trace("setup_chromadb", trace_ctx):
+                    try:
+                        from receipt_agent.clients.factory import (
+                            create_chroma_client,
+                        )
+
+                        chroma_client = create_chroma_client()
+                        logger.info("Chroma Cloud client initialized")
+                    except Exception as e:
+                        logger.warning(
+                            "Could not initialize Chroma Cloud: %s", e
+                        )
+            elif chromadb_bucket:
                 with child_trace("setup_chromadb", trace_ctx):
                     try:
                         chroma_path = os.environ.get(
@@ -318,7 +334,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         chroma_client = ChromaClient(
                             persist_directory=chroma_path
                         )
-                        logger.info("ChromaDB client initialized")
+                        logger.info("ChromaDB client initialized (S3 fallback)")
                     except Exception as e:
                         logger.warning("Could not initialize ChromaDB: %s", e)
 
@@ -365,7 +381,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
             decisions: Counter = Counter()
             reviewed_issues: list[dict[str, Any]] = []
-            similar_cache: dict[str, list] = {}
+            similar_cache: dict[str, dict[str, Any]] = {}
 
             # All issues in this batch are for the same receipt
             receipt_issues = collected_issues
@@ -436,7 +452,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     for collected in chunk_issues:
                         # The collected item IS the issue (not nested under "issue" key)
                         issue = collected
-                        word_text = issue.get("word_text", "")
                         word_id = issue.get("word_id", 0)
                         line_id = issue.get("line_id", 0)
 
@@ -449,42 +464,59 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         )
 
                         try:
-                            # Query similar words (with caching)
+                            # Query cascade evidence (with caching)
                             cache_key = (
                                 f"{image_id}:{receipt_id}:{line_id}:{word_id}"
                             )
                             if cache_key in similar_cache:
-                                similar_evidence = similar_cache[cache_key]
-                            elif chroma_client:
-                                similar_evidence = query_similar_words(
-                                    chroma_client=chroma_client,
-                                    word_text=word_text,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    line_id=line_id,
-                                    word_id=word_id,
-                                    target_merchant=merchant_name,
+                                cached = similar_cache[cache_key]
+                                issues_with_context.append(
+                                    {
+                                        "issue": issue,
+                                        **cached,
+                                    }
                                 )
-
-                                if dynamo_client and similar_evidence:
-                                    similar_evidence = (
-                                        enrich_evidence_with_dynamo_reasoning(
-                                            similar_evidence,
-                                            dynamo_client,
-                                            limit=15,
-                                        )
+                            elif chroma_client:
+                                current_label = issue.get(
+                                    "current_label"
+                                ) or ""
+                                evidence, consensus, pos_count, neg_count, _lines_used = (
+                                    query_cascade_evidence(
+                                        chroma_client=chroma_client,
+                                        image_id=image_id,
+                                        receipt_id=receipt_id,
+                                        line_id=line_id,
+                                        word_id=word_id,
+                                        target_label=current_label,
+                                        target_merchant=merchant_name,
                                     )
-
-                                similar_cache[cache_key] = similar_evidence
-                            else:
-                                similar_evidence = []
-
-                            issues_with_context.append(
-                                {
-                                    "issue": issue,
-                                    "similar_evidence": similar_evidence,
+                                )
+                                evidence_text = (
+                                    format_label_evidence_for_prompt(
+                                        evidence, current_label
+                                    )
+                                )
+                                evidence_ctx = {
+                                    "evidence_text": evidence_text,
+                                    "consensus": consensus,
+                                    "positive_count": pos_count,
+                                    "negative_count": neg_count,
                                 }
-                            )
+                                similar_cache[cache_key] = evidence_ctx
+
+                                issues_with_context.append(
+                                    {
+                                        "issue": issue,
+                                        **evidence_ctx,
+                                    }
+                                )
+                            else:
+                                issues_with_context.append(
+                                    {
+                                        "issue": issue,
+                                        "evidence_text": "",
+                                    }
+                                )
 
                         except Exception as e:
                             logger.warning(
@@ -493,7 +525,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             issues_with_context.append(
                                 {
                                     "issue": issue,
-                                    "similar_evidence": [],
+                                    "evidence_text": "",
                                     "context_error": str(e),
                                 }
                             )
@@ -639,9 +671,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                     "receipt_id": meta["receipt_id"],
                                     "issue": meta["issue"],
                                     "llm_review": review_result,
-                                    "similar_word_count": len(
-                                        ctx.get("similar_evidence", [])
-                                    ),
+                                    "evidence_count": ctx.get(
+                                        "positive_count", 0
+                                    )
+                                    + ctx.get("negative_count", 0),
                                 }
                             )
 
@@ -677,9 +710,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                         "suggested_label": None,
                                         "confidence": "low",
                                     },
-                                    "similar_word_count": len(
-                                        ctx.get("similar_evidence", [])
-                                    ),
+                                    "evidence_count": ctx.get(
+                                        "positive_count", 0
+                                    )
+                                    + ctx.get("negative_count", 0),
                                     "error": str(e),
                                 }
                             )

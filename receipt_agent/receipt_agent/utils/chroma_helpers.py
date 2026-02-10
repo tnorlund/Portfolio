@@ -818,6 +818,76 @@ def format_label_evidence_for_prompt(
     return "\n".join(lines)
 
 
+def query_cascade_evidence(
+    chroma_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    target_label: str,
+    target_merchant: str,
+    cascade_threshold: float = 0.2,
+    n_results_per_query: int = 15,
+    min_similarity: float = 0.70,
+    line_discount: float = 0.5,
+) -> tuple[list[LabelEvidence], float, int, int, bool]:
+    """
+    Cascade evidence query: words first, lines only if inconclusive.
+
+    Returns:
+        Tuple of (evidence, consensus, pos_count, neg_count, lines_queried)
+    """
+    if not target_label:
+        return [], 0.0, 0, 0, False
+
+    # Step 1: Query words only
+    word_evidence = query_label_evidence(
+        chroma_client=chroma_client,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+        word_id=word_id,
+        target_label=target_label,
+        target_merchant=target_merchant,
+        n_results_per_query=n_results_per_query,
+        min_similarity=min_similarity,
+        include_collections=("words",),
+    )
+
+    word_consensus, pos, neg = compute_label_consensus(word_evidence)
+
+    # Step 2: If inconclusive, also query lines
+    lines_queried = False
+    if abs(word_consensus) < cascade_threshold:
+        line_evidence = query_label_evidence(
+            chroma_client=chroma_client,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            target_label=target_label,
+            target_merchant=target_merchant,
+            n_results_per_query=n_results_per_query,
+            min_similarity=min_similarity,
+            include_collections=("lines",),
+        )
+        # Discount line similarity scores
+        for e in line_evidence:
+            e.similarity_score *= line_discount
+
+        all_evidence = word_evidence + line_evidence
+        all_evidence.sort(
+            key=lambda e: (e.is_same_merchant, e.similarity_score),
+            reverse=True,
+        )
+        lines_queried = True
+    else:
+        all_evidence = word_evidence
+
+    consensus, pos_count, neg_count = compute_label_consensus(all_evidence)
+    return all_evidence, consensus, pos_count, neg_count, lines_queried
+
+
 # =============================================================================
 # ChromaDB Similar Word Query (General Purpose)
 # =============================================================================

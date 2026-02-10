@@ -704,9 +704,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 minutes
-            "memory_size": 3072,  # 3 GB for ChromaDB + LLM
+            "memory_size": 3072,  # 3 GB for LLM
             "tags": {"environment": stack},
-            "ephemeral_storage": 10240,  # 10 GB for ChromaDB
+            "ephemeral_storage": 512,  # Default; no S3 snapshots needed
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
