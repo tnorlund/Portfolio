@@ -163,167 +163,110 @@
 
 /* Right Column - Evidence Panel */
 .evidencePanel {
-  width: 220px;
+  width: 250px;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   flex-shrink: 0;
   padding: 0.5rem 0;
   max-height: 500px;
   overflow-y: auto;
 }
 
-/* Issue row in right panel */
-.issueRow {
+/* Evidence table — no borders, no boxes, just data */
+.evidenceTable {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  opacity: 0.2;
-  transition: opacity 0.4s ease, border-color 0.3s ease;
+  gap: 0.6rem;
 }
 
-.issueRow.revealed {
-  opacity: 1;
-  border-color: #ccc;
-}
-
-.issueRowHeader {
+/* Each row: word  ●●●●●○○  ratio */
+.evidenceRow {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.issueWordText {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-color);
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100px;
-}
-
-.issueLabel {
-  font-size: 0.65rem;
-  color: var(--text-color);
-  opacity: 0.5;
-  font-style: italic;
-}
-
-/* Decision badges */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: white;
-  flex-shrink: 0;
-}
-
-.badgeValid {
-  background: var(--color-green);
-}
-
-.badgeInvalid {
-  background: var(--color-orange);
-}
-
-.badgeNeedsReview {
-  background: var(--color-yellow);
-  color: #333;
-}
-
-/* Consensus gauge (small horizontal bar) */
-.consensusBar {
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: linear-gradient(to right, #ef4444 0%, #a3a3a3 50%, #22c55e 100%);
-  position: relative;
-  margin-top: 0.15rem;
-}
-
-.consensusMarker {
-  position: absolute;
-  top: -2px;
-  width: 3px;
-  height: 8px;
-  background: var(--text-color);
-  border-radius: 1px;
-  transform: translateX(-50%);
-}
-
-/* Evidence count */
-.evidenceCount {
-  font-size: 0.6rem;
-  color: var(--text-color);
-  opacity: 0.5;
-}
-
-/* Summary section at bottom of panel */
-.summarySection {
-  margin-top: auto;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--text-color);
-  opacity: 0.2;
+  gap: 0.5rem;
+  opacity: 0;
   transition: opacity 0.4s ease;
 }
 
-.summarySection.summaryRevealed {
+.evidenceRow.revealed {
   opacity: 1;
 }
 
-.summaryTitle {
-  font-size: 0.65rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin-bottom: 0.35rem;
-}
-
-.summaryRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* Word text — monospace, left-aligned, truncates */
+.wordText {
+  flex-shrink: 0;
+  width: 72px;
   font-size: 0.7rem;
-  color: var(--text-color);
-  padding: 0.1rem 0;
-}
-
-.summaryValue {
-  font-weight: 600;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
-.decisionBreakdown {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.decisionStat {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.6rem;
   color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.decisionDot {
+/* Dot strip — wraps naturally for large evidence sets */
+.dots {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Individual evidence dot */
+.dot {
+  display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* Agrees with label — filled */
+.dotAgree {
+  background: var(--color-green);
+}
+
+/* Disagrees — hollow outline */
+.dotDisagree {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-red);
+}
+
+/* Same-merchant evidence — slightly larger to add a layer */
+.dotSame {
+  width: 7px;
+  height: 7px;
+}
+
+/* Ratio text — right-aligned, tabular */
+.ratio {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-color);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* Summary — just the number, anchored at bottom */
+.summaryScore {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  text-align: right;
+  font-size: 1.1rem;
+  font-weight: 300;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-color);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.summaryScore.summaryRevealed {
+  opacity: 1;
 }
 
 /* Loading / Error states */
@@ -412,22 +355,16 @@
   .evidencePanel {
     width: 100%;
     max-height: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.5rem;
     padding: 0;
   }
 
-  .issueRow {
-    flex: 0 0 auto;
-    min-width: 140px;
+  .evidenceTable {
+    gap: 0.4rem;
   }
 
-  .summarySection {
-    flex: 1 1 100%;
-    border-top: none;
+  .summaryScore {
+    text-align: center;
     margin-top: 0.5rem;
-    padding-top: 0.5rem;
   }
 }
 
@@ -445,11 +382,8 @@
     max-height: 300px;
   }
 
-  .evidencePanel {
-    flex-direction: column;
-  }
-
-  .issueRow {
-    min-width: 0;
+  .wordText {
+    width: 60px;
+    font-size: 0.65rem;
   }
 }

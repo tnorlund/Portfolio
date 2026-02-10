@@ -314,15 +314,16 @@ interface EvidencePanelProps {
   scanComplete: boolean;
 }
 
-const DecisionBadge: React.FC<{ decision: string }> = ({ decision }) => {
-  const cls =
-    decision === "VALID"
-      ? styles.badgeValid
-      : decision === "INVALID"
-        ? styles.badgeInvalid
-        : styles.badgeNeedsReview;
-  return <span className={`${styles.badge} ${cls}`}>{decision}</span>;
-};
+// A single dot representing one evidence item
+const EvidenceDot: React.FC<{
+  agrees: boolean;
+  sameMerchant: boolean;
+}> = ({ agrees, sameMerchant }) => (
+  <span
+    className={`${styles.dot} ${agrees ? styles.dotAgree : styles.dotDisagree} ${sameMerchant ? styles.dotSame : ""}`}
+    aria-label={`${agrees ? "agrees" : "disagrees"}${sameMerchant ? ", same merchant" : ""}`}
+  />
+);
 
 const EvidencePanel: React.FC<EvidencePanelProps> = ({
   receipt,
@@ -334,53 +335,39 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({
 
   return (
     <div className={styles.evidencePanel}>
-      {issues.map((issue, idx) => {
-        const isRevealed = idx < revealedCount;
-        return (
-          <div
-            key={`${issue.line_id}-${issue.word_id}`}
-            className={`${styles.issueRow} ${isRevealed ? styles.revealed : ""}`}
-          >
-            <div className={styles.issueRowHeader}>
-              <span className={styles.issueWordText} title={issue.word_text}>
+      <div className={styles.evidenceTable}>
+        {issues.map((issue, idx) => {
+          const isRevealed = idx < revealedCount;
+          const agree = issue.evidence.filter((e) => e.label_valid).length;
+          const total = issue.evidence.length;
+
+          return (
+            <div
+              key={`${issue.line_id}-${issue.word_id}`}
+              className={`${styles.evidenceRow} ${isRevealed ? styles.revealed : ""}`}
+            >
+              <span className={styles.wordText} title={issue.word_text}>
                 {issue.word_text}
               </span>
-              <span className={styles.issueLabel}>{issue.current_label}</span>
-              <DecisionBadge decision={issue.decision} />
+              <span className={styles.dots}>
+                {issue.evidence.map((e, i) => (
+                  <EvidenceDot
+                    key={i}
+                    agrees={e.label_valid}
+                    sameMerchant={e.is_same_merchant}
+                  />
+                ))}
+              </span>
+              <span className={styles.ratio}>
+                {agree} of {total}
+              </span>
             </div>
-            <div className={styles.consensusBar}>
-              <div
-                className={styles.consensusMarker}
-                style={{ left: `${((issue.consensus_score + 1) / 2) * 100}%` }}
-              />
-            </div>
-            <span className={styles.evidenceCount}>
-              {issue.similar_word_count} similar words
-            </span>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
-      <div className={`${styles.summarySection} ${scanComplete ? styles.summaryRevealed : ""}`}>
-        <div className={styles.summaryTitle}>Summary</div>
-        <div className={styles.summaryRow}>
-          <span>Avg Consensus</span>
-          <span className={styles.summaryValue}>{summary.avg_consensus_score.toFixed(2)}</span>
-        </div>
-        <div className={styles.decisionBreakdown}>
-          <span className={styles.decisionStat}>
-            <span className={styles.decisionDot} style={{ background: "var(--color-green)" }} />
-            {summary.decisions.VALID}
-          </span>
-          <span className={styles.decisionStat}>
-            <span className={styles.decisionDot} style={{ background: "var(--color-orange)" }} />
-            {summary.decisions.INVALID}
-          </span>
-          <span className={styles.decisionStat}>
-            <span className={styles.decisionDot} style={{ background: "var(--color-yellow)" }} />
-            {summary.decisions.NEEDS_REVIEW}
-          </span>
-        </div>
+      <div className={`${styles.summaryScore} ${scanComplete ? styles.summaryRevealed : ""}`}>
+        {summary.avg_consensus_score.toFixed(2)}
       </div>
     </div>
   );
