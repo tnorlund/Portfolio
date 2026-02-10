@@ -188,26 +188,59 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _build_from_unified(unified_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build evidence cache directly from unified S3 data rows.
+
+    Unified rows contain ``review_all_decisions`` with the full per-issue
+    evidence data that the trace span outputs only summarise.
+    """
+    results: list[dict[str, Any]] = []
+    for row in unified_rows:
+        decisions = row.get("review_all_decisions")
+        if not isinstance(decisions, list) or not decisions:
+            continue
+
+        issues = [_build_issue_entry(d) for d in decisions]
+        results.append({
+            "image_id": row.get("image_id", ""),
+            "receipt_id": row.get("receipt_id"),
+            "merchant_name": row.get("merchant_name", ""),
+            "trace_id": row.get("trace_id", ""),
+            "issues_with_evidence": issues,
+            "summary": _build_summary(issues),
+        })
+
+    logger.info("Built evidence cache for %d receipts from unified rows", len(results))
+    return results
+
+
 def build_evidence_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
     unified_rows: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build per-receipt evidence cache from LangSmith parquet exports.
+    """Build per-receipt evidence cache.
+
+    Prefers *unified_rows* (from S3 unified data files) which contain
+    the full ``review_all_decisions`` with per-issue evidence.  Falls
+    back to trace parquet rows when unified data is unavailable.
 
     Args:
         parquet_dir: Path to a directory containing parquet files
             (or a single parquet file).
         rows: Pre-loaded parquet rows (avoids re-reading from disk).
-        unified_rows: Pre-loaded unified rows (currently unused,
-            accepted for caller compatibility).
+        unified_rows: Pre-loaded unified rows with
+            ``review_all_decisions``.
 
     Returns:
         List of per-receipt dicts with ``image_id``, ``receipt_id``,
         ``merchant_name``, ``trace_id``, ``issues_with_evidence``,
         and ``summary``.
     """
+    if unified_rows:
+        return _build_from_unified(unified_rows)
+
     if rows is None:
         rows = _read_all_rows(parquet_dir) if parquet_dir else []
     if not rows:
