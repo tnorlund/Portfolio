@@ -35,10 +35,8 @@ from receipt_agent.utils.chroma_helpers import (
     compute_label_distribution,
     compute_merchant_breakdown,
     compute_similarity_distribution,
-    enrich_evidence_with_dynamo_reasoning,
     format_label_evidence_for_prompt,
     query_cascade_evidence,
-    query_similar_words,
 )
 
 from .state import (
@@ -532,8 +530,6 @@ def gather_evidence_for_issue(
     issue: dict[str, Any],
     merchant_name: str,
     chroma_client: Optional[Any] = None,
-    dynamo_client: Optional[Any] = None,
-    n_similar_results: int = 100,
 ) -> dict[str, Any]:
     """
     Gather all evidence needed for LLM review of a single issue.
@@ -542,8 +538,6 @@ def gather_evidence_for_issue(
         issue: The issue dict with word_text, line_id, word_id, image_id, etc.
         merchant_name: Merchant name for same-merchant filtering
         chroma_client: Optional ChromaDB client for similar word queries
-        dynamo_client: Optional DynamoDB client for reasoning enrichment
-        n_similar_results: Number of similar words to query
 
     Returns:
         Dict with issue and all gathered evidence
@@ -672,10 +666,10 @@ def review_issues_batch(
     Args:
         issues_with_context: List of dicts, each containing:
             - issue: The issue dict
-            - similar_evidence: List of SimilarWordEvidence
-            - similarity_dist: SimilarityDistribution (optional, will compute)
-            - label_dist: Label distribution (optional, will compute)
-            - merchant_breakdown: Merchant breakdown (optional, will compute)
+            - evidence_text: Pre-formatted cascade evidence string
+            - consensus: Consensus score from cascade evidence
+            - positive_count: Number of supporting evidence items
+            - negative_count: Number of contradicting evidence items
             - currency_context: Currency amounts from receipt
         merchant_name: Merchant name
         merchant_receipt_count: Number of receipts for this merchant
@@ -690,24 +684,7 @@ def review_issues_batch(
     if not issues_with_context:
         return []
 
-    # Ensure each item has computed distributions without mutating inputs
-    normalized_issues: list[dict[str, Any]] = []
-    for item in issues_with_context:
-        similar_evidence = item.get("similar_evidence", [])
-        normalized = dict(item)
-        if "similarity_dist" not in normalized:
-            normalized["similarity_dist"] = compute_similarity_distribution(
-                similar_evidence
-            )
-        if "label_dist" not in normalized:
-            normalized["label_dist"] = compute_label_distribution(
-                similar_evidence
-            )
-        if "merchant_breakdown" not in normalized:
-            normalized["merchant_breakdown"] = compute_merchant_breakdown(
-                similar_evidence
-            )
-        normalized_issues.append(normalized)
+    normalized_issues = issues_with_context
 
     # Build batched prompt
     prompt = build_batched_review_prompt(
@@ -905,7 +882,6 @@ def review_all_issues(
             issue=issue,
             merchant_name=merchant_name,
             chroma_client=chroma_client,
-            dynamo_client=dynamo_client,
         )
         issues_with_context.append(evidence)
 

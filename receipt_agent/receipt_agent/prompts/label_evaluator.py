@@ -475,10 +475,10 @@ def build_batched_review_prompt(
     Args:
         issues_with_context: List of dicts, each containing:
             - issue: The issue dict
-            - similar_evidence: List of SimilarWordEvidence
-            - similarity_dist: SimilarityDistribution
-            - label_dist: Label distribution stats
-            - merchant_breakdown: Merchant breakdown list
+            - evidence_text: Pre-formatted cascade evidence string
+            - consensus: Consensus score from cascade evidence
+            - positive_count: Number of supporting evidence items
+            - negative_count: Number of contradicting evidence items
             - currency_context: Currency amounts from receipt
         merchant_name: The merchant name
         merchant_receipt_count: Number of receipts for this merchant
@@ -491,46 +491,13 @@ def build_batched_review_prompt(
 
     for idx, item in enumerate(issues_with_context):
         issue = item["issue"]
-        similar_evidence = item.get("similar_evidence", [])
-        similarity_dist = item.get("similarity_dist", {})
-        label_dist = item.get("label_dist", {})
+        evidence_text = item.get("evidence_text", "")
         currency_context = item.get("currency_context", [])
 
         word_text = issue.get("word_text", "")
         current_label = issue.get("current_label") or "NONE (unlabeled)"
         issue_type = issue.get("type", "unknown")
         evaluator_reasoning = issue.get("reasoning", "No reasoning provided")
-
-        # Build condensed similar words section
-        same_merchant = []
-        other_merchant = []
-
-        for e in similar_evidence[:15]:  # Reduced from 30 for batching
-            line = f'"{e["word_text"]}" ({e["similarity_score"]:.0%})'
-            if e.get("validated_as"):
-                labels = [v["label"] for v in e["validated_as"][:2]]
-                line += f" -> {', '.join(labels)}"
-            if e["is_same_merchant"]:
-                same_merchant.append(line)
-            else:
-                other_merchant.append(line)
-
-        # Condensed distribution
-        dist_str = (
-            f"Very high (>=90%): {similarity_dist.get('very_high', 0)}, "
-            f"High (70-90%): {similarity_dist.get('high', 0)}, "
-            f"Medium (50-70%): {similarity_dist.get('medium', 0)}"
-        )
-
-        # Condensed label distribution
-        label_lines = []
-        for label, stats in sorted(
-            label_dist.items(), key=lambda x: -x[1]["count"]
-        )[:5]:
-            label_lines.append(
-                f"{label}: {stats['count']} ({stats['valid_count']} valid)"
-            )
-        label_str = ", ".join(label_lines) if label_lines else "None"
 
         # Currency context (condensed)
         currency_str = ""
@@ -541,6 +508,9 @@ def build_batched_review_prompt(
             ]
             currency_str = f"\n  Currency amounts: {', '.join(amounts)}"
 
+        # Evidence section
+        evidence_section = evidence_text if evidence_text else "No evidence available"
+
         issue_block = f"""
 ---
 ## Issue {idx}
@@ -550,10 +520,8 @@ def build_batched_review_prompt(
 **Issue Type**: {issue_type}
 **Evaluator's Concern**: {evaluator_reasoning}
 
-**Similarity Distribution**: {dist_str}
-**Label Distribution**: {label_str}
-**Same Merchant Examples**: {', '.join(same_merchant[:5]) if same_merchant else 'None'}
-**Other Merchant Examples**: {', '.join(other_merchant[:5]) if other_merchant else 'None'}{currency_str}
+**Evidence**:
+{evidence_section}{currency_str}
 """
         issues_text.append(issue_block)
 
