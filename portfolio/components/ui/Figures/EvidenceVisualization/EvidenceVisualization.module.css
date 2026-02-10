@@ -192,16 +192,39 @@
   opacity: 1;
 }
 
-/* Word text — monospace, left-aligned, truncates */
-.wordText {
+/* Word → Label cluster */
+.wordLabel {
   flex-shrink: 0;
-  width: 72px;
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  min-width: 0;
+  max-width: 130px;
+}
+
+.wordText {
   font-size: 0.7rem;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
   color: var(--text-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.arrow {
+  font-size: 0.6rem;
+  color: var(--text-color);
+  opacity: 0.35;
+  flex-shrink: 0;
+}
+
+.labelText {
+  font-size: 0.55rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Dot strip — wraps naturally for large evidence sets */
@@ -225,30 +248,19 @@
 
 /* Agrees with label — filled */
 .dotAgree {
-  background: var(--color-green);
+  background: var(--text-color);
 }
 
 /* Disagrees — hollow outline */
 .dotDisagree {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--color-red);
+  box-shadow: inset 0 0 0 1px var(--text-color);
 }
 
 /* Same-merchant evidence — slightly larger to add a layer */
 .dotSame {
   width: 7px;
   height: 7px;
-}
-
-/* Ratio text — right-aligned, tabular */
-.ratio {
-  flex-shrink: 0;
-  font-size: 0.65rem;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-color);
-  opacity: 0.6;
-  white-space: nowrap;
 }
 
 /* Summary — just the number, anchored at bottom */
@@ -382,8 +394,11 @@
     max-height: 300px;
   }
 
+  .wordLabel {
+    max-width: 100px;
+  }
+
   .wordText {
-    width: 60px;
     font-size: 0.65rem;
   }
 }

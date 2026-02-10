@@ -338,16 +338,19 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({
       <div className={styles.evidenceTable}>
         {issues.map((issue, idx) => {
           const isRevealed = idx < revealedCount;
-          const agree = issue.evidence.filter((e) => e.label_valid).length;
-          const total = issue.evidence.length;
-
           return (
             <div
               key={`${issue.line_id}-${issue.word_id}`}
               className={`${styles.evidenceRow} ${isRevealed ? styles.revealed : ""}`}
             >
-              <span className={styles.wordText} title={issue.word_text}>
-                {issue.word_text}
+              <span className={styles.wordLabel}>
+                <span className={styles.wordText} title={issue.word_text}>
+                  {issue.word_text}
+                </span>
+                <span className={styles.arrow}>{"\u2192"}</span>
+                <span className={styles.labelText}>
+                  {issue.current_label || issue.suggested_label}
+                </span>
               </span>
               <span className={styles.dots}>
                 {issue.evidence.map((e, i) => (
@@ -357,9 +360,6 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({
                     sameMerchant={e.is_same_merchant}
                   />
                 ))}
-              </span>
-              <span className={styles.ratio}>
-                {agree} of {total}
               </span>
             </div>
           );
