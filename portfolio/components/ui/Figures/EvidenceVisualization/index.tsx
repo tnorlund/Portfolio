@@ -325,6 +325,38 @@ const EvidenceDot: React.FC<{
   />
 );
 
+// LLM verdict — appears after dots settle
+const Verdict: React.FC<{ decision: string }> = ({ decision }) => {
+  if (decision === "VALID") {
+    return (
+      <svg className={styles.verdict} viewBox="0 0 12 12" aria-label="valid">
+        <path
+          d="M2.5 6 L5 8.5 L9.5 3.5"
+          fill="none"
+          stroke="var(--color-green)"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (decision === "INVALID") {
+    return (
+      <svg className={styles.verdict} viewBox="0 0 12 12" aria-label="invalid">
+        <line x1="3" y1="3" x2="9" y2="9" stroke="var(--color-red)" strokeWidth="1.8" strokeLinecap="round" />
+        <line x1="9" y1="3" x2="3" y2="9" stroke="var(--color-red)" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  // NEEDS_REVIEW — question mark
+  return (
+    <svg className={styles.verdict} viewBox="0 0 12 12" aria-label="needs review">
+      <text x="6" y="9.5" textAnchor="middle" fontSize="9" fill="var(--text-color)" opacity="0.5">?</text>
+    </svg>
+  );
+};
+
 const EvidencePanel: React.FC<EvidencePanelProps> = ({
   receipt,
   revealedCount,
@@ -361,6 +393,7 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({
                   />
                 ))}
               </span>
+              <Verdict decision={issue.decision} />
             </div>
           );
         })}
