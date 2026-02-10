@@ -3,7 +3,7 @@ import { animated, useSpring, to } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import Image from "next/image";
 import { api } from "../../../../services/api";
-import { EvidenceReceipt } from "../../../../types/api";
+import { EvidenceReceipt, EvidenceIssue } from "../../../../types/api";
 import { detectImageFormatSupport, getBestImageUrl, FormatSupport, ImageFormats } from "../../../../utils/imageFormat";
 import styles from "./EvidenceVisualization.module.css";
 
@@ -227,6 +227,8 @@ interface ActiveReceiptViewerProps {
   scanProgress: number;
   formatSupport: FormatSupport | null;
   imageDims: React.MutableRefObject<Map<string, { width: number; height: number }>>;
+  issues?: EvidenceIssue[];
+  revealedCount?: number;
 }
 
 const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
@@ -234,6 +236,8 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   scanProgress,
   formatSupport,
   imageDims,
+  issues = [],
+  revealedCount = 0,
 }) => {
   const key = receiptKey(receipt);
   const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
@@ -299,6 +303,41 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                 />
               </>
             )}
+            {issues.map((issue, idx) => {
+              if (!issue.corners || idx >= revealedCount) return null;
+              const { tl, tr, br, bl } = issue.corners;
+              const points = [
+                `${tl.x * imgWidth},${tl.y * imgHeight}`,
+                `${tr.x * imgWidth},${tr.y * imgHeight}`,
+                `${br.x * imgWidth},${br.y * imgHeight}`,
+                `${bl.x * imgWidth},${bl.y * imgHeight}`,
+              ].join(" ");
+              const stroke =
+                issue.decision === "VALID"
+                  ? "var(--color-green)"
+                  : issue.decision === "INVALID"
+                    ? "var(--color-red)"
+                    : "var(--text-color)";
+              return (
+                <polygon
+                  key={`bbox-${issue.line_id}-${issue.word_id}`}
+                  points={points}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth="2"
+                  opacity="0.8"
+                  strokeLinejoin="round"
+                >
+                  <animate
+                    attributeName="opacity"
+                    from="0"
+                    to="0.8"
+                    dur="0.4s"
+                    fill="freeze"
+                  />
+                </polygon>
+              );
+            })}
           </svg>
         </div>
       </div>
@@ -648,6 +687,8 @@ const EvidenceVisualization: React.FC = () => {
               scanProgress={scanProgress}
               formatSupport={formatSupport}
               imageDims={imageDims}
+              issues={currentReceipt.issues_with_evidence}
+              revealedCount={revealedCount}
             />
           </div>
 

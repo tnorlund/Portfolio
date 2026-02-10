@@ -124,7 +124,7 @@ def _build_issue_entry(decision: dict[str, Any]) -> dict[str, Any]:
     llm_review = decision.get("llm_review", {})
     evidence = decision.get("evidence", [])
 
-    return {
+    entry = {
         "line_id": issue.get("line_id"),
         "word_id": issue.get("word_id"),
         "word_text": issue.get("word_text", ""),
@@ -138,6 +138,10 @@ def _build_issue_entry(decision: dict[str, Any]) -> dict[str, Any]:
         "similar_word_count": decision.get("similar_word_count", 0),
         "evidence": evidence[:10] if isinstance(evidence, list) else [],
     }
+    corners = issue.get("corners")
+    if corners:
+        entry["corners"] = corners
+    return entry
 
 
 def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:

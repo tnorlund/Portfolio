@@ -1254,6 +1254,13 @@ async def run_compute_only(
                 "suggested_label": issue.suggested_label,
                 "reasoning": issue.reasoning,
             }
+            if hasattr(issue.word, "top_left") and issue.word.top_left:
+                issue_dict["corners"] = {
+                    "tl": issue.word.top_left,
+                    "tr": issue.word.top_right,
+                    "bl": issue.word.bottom_left,
+                    "br": issue.word.bottom_right,
+                }
             # Include drill_down for constellation anomalies
             # Note: matches review_flagged_labels serialization (excludes unused offset fields)
             if issue.drill_down:

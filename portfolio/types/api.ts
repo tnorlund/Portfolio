@@ -592,6 +592,13 @@ export interface EvidenceItem {
   is_same_merchant: boolean;
 }
 
+export interface WordCorners {
+  tl: Point;
+  tr: Point;
+  bl: Point;
+  br: Point;
+}
+
 export interface EvidenceIssue {
   line_id: number;
   word_id: number;
@@ -603,6 +610,7 @@ export interface EvidenceIssue {
   confidence: string;
   reasoning: string;
   consensus_score: number;
+  corners?: WordCorners;
   similar_word_count: number;
   evidence: EvidenceItem[];
 }
