@@ -837,6 +837,9 @@ def query_cascade_evidence(
     Returns:
         Tuple of (evidence, consensus, pos_count, neg_count, lines_queried)
     """
+    if not target_label:
+        return [], 0.0, 0, 0, False
+
     # Step 1: Query words only
     word_evidence = query_label_evidence(
         chroma_client=chroma_client,

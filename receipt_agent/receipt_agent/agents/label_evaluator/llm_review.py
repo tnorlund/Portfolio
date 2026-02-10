@@ -556,7 +556,7 @@ def gather_evidence_for_issue(
 
     # Query cascade evidence: words first, lines if inconclusive
     try:
-        current_label = issue.get("current_label", "")
+        current_label = issue.get("current_label") or ""
         all_evidence, consensus, pos_count, neg_count, _lines_used = (
             query_cascade_evidence(
                 chroma_client=chroma_client,

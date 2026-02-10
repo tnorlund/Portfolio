@@ -478,8 +478,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                 )
                             elif chroma_client:
                                 current_label = issue.get(
-                                    "current_label", ""
-                                )
+                                    "current_label"
+                                ) or ""
                                 evidence, consensus, pos_count, neg_count, _lines_used = (
                                     query_cascade_evidence(
                                         chroma_client=chroma_client,
