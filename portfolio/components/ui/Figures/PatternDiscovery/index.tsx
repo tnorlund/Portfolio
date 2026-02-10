@@ -1,129 +1,344 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { animated, useSprings } from "@react-spring/web";
+import { useEffect, useMemo, useState } from "react";
+import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
-  LabelEvaluatorWord,
-  PatternEntry,
-  PatternReceipt,
+  Constellation,
+  LabelPositionStats,
   PatternResponse,
 } from "../../../../types/api";
-import {
-  detectImageFormatSupport,
-  FormatSupport,
-  getBestImageUrl,
-} from "../../../../utils/imageFormat";
 import styles from "./PatternDiscovery.module.css";
 
-type SortKey = "merchant_name" | "receipt_type" | "total_issues" | "receipts";
-type SortDir = "asc" | "desc";
-
-const ISSUE_TYPE_COLORS: Record<string, string> = {
-  missing_label_cluster: styles.barFillOrange,
-  missing_constellation_member: styles.barFillBlue,
-  text_label_conflict: styles.barFillRed,
-};
-
+// Semantic label color palette — consistent with project conventions
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
+  ADDRESS_LINE: "var(--color-red)",
+  PHONE_NUMBER: "var(--color-orange)",
+  WEBSITE: "var(--color-purple)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
-  AMOUNT: "var(--color-green)",
-  LINE_TOTAL: "var(--color-green)",
+  GRAND_TOTAL: "var(--color-green)",
   SUBTOTAL: "var(--color-green)",
-  TAX: "var(--color-orange)",
-  GRAND_TOTAL: "var(--color-red)",
-  PRODUCT_NAME: "var(--color-purple)",
-  ADDRESS: "var(--color-red)",
-  WEBSITE: "var(--color-purple)",
+  TAX: "var(--color-green)",
+  LINE_TOTAL: "var(--color-green)",
+  PRODUCT_NAME: "var(--text-color)",
+  QUANTITY: "var(--text-color)",
+  UNIT_PRICE: "var(--text-color)",
+  DISCOUNT: "var(--color-orange)",
   STORE_HOURS: "var(--color-orange)",
-  PAYMENT_METHOD: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-purple)",
 };
 
-/** Max receipts to overlay for performance (~50 words each = ~250 rects). */
-const MAX_OVERLAY_RECEIPTS = 5;
-
-function formatIssueType(key: string): string {
-  return key.replace(/_/g, " ");
+function labelColor(label: string): string {
+  return LABEL_COLORS[label] ?? "var(--text-color)";
 }
+
+// ---------------------------------------------------------------------------
+// Label Position Map (SVG) — left panel
+// ---------------------------------------------------------------------------
+
+const POS_SVG_WIDTH = 320;
+const POS_SVG_HEIGHT = 400;
+const POS_LEFT = 12;
+const POS_RIGHT = POS_SVG_WIDTH - 12;
+const POS_TOP = 24;
+const POS_BOTTOM = POS_SVG_HEIGHT - 24;
+
+function LabelPositionMap({
+  positions,
+}: {
+  positions: Record<string, LabelPositionStats>;
+}) {
+  const entries = useMemo(() => {
+    return Object.entries(positions)
+      .filter(([, s]) => s.count > 0)
+      .sort((a, b) => b[1].mean_y - a[1].mean_y); // top of receipt first
+  }, [positions]);
+
+  if (entries.length === 0) {
+    return (
+      <div className={styles.emptyPanel}>No label position data available</div>
+    );
+  }
+
+  const maxCount = Math.max(...entries.map(([, s]) => s.count));
+
+  // Map mean_y (0=bottom, 1=top) to SVG y (top=POS_TOP, bottom=POS_BOTTOM)
+  const yScale = (meanY: number) =>
+    POS_BOTTOM - (meanY * (POS_BOTTOM - POS_TOP));
+
+  // Axis x position
+  const axisX = POS_LEFT + 8;
+
+  return (
+    <svg
+      viewBox={`0 0 ${POS_SVG_WIDTH} ${POS_SVG_HEIGHT}`}
+      className={styles.svg}
+      role="img"
+      aria-label="Label positions on a normalized receipt"
+    >
+      {/* Thin vertical axis rule */}
+      <line
+        x1={axisX}
+        y1={POS_TOP}
+        x2={axisX}
+        y2={POS_BOTTOM}
+        stroke="var(--text-color)"
+        strokeOpacity={0.15}
+        strokeWidth={1}
+      />
+
+      {entries.map(([label, stats]) => {
+        const cy = yScale(stats.mean_y);
+        const stdPx = stats.std_y * (POS_BOTTOM - POS_TOP);
+        const opacity = 0.35 + 0.65 * (stats.count / maxCount);
+
+        return (
+          <g key={label}>
+            {/* Std deviation band */}
+            {stdPx > 0.5 && (
+              <rect
+                x={axisX - 3}
+                y={cy - stdPx}
+                width={6}
+                height={stdPx * 2}
+                fill="var(--text-color)"
+                fillOpacity={0.06}
+                rx={2}
+              />
+            )}
+            {/* Position mark */}
+            <circle
+              cx={axisX}
+              cy={cy}
+              r={3}
+              fill={labelColor(label)}
+              fillOpacity={opacity}
+            />
+            {/* Label text */}
+            <text
+              x={axisX + 12}
+              y={cy}
+              dy="0.35em"
+              fill={labelColor(label)}
+              fillOpacity={opacity}
+              fontSize={11}
+              fontFamily="var(--font-mono, monospace)"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Y-axis annotations */}
+      <text
+        x={axisX}
+        y={POS_TOP - 8}
+        textAnchor="middle"
+        fill="var(--text-color)"
+        fillOpacity={0.3}
+        fontSize={9}
+      >
+        top
+      </text>
+      <text
+        x={axisX}
+        y={POS_BOTTOM + 14}
+        textAnchor="middle"
+        fill="var(--text-color)"
+        fillOpacity={0.3}
+        fontSize={9}
+      >
+        bottom
+      </text>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Constellation Diagram (SVG) — right panel
+// ---------------------------------------------------------------------------
+
+const CON_SVG_WIDTH = 320;
+const CON_GROUP_HEIGHT = 160;
+const CON_PADDING = 20;
+
+function ConstellationDiagram({
+  constellations,
+}: {
+  constellations: Constellation[];
+}) {
+  if (constellations.length === 0) {
+    return (
+      <div className={styles.emptyPanel}>No constellation data available</div>
+    );
+  }
+
+  const totalHeight =
+    constellations.length * CON_GROUP_HEIGHT +
+    (constellations.length - 1) * 12;
+
+  return (
+    <svg
+      viewBox={`0 0 ${CON_SVG_WIDTH} ${totalHeight}`}
+      className={styles.svg}
+      role="img"
+      aria-label="Constellation diagrams showing label co-occurrence geometry"
+    >
+      {constellations.map((c, idx) => (
+        <ConstellationGroup
+          key={idx}
+          constellation={c}
+          yOffset={idx * (CON_GROUP_HEIGHT + 12)}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function ConstellationGroup({
+  constellation,
+  yOffset,
+}: {
+  constellation: Constellation;
+  yOffset: number;
+}) {
+  const { labels, relative_positions, observation_count } = constellation;
+
+  // Find the spatial extent to normalize positions into the drawing area
+  const positions = Object.entries(relative_positions);
+  if (positions.length === 0) return null;
+
+  const dxs = positions.map(([, p]) => p.mean_dx);
+  const dys = positions.map(([, p]) => p.mean_dy);
+  const minDx = Math.min(...dxs);
+  const maxDx = Math.max(...dxs);
+  const minDy = Math.min(...dys);
+  const maxDy = Math.max(...dys);
+
+  const rangeX = maxDx - minDx || 0.1;
+  const rangeY = maxDy - minDy || 0.1;
+
+  // Map relative positions to SVG coordinates
+  const drawW = CON_SVG_WIDTH - CON_PADDING * 2 - 80; // leave room for labels
+  const drawH = CON_GROUP_HEIGHT - CON_PADDING * 2 - 20;
+  const centerX = CON_SVG_WIDTH / 2;
+  const centerY = yOffset + CON_GROUP_HEIGHT / 2;
+
+  const scale = Math.min(drawW / rangeX, drawH / rangeY) * 0.8;
+
+  const points: { label: string; cx: number; cy: number; stdR: number }[] =
+    positions.map(([label, p]) => ({
+      label,
+      cx: centerX + p.mean_dx * scale,
+      cy: centerY + p.mean_dy * scale, // positive dy = down
+      stdR: Math.sqrt(p.std_dx ** 2 + p.std_dy ** 2) * scale,
+    }));
+
+  // Draw connecting lines between all labels in the constellation
+  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      lines.push({
+        x1: points[i].cx,
+        y1: points[i].cy,
+        x2: points[j].cx,
+        y2: points[j].cy,
+      });
+    }
+  }
+
+  return (
+    <g>
+      {/* Connecting lines */}
+      {lines.map((l, i) => (
+        <line
+          key={i}
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          stroke="var(--text-color)"
+          strokeOpacity={0.12}
+          strokeWidth={1}
+        />
+      ))}
+
+      {/* Std deviation ellipses + marks + labels */}
+      {points.map((pt) => (
+        <g key={pt.label}>
+          {pt.stdR > 1 && (
+            <circle
+              cx={pt.cx}
+              cy={pt.cy}
+              r={Math.max(pt.stdR, 4)}
+              fill={labelColor(pt.label)}
+              fillOpacity={0.06}
+              stroke={labelColor(pt.label)}
+              strokeOpacity={0.1}
+              strokeWidth={0.5}
+            />
+          )}
+          <circle
+            cx={pt.cx}
+            cy={pt.cy}
+            r={3.5}
+            fill={labelColor(pt.label)}
+            fillOpacity={0.8}
+          />
+          <text
+            x={pt.cx + 7}
+            y={pt.cy}
+            dy="0.35em"
+            fill={labelColor(pt.label)}
+            fillOpacity={0.85}
+            fontSize={10}
+            fontFamily="var(--font-mono, monospace)"
+          >
+            {pt.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Observation count annotation */}
+      <text
+        x={centerX}
+        y={yOffset + CON_GROUP_HEIGHT - 4}
+        textAnchor="middle"
+        fill="var(--text-color)"
+        fillOpacity={0.35}
+        fontSize={9}
+      >
+        {observation_count} observations
+      </text>
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 export default function PatternDiscovery() {
   const [data, setData] = useState<PatternResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("total_issues");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
+  const { ref, inView } = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+    rootMargin: "100px",
+  });
 
   useEffect(() => {
+    if (!inView) return;
     api
-      .fetchLabelEvaluatorPatterns(50)
+      .fetchLabelEvaluatorPatterns()
       .then(setData)
       .catch((err) => setError(err.message));
-  }, []);
-
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
-
-  const sorted = useMemo(() => {
-    if (!data) return [];
-    const rows = [...data.receipts];
-    rows.sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
-        case "merchant_name":
-          cmp = a.merchant_name.localeCompare(b.merchant_name);
-          break;
-        case "receipt_type":
-          cmp = (a.pattern?.receipt_type ?? "").localeCompare(
-            b.pattern?.receipt_type ?? ""
-          );
-          break;
-        case "total_issues":
-          cmp =
-            a.geometric_summary.total_issues -
-            b.geometric_summary.total_issues;
-          break;
-        case "receipts":
-          cmp = a.trace_ids.length - b.trace_ids.length;
-          break;
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return rows;
-  }, [data, sortKey, sortDir]);
-
-  const summary = useMemo(() => {
-    if (!data) return { total: 0, withPatterns: 0, totalIssues: 0 };
-    const withPatterns = data.receipts.filter((r) => r.pattern !== null).length;
-    const totalIssues = data.receipts.reduce(
-      (sum, r) => sum + r.geometric_summary.total_issues,
-      0
-    );
-    return { total: data.receipts.length, withPatterns, totalIssues };
-  }, [data]);
-
-  function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(key === "merchant_name" ? "asc" : "desc");
-    }
-  }
-
-  function toggleExpand(name: string) {
-    setExpandedMerchant((prev) => (prev === name ? null : name));
-  }
-
-  const arrow = (key: SortKey) => {
-    if (sortKey !== key) return "";
-    return sortDir === "asc" ? " \u25B2" : " \u25BC";
-  };
+  }, [inView]);
 
   if (error) {
     return (
-      <div className={styles.container}>
+      <div ref={ref} className={styles.container}>
         <div className={styles.error}>Failed to load patterns: {error}</div>
       </div>
     );
@@ -131,518 +346,52 @@ export default function PatternDiscovery() {
 
   if (!data) {
     return (
-      <div className={styles.container}>
+      <div ref={ref} className={styles.container}>
         <div className={styles.loading}>Loading patterns...</div>
       </div>
     );
   }
 
-  return (
-    <div className={styles.container}>
-      {/* Summary bar */}
-      <div className={styles.summary}>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryValue}>{summary.total}</span>
-          <span className={styles.summaryLabel}>Merchants</span>
-        </div>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryValue}>{summary.withPatterns}</span>
-          <span className={styles.summaryLabel}>With Patterns</span>
-        </div>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryValue}>{summary.totalIssues}</span>
-          <span className={styles.summaryLabel}>Total Issues</span>
-        </div>
-      </div>
-
-      {/* Desktop table */}
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th onClick={() => handleSort("merchant_name")}>
-              Merchant{" "}
-              <span className={styles.sortArrow}>
-                {arrow("merchant_name")}
-              </span>
-            </th>
-            <th onClick={() => handleSort("receipt_type")}>
-              Receipt Type{" "}
-              <span className={styles.sortArrow}>
-                {arrow("receipt_type")}
-              </span>
-            </th>
-            <th onClick={() => handleSort("total_issues")}>
-              Issues{" "}
-              <span className={styles.sortArrow}>
-                {arrow("total_issues")}
-              </span>
-            </th>
-            <th onClick={() => handleSort("receipts")}>
-              Receipts{" "}
-              <span className={styles.sortArrow}>{arrow("receipts")}</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((entry) => (
-            <React.Fragment key={entry.merchant_name}>
-              <tr
-                className={styles.merchantRow}
-                onClick={() => toggleExpand(entry.merchant_name)}
-              >
-                <td className={styles.merchantName}>
-                  {entry.merchant_name}
-                </td>
-                <td>
-                  {entry.pattern ? (
-                    <span className={styles.receiptType}>
-                      {entry.pattern.receipt_type}
-                    </span>
-                  ) : (
-                    <span className={styles.noPattern}>--</span>
-                  )}
-                </td>
-                <td
-                  className={`${styles.issueCount} ${
-                    entry.geometric_summary.total_issues === 0
-                      ? styles.zeroIssues
-                      : ""
-                  }`}
-                >
-                  {entry.geometric_summary.total_issues}
-                </td>
-                <td>{entry.trace_ids.length}</td>
-              </tr>
-              <tr className={styles.detailRow}>
-                <td colSpan={4}>
-                  <div
-                    className={`${styles.detailContent} ${
-                      expandedMerchant === entry.merchant_name
-                        ? styles.detailContentOpen
-                        : ""
-                    }`}
-                  >
-                    <ExpandedDetail entry={entry} formatSupport={formatSupport} />
-                  </div>
-                </td>
-              </tr>
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Mobile card list */}
-      <div className={styles.cardList}>
-        {sorted.map((entry) => (
-          <div key={entry.merchant_name}>
-            <div
-              className={styles.card}
-              onClick={() => toggleExpand(entry.merchant_name)}
-            >
-              <div className={styles.cardHeader}>
-                <span className={styles.cardMerchant}>
-                  {entry.merchant_name}
-                </span>
-                <span className={styles.cardBadge}>
-                  {entry.pattern?.receipt_type ?? "--"}
-                </span>
-              </div>
-              <div className={styles.cardStats}>
-                <span>{entry.geometric_summary.total_issues} issues</span>
-                <span>{entry.trace_ids.length} receipts</span>
-              </div>
-            </div>
-            <div
-              className={`${styles.detailContent} ${
-                expandedMerchant === entry.merchant_name
-                  ? styles.detailContentOpen
-                  : ""
-              }`}
-            >
-              <ExpandedDetail entry={entry} formatSupport={formatSupport} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Pattern Overlay — animated word-rect stacking
-// ---------------------------------------------------------------------------
-
-/** Check whether any receipt in the list carries word data. */
-function hasWordData(receipts: PatternReceipt[]): boolean {
-  return receipts.some((r) => r.words && r.words.length > 0);
-}
-
-/** Collect unique label names present across all receipt words. */
-function collectLabels(receipts: PatternReceipt[]): string[] {
-  const labels = new Set<string>();
-  for (const r of receipts) {
-    for (const w of r.words ?? []) {
-      if (w.label) labels.add(w.label);
-    }
-  }
-  return Array.from(labels).sort();
-}
-
-function PatternOverlay({ receipts }: { receipts: PatternReceipt[] }) {
-  const overlayReceipts = useMemo(
-    () => receipts.filter((r) => r.words && r.words.length > 0).slice(0, MAX_OVERLAY_RECEIPTS),
-    [receipts],
-  );
-  const count = overlayReceipts.length;
-
-  // Per-receipt opacity springs
-  const [springs, springApi] = useSprings(count, () => ({ opacity: 0 }), [count]);
-
-  // Timer-based animation loop: build-up → hold → reset → repeat
-  useEffect(() => {
-    if (count === 0) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    let cancelled = false;
-
-    function runCycle() {
-      if (cancelled) return;
-      // Phase 1: Build-up — stagger receipts in over ~4s
-      const stagger = 4000 / count;
-      for (let i = 0; i < count; i++) {
-        timers.push(
-          setTimeout(() => {
-            if (cancelled) return;
-            springApi.start((idx) => {
-              if (idx !== i) return {};
-              return { opacity: 0.4, config: { duration: 600 } };
-            });
-          }, i * stagger),
-        );
-      }
-      // Phase 2: Hold for 3s (starts at 4s)
-      // Phase 3: Reset — fade out (starts at 7s)
-      timers.push(
-        setTimeout(() => {
-          if (cancelled) return;
-          springApi.start(() => ({ opacity: 0, config: { duration: 600 } }));
-        }, 7000),
-      );
-      // Restart cycle at 8s
-      timers.push(
-        setTimeout(() => {
-          if (cancelled) return;
-          runCycle();
-        }, 8000),
-      );
-    }
-
-    runCycle();
-    return () => {
-      cancelled = true;
-      timers.forEach(clearTimeout);
-    };
-  }, [count, springApi]);
-
-  // Use a fixed normalized SVG space (width=500, height=400 matches 5:4 ratio)
-  const svgWidth = 500;
-  const svgHeight = 400;
-
-  // Determine the best reference dimensions (use first receipt with w/h)
-  const refReceipt = overlayReceipts.find((r) => r.width > 0 && r.height > 0);
-  const refW = refReceipt?.width ?? 1;
-  const refH = refReceipt?.height ?? 1;
+  const { merchant } = data;
 
   return (
-    <div className={styles.patternOverlay}>
-      <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%">
-        {springs.map((style, i) => {
-          const receipt = overlayReceipts[i];
-          if (!receipt?.words) return null;
-          // Scale factor to map receipt pixels → SVG space
-          const scaleX = svgWidth / refW;
-          const scaleY = svgHeight / refH;
-          return (
-            <animated.g key={`${receipt.image_id}-${receipt.receipt_id}`} opacity={style.opacity}>
-              {receipt.words.map((word: LabelEvaluatorWord, j: number) => {
-                const x = word.bbox.x * refW * scaleX;
-                const y = (1 - word.bbox.y - word.bbox.height) * refH * scaleY;
-                const w = word.bbox.width * refW * scaleX;
-                const h = word.bbox.height * refH * scaleY;
-                return (
-                  <rect
-                    key={`${word.line_id}-${word.word_id}-${j}`}
-                    x={x}
-                    y={y}
-                    width={w}
-                    height={h}
-                    fill={LABEL_COLORS[word.label ?? ""] ?? "var(--color-gray, #888)"}
-                    rx={2}
-                  />
-                );
-              })}
-            </animated.g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Label legend
-// ---------------------------------------------------------------------------
-
-function LabelLegend({ labels }: { labels: string[] }) {
-  if (labels.length === 0) return null;
-  return (
-    <div className={styles.labelLegend}>
-      {labels.map((label) => (
-        <span key={label} className={styles.legendItem}>
-          <span
-            className={styles.legendDot}
-            style={{ background: LABEL_COLORS[label] ?? "var(--color-gray, #888)" }}
-          />
-          {label.replace(/_/g, " ").toLowerCase()}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ExpandedDetail — shows overlay when words available, otherwise falls back
-// ---------------------------------------------------------------------------
-
-function ExpandedDetail({
-  entry,
-  formatSupport,
-}: {
-  entry: PatternEntry;
-  formatSupport: FormatSupport | null;
-}) {
-  const { pattern, geometric_summary, receipts = [] } = entry;
-
-  const showOverlay = hasWordData(receipts);
-  const presentLabels = useMemo(() => collectLabels(receipts), [receipts]);
-
-  // Count total geometric issues across receipts
-  const totalReceiptIssues = useMemo(
-    () =>
-      receipts.reduce(
-        (sum, r) => sum + (r.geometric_issues?.length ?? 0),
-        0,
-      ),
-    [receipts],
-  );
-
-  const validReceipts = receipts
-    .filter((r) => r.cdn_s3_key !== null)
-    .map((r) => ({
-      receipt_id: r.receipt_id,
-      cdn_s3_key: r.cdn_s3_key!,
-      cdn_webp_s3_key: r.cdn_webp_s3_key ?? undefined,
-      cdn_avif_s3_key: r.cdn_avif_s3_key ?? undefined,
-      cdn_medium_s3_key: r.cdn_medium_s3_key ?? undefined,
-      cdn_medium_webp_s3_key: r.cdn_medium_webp_s3_key ?? undefined,
-      cdn_medium_avif_s3_key: r.cdn_medium_avif_s3_key ?? undefined,
-    }));
-
-  // ---- Fallback: original bar-chart view (no word data) ----
-  if (!showOverlay) {
-    const issueMax = Math.max(
-      1,
-      ...Object.values(geometric_summary.issue_types),
-    );
-    const labelMax = Math.max(
-      1,
-      ...Object.values(geometric_summary.top_suggested_labels),
-    );
-    return (
-      <>
-        <div className={styles.detailInner}>
-          <div className={styles.detailSection}>
-            <div className={styles.detailSectionTitle}>Pattern</div>
-            {pattern === null ? (
-              <div className={styles.noPatternMessage}>No pattern discovered</div>
-            ) : (
-              <>
-                <div className={styles.reason}>{pattern.receipt_type_reason}</div>
-                <div className={styles.detailGrid}>
-                  <span className={styles.detailKey}>Structure</span>
-                  <span className={styles.detailValue}>
-                    {pattern.item_structure ?? "--"}
-                  </span>
-                  {pattern.lines_per_item && (
-                    <>
-                      <span className={styles.detailKey}>Lines/Item</span>
-                      <span className={styles.detailValue}>
-                        {pattern.lines_per_item.typical} (
-                        {pattern.lines_per_item.min}-{pattern.lines_per_item.max})
-                      </span>
-                    </>
-                  )}
-                  {pattern.barcode_pattern && (
-                    <>
-                      <span className={styles.detailKey}>Barcode</span>
-                      <span className={styles.detailValue}>
-                        <code className={styles.mono}>{pattern.barcode_pattern}</code>
-                      </span>
-                    </>
-                  )}
-                </div>
-                {pattern.special_markers && pattern.special_markers.length > 0 && (
-                  <>
-                    <div className={styles.detailSectionTitle} style={{ marginTop: "0.75rem" }}>
-                      Special Markers
-                    </div>
-                    <div className={styles.markers}>
-                      {pattern.special_markers.map((m, i) => (
-                        <code key={i} className={styles.mono}>{m}</code>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {pattern.label_positions && (
-                  <>
-                    <div className={styles.detailSectionTitle} style={{ marginTop: "0.75rem" }}>
-                      Label Positions
-                    </div>
-                    <div className={styles.labelPositions}>
-                      {Object.entries(pattern.label_positions).map(([label, pos]) => (
-                        <React.Fragment key={label}>
-                          <span className={styles.labelName}>{label}</span>
-                          <span
-                            className={`${styles.labelPosition} ${
-                              pos === "not_found" ? styles.labelPositionNotFound : ""
-                            }`}
-                          >
-                            {pos}
-                          </span>
-                        </React.Fragment>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {pattern.grouping_rule && (
-                  <>
-                    <div className={styles.detailSectionTitle} style={{ marginTop: "0.75rem" }}>
-                      Grouping Rule
-                    </div>
-                    <div className={styles.groupingRule}>{pattern.grouping_rule}</div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-          <div className={styles.detailSection}>
-            <div className={styles.detailSectionTitle}>
-              Geometric Issues ({geometric_summary.total_issues})
-            </div>
-            {Object.keys(geometric_summary.issue_types).length === 0 ? (
-              <div className={styles.emptyBars}>No issues found</div>
-            ) : (
-              <div className={styles.barChart}>
-                {Object.entries(geometric_summary.issue_types).map(([type, count]) => (
-                  <div key={type} className={styles.barRow}>
-                    <span className={styles.barLabel}>{formatIssueType(type)}</span>
-                    <div className={styles.barTrack}>
-                      <div
-                        className={`${styles.barFill} ${ISSUE_TYPE_COLORS[type] ?? styles.barFillPurple}`}
-                        style={{ width: `${(count / issueMax) * 100}%` }}
-                      />
-                    </div>
-                    <span className={styles.barCount}>{count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className={styles.detailSectionTitle} style={{ marginTop: "1rem" }}>
-              Suggested Labels
-            </div>
-            {Object.keys(geometric_summary.top_suggested_labels).length === 0 ? (
-              <div className={styles.emptyBars}>None</div>
-            ) : (
-              <div className={styles.barChart}>
-                {Object.entries(geometric_summary.top_suggested_labels).map(([label, count]) => (
-                  <div key={label} className={styles.barRow}>
-                    <span className={styles.barLabel}>{label}</span>
-                    <div className={styles.barTrack}>
-                      <div
-                        className={`${styles.barFill} ${styles.barFillPurple}`}
-                        style={{ width: `${(count / labelMax) * 100}%` }}
-                      />
-                    </div>
-                    <span className={styles.barCount}>{count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className={styles.receiptsSection}>
-          <div className={styles.detailSectionTitle}>
-            Receipt Images ({validReceipts.length})
-          </div>
-          {validReceipts.length === 0 ? (
-            <div className={styles.receiptThumbEmpty}>No receipt images</div>
-          ) : formatSupport === null ? null : (
-            <div className={styles.receiptThumbnails}>
-              {validReceipts.map((r) => (
-                <img
-                  key={r.receipt_id}
-                  className={styles.receiptThumb}
-                  src={getBestImageUrl(r, formatSupport, "medium")}
-                  alt={`Receipt ${r.receipt_id}`}
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  // ---- Primary: animated overlay view ----
-  return (
-    <>
-      <div style={{ padding: "1rem 0.75rem 0" }}>
-        <PatternOverlay receipts={receipts} />
-
-        {/* Condensed pattern info */}
-        <div className={styles.patternInfoRow}>
-          {pattern && <span>Type: {pattern.receipt_type}</span>}
-          <span>{receipts.length} receipts</span>
-          {totalReceiptIssues > 0 && (
-            <span>
-              {totalReceiptIssues} issue{totalReceiptIssues !== 1 ? "s" : ""}
+    <div ref={ref} className={styles.container}>
+      {/* Header line */}
+      <div className={styles.header}>
+        <h3 className={styles.merchantName}>{merchant.merchant_name}</h3>
+        <div className={styles.headerMeta}>
+          {merchant.pattern && (
+            <span className={styles.receiptType}>
+              {merchant.pattern.receipt_type}
             </span>
           )}
+          <span className={styles.receiptCount}>
+            {merchant.receipt_count} receipts
+          </span>
         </div>
-
-        <LabelLegend labels={presentLabels} />
       </div>
 
-      <div className={styles.receiptsSection}>
-        <div className={styles.detailSectionTitle}>
-          Receipt Images ({validReceipts.length})
+      {/* Two-panel layout */}
+      <div className={styles.panels}>
+        <div className={styles.panel}>
+          <div className={styles.panelTitle}>Label Positions</div>
+          <LabelPositionMap positions={merchant.label_positions} />
         </div>
-        {validReceipts.length === 0 ? (
-          <div className={styles.receiptThumbEmpty}>No receipt images</div>
-        ) : formatSupport === null ? null : (
-          <div className={styles.receiptThumbnails}>
-            {validReceipts.map((r) => (
-              <img
-                key={r.receipt_id}
-                className={styles.receiptThumb}
-                src={getBestImageUrl(r, formatSupport, "medium")}
-                alt={`Receipt ${r.receipt_id}`}
-                loading="lazy"
-              />
-            ))}
-          </div>
+        <div className={styles.panel}>
+          <div className={styles.panelTitle}>Constellations</div>
+          <ConstellationDiagram constellations={merchant.constellations} />
+        </div>
+      </div>
+
+      {/* Annotation footer */}
+      <div className={styles.footer}>
+        {merchant.pattern?.receipt_type_reason && (
+          <p className={styles.reason}>{merchant.pattern.receipt_type_reason}</p>
         )}
+        <p className={styles.footerMeta}>
+          1 of {data.total_count} merchants
+        </p>
       </div>
-    </>
+    </div>
   );
 }

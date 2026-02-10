@@ -1,52 +1,20 @@
-/* Container */
+/* PatternDiscovery — Tufte-inspired single-merchant visualization */
+
 .container {
   width: 100%;
-  max-width: 1024px;
+  max-width: 960px;
   margin: 2rem auto;
-  padding: 1.5rem;
-  background: var(--background-color);
-  border-radius: 12px;
-}
-
-/* Summary bar */
-.summary {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.summaryItem {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: var(--card-background, rgba(128, 128, 128, 0.06));
-  border-radius: 8px;
-  min-width: 100px;
-}
-
-.summaryValue {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-color);
-}
-
-.summaryLabel {
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 0.25rem;
+  padding: 1.5rem 2rem;
 }
 
 /* Loading / Error */
-.loading, .error {
+.loading,
+.error {
   text-align: center;
   padding: 3rem 1rem;
   color: var(--text-color);
-  opacity: 0.6;
+  opacity: 0.5;
+  font-size: 0.875rem;
 }
 
 .error {
@@ -54,439 +22,120 @@
   opacity: 1;
 }
 
-/* Table */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th {
-  text-align: left;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.6;
-  border-bottom: 2px solid var(--border-color, rgba(128, 128, 128, 0.2));
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.table th:hover {
-  opacity: 1;
-}
-
-.sortArrow {
-  margin-left: 0.25rem;
-  font-size: 0.625rem;
-}
-
-.merchantRow {
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.merchantRow:hover {
-  background-color: rgba(128, 128, 128, 0.06);
-}
-
-.merchantRow td {
-  padding: 0.625rem 0.75rem;
-  border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.1));
-  font-size: 0.875rem;
-  color: var(--text-color);
+/* Header */
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+  padding-bottom: 0.75rem;
 }
 
 .merchantName {
-  font-weight: 500;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-color);
+  letter-spacing: -0.01em;
+}
+
+.headerMeta {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
 }
 
 .receiptType {
+  font-size: 0.8125rem;
   text-transform: capitalize;
-}
-
-.noPattern {
-  opacity: 0.4;
+  color: var(--text-color);
+  opacity: 0.55;
   font-style: italic;
 }
 
-.issueCount {
+.receiptCount {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.4;
   font-variant-numeric: tabular-nums;
 }
 
-.zeroIssues {
-  opacity: 0.35;
-}
-
-/* Expanded detail row */
-.detailRow td {
-  padding: 0;
-  border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.1));
-}
-
-.detailContent {
-  overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  max-height: 0;
-  opacity: 0;
-}
-
-.detailContentOpen {
-  max-height: 1600px;
-  opacity: 1;
-}
-
-.detailInner {
-  padding: 1rem 0.75rem 1.25rem;
+/* Two-panel layout */
+.panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
+  gap: 2rem;
+  margin-bottom: 1.25rem;
 }
 
-/* Detail sections */
-.detailSection {
+.panel {
   min-width: 0;
 }
 
-.detailSectionTitle {
+.panelTitle {
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-color);
-  opacity: 0.5;
+  opacity: 0.4;
   margin-bottom: 0.5rem;
 }
 
+/* SVG container */
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.emptyPanel {
+  font-size: 0.8125rem;
+  color: var(--text-color);
+  opacity: 0.3;
+  font-style: italic;
+  padding: 2rem 0;
+}
+
+/* Footer annotation */
+.footer {
+  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  padding-top: 0.75rem;
+}
+
 .reason {
+  margin: 0 0 0.5rem;
   font-size: 0.8125rem;
   color: var(--text-color);
-  opacity: 0.8;
+  opacity: 0.65;
   line-height: 1.5;
-  margin-bottom: 0.75rem;
+  max-width: 60ch;
 }
 
-.detailGrid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.25rem 0.75rem;
-  font-size: 0.8125rem;
-}
-
-.detailKey {
+.footerMeta {
+  margin: 0;
+  font-size: 0.6875rem;
   color: var(--text-color);
-  opacity: 0.5;
-  white-space: nowrap;
-}
-
-.detailValue {
-  color: var(--text-color);
-}
-
-/* Label positions mini-table */
-.labelPositions {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 0.125rem 0.75rem;
-  font-size: 0.8125rem;
-}
-
-.labelName {
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-.labelPosition {
-  text-transform: capitalize;
-  color: var(--text-color);
-}
-
-.labelPositionNotFound {
-  opacity: 0.35;
-  font-style: italic;
-}
-
-/* Grouping rule */
-.groupingRule {
-  font-size: 0.8125rem;
-  color: var(--text-color);
-  opacity: 0.8;
-  line-height: 1.5;
-  margin-top: 0.5rem;
-}
-
-/* Monospace elements */
-.mono {
-  font-family: monospace;
-  font-size: 0.75rem;
-  background: rgba(128, 128, 128, 0.08);
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-}
-
-.markers {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-  margin-top: 0.25rem;
-}
-
-/* Horizontal bars for issue types / suggested labels */
-.barChart {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  margin-top: 0.25rem;
-}
-
-.barRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-}
-
-.barLabel {
-  min-width: 160px;
-  color: var(--text-color);
-  opacity: 0.7;
-  font-size: 0.75rem;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.barTrack {
-  flex: 1;
-  height: 14px;
-  background: rgba(128, 128, 128, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-  min-width: 40px;
-}
-
-.barFill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-  min-width: 2px;
-}
-
-.barFillOrange {
-  background: var(--color-orange);
-}
-
-.barFillBlue {
-  background: var(--color-blue);
-}
-
-.barFillRed {
-  background: var(--color-red);
-}
-
-.barFillPurple {
-  background: var(--color-purple);
-}
-
-.barCount {
+  opacity: 0.3;
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.6;
-  min-width: 20px;
 }
 
-.noPatternMessage {
-  font-size: 0.875rem;
-  color: var(--text-color);
-  opacity: 0.45;
-  font-style: italic;
-  padding: 0.5rem 0;
-}
-
-.emptyBars {
-  font-size: 0.8125rem;
-  color: var(--text-color);
-  opacity: 0.35;
-  font-style: italic;
-}
-
-/* Receipt thumbnails */
-.receiptsSection {
-  padding: 0.75rem 0.75rem 0;
-  border-top: 1px solid var(--border-color, rgba(128, 128, 128, 0.15));
-}
-
-.receiptThumbnails {
-  display: flex;
-  gap: 0.75rem;
-  overflow-x: auto;
-  padding-bottom: 0.5rem;
-  scrollbar-width: thin;
-}
-
-.receiptThumbnails::-webkit-scrollbar {
-  height: 6px;
-}
-
-.receiptThumbnails::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.25);
-  border-radius: 3px;
-}
-
-.receiptThumb {
-  height: 120px;
-  width: auto;
-  border-radius: 6px;
-  flex-shrink: 0;
-  object-fit: contain;
-  background: rgba(128, 128, 128, 0.04);
-}
-
-.receiptThumbEmpty {
-  font-size: 0.8125rem;
-  color: var(--text-color);
-  opacity: 0.35;
-  font-style: italic;
-}
-
-/* Mobile responsive */
+/* Mobile: stack panels vertically */
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
   }
 
-  .summary {
-    gap: 0.75rem;
-  }
-
-  .summaryItem {
-    flex: 1;
-    min-width: 70px;
-    padding: 0.5rem;
-  }
-
-  .summaryValue {
-    font-size: 1.25rem;
-  }
-
-  /* Hide table, show cards */
-  .table {
-    display: none;
-  }
-
-  .cardList {
-    display: flex;
+  .header {
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.25rem;
   }
 
-  .card {
-    background: var(--card-background, rgba(128, 128, 128, 0.06));
-    border-radius: 8px;
-    padding: 0.75rem;
-    cursor: pointer;
-  }
-
-  .cardHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 0.375rem;
-  }
-
-  .cardMerchant {
-    font-weight: 500;
-    font-size: 0.9375rem;
-    color: var(--text-color);
-  }
-
-  .cardBadge {
-    font-size: 0.75rem;
-    text-transform: capitalize;
-    color: var(--text-color);
-    opacity: 0.5;
-  }
-
-  .cardStats {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.75rem;
-    color: var(--text-color);
-    opacity: 0.6;
-  }
-
-  .detailInner {
+  .panels {
     grid-template-columns: 1fr;
-  }
-
-  .barLabel {
-    min-width: 120px;
-  }
-
-  .receiptThumb {
-    height: 90px;
-  }
-
-  .patternOverlay {
-    aspect-ratio: 3 / 4;
-    max-height: 300px;
-  }
-}
-
-/* Pattern overlay canvas */
-.patternOverlay {
-  width: 100%;
-  aspect-ratio: 5 / 4;
-  max-height: 400px;
-  border-radius: 8px;
-  background: var(--card-background, rgba(128, 128, 128, 0.04));
-  overflow: hidden;
-}
-
-/* Label legend */
-.labelLegend {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.legendItem {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-.legendDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-/* Condensed pattern info row */
-.patternInfoRow {
-  display: flex;
-  gap: 1.5rem;
-  font-size: 0.8125rem;
-  color: var(--text-color);
-  opacity: 0.7;
-  margin-top: 0.75rem;
-}
-
-/* Desktop: hide card list */
-@media (min-width: 769px) {
-  .cardList {
-    display: none;
+    gap: 1.5rem;
   }
 }

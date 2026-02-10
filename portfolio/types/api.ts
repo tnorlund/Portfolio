@@ -684,46 +684,52 @@ export interface MerchantPattern {
   grouping_rule: string | null;
 }
 
-export interface PatternReceipt {
-  image_id: string;
-  receipt_id: number;
-  cdn_s3_key: string | null;
-  cdn_webp_s3_key: string | null;
-  cdn_avif_s3_key: string | null;
-  cdn_medium_s3_key: string | null;
-  cdn_medium_webp_s3_key: string | null;
-  cdn_medium_avif_s3_key: string | null;
-  width: number;
-  height: number;
-  words?: LabelEvaluatorWord[];
-  geometric_issues?: PatternReceiptIssue[];
+export interface ConstellationPosition {
+  mean_dx: number;
+  mean_dy: number;
+  std_dx: number;
+  std_dy: number;
 }
 
-export interface PatternReceiptIssue {
-  issue_type: string;
-  word_text: string;
-  line_id: number | null;
-  word_id: number | null;
-  current_label: string | null;
-  suggested_label: string | null;
+export interface Constellation {
+  labels: string[];
+  observation_count: number;
+  relative_positions: Record<string, ConstellationPosition>;
+}
+
+export interface LabelPositionStats {
+  mean_y: number;
+  std_y: number;
+  count: number;
+}
+
+export interface LabelPairEntry {
+  labels: string[];
+  mean_dx: number;
+  mean_dy: number;
+  std_dx: number;
+  std_dy: number;
+  count: number;
 }
 
 export interface PatternEntry {
   merchant_name: string;
   trace_ids: string[];
+  receipt_count: number;
   pattern: MerchantPattern | null;
   geometric_summary: {
     total_issues: number;
     issue_types: Record<string, number>;
     top_suggested_labels: Record<string, number>;
   };
-  receipts: PatternReceipt[];
+  label_positions: Record<string, LabelPositionStats>;
+  constellations: Constellation[];
+  label_pairs: LabelPairEntry[];
 }
 
 export interface PatternResponse {
-  receipts: PatternEntry[];
+  merchant: PatternEntry;
   total_count: number;
-  offset: number;
-  has_more: boolean;
-  seed: number;
+  execution_id: string | null;
+  cached_at: string | null;
 }

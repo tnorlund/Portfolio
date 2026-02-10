@@ -371,21 +371,10 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchLabelEvaluatorPatterns(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<PatternResponse> {
+  async fetchLabelEvaluatorPatterns(): Promise<PatternResponse> {
     const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
     const response = await fetch(
-      `${apiUrl}/label_evaluator/patterns?${params.toString()}`,
+      `${apiUrl}/label_evaluator/patterns`,
       fetchConfig
     );
     if (!response.ok) {
