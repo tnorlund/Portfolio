@@ -188,19 +188,28 @@ def _build_summary(issues: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def build_evidence_cache(parquet_dir: str) -> list[dict[str, Any]]:
+def build_evidence_cache(
+    parquet_dir: str | None = None,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+    unified_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Build per-receipt evidence cache from LangSmith parquet exports.
 
     Args:
         parquet_dir: Path to a directory containing parquet files
             (or a single parquet file).
+        rows: Pre-loaded parquet rows (avoids re-reading from disk).
+        unified_rows: Pre-loaded unified rows (currently unused,
+            accepted for caller compatibility).
 
     Returns:
         List of per-receipt dicts with ``image_id``, ``receipt_id``,
         ``merchant_name``, ``trace_id``, ``issues_with_evidence``,
         and ``summary``.
     """
-    rows = _read_all_rows(parquet_dir)
+    if rows is None:
+        rows = _read_all_rows(parquet_dir) if parquet_dir else []
     if not rows:
         return []
 
