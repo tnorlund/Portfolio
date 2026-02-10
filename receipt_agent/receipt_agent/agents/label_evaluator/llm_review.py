@@ -550,10 +550,10 @@ def gather_evidence_for_issue(
     """
     evidence: dict[str, Any] = {
         "issue": issue,
-        "similar_evidence": [],
-        "similarity_dist": {"very_high": 0, "high": 0, "medium": 0, "low": 0},
-        "label_dist": {},
-        "merchant_breakdown": [],
+        "evidence_text": "",
+        "consensus": 0.0,
+        "positive_count": 0,
+        "negative_count": 0,
         "currency_context": [],
     }
 
@@ -563,7 +563,7 @@ def gather_evidence_for_issue(
     # Query cascade evidence: words first, lines if inconclusive
     try:
         current_label = issue.get("current_label", "")
-        all_evidence, consensus, pos_count, neg_count, lines_used = (
+        all_evidence, consensus, pos_count, neg_count, _lines_used = (
             query_cascade_evidence(
                 chroma_client=chroma_client,
                 image_id=issue.get("image_id", ""),
