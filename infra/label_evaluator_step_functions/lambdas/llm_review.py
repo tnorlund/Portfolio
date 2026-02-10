@@ -381,7 +381,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
             decisions: Counter = Counter()
             reviewed_issues: list[dict[str, Any]] = []
-            similar_cache: dict[str, str] = {}
+            similar_cache: dict[str, dict[str, Any]] = {}
 
             # All issues in this batch are for the same receipt
             receipt_issues = collected_issues
@@ -469,18 +469,18 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                 f"{image_id}:{receipt_id}:{line_id}:{word_id}"
                             )
                             if cache_key in similar_cache:
-                                evidence_text = similar_cache[cache_key]
+                                cached = similar_cache[cache_key]
                                 issues_with_context.append(
                                     {
                                         "issue": issue,
-                                        "evidence_text": evidence_text,
+                                        **cached,
                                     }
                                 )
                             elif chroma_client:
                                 current_label = issue.get(
                                     "current_label", ""
                                 )
-                                evidence, consensus, pos_count, neg_count, lines_used = (
+                                evidence, consensus, pos_count, neg_count, _lines_used = (
                                     query_cascade_evidence(
                                         chroma_client=chroma_client,
                                         image_id=image_id,
@@ -496,15 +496,18 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                         evidence, current_label
                                     )
                                 )
-                                similar_cache[cache_key] = evidence_text
+                                evidence_ctx = {
+                                    "evidence_text": evidence_text,
+                                    "consensus": consensus,
+                                    "positive_count": pos_count,
+                                    "negative_count": neg_count,
+                                }
+                                similar_cache[cache_key] = evidence_ctx
 
                                 issues_with_context.append(
                                     {
                                         "issue": issue,
-                                        "evidence_text": evidence_text,
-                                        "consensus": consensus,
-                                        "positive_count": pos_count,
-                                        "negative_count": neg_count,
+                                        **evidence_ctx,
                                     }
                                 )
                             else:
@@ -668,9 +671,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                     "receipt_id": meta["receipt_id"],
                                     "issue": meta["issue"],
                                     "llm_review": review_result,
-                                    "similar_word_count": len(
-                                        ctx.get("similar_evidence", [])
-                                    ),
+                                    "evidence_count": ctx.get(
+                                        "positive_count", 0
+                                    )
+                                    + ctx.get("negative_count", 0),
                                 }
                             )
 
@@ -706,9 +710,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                         "suggested_label": None,
                                         "confidence": "low",
                                     },
-                                    "similar_word_count": len(
-                                        ctx.get("similar_evidence", [])
-                                    ),
+                                    "evidence_count": ctx.get(
+                                        "positive_count", 0
+                                    )
+                                    + ctx.get("negative_count", 0),
                                     "error": str(e),
                                 }
                             )
