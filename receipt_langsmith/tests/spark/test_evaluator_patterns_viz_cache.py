@@ -8,11 +8,14 @@ import os
 import pytest
 
 from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+    _build_constellation_data,
     build_patterns_cache,
 )
 
 PARQUET_DIR = "/tmp/langsmith-traces/"
 OUTPUT_DIR = "/tmp/viz-cache-output/patterns/"
+BATCH_BUCKET = "label-evaluator-dev-batch-bucket-a82b944"
+EXECUTION_ID = "d518a04d-4e79-45f7-bdfd-5f39d8971229"
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +25,17 @@ def patterns_cache() -> list[dict]:
         pytest.skip(
             "Trace parquet data not available at /tmp/langsmith-traces/"
         )
-    return build_patterns_cache(PARQUET_DIR)
+    return build_patterns_cache(
+        PARQUET_DIR,
+        batch_bucket=BATCH_BUCKET,
+        execution_id=EXECUTION_ID,
+    )
+
+
+@pytest.fixture(scope="module")
+def constellation_data() -> dict:
+    """Load constellation data from S3 pattern files."""
+    return _build_constellation_data(BATCH_BUCKET, EXECUTION_ID)
 
 
 class TestMerchantPatterns:
@@ -187,3 +200,102 @@ class TestOutputWriting:
             f"\nTotal: {merchants_with_patterns} patterns, {total} geometric issues"
         )
         print(f"Merchants in cache: {len(patterns_cache)}")
+
+
+class TestConstellationData:
+    """Verify constellation and label position data from S3 pattern files."""
+
+    def test_constellation_data_loaded(
+        self, constellation_data: dict
+    ):
+        assert len(constellation_data) > 0, "No constellation data loaded"
+
+    def test_label_positions_structure(
+        self, constellation_data: dict
+    ):
+        for merchant, data in constellation_data.items():
+            positions = data.get("label_positions", {})
+            for label, stats in positions.items():
+                assert "mean_y" in stats, (
+                    f"Missing mean_y for {label} in {merchant}"
+                )
+                assert "std_y" in stats, (
+                    f"Missing std_y for {label} in {merchant}"
+                )
+                assert "count" in stats, (
+                    f"Missing count for {label} in {merchant}"
+                )
+                assert isinstance(stats["mean_y"], (int, float)), (
+                    f"mean_y not numeric for {label} in {merchant}"
+                )
+
+    def test_constellation_relative_positions_structure(
+        self, constellation_data: dict
+    ):
+        found_constellations = False
+        for merchant, data in constellation_data.items():
+            for c in data.get("constellations", []):
+                found_constellations = True
+                assert "labels" in c, f"Missing labels in {merchant}"
+                assert "observation_count" in c
+                assert "relative_positions" in c
+                for label, pos in c["relative_positions"].items():
+                    assert "mean_dx" in pos, (
+                        f"Missing mean_dx for {label} in {merchant}"
+                    )
+                    assert "mean_dy" in pos
+                    assert "std_dx" in pos
+                    assert "std_dy" in pos
+        assert found_constellations, "No constellations found in any merchant"
+
+    def test_label_pairs_structure(
+        self, constellation_data: dict
+    ):
+        for merchant, data in constellation_data.items():
+            for p in data.get("label_pairs", []):
+                assert "labels" in p
+                assert len(p["labels"]) == 2
+                assert "mean_dx" in p
+                assert "mean_dy" in p
+                assert "count" in p
+
+
+class TestConstellationInCache:
+    """Verify constellation data is merged into the full cache output."""
+
+    def test_cache_entries_have_constellation_fields(
+        self, patterns_cache: list[dict]
+    ):
+        for entry in patterns_cache:
+            assert "receipt_count" in entry, (
+                f"Missing receipt_count for {entry['merchant_name']}"
+            )
+            assert "label_positions" in entry, (
+                f"Missing label_positions for {entry['merchant_name']}"
+            )
+            assert "constellations" in entry, (
+                f"Missing constellations for {entry['merchant_name']}"
+            )
+            assert "label_pairs" in entry, (
+                f"Missing label_pairs for {entry['merchant_name']}"
+            )
+
+    def test_some_merchants_have_constellations(
+        self, patterns_cache: list[dict]
+    ):
+        with_constellations = [
+            e for e in patterns_cache if len(e.get("constellations", [])) > 0
+        ]
+        assert len(with_constellations) > 0, (
+            "Expected at least one merchant with constellations"
+        )
+
+    def test_some_merchants_have_label_positions(
+        self, patterns_cache: list[dict]
+    ):
+        with_positions = [
+            e for e in patterns_cache if len(e.get("label_positions", {})) > 0
+        ]
+        assert len(with_positions) > 0, (
+            "Expected at least one merchant with label_positions"
+        )

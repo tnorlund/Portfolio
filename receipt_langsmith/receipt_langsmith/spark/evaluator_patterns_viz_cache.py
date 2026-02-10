@@ -18,6 +18,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import boto3
+from botocore.exceptions import ClientError
+
 from receipt_langsmith.spark.utils import parse_json_object, to_s3a
 
 logger = logging.getLogger(__name__)
@@ -235,6 +238,133 @@ def _build_geometric_summary(
     return result, total_issues
 
 
+def _build_constellation_data(
+    batch_bucket: str,
+    execution_id: str,
+) -> dict[str, dict[str, Any]]:
+    """Read S3 pattern files and extract constellation geometry data.
+
+    Parameters
+    ----------
+    batch_bucket:
+        S3 bucket containing pattern files.
+    execution_id:
+        Execution ID used as prefix (``patterns/{execution_id}/``).
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping of merchant_name to dict with ``receipt_count``,
+        ``label_positions``, ``constellations``, and ``label_pairs``.
+    """
+    s3 = boto3.client("s3")
+    prefix = f"patterns/{execution_id}/"
+    result: dict[str, dict[str, Any]] = {}
+
+    # List all pattern files for this execution
+    keys: list[str] = []
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=batch_bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj.get("Key", "")
+                if key.endswith(".json"):
+                    keys.append(key)
+    except ClientError:
+        logger.exception(
+            "Failed to list pattern files from s3://%s/%s",
+            batch_bucket,
+            prefix,
+        )
+        return result
+
+    logger.info(
+        "Found %d pattern files in s3://%s/%s", len(keys), batch_bucket, prefix
+    )
+
+    for key in keys:
+        try:
+            resp = s3.get_object(Bucket=batch_bucket, Key=key)
+            data = json.loads(resp["Body"].read().decode("utf-8"))
+        except (ClientError, json.JSONDecodeError):
+            logger.warning("Failed to read pattern file %s", key)
+            continue
+
+        merchant_name = data.get("merchant_name")
+        patterns = data.get("patterns")
+        if not merchant_name or not isinstance(patterns, dict):
+            continue
+
+        entry: dict[str, Any] = {
+            "receipt_count": patterns.get("receipt_count", 0),
+        }
+
+        # Extract numeric label positions
+        raw_positions = patterns.get("label_positions", {})
+        if isinstance(raw_positions, dict):
+            label_positions: dict[str, dict[str, Any]] = {}
+            for label, stats in raw_positions.items():
+                if isinstance(stats, dict) and "mean_y" in stats:
+                    label_positions[label] = {
+                        "mean_y": stats["mean_y"],
+                        "std_y": stats.get("std_y", 0),
+                        "count": stats.get("count", 0),
+                    }
+            entry["label_positions"] = label_positions
+
+        # Extract constellation geometry
+        raw_constellations = patterns.get("constellation_geometry", [])
+        if isinstance(raw_constellations, list):
+            constellations: list[dict[str, Any]] = []
+            for c in raw_constellations:
+                if not isinstance(c, dict):
+                    continue
+                constellation: dict[str, Any] = {
+                    "labels": c.get("labels", []),
+                    "observation_count": c.get("observation_count", 0),
+                }
+                raw_rel = c.get("relative_positions", {})
+                if isinstance(raw_rel, dict):
+                    rel: dict[str, dict[str, float]] = {}
+                    for label, pos in raw_rel.items():
+                        if isinstance(pos, dict):
+                            rel[label] = {
+                                "mean_dx": pos.get("mean_dx", 0),
+                                "mean_dy": pos.get("mean_dy", 0),
+                                "std_dx": pos.get("std_dx", 0),
+                                "std_dy": pos.get("std_dy", 0),
+                            }
+                    constellation["relative_positions"] = rel
+                constellations.append(constellation)
+            entry["constellations"] = constellations
+
+        # Extract label pair geometry
+        raw_pairs = patterns.get("label_pair_geometry", [])
+        if isinstance(raw_pairs, list):
+            label_pairs: list[dict[str, Any]] = []
+            for p in raw_pairs:
+                if not isinstance(p, dict):
+                    continue
+                label_pairs.append(
+                    {
+                        "labels": p.get("labels", []),
+                        "mean_dx": p.get("mean_dx", 0),
+                        "mean_dy": p.get("mean_dy", 0),
+                        "std_dx": p.get("std_dx", 0),
+                        "std_dy": p.get("std_dy", 0),
+                        "count": p.get("count", 0),
+                    }
+                )
+            entry["label_pairs"] = label_pairs
+
+        result[merchant_name] = entry
+
+    logger.info(
+        "Extracted constellation data for %d merchants", len(result)
+    )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -244,6 +374,8 @@ def build_patterns_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    batch_bucket: str | None = None,
+    execution_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build per-merchant pattern discovery cache from parquet trace exports.
 
@@ -254,12 +386,17 @@ def build_patterns_cache(
         (traversed recursively).
     rows:
         Optional preloaded trace rows.
+    batch_bucket:
+        S3 bucket containing pattern files for constellation data.
+    execution_id:
+        Execution ID for pattern file lookup.
 
     Returns
     -------
     list[dict]
         One dict per merchant containing ``merchant_name``, ``trace_ids``,
-        ``pattern``, and ``geometric_summary`` fields.
+        ``receipt_count``, ``pattern``, ``geometric_summary``,
+        ``label_positions``, ``constellations``, and ``label_pairs`` fields.
     """
     if rows is None:
         if parquet_dir is None:
@@ -278,8 +415,25 @@ def build_patterns_cache(
         len(geo_summaries),
     )
 
-    # Merge patterns + geometric summaries into per-merchant output
-    all_merchants = set(merchant_patterns.keys()) | set(geo_summaries.keys())
+    # Read constellation data from S3 pattern files
+    constellation_data: dict[str, dict[str, Any]] = {}
+    if batch_bucket and execution_id:
+        constellation_data = _build_constellation_data(
+            batch_bucket, execution_id
+        )
+    else:
+        logger.info(
+            "Skipping constellation data (batch_bucket=%s, execution_id=%s)",
+            batch_bucket,
+            execution_id,
+        )
+
+    # Merge patterns + geometric summaries + constellation data
+    all_merchants = (
+        set(merchant_patterns.keys())
+        | set(geo_summaries.keys())
+        | set(constellation_data.keys())
+    )
     cache: list[dict[str, Any]] = []
 
     for merchant in sorted(all_merchants):
@@ -302,6 +456,19 @@ def build_patterns_cache(
                 "issue_types": {},
                 "top_suggested_labels": {},
             }
+
+        # Merge constellation / label position / label pair data from S3
+        cdata = constellation_data.get(merchant)
+        if cdata:
+            entry["receipt_count"] = cdata.get("receipt_count", 0)
+            entry["label_positions"] = cdata.get("label_positions", {})
+            entry["constellations"] = cdata.get("constellations", [])
+            entry["label_pairs"] = cdata.get("label_pairs", [])
+        else:
+            entry["receipt_count"] = 0
+            entry["label_positions"] = {}
+            entry["constellations"] = []
+            entry["label_pairs"] = []
 
         cache.append(entry)
 

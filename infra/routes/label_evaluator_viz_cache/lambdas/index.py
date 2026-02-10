@@ -135,6 +135,74 @@ def _calculate_aggregate_stats(
     }
 
 
+def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
+    """Return a single random merchant for the patterns endpoint.
+
+    Picks one merchant randomly (time-based seed for variety across refreshes)
+    and returns it as a single object instead of a paginated list.
+    """
+    import time
+
+    cached_keys = _list_cached_receipts(prefix)
+    if not cached_keys:
+        return {
+            "statusCode": 404,
+            "body": json.dumps(
+                {
+                    "error": "No cached patterns found",
+                    "message": "Run the label evaluator to generate patterns cache.",
+                }
+            ),
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+        }
+
+    total_count = len(cached_keys)
+
+    # Time-based seed: changes every 30 seconds for variety across refreshes
+    seed = int(time.time() // 30)
+    rng = random.Random(seed)
+    selected_key = rng.choice(sorted(cached_keys))
+
+    merchant = _fetch_receipt(selected_key)
+    if merchant is None:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Failed to fetch merchant data"}),
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+        }
+
+    metadata = _fetch_metadata(prefix)
+
+    response_data = {
+        "merchant": merchant,
+        "total_count": total_count,
+        "execution_id": metadata.get("execution_id"),
+        "cached_at": metadata.get("cached_at"),
+    }
+
+    logger.info(
+        "Returning single merchant '%s' from %d total (seed=%d)",
+        merchant.get("merchant_name", "unknown"),
+        total_count,
+        seed,
+    )
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps(response_data, default=str),
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
+    }
+
+
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Handle API Gateway requests for label evaluator visualization cache.
 
@@ -206,6 +274,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         # Parse query params
         query_params = event.get("queryStringParameters") or {}
+
+        # --- Single-merchant mode for patterns ---
+        if viz_type == "patterns":
+            return _handle_patterns_single_merchant(prefix)
 
         # batch_size: number of receipts per page
         try:
