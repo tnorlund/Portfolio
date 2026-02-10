@@ -1176,89 +1176,89 @@ async def unified_receipt_evaluator(
                             query_label_evidence,
                         )
 
-                        # Gather context for issues using targeted boolean queries
-                        issues_with_context = []
-                        for issue in geometric_issues[:15]:  # Limit to 15
-                            line_id = issue.get("line_id", 0)
-                            word_id = issue.get("word_id", 0)
-                            current_label = issue.get("current_label", "")
-                            suggested_label = issue.get(
+                        # Gather context for issues using targeted boolean
+                        # queries — run all ChromaDB queries in parallel
+                        # to avoid sequential network round-trips.
+                        def _gather_evidence_for_issue(issue):
+                            """Sync helper to query ChromaDB for one issue."""
+                            _line_id = issue.get("line_id", 0)
+                            _word_id = issue.get("word_id", 0)
+                            _current = issue.get("current_label", "")
+                            _suggested = issue.get(
                                 "suggested_label", ""
                             )
-
-                            # Use current_label if set, otherwise
-                            # fall back to suggested_label (for
-                            # missing_label_cluster and
-                            # missing_constellation_member issues
-                            # where the word is unlabeled).
-                            target_label = (
-                                current_label
-                                if (current_label and current_label != "O")
-                                else suggested_label
+                            _target = (
+                                _current
+                                if (_current and _current != "O")
+                                else _suggested
                             )
-
                             try:
-                                if target_label and target_label != "O":
-                                    label_evidence = query_label_evidence(
+                                if _target and _target != "O":
+                                    ev = query_label_evidence(
                                         chroma_client=chroma_client,
                                         image_id=image_id,
                                         receipt_id=receipt_id,
-                                        line_id=line_id,
-                                        word_id=word_id,
-                                        target_label=target_label,
+                                        line_id=_line_id,
+                                        word_id=_word_id,
+                                        target_label=_target,
                                         target_merchant=merchant_name,
                                         n_results_per_query=15,
                                         min_similarity=0.70,
-                                        include_collections=("words", "lines"),
+                                        include_collections=(
+                                            "words",
+                                            "lines",
+                                        ),
                                     )
-
-                                    # Format evidence for prompt
-                                    evidence_text = (
-                                        format_label_evidence_for_prompt(
-                                            label_evidence,
-                                            target_label=target_label,
-                                            max_positive=5,
-                                            max_negative=3,
-                                        )
+                                    txt = format_label_evidence_for_prompt(
+                                        ev,
+                                        target_label=_target,
+                                        max_positive=5,
+                                        max_negative=3,
                                     )
-
-                                    # Compute consensus for decision support
-                                    consensus, pos_count, neg_count = (
-                                        compute_label_consensus(label_evidence)
+                                    cons, pos, neg = (
+                                        compute_label_consensus(ev)
                                     )
                                 else:
-                                    label_evidence = []
-                                    evidence_text = (
+                                    ev = []
+                                    txt = (
                                         "No evidence needed for O labels."
                                     )
-                                    consensus, pos_count, neg_count = 0.0, 0, 0
-
-                                issues_with_context.append(
-                                    {
-                                        "issue": issue,
-                                        "label_evidence": label_evidence,
-                                        "evidence_text": evidence_text,
-                                        "consensus": consensus,
-                                        "positive_count": pos_count,
-                                        "negative_count": neg_count,
-                                    }
-                                )
+                                    cons, pos, neg = 0.0, 0, 0
+                                return {
+                                    "issue": issue,
+                                    "label_evidence": ev,
+                                    "evidence_text": txt,
+                                    "consensus": cons,
+                                    "positive_count": pos,
+                                    "negative_count": neg,
+                                }
                             except Exception as e:
                                 logger.warning(
                                     "Error gathering context for %s: %s",
-                                    current_label,
+                                    _current,
                                     e,
                                 )
-                                issues_with_context.append(
-                                    {
-                                        "issue": issue,
-                                        "label_evidence": [],
-                                        "evidence_text": f"Error: {e}",
-                                        "consensus": 0.0,
-                                        "positive_count": 0,
-                                        "negative_count": 0,
-                                    }
+                                return {
+                                    "issue": issue,
+                                    "label_evidence": [],
+                                    "evidence_text": f"Error: {e}",
+                                    "consensus": 0.0,
+                                    "positive_count": 0,
+                                    "negative_count": 0,
+                                }
+
+                        # Run all issue queries concurrently in threads
+                        capped_issues = geometric_issues[:15]
+                        issues_with_context = list(
+                            await asyncio.gather(
+                                *(
+                                    asyncio.to_thread(
+                                        _gather_evidence_for_issue, iss
+                                    )
+                                    for iss in capped_issues
                                 )
+                            )
+                        )
 
                         if issues_with_context:
                             # Build prompt and call LLM
