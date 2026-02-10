@@ -74,8 +74,7 @@ class FixPlaceLambda(ComponentResource):
         # IAM Role
         # ============================================================
         lambda_role = Role(
-            f"{name}-lambda-role",
-            # Let Pulumi auto-generate unique name (exported for MCP server use)
+            f"{name}-{stack}-lambda-role",
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -93,7 +92,7 @@ class FixPlaceLambda(ComponentResource):
 
         # Basic Lambda execution
         RolePolicyAttachment(
-            f"{name}-lambda-basic-exec",
+            f"{name}-{stack}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
                 "arn:aws:iam::aws:policy/service-role/"
@@ -104,7 +103,7 @@ class FixPlaceLambda(ComponentResource):
 
         # ECR permissions for container Lambda
         RolePolicy(
-            f"{name}-lambda-ecr-policy",
+            f"{name}-{stack}-lambda-ecr-policy",
             role=lambda_role.id,
             policy=json.dumps(
                 {
@@ -127,7 +126,7 @@ class FixPlaceLambda(ComponentResource):
 
         # DynamoDB access policy
         dynamodb_policy = RolePolicy(
-            f"{name}-lambda-dynamo-policy",
+            f"{name}-{stack}-lambda-dynamo-policy",
             role=lambda_role.id,
             policy=Output.from_input(dynamodb_table_arn).apply(
                 lambda arn: json.dumps(
