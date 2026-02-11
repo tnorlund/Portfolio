@@ -238,6 +238,103 @@ def _build_geometric_summary(
     return result, total_issues
 
 
+def _extract_sample_receipt(
+    rows_by_trace: dict[str, list[dict[str, Any]]],
+    trace_ids: list[str],
+) -> dict[str, Any] | None:
+    """Extract a sample receipt (image + words with bboxes) from trace data.
+
+    Iterates through the merchant's trace_ids, finds a ``ReceiptEvaluation``
+    root span with image metadata, then pulls word data from the first
+    ``currency_evaluation`` or ``metadata_evaluation`` child span.
+
+    Returns a dict with ``image_id``, ``receipt_id``, and ``words`` list,
+    or ``None`` if no suitable trace is found.
+    """
+    for trace_id in trace_ids:
+        trace_rows = rows_by_trace.get(trace_id, [])
+        if not trace_rows:
+            continue
+
+        # Find root ReceiptEvaluation span for image metadata
+        image_id: str | None = None
+        receipt_id: int | None = None
+        for row in trace_rows:
+            if row.get("name") != "ReceiptEvaluation":
+                continue
+            if not _is_root(row):
+                continue
+            extra = parse_json_object(row.get("extra"))
+            meta = extra.get("metadata", {})
+            if not isinstance(meta, dict):
+                continue
+            img = meta.get("image_id")
+            rid = meta.get("receipt_id")
+            if img and rid is not None:
+                image_id = str(img)
+                try:
+                    receipt_id = int(rid)
+                except (TypeError, ValueError):
+                    continue
+                break
+
+        if image_id is None or receipt_id is None:
+            continue
+
+        # Find currency_evaluation or metadata_evaluation child span with words
+        for row in trace_rows:
+            if row.get("name") not in (
+                "currency_evaluation",
+                "metadata_evaluation",
+            ):
+                continue
+            inputs = parse_json_object(row.get("inputs"))
+            visual_lines = inputs.get("visual_lines", [])
+            if not visual_lines:
+                continue
+
+            words: list[dict[str, Any]] = []
+            for line in visual_lines:
+                for entry in line.get("words", []):
+                    w = entry.get("word", {})
+                    cl = entry.get("current_label")
+
+                    label: str | None = None
+                    if isinstance(cl, dict):
+                        label = cl.get("label") or None
+                    elif isinstance(cl, str) and cl:
+                        label = cl
+
+                    bbox = w.get("bounding_box", {})
+                    line_id = w.get("line_id")
+                    word_id = w.get("word_id")
+                    if line_id is None or word_id is None:
+                        continue
+                    words.append(
+                        {
+                            "line_id": line_id,
+                            "word_id": word_id,
+                            "text": w.get("text", ""),
+                            "label": label,
+                            "bbox": {
+                                "x": bbox.get("x", 0),
+                                "y": bbox.get("y", 0),
+                                "width": bbox.get("width", 0),
+                                "height": bbox.get("height", 0),
+                            },
+                        }
+                    )
+
+            if words:
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "words": words,
+                }
+
+    return None
+
+
 def _build_constellation_data(
     batch_bucket: str,
     execution_id: str,
@@ -415,6 +512,13 @@ def build_patterns_cache(
         len(geo_summaries),
     )
 
+    # Build trace_id -> rows index for sample receipt extraction
+    rows_by_trace: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        tid = row.get("trace_id")
+        if tid:
+            rows_by_trace[tid].append(row)
+
     # Read constellation data from S3 pattern files
     constellation_data: dict[str, dict[str, Any]] = {}
     if batch_bucket and execution_id:
@@ -469,6 +573,11 @@ def build_patterns_cache(
             entry["label_positions"] = {}
             entry["constellations"] = []
             entry["label_pairs"] = []
+
+        # Extract a sample receipt with word bboxes for frontend rendering
+        entry["sample_receipt"] = _extract_sample_receipt(
+            rows_by_trace, entry["trace_ids"]
+        )
 
         cache.append(entry)
 

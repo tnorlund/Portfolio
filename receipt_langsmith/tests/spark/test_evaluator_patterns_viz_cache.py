@@ -206,6 +206,75 @@ class TestOutputWriting:
         print(f"Merchants in cache: {len(patterns_cache)}")
 
 
+class TestSampleReceipt:
+    """Verify sample receipt extraction for frontend rendering."""
+
+    def test_sample_receipt_present_for_some_merchants(
+        self, patterns_cache: list[dict]
+    ):
+        with_sample = [
+            e for e in patterns_cache if e.get("sample_receipt") is not None
+        ]
+        assert len(with_sample) > 0, (
+            "Expected at least one merchant with a sample_receipt"
+        )
+
+    def test_sample_receipt_structure(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            assert "image_id" in sample, (
+                f"Missing image_id in sample_receipt for {entry['merchant_name']}"
+            )
+            assert "receipt_id" in sample, (
+                f"Missing receipt_id in sample_receipt for {entry['merchant_name']}"
+            )
+            assert isinstance(sample["words"], list), (
+                f"words should be a list for {entry['merchant_name']}"
+            )
+            assert len(sample["words"]) > 0, (
+                f"words should not be empty for {entry['merchant_name']}"
+            )
+
+    def test_sample_receipt_word_fields(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            for word in sample["words"]:
+                assert "line_id" in word
+                assert "word_id" in word
+                assert "text" in word
+                assert "label" in word
+                assert "bbox" in word
+                bbox = word["bbox"]
+                assert "x" in bbox
+                assert "y" in bbox
+                assert "width" in bbox
+                assert "height" in bbox
+
+    def test_sample_receipt_bbox_normalized(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            for word in sample["words"]:
+                bbox = word["bbox"]
+                assert 0 <= bbox["x"] <= 1, (
+                    f"bbox.x out of range: {bbox['x']}"
+                )
+                assert 0 <= bbox["y"] <= 1, (
+                    f"bbox.y out of range: {bbox['y']}"
+                )
+                assert 0 <= bbox["width"] <= 1, (
+                    f"bbox.width out of range: {bbox['width']}"
+                )
+                assert 0 <= bbox["height"] <= 1, (
+                    f"bbox.height out of range: {bbox['height']}"
+                )
+
+
 class TestConstellationData:
     """Verify constellation and label position data from S3 pattern files."""
 
