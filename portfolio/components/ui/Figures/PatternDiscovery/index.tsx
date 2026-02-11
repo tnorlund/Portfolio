@@ -28,6 +28,23 @@ const LABEL_COLORS: Record<string, string> = {
   PAYMENT_METHOD: "var(--color-purple)",
 };
 
+// All valid semantic label names — anything not in this set is data noise
+const VALID_LABELS = new Set([
+  ...Object.keys(LABEL_COLORS),
+  "CHANGE",
+  "TENDER",
+  "LOYALTY_ID",
+  "REGISTER",
+  "COUPON",
+  "OTHER",
+  "TIP",
+  "CASHBACK",
+]);
+
+function isValidLabel(label: string): boolean {
+  return VALID_LABELS.has(label);
+}
+
 function labelColor(label: string): string {
   return LABEL_COLORS[label] ?? "var(--text-color)";
 }
@@ -37,11 +54,40 @@ function labelColor(label: string): string {
 // ---------------------------------------------------------------------------
 
 const POS_SVG_WIDTH = 320;
-const POS_SVG_HEIGHT = 400;
 const POS_LEFT = 12;
-const POS_RIGHT = POS_SVG_WIDTH - 12;
 const POS_TOP = 24;
-const POS_BOTTOM = POS_SVG_HEIGHT - 24;
+const POS_BOTTOM_PAD = 24;
+const MIN_LABEL_GAP = 16; // minimum px between label baselines
+
+/**
+ * Resolve label y-positions so no two labels overlap.
+ * Marks stay at their true `mean_y`; labels are nudged apart and connected
+ * by a thin leader line when displaced.
+ */
+function resolvePositions(
+  entries: [string, LabelPositionStats][],
+  yScale: (v: number) => number,
+) {
+  // Compute raw positions sorted top-to-bottom (smallest SVG y first)
+  const items = entries
+    .map(([label, stats]) => ({
+      label,
+      stats,
+      markY: yScale(stats.mean_y),
+      labelY: yScale(stats.mean_y),
+    }))
+    .sort((a, b) => a.markY - b.markY);
+
+  // Push overlapping labels downward
+  for (let i = 1; i < items.length; i++) {
+    const gap = items[i].labelY - items[i - 1].labelY;
+    if (gap < MIN_LABEL_GAP) {
+      items[i].labelY = items[i - 1].labelY + MIN_LABEL_GAP;
+    }
+  }
+
+  return items;
+}
 
 function LabelPositionMap({
   positions,
@@ -50,8 +96,8 @@ function LabelPositionMap({
 }) {
   const entries = useMemo(() => {
     return Object.entries(positions)
-      .filter(([, s]) => s.count > 0)
-      .sort((a, b) => b[1].mean_y - a[1].mean_y); // top of receipt first
+      .filter(([label, s]) => s.count > 0 && isValidLabel(label))
+      .sort((a, b) => b[1].mean_y - a[1].mean_y);
   }, [positions]);
 
   if (entries.length === 0) {
@@ -62,16 +108,33 @@ function LabelPositionMap({
 
   const maxCount = Math.max(...entries.map(([, s]) => s.count));
 
-  // Map mean_y (0=bottom, 1=top) to SVG y (top=POS_TOP, bottom=POS_BOTTOM)
-  const yScale = (meanY: number) =>
-    POS_BOTTOM - (meanY * (POS_BOTTOM - POS_TOP));
+  // Scale to the actual data range (with 10% padding)
+  const yValues = entries.map(([, s]) => s.mean_y);
+  const dataMin = Math.min(...yValues);
+  const dataMax = Math.max(...yValues);
+  const dataRange = dataMax - dataMin || 0.1;
+  const pad = dataRange * 0.1;
 
-  // Axis x position
+  // Initial layout pass — use a generous working height
+  const workingHeight = Math.max(entries.length * MIN_LABEL_GAP + 80, 400);
+  const workingBottom = workingHeight - POS_BOTTOM_PAD;
+
+  const yScale = (meanY: number) => {
+    const t = (meanY - (dataMin - pad)) / (dataRange + pad * 2);
+    return workingBottom - t * (workingBottom - POS_TOP);
+  };
+
   const axisX = POS_LEFT + 8;
+  const resolved = resolvePositions(entries, yScale);
+
+  // Derive final SVG height from the actual extent of resolved labels
+  const maxLabelY = Math.max(...resolved.map((r) => r.labelY));
+  const svgHeight = Math.max(maxLabelY + POS_BOTTOM_PAD, workingHeight);
+  const posBottom = svgHeight - POS_BOTTOM_PAD;
 
   return (
     <svg
-      viewBox={`0 0 ${POS_SVG_WIDTH} ${POS_SVG_HEIGHT}`}
+      viewBox={`0 0 ${POS_SVG_WIDTH} ${svgHeight}`}
       className={styles.svg}
       role="img"
       aria-label="Label positions on a normalized receipt"
@@ -81,47 +144,46 @@ function LabelPositionMap({
         x1={axisX}
         y1={POS_TOP}
         x2={axisX}
-        y2={POS_BOTTOM}
+        y2={posBottom}
         stroke="var(--text-color)"
         strokeOpacity={0.15}
         strokeWidth={1}
       />
 
-      {entries.map(([label, stats]) => {
-        const cy = yScale(stats.mean_y);
-        const stdPx = stats.std_y * (POS_BOTTOM - POS_TOP);
-        const opacity = 0.35 + 0.65 * (stats.count / maxCount);
+      {resolved.map(({ label, stats, markY, labelY }) => {
+        const opacity = 0.4 + 0.6 * (stats.count / maxCount);
+        const displaced = Math.abs(labelY - markY) > 2;
 
         return (
           <g key={label}>
-            {/* Std deviation band */}
-            {stdPx > 0.5 && (
-              <rect
-                x={axisX - 3}
-                y={cy - stdPx}
-                width={6}
-                height={stdPx * 2}
-                fill="var(--text-color)"
-                fillOpacity={0.06}
-                rx={2}
+            {/* Leader line when label is nudged away from mark */}
+            {displaced && (
+              <line
+                x1={axisX}
+                y1={markY}
+                x2={axisX + 10}
+                y2={labelY}
+                stroke="var(--text-color)"
+                strokeOpacity={0.1}
+                strokeWidth={0.5}
               />
             )}
-            {/* Position mark */}
+            {/* Position mark (always at true mean_y) */}
             <circle
               cx={axisX}
-              cy={cy}
-              r={3}
+              cy={markY}
+              r={2.5}
               fill={labelColor(label)}
               fillOpacity={opacity}
             />
-            {/* Label text */}
+            {/* Label text (collision-avoided) */}
             <text
               x={axisX + 12}
-              y={cy}
+              y={labelY}
               dy="0.35em"
               fill={labelColor(label)}
               fillOpacity={opacity}
-              fontSize={11}
+              fontSize={10}
               fontFamily="var(--font-mono, monospace)"
             >
               {label}
@@ -129,28 +191,6 @@ function LabelPositionMap({
           </g>
         );
       })}
-
-      {/* Y-axis annotations */}
-      <text
-        x={axisX}
-        y={POS_TOP - 8}
-        textAnchor="middle"
-        fill="var(--text-color)"
-        fillOpacity={0.3}
-        fontSize={9}
-      >
-        top
-      </text>
-      <text
-        x={axisX}
-        y={POS_BOTTOM + 14}
-        textAnchor="middle"
-        fill="var(--text-color)"
-        fillOpacity={0.3}
-        fontSize={9}
-      >
-        bottom
-      </text>
     </svg>
   );
 }
@@ -159,9 +199,11 @@ function LabelPositionMap({
 // Constellation Diagram (SVG) — right panel
 // ---------------------------------------------------------------------------
 
-const CON_SVG_WIDTH = 320;
-const CON_GROUP_HEIGHT = 160;
-const CON_PADDING = 20;
+const CON_SVG_WIDTH = 380;
+const CON_GROUP_HEIGHT = 100;
+const CON_GAP = 8;
+const CON_PADDING = 16;
+const CON_LABEL_MARGIN = 100; // reserve space for label text
 
 function ConstellationDiagram({
   constellations,
@@ -174,9 +216,14 @@ function ConstellationDiagram({
     );
   }
 
+  // Show observation count once if all groups share the same value
+  const counts = constellations.map((c) => c.observation_count);
+  const allSame = counts.every((c) => c === counts[0]);
+
   const totalHeight =
     constellations.length * CON_GROUP_HEIGHT +
-    (constellations.length - 1) * 12;
+    (constellations.length - 1) * CON_GAP +
+    (allSame ? 16 : 0); // room for shared annotation
 
   return (
     <svg
@@ -189,9 +236,22 @@ function ConstellationDiagram({
         <ConstellationGroup
           key={idx}
           constellation={c}
-          yOffset={idx * (CON_GROUP_HEIGHT + 12)}
+          yOffset={idx * (CON_GROUP_HEIGHT + CON_GAP)}
+          hideCount={allSame}
         />
       ))}
+      {allSame && (
+        <text
+          x={CON_SVG_WIDTH - CON_PADDING}
+          y={totalHeight - 2}
+          textAnchor="end"
+          fill="var(--text-color)"
+          fillOpacity={0.25}
+          fontSize={9}
+        >
+          {counts[0]} observations each
+        </text>
+      )}
     </svg>
   );
 }
@@ -199,9 +259,11 @@ function ConstellationDiagram({
 function ConstellationGroup({
   constellation,
   yOffset,
+  hideCount = false,
 }: {
   constellation: Constellation;
   yOffset: number;
+  hideCount?: boolean;
 }) {
   const { labels, relative_positions, observation_count } = constellation;
 
@@ -220,9 +282,9 @@ function ConstellationGroup({
   const rangeY = maxDy - minDy || 0.1;
 
   // Map relative positions to SVG coordinates
-  const drawW = CON_SVG_WIDTH - CON_PADDING * 2 - 80; // leave room for labels
+  const drawW = CON_SVG_WIDTH - CON_PADDING * 2 - CON_LABEL_MARGIN;
   const drawH = CON_GROUP_HEIGHT - CON_PADDING * 2 - 20;
-  const centerX = CON_SVG_WIDTH / 2;
+  const centerX = CON_PADDING + drawW / 2;
   const centerY = yOffset + CON_GROUP_HEIGHT / 2;
 
   const scale = Math.min(drawW / rangeX, drawH / rangeY) * 0.8;
@@ -250,7 +312,7 @@ function ConstellationGroup({
 
   return (
     <g>
-      {/* Connecting lines */}
+      {/* Connecting lines — the primary visual showing structure */}
       {lines.map((l, i) => (
         <line
           key={i}
@@ -259,58 +321,80 @@ function ConstellationGroup({
           x2={l.x2}
           y2={l.y2}
           stroke="var(--text-color)"
-          strokeOpacity={0.12}
+          strokeOpacity={0.25}
           strokeWidth={1}
         />
       ))}
 
-      {/* Std deviation ellipses + marks + labels */}
-      {points.map((pt) => (
-        <g key={pt.label}>
-          {pt.stdR > 1 && (
-            <circle
-              cx={pt.cx}
-              cy={pt.cy}
-              r={Math.max(pt.stdR, 4)}
-              fill={labelColor(pt.label)}
-              fillOpacity={0.06}
-              stroke={labelColor(pt.label)}
-              strokeOpacity={0.1}
-              strokeWidth={0.5}
-            />
-          )}
-          <circle
-            cx={pt.cx}
-            cy={pt.cy}
-            r={3.5}
-            fill={labelColor(pt.label)}
-            fillOpacity={0.8}
-          />
-          <text
-            x={pt.cx + 7}
-            y={pt.cy}
-            dy="0.35em"
-            fill={labelColor(pt.label)}
-            fillOpacity={0.85}
-            fontSize={10}
-            fontFamily="var(--font-mono, monospace)"
-          >
-            {pt.label}
-          </text>
-        </g>
-      ))}
+      {/* Marks + labels with per-side collision avoidance */}
+      {(() => {
+        // Split into left-anchored and right-anchored groups
+        const midX = CON_SVG_WIDTH / 2;
+        const left = points
+          .filter((pt) => pt.cx <= midX)
+          .sort((a, b) => a.cy - b.cy);
+        const right = points
+          .filter((pt) => pt.cx > midX)
+          .sort((a, b) => a.cy - b.cy);
 
-      {/* Observation count annotation */}
-      <text
-        x={centerX}
-        y={yOffset + CON_GROUP_HEIGHT - 4}
-        textAnchor="middle"
-        fill="var(--text-color)"
-        fillOpacity={0.35}
-        fontSize={9}
-      >
-        {observation_count} observations
-      </text>
+        // De-collide each side independently
+        function deCollide(group: typeof points) {
+          const ys = group.map((pt) => pt.cy);
+          for (let i = 1; i < ys.length; i++) {
+            if (ys[i] - ys[i - 1] < 14) {
+              ys[i] = ys[i - 1] + 14;
+            }
+          }
+          return new Map(group.map((pt, i) => [pt.label, ys[i]]));
+        }
+
+        const yMap = new Map([...deCollide(left), ...deCollide(right)]);
+
+        return points.map((pt) => {
+          const labelY = yMap.get(pt.label) ?? pt.cy;
+          const onRight = pt.cx > midX;
+          const anchor = onRight ? "end" : "start";
+          const textX = onRight ? pt.cx - 7 : pt.cx + 7;
+
+          return (
+            <g key={pt.label}>
+              <circle
+                cx={pt.cx}
+                cy={pt.cy}
+                r={3}
+                fill={labelColor(pt.label)}
+                fillOpacity={0.85}
+              />
+              <text
+                x={textX}
+                y={labelY}
+                dy="0.35em"
+                textAnchor={anchor}
+                fill={labelColor(pt.label)}
+                fillOpacity={0.85}
+                fontSize={10}
+                fontFamily="var(--font-mono, monospace)"
+              >
+                {pt.label}
+              </text>
+            </g>
+          );
+        });
+      })()}
+
+      {/* Observation count — only shown when groups differ */}
+      {!hideCount && (
+        <text
+          x={CON_SVG_WIDTH - CON_PADDING}
+          y={yOffset + CON_GROUP_HEIGHT - 4}
+          textAnchor="end"
+          fill="var(--text-color)"
+          fillOpacity={0.25}
+          fontSize={9}
+        >
+          n={observation_count}
+        </text>
+      )}
     </g>
   );
 }
@@ -374,11 +458,9 @@ export default function PatternDiscovery() {
       {/* Two-panel layout */}
       <div className={styles.panels}>
         <div className={styles.panel}>
-          <div className={styles.panelTitle}>Label Positions</div>
           <LabelPositionMap positions={merchant.label_positions} />
         </div>
         <div className={styles.panel}>
-          <div className={styles.panelTitle}>Constellations</div>
           <ConstellationDiagram constellations={merchant.constellations} />
         </div>
       </div>
