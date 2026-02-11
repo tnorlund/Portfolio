@@ -1,11 +1,9 @@
-/* Container */
+/* Container — no decorative border or background */
 .container {
   width: 100%;
   max-width: 1000px;
   margin: 2rem auto;
-  padding: 1.5rem;
-  background: var(--background-color);
-  border-radius: 12px;
+  padding: 1.5rem 0;
 }
 
 /* Main Layout - Three Columns */
@@ -172,8 +170,8 @@
 }
 
 .merchantName {
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-color);
   line-height: 1.3;
   overflow: hidden;
@@ -181,19 +179,10 @@
   white-space: nowrap;
 }
 
-.patternTitle {
-  font-size: 0.7rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.6;
-}
-
 .correctionsList {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
   margin-top: 0.25rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--text-color);
@@ -211,26 +200,17 @@
 }
 
 .correctionWord {
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
   color: var(--text-color);
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
 }
 
 .correctionArrow {
-  font-size: 0.75rem;
-  opacity: 0.5;
-}
-
-.correctionLabel {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  font-size: 0.7rem;
+  opacity: 0.35;
 }
 
 .correctionReason {
@@ -245,24 +225,10 @@
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--text-color);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-color);
-  opacity: 0.5;
-}
-
-.phaseIndicator {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-color);
-  opacity: 0.5;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 500;
-  transition: opacity 0.3s ease;
-}
-
-.phaseIndicator.phaseActive {
-  opacity: 1;
+  opacity: 0.4;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Loading / Error states */
@@ -378,11 +344,6 @@
     padding-left: 0.75rem;
     margin-top: 0;
     padding-top: 0;
-  }
-
-  .phaseIndicator {
-    border-left: 1px solid var(--text-color);
-    padding-left: 0.75rem;
   }
 }
 

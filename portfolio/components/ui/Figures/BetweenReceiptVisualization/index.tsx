@@ -263,16 +263,16 @@ interface PatternFindingsProps {
 const PatternFindings: React.FC<PatternFindingsProps> = ({ receipt, scanProgress, phase }) => {
   const corrections = useMemo(() => getPatternCorrections(receipt), [receipt]);
 
+  // Flip Y for visibility check: bbox.y is bottom-up, scan goes top-down
   const visibleCorrections = useMemo(() => {
     if (phase === "hold") return corrections;
     const scanY = scanProgress / 100;
-    return corrections.filter((w) => w.bbox.y <= scanY);
+    return corrections.filter((w) => (1 - w.bbox.y - w.bbox.height) <= scanY);
   }, [corrections, scanProgress, phase]);
 
   return (
     <div className={styles.patternFindings}>
       <div className={styles.merchantName}>{receipt.merchant_name}</div>
-      <div className={styles.patternTitle}>Pattern Corrections</div>
 
       <div className={styles.correctionsList}>
         {corrections.map((word, idx) => {
@@ -286,15 +286,9 @@ const PatternFindings: React.FC<PatternFindingsProps> = ({ receipt, scanProgress
               style={{ transitionDelay: `${idx * 100}ms` }}
             >
               <div className={styles.correctionWord}>
-                <span>&ldquo;{word.text}&rdquo;</span>
+                {word.text}
                 <span className={styles.correctionArrow}>&rarr;</span>
-                <span
-                  className={styles.correctionLabel}
-                  style={{
-                    color: LABEL_COLORS[displayLabel] || LABEL_COLORS.O,
-                    background: `color-mix(in srgb, ${LABEL_COLORS[displayLabel] || LABEL_COLORS.O} 15%, transparent)`,
-                  }}
-                >
+                <span style={{ color: LABEL_COLORS[displayLabel] || LABEL_COLORS.O }}>
                   {labelName}
                 </span>
               </div>
@@ -311,13 +305,7 @@ const PatternFindings: React.FC<PatternFindingsProps> = ({ receipt, scanProgress
       </div>
 
       <div className={styles.correctionStats}>
-        {corrections.length} of {receipt.word_count} words corrected by pattern
-      </div>
-
-      <div
-        className={`${styles.phaseIndicator} ${phase === "hold" ? styles.phaseActive : ""}`}
-      >
-        {phase === "scan" ? "Scanning..." : "Complete"}
+        {corrections.length} corrections / {receipt.word_count} words
       </div>
     </div>
   );
@@ -366,24 +354,22 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
     [corrections]
   );
 
-  // Get visible words based on scan progress and phase
+  // Only show pattern-corrected words (Tufte: data-ink only)
   const visibleWords = useMemo(() => {
     const scanY = scanProgress / 100;
-    return receipt.words
+    return corrections
       .map((word) => {
-        const wordTopY = word.bbox.y;
+        // bbox.y is bottom-up; flip to top-down for scan comparison
+        const wordTopY = 1 - word.bbox.y - word.bbox.height;
         if (wordTopY > scanY && phase === "scan") return null;
 
         const label = word.after_label;
         if (!label || label === "O") return null;
 
-        const isCorrection = correctionKeys.has(`${word.line_id}_${word.word_id}`);
-        const opacity = isCorrection ? 0.8 : 0.3;
-
-        return { word, label, opacity, isCorrection };
+        return { word, label };
       })
-      .filter(Boolean) as { word: DiffWord; label: string; opacity: number; isCorrection: boolean }[];
-  }, [receipt.words, scanProgress, phase, correctionKeys]);
+      .filter(Boolean) as { word: DiffWord; label: string }[];
+  }, [corrections, scanProgress, phase]);
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -408,40 +394,24 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             viewBox={`0 0 ${imgWidth} ${imgHeight}`}
             preserveAspectRatio="none"
           >
-            {/* Scan line during scan phase */}
+            {/* Thin scan rule — no glow, just a quiet line */}
             {phase === "scan" && scanProgress > 0 && (
-              <>
-                <defs>
-                  <linearGradient id={`scanGrad-${rKey}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="transparent" />
-                    <stop offset="20%" stopColor="var(--color-red)" />
-                    <stop offset="80%" stopColor="var(--color-red)" />
-                    <stop offset="100%" stopColor="transparent" />
-                  </linearGradient>
-                  <filter id={`scanGlow-${rKey}`} x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="4" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                <rect
-                  x="0"
-                  y={(scanProgress / 100) * imgHeight}
-                  width={imgWidth}
-                  height={Math.max(imgHeight * 0.005, 3)}
-                  fill={`url(#scanGrad-${rKey})`}
-                  filter={`url(#scanGlow-${rKey})`}
-                />
-              </>
+              <line
+                x1={imgWidth * 0.1}
+                y1={(scanProgress / 100) * imgHeight}
+                x2={imgWidth * 0.9}
+                y2={(scanProgress / 100) * imgHeight}
+                stroke="var(--text-color)"
+                strokeOpacity={0.3}
+                strokeWidth={1}
+              />
             )}
 
-            {/* Word bounding boxes */}
-            {visibleWords.map(({ word, label, opacity, isCorrection }) => {
+            {/* Only corrected words — bbox.y is bottom-up, flip to SVG top-down */}
+            {visibleWords.map(({ word, label }) => {
               const color = LABEL_COLORS[label] || LABEL_COLORS.O;
               const x = word.bbox.x * imgWidth;
-              const y = word.bbox.y * imgHeight;
+              const y = (1 - word.bbox.y - word.bbox.height) * imgHeight;
               const w = word.bbox.width * imgWidth;
               const h = word.bbox.height * imgHeight;
 
@@ -453,11 +423,10 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                   width={w}
                   height={h}
                   fill={color}
-                  fillOpacity={opacity * 0.4}
+                  fillOpacity={0.15}
                   stroke={color}
-                  strokeWidth={isCorrection ? 2.5 : 1}
-                  strokeOpacity={opacity}
-                  strokeDasharray={isCorrection ? "none" : "3 2"}
+                  strokeWidth={1}
+                  strokeOpacity={0.7}
                 />
               );
             })}
