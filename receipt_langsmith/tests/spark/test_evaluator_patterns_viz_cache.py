@@ -12,10 +12,14 @@ from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
     build_patterns_cache,
 )
 
-PARQUET_DIR = "/tmp/langsmith-traces/"
-OUTPUT_DIR = "/tmp/viz-cache-output/patterns/"
-BATCH_BUCKET = "label-evaluator-dev-batch-bucket-a82b944"
-EXECUTION_ID = "d518a04d-4e79-45f7-bdfd-5f39d8971229"
+PARQUET_DIR = os.environ.get("PARQUET_DIR", "/tmp/langsmith-traces/")
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/tmp/viz-cache-output/patterns/")
+BATCH_BUCKET = os.environ.get(
+    "BATCH_BUCKET", "label-evaluator-dev-batch-bucket-a82b944"
+)
+EXECUTION_ID = os.environ.get(
+    "EXECUTION_ID", "d518a04d-4e79-45f7-bdfd-5f39d8971229"
+)
 
 
 @pytest.fixture(scope="module")
