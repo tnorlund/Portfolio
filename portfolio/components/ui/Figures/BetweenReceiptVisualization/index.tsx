@@ -37,10 +37,20 @@ const LABEL_DISPLAY: Record<string, string> = {
   PAYMENT_METHOD: "PAYMENT",
 };
 
-// Build CDN image keys from image_id and receipt_id
+// Build CDN image keys — legacy flat format
 function buildCdnKeys(imageId: string, receiptId: number) {
   const paddedId = String(receiptId).padStart(5, "0");
   const base = `assets/${imageId}_RECEIPT_${paddedId}`;
+  return {
+    cdn_s3_key: `${base}.jpg`,
+    cdn_webp_s3_key: `${base}.webp`,
+    cdn_avif_s3_key: `${base}.avif`,
+  };
+}
+
+// Build CDN image keys — newer nested format (assets/{id}/{n}.ext)
+function buildNestedCdnKeys(imageId: string, receiptId: number) {
+  const base = `assets/${imageId}/${receiptId}`;
   return {
     cdn_s3_key: `${base}.jpg`,
     cdn_webp_s3_key: `${base}.webp`,
@@ -79,6 +89,16 @@ function getPatternCorrections(receipt: DiffReceipt): DiffWord[] {
   return receipt.words.filter(
     (w) => w.changed && w.change_source === "flag_geometric_anomalies"
   );
+}
+
+// Track image_ids that need the nested CDN key format
+const nestedKeyImageIds = new Set<string>();
+
+function getCdnKeys(imageId: string, receiptId: number) {
+  if (nestedKeyImageIds.has(imageId)) {
+    return buildNestedCdnKeys(imageId, receiptId);
+  }
+  return buildCdnKeys(imageId, receiptId);
 }
 
 interface ReceiptQueueProps {
@@ -130,7 +150,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
     <div className={styles.receiptQueue}>
       {visibleReceipts.map((receipt, idx) => {
         const rKey = `${receipt.image_id}_${receipt.receipt_id}`;
-        const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+        const cdnKeys = getCdnKeys(receipt.image_id, receipt.receipt_id);
         const imageUrl = getBestImageUrl(cdnKeys, formatSupport);
         const dims = imageDims.get(rKey);
         const { rotation, leftOffset } = getQueuePosition(rKey);
@@ -194,7 +214,7 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
 
   const imageUrl = useMemo(() => {
     if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(buildCdnKeys(receipt.image_id, receipt.receipt_id), formatSupport);
+    return getBestImageUrl(getCdnKeys(receipt.image_id, receipt.receipt_id), formatSupport);
   }, [receipt, formatSupport]);
 
   const aspectRatio = width / height;
@@ -330,7 +350,10 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   onImageLoad,
 }) => {
   const rKey = `${receipt.image_id}_${receipt.receipt_id}`;
-  const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+  const [useNested, setUseNested] = useState(nestedKeyImageIds.has(receipt.image_id));
+  const cdnKeys = useNested
+    ? buildNestedCdnKeys(receipt.image_id, receipt.receipt_id)
+    : buildCdnKeys(receipt.image_id, receipt.receipt_id);
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
     return getBestImageUrl(cdnKeys, formatSupport);
@@ -348,11 +371,20 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
     [rKey, onImageLoad]
   );
 
+  // Fallback to nested key format if flat key 404s
+  const handleError = useCallback(() => {
+    if (!useNested) {
+      nestedKeyImageIds.add(receipt.image_id);
+      setUseNested(true);
+    }
+  }, [useNested, receipt.image_id]);
+
+  // Reset fallback state when receipt changes
+  useEffect(() => {
+    setUseNested(false);
+  }, [receipt.image_id, receipt.receipt_id]);
+
   const corrections = useMemo(() => getPatternCorrections(receipt), [receipt]);
-  const correctionKeys = useMemo(
-    () => new Set(corrections.map((w) => `${w.line_id}_${w.word_id}`)),
-    [corrections]
-  );
 
   // Only show pattern-corrected words (Tufte: data-ink only)
   const visibleWords = useMemo(() => {
@@ -387,6 +419,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             height={imgHeight}
             className={styles.receiptImage}
             onLoad={handleLoad}
+            onError={handleError}
           />
 
           <svg
