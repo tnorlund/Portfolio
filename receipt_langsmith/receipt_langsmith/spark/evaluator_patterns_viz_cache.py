@@ -18,6 +18,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import boto3
+from botocore.exceptions import ClientError
+
 from receipt_langsmith.spark.utils import parse_json_object, to_s3a
 
 logger = logging.getLogger(__name__)
@@ -176,58 +179,6 @@ def _build_merchant_patterns(
     return result
 
 
-def _build_merchant_receipts(
-    rows: list[dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
-    """Extract ``image_id``/``receipt_id`` pairs per merchant.
-
-    Uses root ``ReceiptEvaluation`` spans (the same spans already used by
-    :func:`_build_geometric_summary`) to map each trace to a merchant and
-    pull out the receipt identifiers from ``extra.metadata``.
-
-    Returns a dict mapping merchant_name -> list of ``{image_id, receipt_id}``
-    dicts, deduplicated by ``(image_id, receipt_id)`` within each merchant.
-    """
-    # Map trace_id -> (merchant, image_id, receipt_id) via root ReceiptEvaluation spans
-    trace_info: dict[str, tuple[str, str, int]] = {}
-    for row in rows:
-        if _is_root(row) and row.get("name") == "ReceiptEvaluation":
-            trace_id = row.get("trace_id")
-            if not trace_id:
-                continue
-            extra = parse_json_object(row.get("extra"))
-            metadata = extra.get("metadata", {})
-            if not isinstance(metadata, dict):
-                continue
-            merchant = metadata.get("merchant_name")
-            image_id = metadata.get("image_id")
-            receipt_id = metadata.get("receipt_id")
-            if (
-                not isinstance(merchant, str)
-                or not merchant
-                or not image_id
-                or receipt_id is None
-            ):
-                continue
-            trace_info[trace_id] = (merchant, str(image_id), int(receipt_id))
-
-    # Group by merchant, dedup by (image_id, receipt_id)
-    merchant_receipts: dict[str, list[dict[str, Any]]] = {}
-    seen: dict[str, set[tuple[str, int]]] = {}
-    for merchant, image_id, receipt_id in trace_info.values():
-        key = (image_id, receipt_id)
-        if merchant not in seen:
-            seen[merchant] = set()
-            merchant_receipts[merchant] = []
-        if key not in seen[merchant]:
-            seen[merchant].add(key)
-            merchant_receipts[merchant].append(
-                {"image_id": image_id, "receipt_id": receipt_id}
-            )
-
-    return merchant_receipts
-
-
 def _build_geometric_summary(
     rows: list[dict[str, Any]],
 ) -> tuple[dict[str, dict[str, Any]], int]:
@@ -287,62 +238,228 @@ def _build_geometric_summary(
     return result, total_issues
 
 
-def _build_receipt_geometric_issues(
-    rows: list[dict[str, Any]],
-) -> dict[tuple[str, int], list[dict[str, Any]]]:
-    """Extract per-receipt geometric issues from trace rows.
+def _extract_sample_receipt(
+    rows_by_trace: dict[str, list[dict[str, Any]]],
+    trace_ids: list[str],
+) -> dict[str, Any] | None:
+    """Extract a sample receipt (image + words with bboxes) from trace data.
 
-    Uses root ``ReceiptEvaluation`` spans to map each trace to its
-    ``(image_id, receipt_id)`` pair, then collects issues from
-    ``flag_geometric_anomalies`` spans.
+    Iterates through the merchant's trace_ids, finds a ``ReceiptEvaluation``
+    root span with image metadata, then pulls word data from the first
+    ``currency_evaluation`` or ``metadata_evaluation`` child span.
 
-    Returns a dict mapping ``(image_id, receipt_id)`` -> list of issue dicts.
+    Returns a dict with ``image_id``, ``receipt_id``, and ``words`` list,
+    or ``None`` if no suitable trace is found.
     """
-    # Map trace_id -> (image_id, receipt_id) via root ReceiptEvaluation spans
-    trace_receipt: dict[str, tuple[str, int]] = {}
-    for row in rows:
-        if _is_root(row) and row.get("name") == "ReceiptEvaluation":
-            trace_id = row.get("trace_id")
-            if not trace_id:
+    for trace_id in trace_ids:
+        trace_rows = rows_by_trace.get(trace_id, [])
+        if not trace_rows:
+            continue
+
+        # Find root ReceiptEvaluation span for image metadata
+        image_id: str | None = None
+        receipt_id: int | None = None
+        for row in trace_rows:
+            if row.get("name") != "ReceiptEvaluation":
+                continue
+            if not _is_root(row):
                 continue
             extra = parse_json_object(row.get("extra"))
-            metadata = extra.get("metadata", {})
-            if not isinstance(metadata, dict):
+            meta = extra.get("metadata", {})
+            if not isinstance(meta, dict):
                 continue
-            image_id = metadata.get("image_id")
-            receipt_id = metadata.get("receipt_id")
-            if not image_id or receipt_id is None:
+            img = meta.get("image_id")
+            rid = meta.get("receipt_id")
+            if img and rid is not None:
+                image_id = str(img)
+                try:
+                    receipt_id = int(rid)
+                except (TypeError, ValueError):
+                    continue
+                break
+
+        if image_id is None or receipt_id is None:
+            continue
+
+        # Find currency_evaluation or metadata_evaluation child span with words
+        for row in trace_rows:
+            if row.get("name") not in (
+                "currency_evaluation",
+                "metadata_evaluation",
+            ):
                 continue
-            trace_receipt[trace_id] = (str(image_id), int(receipt_id))
+            inputs = parse_json_object(row.get("inputs"))
+            visual_lines = inputs.get("visual_lines", [])
+            if not visual_lines:
+                continue
 
-    result: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+            words: list[dict[str, Any]] = []
+            for line in visual_lines:
+                for entry in line.get("words", []):
+                    w = entry.get("word", {})
+                    cl = entry.get("current_label")
 
-    for row in rows:
-        if row.get("name") != "flag_geometric_anomalies":
-            continue
-        outputs = parse_json_object(row.get("outputs"))
-        issues = outputs.get("issues_found", [])
-        if not issues:
-            continue
+                    label: str | None = None
+                    if isinstance(cl, dict):
+                        label = cl.get("label") or None
+                    elif isinstance(cl, str) and cl:
+                        label = cl
 
-        trace_id = row.get("trace_id", "")
-        key = trace_receipt.get(trace_id)
-        if key is None:
-            continue
+                    bbox = w.get("bounding_box", {})
+                    line_id = w.get("line_id")
+                    word_id = w.get("word_id")
+                    if line_id is None or word_id is None:
+                        continue
+                    words.append(
+                        {
+                            "line_id": line_id,
+                            "word_id": word_id,
+                            "text": w.get("text", ""),
+                            "label": label,
+                            "bbox": {
+                                "x": bbox.get("x", 0),
+                                "y": bbox.get("y", 0),
+                                "width": bbox.get("width", 0),
+                                "height": bbox.get("height", 0),
+                            },
+                        }
+                    )
 
-        for issue in issues:
-            result[key].append(
-                {
-                    "issue_type": issue.get("issue_type", "unknown"),
-                    "word_text": issue.get("word_text", ""),
-                    "line_id": issue.get("line_id"),
-                    "word_id": issue.get("word_id"),
-                    "current_label": issue.get("current_label"),
-                    "suggested_label": issue.get("suggested_label"),
+            if words:
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "words": words,
                 }
-            )
 
-    return dict(result)
+    return None
+
+
+def _build_constellation_data(
+    batch_bucket: str,
+    execution_id: str,
+) -> dict[str, dict[str, Any]]:
+    """Read S3 pattern files and extract constellation geometry data.
+
+    Parameters
+    ----------
+    batch_bucket:
+        S3 bucket containing pattern files.
+    execution_id:
+        Execution ID used as prefix (``patterns/{execution_id}/``).
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping of merchant_name to dict with ``receipt_count``,
+        ``label_positions``, ``constellations``, and ``label_pairs``.
+    """
+    s3 = boto3.client("s3")
+    prefix = f"patterns/{execution_id}/"
+    result: dict[str, dict[str, Any]] = {}
+
+    # List all pattern files for this execution
+    keys: list[str] = []
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=batch_bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj.get("Key", "")
+                if key.endswith(".json"):
+                    keys.append(key)
+    except ClientError:
+        logger.exception(
+            "Failed to list pattern files from s3://%s/%s",
+            batch_bucket,
+            prefix,
+        )
+        return result
+
+    logger.info(
+        "Found %d pattern files in s3://%s/%s", len(keys), batch_bucket, prefix
+    )
+
+    for key in keys:
+        try:
+            resp = s3.get_object(Bucket=batch_bucket, Key=key)
+            data = json.loads(resp["Body"].read().decode("utf-8"))
+        except (ClientError, json.JSONDecodeError):
+            logger.warning("Failed to read pattern file %s", key)
+            continue
+
+        merchant_name = data.get("merchant_name")
+        patterns = data.get("patterns")
+        if not merchant_name or not isinstance(patterns, dict):
+            continue
+
+        entry: dict[str, Any] = {
+            "receipt_count": patterns.get("receipt_count", 0),
+        }
+
+        # Extract numeric label positions
+        raw_positions = patterns.get("label_positions", {})
+        if isinstance(raw_positions, dict):
+            label_positions: dict[str, dict[str, Any]] = {}
+            for label, stats in raw_positions.items():
+                if isinstance(stats, dict) and "mean_y" in stats:
+                    label_positions[label] = {
+                        "mean_y": stats["mean_y"],
+                        "std_y": stats.get("std_y", 0),
+                        "count": stats.get("count", 0),
+                    }
+            entry["label_positions"] = label_positions
+
+        # Extract constellation geometry
+        raw_constellations = patterns.get("constellation_geometry", [])
+        if isinstance(raw_constellations, list):
+            constellations: list[dict[str, Any]] = []
+            for c in raw_constellations:
+                if not isinstance(c, dict):
+                    continue
+                constellation: dict[str, Any] = {
+                    "labels": c.get("labels", []),
+                    "observation_count": c.get("observation_count", 0),
+                }
+                raw_rel = c.get("relative_positions", {})
+                if isinstance(raw_rel, dict):
+                    rel: dict[str, dict[str, float]] = {}
+                    for label, pos in raw_rel.items():
+                        if isinstance(pos, dict):
+                            rel[label] = {
+                                "mean_dx": pos.get("mean_dx", 0),
+                                "mean_dy": pos.get("mean_dy", 0),
+                                "std_dx": pos.get("std_dx", 0),
+                                "std_dy": pos.get("std_dy", 0),
+                            }
+                    constellation["relative_positions"] = rel
+                constellations.append(constellation)
+            entry["constellations"] = constellations
+
+        # Extract label pair geometry
+        raw_pairs = patterns.get("label_pair_geometry", [])
+        if isinstance(raw_pairs, list):
+            label_pairs: list[dict[str, Any]] = []
+            for p in raw_pairs:
+                if not isinstance(p, dict):
+                    continue
+                label_pairs.append(
+                    {
+                        "labels": p.get("labels", []),
+                        "mean_dx": p.get("mean_dx", 0),
+                        "mean_dy": p.get("mean_dy", 0),
+                        "std_dx": p.get("std_dx", 0),
+                        "std_dy": p.get("std_dy", 0),
+                        "count": p.get("count", 0),
+                    }
+                )
+            entry["label_pairs"] = label_pairs
+
+        result[merchant_name] = entry
+
+    logger.info(
+        "Extracted constellation data for %d merchants", len(result)
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +471,8 @@ def build_patterns_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    batch_bucket: str | None = None,
+    execution_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build per-merchant pattern discovery cache from parquet trace exports.
 
@@ -364,12 +483,17 @@ def build_patterns_cache(
         (traversed recursively).
     rows:
         Optional preloaded trace rows.
+    batch_bucket:
+        S3 bucket containing pattern files for constellation data.
+    execution_id:
+        Execution ID for pattern file lookup.
 
     Returns
     -------
     list[dict]
         One dict per merchant containing ``merchant_name``, ``trace_ids``,
-        ``pattern``, and ``geometric_summary`` fields.
+        ``receipt_count``, ``pattern``, ``geometric_summary``,
+        ``label_positions``, ``constellations``, and ``label_pairs`` fields.
     """
     if rows is None:
         if parquet_dir is None:
@@ -388,16 +512,31 @@ def build_patterns_cache(
         len(geo_summaries),
     )
 
-    merchant_receipts = _build_merchant_receipts(rows)
-    logger.info(
-        "Extracted receipt images for %d merchants", len(merchant_receipts)
-    )
+    # Build trace_id -> rows index for sample receipt extraction
+    rows_by_trace: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        tid = row.get("trace_id")
+        if tid:
+            rows_by_trace[tid].append(row)
 
-    # Merge patterns + geometric summaries + receipts into per-merchant output
+    # Read constellation data from S3 pattern files
+    constellation_data: dict[str, dict[str, Any]] = {}
+    if batch_bucket and execution_id:
+        constellation_data = _build_constellation_data(
+            batch_bucket, execution_id
+        )
+    else:
+        logger.info(
+            "Skipping constellation data (batch_bucket=%s, execution_id=%s)",
+            batch_bucket,
+            execution_id,
+        )
+
+    # Merge patterns + geometric summaries + constellation data
     all_merchants = (
         set(merchant_patterns.keys())
         | set(geo_summaries.keys())
-        | set(merchant_receipts.keys())
+        | set(constellation_data.keys())
     )
     cache: list[dict[str, Any]] = []
 
@@ -422,7 +561,23 @@ def build_patterns_cache(
                 "top_suggested_labels": {},
             }
 
-        entry["receipts"] = merchant_receipts.get(merchant, [])
+        # Merge constellation / label position / label pair data from S3
+        cdata = constellation_data.get(merchant)
+        if cdata:
+            entry["receipt_count"] = cdata.get("receipt_count", 0)
+            entry["label_positions"] = cdata.get("label_positions", {})
+            entry["constellations"] = cdata.get("constellations", [])
+            entry["label_pairs"] = cdata.get("label_pairs", [])
+        else:
+            entry["receipt_count"] = 0
+            entry["label_positions"] = {}
+            entry["constellations"] = []
+            entry["label_pairs"] = []
+
+        # Extract a sample receipt with word bboxes for frontend rendering
+        entry["sample_receipt"] = _extract_sample_receipt(
+            rows_by_trace, entry["trace_ids"]
+        )
 
         cache.append(entry)
 

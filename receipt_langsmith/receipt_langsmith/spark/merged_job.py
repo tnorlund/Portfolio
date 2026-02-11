@@ -1041,6 +1041,13 @@ def run_evaluator_viz_cache(
                     rows=trace_rows,
                     unified_rows=unified_rows,
                 )
+            elif prefix == "patterns":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    batch_bucket=batch_bucket,
+                    execution_id=execution_id,
+                )
             else:
                 results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
             if not isinstance(results, list):

@@ -89,20 +89,24 @@ def _fetch_receipt(key: str) -> dict[str, Any] | None:
         return None
 
 
-def _fetch_metadata() -> dict[str, Any]:
+def _fetch_metadata(prefix: str) -> dict[str, Any]:
     """Fetch pool metadata from S3.
+
+    Args:
+        prefix: S3 key prefix (e.g. "financial-math/") to read metadata from.
 
     Returns:
         Metadata dict with version, execution_id, total_receipts, etc.
         Empty dict if metadata file not found.
     """
+    key = f"{prefix}metadata.json"
     try:
         response = s3_client.get_object(
-            Bucket=S3_CACHE_BUCKET, Key="metadata.json"
+            Bucket=S3_CACHE_BUCKET, Key=key
         )
         return json.loads(response["Body"].read().decode("utf-8"))
     except ClientError:
-        logger.warning("Could not fetch metadata.json")
+        logger.warning("Could not fetch %s", key)
         return {}
 
 
@@ -128,6 +132,88 @@ def _calculate_aggregate_stats(
         "avg_issues": sum(issues) / len(issues) if issues else 0,
         "max_issues": max(issues) if issues else 0,
         "receipts_with_issues": sum(1 for i in issues if i > 0),
+    }
+
+
+def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
+    """Return a single random merchant for the patterns endpoint.
+
+    Only considers merchants that have constellation data (non-empty
+    ``constellations`` list), so the frontend always gets rich data to render.
+    Uses a time-based seed for variety across page refreshes.
+    """
+    import time
+
+    cached_keys = _list_cached_receipts(prefix)
+    if not cached_keys:
+        return {
+            "statusCode": 404,
+            "body": json.dumps(
+                {
+                    "error": "No cached patterns found",
+                    "message": "Run the label evaluator to generate patterns cache.",
+                }
+            ),
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+        }
+
+    total_count = len(cached_keys)
+
+    # Load all merchants and keep only those with constellation data
+    rich_merchants: list[dict[str, Any]] = []
+    for key in sorted(cached_keys):
+        merchant = _fetch_receipt(key)
+        if merchant and merchant.get("constellations"):
+            rich_merchants.append(merchant)
+
+    if not rich_merchants:
+        return {
+            "statusCode": 404,
+            "body": json.dumps(
+                {
+                    "error": "No merchants with constellation data found",
+                    "message": "Run the label evaluator with pattern files to populate constellations.",
+                }
+            ),
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+        }
+
+    # Time-based seed: changes every 30 seconds for variety across refreshes
+    seed = int(time.time() // 30)
+    rng = random.Random(seed)
+    merchant = rng.choice(rich_merchants)
+
+    metadata = _fetch_metadata(prefix)
+
+    response_data = {
+        "merchant": merchant,
+        "total_count": total_count,
+        "execution_id": metadata.get("execution_id"),
+        "cached_at": metadata.get("cached_at"),
+    }
+
+    logger.info(
+        "Returning merchant '%s' (%d constellations) from %d rich / %d total (seed=%d)",
+        merchant.get("merchant_name", "unknown"),
+        len(merchant.get("constellations", [])),
+        len(rich_merchants),
+        total_count,
+        seed,
+    )
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps(response_data, default=str),
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
     }
 
 
@@ -202,6 +288,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         # Parse query params
         query_params = event.get("queryStringParameters") or {}
+
+        # --- Single-merchant mode for patterns ---
+        if viz_type == "patterns":
+            return _handle_patterns_single_merchant(prefix)
 
         # batch_size: number of receipts per page
         try:
@@ -289,7 +379,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         ]
 
         # Get metadata and build response
-        metadata = _fetch_metadata()
+        metadata = _fetch_metadata(prefix)
         aggregate_stats = _calculate_aggregate_stats(receipts, total_count)
 
         response_data = {
