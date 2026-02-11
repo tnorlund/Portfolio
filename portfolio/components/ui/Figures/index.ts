@@ -87,3 +87,7 @@ export const PatternDiscovery = dynamic(
   () => import("./PatternDiscovery"),
   { ssr: false }
 );
+export const BetweenReceiptVisualization = dynamic(
+  () => import("./BetweenReceiptVisualization"),
+  { ssr: false }
+);

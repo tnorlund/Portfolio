@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
-  Constellation,
   LabelPositionStats,
   PatternResponse,
   PatternSampleReceipt,
@@ -203,210 +202,6 @@ function LabelPositionMap({
 }
 
 // ---------------------------------------------------------------------------
-// Constellation Diagram (SVG) — right panel
-// ---------------------------------------------------------------------------
-
-const CON_SVG_WIDTH = 380;
-const CON_GROUP_HEIGHT = 100;
-const CON_GAP = 8;
-const CON_PADDING = 16;
-const CON_LABEL_MARGIN = 100; // reserve space for label text
-
-function ConstellationDiagram({
-  constellations,
-}: {
-  constellations: Constellation[];
-}) {
-  if (constellations.length === 0) {
-    return (
-      <div className={styles.emptyPanel}>No constellation data available</div>
-    );
-  }
-
-  // Show observation count once if all groups share the same value
-  const counts = constellations.map((c) => c.observation_count);
-  const allSame = counts.every((c) => c === counts[0]);
-
-  const totalHeight =
-    constellations.length * CON_GROUP_HEIGHT +
-    (constellations.length - 1) * CON_GAP +
-    (allSame ? 16 : 0); // room for shared annotation
-
-  return (
-    <svg
-      viewBox={`0 0 ${CON_SVG_WIDTH} ${totalHeight}`}
-      className={styles.svg}
-      role="img"
-      aria-label="Constellation diagrams showing label co-occurrence geometry"
-    >
-      {constellations.map((c, idx) => (
-        <ConstellationGroup
-          key={idx}
-          constellation={c}
-          yOffset={idx * (CON_GROUP_HEIGHT + CON_GAP)}
-          hideCount={allSame}
-        />
-      ))}
-      {allSame && (
-        <text
-          x={CON_SVG_WIDTH - CON_PADDING}
-          y={totalHeight - 2}
-          textAnchor="end"
-          fill="var(--text-color)"
-          fillOpacity={0.25}
-          fontSize={9}
-        >
-          {counts[0]} observations each
-        </text>
-      )}
-    </svg>
-  );
-}
-
-function ConstellationGroup({
-  constellation,
-  yOffset,
-  hideCount = false,
-}: {
-  constellation: Constellation;
-  yOffset: number;
-  hideCount?: boolean;
-}) {
-  const { labels, relative_positions, observation_count } = constellation;
-
-  // Find the spatial extent to normalize positions into the drawing area
-  const positions = Object.entries(relative_positions);
-  if (positions.length === 0) return null;
-
-  const dxs = positions.map(([, p]) => p.mean_dx);
-  const dys = positions.map(([, p]) => p.mean_dy);
-  const minDx = Math.min(...dxs);
-  const maxDx = Math.max(...dxs);
-  const minDy = Math.min(...dys);
-  const maxDy = Math.max(...dys);
-
-  const rangeX = maxDx - minDx || 0.1;
-  const rangeY = maxDy - minDy || 0.1;
-
-  // Map relative positions to SVG coordinates
-  const drawW = CON_SVG_WIDTH - CON_PADDING * 2 - CON_LABEL_MARGIN;
-  const drawH = CON_GROUP_HEIGHT - CON_PADDING * 2 - 20;
-  const centerX = CON_PADDING + drawW / 2;
-  const centerY = yOffset + CON_GROUP_HEIGHT / 2;
-
-  const scale = Math.min(drawW / rangeX, drawH / rangeY) * 0.8;
-
-  const points: { label: string; cx: number; cy: number; stdR: number }[] =
-    positions.map(([label, p]) => ({
-      label,
-      cx: centerX + p.mean_dx * scale,
-      cy: centerY + p.mean_dy * scale, // positive dy = down
-      stdR: Math.sqrt(p.std_dx ** 2 + p.std_dy ** 2) * scale,
-    }));
-
-  // Draw connecting lines between all labels in the constellation
-  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let i = 0; i < points.length; i++) {
-    for (let j = i + 1; j < points.length; j++) {
-      lines.push({
-        x1: points[i].cx,
-        y1: points[i].cy,
-        x2: points[j].cx,
-        y2: points[j].cy,
-      });
-    }
-  }
-
-  return (
-    <g>
-      {/* Connecting lines — the primary visual showing structure */}
-      {lines.map((l, i) => (
-        <line
-          key={i}
-          x1={l.x1}
-          y1={l.y1}
-          x2={l.x2}
-          y2={l.y2}
-          stroke="var(--text-color)"
-          strokeOpacity={0.25}
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* Marks + labels with per-side collision avoidance */}
-      {(() => {
-        // Split into left-anchored and right-anchored groups
-        const midX = CON_SVG_WIDTH / 2;
-        const left = points
-          .filter((pt) => pt.cx <= midX)
-          .sort((a, b) => a.cy - b.cy);
-        const right = points
-          .filter((pt) => pt.cx > midX)
-          .sort((a, b) => a.cy - b.cy);
-
-        // De-collide each side independently
-        function deCollide(group: typeof points) {
-          const ys = group.map((pt) => pt.cy);
-          for (let i = 1; i < ys.length; i++) {
-            if (ys[i] - ys[i - 1] < 14) {
-              ys[i] = ys[i - 1] + 14;
-            }
-          }
-          return new Map(group.map((pt, i) => [pt.label, ys[i]]));
-        }
-
-        const yMap = new Map([...deCollide(left), ...deCollide(right)]);
-
-        return points.map((pt) => {
-          const labelY = yMap.get(pt.label) ?? pt.cy;
-          const onRight = pt.cx > midX;
-          const anchor = onRight ? "end" : "start";
-          const textX = onRight ? pt.cx - 7 : pt.cx + 7;
-
-          return (
-            <g key={pt.label}>
-              <circle
-                cx={pt.cx}
-                cy={pt.cy}
-                r={3}
-                fill={labelColor(pt.label)}
-                fillOpacity={0.85}
-              />
-              <text
-                x={textX}
-                y={labelY}
-                dy="0.35em"
-                textAnchor={anchor}
-                fill={labelColor(pt.label)}
-                fillOpacity={0.85}
-                fontSize={10}
-                fontFamily="var(--font-mono, monospace)"
-              >
-                {pt.label}
-              </text>
-            </g>
-          );
-        });
-      })()}
-
-      {/* Observation count — only shown when groups differ */}
-      {!hideCount && (
-        <text
-          x={CON_SVG_WIDTH - CON_PADDING}
-          y={yOffset + CON_GROUP_HEIGHT - 4}
-          textAnchor="end"
-          fill="var(--text-color)"
-          fillOpacity={0.25}
-          fontSize={9}
-        >
-          n={observation_count}
-        </text>
-      )}
-    </g>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Receipt Image Panel — sample receipt with SVG word overlay
 // ---------------------------------------------------------------------------
 
@@ -480,7 +275,7 @@ function ReceiptImagePanel({
               <rect
                 key={`${w.line_id}-${w.word_id}`}
                 x={w.bbox.x * imgSize.width}
-                y={w.bbox.y * imgSize.height}
+                y={(1 - w.bbox.y - w.bbox.height) * imgSize.height}
                 width={w.bbox.width * imgSize.width}
                 height={w.bbox.height * imgSize.height}
                 fill={labelColor(w.label!)}
@@ -558,12 +353,8 @@ export default function PatternDiscovery() {
         </div>
       </div>
 
-      {/* Three-panel layout */}
-      <div
-        className={
-          merchant.sample_receipt ? styles.panelsThree : styles.panels
-        }
-      >
+      {/* Two-panel layout: receipt image + label position map */}
+      <div className={styles.panels}>
         {merchant.sample_receipt && (
           <div className={styles.panel}>
             <ReceiptImagePanel
@@ -575,18 +366,14 @@ export default function PatternDiscovery() {
         <div className={styles.panel}>
           <LabelPositionMap positions={merchant.label_positions} />
         </div>
-        <div className={styles.panel}>
-          <ConstellationDiagram constellations={merchant.constellations} />
-        </div>
       </div>
 
       {/* Annotation footer */}
       <div className={styles.footer}>
-        {merchant.pattern?.receipt_type_reason && (
-          <p className={styles.reason}>{merchant.pattern.receipt_type_reason}</p>
-        )}
         <p className={styles.footerMeta}>
-          1 of {data.total_count} merchants
+          {merchant.receipt_count > 0
+            ? `${merchant.receipt_count} receipts from ${merchant.merchant_name} — labels land in the same spots every time`
+            : `1 of ${data.total_count} merchants`}
         </p>
       </div>
     </div>

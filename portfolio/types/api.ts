@@ -671,6 +671,39 @@ export interface LabelValidationResponse {
   fetched_at?: string;
 }
 
+// Diff Visualization Types (before/after label changes)
+
+export interface DiffWord {
+  line_id: number;
+  word_id: number;
+  text: string;
+  before_label: string | null;
+  after_label: string | null;
+  changed: boolean;
+  change_source?: string;
+  confidence?: string | null;
+  reasoning?: string;
+  bbox: { x: number; y: number; width: number; height: number };
+}
+
+export interface DiffReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string;
+  word_count: number;
+  change_count: number;
+  words: DiffWord[];
+}
+
+export interface DiffResponse {
+  receipts: DiffReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+}
+
 // Pattern Discovery Types
 
 export interface MerchantPattern {

@@ -63,7 +63,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Two-panel layout (no sample receipt) */
+/* Two-panel layout: receipt image + label position map */
 .panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -71,13 +71,6 @@
   margin-bottom: 1.25rem;
 }
 
-/* Three-panel layout (with sample receipt) */
-.panelsThree {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 2rem;
-  margin-bottom: 1.25rem;
-}
 
 .panel {
   min-width: 0;
@@ -145,15 +138,6 @@
   padding-top: 0.75rem;
 }
 
-.reason {
-  margin: 0 0 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--text-color);
-  opacity: 0.65;
-  line-height: 1.5;
-  max-width: 60ch;
-}
-
 .footerMeta {
   margin: 0;
   font-size: 0.6875rem;
@@ -174,11 +158,6 @@
   }
 
   .panels {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
-
-  .panelsThree {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }

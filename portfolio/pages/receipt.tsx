@@ -15,12 +15,11 @@ import {
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
-  LabelEvaluatorVisualization,
+  BetweenReceiptVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
   PageCurlLetter,
-  PatternDiscovery,
   PrecisionRecallDartboard,
   QAAgentFlow,
   QuestionMarquee,
@@ -312,18 +311,20 @@ M1LK 2%           1    $4.4g`}</code>
         the patterns still hold.
       </p>
 
-      <ClientOnly>
-        <LabelEvaluatorVisualization />
-      </ClientOnly>
+      <p>
+        Receipts from the same store follow the same structure. Same labels
+        in the same spots, receipt after receipt. When a word doesn&apos;t have
+        a label, the pattern from other receipts can fill it in.
+      </p>
 
       <ClientOnly>
-        <PatternDiscovery />
+        <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>
-        This works, kind of. AI isn't consistent. It would call the price of
-        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
-        something that doesn't know what milk is. So I corrected the results
+        This works, kind of. AI isn&apos;t consistent. It would call the price of
+        milk the subtotal. It confused &ldquo;DAIRY&rdquo; with &ldquo;MILK.&rdquo; I can&apos;t trust
+        something that doesn&apos;t know what milk is. So I corrected the results
         by asking AI to verify again.
       </p>
 
