@@ -617,6 +617,7 @@ def _build_state_machine_definition(
                     "FunctionName": trigger_export_arn,
                     "Payload": {
                         "project_name.$": "$.questions_result.langchain_project",
+                        "start_time.$": "$$.Execution.StartTime",
                         "export_fields": [
                             "id",
                             "name",
@@ -748,6 +749,11 @@ def _build_state_machine_definition(
                                 ")"
                             ),
                             "SparkSubmitParameters": (
+                                "--conf spark.sql.adaptive.enabled=true "
+                                "--conf spark.sql.files.openCostInBytes=134217728 "
+                                "--conf spark.sql.files.maxPartitionBytes=268435456 "
+                                "--conf spark.eventLog.enabled=true "
+                                f"--conf spark.eventLog.dir=s3://{spark_artifacts_bucket}/spark-event-logs/ "
                                 "--conf spark.executor.memory=4g "
                                 "--conf spark.executor.cores=2 "
                                 "--conf spark.dynamicAllocation.enabled=true "

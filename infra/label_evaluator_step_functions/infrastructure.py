@@ -1194,6 +1194,40 @@ def handler(event, context):
     logger.info("Event: %s", json.dumps(event))
 
     langchain_project = event.get("langchain_project") or event.get("project_name", "label-evaluator")
+    days_back = event.get("days_back", 1)
+    end_time_value = event.get("end_time")
+    if end_time_value:
+        end_time = datetime.fromisoformat(end_time_value.replace("Z", "+00:00"))
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+    else:
+        end_time = datetime.now(timezone.utc)
+    end_time_iso = end_time.astimezone(timezone.utc).isoformat()
+    start_time_iso = event.get("start_time")
+    if not start_time_iso:
+        start_time_iso = (end_time - timedelta(days=days_back)).isoformat()
+
+    export_fields = event.get(
+        "export_fields",
+        [
+            "id",
+            "trace_id",
+            "parent_run_id",
+            "is_root",
+            "name",
+            "inputs",
+            "outputs",
+            "extra",
+            "start_time",
+            "end_time",
+            "run_type",
+            "status",
+            "total_tokens",
+            "prompt_tokens",
+            "completion_tokens",
+        ],
+    )
+
     api_key = os.environ["LANGCHAIN_API_KEY"]
     tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
     stack = os.environ.get("STACK", "dev")
@@ -1227,15 +1261,12 @@ def handler(event, context):
     if not project_id:
         raise Exception(f"Project not found: {langchain_project}")
 
-    # Trigger export
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=1)
-
     export_body = {
         "bulk_export_destination_id": destination_id,
         "session_id": project_id,
-        "start_time": start_time.isoformat(),
-        "end_time": end_time.isoformat(),
+        "start_time": start_time_iso,
+        "end_time": end_time_iso,
+        "export_fields": export_fields,
     }
 
     post_headers = dict(headers)
