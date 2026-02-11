@@ -138,8 +138,9 @@ def _calculate_aggregate_stats(
 def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
     """Return a single random merchant for the patterns endpoint.
 
-    Picks one merchant randomly (time-based seed for variety across refreshes)
-    and returns it as a single object instead of a paginated list.
+    Only considers merchants that have constellation data (non-empty
+    ``constellations`` list), so the frontend always gets rich data to render.
+    Uses a time-based seed for variety across page refreshes.
     """
     import time
 
@@ -161,21 +162,32 @@ def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
 
     total_count = len(cached_keys)
 
-    # Time-based seed: changes every 30 seconds for variety across refreshes
-    seed = int(time.time() // 30)
-    rng = random.Random(seed)
-    selected_key = rng.choice(sorted(cached_keys))
+    # Load all merchants and keep only those with constellation data
+    rich_merchants: list[dict[str, Any]] = []
+    for key in sorted(cached_keys):
+        merchant = _fetch_receipt(key)
+        if merchant and merchant.get("constellations"):
+            rich_merchants.append(merchant)
 
-    merchant = _fetch_receipt(selected_key)
-    if merchant is None:
+    if not rich_merchants:
         return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Failed to fetch merchant data"}),
+            "statusCode": 404,
+            "body": json.dumps(
+                {
+                    "error": "No merchants with constellation data found",
+                    "message": "Run the label evaluator with pattern files to populate constellations.",
+                }
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
         }
+
+    # Time-based seed: changes every 30 seconds for variety across refreshes
+    seed = int(time.time() // 30)
+    rng = random.Random(seed)
+    merchant = rng.choice(rich_merchants)
 
     metadata = _fetch_metadata(prefix)
 
@@ -187,8 +199,10 @@ def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
     }
 
     logger.info(
-        "Returning single merchant '%s' from %d total (seed=%d)",
+        "Returning merchant '%s' (%d constellations) from %d rich / %d total (seed=%d)",
         merchant.get("merchant_name", "unknown"),
+        len(merchant.get("constellations", [])),
+        len(rich_merchants),
         total_count,
         seed,
     )
