@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
   Constellation,
   LabelPositionStats,
   PatternResponse,
+  PatternSampleReceipt,
 } from "../../../../types/api";
+import {
+  detectImageFormatSupport,
+  FormatSupport,
+  getBestImageUrl,
+  ImageFormats,
+} from "../../../../utils/imageFormat";
 import styles from "./PatternDiscovery.module.css";
 
 // Semantic label color palette — consistent with project conventions
@@ -400,17 +407,113 @@ function ConstellationGroup({
 }
 
 // ---------------------------------------------------------------------------
+// Receipt Image Panel — sample receipt with SVG word overlay
+// ---------------------------------------------------------------------------
+
+function buildCdnKeys(imageId: string, receiptId: number): ImageFormats {
+  const paddedId = String(receiptId).padStart(5, "0");
+  const base = `assets/${imageId}_RECEIPT_${paddedId}`;
+  return {
+    cdn_s3_key: `${base}.jpg`,
+    cdn_webp_s3_key: `${base}.webp`,
+    cdn_avif_s3_key: `${base}.avif`,
+  };
+}
+
+function ReceiptImagePanel({
+  sample,
+  formatSupport,
+}: {
+  sample: PatternSampleReceipt;
+  formatSupport: FormatSupport | null;
+}) {
+  const [imgSize, setImgSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const cdnKeys = useMemo(
+    () => buildCdnKeys(sample.image_id, sample.receipt_id),
+    [sample.image_id, sample.receipt_id],
+  );
+
+  const imgUrl = useMemo(() => {
+    if (!formatSupport) return null;
+    return getBestImageUrl(cdnKeys, formatSupport);
+  }, [cdnKeys, formatSupport]);
+
+  const handleLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const img = e.currentTarget;
+      setImgSize({ width: img.naturalWidth, height: img.naturalHeight });
+    },
+    [],
+  );
+
+  if (!imgUrl) {
+    return (
+      <div className={styles.emptyPanel}>Detecting image format...</div>
+    );
+  }
+
+  // Filter to labeled words only (skip "O" and invalid labels)
+  const labeledWords = sample.words.filter(
+    (w) => w.label && w.label !== "O" && isValidLabel(w.label),
+  );
+
+  return (
+    <div className={styles.receiptImageWrapper}>
+      <div className={styles.receiptImageInner}>
+        <img
+          src={imgUrl}
+          alt={`Receipt ${sample.image_id}`}
+          className={styles.receiptImage}
+          onLoad={handleLoad}
+        />
+        {imgSize && (
+          <svg
+            className={styles.svgOverlay}
+            viewBox={`0 0 ${imgSize.width} ${imgSize.height}`}
+            preserveAspectRatio="none"
+          >
+            {labeledWords.map((w) => (
+              <rect
+                key={`${w.line_id}-${w.word_id}`}
+                x={w.bbox.x * imgSize.width}
+                y={w.bbox.y * imgSize.height}
+                width={w.bbox.width * imgSize.width}
+                height={w.bbox.height * imgSize.height}
+                fill={labelColor(w.label!)}
+                fillOpacity={0.4}
+                rx={1}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export default function PatternDiscovery() {
   const [data, setData] = useState<PatternResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(
+    null,
+  );
   const { ref, inView } = useInView({
     triggerOnce: true,
     threshold: 0.1,
     rootMargin: "100px",
   });
+
+  useEffect(() => {
+    detectImageFormatSupport().then(setFormatSupport);
+  }, []);
 
   useEffect(() => {
     if (!inView) return;
@@ -455,8 +558,20 @@ export default function PatternDiscovery() {
         </div>
       </div>
 
-      {/* Two-panel layout */}
-      <div className={styles.panels}>
+      {/* Three-panel layout */}
+      <div
+        className={
+          merchant.sample_receipt ? styles.panelsThree : styles.panels
+        }
+      >
+        {merchant.sample_receipt && (
+          <div className={styles.panel}>
+            <ReceiptImagePanel
+              sample={merchant.sample_receipt}
+              formatSupport={formatSupport}
+            />
+          </div>
+        )}
         <div className={styles.panel}>
           <LabelPositionMap positions={merchant.label_positions} />
         </div>

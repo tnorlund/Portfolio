@@ -2,7 +2,7 @@
 
 .container {
   width: 100%;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 2rem auto;
   padding: 1.5rem 2rem;
 }
@@ -63,10 +63,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Two-panel layout */
+/* Two-panel layout (no sample receipt) */
 .panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Three-panel layout (with sample receipt) */
+.panelsThree {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 2rem;
   margin-bottom: 1.25rem;
 }
@@ -98,6 +106,37 @@
   opacity: 0.3;
   font-style: italic;
   padding: 2rem 0;
+}
+
+/* Receipt image + SVG overlay */
+.receiptImageWrapper {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-height: 500px;
+}
+
+.receiptImageInner {
+  position: relative;
+  overflow: hidden;
+  max-height: 500px;
+}
+
+.receiptImage {
+  display: block;
+  max-height: 500px;
+  width: auto;
+  max-width: 100%;
+  opacity: 0.3;
+}
+
+.svgOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* Footer annotation */
@@ -135,6 +174,11 @@
   }
 
   .panels {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .panelsThree {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }

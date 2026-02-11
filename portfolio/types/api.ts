@@ -712,6 +712,20 @@ export interface LabelPairEntry {
   count: number;
 }
 
+export interface PatternSampleWord {
+  line_id: number;
+  word_id: number;
+  text: string;
+  label: string | null;
+  bbox: { x: number; y: number; width: number; height: number };
+}
+
+export interface PatternSampleReceipt {
+  image_id: string;
+  receipt_id: number;
+  words: PatternSampleWord[];
+}
+
 export interface PatternEntry {
   merchant_name: string;
   trace_ids: string[];
@@ -725,6 +739,7 @@ export interface PatternEntry {
   label_positions: Record<string, LabelPositionStats>;
   constellations: Constellation[];
   label_pairs: LabelPairEntry[];
+  sample_receipt: PatternSampleReceipt | null;
 }
 
 export interface PatternResponse {
