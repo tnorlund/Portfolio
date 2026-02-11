@@ -514,10 +514,19 @@ def build_patterns_cache(
 
     # Build trace_id -> rows index for sample receipt extraction
     rows_by_trace: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    merchant_eval_traces: dict[str, list[str]] = defaultdict(list)
     for row in rows:
         tid = row.get("trace_id")
         if tid:
             rows_by_trace[tid].append(row)
+        # Map merchant -> ReceiptEvaluation trace_ids
+        if (
+            _is_root(row)
+            and row.get("name") == "ReceiptEvaluation"
+            and tid
+        ):
+            merchant = _extract_merchant_from_extra(row.get("extra"))
+            merchant_eval_traces[merchant].append(tid)
 
     # Read constellation data from S3 pattern files
     constellation_data: dict[str, dict[str, Any]] = {}
@@ -575,8 +584,9 @@ def build_patterns_cache(
             entry["label_pairs"] = []
 
         # Extract a sample receipt with word bboxes for frontend rendering
+        # Use ReceiptEvaluation traces (not UnifiedPatternBuilder trace_ids)
         entry["sample_receipt"] = _extract_sample_receipt(
-            rows_by_trace, entry["trace_ids"]
+            rows_by_trace, merchant_eval_traces.get(merchant, [])
         )
 
         cache.append(entry)
