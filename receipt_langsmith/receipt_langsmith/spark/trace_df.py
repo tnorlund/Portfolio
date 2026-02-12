@@ -100,7 +100,7 @@ def read_parquet_df(
         options = TraceReadOptions()
     logger.info("Reading Parquet from: %s", path)
     spark_path = to_s3a(path)
-    df = spark.read.option("recursiveFileLookup", "true").parquet(spark_path)
+    df = spark.read.parquet(spark_path)
     logger.info(
         "Available columns in parquet: %s", sorted(df.columns)
     )

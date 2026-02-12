@@ -31,6 +31,8 @@ from receipt_langsmith.spark.utils import (
 
 logger = logging.getLogger(__name__)
 
+QA_DRIVER_ROW_WARN_THRESHOLD = 200_000
+
 
 @dataclass(frozen=True)
 class QACacheWriteContext:
@@ -505,9 +507,7 @@ def read_parquet_traces(
     spark_path = to_s3a(parquet_input)
     try:
         return (
-            spark.read.option("recursiveFileLookup", "true")
-            .option("mergeSchema", "true")
-            .parquet(spark_path)
+            spark.read.option("mergeSchema", "true").parquet(spark_path)
         )
     except (
         AnalysisException,
@@ -548,11 +548,42 @@ def normalize_trace_df(df: DataFrame) -> DataFrame:
     return df
 
 
+def collect_root_runs(df: DataFrame) -> dict[str, dict]:
+    """Collect only root runs needed for question mapping."""
+    root_df = df.filter(F.col("is_root") == F.lit(True)).select(
+        "trace_id",
+        "id",
+        "inputs",
+    )
+
+    root_runs: dict[str, dict] = {}
+    root_count = 0
+    for row in root_df.toLocalIterator():
+        root_row = row.asDict()
+        tid = root_row.get("trace_id", "")
+        if not tid:
+            continue
+        root_runs[tid] = root_row
+        root_count += 1
+
+    if root_count > QA_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d root runs on driver; consider narrowing parquet input window",
+            root_count,
+        )
+    return root_runs
+
+
 def collect_traces(
     df: DataFrame,
-) -> tuple[dict[str, list[dict]], dict[str, dict]]:
-    """Collect traces and root runs into dictionaries."""
-    runs = df.select(
+    *,
+    trace_ids: set[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Collect trace rows for the selected trace IDs."""
+    if trace_ids is not None and not trace_ids:
+        return {}
+
+    runs_df = df.select(
         *TRACE_BASE_COLUMNS,
         "dotted_order",
         "is_root",
@@ -561,19 +592,26 @@ def collect_traces(
         "total_tokens",
         "start_time",
         "end_time",
-    ).collect()
+    )
+    if trace_ids is not None:
+        runs_df = runs_df.filter(F.col("trace_id").isin(*sorted(trace_ids)))
 
     traces: dict[str, list[dict]] = {}
-    root_runs: dict[str, dict] = {}
-    for row in runs:
+    run_count = 0
+    for row in runs_df.toLocalIterator():
         row_dict = row.asDict()
         tid = row_dict.get("trace_id", "")
         if not tid:
             continue
         traces.setdefault(tid, []).append(row_dict)
-        if row_dict.get("is_root"):
-            root_runs[tid] = row_dict
-    return traces, root_runs
+        run_count += 1
+
+    if run_count > QA_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d trace rows on driver; consider narrowing parquet input window",
+            run_count,
+        )
+    return traces
 
 
 def _parse_inputs_value(raw_inputs: Any) -> dict[str, Any]:
@@ -704,18 +742,20 @@ def build_cache_files_from_parquet(
         logger.warning("No traces found in parquet")
         return None
 
-    traces, root_runs = collect_traces(df)
-    logger.info(
-        "Found %d unique traces, %d root runs",
-        len(traces),
-        len(root_runs),
-    )
-
+    root_runs = collect_root_runs(df)
+    logger.info("Collected %d root runs", len(root_runs))
     trace_to_question = map_traces_to_questions(
         root_runs,
         question_text_to_index,
     )
     logger.info("Matched %d traces to questions", len(trace_to_question))
+
+    traces = collect_traces(df, trace_ids=set(trace_to_question.keys()))
+    logger.info(
+        "Collected %d question-mapped traces, %d root runs",
+        len(traces),
+        len(root_runs),
+    )
 
     trace_ctx = QACacheTraceContext(
         traces=traces,

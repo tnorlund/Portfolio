@@ -130,13 +130,14 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
         )
     )
 
-    # Collect root traces
-    root_data = roots.select(
+    # Stream root traces to avoid materializing a large Row list.
+    root_rows = roots.select(
         "trace_id", "image_id", "receipt_id", "outputs", "duration_ms"
-    ).collect()
+    ).toLocalIterator()
+    root_data = [row.asDict() for row in root_rows]
 
     logger.info("Found %d receipt_processing root traces", len(root_data))
-    return [row.asDict() for row in root_data]
+    return root_data
 
 
 def extract_validation_traces(
@@ -169,7 +170,7 @@ def extract_validation_traces(
 
     validation_data = validations.select(
         "trace_id", "name", "outputs", "duration_ms"
-    ).collect()
+    ).toLocalIterator()
 
     # Group by trace_id
     result: dict[str, list[dict]] = {}
