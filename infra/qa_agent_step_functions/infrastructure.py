@@ -750,6 +750,8 @@ def _build_state_machine_definition(
                             ),
                             "SparkSubmitParameters": (
                                 "--conf spark.sql.adaptive.enabled=true "
+                                "--conf spark.sql.shuffle.partitions=32 "
+                                "--conf spark.sql.adaptive.coalescePartitions.initialPartitionNum=32 "
                                 "--conf spark.sql.files.openCostInBytes=134217728 "
                                 "--conf spark.sql.files.maxPartitionBytes=268435456 "
                                 "--conf spark.eventLog.enabled=true "

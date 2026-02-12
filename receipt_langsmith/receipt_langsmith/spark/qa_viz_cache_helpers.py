@@ -32,6 +32,24 @@ from receipt_langsmith.spark.utils import (
 logger = logging.getLogger(__name__)
 
 QA_DRIVER_ROW_WARN_THRESHOLD = 200_000
+QA_DRIVER_ROOT_HARD_LIMIT = 500_000
+QA_DRIVER_TRACE_HARD_LIMIT = 1_000_000
+QA_BASELINE_CONF_KEYS = (
+    "spark.sql.adaptive.enabled",
+    "spark.sql.shuffle.partitions",
+    "spark.sql.files.openCostInBytes",
+    "spark.sql.files.maxPartitionBytes",
+    "spark.eventLog.enabled",
+    "spark.eventLog.dir",
+    "spark.dynamicAllocation.enabled",
+    "spark.dynamicAllocation.minExecutors",
+    "spark.dynamicAllocation.maxExecutors",
+    "spark.executor.instances",
+    "spark.executor.cores",
+    "spark.executor.memory",
+    "spark.driver.cores",
+    "spark.driver.memory",
+)
 
 
 @dataclass(frozen=True)
@@ -98,6 +116,56 @@ class QACacheJobConfig:
             )
         data.update(legacy_kwargs)
         return cls(**data)
+
+
+def _collect_spark_conf_profile(spark: SparkSession) -> dict[str, Any]:
+    """Collect a stable, small Spark conf snapshot for run profiling."""
+    spark_conf = spark.sparkContext.getConf()
+    conf_snapshot: dict[str, Any] = {}
+    for key in QA_BASELINE_CONF_KEYS:
+        value = spark_conf.get(key, None)
+        if value is not None:
+            conf_snapshot[key] = value
+    return conf_snapshot
+
+
+def build_qa_baseline_profile(
+    spark: SparkSession,
+    *,
+    execution_id: str,
+    source_mode: str,
+    question_results_count: int,
+    receipts_lookup_count: int,
+    cache_files_count: int,
+    max_questions: int,
+    build_stats: dict[str, Any],
+) -> dict[str, Any]:
+    """Build per-run baseline metrics for QA cache generation."""
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "execution_id": execution_id,
+        "source_mode": source_mode,
+        "question_results_count": question_results_count,
+        "receipts_lookup_count": receipts_lookup_count,
+        "cache_files_count": cache_files_count,
+        "max_questions": max_questions,
+        "spark_application_id": spark.sparkContext.applicationId,
+        "spark_default_parallelism": spark.sparkContext.defaultParallelism,
+        "spark_conf": _collect_spark_conf_profile(spark),
+        "build_stats": dict(build_stats),
+    }
+
+
+def _driver_collection_limit_error(
+    *,
+    label: str,
+    count: int,
+    hard_limit: int,
+) -> RuntimeError:
+    return RuntimeError(
+        f"{label} driver collection exceeded hard limit: "
+        f"{count} > {hard_limit}. Narrow export window or reduce trace scope."
+    )
 
 
 def qa_cache_config_from_args(
@@ -581,6 +649,12 @@ def collect_root_runs(df: DataFrame) -> dict[str, dict]:
             continue
         root_runs[tid] = root_row
         root_count += 1
+        if root_count > QA_DRIVER_ROOT_HARD_LIMIT:
+            raise _driver_collection_limit_error(
+                label="root runs",
+                count=root_count,
+                hard_limit=QA_DRIVER_ROOT_HARD_LIMIT,
+            )
 
     if root_count > QA_DRIVER_ROW_WARN_THRESHOLD:
         logger.warning(
@@ -621,6 +695,12 @@ def collect_traces(
             continue
         traces.setdefault(tid, []).append(row_dict)
         run_count += 1
+        if run_count > QA_DRIVER_TRACE_HARD_LIMIT:
+            raise _driver_collection_limit_error(
+                label="trace rows",
+                count=run_count,
+                hard_limit=QA_DRIVER_TRACE_HARD_LIMIT,
+            )
 
     if run_count > QA_DRIVER_ROW_WARN_THRESHOLD:
         logger.warning(
@@ -744,34 +824,65 @@ def build_cache_files_from_parquet(
     question_results: list[dict],
     receipts_lookup: dict[str, Any],
     max_questions: int,
+    *,
+    stats_out: dict[str, Any] | None = None,
 ) -> Optional[list[dict]]:
     """Build cache files from parquet traces, or return None for fallback."""
+    build_stats: dict[str, Any] = {"source_mode": "parquet"}
+
+    def commit_stats() -> None:
+        if stats_out is not None:
+            stats_out.update(build_stats)
+
     question_text_to_index = build_question_text_index(question_results)
     df = read_parquet_traces(spark, parquet_input)
     if df is None:
+        build_stats["source_mode"] = "ndjson_fallback"
+        build_stats["fallback_reason"] = "parquet_read_failed"
+        commit_stats()
         return None
 
     df = normalize_trace_df(df)
     total_rows = df.count()
+    build_stats["parquet_rows"] = total_rows
     logger.info("Total parquet rows: %d", total_rows)
     if total_rows == 0:
         logger.warning("No traces found in parquet")
+        build_stats["source_mode"] = "ndjson_fallback"
+        build_stats["fallback_reason"] = "empty_parquet"
+        commit_stats()
         return None
 
-    root_runs = collect_root_runs(df)
-    logger.info("Collected %d root runs", len(root_runs))
-    trace_to_question = map_traces_to_questions(
-        root_runs,
-        question_text_to_index,
-    )
-    logger.info("Matched %d traces to questions", len(trace_to_question))
+    try:
+        root_runs = collect_root_runs(df)
+        logger.info("Collected %d root runs", len(root_runs))
+        trace_to_question = map_traces_to_questions(
+            root_runs,
+            question_text_to_index,
+        )
+        logger.info("Matched %d traces to questions", len(trace_to_question))
 
-    traces = collect_traces(df, trace_ids=set(trace_to_question.keys()))
-    logger.info(
-        "Collected %d question-mapped traces, %d root runs",
-        len(traces),
-        len(root_runs),
-    )
+        traces = collect_traces(df, trace_ids=set(trace_to_question.keys()))
+        logger.info(
+            "Collected %d question-mapped traces, %d root runs",
+            len(traces),
+            len(root_runs),
+        )
+    except RuntimeError as exc:
+        logger.warning(
+            "Driver collection safety limit hit (%s); "
+            "falling back to NDJSON-only cache",
+            exc,
+        )
+        build_stats["source_mode"] = "ndjson_fallback"
+        build_stats["fallback_reason"] = "driver_collection_limit"
+        build_stats["fallback_detail"] = str(exc)
+        commit_stats()
+        return None
+
+    build_stats["root_runs"] = len(root_runs)
+    build_stats["matched_trace_ids"] = len(trace_to_question)
+    build_stats["trace_groups"] = len(traces)
 
     trace_ctx = QACacheTraceContext(
         traces=traces,
@@ -781,7 +892,10 @@ def build_cache_files_from_parquet(
         receipts_lookup=receipts_lookup,
         max_questions=max_questions,
     )
-    return build_cache_files_from_traces(trace_ctx)
+    cache_files = build_cache_files_from_traces(trace_ctx)
+    build_stats["cache_files"] = len(cache_files)
+    commit_stats()
+    return cache_files
 
 
 def _minimal_trace_from_result(
@@ -817,6 +931,8 @@ def write_cache_from_ndjson(
     question_results: list[dict],
     receipts_lookup: dict,
     max_questions: int = 0,
+    *,
+    run_profile: dict[str, Any] | None = None,
 ) -> None:
     """Write cache files from NDJSON only (fallback when no parquet traces)."""
     cache_files = []
@@ -837,13 +953,20 @@ def write_cache_from_ndjson(
             }
         )
 
-    write_cache_files(write_ctx, cache_files, selected_results)
+    write_cache_files(
+        write_ctx,
+        cache_files,
+        selected_results,
+        run_profile=run_profile,
+    )
 
 
 def write_cache_files(
     write_ctx: QACacheWriteContext,
     cache_files: list[dict],
     question_results: list[dict],
+    *,
+    run_profile: dict[str, Any] | None = None,
 ) -> None:
     """Write per-question JSON files and metadata to S3."""
     s3_client = write_ctx.s3_client
@@ -866,6 +989,7 @@ def write_cache_files(
         question_results,
         write_ctx.execution_id,
         write_ctx.langchain_project,
+        run_profile=run_profile,
     )
 
     write_metadata_json(
@@ -887,6 +1011,26 @@ def write_cache_files(
     logger.info(
         "Wrote metadata.json and latest.json to s3://%s/", cache_bucket
     )
+    if run_profile:
+        run_summary_key = (
+            f"profiling/{write_ctx.execution_id or 'adhoc'}/"
+            "qa-cache-baseline.json"
+        )
+        try:
+            write_json_with_default(
+                s3_client,
+                cache_bucket,
+                run_summary_key,
+                run_profile,
+            )
+            logger.info("Wrote %s to s3://%s/", run_summary_key, cache_bucket)
+        except (ClientError, BotoCoreError, TypeError, ValueError):
+            logger.warning(
+                "Failed to write run profile %s to s3://%s/",
+                run_summary_key,
+                cache_bucket,
+                exc_info=True,
+            )
 
 
 def _write_question_files(
@@ -925,6 +1069,8 @@ def _build_cache_metadata(
     question_results: list[dict],
     execution_id: str,
     langchain_project: str,
+    *,
+    run_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cached_indices = {c["questionIndex"] for c in cache_files}
     cached_results = [
@@ -934,7 +1080,7 @@ def _build_cache_metadata(
     total_questions = len(cache_files)
     source_questions = len(question_results)
     success_count = sum(1 for r in cached_results if r.get("success"))
-    return {
+    metadata: dict[str, Any] = {
         "total_questions": total_questions,
         "cached_questions": total_questions,
         "source_questions": source_questions,
@@ -949,3 +1095,6 @@ def _build_cache_metadata(
         "execution_id": execution_id,
         "langsmith_project": langchain_project or "qa-agent-marquee",
     }
+    if run_profile:
+        metadata["run_profile"] = run_profile
+    return metadata

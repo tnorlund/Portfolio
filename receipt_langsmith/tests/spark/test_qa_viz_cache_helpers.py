@@ -493,3 +493,63 @@ def test_collect_traces_filters_by_trace_ids(monkeypatch):
 
     assert set(traces.keys()) == {"trace-2"}
     assert traces["trace-2"][0]["id"] == "run-2"
+
+
+def test_collect_root_runs_enforces_hard_limit(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    monkeypatch.setattr(qa_helpers, "QA_DRIVER_ROOT_HARD_LIMIT", 1)
+    df = _FakeDataFrame(
+        [
+            {"trace_id": "trace-1", "id": "root-1", "inputs": "{}", "is_root": True},
+            {"trace_id": "trace-2", "id": "root-2", "inputs": "{}", "is_root": True},
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="root runs driver collection exceeded"):
+        qa_helpers.collect_root_runs(df)
+
+
+def test_collect_traces_enforces_hard_limit(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    monkeypatch.setattr(qa_helpers, "QA_DRIVER_TRACE_HARD_LIMIT", 1)
+    df = _FakeDataFrame(
+        [
+            {
+                "id": "run-1",
+                "trace_id": "trace-1",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 10,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+            {
+                "id": "run-2",
+                "trace_id": "trace-2",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 12,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="trace rows driver collection exceeded"):
+        qa_helpers.collect_traces(df)
