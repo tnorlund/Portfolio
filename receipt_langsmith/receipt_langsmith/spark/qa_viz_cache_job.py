@@ -43,6 +43,7 @@ from receipt_langsmith.spark.cli import (
     run_spark_job,
 )
 from receipt_langsmith.spark.qa_viz_cache_helpers import (
+    build_qa_baseline_profile,
     QACacheJobConfig,
     QACacheWriteContext,
     build_cache_files_from_parquet,
@@ -136,23 +137,52 @@ def run_qa_cache_job(
         config.receipts_json,
     )
 
+    build_stats: dict[str, Any] = {}
     cache_files = build_cache_files_from_parquet(
         spark,
         config.parquet_input,
         question_results,
         receipts_lookup,
         config.max_questions,
+        stats_out=build_stats,
     )
+    source_mode = build_stats.get("source_mode", "parquet")
     if cache_files is None:
+        run_profile = build_qa_baseline_profile(
+            spark,
+            execution_id=config.execution_id,
+            source_mode=source_mode,
+            question_results_count=len(question_results),
+            receipts_lookup_count=len(receipts_lookup),
+            cache_files_count=min(len(question_results), config.max_questions),
+            max_questions=config.max_questions,
+            build_stats=build_stats,
+        )
         write_cache_from_ndjson(
             write_ctx,
             question_results,
             receipts_lookup,
             config.max_questions,
+            run_profile=run_profile,
         )
         return
 
-    write_cache_files(write_ctx, cache_files, question_results)
+    run_profile = build_qa_baseline_profile(
+        spark,
+        execution_id=config.execution_id,
+        source_mode=source_mode,
+        question_results_count=len(question_results),
+        receipts_lookup_count=len(receipts_lookup),
+        cache_files_count=len(cache_files),
+        max_questions=config.max_questions,
+        build_stats=build_stats,
+    )
+    write_cache_files(
+        write_ctx,
+        cache_files,
+        question_results,
+        run_profile=run_profile,
+    )
 
 
 def main() -> int:

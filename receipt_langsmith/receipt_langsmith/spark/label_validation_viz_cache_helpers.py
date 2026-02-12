@@ -17,6 +17,7 @@ from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
     load_json_from_s3,
     ReceiptsCachePointer,
+    write_json_with_default,
     write_receipt_cache_index,
     write_receipt_json,
 )
@@ -28,6 +29,25 @@ from receipt_langsmith.spark.trace_df import (
 from receipt_langsmith.spark.utils import parse_json_object
 
 logger = logging.getLogger(__name__)
+LABEL_DRIVER_ROW_WARN_THRESHOLD = 50_000
+LABEL_DRIVER_ROOT_HARD_LIMIT = 250_000
+LABEL_DRIVER_VALIDATION_HARD_LIMIT = 1_000_000
+LABEL_BASELINE_CONF_KEYS = (
+    "spark.sql.adaptive.enabled",
+    "spark.sql.shuffle.partitions",
+    "spark.sql.files.openCostInBytes",
+    "spark.sql.files.maxPartitionBytes",
+    "spark.eventLog.enabled",
+    "spark.eventLog.dir",
+    "spark.dynamicAllocation.enabled",
+    "spark.dynamicAllocation.minExecutors",
+    "spark.dynamicAllocation.maxExecutors",
+    "spark.executor.instances",
+    "spark.executor.cores",
+    "spark.executor.memory",
+    "spark.driver.cores",
+    "spark.driver.memory",
+)
 
 # --- S3 Utilities ---
 
@@ -96,7 +116,9 @@ def read_traces(spark: SparkSession, parquet_path: str) -> Any:
     return df
 
 
-def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
+def extract_receipt_traces(
+    df: Any, *, max_receipts: int | None = None
+) -> list[dict[str, Any]]:
     """Extract receipt_processing root traces with their validation data.
 
     Returns list of dicts with:
@@ -130,12 +152,26 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
         )
     )
 
-    # Stream root traces to avoid materializing a large Row list.
     root_rows = roots.select(
         "trace_id", "image_id", "receipt_id", "outputs", "duration_ms"
     ).toLocalIterator()
-    root_data = [row.asDict() for row in root_rows]
+    root_data: list[dict[str, Any]] = []
+    for row in root_rows:
+        root_data.append(row.asDict())
+        if len(root_data) > LABEL_DRIVER_ROOT_HARD_LIMIT:
+            raise RuntimeError(
+                "receipt_processing root trace collection exceeded hard "
+                f"limit: {len(root_data)} > {LABEL_DRIVER_ROOT_HARD_LIMIT}. "
+                "Narrow export scope."
+            )
+        if max_receipts and max_receipts > 0 and len(root_data) >= max_receipts:
+            break
 
+    if len(root_data) > LABEL_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d root traces on driver; consider narrowing export scope",
+            len(root_data),
+        )
     logger.info("Found %d receipt_processing root traces", len(root_data))
     return root_data
 
@@ -174,7 +210,15 @@ def extract_validation_traces(
 
     # Group by trace_id
     result: dict[str, list[dict]] = {}
+    validation_rows = 0
     for row in validation_data:
+        validation_rows += 1
+        if validation_rows > LABEL_DRIVER_VALIDATION_HARD_LIMIT:
+            raise RuntimeError(
+                "validation trace collection exceeded hard limit: "
+                f"{validation_rows} > {LABEL_DRIVER_VALIDATION_HARD_LIMIT}. "
+                "Narrow export scope."
+            )
         trace_id = row["trace_id"]
         if trace_id not in result:
             result[trace_id] = []
@@ -188,7 +232,16 @@ def extract_validation_traces(
             }
         )
 
-    logger.info("Extracted validation traces for %d receipts", len(result))
+    if validation_rows > LABEL_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d validation spans on driver; consider narrowing export scope",
+            validation_rows,
+        )
+    logger.info(
+        "Extracted validation traces for %d receipts (%d spans)",
+        len(result),
+        validation_rows,
+    )
     return result
 
 
@@ -602,6 +655,8 @@ def write_cache(  # pylint: disable=too-many-locals
     bucket: str,
     receipts: list[dict[str, Any]],
     parquet_prefix: str,
+    *,
+    run_profile: dict[str, Any] | None = None,
 ) -> None:
     """Write individual receipt files + metadata to S3."""
     timestamp = datetime.now(timezone.utc)
@@ -656,11 +711,25 @@ def write_cache(  # pylint: disable=too-many-locals
         "aggregate_stats": aggregate_stats,
         "cached_at": timestamp.isoformat(),
     }
+    if run_profile:
+        metadata["run_profile"] = run_profile
     logger.info("Writing metadata.json")
     pointer = ReceiptsCachePointer(
         cache_version, receipts_prefix, timestamp.isoformat()
     )
     write_receipt_cache_index(s3_client, bucket, metadata, pointer)
+    if run_profile:
+        run_summary_key = (
+            f"profiling/{cache_version}/"
+            "label-validation-viz-cache-baseline.json"
+        )
+        write_json_with_default(
+            s3_client,
+            bucket,
+            run_summary_key,
+            run_profile,
+        )
+        logger.info("Wrote %s to s3://%s/", run_summary_key, bucket)
 
     logger.info("Cache generation complete!")
     logger.info("  Version: %s", cache_version)
@@ -691,14 +760,26 @@ def _build_viz_receipts(
     df: Any,
     receipt_lookup: dict[tuple[str, int], dict[str, Any]],
     max_receipts: int,
+    *,
+    stats_out: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    root_traces = extract_receipt_traces(df)
+    build_stats: dict[str, Any] = {}
+
+    def commit_stats() -> None:
+        if stats_out is not None:
+            stats_out.update(build_stats)
+
+    root_traces = extract_receipt_traces(df, max_receipts=max_receipts)
+    build_stats["root_traces_collected"] = len(root_traces)
     if not root_traces:
         logger.error("No receipt_processing traces found")
+        commit_stats()
         return []
 
     trace_ids = [t["trace_id"] for t in root_traces if t.get("trace_id")]
+    build_stats["trace_ids"] = len(trace_ids)
     validation_traces = extract_validation_traces(df, trace_ids)
+    build_stats["validation_trace_groups"] = len(validation_traces)
 
     viz_receipts: list[dict[str, Any]] = []
     for root in root_traces:
@@ -716,8 +797,19 @@ def _build_viz_receipts(
         if len(viz_receipts) >= max_receipts:
             break
 
+    build_stats["viz_receipts"] = len(viz_receipts)
+    commit_stats()
     return viz_receipts
 
+
+def _collect_spark_conf_profile(spark: SparkSession) -> dict[str, Any]:
+    spark_conf = spark.sparkContext.getConf()
+    conf_snapshot: dict[str, Any] = {}
+    for key in LABEL_BASELINE_CONF_KEYS:
+        value = spark_conf.get(key, None)
+        if value is not None:
+            conf_snapshot[key] = value
+    return conf_snapshot
 
 
 def run_label_validation_cache(args: Any) -> int:
@@ -758,22 +850,39 @@ def run_label_validation_cache(args: Any) -> int:
 
     def job() -> int:
         df = read_traces(spark, parquet_path)
+        build_stats: dict[str, Any] = {}
         viz_receipts = _build_viz_receipts(
             df,
             receipt_lookup,
             args.max_receipts,
+            stats_out=build_stats,
         )
         if not viz_receipts:
             logger.error("No visualization receipts could be built")
             return 1
 
         logger.info("Built %d visualization receipts", len(viz_receipts))
+        run_profile = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "parquet_path": parquet_path,
+            "parquet_prefix": parquet_prefix,
+            "max_receipts": args.max_receipts,
+            "receipt_lookup_count": len(receipt_lookup),
+            "viz_receipts_count": len(viz_receipts),
+            "spark_application_id": spark.sparkContext.applicationId,
+            "spark_default_parallelism": (
+                spark.sparkContext.defaultParallelism
+            ),
+            "spark_conf": _collect_spark_conf_profile(spark),
+            "build_stats": build_stats,
+        }
 
         write_cache(
             s3_client,
             args.cache_bucket,
             viz_receipts,
             parquet_prefix,
+            run_profile=run_profile,
         )
         return 0
 
