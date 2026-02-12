@@ -1016,13 +1016,21 @@ def write_cache_files(
             f"profiling/{write_ctx.execution_id or 'adhoc'}/"
             "qa-cache-baseline.json"
         )
-        write_json_with_default(
-            s3_client,
-            cache_bucket,
-            run_summary_key,
-            run_profile,
-        )
-        logger.info("Wrote %s to s3://%s/", run_summary_key, cache_bucket)
+        try:
+            write_json_with_default(
+                s3_client,
+                cache_bucket,
+                run_summary_key,
+                run_profile,
+            )
+            logger.info("Wrote %s to s3://%s/", run_summary_key, cache_bucket)
+        except (ClientError, BotoCoreError, TypeError, ValueError):
+            logger.warning(
+                "Failed to write run profile %s to s3://%s/",
+                run_summary_key,
+                cache_bucket,
+                exc_info=True,
+            )
 
 
 def _write_question_files(

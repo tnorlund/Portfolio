@@ -719,13 +719,21 @@ def write_cache(  # pylint: disable=too-many-locals
             f"profiling/{cache_version}/"
             "label-validation-viz-cache-baseline.json"
         )
-        write_json_with_default(
-            s3_client,
-            bucket,
-            run_summary_key,
-            run_profile,
-        )
-        logger.info("Wrote %s to s3://%s/", run_summary_key, bucket)
+        try:
+            write_json_with_default(
+                s3_client,
+                bucket,
+                run_summary_key,
+                run_profile,
+            )
+            logger.info("Wrote %s to s3://%s/", run_summary_key, bucket)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to write run profile %s to s3://%s/",
+                run_summary_key,
+                bucket,
+                exc_info=True,
+            )
 
     logger.info("Cache generation complete!")
     logger.info("  Version: %s", cache_version)
