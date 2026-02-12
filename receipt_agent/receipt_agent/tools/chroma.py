@@ -12,8 +12,21 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from receipt_agent.state.models import ChromaSearchResult
+from receipt_agent.utils.label_metadata import build_label_membership_clause
 
 logger = logging.getLogger(__name__)
+
+
+def _combine_where_clauses(
+    clauses: list[Optional[dict[str, Any]]],
+) -> Optional[dict[str, Any]]:
+    """Combine optional where clauses with AND semantics."""
+    filtered = [clause for clause in clauses if clause]
+    if not filtered:
+        return None
+    if len(filtered) == 1:
+        return filtered[0]
+    return {"$and": filtered}
 
 
 class QuerySimilarLinesInput(BaseModel):
@@ -34,6 +47,15 @@ class QuerySimilarLinesInput(BaseModel):
         default=None,
         description="Optional merchant name to filter results",
     )
+    label_filter: Optional[str] = Field(
+        default=None,
+        description="Optional label to filter by (checks valid/invalid arrays)",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
+    )
     min_similarity: float = Field(
         default=0.5,
         description="Minimum similarity score threshold",
@@ -51,6 +73,11 @@ class QuerySimilarWordsInput(BaseModel):
         description=(
             "Filter by label type (e.g., 'MERCHANT_NAME', 'PHONE', 'ADDRESS')"
         ),
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
     )
     n_results: int = Field(
         default=10,
@@ -83,6 +110,8 @@ def query_similar_lines(
     query_text: str,
     n_results: int = 10,
     merchant_filter: Optional[str] = None,
+    label_filter: Optional[str] = None,
+    label_state: str = "any",
     min_similarity: float = 0.5,
     # Injected at runtime
     _chroma_client: Any = None,
@@ -110,12 +139,44 @@ def query_similar_lines(
 
         query_embedding = _embed_fn([query_text])[0]
 
-        # Build where clause for filtering
-        where_clause = None
+        merchant_clause: Optional[dict[str, Any]] = None
         if merchant_filter:
-            where_clause = {
+            merchant_clause = {
                 "merchant_name": {"$eq": merchant_filter.strip().title()}
             }
+
+        label_clause: Optional[dict[str, Any]] = None
+        if label_filter:
+            normalized_label = label_filter.strip().upper()
+            if label_state == "valid":
+                label_clause = build_label_membership_clause(
+                    normalized_label,
+                    array_field="valid_labels_array",
+                    legacy_field="valid_labels",
+                )
+            elif label_state == "invalid":
+                label_clause = build_label_membership_clause(
+                    normalized_label,
+                    array_field="invalid_labels_array",
+                    legacy_field="invalid_labels",
+                )
+            else:
+                label_clause = {
+                    "$or": [
+                        build_label_membership_clause(
+                            normalized_label,
+                            array_field="valid_labels_array",
+                            legacy_field="valid_labels",
+                        ),
+                        build_label_membership_clause(
+                            normalized_label,
+                            array_field="invalid_labels_array",
+                            legacy_field="invalid_labels",
+                        ),
+                    ]
+                }
+
+        where_clause = _combine_where_clauses([merchant_clause, label_clause])
 
         # Query ChromaDB
         results = _chroma_client.query(
@@ -174,6 +235,7 @@ def query_similar_lines(
 def query_similar_words(
     word_text: str,
     label_type: Optional[str] = None,
+    label_state: str = "any",
     n_results: int = 10,
     # Injected at runtime
     _chroma_client: Any = None,
@@ -198,10 +260,36 @@ def query_similar_words(
 
         query_embedding = _embed_fn([word_text])[0]
 
-        # Build where clause for label filtering
         where_clause = None
         if label_type:
-            where_clause = {"label": {"$eq": label_type.upper()}}
+            normalized_label = label_type.strip().upper()
+            if label_state == "valid":
+                where_clause = build_label_membership_clause(
+                    normalized_label,
+                    array_field="valid_labels_array",
+                    legacy_field="valid_labels",
+                )
+            elif label_state == "invalid":
+                where_clause = build_label_membership_clause(
+                    normalized_label,
+                    array_field="invalid_labels_array",
+                    legacy_field="invalid_labels",
+                )
+            else:
+                where_clause = {
+                    "$or": [
+                        build_label_membership_clause(
+                            normalized_label,
+                            array_field="valid_labels_array",
+                            legacy_field="valid_labels",
+                        ),
+                        build_label_membership_clause(
+                            normalized_label,
+                            array_field="invalid_labels_array",
+                            legacy_field="invalid_labels",
+                        ),
+                    ]
+                }
 
         results = _chroma_client.query(
             collection_name="words",

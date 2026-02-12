@@ -54,7 +54,7 @@ class MockReceiptWordLabel:
     def __init__(
         self,
         validation_status: str = ValidationStatus.NONE.value,
-        label: str = "merchant",
+        label: str = "MERCHANT_NAME",
         label_type: str = "merchant",
         label_value: str = "Test Merchant",
         timestamp_added: str = "2024-01-01T00:00:00Z",
@@ -86,6 +86,8 @@ class TestCreateWordMetadata:
         assert metadata["left"] == "left"
         assert metadata["right"] == "right"
         assert metadata["source"] == "openai_embedding_batch"
+        assert "valid_labels_array" not in metadata
+        assert "invalid_labels_array" not in metadata
 
     def test_metadata_with_merchant(self):
         """Test metadata with merchant name."""
@@ -145,6 +147,8 @@ class TestEnrichWordMetadataWithLabels:
         labels = [MockReceiptWordLabel(ValidationStatus.VALID.value)]
         enriched = enrich_word_metadata_with_labels(metadata, labels)
         assert enriched["label_status"] == "validated"
+        assert enriched["valid_labels_array"] == ["MERCHANT_NAME"]
+        assert "invalid_labels_array" not in enriched
 
     def test_enrich_with_pending_label(self):
         """Test enriching with pending label."""
@@ -152,6 +156,8 @@ class TestEnrichWordMetadataWithLabels:
         labels = [MockReceiptWordLabel(ValidationStatus.PENDING.value)]
         enriched = enrich_word_metadata_with_labels(metadata, labels)
         assert enriched["label_status"] == "auto_suggested"
+        assert "valid_labels_array" not in enriched
+        assert "invalid_labels_array" not in enriched
 
     def test_enrich_with_unvalidated_label(self):
         """Test enriching with unvalidated label."""
@@ -159,6 +165,8 @@ class TestEnrichWordMetadataWithLabels:
         labels = [MockReceiptWordLabel(ValidationStatus.NONE.value)]
         enriched = enrich_word_metadata_with_labels(metadata, labels)
         assert enriched["label_status"] == "unvalidated"
+        assert "valid_labels_array" not in enriched
+        assert "invalid_labels_array" not in enriched
 
     def test_enrich_with_multiple_labels(self):
         """Test enriching with multiple labels."""
@@ -170,12 +178,16 @@ class TestEnrichWordMetadataWithLabels:
         enriched = enrich_word_metadata_with_labels(metadata, labels)
         # Should prioritize validated
         assert enriched["label_status"] == "validated"
+        assert enriched["valid_labels_array"] == ["MERCHANT_NAME"]
+        assert "invalid_labels_array" not in enriched
 
     def test_enrich_empty_labels(self):
         """Test enriching with empty labels."""
         metadata = {"text": "hello", "label_status": "existing"}
         enriched = enrich_word_metadata_with_labels(metadata, [])
         assert enriched["label_status"] == "unvalidated"
+        assert "valid_labels_array" not in enriched
+        assert "invalid_labels_array" not in enriched
 
 
 @pytest.mark.unit

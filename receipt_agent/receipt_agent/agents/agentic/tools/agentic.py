@@ -21,6 +21,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
+from receipt_agent.utils.label_metadata import build_label_membership_clause
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,18 @@ def _build_word_id(
 ) -> str:
     """Build ChromaDB document ID for a word."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+
+
+def _combine_where_clauses(
+    clauses: list[Optional[dict[str, Any]]],
+) -> Optional[dict[str, Any]]:
+    """Combine optional where clauses with AND semantics."""
+    filtered = [clause for clause in clauses if clause]
+    if not filtered:
+        return None
+    if len(filtered) == 1:
+        return filtered[0]
+    return {"$and": filtered}
 
 
 # ==============================================================================
@@ -96,6 +109,15 @@ class SearchLinesInput(BaseModel):
     merchant_filter: Optional[str] = Field(
         default=None, description="Optionally filter by merchant"
     )
+    label_filter: Optional[str] = Field(
+        default=None,
+        description="Optional label filter (checks valid/invalid label arrays)",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
+    )
 
 
 class SearchWordsInput(BaseModel):
@@ -105,6 +127,11 @@ class SearchWordsInput(BaseModel):
     label_filter: Optional[str] = Field(
         default=None,
         description="Filter by label: MERCHANT_NAME, PHONE, ADDRESS, TOTAL, etc.",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
     )
     n_results: int = Field(
         default=10, ge=1, le=20, description="Number of results (max 20)"
@@ -647,7 +674,11 @@ def create_agentic_tools(
 
     @tool(args_schema=SearchLinesInput)
     def search_lines(
-        query: str, n_results: int = 10, merchant_filter: Optional[str] = None
+        query: str,
+        n_results: int = 10,
+        merchant_filter: Optional[str] = None,
+        label_filter: Optional[str] = None,
+        label_state: str = "any",
     ) -> list[dict]:
         """
         Search for lines similar to arbitrary text.
@@ -658,6 +689,8 @@ def create_agentic_tools(
             query: Text to search for (e.g., "123 Main Street" or "510-555-1234")
             n_results: How many results (max 20)
             merchant_filter: Optionally limit results to a specific merchant
+            label_filter: Optional label to filter by
+            label_state: Whether to check valid, invalid, or both label arrays
 
         Returns matching lines with merchant metadata.
         """
@@ -673,12 +706,46 @@ def create_agentic_tools(
             # Generate embedding for query
             query_embedding = embed_fn([query])[0]
 
-            # Build where clause
-            where_clause = None
+            merchant_clause: Optional[dict[str, Any]] = None
             if merchant_filter:
-                where_clause = {
+                merchant_clause = {
                     "merchant_name": {"$eq": merchant_filter.strip()}
                 }
+
+            label_clause: Optional[dict[str, Any]] = None
+            if label_filter:
+                normalized_label = label_filter.strip().upper()
+                if label_state == "valid":
+                    label_clause = build_label_membership_clause(
+                        normalized_label,
+                        array_field="valid_labels_array",
+                        legacy_field="valid_labels",
+                    )
+                elif label_state == "invalid":
+                    label_clause = build_label_membership_clause(
+                        normalized_label,
+                        array_field="invalid_labels_array",
+                        legacy_field="invalid_labels",
+                    )
+                else:
+                    label_clause = {
+                        "$or": [
+                            build_label_membership_clause(
+                                normalized_label,
+                                array_field="valid_labels_array",
+                                legacy_field="valid_labels",
+                            ),
+                            build_label_membership_clause(
+                                normalized_label,
+                                array_field="invalid_labels_array",
+                                legacy_field="invalid_labels",
+                            ),
+                        ]
+                    }
+
+            where_clause = _combine_where_clauses(
+                [merchant_clause, label_clause]
+            )
 
             results = chroma_client.query(
                 collection_name="lines",
@@ -734,7 +801,10 @@ def create_agentic_tools(
 
     @tool(args_schema=SearchWordsInput)
     def search_words(
-        query: str, label_filter: Optional[str] = None, n_results: int = 10
+        query: str,
+        label_filter: Optional[str] = None,
+        label_state: str = "any",
+        n_results: int = 10,
     ) -> list[dict]:
         """
         Search for words similar to arbitrary text.
@@ -742,6 +812,7 @@ def create_agentic_tools(
         Args:
             query: Word to search for
             label_filter: Filter by label (MERCHANT_NAME, PHONE, ADDRESS, TOTAL)
+            label_state: Whether to check valid, invalid, or both label arrays
             n_results: How many results (max 20)
 
         Returns matching words with their labels.
@@ -759,7 +830,34 @@ def create_agentic_tools(
 
             where_clause = None
             if label_filter:
-                where_clause = {"label": {"$eq": label_filter.upper()}}
+                normalized_label = label_filter.strip().upper()
+                if label_state == "valid":
+                    where_clause = build_label_membership_clause(
+                        normalized_label,
+                        array_field="valid_labels_array",
+                        legacy_field="valid_labels",
+                    )
+                elif label_state == "invalid":
+                    where_clause = build_label_membership_clause(
+                        normalized_label,
+                        array_field="invalid_labels_array",
+                        legacy_field="invalid_labels",
+                    )
+                else:
+                    where_clause = {
+                        "$or": [
+                            build_label_membership_clause(
+                                normalized_label,
+                                array_field="valid_labels_array",
+                                legacy_field="valid_labels",
+                            ),
+                            build_label_membership_clause(
+                                normalized_label,
+                                array_field="invalid_labels_array",
+                                legacy_field="invalid_labels",
+                            ),
+                        ]
+                    }
 
             results = chroma_client.query(
                 collection_name="words",

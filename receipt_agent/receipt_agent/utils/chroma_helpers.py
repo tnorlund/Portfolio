@@ -16,11 +16,11 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional, TypedDict
 
 from receipt_chroma.s3 import download_snapshot_atomic
-from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
+from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -274,51 +274,6 @@ def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
         int(parts[5]),  # line_id
         int(parts[7]),  # word_id
     )
-
-
-def parse_labels_from_metadata(
-    metadata: dict[str, Any],
-) -> tuple[list[str], list[str]]:
-    """
-    Parse valid and invalid labels from ChromaDB metadata.
-
-    Supports two formats for backwards compatibility:
-    1. New boolean format: label_TOTAL=True, label_TAX=False
-    2. Old comma-delimited format: valid_labels=",TOTAL,TAX,"
-
-    Args:
-        metadata: ChromaDB metadata dictionary
-
-    Returns:
-        Tuple of (valid_labels, invalid_labels) lists
-    """
-    valid_labels: list[str] = []
-    invalid_labels: list[str] = []
-
-    # Check for new boolean format first (label_* fields)
-    has_boolean_labels = False
-    for label_name in CORE_LABELS:
-        field_name = f"label_{label_name}"
-        if field_name in metadata:
-            has_boolean_labels = True
-            value = metadata[field_name]
-            if value is True:
-                valid_labels.append(label_name)
-            elif value is False:
-                invalid_labels.append(label_name)
-
-    # Fall back to old comma-delimited format if no boolean fields found
-    if not has_boolean_labels:
-        valid_labels_str = metadata.get("valid_labels", "")
-        invalid_labels_str = metadata.get("invalid_labels", "")
-        valid_labels = [
-            lbl for lbl in valid_labels_str.split(",") if lbl.strip()
-        ]
-        invalid_labels = [
-            lbl for lbl in invalid_labels_str.split(",") if lbl.strip()
-        ]
-
-    return valid_labels, invalid_labels
 
 
 # =============================================================================
@@ -985,8 +940,16 @@ def query_similar_words(
             merchant = metadata.get("merchant_name", "Unknown")
             is_same = merchant.lower() == target_merchant.lower()
 
-            # Parse valid/invalid labels (supports both boolean and comma-delimited)
-            valid_labels, invalid_labels = parse_labels_from_metadata(metadata)
+            valid_labels = parse_labels_from_metadata(
+                metadata,
+                array_field="valid_labels_array",
+                legacy_field="valid_labels",
+            )
+            invalid_labels = parse_labels_from_metadata(
+                metadata,
+                array_field="invalid_labels_array",
+                legacy_field="invalid_labels",
+            )
 
             evidence: SimilarWordEvidence = {
                 "word_text": metadata.get("text", ""),
@@ -1371,8 +1334,16 @@ def query_similar_validated_words(
             if similarity < min_similarity:
                 continue
 
-            # Parse valid/invalid labels (supports both boolean and comma-delimited)
-            valid_labels, invalid_labels = parse_labels_from_metadata(meta)
+            valid_labels = parse_labels_from_metadata(
+                meta,
+                array_field="valid_labels_array",
+                legacy_field="valid_labels",
+            )
+            invalid_labels = parse_labels_from_metadata(
+                meta,
+                array_field="invalid_labels_array",
+                legacy_field="invalid_labels",
+            )
 
             similar_words.append(
                 SimilarWordResult(

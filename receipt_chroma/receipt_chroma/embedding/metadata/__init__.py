@@ -9,10 +9,12 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     create_row_metadata,
     enrich_line_metadata_with_anchors,
     enrich_row_metadata_with_anchors,
+    enrich_row_metadata_with_labels,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
     create_word_metadata,
     enrich_word_metadata_with_anchors,
+    enrich_word_metadata_with_labels,
 )
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "create_row_metadata",
     "enrich_line_metadata_with_anchors",
     "enrich_row_metadata_with_anchors",
+    "enrich_row_metadata_with_labels",
     "create_word_metadata",
     "enrich_word_metadata_with_anchors",
+    "enrich_word_metadata_with_labels",
 ]

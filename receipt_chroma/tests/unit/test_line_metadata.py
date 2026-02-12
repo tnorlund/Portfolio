@@ -46,11 +46,15 @@ class MockReceiptWord:
         self,
         text: str,
         extracted_data: dict | None = None,
+        image_id: str = "img1",
+        receipt_id: int = 1,
         line_id: int = 1,
         word_id: int = 1,
     ):
         self.text = text
         self.extracted_data = extracted_data or {}
+        self.image_id = image_id
+        self.receipt_id = receipt_id
         self.line_id = line_id
         self.word_id = word_id
 
@@ -64,7 +68,11 @@ class MockReceiptWordLabel:
         word_id: int,
         label: str,
         validation_status: str,
+        image_id: str = "img1",
+        receipt_id: int = 1,
     ):
+        self.image_id = image_id
+        self.receipt_id = receipt_id
         self.line_id = line_id
         self.word_id = word_id
         self.label = label
@@ -238,7 +246,7 @@ class TestEnrichRowMetadataWithLabels:
     """Test row-level label metadata aggregation."""
 
     def test_sets_true_and_false_flags(self):
-        """Row metadata should include VALID=True and INVALID=False flags."""
+        """Row metadata should include valid/invalid arrays."""
         metadata = {"text": "row text"}
         row_words = [
             MockReceiptWord("A", line_id=1, word_id=1),
@@ -251,8 +259,8 @@ class TestEnrichRowMetadataWithLabels:
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert enriched["label_LINE_TOTAL"] is True
-        assert enriched["label_TAX"] is False
+        assert enriched["valid_labels_array"] == ["LINE_TOTAL"]
+        assert enriched["invalid_labels_array"] == ["TAX"]
         assert enriched["label_status"] == "validated"
 
     def test_valid_takes_precedence_for_same_label(self):
@@ -266,7 +274,8 @@ class TestEnrichRowMetadataWithLabels:
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert enriched["label_LINE_TOTAL"] is True
+        assert enriched["valid_labels_array"] == ["LINE_TOTAL"]
+        assert "invalid_labels_array" not in enriched
         assert enriched["label_status"] == "validated"
 
     def test_pending_only_sets_auto_suggested(self):
@@ -277,7 +286,8 @@ class TestEnrichRowMetadataWithLabels:
 
         enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
 
-        assert "label_LINE_TOTAL" not in enriched
+        assert "valid_labels_array" not in enriched
+        assert "invalid_labels_array" not in enriched
         assert enriched["label_status"] == "auto_suggested"
 
     def test_non_core_pending_label_does_not_set_auto_suggested(self):

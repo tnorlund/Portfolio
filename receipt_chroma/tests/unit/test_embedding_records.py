@@ -7,8 +7,10 @@ import pytest
 
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
+    RowEmbeddingRecord,
     WordEmbeddingRecord,
     build_line_payload,
+    build_row_payload,
     build_word_payload,
 )
 
@@ -198,6 +200,39 @@ class TestBuildLinePayload:
         )
 
         assert payload["metadatas"][0]["avg_word_confidence"] == 0.75
+
+    def test_row_payload_with_labels_adds_label_arrays(self) -> None:
+        """Test that row metadata includes valid/invalid label arrays."""
+        line = create_mock_line("img1", 1, 1, "Line 1")
+        word1 = create_mock_word("img1", 1, 1, 1, "Word1")
+        word2 = create_mock_word("img1", 1, 1, 2, "Word2")
+        record = RowEmbeddingRecord(row_lines=(line,), embedding=[0.1, 0.2])
+
+        label_valid = Mock()
+        label_valid.image_id = "img1"
+        label_valid.receipt_id = 1
+        label_valid.line_id = 1
+        label_valid.word_id = 1
+        label_valid.label = "TOTAL"
+        label_valid.validation_status = "VALID"
+
+        label_invalid = Mock()
+        label_invalid.image_id = "img1"
+        label_invalid.receipt_id = 1
+        label_invalid.line_id = 1
+        label_invalid.word_id = 2
+        label_invalid.label = "DISCOUNT"
+        label_invalid.validation_status = "INVALID"
+
+        payload = build_row_payload(
+            records=[record],
+            all_words=[word1, word2],
+            all_labels=[label_valid, label_invalid],
+        )
+
+        metadata = payload["metadatas"][0]
+        assert metadata["valid_labels_array"] == ["TOTAL"]
+        assert metadata["invalid_labels_array"] == ["DISCOUNT"]
 
 
 class TestBuildWordPayload:

@@ -9,6 +9,47 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
+def _normalize_labels(labels: list[str]) -> list[str]:
+    """Normalize labels to stable, deduplicated arrays."""
+    return sorted({lbl.strip() for lbl in labels if lbl and lbl.strip()})
+
+
+def _labels_from_metadata(
+    metadata: Dict[str, Any],
+    array_field: str,
+    legacy_field: str,
+) -> set[str]:
+    """Read labels from canonical array metadata with legacy fallback."""
+    array_val = metadata.get(array_field)
+    if isinstance(array_val, list):
+        return {str(lbl).strip() for lbl in array_val if str(lbl).strip()}
+
+    legacy_val = metadata.get(legacy_field, "")
+    if isinstance(legacy_val, str):
+        return {lbl.strip() for lbl in legacy_val.split(",") if lbl.strip()}
+
+    return set()
+
+
+def _set_label_metadata_fields(
+    metadata: Dict[str, Any],
+    valid_labels: set[str],
+    invalid_labels: set[str],
+) -> None:
+    """Write canonical arrays and legacy string fields together."""
+    canonical_valid = _normalize_labels(list(valid_labels))
+    canonical_invalid = _normalize_labels(list(invalid_labels))
+
+    metadata["valid_labels_array"] = canonical_valid or None
+    metadata["invalid_labels_array"] = canonical_invalid or None
+    metadata["valid_labels"] = (
+        f",{','.join(canonical_valid)}," if canonical_valid else ""
+    )
+    metadata["invalid_labels"] = (
+        f",{','.join(canonical_invalid)}," if canonical_invalid else ""
+    )
+
+
 def update_receipt_metadata(
     collection: Any,
     image_id: str,
@@ -565,27 +606,26 @@ def update_word_labels(
             if entity_data and isinstance(entity_data, dict):
                 current_label = entity_data.get("label")
             if current_label:
-                # Initialize fields if missing
-                validated = updated_metadata.get("valid_labels", "") or ""
-                invalid = updated_metadata.get("invalid_labels", "") or ""
-
-                def _as_set(csv: str) -> set:
-                    return {x for x in csv.strip(",").split(",") if x}
-
-                val_set = _as_set(validated)
-                inv_set = _as_set(invalid)
+                val_set = _labels_from_metadata(
+                    updated_metadata,
+                    array_field="valid_labels_array",
+                    legacy_field="valid_labels",
+                )
+                inv_set = _labels_from_metadata(
+                    updated_metadata,
+                    array_field="invalid_labels_array",
+                    legacy_field="invalid_labels",
+                )
                 if status == "VALID":
                     inv_set.discard(current_label)
                     val_set.add(current_label)
                 elif status == "INVALID":
                     val_set.discard(current_label)
                     inv_set.add(current_label)
-                # Write back with delimiters for exact-match semantics
-                updated_metadata["valid_labels"] = (
-                    f",{','.join(sorted(val_set))}," if val_set else ""
-                )
-                updated_metadata["invalid_labels"] = (
-                    f",{','.join(sorted(inv_set))}," if inv_set else ""
+                _set_label_metadata_fields(
+                    updated_metadata,
+                    valid_labels=val_set,
+                    invalid_labels=inv_set,
                 )
         else:
             updated_metadata.update(reconstructed_metadata)
@@ -598,37 +638,25 @@ def update_word_labels(
         # Update the ChromaDB record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
+        valid_labels_array = updated_metadata.get("valid_labels_array", [])
+        if isinstance(valid_labels_array, list):
+            valid_count = len(valid_labels_array)
+        else:
+            valid_count = 0
+
         if logger:
             logger.info(
                 "Updated labels for word with reconstructed metadata",
                 chromadb_id=chromadb_id,
                 label_status=reconstructed_metadata.get("label_status"),
-                validated_labels_count=(
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
-                    )
-                    - 2
-                    if reconstructed_metadata.get("valid_labels")
-                    else 0
-                ),
+                validated_labels_count=valid_count,
             )
 
         if observability_available and metrics:
             metrics.count("CompactionWordLabelUpdated", 1)
             metrics.gauge(
                 "CompactionValidatedLabelsCount",
-                (
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
-                    )
-                    - 2
-                    if reconstructed_metadata.get("valid_labels")
-                    else 0
-                ),
+                valid_count,
             )
 
         return 1
@@ -681,6 +709,8 @@ def remove_word_labels(
             "label_status",
             "label_confidence",
             "label_proposed_by",
+            "valid_labels_array",
+            "invalid_labels_array",
             "valid_labels",
             "invalid_labels",
             "label_validated_at",
@@ -748,6 +778,8 @@ def reconstruct_label_metadata(
 
     Returns:
         Dictionary with reconstructed label metadata fields:
+        - valid_labels_array: array of valid labels (None if empty)
+        - invalid_labels_array: array of invalid labels (None if empty)
         - valid_labels: comma-delimited string of valid labels
         - invalid_labels: comma-delimited string of invalid labels
         - label_status: overall status (validated/auto_suggested/unvalidated)
@@ -833,17 +865,11 @@ def reconstruct_label_metadata(
     if label_proposed_by is not None:
         label_metadata["label_proposed_by"] = label_proposed_by
 
-    # Store valid labels with delimiters for exact matching
-    if valid_labels_list:
-        label_metadata["valid_labels"] = f",{','.join(valid_labels_list)},"
-    else:
-        label_metadata["valid_labels"] = ""
-
-    # Store invalid labels with delimiters for exact matching
-    if invalid_labels:
-        label_metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
-    else:
-        label_metadata["invalid_labels"] = ""
+    _set_label_metadata_fields(
+        label_metadata,
+        valid_labels=set(valid_labels_list),
+        invalid_labels=set(invalid_labels),
+    )
 
     if label_validated_at is not None:
         label_metadata["label_validated_at"] = label_validated_at
