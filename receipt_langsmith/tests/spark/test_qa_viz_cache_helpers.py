@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -305,3 +306,250 @@ class TestComputeStatsStillCorrect:
         assert stats["llmCalls"] == 1
         assert stats["receiptsProcessed"] == 5
         assert stats["cost"] == 0.05
+
+
+class _FakeExpr:
+    def __init__(self, resolver):
+        self._resolver = resolver
+
+    def __call__(self, row: dict[str, Any]) -> Any:
+        return self._resolver(row)
+
+    def __eq__(self, other: object) -> "_FakeExpr":  # type: ignore[override]
+        if isinstance(other, _FakeExpr):
+            return _FakeExpr(
+                lambda row: self._resolver(row) == other._resolver(row)
+            )
+        return _FakeExpr(lambda row: self._resolver(row) == other)
+
+    def isin(self, *values: Any) -> "_FakeExpr":
+        allowed = set(values)
+        return _FakeExpr(lambda row: self._resolver(row) in allowed)
+
+
+class _FakeFunctions:
+    @staticmethod
+    def col(name: str) -> _FakeExpr:
+        return _FakeExpr(lambda row: row.get(name))
+
+    @staticmethod
+    def lit(value: Any) -> _FakeExpr:
+        return _FakeExpr(lambda _row: value)
+
+
+class _FakeRow:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def asDict(self, recursive: bool = False) -> dict[str, Any]:
+        del recursive
+        return dict(self._payload)
+
+
+class _FakeDataFrame:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = [dict(row) for row in rows]
+
+    def filter(self, expr: Any) -> "_FakeDataFrame":
+        if callable(expr):
+            return _FakeDataFrame(
+                [row for row in self._rows if bool(expr(row))]
+            )
+        return self
+
+    def select(self, *columns: str) -> "_FakeDataFrame":
+        return _FakeDataFrame(
+            [{column: row.get(column) for column in columns} for row in self._rows]
+        )
+
+    def toLocalIterator(self):
+        return iter([_FakeRow(row) for row in self._rows])
+
+
+class _FakeAnalysisException(Exception):
+    pass
+
+
+class _FakeReader:
+    def __init__(
+        self,
+        *,
+        fail_plain: bool = False,
+        fail_recursive: bool = False,
+    ) -> None:
+        self._options: dict[str, str] = {}
+        self.fail_plain = fail_plain
+        self.fail_recursive = fail_recursive
+        self.calls: list[dict[str, Any]] = []
+        self.result_df = _FakeDataFrame([{"id": "1"}])
+
+    def option(self, name: str, value: str) -> "_FakeReader":
+        self._options[name] = value
+        return self
+
+    def parquet(self, path: str) -> _FakeDataFrame:
+        options = dict(self._options)
+        self.calls.append({"path": path, "options": options})
+        recursive = options.get("recursiveFileLookup") == "true"
+        if (not recursive and self.fail_plain) or (
+            recursive and self.fail_recursive
+        ):
+            raise _FakeAnalysisException("simulated parquet read failure")
+        return self.result_df
+
+
+class _FakeSparkSession:
+    def __init__(self, reader: _FakeReader) -> None:
+        self.read = reader
+
+
+def test_read_parquet_traces_retries_with_recursive(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    reader = _FakeReader(fail_plain=True, fail_recursive=False)
+    spark = _FakeSparkSession(reader)
+    monkeypatch.setattr(qa_helpers, "AnalysisException", _FakeAnalysisException)
+
+    result = qa_helpers.read_parquet_traces(spark, "s3://bucket/traces/")
+
+    assert result is reader.result_df
+    assert len(reader.calls) == 2
+    assert reader.calls[0]["path"] == "s3a://bucket/traces/"
+    assert "recursiveFileLookup" not in reader.calls[0]["options"]
+    assert reader.calls[1]["options"]["recursiveFileLookup"] == "true"
+
+
+def test_read_parquet_traces_returns_none_when_both_reads_fail(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    reader = _FakeReader(fail_plain=True, fail_recursive=True)
+    spark = _FakeSparkSession(reader)
+    monkeypatch.setattr(qa_helpers, "AnalysisException", _FakeAnalysisException)
+
+    result = qa_helpers.read_parquet_traces(spark, "s3://bucket/traces/")
+
+    assert result is None
+    assert len(reader.calls) == 2
+
+
+def test_collect_root_runs_filters_non_root_rows(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    df = _FakeDataFrame(
+        [
+            {"trace_id": "trace-1", "id": "root-1", "inputs": "{}", "is_root": True},
+            {"trace_id": "trace-2", "id": "child-1", "inputs": "{}", "is_root": False},
+        ]
+    )
+
+    root_runs = qa_helpers.collect_root_runs(df)
+
+    assert root_runs == {
+        "trace-1": {"trace_id": "trace-1", "id": "root-1", "inputs": "{}"}
+    }
+
+
+def test_collect_traces_filters_by_trace_ids(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    df = _FakeDataFrame(
+        [
+            {
+                "id": "run-1",
+                "trace_id": "trace-1",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 10,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+            {
+                "id": "run-2",
+                "trace_id": "trace-2",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 12,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+        ]
+    )
+
+    traces = qa_helpers.collect_traces(df, trace_ids={"trace-2"})
+
+    assert set(traces.keys()) == {"trace-2"}
+    assert traces["trace-2"][0]["id"] == "run-2"
+
+
+def test_collect_root_runs_enforces_hard_limit(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    monkeypatch.setattr(qa_helpers, "QA_DRIVER_ROOT_HARD_LIMIT", 1)
+    df = _FakeDataFrame(
+        [
+            {"trace_id": "trace-1", "id": "root-1", "inputs": "{}", "is_root": True},
+            {"trace_id": "trace-2", "id": "root-2", "inputs": "{}", "is_root": True},
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="root runs driver collection exceeded"):
+        qa_helpers.collect_root_runs(df)
+
+
+def test_collect_traces_enforces_hard_limit(monkeypatch):
+    import receipt_langsmith.spark.qa_viz_cache_helpers as qa_helpers
+
+    monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
+    monkeypatch.setattr(qa_helpers, "QA_DRIVER_TRACE_HARD_LIMIT", 1)
+    df = _FakeDataFrame(
+        [
+            {
+                "id": "run-1",
+                "trace_id": "trace-1",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 10,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+            {
+                "id": "run-2",
+                "trace_id": "trace-2",
+                "parent_run_id": None,
+                "name": "root",
+                "run_type": "chain",
+                "status": "success",
+                "dotted_order": "1",
+                "is_root": True,
+                "inputs": "{}",
+                "outputs": "{}",
+                "total_tokens": 12,
+                "start_time": "2025-01-01T00:00:00Z",
+                "end_time": "2025-01-01T00:00:01Z",
+            },
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="trace rows driver collection exceeded"):
+        qa_helpers.collect_traces(df)

@@ -63,6 +63,7 @@ from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.s3_io import (
     ReceiptsCachePointer,
     load_json_from_s3,
+    write_json_with_default,
     write_receipt_cache_index,
     write_receipt_json,
 )
@@ -70,6 +71,112 @@ from receipt_langsmith.spark.utils import to_s3a
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+DRIVER_COLLECTION_WARN_THRESHOLD = 50_000
+DRIVER_COLLECTION_HARD_LIMIT = 250_000
+BASELINE_CONF_KEYS = (
+    "spark.sql.adaptive.enabled",
+    "spark.sql.shuffle.partitions",
+    "spark.sql.files.openCostInBytes",
+    "spark.sql.files.maxPartitionBytes",
+    "spark.eventLog.enabled",
+    "spark.eventLog.dir",
+    "spark.dynamicAllocation.enabled",
+    "spark.dynamicAllocation.minExecutors",
+    "spark.dynamicAllocation.maxExecutors",
+    "spark.executor.instances",
+    "spark.executor.cores",
+    "spark.executor.memory",
+    "spark.driver.cores",
+    "spark.driver.memory",
+)
+
+
+def _safe_partition_count(df: Any) -> int | None:
+    """Return partition count when available (best-effort)."""
+    try:
+        return int(df.rdd.getNumPartitions())
+    except (AttributeError, Py4JError, Py4JJavaError):
+        return None
+
+
+def _collect_spark_conf_profile(spark: SparkSession) -> dict[str, Any]:
+    spark_conf = spark.sparkContext.getConf()
+    conf_snapshot: dict[str, Any] = {}
+    for key in BASELINE_CONF_KEYS:
+        value = spark_conf.get(key, None)
+        if value is not None:
+            conf_snapshot[key] = value
+    return conf_snapshot
+
+
+def _write_baseline_summary(
+    s3_client: Any,
+    *,
+    bucket: str,
+    execution_id: str,
+    job_type: str,
+    payload: dict[str, Any],
+) -> None:
+    key = f"profiling/{execution_id or 'adhoc'}/{job_type}-baseline.json"
+    try:
+        write_json_with_default(s3_client, bucket, key, payload)
+        logger.info("Wrote %s to s3://%s/", key, bucket)
+    except (ClientError, BotoCoreError, TypeError, ValueError):
+        logger.warning(
+            "Failed to write baseline summary %s to s3://%s/",
+            key,
+            bucket,
+            exc_info=True,
+        )
+
+
+def _collect_rows_to_driver(
+    selected_df: Any,
+    *,
+    source_name: str,
+    source_path: str,
+) -> list[dict[str, Any]]:
+    partition_count = _safe_partition_count(selected_df)
+    if partition_count is None:
+        logger.info(
+            "Collecting %s to driver from %s (warn>%d rows, hard>%d rows)",
+            source_name,
+            source_path,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+            DRIVER_COLLECTION_HARD_LIMIT,
+        )
+    else:
+        logger.info(
+            "Collecting %s to driver from %s (partitions=%d, warn>%d rows, hard>%d rows)",
+            source_name,
+            source_path,
+            partition_count,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+            DRIVER_COLLECTION_HARD_LIMIT,
+        )
+
+    rows: list[dict[str, Any]] = []
+    row_count = 0
+    for row in selected_df.toLocalIterator():
+        rows.append(row.asDict(recursive=True))
+        row_count += 1
+        if row_count > DRIVER_COLLECTION_HARD_LIMIT:
+            raise RuntimeError(
+                f"{source_name} driver collection exceeded hard limit: "
+                f"{row_count} > {DRIVER_COLLECTION_HARD_LIMIT}. "
+                "Narrow the input export scope."
+            )
+
+    if row_count > DRIVER_COLLECTION_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d %s to driver from %s; consider narrowing input scope",
+            row_count,
+            source_name,
+            source_path,
+        )
+    logger.info("Loaded %d %s from %s", row_count, source_name, source_path)
+    return rows
 
 
 def parse_args() -> argparse.Namespace:
@@ -749,13 +856,19 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
 
     joined.persist(StorageLevel.DISK_ONLY)
 
-    total_receipts = joined.count()
+    counts_row = joined.agg(
+        F.count("*").alias("total_receipts"),
+        F.sum(
+            F.when(F.col("issues_found") > 0, F.lit(1)).otherwise(F.lit(0))
+        ).alias("receipts_with_issues"),
+    ).collect()[0]
+    total_receipts = int(counts_row["total_receipts"] or 0)
     if total_receipts == 0:
         logger.error("No receipt data found in data/%s/", args.execution_id)
         joined.unpersist()
         return
 
-    receipts_with_issues = joined.filter(F.col("issues_found") > 0).count()
+    receipts_with_issues = int(counts_row["receipts_with_issues"] or 0)
 
     logger.info("Writing %d viz-cache receipts...", total_receipts)
     write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)
@@ -766,6 +879,23 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
         args.execution_id,
         total_receipts,
         receipts_with_issues,
+    )
+    _write_baseline_summary(
+        s3_client,
+        bucket=args.cache_bucket,
+        execution_id=args.execution_id,
+        job_type="viz-cache",
+        payload={
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "execution_id": args.execution_id,
+            "total_receipts": total_receipts,
+            "receipts_with_issues": receipts_with_issues,
+            "spark_application_id": spark.sparkContext.applicationId,
+            "spark_default_parallelism": (
+                spark.sparkContext.defaultParallelism
+            ),
+            "spark_conf": _collect_spark_conf_profile(spark),
+        },
     )
 
     joined.unpersist()
@@ -822,11 +952,11 @@ def _load_evaluator_trace_rows(
             df = df.withColumn(column_name, F.lit(None))
 
     selected_df = df.select(*EVALUATOR_TRACE_COLUMNS)
-    rows = [
-        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
-    ]
-    logger.info("Loaded %d evaluator spans from %s", len(rows), parquet_dir)
-    return rows
+    return _collect_rows_to_driver(
+        selected_df,
+        source_name="evaluator spans",
+        source_path=parquet_dir,
+    )
 
 
 def _load_unified_rows(
@@ -870,15 +1000,11 @@ def _load_unified_rows(
             df = df.withColumn(column_name, F.lit(None))
 
     selected_df = df.select(*wanted_cols)
-    rows = [
-        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
-    ]
-    logger.info(
-        "Loaded %d unified evaluator rows from %s",
-        len(rows),
-        unified_path,
+    return _collect_rows_to_driver(
+        selected_df,
+        source_name="unified evaluator rows",
+        source_path=unified_path,
     )
-    return rows
 
 
 def _build_evaluator_item_key(
@@ -997,6 +1123,7 @@ def run_evaluator_viz_cache(
     ]
 
     failures: list[str] = []
+    helper_counts: dict[str, int] = {}
 
     for prefix, helper_fn, is_merchant_keyed in helpers:
         try:
@@ -1029,6 +1156,7 @@ def run_evaluator_viz_cache(
                 is_merchant_keyed=is_merchant_keyed,
                 items=results,
             )
+            helper_counts[prefix] = count
 
             # Write metadata for this viz type
             metadata = {
@@ -1056,6 +1184,26 @@ def run_evaluator_viz_cache(
                 "remaining helpers",
                 prefix,
             )
+
+    _write_baseline_summary(
+        s3_client,
+        bucket=cache_bucket,
+        execution_id=execution_id,
+        job_type="evaluator-viz-cache",
+        payload={
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "execution_id": execution_id,
+            "trace_rows_count": len(trace_rows),
+            "unified_rows_count": len(unified_rows),
+            "helper_counts": helper_counts,
+            "failed_helpers": failures,
+            "spark_application_id": spark.sparkContext.applicationId,
+            "spark_default_parallelism": (
+                spark.sparkContext.defaultParallelism
+            ),
+            "spark_conf": _collect_spark_conf_profile(spark),
+        },
+    )
 
     if failures:
         failed = ", ".join(failures)

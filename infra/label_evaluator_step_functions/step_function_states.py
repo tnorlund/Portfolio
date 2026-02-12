@@ -514,6 +514,7 @@ def build_langsmith_export_states(emr: EmrConfig) -> dict[str, Any]:
                 "FunctionName": emr.trigger_export_lambda_arn,
                 "Payload": {
                     "project_name.$": "$.init.langchain_project",
+                    "start_time.$": "$.init.start_time",
                 },
             },
             "ResultSelector": {
@@ -614,6 +615,13 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
     artifacts_bucket = emr.spark_artifacts_bucket
     spark_submit_params = (
         "--conf spark.sql.legacy.parquet.nanosAsLong=true "
+        "--conf spark.sql.adaptive.enabled=true "
+        "--conf spark.sql.shuffle.partitions=32 "
+        "--conf spark.sql.adaptive.coalescePartitions.initialPartitionNum=32 "
+        "--conf spark.sql.files.openCostInBytes=134217728 "
+        "--conf spark.sql.files.maxPartitionBytes=268435456 "
+        "--conf spark.eventLog.enabled=true "
+        f"--conf spark.eventLog.dir=s3://{artifacts_bucket}/spark-event-logs/ "
         "--conf spark.sql.parquet.enableVectorizedReader=false "
         "--conf spark.dynamicAllocation.enabled=false "
         "--conf spark.executor.cores=2 "

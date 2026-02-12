@@ -21,6 +21,7 @@ Usage:
         --conf spark.sql.legacy.parquet.nanosAsLong=true \
         label_validation_viz_cache_job.py \
         --parquet-bucket langsmith-export-bucket \
+        --parquet-prefix traces/export_id=<export-id>/ \
         --cache-bucket viz-cache-bucket \
         --receipts-json s3://cache-bucket/receipts-lookup.json
 """
@@ -57,9 +58,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--parquet-prefix",
-        default="traces/",
-        help="Parquet prefix (default: traces/)."
-        " If not a specific export_id, the latest export is used.",
+        required=True,
+        help=(
+            "Parquet prefix for a specific export, e.g. "
+            "'traces/export_id=<export-id>/'"
+        ),
     )
     add_cache_bucket_arg(parser)
     add_receipts_json_arg(parser)

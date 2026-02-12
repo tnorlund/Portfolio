@@ -24,6 +24,14 @@ logger.setLevel(logging.INFO)
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
 
 
+def _parse_iso8601_utc(timestamp: str) -> datetime:
+    """Parse an ISO-8601 string and normalize to UTC."""
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Trigger a LangSmith bulk export job.
@@ -40,6 +48,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         project_id: Direct project ID (skips name lookup)
         destination_id: S3 destination ID (overrides SSM lookup)
         days_back: Number of days to export (default: 7)
+        start_time: Explicit export start time (ISO-8601, overrides days_back)
+        end_time: Explicit export end time (ISO-8601, defaults to now)
         export_fields: List of fields to export (default: standard set)
 
     Returns:
@@ -55,6 +65,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Get parameters from event or use defaults
     days_back = event.get("days_back", 7)
+    end_time_value = event.get("end_time")
+    if end_time_value:
+        end_time = _parse_iso8601_utc(end_time_value)
+    else:
+        end_time = datetime.now(timezone.utc)
+    end_time_iso = end_time.isoformat()
+    start_time_iso = event.get("start_time")
+    if not start_time_iso:
+        start_time_iso = (end_time - timedelta(days=days_back)).isoformat()
     project_id = event.get("project_id")
     destination_id = event.get("destination_id")
 
@@ -75,6 +94,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
     logger.info(f"Tenant ID: {tenant_id}")
     logger.info(f"Days back: {days_back}")
+    logger.info(f"Start time: {start_time_iso}")
+    logger.info(f"End time: {end_time_iso}")
 
     # Get destination_id from event, SSM, or fail
     if not destination_id:
@@ -149,17 +170,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     logger.info(f"Using project_id: {project_id}")
 
-    # Calculate date range
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=days_back)
-
-    logger.info(
-        f"Export range: {start_time.isoformat()} to {end_time.isoformat()}"
-    )
+    logger.info(f"Export range: {start_time_iso} to {end_time_iso}")
 
     # Default export fields for visualization
     default_export_fields = [
         "id",
+        "trace_id",
+        "is_root",
         "name",
         "outputs",
         "extra",  # Contains metadata
@@ -168,6 +185,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "end_time",
         "run_type",
         "status",
+        "total_tokens",
+        "prompt_tokens",
+        "completion_tokens",
     ]
     export_fields = event.get("export_fields", default_export_fields)
 
@@ -176,8 +196,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         export_body = {
             "bulk_export_destination_id": destination_id,
             "session_id": project_id,  # LangSmith uses session_id for project
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
+            "start_time": start_time_iso,
+            "end_time": end_time_iso,
         }
         # Only include export_fields if specified (omitting uses all fields)
         if export_fields:
@@ -217,8 +237,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "message": "Export triggered successfully",
             "export_id": export_id,
             "status": result.get("status"),
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
+            "start_time": start_time_iso,
+            "end_time": end_time_iso,
         }
 
     except Exception as e:

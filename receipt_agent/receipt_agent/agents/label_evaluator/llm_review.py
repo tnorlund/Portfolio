@@ -35,8 +35,8 @@ from receipt_agent.utils.chroma_helpers import (
     compute_label_distribution,
     compute_merchant_breakdown,
     compute_similarity_distribution,
-    enrich_evidence_with_dynamo_reasoning,
-    query_similar_words,
+    format_label_evidence_for_prompt,
+    query_cascade_evidence,
 )
 
 from .state import (
@@ -530,8 +530,6 @@ def gather_evidence_for_issue(
     issue: dict[str, Any],
     merchant_name: str,
     chroma_client: Optional[Any] = None,
-    dynamo_client: Optional[Any] = None,
-    n_similar_results: int = 100,
 ) -> dict[str, Any]:
     """
     Gather all evidence needed for LLM review of a single issue.
@@ -540,51 +538,42 @@ def gather_evidence_for_issue(
         issue: The issue dict with word_text, line_id, word_id, image_id, etc.
         merchant_name: Merchant name for same-merchant filtering
         chroma_client: Optional ChromaDB client for similar word queries
-        dynamo_client: Optional DynamoDB client for reasoning enrichment
-        n_similar_results: Number of similar words to query
 
     Returns:
         Dict with issue and all gathered evidence
     """
     evidence: dict[str, Any] = {
         "issue": issue,
-        "similar_evidence": [],
-        "similarity_dist": {"very_high": 0, "high": 0, "medium": 0, "low": 0},
-        "label_dist": {},
-        "merchant_breakdown": [],
+        "evidence_text": "",
+        "consensus": 0.0,
+        "positive_count": 0,
+        "negative_count": 0,
         "currency_context": [],
     }
 
     if not chroma_client:
         return evidence
 
-    # Query for similar words
+    # Query cascade evidence: words first, lines if inconclusive
     try:
-        similar_evidence = query_similar_words(
-            chroma_client=chroma_client,
-            word_text=issue.get("word_text", ""),
-            image_id=issue.get("image_id", ""),
-            receipt_id=issue.get("receipt_id", 0),
-            line_id=issue.get("line_id", 0),
-            word_id=issue.get("word_id", 0),
-            target_merchant=merchant_name,
-            n_results=n_similar_results,
-        )
-
-        # Enrich with DynamoDB reasoning if available
-        if dynamo_client and similar_evidence:
-            similar_evidence = enrich_evidence_with_dynamo_reasoning(
-                similar_evidence, dynamo_client, limit=20
+        current_label = issue.get("current_label") or ""
+        all_evidence, consensus, pos_count, neg_count, _lines_used = (
+            query_cascade_evidence(
+                chroma_client=chroma_client,
+                image_id=issue.get("image_id", ""),
+                receipt_id=issue.get("receipt_id", 0),
+                line_id=issue.get("line_id", 0),
+                word_id=issue.get("word_id", 0),
+                target_label=current_label,
+                target_merchant=merchant_name,
             )
-
-        evidence["similar_evidence"] = similar_evidence
-        evidence["similarity_dist"] = compute_similarity_distribution(
-            similar_evidence
         )
-        evidence["label_dist"] = compute_label_distribution(similar_evidence)
-        evidence["merchant_breakdown"] = compute_merchant_breakdown(
-            similar_evidence
+        evidence["evidence_text"] = format_label_evidence_for_prompt(
+            all_evidence, current_label
         )
+        evidence["consensus"] = consensus
+        evidence["positive_count"] = pos_count
+        evidence["negative_count"] = neg_count
 
     except Exception as e:
         logger.warning("Error gathering evidence for issue: %s", e)
@@ -677,10 +666,10 @@ def review_issues_batch(
     Args:
         issues_with_context: List of dicts, each containing:
             - issue: The issue dict
-            - similar_evidence: List of SimilarWordEvidence
-            - similarity_dist: SimilarityDistribution (optional, will compute)
-            - label_dist: Label distribution (optional, will compute)
-            - merchant_breakdown: Merchant breakdown (optional, will compute)
+            - evidence_text: Pre-formatted cascade evidence string
+            - consensus: Consensus score from cascade evidence
+            - positive_count: Number of supporting evidence items
+            - negative_count: Number of contradicting evidence items
             - currency_context: Currency amounts from receipt
         merchant_name: Merchant name
         merchant_receipt_count: Number of receipts for this merchant
@@ -695,24 +684,7 @@ def review_issues_batch(
     if not issues_with_context:
         return []
 
-    # Ensure each item has computed distributions without mutating inputs
-    normalized_issues: list[dict[str, Any]] = []
-    for item in issues_with_context:
-        similar_evidence = item.get("similar_evidence", [])
-        normalized = dict(item)
-        if "similarity_dist" not in normalized:
-            normalized["similarity_dist"] = compute_similarity_distribution(
-                similar_evidence
-            )
-        if "label_dist" not in normalized:
-            normalized["label_dist"] = compute_label_distribution(
-                similar_evidence
-            )
-        if "merchant_breakdown" not in normalized:
-            normalized["merchant_breakdown"] = compute_merchant_breakdown(
-                similar_evidence
-            )
-        normalized_issues.append(normalized)
+    normalized_issues = issues_with_context
 
     # Build batched prompt
     prompt = build_batched_review_prompt(
@@ -910,7 +882,6 @@ def review_all_issues(
             issue=issue,
             merchant_name=merchant_name,
             chroma_client=chroma_client,
-            dynamo_client=dynamo_client,
         )
         issues_with_context.append(evidence)
 

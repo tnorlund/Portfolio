@@ -17,6 +17,7 @@ from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
     load_json_from_s3,
     ReceiptsCachePointer,
+    write_json_with_default,
     write_receipt_cache_index,
     write_receipt_json,
 )
@@ -28,6 +29,25 @@ from receipt_langsmith.spark.trace_df import (
 from receipt_langsmith.spark.utils import parse_json_object
 
 logger = logging.getLogger(__name__)
+LABEL_DRIVER_ROW_WARN_THRESHOLD = 50_000
+LABEL_DRIVER_ROOT_HARD_LIMIT = 250_000
+LABEL_DRIVER_VALIDATION_HARD_LIMIT = 1_000_000
+LABEL_BASELINE_CONF_KEYS = (
+    "spark.sql.adaptive.enabled",
+    "spark.sql.shuffle.partitions",
+    "spark.sql.files.openCostInBytes",
+    "spark.sql.files.maxPartitionBytes",
+    "spark.eventLog.enabled",
+    "spark.eventLog.dir",
+    "spark.dynamicAllocation.enabled",
+    "spark.dynamicAllocation.minExecutors",
+    "spark.dynamicAllocation.maxExecutors",
+    "spark.executor.instances",
+    "spark.executor.cores",
+    "spark.executor.memory",
+    "spark.driver.cores",
+    "spark.driver.memory",
+)
 
 # --- S3 Utilities ---
 
@@ -66,115 +86,19 @@ def load_receipts_from_s3(
     return lookup
 
 
-def find_latest_export_prefix(  # pylint: disable=too-many-locals
-    s3_client: Any, bucket: str, preferred_export_id: str | None = None
-) -> str | None:
-    """Find the latest LangSmith export prefix in the bucket.
-
-    Searches both traces/ and traces// paths since LangSmith exports
-    may use either path structure depending on API version.
-    """
-    # Search both standard and double-slash paths
-    # LangSmith API sometimes uses traces// instead of traces/
-    search_prefixes = ["traces/", "traces//"]
-    all_exports: dict[str, str] = {}  # export_id -> actual_prefix
-
-    for search_prefix in search_prefixes:
-        logger.info("Finding exports in s3://%s/%s", bucket, search_prefix)
-        try:
-            response = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=search_prefix, Delimiter="/"
-            )
-            prefixes = response.get("CommonPrefixes", [])
-            for p in prefixes:
-                prefix = p["Prefix"]
-                if "export_id=" in prefix:
-                    export_id = prefix.split("export_id=")[1].rstrip("/")
-                    if export_id and export_id not in all_exports:
-                        all_exports[export_id] = prefix
-                        logger.info(
-                            "Found export: %s at %s", export_id, prefix
-                        )
-        except (ClientError, BotoCoreError):
-            logger.warning("Failed to search %s", search_prefix)
-
-    if not all_exports:
-        logger.warning("No export folders found in traces/ or traces//")
-        return None
-
-    export_ids = list(all_exports.keys())
-    logger.info("Found %d exports: %s", len(export_ids), export_ids[:5])
-
-    # Check preferred export first
-    if preferred_export_id and preferred_export_id in all_exports:
-        check_prefix = all_exports[preferred_export_id]
-        resp = s3_client.list_objects_v2(
-            Bucket=bucket, Prefix=check_prefix, MaxKeys=1
-        )
-        if resp.get("Contents"):
-            logger.info(
-                "Using preferred export: %s at %s",
-                preferred_export_id,
-                check_prefix,
-            )
-            return check_prefix
-
-    # Find most recent export
-    latest_export = None
-    latest_time = None
-    latest_prefix = None
-    for export_id, prefix in all_exports.items():
-        resp = s3_client.list_objects_v2(
-            Bucket=bucket, Prefix=prefix, MaxKeys=1
-        )
-        if resp.get("Contents"):
-            mod_time = resp["Contents"][0].get("LastModified")
-            if latest_time is None or mod_time > latest_time:
-                latest_time = mod_time
-                latest_export = export_id
-                latest_prefix = prefix
-
-    if latest_export and latest_prefix:
-        logger.info(
-            "Found latest export: %s (modified: %s)",
-            latest_prefix,
-            latest_time,
-        )
-        return latest_prefix
-
-    logger.warning("No exports with data found")
-    return None
-
-
-def list_parquet_files(s3_client: Any, bucket: str, prefix: str) -> list[str]:
-    """List all parquet files in an S3 prefix."""
-    parquet_files = []
-    paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".parquet"):
-                parquet_files.append(f"s3://{bucket}/{key}")
-                if len(parquet_files) <= 3:
-                    logger.info("  File: s3://%s/%s", bucket, key)
-
-    return parquet_files
-
-
 # --- Spark Processing ---
 
 
-def read_traces(spark: SparkSession, parquet_files: list[str]) -> Any:
-    """Read traces from Parquet files.
+def read_traces(spark: SparkSession, parquet_path: str) -> Any:
+    """Read traces from a parquet path.
 
     Returns DataFrame with columns needed for label validation analysis.
     Handles flexible schema - adds missing columns with nulls.
     """
-    logger.info("Reading %d parquet files...", len(parquet_files))
+    logger.info("Reading traces from %s", parquet_path)
 
     # Read all columns first to check what's available
-    df = spark.read.parquet(*parquet_files)
+    df = spark.read.parquet(parquet_path)
     available_columns = set(df.columns)
 
     logger.info("Available columns in parquet: %s", sorted(available_columns))
@@ -226,13 +150,26 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
         )
     )
 
-    # Collect root traces
-    root_data = roots.select(
+    root_rows = roots.select(
         "trace_id", "image_id", "receipt_id", "outputs", "duration_ms"
-    ).collect()
+    ).toLocalIterator()
+    root_data: list[dict[str, Any]] = []
+    for row in root_rows:
+        root_data.append(row.asDict())
+        if len(root_data) > LABEL_DRIVER_ROOT_HARD_LIMIT:
+            raise RuntimeError(
+                "receipt_processing root trace collection exceeded hard "
+                f"limit: {len(root_data)} > {LABEL_DRIVER_ROOT_HARD_LIMIT}. "
+                "Narrow export scope."
+            )
 
+    if len(root_data) > LABEL_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d root traces on driver; consider narrowing export scope",
+            len(root_data),
+        )
     logger.info("Found %d receipt_processing root traces", len(root_data))
-    return [row.asDict() for row in root_data]
+    return root_data
 
 
 def extract_validation_traces(
@@ -265,11 +202,19 @@ def extract_validation_traces(
 
     validation_data = validations.select(
         "trace_id", "name", "outputs", "duration_ms"
-    ).collect()
+    ).toLocalIterator()
 
     # Group by trace_id
     result: dict[str, list[dict]] = {}
+    validation_rows = 0
     for row in validation_data:
+        validation_rows += 1
+        if validation_rows > LABEL_DRIVER_VALIDATION_HARD_LIMIT:
+            raise RuntimeError(
+                "validation trace collection exceeded hard limit: "
+                f"{validation_rows} > {LABEL_DRIVER_VALIDATION_HARD_LIMIT}. "
+                "Narrow export scope."
+            )
         trace_id = row["trace_id"]
         if trace_id not in result:
             result[trace_id] = []
@@ -283,7 +228,16 @@ def extract_validation_traces(
             }
         )
 
-    logger.info("Extracted validation traces for %d receipts", len(result))
+    if validation_rows > LABEL_DRIVER_ROW_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d validation spans on driver; consider narrowing export scope",
+            validation_rows,
+        )
+    logger.info(
+        "Extracted validation traces for %d receipts (%d spans)",
+        len(result),
+        validation_rows,
+    )
     return result
 
 
@@ -697,6 +651,8 @@ def write_cache(  # pylint: disable=too-many-locals
     bucket: str,
     receipts: list[dict[str, Any]],
     parquet_prefix: str,
+    *,
+    run_profile: dict[str, Any] | None = None,
 ) -> None:
     """Write individual receipt files + metadata to S3."""
     timestamp = datetime.now(timezone.utc)
@@ -751,11 +707,33 @@ def write_cache(  # pylint: disable=too-many-locals
         "aggregate_stats": aggregate_stats,
         "cached_at": timestamp.isoformat(),
     }
+    if run_profile:
+        metadata["run_profile"] = run_profile
     logger.info("Writing metadata.json")
     pointer = ReceiptsCachePointer(
         cache_version, receipts_prefix, timestamp.isoformat()
     )
     write_receipt_cache_index(s3_client, bucket, metadata, pointer)
+    if run_profile:
+        run_summary_key = (
+            f"profiling/{cache_version}/"
+            "label-validation-viz-cache-baseline.json"
+        )
+        try:
+            write_json_with_default(
+                s3_client,
+                bucket,
+                run_summary_key,
+                run_profile,
+            )
+            logger.info("Wrote %s to s3://%s/", run_summary_key, bucket)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to write run profile %s to s3://%s/",
+                run_summary_key,
+                bucket,
+                exc_info=True,
+            )
 
     logger.info("Cache generation complete!")
     logger.info("  Version: %s", cache_version)
@@ -769,19 +747,16 @@ def write_cache(  # pylint: disable=too-many-locals
 
 
 def _resolve_parquet_prefix(
-    s3_client: Any,
-    bucket: str,
     parquet_prefix: str,
 ) -> str | None:
-    if parquet_prefix == "traces/" or not parquet_prefix.startswith(
-        "traces/export_id="
-    ):
-        detected = find_latest_export_prefix(s3_client, bucket)
-        if detected:
-            return detected
-        logger.error("Could not find any export with data")
+    normalized = parquet_prefix.strip().strip("/") + "/"
+    if "export_id=" not in normalized:
+        logger.error(
+            "Expected --parquet-prefix to include export_id=..., got: %s",
+            parquet_prefix,
+        )
         return None
-    return parquet_prefix
+    return normalized
 
 
 
@@ -789,14 +764,26 @@ def _build_viz_receipts(
     df: Any,
     receipt_lookup: dict[tuple[str, int], dict[str, Any]],
     max_receipts: int,
+    *,
+    stats_out: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    build_stats: dict[str, Any] = {}
+
+    def commit_stats() -> None:
+        if stats_out is not None:
+            stats_out.update(build_stats)
+
     root_traces = extract_receipt_traces(df)
+    build_stats["root_traces_collected"] = len(root_traces)
     if not root_traces:
         logger.error("No receipt_processing traces found")
+        commit_stats()
         return []
 
     trace_ids = [t["trace_id"] for t in root_traces if t.get("trace_id")]
+    build_stats["trace_ids"] = len(trace_ids)
     validation_traces = extract_validation_traces(df, trace_ids)
+    build_stats["validation_trace_groups"] = len(validation_traces)
 
     viz_receipts: list[dict[str, Any]] = []
     for root in root_traces:
@@ -814,8 +801,19 @@ def _build_viz_receipts(
         if len(viz_receipts) >= max_receipts:
             break
 
+    build_stats["viz_receipts"] = len(viz_receipts)
+    commit_stats()
     return viz_receipts
 
+
+def _collect_spark_conf_profile(spark: SparkSession) -> dict[str, Any]:
+    spark_conf = spark.sparkContext.getConf()
+    conf_snapshot: dict[str, Any] = {}
+    for key in LABEL_BASELINE_CONF_KEYS:
+        value = spark_conf.get(key, None)
+        if value is not None:
+            conf_snapshot[key] = value
+    return conf_snapshot
 
 
 def run_label_validation_cache(args: Any) -> int:
@@ -828,24 +826,24 @@ def run_label_validation_cache(args: Any) -> int:
 
     s3_client = boto3.client("s3")
 
-    parquet_prefix = _resolve_parquet_prefix(
-        s3_client,
-        args.parquet_bucket,
-        args.parquet_prefix,
-    )
+    parquet_prefix = _resolve_parquet_prefix(args.parquet_prefix)
     if not parquet_prefix:
         return 1
 
     logger.info("Using parquet prefix: %s", parquet_prefix)
-
-    parquet_files = list_parquet_files(
-        s3_client,
-        args.parquet_bucket,
-        parquet_prefix,
-    )
-    if not parquet_files:
-        logger.error("No parquet files found")
-        return 1
+    parquet_path = f"s3://{args.parquet_bucket}/{parquet_prefix}"
+    try:
+        s3_client.head_object(
+            Bucket=args.parquet_bucket,
+            Key=f"{parquet_prefix}_SUCCESS",
+        )
+    except (ClientError, BotoCoreError):
+        logger.warning(
+            "Could not verify _SUCCESS marker under %s; Spark will attempt direct read",
+            parquet_path,
+        )
+    else:
+        logger.info("Verified export marker at %s_SUCCESS", parquet_path)
 
     receipt_lookup = load_receipts_from_s3(s3_client, args.receipts_json)
 
@@ -855,23 +853,40 @@ def run_label_validation_cache(args: Any) -> int:
     ).getOrCreate()
 
     def job() -> int:
-        df = read_traces(spark, parquet_files)
+        df = read_traces(spark, parquet_path)
+        build_stats: dict[str, Any] = {}
         viz_receipts = _build_viz_receipts(
             df,
             receipt_lookup,
             args.max_receipts,
+            stats_out=build_stats,
         )
         if not viz_receipts:
             logger.error("No visualization receipts could be built")
             return 1
 
         logger.info("Built %d visualization receipts", len(viz_receipts))
+        run_profile = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "parquet_path": parquet_path,
+            "parquet_prefix": parquet_prefix,
+            "max_receipts": args.max_receipts,
+            "receipt_lookup_count": len(receipt_lookup),
+            "viz_receipts_count": len(viz_receipts),
+            "spark_application_id": spark.sparkContext.applicationId,
+            "spark_default_parallelism": (
+                spark.sparkContext.defaultParallelism
+            ),
+            "spark_conf": _collect_spark_conf_profile(spark),
+            "build_stats": build_stats,
+        }
 
         write_cache(
             s3_client,
             args.cache_bucket,
             viz_receipts,
             parquet_prefix,
+            run_profile=run_profile,
         )
         return 0
 

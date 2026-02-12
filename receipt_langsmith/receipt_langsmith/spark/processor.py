@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 COST_PER_1K_PROMPT_TOKENS = 0.0015  # GPT-4o-mini input
 COST_PER_1K_COMPLETION_TOKENS = 0.006  # GPT-4o-mini output
 
+DRIVER_RECEIPT_ROW_WARN_THRESHOLD = 50_000
+
 
 class LangSmithSparkProcessor(BaseSparkProcessor):
     """PySpark processor for large-scale LangSmith analytics.
@@ -531,9 +533,13 @@ class LangSmithSparkProcessor(BaseSparkProcessor):
             F.col("name").isin(["LangGraph", "ReceiptEvaluation"])
         ).select("outputs")
 
-        # Collect to driver for processing
-        rows = receipt_df.collect()
-        result = [row.asDict() for row in rows]
+        # Stream rows to avoid building an intermediate Spark Row list.
+        result = [row.asDict() for row in receipt_df.toLocalIterator()]
+        if len(result) > DRIVER_RECEIPT_ROW_WARN_THRESHOLD:
+            logger.warning(
+                "Collected %d receipt evaluation traces on driver; consider narrowing input window",
+                len(result),
+            )
 
         logger.info("Extracted %d receipt evaluation traces", len(result))
         return result
