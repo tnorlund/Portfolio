@@ -16,6 +16,7 @@ import {
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
   FinancialMathResponse,
+  WithinReceiptVerificationResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 import { API_CONFIG } from "./config";
@@ -436,6 +437,31 @@ const baseApi = {
 
     const response = await fetch(
       `${apiUrl}/label_evaluator/dedup?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchWithinReceiptVerification(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<WithinReceiptVerificationResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/within_receipt?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

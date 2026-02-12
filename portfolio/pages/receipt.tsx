@@ -17,6 +17,7 @@ import {
   DynamoStreamAnimation,
   FinancialMathOverlay,
   LabelEvaluatorVisualization,
+  WithinReceiptVerification,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -324,6 +325,10 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <FinancialMathOverlay />
+      </ClientOnly>
+
+      <ClientOnly>
+        <WithinReceiptVerification />
       </ClientOnly>
 
       <p>
