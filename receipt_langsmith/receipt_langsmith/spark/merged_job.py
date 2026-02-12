@@ -71,6 +71,16 @@ from receipt_langsmith.spark.utils import to_s3a
 configure_logging()
 logger = logging.getLogger(__name__)
 
+DRIVER_COLLECTION_WARN_THRESHOLD = 50_000
+
+
+def _safe_partition_count(df: Any) -> int | None:
+    """Return partition count when available (best-effort)."""
+    try:
+        return int(df.rdd.getNumPartitions())
+    except (AttributeError, Py4JError, Py4JJavaError):
+        return None
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -749,13 +759,19 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
 
     joined.persist(StorageLevel.DISK_ONLY)
 
-    total_receipts = joined.count()
+    counts_row = joined.agg(
+        F.count("*").alias("total_receipts"),
+        F.sum(
+            F.when(F.col("issues_found") > 0, F.lit(1)).otherwise(F.lit(0))
+        ).alias("receipts_with_issues"),
+    ).collect()[0]
+    total_receipts = int(counts_row["total_receipts"] or 0)
     if total_receipts == 0:
         logger.error("No receipt data found in data/%s/", args.execution_id)
         joined.unpersist()
         return
 
-    receipts_with_issues = joined.filter(F.col("issues_found") > 0).count()
+    receipts_with_issues = int(counts_row["receipts_with_issues"] or 0)
 
     logger.info("Writing %d viz-cache receipts...", total_receipts)
     write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)
@@ -822,9 +838,29 @@ def _load_evaluator_trace_rows(
             df = df.withColumn(column_name, F.lit(None))
 
     selected_df = df.select(*EVALUATOR_TRACE_COLUMNS)
+    partition_count = _safe_partition_count(selected_df)
+    if partition_count is None:
+        logger.info(
+            "Collecting evaluator spans to driver from %s (warn>%d rows)",
+            parquet_dir,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+        )
+    else:
+        logger.info(
+            "Collecting evaluator spans to driver from %s (partitions=%d, warn>%d rows)",
+            parquet_dir,
+            partition_count,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+        )
     rows = [
         row.asDict(recursive=True) for row in selected_df.toLocalIterator()
     ]
+    if len(rows) > DRIVER_COLLECTION_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d evaluator spans to driver from %s; consider narrowing input window",
+            len(rows),
+            parquet_dir,
+        )
     logger.info("Loaded %d evaluator spans from %s", len(rows), parquet_dir)
     return rows
 
@@ -870,9 +906,29 @@ def _load_unified_rows(
             df = df.withColumn(column_name, F.lit(None))
 
     selected_df = df.select(*wanted_cols)
+    partition_count = _safe_partition_count(selected_df)
+    if partition_count is None:
+        logger.info(
+            "Collecting unified evaluator rows to driver from %s (warn>%d rows)",
+            unified_path,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+        )
+    else:
+        logger.info(
+            "Collecting unified evaluator rows to driver from %s (partitions=%d, warn>%d rows)",
+            unified_path,
+            partition_count,
+            DRIVER_COLLECTION_WARN_THRESHOLD,
+        )
     rows = [
         row.asDict(recursive=True) for row in selected_df.toLocalIterator()
     ]
+    if len(rows) > DRIVER_COLLECTION_WARN_THRESHOLD:
+        logger.warning(
+            "Collected %d unified evaluator rows to driver from %s; consider narrowing execution scope",
+            len(rows),
+            unified_path,
+        )
     logger.info(
         "Loaded %d unified evaluator rows from %s",
         len(rows),

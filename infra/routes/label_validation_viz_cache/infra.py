@@ -608,15 +608,40 @@ def handler(event, context):
 
     logger.info("Found project_id: %s for %s", project_id, langchain_project)
 
-    # Trigger bulk export (last 7 days for more data)
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=7)
+    # Trigger bulk export.
+    # Event can override window; default remains a 7-day lookback.
+    days_back = event.get("days_back", 7)
+    end_time_value = event.get("end_time")
+    if end_time_value:
+        end_time = datetime.fromisoformat(end_time_value.replace("Z", "+00:00"))
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+    else:
+        end_time = datetime.now(timezone.utc)
+    end_time_iso = end_time.astimezone(timezone.utc).isoformat()
+    start_time_iso = event.get("start_time")
+    if not start_time_iso:
+        start_time_iso = (end_time - timedelta(days=days_back)).isoformat()
+
+    export_fields = event.get(
+        "export_fields",
+        [
+            "id",
+            "trace_id",
+            "name",
+            "outputs",
+            "extra",
+            "start_time",
+            "end_time",
+        ],
+    )
 
     export_body = {{
         "bulk_export_destination_id": destination_id,
         "session_id": project_id,
-        "start_time": start_time.isoformat(),
-        "end_time": end_time.isoformat(),
+        "start_time": start_time_iso,
+        "end_time": end_time_iso,
+        "export_fields": export_fields,
     }}
 
     post_headers = dict(headers)
@@ -1055,12 +1080,20 @@ def handler(event, context):
                                         "EntryPointArguments.$": (
                                             f"States.Array("
                                             f"'--parquet-bucket', '{args[6]}', "
+                                            f"'--parquet-prefix', "
+                                            f"States.Format('traces/export_id={{}}/', "
+                                            f"$.export_result.export_id), "
                                             f"'--cache-bucket', '{args[7]}', "
                                             f"'--receipts-json', "
                                             f"$.dynamo_result.receipts_s3_path)"
                                         ),
                                         "SparkSubmitParameters": (
-                                            "--conf spark.sql.legacy.parquet.nanosAsLong=true "
+                                            f"--conf spark.sql.legacy.parquet.nanosAsLong=true "
+                                            "--conf spark.sql.adaptive.enabled=true "
+                                            "--conf spark.sql.files.openCostInBytes=134217728 "
+                                            "--conf spark.sql.files.maxPartitionBytes=268435456 "
+                                            "--conf spark.eventLog.enabled=true "
+                                            f"--conf spark.eventLog.dir=s3://{args[5]}/spark-event-logs/ "
                                             "--conf spark.executor.cores=2 "
                                             "--conf spark.executor.memory=4g "
                                             "--conf spark.executor.instances=2 "

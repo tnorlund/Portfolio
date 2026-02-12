@@ -66,115 +66,19 @@ def load_receipts_from_s3(
     return lookup
 
 
-def find_latest_export_prefix(  # pylint: disable=too-many-locals
-    s3_client: Any, bucket: str, preferred_export_id: str | None = None
-) -> str | None:
-    """Find the latest LangSmith export prefix in the bucket.
-
-    Searches both traces/ and traces// paths since LangSmith exports
-    may use either path structure depending on API version.
-    """
-    # Search both standard and double-slash paths
-    # LangSmith API sometimes uses traces// instead of traces/
-    search_prefixes = ["traces/", "traces//"]
-    all_exports: dict[str, str] = {}  # export_id -> actual_prefix
-
-    for search_prefix in search_prefixes:
-        logger.info("Finding exports in s3://%s/%s", bucket, search_prefix)
-        try:
-            response = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=search_prefix, Delimiter="/"
-            )
-            prefixes = response.get("CommonPrefixes", [])
-            for p in prefixes:
-                prefix = p["Prefix"]
-                if "export_id=" in prefix:
-                    export_id = prefix.split("export_id=")[1].rstrip("/")
-                    if export_id and export_id not in all_exports:
-                        all_exports[export_id] = prefix
-                        logger.info(
-                            "Found export: %s at %s", export_id, prefix
-                        )
-        except (ClientError, BotoCoreError):
-            logger.warning("Failed to search %s", search_prefix)
-
-    if not all_exports:
-        logger.warning("No export folders found in traces/ or traces//")
-        return None
-
-    export_ids = list(all_exports.keys())
-    logger.info("Found %d exports: %s", len(export_ids), export_ids[:5])
-
-    # Check preferred export first
-    if preferred_export_id and preferred_export_id in all_exports:
-        check_prefix = all_exports[preferred_export_id]
-        resp = s3_client.list_objects_v2(
-            Bucket=bucket, Prefix=check_prefix, MaxKeys=1
-        )
-        if resp.get("Contents"):
-            logger.info(
-                "Using preferred export: %s at %s",
-                preferred_export_id,
-                check_prefix,
-            )
-            return check_prefix
-
-    # Find most recent export
-    latest_export = None
-    latest_time = None
-    latest_prefix = None
-    for export_id, prefix in all_exports.items():
-        resp = s3_client.list_objects_v2(
-            Bucket=bucket, Prefix=prefix, MaxKeys=1
-        )
-        if resp.get("Contents"):
-            mod_time = resp["Contents"][0].get("LastModified")
-            if latest_time is None or mod_time > latest_time:
-                latest_time = mod_time
-                latest_export = export_id
-                latest_prefix = prefix
-
-    if latest_export and latest_prefix:
-        logger.info(
-            "Found latest export: %s (modified: %s)",
-            latest_prefix,
-            latest_time,
-        )
-        return latest_prefix
-
-    logger.warning("No exports with data found")
-    return None
-
-
-def list_parquet_files(s3_client: Any, bucket: str, prefix: str) -> list[str]:
-    """List all parquet files in an S3 prefix."""
-    parquet_files = []
-    paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".parquet"):
-                parquet_files.append(f"s3://{bucket}/{key}")
-                if len(parquet_files) <= 3:
-                    logger.info("  File: s3://%s/%s", bucket, key)
-
-    return parquet_files
-
-
 # --- Spark Processing ---
 
 
-def read_traces(spark: SparkSession, parquet_files: list[str]) -> Any:
-    """Read traces from Parquet files.
+def read_traces(spark: SparkSession, parquet_path: str) -> Any:
+    """Read traces from a parquet path.
 
     Returns DataFrame with columns needed for label validation analysis.
     Handles flexible schema - adds missing columns with nulls.
     """
-    logger.info("Reading %d parquet files...", len(parquet_files))
+    logger.info("Reading traces from %s", parquet_path)
 
     # Read all columns first to check what's available
-    df = spark.read.parquet(*parquet_files)
+    df = spark.read.parquet(parquet_path)
     available_columns = set(df.columns)
 
     logger.info("Available columns in parquet: %s", sorted(available_columns))
@@ -769,19 +673,16 @@ def write_cache(  # pylint: disable=too-many-locals
 
 
 def _resolve_parquet_prefix(
-    s3_client: Any,
-    bucket: str,
     parquet_prefix: str,
 ) -> str | None:
-    if parquet_prefix == "traces/" or not parquet_prefix.startswith(
-        "traces/export_id="
-    ):
-        detected = find_latest_export_prefix(s3_client, bucket)
-        if detected:
-            return detected
-        logger.error("Could not find any export with data")
+    normalized = parquet_prefix.strip().strip("/") + "/"
+    if "export_id=" not in normalized:
+        logger.error(
+            "Expected --parquet-prefix to include export_id=..., got: %s",
+            parquet_prefix,
+        )
         return None
-    return parquet_prefix
+    return normalized
 
 
 
@@ -828,24 +729,24 @@ def run_label_validation_cache(args: Any) -> int:
 
     s3_client = boto3.client("s3")
 
-    parquet_prefix = _resolve_parquet_prefix(
-        s3_client,
-        args.parquet_bucket,
-        args.parquet_prefix,
-    )
+    parquet_prefix = _resolve_parquet_prefix(args.parquet_prefix)
     if not parquet_prefix:
         return 1
 
     logger.info("Using parquet prefix: %s", parquet_prefix)
-
-    parquet_files = list_parquet_files(
-        s3_client,
-        args.parquet_bucket,
-        parquet_prefix,
-    )
-    if not parquet_files:
-        logger.error("No parquet files found")
-        return 1
+    parquet_path = f"s3://{args.parquet_bucket}/{parquet_prefix}"
+    try:
+        s3_client.head_object(
+            Bucket=args.parquet_bucket,
+            Key=f"{parquet_prefix}_SUCCESS",
+        )
+    except (ClientError, BotoCoreError):
+        logger.warning(
+            "Could not verify _SUCCESS marker under %s; Spark will attempt direct read",
+            parquet_path,
+        )
+    else:
+        logger.info("Verified export marker at %s_SUCCESS", parquet_path)
 
     receipt_lookup = load_receipts_from_s3(s3_client, args.receipts_json)
 
@@ -855,7 +756,7 @@ def run_label_validation_cache(args: Any) -> int:
     ).getOrCreate()
 
     def job() -> int:
-        df = read_traces(spark, parquet_files)
+        df = read_traces(spark, parquet_path)
         viz_receipts = _build_viz_receipts(
             df,
             receipt_lookup,
