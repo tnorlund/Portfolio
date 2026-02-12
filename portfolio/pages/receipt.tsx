@@ -17,7 +17,6 @@ import {
   DynamoStreamAnimation,
   EvidenceVisualization,
   LabelEvaluatorVisualization,
-  WithinReceiptVerification,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -315,10 +314,6 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <LabelEvaluatorVisualization />
-      </ClientOnly>
-
-      <ClientOnly>
-        <WithinReceiptVerification />
       </ClientOnly>
 
       <ClientOnly>

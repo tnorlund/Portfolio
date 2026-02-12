@@ -87,7 +87,3 @@ export const EvidenceVisualization = dynamic(
   () => import("./EvidenceVisualization"),
   { ssr: false }
 );
-export const WithinReceiptVerification = dynamic(
-  () => import("./WithinReceiptVerification"),
-  { ssr: false }
-);

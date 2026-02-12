@@ -37,7 +37,6 @@ VIZ_TYPE_PREFIXES = {
     "patterns": "patterns/",
     "evidence": "evidence/",
     "dedup": "dedup/",
-    "within_receipt": "within-receipt/",
 }
 
 if not S3_CACHE_BUCKET:

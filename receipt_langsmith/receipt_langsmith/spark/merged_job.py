@@ -864,10 +864,6 @@ def _load_unified_rows(
         "merchant_name",
         "trace_id",
         "review_all_decisions",
-        "metadata_all_decisions",
-        "financial_all_decisions",
-        "metadata_duration_seconds",
-        "financial_duration_seconds",
     )
     for column_name in wanted_cols:
         if column_name not in df.columns:
@@ -881,65 +877,6 @@ def _load_unified_rows(
         "Loaded %d unified evaluator rows from %s",
         len(rows),
         unified_path,
-    )
-    return rows
-
-
-def _load_data_rows(
-    spark: SparkSession,
-    batch_bucket: str | None,
-    execution_id: str,
-) -> list[dict[str, Any]]:
-    """Load data rows (place, words, labels) for one execution.
-
-    These rows contain ``place`` (Google Places data) and ``words``
-    (with bounding boxes) needed by the within-receipt verification
-    visualization helper.
-    """
-    if not batch_bucket:
-        logger.info(
-            "No batch bucket provided for evaluator cache; "
-            "skipping data row load",
-        )
-        return []
-
-    data_path = f"s3://{batch_bucket}/data/{execution_id}/"
-    try:
-        df = read_json_df(spark, data_path)
-    except AnalysisException:
-        logger.warning(
-            "Could not read data rows from %s", data_path
-        )
-        return []
-
-    wanted_cols = (
-        "image_id",
-        "receipt_id",
-        "merchant_name",
-        "place",
-        "words",
-        "labels",
-        "cdn_s3_key",
-        "cdn_webp_s3_key",
-        "cdn_avif_s3_key",
-        "cdn_medium_s3_key",
-        "cdn_medium_webp_s3_key",
-        "cdn_medium_avif_s3_key",
-        "width",
-        "height",
-    )
-    for column_name in wanted_cols:
-        if column_name not in df.columns:
-            df = df.withColumn(column_name, F.lit(None))
-
-    selected_df = df.select(*wanted_cols)
-    rows = [
-        row.asDict(recursive=True) for row in selected_df.toLocalIterator()
-    ]
-    logger.info(
-        "Loaded %d data rows from %s",
-        len(rows),
-        data_path,
     )
     return rows
 
@@ -1042,9 +979,6 @@ def run_evaluator_viz_cache(
     from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
         build_patterns_cache,
     )
-    from receipt_langsmith.spark.evaluator_within_receipt_viz_cache import (
-        build_within_receipt_cache,
-    )
 
     # pylint: enable=import-outside-toplevel
 
@@ -1052,7 +986,6 @@ def run_evaluator_viz_cache(
     timestamp = datetime.now(timezone.utc).isoformat()
     trace_rows = _load_evaluator_trace_rows(spark, parquet_dir)
     unified_rows = _load_unified_rows(spark, batch_bucket, execution_id)
-    data_rows = _load_data_rows(spark, batch_bucket, execution_id)
 
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
@@ -1061,7 +994,6 @@ def run_evaluator_viz_cache(
         ("patterns", build_patterns_cache, True),
         ("evidence", build_evidence_cache, False),
         ("dedup", build_dedup_cache, False),
-        ("within-receipt", build_within_receipt_cache, False),
     ]
 
     failures: list[str] = []
@@ -1074,13 +1006,6 @@ def run_evaluator_viz_cache(
                     parquet_dir=parquet_dir,
                     rows=trace_rows,
                     unified_rows=unified_rows,
-                )
-            elif prefix == "within-receipt":
-                results = helper_fn(
-                    parquet_dir=parquet_dir,
-                    rows=trace_rows,
-                    unified_rows=unified_rows,
-                    data_rows=data_rows,
                 )
             else:
                 results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
