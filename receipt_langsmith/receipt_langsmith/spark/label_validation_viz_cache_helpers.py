@@ -116,9 +116,7 @@ def read_traces(spark: SparkSession, parquet_path: str) -> Any:
     return df
 
 
-def extract_receipt_traces(
-    df: Any, *, max_receipts: int | None = None
-) -> list[dict[str, Any]]:
+def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
     """Extract receipt_processing root traces with their validation data.
 
     Returns list of dicts with:
@@ -164,8 +162,6 @@ def extract_receipt_traces(
                 f"limit: {len(root_data)} > {LABEL_DRIVER_ROOT_HARD_LIMIT}. "
                 "Narrow export scope."
             )
-        if max_receipts and max_receipts > 0 and len(root_data) >= max_receipts:
-            break
 
     if len(root_data) > LABEL_DRIVER_ROW_WARN_THRESHOLD:
         logger.warning(
@@ -769,7 +765,7 @@ def _build_viz_receipts(
         if stats_out is not None:
             stats_out.update(build_stats)
 
-    root_traces = extract_receipt_traces(df, max_receipts=max_receipts)
+    root_traces = extract_receipt_traces(df)
     build_stats["root_traces_collected"] = len(root_traces)
     if not root_traces:
         logger.error("No receipt_processing traces found")
