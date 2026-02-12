@@ -163,10 +163,16 @@ def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
     total_count = len(cached_keys)
 
     # Load all merchants and keep only those with constellation data
+    # and a sample receipt (new-format cache files include sample_receipt;
+    # legacy dash-format files do not).
     rich_merchants: list[dict[str, Any]] = []
     for key in sorted(cached_keys):
         merchant = _fetch_receipt(key)
-        if merchant and merchant.get("constellations"):
+        if (
+            merchant
+            and merchant.get("constellations")
+            and merchant.get("sample_receipt")
+        ):
             rich_merchants.append(merchant)
 
     if not rich_merchants:
