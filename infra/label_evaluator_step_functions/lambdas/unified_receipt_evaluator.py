@@ -1168,7 +1168,6 @@ async def unified_receipt_evaluator(
                         )
                         from receipt_agent.prompts.label_evaluator import (
                             build_receipt_context_prompt,
-                            parse_batched_llm_response,
                         )
                         from receipt_agent.utils.chroma_helpers import (
                             compute_label_consensus,
@@ -1290,50 +1289,22 @@ async def unified_receipt_evaluator(
                                 line_item_patterns=line_item_patterns,
                             )
 
-                            # Make async LLM call (child_trace sets tracing_context
-                            # so LLM calls auto-nest under phase3_llm_review span)
+                            # Make async LLM call with structured output
                             from receipt_agent.prompts.structured_outputs import (
                                 BatchedReviewResponse,
                             )
 
-                            use_structured = hasattr(
-                                llm_invoker, "with_structured_output"
+                            structured_invoker = (
+                                llm_invoker.with_structured_output(
+                                    BatchedReviewResponse
+                                )
                             )
-                            chunk_reviews = None
-
-                            if use_structured:
-                                try:
-                                    structured_invoker = (
-                                        llm_invoker.with_structured_output(
-                                            BatchedReviewResponse
-                                        )
-                                    )
-                                    response = await structured_invoker.ainvoke(
-                                        [HumanMessage(content=prompt)],
-                                    )
-                                    chunk_reviews = response.to_ordered_list(
-                                        len(issues_with_context)
-                                    )
-                                except Exception as struct_err:
-                                    logger.warning(
-                                        "Structured output failed, falling back to text: %s",
-                                        struct_err,
-                                    )
-
-                            if chunk_reviews is None:
-                                response = await llm_invoker.ainvoke(
-                                    [HumanMessage(content=prompt)],
-                                )
-                                response_text = (
-                                    response.content
-                                    if hasattr(response, "content")
-                                    else str(response)
-                                )
-                                chunk_reviews = parse_batched_llm_response(
-                                    response_text.strip(),
-                                    expected_count=len(issues_with_context),
-                                    raise_on_parse_error=False,
-                                )
+                            response = await structured_invoker.ainvoke(
+                                [HumanMessage(content=prompt)],
+                            )
+                            chunk_reviews = response.to_ordered_list(
+                                len(issues_with_context)
+                            )
 
                             # Format results with per-issue evidence
                             llm_review_result = []

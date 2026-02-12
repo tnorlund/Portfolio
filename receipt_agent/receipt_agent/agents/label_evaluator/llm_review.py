@@ -26,7 +26,6 @@ from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,
     build_review_prompt,
-    parse_batched_llm_response,
     parse_llm_response,
 )
 from receipt_agent.utils import LLMRateLimitError
@@ -694,39 +693,17 @@ def review_issues_batch(
         line_item_patterns=line_item_patterns,
     )
 
-    # Call LLM — try structured output first, fall back to text parsing
+    # Call LLM with structured output
     from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 
-    use_structured = hasattr(llm, "with_structured_output")
     caller = rate_limiter if rate_limiter else llm
 
     try:
-        if use_structured:
-            try:
-                structured_llm = caller.with_structured_output(
-                    BatchedReviewResponse
-                ) if hasattr(caller, "with_structured_output") else llm.with_structured_output(
-                    BatchedReviewResponse
-                )
-                response = structured_llm.invoke(
-                    [HumanMessage(content=prompt)]
-                )
-                return response.to_ordered_list(len(normalized_issues))
-            except LLMRateLimitError:
-                raise  # Propagate for Step Function retry
-            except Exception as struct_err:
-                logger.warning(
-                    "Structured output failed, falling back to text: %s",
-                    struct_err,
-                )
-
-        # Fallback: text parsing
-        response = caller.invoke([HumanMessage(content=prompt)])
-        response_text = response.content.strip()
-        return parse_batched_llm_response(
-            response_text, len(normalized_issues)
+        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+        response = structured_llm.invoke(
+            [HumanMessage(content=prompt)]
         )
-
+        return response.to_ordered_list(len(normalized_issues))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry
     except Exception as e:
@@ -802,39 +779,15 @@ def review_issues_with_receipt_context(
         line_item_patterns=line_item_patterns,
     )
 
-    # Call LLM — try structured output first, fall back to text parsing
+    # Call LLM with structured output
     from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 
-    use_structured = hasattr(llm, "with_structured_output")
-    caller = rate_limiter if rate_limiter else llm
-
     try:
-        if use_structured:
-            try:
-                structured_llm = caller.with_structured_output(
-                    BatchedReviewResponse
-                ) if hasattr(caller, "with_structured_output") else llm.with_structured_output(
-                    BatchedReviewResponse
-                )
-                response = structured_llm.invoke(
-                    [HumanMessage(content=prompt)]
-                )
-                return response.to_ordered_list(len(issues_with_context))
-            except LLMRateLimitError:
-                raise  # Propagate for Step Function retry
-            except Exception as struct_err:
-                logger.warning(
-                    "Structured output failed, falling back to text: %s",
-                    struct_err,
-                )
-
-        # Fallback: text parsing
-        response = caller.invoke([HumanMessage(content=prompt)])
-        response_text = response.content.strip()
-        return parse_batched_llm_response(
-            response_text, len(issues_with_context)
+        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+        response = structured_llm.invoke(
+            [HumanMessage(content=prompt)]
         )
-
+        return response.to_ordered_list(len(issues_with_context))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry
     except Exception as e:
