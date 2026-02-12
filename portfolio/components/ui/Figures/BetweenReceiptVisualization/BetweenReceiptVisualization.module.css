@@ -1,9 +1,11 @@
-/* Container — no decorative border or background */
+/* Container */
 .container {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1024px;
   margin: 2rem auto;
-  padding: 1.5rem 0;
+  padding: 2rem;
+  background: var(--background-color);
+  border-radius: 12px;
 }
 
 /* Main Layout - Three Columns */
@@ -30,8 +32,8 @@
   border: 1px solid #ccc;
   background: var(--background-color);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: top 0.4s ease, left 0.4s ease, opacity 0.4s ease, transform 0.4s ease;
   overflow: hidden;
-  will-change: transform, opacity;
 }
 
 .queuedReceipt.flyingOut {
@@ -52,8 +54,8 @@
 .flyingReceiptImage {
   display: block;
   max-height: 500px;
-  width: auto;
-  height: auto;
+  max-width: 100%;
+  object-fit: contain;
   border: 1px solid #ccc;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -111,8 +113,8 @@
   z-index: 10;
 }
 
-/* Active Receipt - Center Column */
-.activeReceipt {
+/* Receipt Viewer */
+.receiptViewer {
   width: 100%;
   height: 100%;
 }
@@ -137,103 +139,151 @@
 .receiptImage {
   display: block;
   max-height: 500px;
+  max-width: 100%;
   width: auto;
   height: auto;
-}
-
-.receiptLoading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 400px;
-  color: var(--text-color);
-  opacity: 0.5;
+  opacity: 0.3;
 }
 
 .svgOverlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   pointer-events: none;
+  display: block;
 }
 
-/* Pattern Findings - Right Column */
-.patternFindings {
-  width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  flex-shrink: 0;
-  padding: 1rem 0;
-}
-
-.merchantName {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-color);
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.correctionsList {
+/* Evidence Panel - Right Column */
+.evidencePanel {
+  width: 280px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.25rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--text-color);
+  padding: 1rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+  max-height: 500px;
 }
 
-.correctionItem {
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
+/* Evidence Card */
+.evidenceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--text-color);
+  opacity: 0.15;
+  animation: cardReveal 0.3s ease-out forwards;
 }
 
-.correctionItem.visible {
-  opacity: 1;
-  transform: translateY(0);
+@keyframes cardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.correctionWord {
-  font-size: 0.8rem;
-  color: var(--text-color);
+.evidenceCard:last-child {
+  border-bottom: none;
+}
+
+/* Card header: word text + suggested label */
+.cardHeader {
   display: flex;
   align-items: baseline;
-  gap: 0.3rem;
+  gap: 0.5rem;
+}
+
+.cardWord {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  color: var(--text-color);
+}
+
+.cardArrow {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.cardLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
 }
 
-.correctionArrow {
-  font-size: 0.7rem;
-  opacity: 0.35;
+/* Evidence dots row */
+.dotRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  min-height: 12px;
+  padding: 2px 0;
 }
 
-.correctionReason {
+/* Decision + confidence line */
+.decisionLine {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.decisionText {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+.confidenceText {
   font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.6;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+/* Label change line (before -> after) */
+.labelChange {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+}
+
+.labelBefore {
   color: var(--text-color);
   opacity: 0.5;
-  line-height: 1.3;
-  margin-top: 2px;
+  text-decoration: line-through;
 }
 
-.correctionStats {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--text-color);
+.labelAfter {
+  font-weight: 600;
+}
+
+/* Reasoning text */
+.reasoningText {
   font-size: 0.7rem;
   color: var(--text-color);
-  opacity: 0.4;
-  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* Loading / Error states */
 .loading,
-.error {
+.error,
+.receiptLoading {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,7 +323,7 @@
     align-items: center;
   }
 
-  .activeReceipt {
+  .receiptViewer {
     height: 100%;
     display: flex;
     align-items: center;
@@ -289,10 +339,16 @@
 
   .receiptImageInner {
     max-height: 380px;
+    position: relative;
   }
 
   .receiptImage {
     max-height: 380px;
+  }
+
+  .svgOverlay {
+    position: absolute;
+    inset: 0;
   }
 
   /* Hide flying receipt on mobile, use crossfade instead */
@@ -314,36 +370,10 @@
     height: 100%;
   }
 
-  .patternFindings {
+  .evidencePanel {
     width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.75rem;
+    max-height: 250px;
     padding: 0;
-  }
-
-  .merchantName {
-    width: 100%;
-  }
-
-  .correctionsList {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    border-top: none;
-    margin-top: 0;
-    padding-top: 0;
-    border-left: 1px solid var(--text-color);
-    padding-left: 0.75rem;
-  }
-
-  .correctionStats {
-    border-top: none;
-    border-left: 1px solid var(--text-color);
-    padding-left: 0.75rem;
-    margin-top: 0;
-    padding-top: 0;
   }
 }
 
@@ -361,7 +391,19 @@
     max-height: 300px;
   }
 
-  .patternFindings {
-    gap: 0.5rem;
+  .cardWord {
+    font-size: 0.8rem;
+  }
+
+  .cardLabel {
+    font-size: 0.7rem;
+  }
+
+  .decisionText {
+    font-size: 0.75rem;
+  }
+
+  .reasoningText {
+    font-size: 0.65rem;
   }
 }

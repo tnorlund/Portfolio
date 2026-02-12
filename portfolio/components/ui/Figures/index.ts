@@ -83,10 +83,6 @@ export const LabelValidationVisualization = dynamic(
   () => import("./LabelValidationVisualization"),
   { ssr: false }
 );
-export const PatternDiscovery = dynamic(
-  () => import("./PatternDiscovery"),
-  { ssr: false }
-);
 export const BetweenReceiptVisualization = dynamic(
   () => import("./BetweenReceiptVisualization"),
   { ssr: false }

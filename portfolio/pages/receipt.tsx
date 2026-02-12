@@ -12,10 +12,11 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
+  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
-  BetweenReceiptVisualization,
+  LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -311,20 +312,18 @@ M1LK 2%           1    $4.4g`}</code>
         the patterns still hold.
       </p>
 
-      <p>
-        Receipts from the same store follow the same structure. Same labels
-        in the same spots, receipt after receipt. When a word doesn&apos;t have
-        a label, the pattern from other receipts can fill it in.
-      </p>
+      <ClientOnly>
+        <LabelEvaluatorVisualization />
+      </ClientOnly>
 
       <ClientOnly>
         <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>
-        This works, kind of. AI isn&apos;t consistent. It would call the price of
-        milk the subtotal. It confused &ldquo;DAIRY&rdquo; with &ldquo;MILK.&rdquo; I can&apos;t trust
-        something that doesn&apos;t know what milk is. So I corrected the results
+        This works, kind of. AI isn't consistent. It would call the price of
+        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
+        something that doesn't know what milk is. So I corrected the results
         by asking AI to verify again.
       </p>
 

@@ -1,114 +1,79 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { animated, useSpring, to } from "@react-spring/web";
+import { animated, to, useSpring } from "@react-spring/web";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
-import Image from "next/image";
 import { api } from "../../../../services/api";
-import { DiffReceipt, DiffWord } from "../../../../types/api";
+import {
+  LabelEvaluatorReceipt,
+  LabelEvaluatorWord,
+  ReviewDecision,
+  ReviewEvidence,
+} from "../../../../types/api";
 import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
 import styles from "./BetweenReceiptVisualization.module.css";
 
-// Label colors for word bounding boxes
+// Label colors for bounding boxes (same as LayoutLMBatchVisualization)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
+  AMOUNT: "var(--color-green)",
+  ADDRESS: "var(--color-red)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-orange)",
   LINE_TOTAL: "var(--color-green)",
   SUBTOTAL: "var(--color-green)",
   TAX: "var(--color-green)",
   GRAND_TOTAL: "var(--color-green)",
-  PAYMENT_METHOD: "var(--color-green)",
-  ADDRESS_LINE: "var(--color-red)",
-  PHONE_NUMBER: "var(--color-red)",
-  WEBSITE: "var(--color-purple)",
-  PRODUCT_NAME: "var(--color-orange)",
-  LOYALTY_ID: "var(--color-purple)",
+  PRODUCT_NAME: "var(--color-yellow)",
   O: "var(--text-color)",
 };
 
-// Human-readable label names
-const LABEL_DISPLAY: Record<string, string> = {
-  MERCHANT_NAME: "MERCHANT",
-  ADDRESS_LINE: "ADDRESS",
-  PHONE_NUMBER: "PHONE",
-  PRODUCT_NAME: "PRODUCT",
-  LOYALTY_ID: "LOYALTY",
-  LINE_TOTAL: "PRICE",
-  GRAND_TOTAL: "TOTAL",
-  PAYMENT_METHOD: "PAYMENT",
+// Decision colors
+const DECISION_COLORS: Record<string, string> = {
+  VALID: "var(--color-green)",
+  INVALID: "var(--color-red)",
+  NEEDS_REVIEW: "var(--color-yellow)",
 };
 
-// Build CDN image keys — legacy flat format
-function buildCdnKeys(imageId: string, receiptId: number) {
-  const paddedId = String(receiptId).padStart(5, "0");
-  const base = `assets/${imageId}_RECEIPT_${paddedId}`;
-  return {
-    cdn_s3_key: `${base}.jpg`,
-    cdn_webp_s3_key: `${base}.webp`,
-    cdn_avif_s3_key: `${base}.avif`,
-  };
-}
-
-// Build CDN image keys — newer nested format (assets/{id}/{n}.ext)
-function buildNestedCdnKeys(imageId: string, receiptId: number) {
-  const base = `assets/${imageId}/${receiptId}`;
-  return {
-    cdn_s3_key: `${base}.jpg`,
-    cdn_webp_s3_key: `${base}.webp`,
-    cdn_avif_s3_key: `${base}.avif`,
-  };
-}
-
-// Animation timing
+// Animation timing (ms)
 const SCAN_DURATION = 3000;
 const HOLD_DURATION = 1500;
 const TRANSITION_DURATION = 600;
-const TOTAL_DURATION = SCAN_DURATION + HOLD_DURATION + TRANSITION_DURATION;
+
+// Layout constants
+const QUEUE_WIDTH = 120;
+const QUEUE_ITEM_WIDTH = 100;
+const QUEUE_ITEM_LEFT_INSET = 10;
+const CENTER_COLUMN_WIDTH = 350;
+const CENTER_COLUMN_HEIGHT = 500;
+const QUEUE_HEIGHT = 400;
+const COLUMN_GAP = 24;
 
 // Generate stable random positions for queue items
-const getQueuePosition = (receiptKey: string) => {
-  const hash = receiptKey.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+const getQueuePosition = (receiptId: string) => {
+  const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const random1 = Math.sin(hash * 9301 + 49297) % 1;
   const random2 = Math.sin(hash * 7919 + 12345) % 1;
-  const rotation = Math.abs(random1) * 24 - 12;
-  const leftOffset = Math.abs(random2) * 10 - 5;
+  const rotation = (Math.abs(random1) * 24 - 12);
+  const leftOffset = (Math.abs(random2) * 10 - 5);
   return { rotation, leftOffset };
 };
 
-// Queue management
-const QUEUE_REFETCH_THRESHOLD = 7;
-const MAX_EMPTY_FETCHES = 3;
-
-// Filter receipts to only those with geometric/pattern changes
-function hasPatternChanges(receipt: DiffReceipt): boolean {
-  return receipt.words.some(
-    (w) => w.changed && w.change_source === "flag_geometric_anomalies"
-  );
+// Revealed card for tracking which review decisions are visible
+interface RevealedCard {
+  key: string;
+  decision: ReviewDecision;
+  word: LabelEvaluatorWord;
 }
 
-function getPatternCorrections(receipt: DiffReceipt): DiffWord[] {
-  return receipt.words.filter(
-    (w) => w.changed && w.change_source === "flag_geometric_anomalies"
-  );
-}
-
-// Track image_ids that need the nested CDN key format
-const nestedKeyImageIds = new Set<string>();
-
-function getCdnKeys(imageId: string, receiptId: number) {
-  if (nestedKeyImageIds.has(imageId)) {
-    return buildNestedCdnKeys(imageId, receiptId);
-  }
-  return buildCdnKeys(imageId, receiptId);
-}
+// ─── ReceiptQueue ────────────────────────────────────────────────────
 
 interface ReceiptQueueProps {
-  receipts: DiffReceipt[];
+  receipts: LabelEvaluatorReceipt[];
   currentIndex: number;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isTransitioning: boolean;
-  isPoolExhausted: boolean;
-  shouldAnimate: boolean;
-  imageDims: Map<string, { width: number; height: number }>;
 }
 
 const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
@@ -116,73 +81,57 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   currentIndex,
   formatSupport,
   isTransitioning,
-  isPoolExhausted,
-  shouldAnimate,
-  imageDims,
 }) => {
   const maxVisible = 6;
-  const [imagesLoaded, setImagesLoaded] = useState<Set<number>>(new Set());
-  const STACK_GAP = 20;
-
-  const handleImageLoad = useCallback((idx: number) => {
-    setImagesLoaded((prev) => new Set(prev).add(idx));
-  }, []);
 
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-    const result: DiffReceipt[] = [];
+    const result: LabelEvaluatorReceipt[] = [];
+    const total = receipts.length;
     for (let i = 1; i <= maxVisible; i++) {
-      const idx = currentIndex + i;
-      if (isPoolExhausted) {
-        result.push(receipts[idx % receipts.length]);
-      } else if (idx < receipts.length) {
-        result.push(receipts[idx]);
-      }
+      result.push(receipts[(currentIndex + i) % total]);
     }
     return result;
-  }, [receipts, currentIndex, isPoolExhausted]);
+  }, [receipts, currentIndex]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
     return <div className={styles.receiptQueue} />;
   }
 
+  const STACK_GAP = 20;
+
   return (
     <div className={styles.receiptQueue}>
       {visibleReceipts.map((receipt, idx) => {
-        const rKey = `${receipt.image_id}_${receipt.receipt_id}`;
-        const cdnKeys = getCdnKeys(receipt.image_id, receipt.receipt_id);
-        const imageUrl = getBestImageUrl(cdnKeys, formatSupport);
-        const dims = imageDims.get(rKey);
-        const { rotation, leftOffset } = getQueuePosition(rKey);
+        const imageUrl = getBestImageUrl(receipt, formatSupport, "thumbnail");
+        const { width, height } = receipt;
+        const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
+        const { rotation, leftOffset } = getQueuePosition(receiptId);
         const adjustedIdx = isTransitioning ? idx - 1 : idx;
         const stackOffset = Math.max(0, adjustedIdx) * STACK_GAP;
         const zIndex = maxVisible - idx;
         const isFlying = isTransitioning && idx === 0;
-        const isImageLoaded = imagesLoaded.has(idx);
-        const showItem = shouldAnimate && isImageLoaded;
+        const queueKey = `${receiptId}-queue-${idx}`;
 
         return (
           <div
-            key={`${rKey}-queue-${idx}`}
+            key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${10 + leftOffset}px`,
-              transform: `rotate(${rotation}deg) translateY(${showItem ? 0 : -50}px)`,
-              opacity: showItem ? 1 : 0,
+              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
+              transform: `rotate(${rotation}deg)`,
               zIndex,
-              transition: `transform 0.6s ease-out ${shouldAnimate ? idx * 50 : 0}ms, opacity 0.6s ease-out ${shouldAnimate ? idx * 50 : 0}ms, top 0.4s ease, left 0.4s ease`,
             }}
           >
             {imageUrl && (
-              <Image
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
                 src={imageUrl}
                 alt={`Queued receipt ${idx + 1}`}
-                width={dims?.width ?? 200}
-                height={dims?.height ?? 300}
+                width={width}
+                height={height}
                 style={{ width: "100%", height: "auto", display: "block" }}
-                sizes="100px"
-                onLoad={() => handleImageLoad(idx)}
               />
             )}
           </div>
@@ -192,54 +141,55 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   );
 };
 
-// Flying receipt animation
+// ─── FlyingReceipt ───────────────────────────────────────────────────
+
 interface FlyingReceiptProps {
-  receipt: DiffReceipt | null;
+  receipt: LabelEvaluatorReceipt | null;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isFlying: boolean;
-  imageDims: Map<string, { width: number; height: number }>;
 }
 
 const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receipt,
   formatSupport,
   isFlying,
-  imageDims,
 }) => {
-  const rKey = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : "";
-  const dims = imageDims.get(rKey);
-  const width = dims?.width ?? 200;
-  const height = dims?.height ?? 300;
-  const { rotation, leftOffset } = getQueuePosition(rKey);
+  const width = Math.max(receipt?.width ?? 100, 1);
+  const height = Math.max(receipt?.height ?? 150, 1);
+  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : "";
+  const { rotation, leftOffset } = getQueuePosition(receiptId);
 
   const imageUrl = useMemo(() => {
     if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(getCdnKeys(receipt.image_id, receipt.receipt_id), formatSupport);
+    return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
   const aspectRatio = width / height;
-  const displayHeight = Math.min(500, height);
-  const displayWidth = displayHeight * aspectRatio;
-
-  const queueItemWidth = 100;
-  const queueWidth = 120;
-  const gap = 24;
-  const centerColumnWidth = 350;
-  const centerColumnHeight = 500;
+  const maxHeight = 500;
+  const maxWidth = 350;
+  let displayHeight = Math.min(maxHeight, height);
+  let displayWidth = displayHeight * aspectRatio;
+  if (displayWidth > maxWidth) {
+    displayWidth = maxWidth;
+    displayHeight = displayWidth / aspectRatio;
+  }
 
   const distanceToQueueItemCenter =
-    centerColumnWidth / 2 + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
+    CENTER_COLUMN_WIDTH / 2 +
+    COLUMN_GAP +
+    (QUEUE_WIDTH - (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH / 2));
   const startX = -distanceToQueueItemCenter;
 
-  const queueItemHeight = (height / width) * queueItemWidth;
-  const queueHeight = 400;
-  const queueItemCenterFromTop = (centerColumnHeight - queueHeight) / 2 + queueItemHeight / 2;
-  const startY = queueItemCenterFromTop - centerColumnHeight / 2;
-  const startScale = queueItemWidth / displayWidth;
+  const queueItemHeight = (height / width) * QUEUE_ITEM_WIDTH;
+  const queueItemCenterFromTop =
+    (CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2 + queueItemHeight / 2;
+  const startY = queueItemCenterFromTop - CENTER_COLUMN_HEIGHT / 2;
+  const startScale = QUEUE_ITEM_WIDTH / displayWidth;
 
   const { x, y, scale, rotate } = useSpring({
     from: { x: startX, y: startY, scale: startScale, rotate: rotation },
     to: { x: 0, y: 0, scale: 1, rotate: 0 },
+    reset: true,
     config: { tension: 120, friction: 18 },
   });
 
@@ -273,184 +223,191 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   );
 };
 
-// Pattern findings panel - right column
-interface PatternFindingsProps {
-  receipt: DiffReceipt;
-  scanProgress: number;
-  phase: "scan" | "hold";
+// ─── EvidenceDots ────────────────────────────────────────────────────
+
+interface EvidenceDotsProps {
+  evidence: ReviewEvidence[];
+  maxWidth: number;
 }
 
-const PatternFindings: React.FC<PatternFindingsProps> = ({ receipt, scanProgress, phase }) => {
-  const corrections = useMemo(() => getPatternCorrections(receipt), [receipt]);
+const EvidenceDots: React.FC<EvidenceDotsProps> = ({ evidence, maxWidth }) => {
+  // Sort by descending similarity score
+  const sorted = useMemo(
+    () => [...evidence].sort((a, b) => b.similarity_score - a.similarity_score),
+    [evidence]
+  );
 
-  // Flip Y for visibility check: bbox.y is bottom-up, scan goes top-down
-  const visibleCorrections = useMemo(() => {
-    if (phase === "hold") return corrections;
-    const scanY = scanProgress / 100;
-    return corrections.filter((w) => (1 - w.bbox.y - w.bbox.height) <= scanY);
-  }, [corrections, scanProgress, phase]);
+  // Calculate how many dots fit
+  const dotGap = 3;
+  const maxDots = Math.floor((maxWidth + dotGap) / (10 + dotGap));
+  const visible = sorted.slice(0, maxDots);
 
   return (
-    <div className={styles.patternFindings}>
-      <div className={styles.merchantName}>{receipt.merchant_name}</div>
+    <svg className={styles.dotRow} width={maxWidth} height={12}>
+      {visible.map((ev, i) => {
+        const r = ev.is_same_merchant ? 5 : 3.5;
+        const cx = i * (10 + dotGap) + 5;
+        const cy = 6;
 
-      <div className={styles.correctionsList}>
-        {corrections.map((word, idx) => {
-          const isVisible = visibleCorrections.includes(word);
-          const displayLabel = word.after_label || "UNKNOWN";
-          const labelName = LABEL_DISPLAY[displayLabel] || displayLabel;
-          return (
-            <div
-              key={`${word.line_id}_${word.word_id}`}
-              className={`${styles.correctionItem} ${isVisible ? styles.visible : ""}`}
-              style={{ transitionDelay: `${idx * 100}ms` }}
-            >
-              <div className={styles.correctionWord}>
-                {word.text}
-                <span className={styles.correctionArrow}>&rarr;</span>
-                <span style={{ color: LABEL_COLORS[displayLabel] || LABEL_COLORS.O }}>
-                  {labelName}
-                </span>
-              </div>
-              {word.reasoning && (
-                <div className={styles.correctionReason}>
-                  {word.reasoning.length > 80
-                    ? word.reasoning.slice(0, 80) + "..."
-                    : word.reasoning}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        return ev.label_valid ? (
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="var(--text-color)"
+            opacity={0.8}
+          />
+        ) : (
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="var(--text-color)"
+            strokeWidth={1}
+            opacity={0.6}
+          />
+        );
+      })}
+    </svg>
+  );
+};
+
+// ─── EvidenceCard ────────────────────────────────────────────────────
+
+interface EvidenceCardProps {
+  decision: ReviewDecision;
+  word: LabelEvaluatorWord;
+}
+
+const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
+  const { issue, evidence, llm_review } = decision;
+  const suggestedLabel = issue.suggested_label;
+  const labelColor = LABEL_COLORS[suggestedLabel] || "var(--text-color)";
+  const decisionColor = DECISION_COLORS[llm_review.decision] || "var(--text-color)";
+
+  const showLabelChange =
+    llm_review.decision === "INVALID" &&
+    issue.current_label !== null &&
+    issue.current_label !== llm_review.suggested_label &&
+    llm_review.suggested_label !== null;
+
+  return (
+    <div className={styles.evidenceCard}>
+      {/* Word + suggested label */}
+      <div className={styles.cardHeader}>
+        <span className={styles.cardWord}>&ldquo;{issue.word_text}&rdquo;</span>
+        <span className={styles.cardArrow}>&rarr;</span>
+        <span className={styles.cardLabel} style={{ color: labelColor }}>
+          {suggestedLabel}
+        </span>
       </div>
 
-      <div className={styles.correctionStats}>
-        {corrections.length} corrections / {receipt.word_count} words
+      {/* Evidence dots */}
+      {evidence.length > 0 && (
+        <EvidenceDots evidence={evidence} maxWidth={220} />
+      )}
+
+      {/* Decision + confidence */}
+      <div className={styles.decisionLine}>
+        <span className={styles.decisionText} style={{ color: decisionColor }}>
+          {llm_review.decision}
+        </span>
+        <span className={styles.confidenceText}>{llm_review.confidence}</span>
       </div>
+
+      {/* Label change (before → after) */}
+      {showLabelChange && (
+        <div className={styles.labelChange}>
+          <span className={styles.labelBefore}>{issue.current_label}</span>
+          <span className={styles.cardArrow}>&rarr;</span>
+          <span
+            className={styles.labelAfter}
+            style={{ color: LABEL_COLORS[llm_review.suggested_label!] || "var(--text-color)" }}
+          >
+            {llm_review.suggested_label}
+          </span>
+        </div>
+      )}
+
+      {/* Reasoning */}
+      <div className={styles.reasoningText}>{llm_review.reasoning}</div>
     </div>
   );
 };
 
-// Active receipt viewer with SVG overlays
-interface ActiveReceiptViewerProps {
-  receipt: DiffReceipt;
+// ─── ReceiptViewer ───────────────────────────────────────────────────
+
+interface ReceiptViewerProps {
+  receipt: LabelEvaluatorReceipt;
   scanProgress: number;
-  phase: "scan" | "hold";
+  revealedCards: RevealedCard[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  imageDims: Map<string, { width: number; height: number }>;
-  onImageLoad: (key: string, w: number, h: number) => void;
 }
 
-const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
+const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   receipt,
   scanProgress,
-  phase,
+  revealedCards,
   formatSupport,
-  imageDims,
-  onImageLoad,
 }) => {
-  const rKey = `${receipt.image_id}_${receipt.receipt_id}`;
-  const [useNested, setUseNested] = useState(nestedKeyImageIds.has(receipt.image_id));
-  const cdnKeys = useNested
-    ? buildNestedCdnKeys(receipt.image_id, receipt.receipt_id)
-    : buildCdnKeys(receipt.image_id, receipt.receipt_id);
+  const { width, height } = receipt;
+
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    return getBestImageUrl(cdnKeys, formatSupport);
-  }, [cdnKeys, formatSupport]);
-
-  const dims = imageDims.get(rKey);
-  const imgWidth = dims?.width ?? 300;
-  const imgHeight = dims?.height ?? 500;
-
-  const handleLoad = useCallback(
-    (e: React.SyntheticEvent<HTMLImageElement>) => {
-      const img = e.currentTarget;
-      onImageLoad(rKey, img.naturalWidth, img.naturalHeight);
-    },
-    [rKey, onImageLoad]
-  );
-
-  // Fallback to nested key format if flat key 404s
-  const handleError = useCallback(() => {
-    if (!useNested) {
-      nestedKeyImageIds.add(receipt.image_id);
-      setUseNested(true);
-    }
-  }, [useNested, receipt.image_id]);
-
-  // Reset fallback state when receipt changes
-  useEffect(() => {
-    setUseNested(false);
-  }, [receipt.image_id, receipt.receipt_id]);
-
-  const corrections = useMemo(() => getPatternCorrections(receipt), [receipt]);
-
-  // Only show pattern-corrected words (Tufte: data-ink only)
-  const visibleWords = useMemo(() => {
-    const scanY = scanProgress / 100;
-    return corrections
-      .map((word) => {
-        // bbox.y is bottom-up; flip to top-down for scan comparison
-        const wordTopY = 1 - word.bbox.y - word.bbox.height;
-        if (wordTopY > scanY && phase === "scan") return null;
-
-        const label = word.after_label;
-        if (!label || label === "O") return null;
-
-        return { word, label };
-      })
-      .filter(Boolean) as { word: DiffWord; label: string }[];
-  }, [corrections, scanProgress, phase]);
+    return getBestImageUrl(receipt, formatSupport);
+  }, [receipt, formatSupport]);
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
   }
 
+  const scanY = (scanProgress / 100) * height;
+
   return (
-    <div className={styles.activeReceipt}>
+    <div className={styles.receiptViewer}>
       <div className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt="Receipt"
-            width={imgWidth}
-            height={imgHeight}
             className={styles.receiptImage}
-            onLoad={handleLoad}
-            onError={handleError}
+            width={width}
+            height={height}
           />
-
           <svg
             className={styles.svgOverlay}
-            viewBox={`0 0 ${imgWidth} ${imgHeight}`}
+            viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
           >
-            {/* Thin scan rule — no glow, just a quiet line */}
-            {phase === "scan" && scanProgress > 0 && (
-              <line
-                x1={imgWidth * 0.1}
-                y1={(scanProgress / 100) * imgHeight}
-                x2={imgWidth * 0.9}
-                y2={(scanProgress / 100) * imgHeight}
-                stroke="var(--text-color)"
-                strokeOpacity={0.3}
-                strokeWidth={1}
+            {/* Scan line - thin, subtle */}
+            {scanProgress > 0 && scanProgress < 100 && (
+              <rect
+                x="0"
+                y={scanY}
+                width={width}
+                height={1}
+                fill="var(--text-color)"
+                opacity={0.3}
               />
             )}
 
-            {/* Only corrected words — bbox.y is bottom-up, flip to SVG top-down */}
-            {visibleWords.map(({ word, label }) => {
-              const color = LABEL_COLORS[label] || LABEL_COLORS.O;
-              const x = word.bbox.x * imgWidth;
-              const y = (1 - word.bbox.y - word.bbox.height) * imgHeight;
-              const w = word.bbox.width * imgWidth;
-              const h = word.bbox.height * imgHeight;
+            {/* Bounding boxes for flagged words */}
+            {revealedCards.map((card) => {
+              const { word } = card;
+              const suggestedLabel = card.decision.issue.suggested_label;
+              const color = LABEL_COLORS[suggestedLabel] || "var(--text-color)";
+              const x = word.bbox.x * width;
+              const y = (1 - word.bbox.y - word.bbox.height) * height;
+              const w = word.bbox.width * width;
+              const h = word.bbox.height * height;
 
               return (
                 <rect
-                  key={`${word.line_id}_${word.word_id}`}
+                  key={card.key}
                   x={x}
                   y={y}
                   width={w}
@@ -458,8 +415,8 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                   fill={color}
                   fillOpacity={0.15}
                   stroke={color}
-                  strokeWidth={1}
-                  strokeOpacity={0.7}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.5}
                 />
               );
             })}
@@ -470,145 +427,137 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   );
 };
 
-export default function BetweenReceiptVisualization() {
-  const { ref, inView } = useInView({ threshold: 0.3, triggerOnce: false });
+// ─── EvidencePanel ───────────────────────────────────────────────────
 
-  const [allReceipts, setAllReceipts] = useState<DiffReceipt[]>([]);
+interface EvidencePanelProps {
+  revealedCards: RevealedCard[];
+}
+
+const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards }) => {
+  return (
+    <div className={styles.evidencePanel}>
+      {revealedCards.map((card) => (
+        <EvidenceCard
+          key={card.key}
+          decision={card.decision}
+          word={card.word}
+        />
+      ))}
+    </div>
+  );
+};
+
+// ─── Main Component ──────────────────────────────────────────────────
+
+const BetweenReceiptVisualization: React.FC = () => {
+  const { ref, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+
+  const [receipts, setReceipts] = useState<LabelEvaluatorReceipt[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
-  const [phase, setPhase] = useState<"scan" | "hold">("scan");
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [revealedCards, setRevealedCards] = useState<RevealedCard[]>([]);
   const [formatSupport, setFormatSupport] = useState<{
     supportsWebP: boolean;
     supportsAVIF: boolean;
   } | null>(null);
-  const [isPoolExhausted, setIsPoolExhausted] = useState(false);
-  const [startQueueAnimation, setStartQueueAnimation] = useState(false);
-  const [imageDims, setImageDims] = useState<Map<string, { width: number; height: number }>>(
-    new Map()
-  );
-
-  // Filtered receipts (only those with pattern changes)
-  const receipts = useMemo(
-    () => allReceipts.filter(hasPatternChanges),
-    [allReceipts]
-  );
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
+  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
-  const isFetchingRef = useRef(false);
-  const seenReceiptKeys = useRef<Set<string>>(new Set());
-  const emptyFetchCountRef = useRef(0);
-  const isPoolExhaustedRef = useRef(isPoolExhausted);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
-  useEffect(() => {
-    isPoolExhaustedRef.current = isPoolExhausted;
-  }, [isPoolExhausted]);
-
+  // Detect image format support
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
+  // Control flying receipt visibility
   useEffect(() => {
-    if (inView && receipts.length > 0 && !startQueueAnimation) {
-      setStartQueueAnimation(true);
+    if (isTransitioning) {
+      const next = receipts.length > 0
+        ? receipts[(currentIndex + 1) % receipts.length]
+        : null;
+      setFlyingReceipt(next);
+      setShowFlyingReceipt(true);
+      return;
     }
-  }, [inView, receipts.length, startQueueAnimation]);
+    const timeout = setTimeout(() => {
+      setShowFlyingReceipt(false);
+      setFlyingReceipt(null);
+    }, 50);
+    return () => clearTimeout(timeout);
+  }, [isTransitioning, currentIndex, receipts]);
 
-  const handleImageLoad = useCallback((key: string, w: number, h: number) => {
-    setImageDims((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Map(prev);
-      next.set(key, { width: w, height: h });
-      return next;
-    });
-  }, []);
-
-  const fetchMoreReceipts = useCallback(async () => {
-    if (isFetchingRef.current || isPoolExhausted) return;
-    isFetchingRef.current = true;
-
-    try {
-      const response = await api.fetchLabelEvaluatorDiff(20);
-      if (response && response.receipts) {
-        const newReceipts = response.receipts.filter(
-          (r) => !seenReceiptKeys.current.has(`${r.image_id}_${r.receipt_id}`)
-        );
-        newReceipts.forEach((r) =>
-          seenReceiptKeys.current.add(`${r.image_id}_${r.receipt_id}`)
-        );
-
-        if (newReceipts.length > 0) {
-          setAllReceipts((prev) => [...prev, ...newReceipts]);
-          emptyFetchCountRef.current = 0;
-        } else {
-          emptyFetchCountRef.current += 1;
-          if (emptyFetchCountRef.current >= MAX_EMPTY_FETCHES) {
-            setIsPoolExhausted(true);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch more receipts:", err);
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }, [isPoolExhausted]);
-
-  // Initial fetch
+  // Fetch data — filter to receipts with review decisions
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    const fetchData = async () => {
       try {
-        const [r1, r2] = await Promise.all([
-          api.fetchLabelEvaluatorDiff(20),
-          api.fetchLabelEvaluatorDiff(20),
-        ]);
-
-        const fetchedReceipts: DiffReceipt[] = [];
-        for (const r of [r1, r2]) {
-          if (r?.receipts) {
-            for (const receipt of r.receipts) {
-              const key = `${receipt.image_id}_${receipt.receipt_id}`;
-              if (!seenReceiptKeys.current.has(key)) {
-                seenReceiptKeys.current.add(key);
-                fetchedReceipts.push(receipt);
-              }
-            }
-          }
-        }
-
-        if (!cancelled) {
-          setAllReceipts(fetchedReceipts);
-          setError(null);
+        const response = await api.fetchLabelEvaluatorVisualization();
+        if (response && response.receipts) {
+          const filtered = response.receipts.filter(
+            (r) => r.review && r.review.all_decisions.length > 0
+          );
+          setReceipts(filtered);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
+        console.error("Failed to fetch label evaluator data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
-        if (!cancelled) setInitialLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
     };
+    fetchData();
   }, []);
 
-  // Refetch when queue is low
-  const remainingReceipts = receipts.length - currentReceiptIndex;
-  useEffect(() => {
-    if (
-      remainingReceipts < QUEUE_REFETCH_THRESHOLD &&
-      !isFetchingRef.current &&
-      !initialLoading &&
-      !isPoolExhausted
-    ) {
-      fetchMoreReceipts();
+  const currentReceipt = receipts[currentIndex];
+
+  // Build word lookup for current receipt
+  const wordLookup = useMemo(() => {
+    if (!currentReceipt) return new Map<string, LabelEvaluatorWord>();
+    const map = new Map<string, LabelEvaluatorWord>();
+    for (const word of currentReceipt.words) {
+      map.set(`${word.line_id}_${word.word_id}`, word);
     }
-  }, [remainingReceipts, fetchMoreReceipts, initialLoading, isPoolExhausted]);
+    return map;
+  }, [currentReceipt]);
+
+  // Calculate revealed cards based on scan progress
+  useEffect(() => {
+    if (!currentReceipt || !currentReceipt.review) return;
+
+    const scanY = scanProgress / 100;
+    const cards: RevealedCard[] = [];
+
+    // Cast to ReviewDecision[] to access evidence fields
+    const reviewDecisions = currentReceipt.review.all_decisions as unknown as ReviewDecision[];
+
+    for (const decision of reviewDecisions) {
+      const word = wordLookup.get(
+        `${decision.issue.line_id}_${decision.issue.word_id}`
+      );
+      if (!word) continue;
+
+      // Word is revealed when scan passes its top edge
+      const wordTopY = 1 - word.bbox.y - word.bbox.height;
+      if (wordTopY <= scanY) {
+        cards.push({
+          key: `${decision.issue.line_id}_${decision.issue.word_id}`,
+          decision,
+          word,
+        });
+      }
+    }
+
+    setRevealedCards(cards);
+  }, [currentReceipt, scanProgress, wordLookup]);
 
   // Animation loop
   useEffect(() => {
@@ -616,61 +565,48 @@ export default function BetweenReceiptVisualization() {
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
 
-    let receiptIndex = currentReceiptIndex;
+    const totalCycle = SCAN_DURATION + HOLD_DURATION + TRANSITION_DURATION;
+    let receiptIdx = currentIndex;
     let startTime = performance.now();
     let isInTransition = false;
 
-    const animate = (currentTime: number) => {
+    setScanProgress(0);
+    setIsTransitioning(false);
+    setRevealedCards([]);
+
+    const animate = (time: number) => {
       const currentReceipts = receiptsRef.current;
       if (currentReceipts.length === 0) {
         isAnimatingRef.current = false;
         return;
       }
 
-      const elapsed = currentTime - startTime;
-      const currentReceipt = currentReceipts[receiptIndex];
-
-      if (!currentReceipt) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
+      const elapsed = time - startTime;
 
       if (elapsed < SCAN_DURATION) {
-        // Phase 1: Scan down, reveal labels progressively
+        // SCAN phase
         const progress = (elapsed / SCAN_DURATION) * 100;
         setScanProgress(Math.min(progress, 100));
-        setPhase("scan");
         setIsTransitioning(false);
       } else if (elapsed < SCAN_DURATION + HOLD_DURATION) {
-        // Phase 2: Hold with all corrections highlighted
+        // HOLD phase
         setScanProgress(100);
-        setPhase("hold");
         setIsTransitioning(false);
-      } else if (elapsed < TOTAL_DURATION) {
-        // Transition to next receipt
+      } else if (elapsed < totalCycle) {
+        // TRANSITION phase
         if (!isInTransition) {
           isInTransition = true;
           setIsTransitioning(true);
         }
       } else {
-        // Move to next
-        let nextIndex = receiptIndex + 1;
-        if (nextIndex >= currentReceipts.length) {
-          if (isPoolExhaustedRef.current) {
-            nextIndex = 0;
-          } else {
-            animationRef.current = requestAnimationFrame(animate);
-            return;
-          }
-        }
-
-        receiptIndex = nextIndex;
+        // Move to next receipt
+        receiptIdx = (receiptIdx + 1) % currentReceipts.length;
         isInTransition = false;
-        setCurrentReceiptIndex(receiptIndex);
+        setCurrentIndex(receiptIdx);
         setScanProgress(0);
-        setPhase("scan");
         setIsTransitioning(false);
-        startTime = currentTime;
+        setRevealedCards([]);
+        startTime = time;
       }
 
       animationRef.current = requestAnimationFrame(animate);
@@ -679,15 +615,17 @@ export default function BetweenReceiptVisualization() {
     animationRef.current = requestAnimationFrame(animate);
 
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0]);
+  }, [inView, receipts.length > 0, currentIndex]);
 
-  if (initialLoading) {
+  if (loading) {
     return (
       <div ref={ref} className={styles.loading}>
-        Loading pattern data...
+        Loading between-receipt data...
       </div>
     );
   }
@@ -703,70 +641,64 @@ export default function BetweenReceiptVisualization() {
   if (receipts.length === 0) {
     return (
       <div ref={ref} className={styles.loading}>
-        No pattern data available
+        No between-receipt data available
       </div>
     );
   }
 
-  const currentReceipt = receipts[currentReceiptIndex];
-  const nextIndex = currentReceiptIndex + 1;
-  const nextReceipt = isPoolExhausted
-    ? receipts[nextIndex % receipts.length]
-    : receipts[nextIndex];
+  const nextIndex = (currentIndex + 1) % receipts.length;
+  const nextReceipt = receipts[nextIndex];
 
   return (
     <div ref={ref} className={styles.container}>
       <div className={styles.mainWrapper}>
         <ReceiptQueue
           receipts={receipts}
-          currentIndex={currentReceiptIndex}
+          currentIndex={currentIndex}
           formatSupport={formatSupport}
           isTransitioning={isTransitioning}
-          isPoolExhausted={isPoolExhausted}
-          shouldAnimate={startQueueAnimation}
-          imageDims={imageDims}
         />
 
         <div className={styles.centerColumn}>
+          {/* Current receipt */}
           <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}>
-            <ActiveReceiptViewer
+            <ReceiptViewer
               receipt={currentReceipt}
               scanProgress={scanProgress}
-              phase={phase}
+              revealedCards={revealedCards}
               formatSupport={formatSupport}
-              imageDims={imageDims}
-              onImageLoad={handleImageLoad}
             />
           </div>
 
+          {/* Flying receipt for desktop transition */}
           <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
+            {showFlyingReceipt && flyingReceipt && (
               <FlyingReceipt
-                key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
+                key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
+                receipt={flyingReceipt}
                 formatSupport={formatSupport}
-                isFlying={isTransitioning}
-                imageDims={imageDims}
+                isFlying={showFlyingReceipt}
               />
             )}
           </div>
 
+          {/* Next receipt for mobile crossfade */}
           {isTransitioning && nextReceipt && (
             <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
-              <ActiveReceiptViewer
+              <ReceiptViewer
                 receipt={nextReceipt}
                 scanProgress={0}
-                phase="scan"
+                revealedCards={[]}
                 formatSupport={formatSupport}
-                imageDims={imageDims}
-                onImageLoad={handleImageLoad}
               />
             </div>
           )}
         </div>
 
-        <PatternFindings receipt={currentReceipt} scanProgress={scanProgress} phase={phase} />
+        <EvidencePanel revealedCards={revealedCards} />
       </div>
     </div>
   );
-}
+};
+
+export default BetweenReceiptVisualization;
