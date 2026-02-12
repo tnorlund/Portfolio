@@ -5,9 +5,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from py4j.protocol import Py4JJavaError
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType
+from pyspark.sql.utils import AnalysisException
 
 from receipt_langsmith.spark.utils import TRACE_BASE_COLUMNS, to_s3a
 
@@ -100,7 +102,17 @@ def read_parquet_df(
         options = TraceReadOptions()
     logger.info("Reading Parquet from: %s", path)
     spark_path = to_s3a(path)
-    df = spark.read.parquet(spark_path)
+    try:
+        df = spark.read.parquet(spark_path)
+    except (AnalysisException, Py4JJavaError):
+        logger.warning(
+            "Standard parquet read failed for %s; retrying with recursiveFileLookup=true",
+            spark_path,
+            exc_info=True,
+        )
+        df = spark.read.option("recursiveFileLookup", "true").parquet(
+            spark_path
+        )
     logger.info(
         "Available columns in parquet: %s", sorted(df.columns)
     )

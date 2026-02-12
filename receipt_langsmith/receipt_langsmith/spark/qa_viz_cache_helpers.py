@@ -506,8 +506,24 @@ def read_parquet_traces(
     """Read Parquet traces from S3, returning None on failure."""
     spark_path = to_s3a(parquet_input)
     try:
+        return spark.read.option("mergeSchema", "true").parquet(spark_path)
+    except (
+        AnalysisException,
+        Py4JJavaError,
+        OSError,
+        ClientError,
+        BotoCoreError,
+    ):
+        logger.warning(
+            "Standard parquet read failed for %s; retrying with recursiveFileLookup=true",
+            spark_path,
+            exc_info=True,
+        )
+    try:
         return (
-            spark.read.option("mergeSchema", "true").parquet(spark_path)
+            spark.read.option("mergeSchema", "true")
+            .option("recursiveFileLookup", "true")
+            .parquet(spark_path)
         )
     except (
         AnalysisException,
