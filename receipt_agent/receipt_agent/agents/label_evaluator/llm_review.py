@@ -26,9 +26,9 @@ from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,
     build_review_prompt,
-    parse_batched_llm_response,
     parse_llm_response,
 )
+from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils import LLMRateLimitError
 from receipt_agent.utils.chroma_helpers import (
     SimilarWordEvidence,
@@ -694,28 +694,19 @@ def review_issues_batch(
         line_item_patterns=line_item_patterns,
     )
 
-    # Call LLM
+    # Call LLM with structured output
+    caller = rate_limiter if rate_limiter else llm
+
     try:
-        if rate_limiter:
-            response = rate_limiter.invoke([HumanMessage(content=prompt)])
-        else:
-            response = llm.invoke([HumanMessage(content=prompt)])
-
-        response_text = response.content.strip()
-        return parse_batched_llm_response(
-            response_text, len(normalized_issues)
+        structured_llm = caller.with_structured_output(BatchedReviewResponse)
+        response = structured_llm.invoke(
+            [HumanMessage(content=prompt)]
         )
-
+        return response.to_ordered_list(len(normalized_issues))
+    except LLMRateLimitError:
+        raise  # Propagate for Step Function retry
     except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, LLMRateLimitError):
-            logger.error(
-                "Batched LLM review rate limited, propagating for retry: %s", e
-            )
-            raise  # Let Step Function retry handle this
-
         logger.error("Batched LLM review failed: %s", e)
-        # Return fallback for all issues (non-rate-limit errors only)
         return [
             {
                 "decision": "NEEDS_REVIEW",
@@ -787,27 +778,18 @@ def review_issues_with_receipt_context(
         line_item_patterns=line_item_patterns,
     )
 
-    # Call LLM
+    # Call LLM with structured output
+    caller = rate_limiter if rate_limiter else llm
+
     try:
-        if rate_limiter:
-            response = rate_limiter.invoke([HumanMessage(content=prompt)])
-        else:
-            response = llm.invoke([HumanMessage(content=prompt)])
-
-        response_text = response.content.strip()
-        return parse_batched_llm_response(
-            response_text, len(issues_with_context)
+        structured_llm = caller.with_structured_output(BatchedReviewResponse)
+        response = structured_llm.invoke(
+            [HumanMessage(content=prompt)]
         )
-
+        return response.to_ordered_list(len(issues_with_context))
+    except LLMRateLimitError:
+        raise  # Propagate for Step Function retry
     except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, LLMRateLimitError):
-            logger.error(
-                "Receipt context LLM review rate limited, propagating for retry: %s",
-                e,
-            )
-            raise  # Let Step Function retry handle this
-
         logger.error("Receipt context LLM review failed: %s", e)
         return [
             {

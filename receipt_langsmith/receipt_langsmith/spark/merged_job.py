@@ -650,24 +650,41 @@ def build_cdn_keys_from_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
     """Build a decisions block for a given prefix (currency/metadata/etc.)."""
-    decisions = row.get(f"{prefix}_decisions", {})
+    decisions_key = f"{prefix}_decisions"
+    decisions = row.get(decisions_key)
+    if decisions is None:
+        image_id = row.get("image_id", "?")
+        receipt_id = row.get("receipt_id", "?")
+        logger.warning(
+            "Null %s for receipt %s/%s — evaluator may not have run for this prefix",
+            decisions_key, image_id, receipt_id,
+        )
+        decisions = {}
     return {
         "decisions": {
             "VALID": decisions.get("VALID", 0),
             "INVALID": decisions.get("INVALID", 0),
             "NEEDS_REVIEW": decisions.get("NEEDS_REVIEW", 0),
         },
-        "all_decisions": row.get(f"{prefix}_all_decisions", []),
-        "duration_seconds": row.get(f"{prefix}_duration_seconds", 0),
+        "all_decisions": row.get(f"{prefix}_all_decisions") or [],
+        "duration_seconds": row.get(f"{prefix}_duration_seconds") or 0,
     }
 
 
 def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
     """Build the geometric issues block."""
+    issues = row.get("geometric_issues")
+    if issues is None:
+        image_id = row.get("image_id", "?")
+        receipt_id = row.get("receipt_id", "?")
+        logger.warning(
+            "Null geometric_issues for receipt %s/%s", image_id, receipt_id,
+        )
+        issues = []
     return {
-        "issues_found": row.get("geometric_issues_found", 0),
-        "issues": row.get("geometric_issues", []),
-        "duration_seconds": row.get("geometric_duration_seconds", 0),
+        "issues_found": row.get("geometric_issues_found") or 0,
+        "issues": issues,
+        "duration_seconds": row.get("geometric_duration_seconds") or 0,
     }
 
 
@@ -1133,6 +1150,13 @@ def run_evaluator_viz_cache(
                     parquet_dir=parquet_dir,
                     rows=trace_rows,
                     unified_rows=unified_rows,
+                )
+            elif prefix == "patterns":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    batch_bucket=batch_bucket,
+                    execution_id=execution_id,
                 )
             else:
                 results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)

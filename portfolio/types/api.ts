@@ -511,6 +511,38 @@ export interface LabelEvaluatorDecision {
   };
 }
 
+export interface ReviewEvidence {
+  word_text: string;
+  similarity_score: number;
+  label_valid: boolean;
+  evidence_source: "words" | "lines";
+  is_same_merchant: boolean;
+}
+
+export interface ReviewDecision {
+  image_id: string;
+  receipt_id: number;
+  consensus_score: number;
+  similar_word_count: number;
+  issue: {
+    type: string;
+    line_id: number;
+    word_id: number;
+    word_text: string;
+    current_label: string | null;
+    suggested_label: string;
+    suggested_status: string;
+    reasoning: string;
+  };
+  evidence: ReviewEvidence[];
+  llm_review: {
+    decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
+    reasoning: string;
+    suggested_label: string | null;
+    confidence: "high" | "medium" | "low";
+  };
+}
+
 export interface LabelEvaluatorEvaluation {
   image_id: string;
   receipt_id: number;
@@ -521,7 +553,7 @@ export interface LabelEvaluatorEvaluation {
     INVALID: number;
     NEEDS_REVIEW: number;
   };
-  all_decisions: LabelEvaluatorDecision[];
+  all_decisions: (LabelEvaluatorDecision | ReviewDecision)[];
 }
 
 export interface LabelEvaluatorGeometric {

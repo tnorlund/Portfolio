@@ -620,8 +620,6 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         "--conf spark.sql.adaptive.coalescePartitions.initialPartitionNum=32 "
         "--conf spark.sql.files.openCostInBytes=134217728 "
         "--conf spark.sql.files.maxPartitionBytes=268435456 "
-        "--conf spark.eventLog.enabled=true "
-        f"--conf spark.eventLog.dir=s3://{artifacts_bucket}/spark-event-logs/ "
         "--conf spark.sql.parquet.enableVectorizedReader=false "
         "--conf spark.dynamicAllocation.enabled=false "
         "--conf spark.executor.cores=2 "

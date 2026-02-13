@@ -8,11 +8,18 @@ import os
 import pytest
 
 from receipt_langsmith.spark.evaluator_patterns_viz_cache import (
+    _build_constellation_data,
     build_patterns_cache,
 )
 
-PARQUET_DIR = "/tmp/langsmith-traces/"
-OUTPUT_DIR = "/tmp/viz-cache-output/patterns/"
+PARQUET_DIR = os.environ.get("PARQUET_DIR", "/tmp/langsmith-traces/")
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/tmp/viz-cache-output/patterns/")
+BATCH_BUCKET = os.environ.get(
+    "BATCH_BUCKET", "label-evaluator-dev-batch-bucket-a82b944"
+)
+EXECUTION_ID = os.environ.get(
+    "EXECUTION_ID", "d518a04d-4e79-45f7-bdfd-5f39d8971229"
+)
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +29,22 @@ def patterns_cache() -> list[dict]:
         pytest.skip(
             "Trace parquet data not available at /tmp/langsmith-traces/"
         )
-    return build_patterns_cache(PARQUET_DIR)
+    return build_patterns_cache(
+        PARQUET_DIR,
+        batch_bucket=BATCH_BUCKET,
+        execution_id=EXECUTION_ID,
+    )
+
+
+@pytest.fixture(scope="module")
+def constellation_data() -> dict:
+    """Load constellation data from S3 pattern files."""
+    try:
+        import boto3
+        boto3.client("s3").head_bucket(Bucket=BATCH_BUCKET)
+    except Exception:
+        pytest.skip("S3 batch bucket not accessible")
+    return _build_constellation_data(BATCH_BUCKET, EXECUTION_ID)
 
 
 class TestMerchantPatterns:
@@ -187,3 +209,171 @@ class TestOutputWriting:
             f"\nTotal: {merchants_with_patterns} patterns, {total} geometric issues"
         )
         print(f"Merchants in cache: {len(patterns_cache)}")
+
+
+class TestSampleReceipt:
+    """Verify sample receipt extraction for frontend rendering."""
+
+    def test_sample_receipt_present_for_some_merchants(
+        self, patterns_cache: list[dict]
+    ):
+        with_sample = [
+            e for e in patterns_cache if e.get("sample_receipt") is not None
+        ]
+        assert len(with_sample) > 0, (
+            "Expected at least one merchant with a sample_receipt"
+        )
+
+    def test_sample_receipt_structure(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            assert "image_id" in sample, (
+                f"Missing image_id in sample_receipt for {entry['merchant_name']}"
+            )
+            assert "receipt_id" in sample, (
+                f"Missing receipt_id in sample_receipt for {entry['merchant_name']}"
+            )
+            assert isinstance(sample["words"], list), (
+                f"words should be a list for {entry['merchant_name']}"
+            )
+            assert len(sample["words"]) > 0, (
+                f"words should not be empty for {entry['merchant_name']}"
+            )
+
+    def test_sample_receipt_word_fields(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            for word in sample["words"]:
+                assert "line_id" in word
+                assert "word_id" in word
+                assert "text" in word
+                assert "label" in word
+                assert "bbox" in word
+                bbox = word["bbox"]
+                assert "x" in bbox
+                assert "y" in bbox
+                assert "width" in bbox
+                assert "height" in bbox
+
+    def test_sample_receipt_bbox_normalized(self, patterns_cache: list[dict]):
+        for entry in patterns_cache:
+            sample = entry.get("sample_receipt")
+            if sample is None:
+                continue
+            for word in sample["words"]:
+                bbox = word["bbox"]
+                assert 0 <= bbox["x"] <= 1, (
+                    f"bbox.x out of range: {bbox['x']}"
+                )
+                assert 0 <= bbox["y"] <= 1, (
+                    f"bbox.y out of range: {bbox['y']}"
+                )
+                assert 0 <= bbox["width"] <= 1, (
+                    f"bbox.width out of range: {bbox['width']}"
+                )
+                assert 0 <= bbox["height"] <= 1, (
+                    f"bbox.height out of range: {bbox['height']}"
+                )
+
+
+class TestConstellationData:
+    """Verify constellation and label position data from S3 pattern files."""
+
+    def test_constellation_data_loaded(
+        self, constellation_data: dict
+    ):
+        assert len(constellation_data) > 0, "No constellation data loaded"
+
+    def test_label_positions_structure(
+        self, constellation_data: dict
+    ):
+        for merchant, data in constellation_data.items():
+            positions = data.get("label_positions", {})
+            for label, stats in positions.items():
+                assert "mean_y" in stats, (
+                    f"Missing mean_y for {label} in {merchant}"
+                )
+                assert "std_y" in stats, (
+                    f"Missing std_y for {label} in {merchant}"
+                )
+                assert "count" in stats, (
+                    f"Missing count for {label} in {merchant}"
+                )
+                assert isinstance(stats["mean_y"], (int, float)), (
+                    f"mean_y not numeric for {label} in {merchant}"
+                )
+
+    def test_constellation_relative_positions_structure(
+        self, constellation_data: dict
+    ):
+        found_constellations = False
+        for merchant, data in constellation_data.items():
+            for c in data.get("constellations", []):
+                found_constellations = True
+                assert "labels" in c, f"Missing labels in {merchant}"
+                assert "observation_count" in c
+                assert "relative_positions" in c
+                for label, pos in c["relative_positions"].items():
+                    assert "mean_dx" in pos, (
+                        f"Missing mean_dx for {label} in {merchant}"
+                    )
+                    assert "mean_dy" in pos
+                    assert "std_dx" in pos
+                    assert "std_dy" in pos
+        assert found_constellations, "No constellations found in any merchant"
+
+    def test_label_pairs_structure(
+        self, constellation_data: dict
+    ):
+        for _merchant, data in constellation_data.items():
+            for p in data.get("label_pairs", []):
+                assert "labels" in p
+                assert len(p["labels"]) == 2
+                assert "mean_dx" in p
+                assert "mean_dy" in p
+                assert "count" in p
+
+
+class TestConstellationInCache:
+    """Verify constellation data is merged into the full cache output."""
+
+    def test_cache_entries_have_constellation_fields(
+        self, patterns_cache: list[dict]
+    ):
+        for entry in patterns_cache:
+            assert "receipt_count" in entry, (
+                f"Missing receipt_count for {entry['merchant_name']}"
+            )
+            assert "label_positions" in entry, (
+                f"Missing label_positions for {entry['merchant_name']}"
+            )
+            assert "constellations" in entry, (
+                f"Missing constellations for {entry['merchant_name']}"
+            )
+            assert "label_pairs" in entry, (
+                f"Missing label_pairs for {entry['merchant_name']}"
+            )
+
+    def test_some_merchants_have_constellations(
+        self, patterns_cache: list[dict]
+    ):
+        with_constellations = [
+            e for e in patterns_cache if len(e.get("constellations", [])) > 0
+        ]
+        assert len(with_constellations) > 0, (
+            "Expected at least one merchant with constellations"
+        )
+
+    def test_some_merchants_have_label_positions(
+        self, patterns_cache: list[dict]
+    ):
+        with_positions = [
+            e for e in patterns_cache if len(e.get("label_positions", {})) > 0
+        ]
+        assert len(with_positions) > 0, (
+            "Expected at least one merchant with label_positions"
+        )
