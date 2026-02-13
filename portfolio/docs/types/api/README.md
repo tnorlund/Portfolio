@@ -52,6 +52,8 @@
 - [ReceiptsApiResponse](interfaces/ReceiptsApiResponse.md)
 - [ReceiptWord](interfaces/ReceiptWord.md)
 - [ReceiptWordLabel](interfaces/ReceiptWordLabel.md)
+- [ReviewDecision](interfaces/ReviewDecision.md)
+- [ReviewEvidence](interfaces/ReviewEvidence.md)
 - [TrainingMetricsEpoch](interfaces/TrainingMetricsEpoch.md)
 - [TrainingMetricsResponse](interfaces/TrainingMetricsResponse.md)
 - [UploadReceiptProgress](interfaces/UploadReceiptProgress.md)

@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationTier
 
-Defined in: [types/api.ts:611](https://github.com/tnorlund/Portfolio/blob/450c2397c2ec9d26009679c3fa216b1f651e49bc/portfolio/types/api.ts#L611)
+Defined in: [types/api.ts:643](https://github.com/tnorlund/Portfolio/blob/5228275800597fd7357289c9900cf2cc5a779f19/portfolio/types/api.ts#L643)
 
 Validation tier results (ChromaDB or LLM).
 Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
@@ -17,7 +17,7 @@ Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:615](https://github.com/tnorlund/Portfolio/blob/450c2397c2ec9d26009679c3fa216b1f651e49bc/portfolio/types/api.ts#L615)
+Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/5228275800597fd7357289c9900cf2cc5a779f19/portfolio/types/api.ts#L647)
 
 #### INVALID
 
@@ -41,7 +41,7 @@ Defined in: [types/api.ts:615](https://github.com/tnorlund/Portfolio/blob/450c23
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:613](https://github.com/tnorlund/Portfolio/blob/450c2397c2ec9d26009679c3fa216b1f651e49bc/portfolio/types/api.ts#L613)
+Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/5228275800597fd7357289c9900cf2cc5a779f19/portfolio/types/api.ts#L645)
 
 ***
 
@@ -49,7 +49,7 @@ Defined in: [types/api.ts:613](https://github.com/tnorlund/Portfolio/blob/450c23
 
 > **tier**: `"chroma"` \| `"llm"`
 
-Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/450c2397c2ec9d26009679c3fa216b1f651e49bc/portfolio/types/api.ts#L612)
+Defined in: [types/api.ts:644](https://github.com/tnorlund/Portfolio/blob/5228275800597fd7357289c9900cf2cc5a779f19/portfolio/types/api.ts#L644)
 
 ***
 
@@ -57,4 +57,4 @@ Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/450c23
 
 > **words\_count**: `number`
 
-Defined in: [types/api.ts:614](https://github.com/tnorlund/Portfolio/blob/450c2397c2ec9d26009679c3fa216b1f651e49bc/portfolio/types/api.ts#L614)
+Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/5228275800597fd7357289c9900cf2cc5a779f19/portfolio/types/api.ts#L646)
