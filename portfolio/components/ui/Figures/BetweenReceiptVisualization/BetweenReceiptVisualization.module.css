@@ -12,7 +12,7 @@
 .mainWrapper {
   display: flex;
   gap: 1.5rem;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-height: 500px;
 }
@@ -288,6 +288,11 @@
   -webkit-box-orient: vertical;
 }
 
+/* Overflow indicator for mobile */
+.overflowIndicator {
+  display: none;
+}
+
 /* Loading / Error states */
 .loading,
 .error,
@@ -380,8 +385,18 @@
 
   .evidencePanel {
     width: 100%;
-    max-height: 250px;
+    max-height: none;
+    overflow-y: visible;
     padding: 0;
+  }
+
+  .overflowIndicator {
+    display: block;
+    font-size: 0.7rem;
+    font-family: "Monaco", "Menlo", "Consolas", monospace;
+    color: var(--text-color);
+    opacity: 0.4;
+    padding: 0.25rem 0;
   }
 }
 

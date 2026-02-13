@@ -444,20 +444,44 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
 // ─── EvidencePanel ───────────────────────────────────────────────────
 
+const MOBILE_MAX_CARDS = 3;
+
 interface EvidencePanelProps {
   revealedCards: RevealedCard[];
 }
 
 const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const visibleCards = isMobile
+    ? revealedCards.slice(0, MOBILE_MAX_CARDS)
+    : revealedCards;
+  const hiddenCount = isMobile
+    ? Math.max(0, revealedCards.length - MOBILE_MAX_CARDS)
+    : 0;
+
   return (
     <div className={styles.evidencePanel}>
-      {revealedCards.map((card) => (
+      {visibleCards.map((card) => (
         <EvidenceCard
           key={card.key}
           decision={card.decision}
           word={card.word}
         />
       ))}
+      {hiddenCount > 0 && (
+        <div className={styles.overflowIndicator}>
+          +{hiddenCount} more
+        </div>
+      )}
     </div>
   );
 };
