@@ -8,10 +8,15 @@ from typing import Any, Dict, Optional
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
+# NOTE: Keep label metadata helper logic aligned with
+# receipt_chroma/receipt_chroma/data/operations.py.
+
 
 def _normalize_labels(labels: list[str]) -> list[str]:
     """Normalize labels to stable, deduplicated arrays."""
-    return sorted({lbl.strip() for lbl in labels if lbl and lbl.strip()})
+    return sorted(
+        {lbl.strip().upper() for lbl in labels if lbl and lbl.strip()}
+    )
 
 
 def _labels_from_metadata(
@@ -22,11 +27,15 @@ def _labels_from_metadata(
     """Read labels from canonical array metadata with legacy fallback."""
     array_val = metadata.get(array_field)
     if isinstance(array_val, list):
-        return {str(lbl).strip() for lbl in array_val if str(lbl).strip()}
+        return {
+            str(lbl).strip().upper() for lbl in array_val if str(lbl).strip()
+        }
 
     legacy_val = metadata.get(legacy_field, "")
     if isinstance(legacy_val, str):
-        return {lbl.strip() for lbl in legacy_val.split(",") if lbl.strip()}
+        return {
+            lbl.strip().upper() for lbl in legacy_val.split(",") if lbl.strip()
+        }
 
     return set()
 
@@ -40,8 +49,17 @@ def _set_label_metadata_fields(
     canonical_valid = _normalize_labels(list(valid_labels))
     canonical_invalid = _normalize_labels(list(invalid_labels))
 
-    metadata["valid_labels_array"] = canonical_valid or None
-    metadata["invalid_labels_array"] = canonical_invalid or None
+    if canonical_valid:
+        metadata["valid_labels_array"] = canonical_valid
+    elif "valid_labels_array" in metadata:
+        # Chroma update merges metadata; setting None clears an existing key.
+        metadata["valid_labels_array"] = None
+
+    if canonical_invalid:
+        metadata["invalid_labels_array"] = canonical_invalid
+    elif "invalid_labels_array" in metadata:
+        # Chroma update merges metadata; setting None clears an existing key.
+        metadata["invalid_labels_array"] = None
     metadata["valid_labels"] = (
         f",{','.join(canonical_valid)}," if canonical_valid else ""
     )
@@ -606,6 +624,7 @@ def update_word_labels(
             if entity_data and isinstance(entity_data, dict):
                 current_label = entity_data.get("label")
             if current_label:
+                current_label = str(current_label).strip().upper()
                 val_set = _labels_from_metadata(
                     updated_metadata,
                     array_field="valid_labels_array",

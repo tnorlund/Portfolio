@@ -21,7 +21,10 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
-from receipt_agent.utils.label_metadata import build_label_membership_clause
+from receipt_agent.utils.label_metadata import (
+    combine_where_clauses,
+    metadata_matches_label_state,
+)
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -57,18 +60,6 @@ def _build_word_id(
 ) -> str:
     """Build ChromaDB document ID for a word."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
-
-
-def _combine_where_clauses(
-    clauses: list[Optional[dict[str, Any]]],
-) -> Optional[dict[str, Any]]:
-    """Combine optional where clauses with AND semantics."""
-    filtered = [clause for clause in clauses if clause]
-    if not filtered:
-        return None
-    if len(filtered) == 1:
-        return filtered[0]
-    return {"$and": filtered}
 
 
 # ==============================================================================
@@ -712,45 +703,15 @@ def create_agentic_tools(
                     "merchant_name": {"$eq": merchant_filter.strip()}
                 }
 
-            label_clause: Optional[dict[str, Any]] = None
-            if label_filter:
-                normalized_label = label_filter.strip().upper()
-                if label_state == "valid":
-                    label_clause = build_label_membership_clause(
-                        normalized_label,
-                        array_field="valid_labels_array",
-                        legacy_field="valid_labels",
-                    )
-                elif label_state == "invalid":
-                    label_clause = build_label_membership_clause(
-                        normalized_label,
-                        array_field="invalid_labels_array",
-                        legacy_field="invalid_labels",
-                    )
-                else:
-                    label_clause = {
-                        "$or": [
-                            build_label_membership_clause(
-                                normalized_label,
-                                array_field="valid_labels_array",
-                                legacy_field="valid_labels",
-                            ),
-                            build_label_membership_clause(
-                                normalized_label,
-                                array_field="invalid_labels_array",
-                                legacy_field="invalid_labels",
-                            ),
-                        ]
-                    }
-
-            where_clause = _combine_where_clauses(
-                [merchant_clause, label_clause]
+            where_clause = combine_where_clauses([merchant_clause])
+            query_n_results = (
+                n_results + 5 if not label_filter else max(n_results * 5, 50)
             )
 
             results = chroma_client.query(
                 collection_name="lines",
                 query_embeddings=[query_embedding],
-                n_results=n_results + 5,
+                n_results=query_n_results,
                 where=where_clause,
                 include=["metadatas", "documents", "distances"],
             )
@@ -772,6 +733,10 @@ def create_agentic_tools(
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
+                if label_filter and not metadata_matches_label_state(
+                    meta, label_filter, label_state
+                ):
+                    continue
 
                 output.append(
                     {
@@ -828,42 +793,15 @@ def create_agentic_tools(
         try:
             query_embedding = embed_fn([query])[0]
 
-            where_clause = None
-            if label_filter:
-                normalized_label = label_filter.strip().upper()
-                if label_state == "valid":
-                    where_clause = build_label_membership_clause(
-                        normalized_label,
-                        array_field="valid_labels_array",
-                        legacy_field="valid_labels",
-                    )
-                elif label_state == "invalid":
-                    where_clause = build_label_membership_clause(
-                        normalized_label,
-                        array_field="invalid_labels_array",
-                        legacy_field="invalid_labels",
-                    )
-                else:
-                    where_clause = {
-                        "$or": [
-                            build_label_membership_clause(
-                                normalized_label,
-                                array_field="valid_labels_array",
-                                legacy_field="valid_labels",
-                            ),
-                            build_label_membership_clause(
-                                normalized_label,
-                                array_field="invalid_labels_array",
-                                legacy_field="invalid_labels",
-                            ),
-                        ]
-                    }
+            query_n_results = (
+                n_results + 5 if not label_filter else max(n_results * 5, 50)
+            )
 
             results = chroma_client.query(
                 collection_name="words",
                 query_embeddings=[query_embedding],
-                n_results=n_results + 5,
-                where=where_clause,
+                n_results=query_n_results,
+                where=None,
                 include=["metadatas", "documents", "distances"],
             )
 
@@ -883,6 +821,10 @@ def create_agentic_tools(
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
+                if label_filter and not metadata_matches_label_state(
+                    meta, label_filter, label_state
+                ):
+                    continue
 
                 output.append(
                     {

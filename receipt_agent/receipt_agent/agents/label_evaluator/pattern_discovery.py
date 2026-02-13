@@ -47,10 +47,7 @@ from receipt_agent.prompts.structured_outputs import (
     PatternDiscoveryResponse,
     extract_json_from_response,
 )
-from receipt_agent.utils.label_metadata import (
-    build_label_membership_clause,
-    parse_labels_from_metadata,
-)
+from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -227,11 +224,6 @@ def query_label_examples_from_chroma(
                                     "$in": ["validated", "auto_suggested"]
                                 }
                             },
-                            build_label_membership_clause(
-                                label,
-                                array_field="valid_labels_array",
-                                legacy_field="valid_labels",
-                            ),
                         ]
                     },
                     include=["metadatas", "distances"],

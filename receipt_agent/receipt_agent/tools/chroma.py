@@ -11,22 +11,12 @@ from typing import Any, Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from receipt_agent.state.models import ChromaSearchResult
-from receipt_agent.utils.label_metadata import build_label_membership_clause
+from receipt_agent.utils.label_metadata import (
+    combine_where_clauses,
+    metadata_matches_label_state,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _combine_where_clauses(
-    clauses: list[Optional[dict[str, Any]]],
-) -> Optional[dict[str, Any]]:
-    """Combine optional where clauses with AND semantics."""
-    filtered = [clause for clause in clauses if clause]
-    if not filtered:
-        return None
-    if len(filtered) == 1:
-        return filtered[0]
-    return {"$and": filtered}
 
 
 class QuerySimilarLinesInput(BaseModel):
@@ -145,44 +135,14 @@ def query_similar_lines(
                 "merchant_name": {"$eq": merchant_filter.strip().title()}
             }
 
-        label_clause: Optional[dict[str, Any]] = None
-        if label_filter:
-            normalized_label = label_filter.strip().upper()
-            if label_state == "valid":
-                label_clause = build_label_membership_clause(
-                    normalized_label,
-                    array_field="valid_labels_array",
-                    legacy_field="valid_labels",
-                )
-            elif label_state == "invalid":
-                label_clause = build_label_membership_clause(
-                    normalized_label,
-                    array_field="invalid_labels_array",
-                    legacy_field="invalid_labels",
-                )
-            else:
-                label_clause = {
-                    "$or": [
-                        build_label_membership_clause(
-                            normalized_label,
-                            array_field="valid_labels_array",
-                            legacy_field="valid_labels",
-                        ),
-                        build_label_membership_clause(
-                            normalized_label,
-                            array_field="invalid_labels_array",
-                            legacy_field="invalid_labels",
-                        ),
-                    ]
-                }
-
-        where_clause = _combine_where_clauses([merchant_clause, label_clause])
+        where_clause = combine_where_clauses([merchant_clause])
+        query_limit = n_results if not label_filter else max(n_results * 5, 50)
 
         # Query ChromaDB
         results = _chroma_client.query(
             collection_name="lines",
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=query_limit,
             where=where_clause,
             include=["metadatas", "documents", "distances"],
         )
@@ -203,6 +163,10 @@ def query_similar_lines(
 
             if similarity < min_similarity:
                 continue
+            if label_filter and not metadata_matches_label_state(
+                meta, label_filter, label_state
+            ):
+                continue
 
             output.append(
                 {
@@ -218,6 +182,8 @@ def query_similar_lines(
                     "normalized_address": meta.get("normalized_full_address"),
                 }
             )
+            if len(output) >= n_results:
+                break
 
         logger.info(
             "Found %s similar lines above threshold %s",
@@ -260,42 +226,13 @@ def query_similar_words(
 
         query_embedding = _embed_fn([word_text])[0]
 
-        where_clause = None
-        if label_type:
-            normalized_label = label_type.strip().upper()
-            if label_state == "valid":
-                where_clause = build_label_membership_clause(
-                    normalized_label,
-                    array_field="valid_labels_array",
-                    legacy_field="valid_labels",
-                )
-            elif label_state == "invalid":
-                where_clause = build_label_membership_clause(
-                    normalized_label,
-                    array_field="invalid_labels_array",
-                    legacy_field="invalid_labels",
-                )
-            else:
-                where_clause = {
-                    "$or": [
-                        build_label_membership_clause(
-                            normalized_label,
-                            array_field="valid_labels_array",
-                            legacy_field="valid_labels",
-                        ),
-                        build_label_membership_clause(
-                            normalized_label,
-                            array_field="invalid_labels_array",
-                            legacy_field="invalid_labels",
-                        ),
-                    ]
-                }
+        query_limit = n_results if not label_type else max(n_results * 5, 50)
 
         results = _chroma_client.query(
             collection_name="words",
             query_embeddings=[query_embedding],
-            n_results=n_results,
-            where=where_clause,
+            n_results=query_limit,
+            where=None,
             include=["metadatas", "documents", "distances"],
         )
 
@@ -309,6 +246,10 @@ def query_similar_words(
             zip(ids, documents, metadatas, distances)
         ):
             similarity = max(0.0, 1.0 - (dist / 2))
+            if label_type and not metadata_matches_label_state(
+                meta, label_type, label_state
+            ):
+                continue
 
             output.append(
                 {
@@ -324,6 +265,8 @@ def query_similar_words(
                     "validation_status": meta.get("validation_status"),
                 }
             )
+            if len(output) >= n_results:
+                break
 
         return output
 
