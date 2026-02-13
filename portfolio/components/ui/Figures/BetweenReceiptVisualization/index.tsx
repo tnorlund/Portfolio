@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
+  LabelEvaluatorDecision,
   LabelEvaluatorReceipt,
   LabelEvaluatorWord,
   ReviewDecision,
@@ -10,6 +11,13 @@ import {
 } from "../../../../types/api";
 import { detectImageFormatSupport, getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
 import styles from "./BetweenReceiptVisualization.module.css";
+
+// Type guard to narrow union to ReviewDecision
+function isReviewDecision(
+  d: LabelEvaluatorDecision | ReviewDecision
+): d is ReviewDecision {
+  return "evidence" in d && "consensus_score" in d;
+}
 
 // Label colors for bounding boxes (same as LayoutLMBatchVisualization)
 const LABEL_COLORS: Record<string, string> = {
@@ -574,7 +582,7 @@ const BetweenReceiptVisualization: React.FC = () => {
     const scanY = scanProgress / 100;
     const cards: RevealedCard[] = [];
 
-    const reviewDecisions = currentReceipt.review.all_decisions as ReviewDecision[];
+    const reviewDecisions = currentReceipt.review.all_decisions.filter(isReviewDecision);
 
     for (const decision of reviewDecisions) {
       const word = wordLookup.get(
@@ -698,7 +706,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
         <div className={styles.centerColumn}>
           {/* Current receipt */}
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}>
+          <div className={`${styles.receiptContainer} ${isTransitioning ? styles["fade-out"] : ""}`}>
             <ReceiptViewer
               receipt={currentReceipt}
               scanProgress={scanProgress}
@@ -721,7 +729,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
           {/* Next receipt for mobile crossfade */}
           {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
+            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles["fade-in"]}`}>
               <ReceiptViewer
                 receipt={nextReceipt}
                 scanProgress={0}

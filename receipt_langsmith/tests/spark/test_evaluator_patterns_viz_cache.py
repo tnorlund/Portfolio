@@ -329,7 +329,7 @@ class TestConstellationData:
     def test_label_pairs_structure(
         self, constellation_data: dict
     ):
-        for merchant, data in constellation_data.items():
+        for _merchant, data in constellation_data.items():
             for p in data.get("label_pairs", []):
                 assert "labels" in p
                 assert len(p["labels"]) == 2

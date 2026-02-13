@@ -79,20 +79,20 @@
   justify-content: center;
 }
 
-.fadeOut {
-  animation: fadeOut 0.4s ease-out forwards;
+.fade-out {
+  animation: fade-out 0.4s ease-out forwards;
 }
 
-.fadeIn {
-  animation: fadeIn 0.4s ease-in forwards;
+.fade-in {
+  animation: fade-in 0.4s ease-in forwards;
 }
 
-@keyframes fadeOut {
+@keyframes fade-out {
   from { opacity: 1; }
   to { opacity: 0; }
 }
 
-@keyframes fadeIn {
+@keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
@@ -172,10 +172,10 @@
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--text-color);
   opacity: 0.15;
-  animation: cardReveal 0.3s ease-out forwards;
+  animation: card-reveal 0.3s ease-out forwards;
 }
 
-@keyframes cardReveal {
+@keyframes card-reveal {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -200,7 +200,7 @@
 .cardWord {
   font-size: 0.85rem;
   font-weight: 600;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
   color: var(--text-color);
 }
 
@@ -213,7 +213,7 @@
 .cardLabel {
   font-size: 0.65rem;
   font-weight: 500;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
   color: var(--text-color);
   opacity: 0.55;
   border: 1px solid;
@@ -243,7 +243,7 @@
 .decisionText {
   font-size: 0.8rem;
   font-weight: 600;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
 }
 
 .confidenceText {
@@ -251,7 +251,7 @@
   font-weight: 500;
   color: var(--text-color);
   opacity: 0.6;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
 }
 
 /* Label change line (before -> after) */
@@ -260,7 +260,7 @@
   align-items: baseline;
   gap: 0.35rem;
   font-size: 0.7rem;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
 }
 
 .labelBefore {
@@ -392,7 +392,7 @@
   .overflowIndicator {
     display: block;
     font-size: 0.7rem;
-    font-family: "Monaco", "Menlo", "Consolas", monospace;
+    font-family: Monaco, Menlo, Consolas, monospace;
     color: var(--text-color);
     opacity: 0.4;
     padding: 0.25rem 0;

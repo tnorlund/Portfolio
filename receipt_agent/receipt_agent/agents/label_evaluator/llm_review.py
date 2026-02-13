@@ -28,6 +28,7 @@ from receipt_agent.prompts.label_evaluator import (
     build_review_prompt,
     parse_llm_response,
 )
+from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils import LLMRateLimitError
 from receipt_agent.utils.chroma_helpers import (
     SimilarWordEvidence,
@@ -694,8 +695,6 @@ def review_issues_batch(
     )
 
     # Call LLM with structured output
-    from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
-
     caller = rate_limiter if rate_limiter else llm
 
     try:
@@ -780,8 +779,6 @@ def review_issues_with_receipt_context(
     )
 
     # Call LLM with structured output
-    from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
-
     caller = rate_limiter if rate_limiter else llm
 
     try:
