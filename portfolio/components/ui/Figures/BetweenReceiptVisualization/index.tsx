@@ -298,7 +298,6 @@ interface EvidenceCardProps {
 const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
   const { issue, evidence, llm_review } = decision;
   const displayLabel = issue.current_label;
-  const labelColor = displayLabel ? (LABEL_COLORS[displayLabel] || "var(--text-color)") : "var(--text-color)";
   const decisionColor = DECISION_COLORS[llm_review.decision] || "var(--text-color)";
 
   const showLabelChange =
@@ -309,14 +308,14 @@ const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
 
   return (
     <div className={styles.evidenceCard}>
-      {/* Word + suggested label */}
+      {/* Word + current label */}
       <div className={styles.cardHeader}>
         <span className={styles.cardWord}>&ldquo;{issue.word_text}&rdquo;</span>
-        <span className={styles.cardArrow}>&rarr;</span>
         {displayLabel && (
-          <span className={styles.cardLabel} style={{ color: labelColor }}>
-            {displayLabel}
-          </span>
+          <>
+            <span className={styles.cardArrow}>&rarr;</span>
+            <span className={styles.cardLabel}>{displayLabel}</span>
+          </>
         )}
       </div>
 
@@ -338,12 +337,7 @@ const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
         <div className={styles.labelChange}>
           <span className={styles.labelBefore}>{issue.current_label}</span>
           <span className={styles.cardArrow}>&rarr;</span>
-          <span
-            className={styles.labelAfter}
-            style={{ color: LABEL_COLORS[llm_review.suggested_label!] || "var(--text-color)" }}
-          >
-            {llm_review.suggested_label}
-          </span>
+          <span className={styles.labelAfter}>{llm_review.suggested_label}</span>
         </div>
       )}
 

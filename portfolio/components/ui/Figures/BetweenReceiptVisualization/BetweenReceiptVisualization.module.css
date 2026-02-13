@@ -191,11 +191,11 @@
   border-bottom: none;
 }
 
-/* Card header: word text + suggested label */
+/* Card header: word text + current label */
 .cardHeader {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .cardWord {
@@ -206,15 +206,22 @@
 }
 
 .cardArrow {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: var(--text-color);
-  opacity: 0.5;
+  opacity: 0.3;
 }
 
 .cardLabel {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 500;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
+  color: var(--text-color);
+  opacity: 0.55;
+  border: 1px solid;
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  letter-spacing: 0.02em;
 }
 
 /* Evidence dots row */
@@ -259,12 +266,13 @@
 
 .labelBefore {
   color: var(--text-color);
-  opacity: 0.5;
+  opacity: 0.4;
   text-decoration: line-through;
 }
 
 .labelAfter {
   font-weight: 600;
+  color: var(--text-color);
 }
 
 /* Reasoning text */
