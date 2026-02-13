@@ -194,3 +194,15 @@ export const getBestImageUrl = (
   // Ultimate fallback to full-size JPEG if specific size not available
   return `${baseUrl}/${image.cdn_s3_key}`;
 };
+
+/**
+ * Get the JPEG fallback URL for an image.
+ * Use this as an onError fallback when AVIF/WebP CDN keys are broken.
+ */
+export const getJpegFallbackUrl = (image: ImageFormats): string => {
+  const baseUrl =
+    process.env.NODE_ENV === "development"
+      ? "https://dev.tylernorlund.com"
+      : "https://www.tylernorlund.com";
+  return `${baseUrl}/${image.cdn_s3_key}`;
+};

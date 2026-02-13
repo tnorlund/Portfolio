@@ -8,7 +8,7 @@ import {
   ReviewDecision,
   ReviewEvidence,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
+import { detectImageFormatSupport, getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
 import styles from "./BetweenReceiptVisualization.module.css";
 
 // Label colors for bounding boxes (same as LayoutLMBatchVisualization)
@@ -132,6 +132,12 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
                 width={width}
                 height={height}
                 style={{ width: "100%", height: "auto", display: "block" }}
+                onError={(e) => {
+                  const fallback = getJpegFallbackUrl(receipt);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
               />
             )}
           </div>
@@ -218,6 +224,13 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
         style={{ width: displayWidth, height: displayHeight }}
+        onError={(e) => {
+          if (!receipt) return;
+          const fallback = getJpegFallbackUrl(receipt);
+          if (e.currentTarget.src !== fallback) {
+            e.currentTarget.src = fallback;
+          }
+        }}
       />
     </animated.div>
   );
@@ -377,6 +390,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
+            onError={(e) => {
+              const fallback = getJpegFallbackUrl(receipt);
+              if (e.currentTarget.src !== fallback) {
+                e.currentTarget.src = fallback;
+              }
+            }}
           />
           <svg
             className={styles.svgOverlay}
