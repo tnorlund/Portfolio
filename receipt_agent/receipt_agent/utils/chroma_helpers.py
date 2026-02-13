@@ -247,10 +247,7 @@ def build_word_chroma_id(
 
 def build_line_chroma_id(image_id: str, receipt_id: int, line_id: int) -> str:
     """Build ChromaDB ID for a visual-row line embedding."""
-    return (
-        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-        f"#LINE#{line_id:05d}"
-    )
+    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}" f"#LINE#{line_id:05d}"
 
 
 def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
@@ -371,7 +368,9 @@ def _get_word_query_embedding(
             include=["embeddings"],
         )
     except Exception as exc:
-        logger.warning("Error getting embedding for %s: %s", word_chroma_id, exc)
+        logger.warning(
+            "Error getting embedding for %s: %s", word_chroma_id, exc
+        )
         return None
 
     embeddings = result.get("embeddings")
@@ -526,7 +525,9 @@ def _query_label_evidence_for_collection(
             if not isinstance(metadata, dict):
                 continue
 
-            result_id = _result_chroma_id_for_metadata(collection_name, metadata)
+            result_id = _result_chroma_id_for_metadata(
+                collection_name, metadata
+            )
             if result_id == exclude_chroma_id:
                 continue
 

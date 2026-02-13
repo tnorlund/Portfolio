@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 from unittest.mock import Mock
 
 import pytest
-
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
     RowEmbeddingRecord,
@@ -213,7 +212,7 @@ class TestBuildLinePayload:
         label_valid.receipt_id = 1
         label_valid.line_id = 1
         label_valid.word_id = 1
-        label_valid.label = "TOTAL"
+        label_valid.label = "LINE_TOTAL"
         label_valid.validation_status = "VALID"
 
         label_invalid = Mock()
@@ -231,7 +230,7 @@ class TestBuildLinePayload:
         )
 
         metadata = payload["metadatas"][0]
-        assert metadata["valid_labels_array"] == ["TOTAL"]
+        assert metadata["valid_labels_array"] == ["LINE_TOTAL"]
         assert metadata["invalid_labels_array"] == ["DISCOUNT"]
 
 

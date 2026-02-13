@@ -210,9 +210,7 @@ def build_word_payload(
         metadata = enrich_word_metadata_with_labels(
             metadata, labels_by_key.get(word_key, [])
         )
-        metadata = enrich_word_metadata_with_anchors(
-            metadata, word
-        )
+        metadata = enrich_word_metadata_with_anchors(metadata, word)
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)
@@ -292,7 +290,7 @@ def build_row_payload(
 
 def build_rows_from_lines(
     lines: List[ReceiptLine],
-) -> List[List[ReceiptLine]]:
+) -> List[List[LineLike]]:
     """Group lines into visual rows for embedding.
 
     Utility function to convert a flat list of ReceiptLine entities into

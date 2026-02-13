@@ -156,18 +156,18 @@ class PatternDiscoveryConfig:
         """
         return cls(
             openrouter_api_key=(
-                os.environ.get("OPENROUTER_API_KEY")
+                os.environ.get("OPENROUTER_API_KEY", "")
                 or os.environ.get("RECEIPT_AGENT_OPENROUTER_API_KEY", "")
             ),
             openrouter_base_url=(
-                os.environ.get("OPENROUTER_BASE_URL")
+                os.environ.get("OPENROUTER_BASE_URL", "")
                 or os.environ.get(
                     "RECEIPT_AGENT_OPENROUTER_BASE_URL",
                     "https://openrouter.ai/api/v1",
                 )
             ),
             openrouter_model=(
-                os.environ.get("OPENROUTER_MODEL")
+                os.environ.get("OPENROUTER_MODEL", "")
                 or os.environ.get(
                     "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b"
                 )
