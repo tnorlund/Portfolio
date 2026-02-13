@@ -650,7 +650,16 @@ def build_cdn_keys_from_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
     """Build a decisions block for a given prefix (currency/metadata/etc.)."""
-    decisions = row.get(f"{prefix}_decisions") or {}
+    decisions_key = f"{prefix}_decisions"
+    decisions = row.get(decisions_key)
+    if decisions is None:
+        image_id = row.get("image_id", "?")
+        receipt_id = row.get("receipt_id", "?")
+        logger.warning(
+            "Null %s for receipt %s/%s — evaluator may not have run for this prefix",
+            decisions_key, image_id, receipt_id,
+        )
+        decisions = {}
     return {
         "decisions": {
             "VALID": decisions.get("VALID", 0),
@@ -664,9 +673,17 @@ def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
 
 def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
     """Build the geometric issues block."""
+    issues = row.get("geometric_issues")
+    if issues is None:
+        image_id = row.get("image_id", "?")
+        receipt_id = row.get("receipt_id", "?")
+        logger.warning(
+            "Null geometric_issues for receipt %s/%s", image_id, receipt_id,
+        )
+        issues = []
     return {
         "issues_found": row.get("geometric_issues_found") or 0,
-        "issues": row.get("geometric_issues") or [],
+        "issues": issues,
         "duration_seconds": row.get("geometric_duration_seconds") or 0,
     }
 
