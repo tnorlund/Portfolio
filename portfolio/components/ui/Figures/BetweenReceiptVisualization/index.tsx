@@ -297,8 +297,8 @@ interface EvidenceCardProps {
 
 const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
   const { issue, evidence, llm_review } = decision;
-  const suggestedLabel = issue.suggested_label;
-  const labelColor = LABEL_COLORS[suggestedLabel] || "var(--text-color)";
+  const displayLabel = issue.current_label;
+  const labelColor = displayLabel ? (LABEL_COLORS[displayLabel] || "var(--text-color)") : "var(--text-color)";
   const decisionColor = DECISION_COLORS[llm_review.decision] || "var(--text-color)";
 
   const showLabelChange =
@@ -313,9 +313,11 @@ const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
       <div className={styles.cardHeader}>
         <span className={styles.cardWord}>&ldquo;{issue.word_text}&rdquo;</span>
         <span className={styles.cardArrow}>&rarr;</span>
-        <span className={styles.cardLabel} style={{ color: labelColor }}>
-          {suggestedLabel}
-        </span>
+        {displayLabel && (
+          <span className={styles.cardLabel} style={{ color: labelColor }}>
+            {displayLabel}
+          </span>
+        )}
       </div>
 
       {/* Evidence dots */}
@@ -417,8 +419,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             {/* Bounding boxes for flagged words */}
             {revealedCards.map((card) => {
               const { word } = card;
-              const suggestedLabel = card.decision.issue.suggested_label;
-              const color = LABEL_COLORS[suggestedLabel] || "var(--text-color)";
+              const currentLabel = card.decision.issue.current_label;
+              const color = currentLabel ? (LABEL_COLORS[currentLabel] || "var(--text-color)") : "var(--text-color)";
               const x = word.bbox.x * width;
               const y = (1 - word.bbox.y - word.bbox.height) * height;
               const w = word.bbox.width * width;
