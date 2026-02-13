@@ -10,11 +10,12 @@ import os
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import boto3
 
 from receipt_chroma import ChromaClient
+from receipt_chroma.chroma_types import ChromaMetadataInput
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def produce_embedding_delta(
     ids: List[str],
     embeddings: List[List[float]],
     documents: List[str],
-    metadatas: List[Dict[str, Any]],
+    metadatas: Sequence[ChromaMetadataInput],
     bucket_name: str,
     collection_name: str = "words",
     database_name: Optional[str] = None,
@@ -42,7 +43,7 @@ def produce_embedding_delta(
         ids: Vector IDs
         embeddings: Embedding vectors
         documents: Document texts
-        metadatas: Metadata dictionaries
+        metadatas: Metadata mappings
         bucket_name: S3 bucket name for storing the delta
         collection_name: ChromaDB collection name (default: "words")
         database_name: Database name for separation (e.g., "lines", "words").

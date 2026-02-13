@@ -11,6 +11,11 @@ from typing import Any, Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from receipt_agent.utils.chroma_types import (
+    ChromaWhereClause,
+    extract_get_metadata_rows,
+    extract_query_metadata_rows,
+)
 from receipt_agent.utils.label_metadata import (
     combine_where_clauses,
     metadata_matches_label_state,
@@ -129,7 +134,7 @@ def query_similar_lines(
 
         query_embedding = _embed_fn([query_text])[0]
 
-        merchant_clause: Optional[dict[str, Any]] = None
+        merchant_clause: Optional[ChromaWhereClause] = None
         if merchant_filter:
             merchant_clause = {
                 "merchant_name": {"$eq": merchant_filter.strip().title()}
@@ -151,7 +156,7 @@ def query_similar_lines(
         output: list[dict[str, Any]] = []
         ids = results.get("ids", [[]])[0]
         documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
         distances = results.get("distances", [[]])[0]
 
         for idx, (doc_id, doc, meta, dist) in enumerate(
@@ -239,7 +244,7 @@ def query_similar_words(
         output: list[dict[str, Any]] = []
         ids = results.get("ids", [[]])[0]
         documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
         distances = results.get("distances", [[]])[0]
 
         for idx, (doc_id, doc, meta, dist) in enumerate(
@@ -317,7 +322,7 @@ def search_by_merchant_name(
             include=["metadatas"],
         )
 
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
 
         # Aggregate results
         receipts_found: set[tuple[str, int]] = set()
@@ -395,7 +400,7 @@ def search_by_place_id(
             limit=100,
         )
 
-        metadatas = results.get("metadatas", [])
+        metadatas = extract_get_metadata_rows(results)
 
         # Aggregate
         merchant_names: dict[str, int] = {}

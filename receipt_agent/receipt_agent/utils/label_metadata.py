@@ -1,10 +1,12 @@
 """Utilities for Chroma label metadata parsing and where-clause construction."""
 
-from typing import Any, Optional
+from typing import Optional
+
+from receipt_agent.utils.chroma_types import ChromaMetadata, ChromaWhereClause
 
 
 def parse_labels_from_metadata(
-    metadata: dict[str, Any],
+    metadata: ChromaMetadata,
     array_field: str,
     legacy_field: str,
 ) -> list[str]:
@@ -33,7 +35,7 @@ def parse_labels_from_metadata(
 
 
 def metadata_has_label(
-    metadata: dict[str, Any],
+    metadata: ChromaMetadata,
     label: str,
     *,
     array_field: str,
@@ -49,7 +51,7 @@ def metadata_has_label(
 
 
 def metadata_matches_label_state(
-    metadata: dict[str, Any],
+    metadata: ChromaMetadata,
     label: str,
     label_state: str,
     *,
@@ -91,7 +93,7 @@ def build_label_membership_clause(
     *,
     array_field: str,
     legacy_field: str,
-) -> dict[str, Any]:
+) -> ChromaWhereClause:
     """Build a Chroma where-clause for label membership on array metadata.
 
     Note: Chroma metadata `$contains` performs array membership checks. It does
@@ -111,7 +113,7 @@ def build_label_state_clause(
     valid_legacy_field: str = "valid_labels",
     invalid_array_field: str = "invalid_labels_array",
     invalid_legacy_field: str = "invalid_labels",
-) -> dict[str, Any]:
+) -> ChromaWhereClause:
     """Build a where-clause for valid/invalid/any label state."""
     normalized_label = label.strip().upper()
     if label_state == "valid":
@@ -143,8 +145,8 @@ def build_label_state_clause(
 
 
 def combine_where_clauses(
-    clauses: list[Optional[dict[str, Any]]],
-) -> Optional[dict[str, Any]]:
+    clauses: list[Optional[ChromaWhereClause]],
+) -> Optional[ChromaWhereClause]:
     """Combine optional where clauses with AND semantics."""
     filtered = [clause for clause in clauses if clause]
     if not filtered:

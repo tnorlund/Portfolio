@@ -20,6 +20,7 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
+from receipt_agent.utils.chroma_types import extract_query_metadata_rows
 from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
@@ -912,14 +913,14 @@ def query_similar_words(
             include=["metadatas", "distances"],
         )
 
-        metadatas = results.get("metadatas")
-        if metadatas is None or len(metadatas) == 0 or len(metadatas[0]) == 0:
+        metadatas = extract_query_metadata_rows(results)
+        if not metadatas:
             return []
 
         evidence_list: list[SimilarWordEvidence] = []
         distances = results.get("distances", [[]])[0]
 
-        for metadata, distance in zip(metadatas[0], distances, strict=True):
+        for metadata, distance in zip(metadatas, distances, strict=True):
             # Convert L2 distance to similarity score (0-1)
             similarity = max(0.0, 1.0 - (distance / 2.0))
 
@@ -1303,7 +1304,7 @@ def query_similar_validated_words(
 
         ids = list(results.get("ids", [[]])[0])
         documents = list(results.get("documents", [[]])[0])
-        metadatas = list(results.get("metadatas", [[]])[0])
+        metadatas = extract_query_metadata_rows(results)
         distances = list(results.get("distances", [[]])[0])
 
         similar_words: List[SimilarWordResult] = []

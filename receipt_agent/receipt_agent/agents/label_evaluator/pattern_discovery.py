@@ -47,6 +47,7 @@ from receipt_agent.prompts.structured_outputs import (
     PatternDiscoveryResponse,
     extract_json_from_response,
 )
+from receipt_agent.utils.chroma_types import extract_query_metadata_rows
 from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
@@ -229,7 +230,7 @@ def query_label_examples_from_chroma(
                     include=["metadatas", "distances"],
                 )
 
-                metadatas = query_result.get("metadatas", [[]])[0]
+                metadatas = extract_query_metadata_rows(query_result)
                 count = 0
                 for metadata in metadatas:
                     if count >= max_per_label:
@@ -310,7 +311,7 @@ def query_label_examples_simple(
             include=["metadatas", "distances"],
         )
 
-        metadatas = query_result.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(query_result)
         for metadata in metadatas:
             valid_labels = parse_labels_from_metadata(
                 metadata,
@@ -696,7 +697,7 @@ def _call_llm_with_tracing(
     """Make LLM call with LangSmith tracing."""
     # Import child_trace dynamically to avoid import errors when not in Lambda
     try:
-        from tracing import child_trace
+        from tracing import child_trace  # type: ignore[import-not-found]
     except ImportError:
         # Fall back to direct call if tracing not available
         logger.warning("Tracing not available, falling back to direct call")
@@ -765,6 +766,10 @@ def _parse_llm_response(content: str) -> dict | None:
         parsed = json.loads(content)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse LLM response as JSON: %s", e)
+        return None
+
+    if not isinstance(parsed, dict):
+        logger.warning("LLM response JSON was not an object")
         return None
 
     # Try structured validation (validates schema and enum values)

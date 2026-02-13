@@ -21,6 +21,10 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
+from receipt_agent.utils.chroma_types import (
+    ChromaWhereClause,
+    extract_query_metadata_rows,
+)
 from receipt_agent.utils.label_metadata import (
     combine_where_clauses,
     metadata_matches_label_state,
@@ -505,7 +509,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -621,7 +625,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -697,7 +701,7 @@ def create_agentic_tools(
             # Generate embedding for query
             query_embedding = embed_fn([query])[0]
 
-            merchant_clause: Optional[dict[str, Any]] = None
+            merchant_clause: Optional[ChromaWhereClause] = None
             if merchant_filter:
                 merchant_clause = {
                     "merchant_name": {"$eq": merchant_filter.strip()}
@@ -719,7 +723,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -808,7 +812,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -876,9 +880,9 @@ def create_agentic_tools(
                 }
 
             # Aggregate
-            place_ids = {}
-            addresses = {}
-            phones = {}
+            place_ids: dict[str, int] = {}
+            addresses: dict[str, int] = {}
+            phones: dict[str, int] = {}
 
             for place in places:
                 if place.place_id:
@@ -1008,11 +1012,7 @@ def create_agentic_tools(
             )
 
             # Query results are nested in lists
-            metadatas = (
-                results.get("metadatas", [[]])[0]
-                if results.get("metadatas")
-                else []
-            )
+            metadatas = extract_query_metadata_rows(results)
 
             if not metadatas:
                 return {
