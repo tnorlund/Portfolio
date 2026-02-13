@@ -39,6 +39,11 @@ def patterns_cache() -> list[dict]:
 @pytest.fixture(scope="module")
 def constellation_data() -> dict:
     """Load constellation data from S3 pattern files."""
+    try:
+        import boto3
+        boto3.client("s3").head_bucket(Bucket=BATCH_BUCKET)
+    except Exception:
+        pytest.skip("S3 batch bucket not accessible")
     return _build_constellation_data(BATCH_BUCKET, EXECUTION_ID)
 
 

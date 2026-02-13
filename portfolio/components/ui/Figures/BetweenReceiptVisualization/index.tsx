@@ -195,7 +195,6 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   const { x, y, scale, rotate } = useSpring({
     from: { x: startX, y: startY, scale: startScale, rotate: rotation },
     to: { x: 0, y: 0, scale: 1, rotate: 0 },
-    reset: true,
     config: { tension: 120, friction: 18 },
   });
 
@@ -575,8 +574,7 @@ const BetweenReceiptVisualization: React.FC = () => {
     const scanY = scanProgress / 100;
     const cards: RevealedCard[] = [];
 
-    // Cast to ReviewDecision[] to access evidence fields
-    const reviewDecisions = currentReceipt.review.all_decisions as unknown as ReviewDecision[];
+    const reviewDecisions = currentReceipt.review.all_decisions as ReviewDecision[];
 
     for (const decision of reviewDecisions) {
       const word = wordLookup.get(
@@ -659,7 +657,7 @@ const BetweenReceiptVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, currentIndex]);
+  }, [inView, receipts.length, currentIndex]);
 
   if (loading) {
     return (

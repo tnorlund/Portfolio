@@ -553,7 +553,7 @@ export interface LabelEvaluatorEvaluation {
     INVALID: number;
     NEEDS_REVIEW: number;
   };
-  all_decisions: LabelEvaluatorDecision[];
+  all_decisions: (LabelEvaluatorDecision | ReviewDecision)[];
 }
 
 export interface LabelEvaluatorGeometric {

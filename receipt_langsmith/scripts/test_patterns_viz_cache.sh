@@ -122,17 +122,19 @@ for page in paginator.paginate(Bucket=bucket, Prefix='traces/export_id=', Delimi
         eid = p['Prefix'].split('export_id=')[1].rstrip('/')
         prefixes.append(eid)
 
-# For each prefix, get the most recent object's timestamp
+# For each prefix, find the newest object and use its timestamp
 best_ts = None
 best_eid = None
 for eid in prefixes:
-    resp = s3.list_objects_v2(Bucket=bucket, Prefix=f'traces/export_id={eid}/', MaxKeys=1)
-    contents = resp.get('Contents', [])
-    if not contents:
+    newest_ts = None
+    for page in paginator.paginate(Bucket=bucket, Prefix=f'traces/export_id={eid}/'):
+        for obj in page.get('Contents', []):
+            if newest_ts is None or obj['LastModified'] > newest_ts:
+                newest_ts = obj['LastModified']
+    if newest_ts is None:
         continue
-    ts = contents[0]['LastModified']
-    if best_ts is None or ts > best_ts:
-        best_ts = ts
+    if best_ts is None or newest_ts > best_ts:
+        best_ts = newest_ts
         best_eid = eid
 
 print(best_eid or '')

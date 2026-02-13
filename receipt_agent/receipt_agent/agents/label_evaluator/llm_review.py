@@ -699,7 +699,7 @@ def review_issues_batch(
     caller = rate_limiter if rate_limiter else llm
 
     try:
-        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+        structured_llm = caller.with_structured_output(BatchedReviewResponse)
         response = structured_llm.invoke(
             [HumanMessage(content=prompt)]
         )
@@ -782,8 +782,10 @@ def review_issues_with_receipt_context(
     # Call LLM with structured output
     from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 
+    caller = rate_limiter if rate_limiter else llm
+
     try:
-        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+        structured_llm = caller.with_structured_output(BatchedReviewResponse)
         response = structured_llm.invoke(
             [HumanMessage(content=prompt)]
         )
