@@ -12,7 +12,6 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
-  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
@@ -314,10 +313,6 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <LabelEvaluatorVisualization />
-      </ClientOnly>
-
-      <ClientOnly>
-        <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>
