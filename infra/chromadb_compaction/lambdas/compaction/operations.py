@@ -22,19 +22,12 @@ def _normalize_labels(labels: list[str]) -> list[str]:
 def _labels_from_metadata(
     metadata: Dict[str, Any],
     array_field: str,
-    legacy_field: str,
 ) -> set[str]:
-    """Read labels from canonical array metadata with legacy fallback."""
+    """Read labels from canonical array metadata."""
     array_val = metadata.get(array_field)
     if isinstance(array_val, list):
         return {
             str(lbl).strip().upper() for lbl in array_val if str(lbl).strip()
-        }
-
-    legacy_val = metadata.get(legacy_field, "")
-    if isinstance(legacy_val, str):
-        return {
-            lbl.strip().upper() for lbl in legacy_val.split(",") if lbl.strip()
         }
 
     return set()
@@ -45,7 +38,7 @@ def _set_label_metadata_fields(
     valid_labels: set[str],
     invalid_labels: set[str],
 ) -> None:
-    """Write canonical arrays and legacy string fields together."""
+    """Write canonical label arrays."""
     canonical_valid = _normalize_labels(list(valid_labels))
     canonical_invalid = _normalize_labels(list(invalid_labels))
 
@@ -60,12 +53,6 @@ def _set_label_metadata_fields(
     elif "invalid_labels_array" in metadata:
         # Chroma update merges metadata; setting None clears an existing key.
         metadata["invalid_labels_array"] = None
-    metadata["valid_labels"] = (
-        f",{','.join(canonical_valid)}," if canonical_valid else ""
-    )
-    metadata["invalid_labels"] = (
-        f",{','.join(canonical_invalid)}," if canonical_invalid else ""
-    )
 
 
 def update_receipt_metadata(
@@ -628,12 +615,10 @@ def update_word_labels(
                 val_set = _labels_from_metadata(
                     updated_metadata,
                     array_field="valid_labels_array",
-                    legacy_field="valid_labels",
                 )
                 inv_set = _labels_from_metadata(
                     updated_metadata,
                     array_field="invalid_labels_array",
-                    legacy_field="invalid_labels",
                 )
                 if status == "VALID":
                     inv_set.discard(current_label)
@@ -730,8 +715,6 @@ def remove_word_labels(
             "label_proposed_by",
             "valid_labels_array",
             "invalid_labels_array",
-            "valid_labels",
-            "invalid_labels",
             "label_validated_at",
         ]
 
@@ -799,8 +782,6 @@ def reconstruct_label_metadata(
         Dictionary with reconstructed label metadata fields:
         - valid_labels_array: array of valid labels (None if empty)
         - invalid_labels_array: array of invalid labels (None if empty)
-        - valid_labels: comma-delimited string of valid labels
-        - invalid_labels: comma-delimited string of invalid labels
         - label_status: overall status (validated/auto_suggested/unvalidated)
         - label_confidence: confidence from latest pending label
         - label_proposed_by: proposer of latest pending label

@@ -238,7 +238,6 @@ def query_label_examples_from_chroma(
                     valid_labels = parse_labels_from_metadata(
                         metadata,
                         array_field="valid_labels_array",
-                        legacy_field="valid_labels",
                     )
                     if label in valid_labels:
                         example = LabelExample(
@@ -316,7 +315,6 @@ def query_label_examples_simple(
             valid_labels = parse_labels_from_metadata(
                 metadata,
                 array_field="valid_labels_array",
-                legacy_field="valid_labels",
             )
 
             for label in valid_labels:

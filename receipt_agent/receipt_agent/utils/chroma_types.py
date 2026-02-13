@@ -24,8 +24,6 @@ class ChromaMetadata(TypedDict, total=False):
     validation_status: str
     label_proposed_by: str
     label_validated_at: str
-    valid_labels: str
-    invalid_labels: str
     valid_labels_array: list[str]
     invalid_labels_array: list[str]
     normalized_phone_10: str
@@ -117,12 +115,6 @@ def coerce_chroma_metadata(raw: object) -> ChromaMetadata:
     label_validated_at = _as_str(raw.get("label_validated_at"))
     if label_validated_at is not None:
         metadata["label_validated_at"] = label_validated_at
-    valid_labels = _as_str(raw.get("valid_labels"))
-    if valid_labels is not None:
-        metadata["valid_labels"] = valid_labels
-    invalid_labels = _as_str(raw.get("invalid_labels"))
-    if invalid_labels is not None:
-        metadata["invalid_labels"] = invalid_labels
     normalized_phone = _as_str(raw.get("normalized_phone_10"))
     if normalized_phone is not None:
         metadata["normalized_phone_10"] = normalized_phone

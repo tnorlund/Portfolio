@@ -944,12 +944,10 @@ def query_similar_words(
             valid_labels = parse_labels_from_metadata(
                 metadata,
                 array_field="valid_labels_array",
-                legacy_field="valid_labels",
             )
             invalid_labels = parse_labels_from_metadata(
                 metadata,
                 array_field="invalid_labels_array",
-                legacy_field="invalid_labels",
             )
 
             evidence: SimilarWordEvidence = {
@@ -1338,12 +1336,10 @@ def query_similar_validated_words(
             valid_labels = parse_labels_from_metadata(
                 meta,
                 array_field="valid_labels_array",
-                legacy_field="valid_labels",
             )
             invalid_labels = parse_labels_from_metadata(
                 meta,
                 array_field="invalid_labels_array",
-                legacy_field="invalid_labels",
             )
 
             similar_words.append(
