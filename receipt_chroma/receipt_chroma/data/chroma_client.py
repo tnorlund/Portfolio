@@ -24,6 +24,7 @@ import chromadb
 from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
+
 from receipt_chroma.chroma_types import (
     ChromaMetadataInput,
     to_chroma_metadata_dict,

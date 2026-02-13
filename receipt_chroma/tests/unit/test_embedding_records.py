@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 from unittest.mock import Mock
 
 import pytest
+
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
     RowEmbeddingRecord,
