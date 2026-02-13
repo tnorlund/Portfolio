@@ -650,24 +650,24 @@ def build_cdn_keys_from_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
     """Build a decisions block for a given prefix (currency/metadata/etc.)."""
-    decisions = row.get(f"{prefix}_decisions", {})
+    decisions = row.get(f"{prefix}_decisions") or {}
     return {
         "decisions": {
             "VALID": decisions.get("VALID", 0),
             "INVALID": decisions.get("INVALID", 0),
             "NEEDS_REVIEW": decisions.get("NEEDS_REVIEW", 0),
         },
-        "all_decisions": row.get(f"{prefix}_all_decisions", []),
-        "duration_seconds": row.get(f"{prefix}_duration_seconds", 0),
+        "all_decisions": row.get(f"{prefix}_all_decisions") or [],
+        "duration_seconds": row.get(f"{prefix}_duration_seconds") or 0,
     }
 
 
 def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
     """Build the geometric issues block."""
     return {
-        "issues_found": row.get("geometric_issues_found", 0),
-        "issues": row.get("geometric_issues", []),
-        "duration_seconds": row.get("geometric_duration_seconds", 0),
+        "issues_found": row.get("geometric_issues_found") or 0,
+        "issues": row.get("geometric_issues") or [],
+        "duration_seconds": row.get("geometric_duration_seconds") or 0,
     }
 
 
