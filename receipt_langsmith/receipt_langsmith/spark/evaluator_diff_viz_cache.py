@@ -273,6 +273,7 @@ def build_diff_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[
     dict[str, Any]
 ]:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -358,6 +359,23 @@ def build_diff_cache(
         diff = _build_receipt_diff(
             words, changes, image_id, receipt_id, merchant_name, tid
         )
+        # Enrich with CDN keys and dimensions from receipt lookup
+        if receipt_lookup:
+            lookup_row = receipt_lookup.get((str(image_id), int(receipt_id)))
+            if lookup_row:
+                for key in (
+                    "cdn_s3_key",
+                    "cdn_webp_s3_key",
+                    "cdn_avif_s3_key",
+                    "cdn_medium_s3_key",
+                    "cdn_medium_webp_s3_key",
+                    "cdn_medium_avif_s3_key",
+                    "width",
+                    "height",
+                ):
+                    val = lookup_row.get(key)
+                    if val:
+                        diff[key] = val
         results.append(diff)
 
     logger.info(

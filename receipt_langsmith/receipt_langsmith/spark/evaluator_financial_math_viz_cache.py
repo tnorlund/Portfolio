@@ -175,7 +175,7 @@ def build_financial_math_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
-    data_rows: list[dict[str, Any]] | None = None,
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Return financial math viz-cache dicts.
 
@@ -185,7 +185,8 @@ def build_financial_math_cache(
     Args:
         parquet_dir: Path containing LangSmith parquet exports.
         rows: Optional preloaded trace rows.
-        data_rows: Optional receipt data rows for CDN keys and dimensions.
+        receipt_lookup: Optional (image_id, receipt_id) -> receipt data dict
+            containing CDN keys and dimensions.
 
     Returns:
         List of viz-cache dicts, one per receipt with financial issues.
@@ -194,15 +195,6 @@ def build_financial_math_cache(
         if parquet_dir is None:
             raise ValueError("Either parquet_dir or rows must be provided")
         rows = _read_all_parquet_rows(parquet_dir)
-
-    # Build data lookup: (image_id, receipt_id) → data row
-    data_lookup: dict[tuple[str, int], dict] = {}
-    if data_rows:
-        for dr in data_rows:
-            img_id = dr.get("image_id")
-            r_id = dr.get("receipt_id")
-            if img_id and r_id is not None:
-                data_lookup[(str(img_id), int(r_id))] = dr
 
     # Build root ReceiptEvaluation metadata lookup: trace_id -> metadata.
     root_meta: dict[str, dict[str, Any]] = {}
@@ -265,23 +257,28 @@ def build_financial_math_cache(
         equations = _build_equations(output_list, word_lookup)
         summary = _build_summary(equations)
 
-        # CDN keys from data row
-        data_row = data_lookup.get(
-            (str(image_id), int(receipt_id)) if receipt_id is not None
-            else ("", 0)
-        )
-        cdn_keys: dict[str, str] = {"cdn_s3_key": ""}
-        if data_row:
-            for key in (
-                "cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key",
-                "cdn_medium_s3_key", "cdn_medium_webp_s3_key",
-                "cdn_medium_avif_s3_key",
-            ):
-                val = data_row.get(key)
-                if val:
-                    cdn_keys[key] = val
-        width = data_row.get("width", 0) if data_row else 0
-        height = data_row.get("height", 0) if data_row else 0
+        # Enrich with CDN keys and dimensions from receipt lookup
+        cdn_fields: dict[str, Any] = {}
+        if receipt_lookup and receipt_id is not None:
+            lookup_row = receipt_lookup.get(
+                (str(image_id), int(receipt_id))
+            )
+            if lookup_row:
+                for key in (
+                    "cdn_s3_key",
+                    "cdn_webp_s3_key",
+                    "cdn_avif_s3_key",
+                    "cdn_medium_s3_key",
+                    "cdn_medium_webp_s3_key",
+                    "cdn_medium_avif_s3_key",
+                ):
+                    val = lookup_row.get(key)
+                    if val:
+                        cdn_fields[key] = val
+                for dim in ("width", "height"):
+                    val = lookup_row.get(dim)
+                    if val:
+                        cdn_fields[dim] = val
 
         results.append(
             {
@@ -291,9 +288,7 @@ def build_financial_math_cache(
                 "trace_id": trace_id,
                 "equations": equations,
                 "summary": summary,
-                "width": width,
-                "height": height,
-                **cdn_keys,
+                **cdn_fields,
             }
         )
 

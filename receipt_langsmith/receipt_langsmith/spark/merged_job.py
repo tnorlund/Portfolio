@@ -1157,6 +1157,7 @@ def run_evaluator_viz_cache(
     cache_bucket: str,
     execution_id: str,
     batch_bucket: str | None = None,
+    receipts_lookup_path: str | None = None,
 ) -> None:
     """Run evaluator viz-cache helpers and write results to S3.
 
@@ -1197,6 +1198,30 @@ def run_evaluator_viz_cache(
     unified_rows = _load_unified_rows(spark, batch_bucket, execution_id)
     data_rows = _load_data_rows(spark, batch_bucket, execution_id)
 
+    # Load receipt lookup for CDN keys + dimensions enrichment
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]] = {}
+    lookup_df = load_receipts_lookup_df(spark, receipts_lookup_path, None)
+    if lookup_df is not None:
+        lookup_rows = _collect_rows_to_driver(
+            lookup_df,
+            source_name="receipts lookup (evaluator)",
+            source_path=receipts_lookup_path or "",
+        )
+        for lr in lookup_rows:
+            img = lr.get("image_id")
+            rid = lr.get("receipt_id")
+            if img and rid is not None:
+                receipt_lookup[(str(img), int(rid))] = lr
+        logger.info(
+            "Loaded %d receipt lookup entries for evaluator CDN enrichment",
+            len(receipt_lookup),
+        )
+    else:
+        logger.info(
+            "No receipts lookup path provided; evaluator caches will "
+            "lack CDN keys"
+        )
+
     helpers: list[tuple[str, Any, bool]] = [
         ("financial-math", build_financial_math_cache, False),
         ("diff", build_diff_cache, False),
@@ -1233,11 +1258,11 @@ def run_evaluator_viz_cache(
                     unified_rows=unified_rows,
                     data_rows=data_rows,
                 )
-            elif prefix == "financial-math":
+            elif prefix in ("financial-math", "diff"):
                 results = helper_fn(
                     parquet_dir=parquet_dir,
                     rows=trace_rows,
-                    data_rows=data_rows,
+                    receipt_lookup=receipt_lookup or None,
                 )
             else:
                 results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
@@ -1358,6 +1383,9 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
+                receipts_lookup_path=getattr(
+                    args, "receipts_lookup", None
+                ),
             )
             logger.info("Evaluator viz-cache phase complete")
 
@@ -1370,6 +1398,9 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
+                receipts_lookup_path=getattr(
+                    args, "receipts_lookup", None
+                ),
             )
             logger.info("Evaluator viz-cache phase complete")
 
