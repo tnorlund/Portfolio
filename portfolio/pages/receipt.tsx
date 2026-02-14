@@ -2,9 +2,9 @@ import { GetStaticProps } from "next";
 import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
+import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import { useQAQueue } from "../hooks/useQAQueue";
 import { useUploadProgress } from "../hooks/useUploadProgress";
-import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
@@ -12,10 +12,11 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
+  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
-  LabelEvaluatorVisualization,
+  FinancialMathOverlay,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -28,6 +29,7 @@ import {
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   UploadDiagram,
+  WithinReceiptVerification,
   WordSimilarity,
 } from "../components/ui/Figures";
 import {
@@ -306,13 +308,34 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        The idea: show AI a receipt, ask it to tag each word with a label, then
-        compare its answers to other receipts from the same store to see if
-        the patterns still hold.
+        The idea: show AI a receipt, ask it to tag each word with a label.
+        Then cross-check those labels against what we already know. Does the
+        store name match Google Places? Are the dates and phone numbers
+        formatted correctly?
       </p>
 
       <ClientOnly>
-        <LabelEvaluatorVisualization />
+        <WithinReceiptVerification />
+      </ClientOnly>
+
+      <p>
+        Beyond labeling, I also check the math. Does the subtotal plus tax
+        equal the grand total? The system runs these equations on every receipt
+        and flags mismatches.
+      </p>
+
+      <ClientOnly>
+        <FinancialMathOverlay />
+      </ClientOnly>
+
+      <p>
+        Then I compare the labels across receipts from the same store. If
+        every other Trader Joe's receipt calls that field a line total, but
+        this one says subtotal, something's off.
+      </p>
+
+      <ClientOnly>
+        <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>

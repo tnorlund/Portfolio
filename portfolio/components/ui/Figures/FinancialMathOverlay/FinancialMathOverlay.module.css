@@ -54,8 +54,8 @@
 .flyingReceiptImage {
   display: block;
   max-height: 500px;
-  max-width: 100%;
-  object-fit: contain;
+  width: auto;
+  height: auto;
   border: 1px solid #ccc;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -113,8 +113,8 @@
   z-index: 10;
 }
 
-/* Receipt Viewer */
-.receiptViewer {
+/* Active Receipt */
+.activeReceipt {
   width: 100%;
   height: 100%;
 }
@@ -139,163 +139,130 @@
 .receiptImage {
   display: block;
   max-height: 500px;
-  max-width: 100%;
   width: auto;
   height: auto;
 }
 
-.svgOverlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: block;
-}
-
-/* Evidence Panel - Right Column */
-.evidencePanel {
-  width: 280px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem;
-  flex-shrink: 0;
-  overflow-y: auto;
-  max-height: 500px;
-}
-
-/* Evidence Card */
-.evidenceCard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--text-color);
-  opacity: 0.15;
-  animation: cardReveal 0.3s ease-out forwards;
-}
-
-@keyframes cardReveal {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.evidenceCard:last-child {
-  border-bottom: none;
-}
-
-/* Card header: word text + current label */
-.cardHeader {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
-.cardWord {
-  font-size: 0.85rem;
-  font-weight: 600;
-  font-family: Monaco, Menlo, Consolas, monospace;
-  color: var(--text-color);
-}
-
-.cardArrow {
-  font-size: 0.65rem;
-  color: var(--text-color);
-  opacity: 0.3;
-}
-
-.cardLabel {
-  font-size: 0.65rem;
-  font-weight: 500;
-  font-family: Monaco, Menlo, Consolas, monospace;
-  color: var(--text-color);
-  opacity: 0.55;
-  border: 1px solid;
-  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
-  border-radius: 3px;
-  padding: 1px 5px;
-  letter-spacing: 0.02em;
-}
-
-/* Evidence dots row */
-.dotRow {
+.receiptLoading {
   display: flex;
   align-items: center;
-  gap: 3px;
-  flex-wrap: wrap;
-  min-height: 12px;
-  padding: 2px 0;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-color);
+  opacity: 0.5;
 }
 
-/* Decision + confidence line */
-.decisionLine {
+.svgOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Equation Panel - Right Column */
+.equationPanel {
+  width: 200px;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
-.decisionText {
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-family: Monaco, Menlo, Consolas, monospace;
+.equationCard {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--text-color-rgb), 0.15);
+  opacity: 0.3;
+  transition: opacity 0.4s ease, border-color 0.4s ease;
 }
 
-.confidenceText {
+.equationCard.revealed {
+  opacity: 1;
+}
+
+/* Vertical summation */
+.summation {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: var(--text-color);
-  opacity: 0.6;
-  font-family: Monaco, Menlo, Consolas, monospace;
-}
-
-/* Label change line (before -> after) */
-.labelChange {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  font-size: 0.7rem;
-  font-family: Monaco, Menlo, Consolas, monospace;
-}
-
-.labelBefore {
-  color: var(--text-color);
-  opacity: 0.4;
-  text-decoration: line-through;
-}
-
-.labelAfter {
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-/* Reasoning text */
-.reasoningText {
-  font-size: 0.7rem;
-  color: var(--text-color);
-  opacity: 0.6;
   line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
-/* Overflow indicator for mobile */
-.overflowIndicator {
-  display: none;
+.addends {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.addendRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.addendOp {
+  width: 0.7em;
+  text-align: center;
+  opacity: 0.5;
+  font-weight: 700;
+}
+
+.addendVal {
+  text-align: right;
+  opacity: 0.8;
+}
+
+.sumLine {
+  height: 1px;
+  background: var(--text-color);
+  opacity: 0.4;
+  margin: 0.2rem 0;
+}
+
+.resultRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.resultVal {
+  text-align: right;
+  font-weight: 600;
+}
+
+.resultIcon {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.resultValid {
+  color: var(--color-green);
+}
+
+.resultInvalid {
+  color: var(--color-red);
+}
+
+.equationDiff {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-red);
+  margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* Loading / Error states */
 .loading,
-.error,
-.receiptLoading {
+.error {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -335,7 +302,7 @@
     align-items: center;
   }
 
-  .receiptViewer {
+  .activeReceipt {
     height: 100%;
     display: flex;
     align-items: center;
@@ -351,16 +318,10 @@
 
   .receiptImageInner {
     max-height: 380px;
-    position: relative;
   }
 
   .receiptImage {
     max-height: 380px;
-  }
-
-  .svgOverlay {
-    position: absolute;
-    inset: 0;
   }
 
   /* Hide flying receipt on mobile, use crossfade instead */
@@ -382,20 +343,22 @@
     height: 100%;
   }
 
-  .evidencePanel {
+  .equationPanel {
     width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
     max-height: none;
     overflow-y: visible;
     padding: 0;
+    transition: opacity 0.3s ease;
   }
 
-  .overflowIndicator {
-    display: block;
-    font-size: 0.7rem;
-    font-family: Monaco, Menlo, Consolas, monospace;
-    color: var(--text-color);
-    opacity: 0.4;
-    padding: 0.25rem 0;
+  .equationCard {
+    flex: 0 0 auto;
+    min-width: 140px;
+    max-width: 220px;
   }
 }
 
@@ -413,19 +376,12 @@
     max-height: 300px;
   }
 
-  .cardWord {
-    font-size: 0.8rem;
+  .equationPanel {
+    gap: 0.4rem;
   }
 
-  .cardLabel {
-    font-size: 0.7rem;
-  }
-
-  .decisionText {
-    font-size: 0.75rem;
-  }
-
-  .reasoningText {
-    font-size: 0.65rem;
+  .equationCard {
+    min-width: 100px;
+    max-width: 150px;
   }
 }

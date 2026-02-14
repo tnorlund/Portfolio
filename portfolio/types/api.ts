@@ -702,3 +702,177 @@ export interface LabelValidationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// Financial Math Overlay Types
+
+export interface FinancialMathWord {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  decision: string;
+  confidence: string;
+  reasoning: string;
+}
+
+export interface FinancialMathEquation {
+  issue_type: string;
+  description: string;
+  expected_value: number | string;
+  actual_value: number | string;
+  difference: number | string;
+  involved_words: FinancialMathWord[];
+}
+
+export interface FinancialMathReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  trace_id: string;
+  equations: FinancialMathEquation[];
+  summary: {
+    total_equations: number;
+    has_invalid: boolean;
+    has_needs_review: boolean;
+  };
+  // CDN image keys (populated by Spark cache enrichment)
+  cdn_s3_key?: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface FinancialMathResponse {
+  receipts: FinancialMathReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+}
+
+// ============================================================================
+// Within-Receipt Verification Visualization Types
+// ============================================================================
+
+export interface WithinReceiptPlaceInfo {
+  merchant_name: string | null;
+  formatted_address: string | null;
+  phone_number: string | null;
+  website: string | null;
+  maps_url: string | null;
+  validation_status: string | null;
+  confidence: number | null;
+  business_status: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export interface WithinReceiptWordDecision {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  decision: "VALID" | "INVALID" | "NEEDS_REVIEW" | null;
+  confidence: "high" | "medium" | "low" | null;
+  reasoning: string | null;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface WithinReceiptEquation {
+  issue_type: string;
+  description: string;
+  expected_value: number | null;
+  actual_value: number | null;
+  difference: number | null;
+  involved_words: WithinReceiptWordDecision[];
+}
+
+export interface WithinReceiptPlaceValidation {
+  place: WithinReceiptPlaceInfo | null;
+  decisions: WithinReceiptWordDecision[];
+  summary: {
+    total: number;
+    valid: number;
+    invalid: number;
+    needs_review: number;
+  };
+  duration_seconds: number | null;
+  is_llm: boolean;
+}
+
+export interface WithinReceiptFormatValidation {
+  decisions: WithinReceiptWordDecision[];
+  summary: {
+    total: number;
+    valid: number;
+    invalid: number;
+    needs_review: number;
+  };
+  duration_seconds: number | null;
+  is_llm: boolean;
+}
+
+export interface WithinReceiptFinancialMath {
+  equations: WithinReceiptEquation[];
+  summary: {
+    total_equations: number;
+    has_invalid: boolean;
+    has_needs_review: boolean;
+  };
+  duration_seconds: number | null;
+  is_llm: boolean;
+}
+
+export interface WithinReceiptWord {
+  text: string;
+  label: string | null;
+  line_id: number;
+  word_id: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface WithinReceiptVerificationReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string | null;
+  trace_id: string | null;
+  place_validation: WithinReceiptPlaceValidation;
+  format_validation: WithinReceiptFormatValidation;
+  financial_math: WithinReceiptFinancialMath;
+  words: WithinReceiptWord[];
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width: number | null;
+  height: number | null;
+}
+
+export interface WithinReceiptVerificationResponse {
+  receipts: WithinReceiptVerificationReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: LabelEvaluatorAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}

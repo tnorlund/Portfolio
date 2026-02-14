@@ -87,3 +87,11 @@ export const BetweenReceiptVisualization = dynamic(
   () => import("./BetweenReceiptVisualization"),
   { ssr: false }
 );
+export const FinancialMathOverlay = dynamic(
+  () => import("./FinancialMathOverlay"),
+  { ssr: false }
+);
+export const WithinReceiptVerification = dynamic(
+  () => import("./WithinReceiptVerification"),
+  { ssr: false }
+);

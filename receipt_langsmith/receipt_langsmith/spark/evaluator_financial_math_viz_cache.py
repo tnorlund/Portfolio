@@ -175,6 +175,7 @@ def build_financial_math_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Return financial math viz-cache dicts.
 
@@ -184,6 +185,8 @@ def build_financial_math_cache(
     Args:
         parquet_dir: Path containing LangSmith parquet exports.
         rows: Optional preloaded trace rows.
+        receipt_lookup: Optional (image_id, receipt_id) -> receipt data dict
+            containing CDN keys and dimensions.
 
     Returns:
         List of viz-cache dicts, one per receipt with financial issues.
@@ -254,6 +257,29 @@ def build_financial_math_cache(
         equations = _build_equations(output_list, word_lookup)
         summary = _build_summary(equations)
 
+        # Enrich with CDN keys and dimensions from receipt lookup
+        cdn_fields: dict[str, Any] = {}
+        if receipt_lookup and receipt_id is not None:
+            lookup_row = receipt_lookup.get(
+                (str(image_id), int(receipt_id))
+            )
+            if lookup_row:
+                for key in (
+                    "cdn_s3_key",
+                    "cdn_webp_s3_key",
+                    "cdn_avif_s3_key",
+                    "cdn_medium_s3_key",
+                    "cdn_medium_webp_s3_key",
+                    "cdn_medium_avif_s3_key",
+                ):
+                    val = lookup_row.get(key)
+                    if val:
+                        cdn_fields[key] = val
+                for dim in ("width", "height"):
+                    val = lookup_row.get(dim)
+                    if val:
+                        cdn_fields[dim] = val
+
         results.append(
             {
                 "image_id": image_id,
@@ -262,6 +288,7 @@ def build_financial_math_cache(
                 "trace_id": trace_id,
                 "equations": equations,
                 "summary": summary,
+                **cdn_fields,
             }
         )
 
