@@ -2,9 +2,9 @@ import { GetStaticProps } from "next";
 import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
+import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import { useQAQueue } from "../hooks/useQAQueue";
 import { useUploadProgress } from "../hooks/useUploadProgress";
-import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
@@ -17,7 +17,6 @@ import {
   CodeBuildDiagram,
   DynamoStreamAnimation,
   FinancialMathOverlay,
-  WithinReceiptVerification,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -30,6 +29,7 @@ import {
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   UploadDiagram,
+  WithinReceiptVerification,
   WordSimilarity,
 } from "../components/ui/Figures";
 import {
@@ -309,7 +309,7 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label.
-        Then cross-check those labels against what we already know — does the
+        Then cross-check those labels against what we already know. Does the
         store name match Google Places? Are the dates and phone numbers
         formatted correctly?
       </p>
