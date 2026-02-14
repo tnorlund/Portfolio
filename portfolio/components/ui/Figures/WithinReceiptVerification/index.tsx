@@ -24,50 +24,48 @@ function buildCdnKeys(imageId: string, receiptId: number): ImageFormats {
 // Types & Constants
 // ---------------------------------------------------------------------------
 
-type PassName = "place" | "format" | "financial";
+type PassName = "place" | "format";
 type Phase = "idle" | "scanning" | "complete";
 
 interface PassState {
   place: number;    // 0-100
   format: number;   // 0-100
-  financial: number; // 0-100
 }
 
 interface RevealedDecision {
   key: string;
   pass: PassName;
-  decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
+  currentLabel: string;
   wordText: string;
   lineId: number;
   wordId: number;
   bbox: { x: number; y: number; width: number; height: number };
 }
 
+// Label colors — matches BetweenReceiptVisualization convention
+const LABEL_COLORS: Record<string, string> = {
+  MERCHANT_NAME: "var(--color-yellow)",
+  ADDRESS_LINE: "var(--color-red)",
+  PHONE_NUMBER: "var(--color-orange)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  DATE: "var(--color-blue)",
+  TIME: "var(--color-blue)",
+  PAYMENT_METHOD: "var(--color-orange)",
+  COUPON: "var(--color-teal, #2dd4bf)",
+  LOYALTY_ID: "var(--color-teal, #2dd4bf)",
+  O: "var(--text-color)",
+};
+
 // Pass colors
 const PASS_COLORS: Record<PassName, string> = {
   place: "var(--color-blue)",
   format: "var(--color-teal, #2dd4bf)",
-  financial: "var(--color-purple)",
-};
-
-// Decision colors
-const DECISION_COLORS: Record<string, string> = {
-  VALID: "var(--color-green)",
-  INVALID: "var(--color-red)",
-  NEEDS_REVIEW: "var(--color-yellow)",
-};
-
-// Pass labels for UI
-const PASS_LABELS: Record<PassName, string> = {
-  place: "Place Validation",
-  format: "Format Validation",
-  financial: "Financial Math",
 };
 
 // Animation timing
 const PLACE_DURATION = 2000;
 const FORMAT_DURATION = 1500;
-const FINANCIAL_DURATION = 2500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
@@ -251,7 +249,7 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, i
 };
 
 // ---------------------------------------------------------------------------
-// Receipt Viewer (SVG overlay with scan lines + decision indicators)
+// Receipt Viewer (SVG overlay with scan lines + label-colored bounding boxes)
 // ---------------------------------------------------------------------------
 
 interface ReceiptViewerProps {
@@ -272,7 +270,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
   const width = dims?.width ?? receipt.width ?? 300;
   const height = dims?.height ?? receipt.height ?? 450;
-  const filterId = `scanLineGlow_wr_${receipt.image_id}_${receipt.receipt_id}`;
 
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
@@ -286,7 +283,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   const placeY = (passState.place / 100) * height;
   const formatY = (passState.format / 100) * height;
-  const financialY = (passState.financial / 100) * height;
 
   return (
     <div className={styles.receiptViewer}>
@@ -311,98 +307,39 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
           >
-            <defs>
-              <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {/* Decision bounding boxes */}
+            {/* Label-colored bounding boxes */}
             {revealedDecisions.map((d) => {
-              const color = DECISION_COLORS[d.decision];
+              const color = LABEL_COLORS[d.currentLabel] || "var(--text-color)";
               const x = d.bbox.x * width;
               const y = (1 - d.bbox.y - d.bbox.height) * height;
               const w = d.bbox.width * width;
               const h = d.bbox.height * height;
-              const centerX = x + w / 2;
-              const centerY = y + h / 2;
-              const circleRadius = Math.min(w, h) * 0.4;
-              const iconSize = circleRadius * 0.6;
 
               return (
-                <g key={`indicator_${d.key}`} className={styles.decisionIndicator}>
-                  <rect
-                    x={x} y={y} width={w} height={h}
-                    fill={color} fillOpacity={0.3}
-                    stroke={color} strokeWidth={2}
-                  />
-                  <circle cx={centerX} cy={centerY} r={circleRadius} fill={color} />
-                  {d.decision === 'VALID' && (
-                    <path
-                      d={`M ${centerX - iconSize * 0.8} ${centerY}
-                          L ${centerX - iconSize * 0.2} ${centerY + iconSize * 0.6}
-                          L ${centerX + iconSize * 0.8} ${centerY - iconSize * 0.5}`}
-                      fill="none" stroke="white"
-                      strokeWidth={iconSize * 0.35}
-                      strokeLinecap="round" strokeLinejoin="round"
-                    />
-                  )}
-                  {d.decision === 'INVALID' && (
-                    <g>
-                      <line
-                        x1={centerX - iconSize * 0.5} y1={centerY - iconSize * 0.5}
-                        x2={centerX + iconSize * 0.5} y2={centerY + iconSize * 0.5}
-                        stroke="white" strokeWidth={iconSize * 0.35} strokeLinecap="round"
-                      />
-                      <line
-                        x1={centerX + iconSize * 0.5} y1={centerY - iconSize * 0.5}
-                        x2={centerX - iconSize * 0.5} y2={centerY + iconSize * 0.5}
-                        stroke="white" strokeWidth={iconSize * 0.35} strokeLinecap="round"
-                      />
-                    </g>
-                  )}
-                  {d.decision === 'NEEDS_REVIEW' && (
-                    <g>
-                      <circle cx={centerX} cy={centerY - iconSize * 0.35} r={iconSize * 0.3} fill="white" />
-                      <path
-                        d={`M ${centerX - iconSize * 0.55} ${centerY + iconSize * 0.65}
-                            Q ${centerX - iconSize * 0.55} ${centerY + iconSize * 0.1} ${centerX} ${centerY + iconSize * 0.1}
-                            Q ${centerX + iconSize * 0.55} ${centerY + iconSize * 0.1} ${centerX + iconSize * 0.55} ${centerY + iconSize * 0.65}`}
-                        fill="white"
-                      />
-                    </g>
-                  )}
-                </g>
+                <rect
+                  key={d.key}
+                  x={x} y={y} width={w} height={h}
+                  fill={color} fillOpacity={0.15}
+                  stroke={color} strokeWidth={1.5} strokeOpacity={0.5}
+                />
               );
             })}
 
-            {/* Scan lines */}
+            {/* Scan lines — subtle, matching BetweenReceipt style */}
             {passState.place > 0 && passState.place < 100 && (
               <rect
                 x="0" y={placeY} width={width}
-                height={Math.max(height * 0.006, 3)}
-                fill={PASS_COLORS.place}
-                filter={`url(#${filterId})`}
+                height={1}
+                fill="var(--text-color)"
+                opacity={0.3}
               />
             )}
             {passState.format > 0 && passState.format < 100 && (
               <rect
                 x="0" y={formatY} width={width}
-                height={Math.max(height * 0.006, 3)}
-                fill={PASS_COLORS.format}
-                filter={`url(#${filterId})`}
-              />
-            )}
-            {passState.financial > 0 && passState.financial < 100 && (
-              <rect
-                x="0" y={financialY} width={width}
-                height={Math.max(height * 0.006, 3)}
-                fill={PASS_COLORS.financial}
-                filter={`url(#${filterId})`}
+                height={1}
+                fill="var(--text-color)"
+                opacity={0.3}
               />
             )}
           </svg>
@@ -422,19 +359,19 @@ const DecisionTally: React.FC<{ summary: { total: number; valid: number; invalid
     <div className={styles.decisionTally}>
       {summary.valid > 0 && (
         <div className={styles.tallyItem}>
-          <span className={styles.tallyDot} style={{ background: DECISION_COLORS.VALID }} />
+          <span className={styles.tallyDot} style={{ background: "var(--color-green)" }} />
           <span className={styles.tallyCount}>{summary.valid}</span>
         </div>
       )}
       {summary.invalid > 0 && (
         <div className={styles.tallyItem}>
-          <span className={styles.tallyDot} style={{ background: DECISION_COLORS.INVALID }} />
+          <span className={styles.tallyDot} style={{ background: "var(--color-red)" }} />
           <span className={styles.tallyCount}>{summary.invalid}</span>
         </div>
       )}
       {summary.needs_review > 0 && (
         <div className={styles.tallyItem}>
-          <span className={styles.tallyDot} style={{ background: DECISION_COLORS.NEEDS_REVIEW }} />
+          <span className={styles.tallyDot} style={{ background: "var(--color-yellow)" }} />
           <span className={styles.tallyCount}>{summary.needs_review}</span>
         </div>
       )}
@@ -481,9 +418,9 @@ const PlaceCard: React.FC<{ receipt: WithinReceiptVerificationReceipt }> = ({ re
                     className={styles.gaugeFill}
                     style={{
                       width: `${(place.confidence * 100)}%`,
-                      backgroundColor: place.confidence > 0.7 ? DECISION_COLORS.VALID
-                        : place.confidence > 0.4 ? DECISION_COLORS.NEEDS_REVIEW
-                        : DECISION_COLORS.INVALID,
+                      backgroundColor: place.confidence > 0.7 ? "var(--color-green)"
+                        : place.confidence > 0.4 ? "var(--color-yellow)"
+                        : "var(--color-red)",
                     }}
                   />
                 </div>
@@ -530,51 +467,15 @@ const FormatPatternsCard: React.FC<{ receipt: WithinReceiptVerificationReceipt }
   );
 };
 
-const EquationsCard: React.FC<{ receipt: WithinReceiptVerificationReceipt }> = ({ receipt }) => {
-  const { financial_math } = receipt;
-
-  return (
-    <div className={styles.card}>
-      <h4 className={styles.cardTitle}>Equations</h4>
-      <div className={styles.cardBody}>
-        {financial_math.equations.slice(0, 5).map((eq, i) => (
-          <div key={i} className={styles.equationItem}>
-            <span className={styles.equationDesc}>{eq.description}</span>
-            <div className={styles.equationValues}>
-              {eq.expected_value != null && (
-                <span className={styles.equationExpected}>exp: {eq.expected_value}</span>
-              )}
-              {eq.actual_value != null && (
-                <span className={styles.equationActual}>act: {eq.actual_value}</span>
-              )}
-              {eq.difference != null && (
-                <span className={`${styles.equationDiff} ${eq.difference === 0 ? styles.zero : ''}`}>
-                  diff: {eq.difference}
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-        {financial_math.equations.length === 0 && (
-          <span className={`${styles.placeValue} ${styles.missing}`}>No equations</span>
-        )}
-        {financial_math.equations.length > 5 && (
-          <span className={`${styles.placeValue} ${styles.missing}`}>+{financial_math.equations.length - 5} more</span>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // ---------------------------------------------------------------------------
-// Pass Indicator (three connected dots)
+// Pass Indicator (two connected dots)
 // ---------------------------------------------------------------------------
 
 const PassIndicator: React.FC<{
   passState: PassState;
   activePass: PassName | null;
 }> = ({ passState, activePass }) => {
-  const passes: PassName[] = ["place", "format", "financial"];
+  const passes: PassName[] = ["place", "format"];
 
   return (
     <div className={styles.passIndicator}>
@@ -602,13 +503,6 @@ const PassIndicator: React.FC<{
                     style={{ width: `${progress}%`, backgroundColor: PASS_COLORS[pass] }}
                   />
                 </div>
-                {isComplete && (
-                  <span className={styles.durationBadge}>
-                    {pass === 'place' && receipt_duration(passState, 'place')}
-                    {pass === 'format' && receipt_duration(passState, 'format')}
-                    {pass === 'financial' && receipt_duration(passState, 'financial')}
-                  </span>
-                )}
               </div>
             </div>
           </React.Fragment>
@@ -617,11 +511,6 @@ const PassIndicator: React.FC<{
     </div>
   );
 };
-
-// Placeholder for duration display in pass indicator
-function receipt_duration(_passState: PassState, _pass: PassName): string {
-  return '';
-}
 
 // ---------------------------------------------------------------------------
 // Right Panel - switches cards based on active pass
@@ -644,11 +533,6 @@ const RightPanel: React.FC<{
         {activePass === 'format' && (
           <div className={`${styles.card} ${styles.cardFadeIn}`}>
             <FormatPatternsCard receipt={receipt} />
-          </div>
-        )}
-        {activePass === 'financial' && (
-          <div className={`${styles.card} ${styles.cardFadeIn}`}>
-            <EquationsCard receipt={receipt} />
           </div>
         )}
       </div>
@@ -674,7 +558,6 @@ const WithinReceiptVerification: React.FC = () => {
   const [passState, setPassState] = useState<PassState>({
     place: 0,
     format: 0,
-    financial: 0,
   });
   const [revealedDecisions, setRevealedDecisions] = useState<RevealedDecision[]>([]);
   const [formatSupport, setFormatSupport] = useState<{
@@ -735,7 +618,7 @@ const WithinReceiptVerification: React.FC = () => {
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const { words, place_validation, format_validation, financial_math } = currentReceipt;
+    const { words, place_validation, format_validation } = currentReceipt;
     const decisions: RevealedDecision[] = [];
 
     const isWordScanned = (lineId: number, wordId: number, progress: number) => {
@@ -753,7 +636,7 @@ const WithinReceiptVerification: React.FC = () => {
           decisions.push({
             key: `place_${d.line_id}_${d.word_id}`,
             pass: 'place',
-            decision: d.decision,
+            currentLabel: d.current_label || 'O',
             wordText: d.word_text,
             lineId: d.line_id,
             wordId: d.word_id,
@@ -771,7 +654,7 @@ const WithinReceiptVerification: React.FC = () => {
           decisions.push({
             key: `format_${d.line_id}_${d.word_id}`,
             pass: 'format',
-            decision: d.decision,
+            currentLabel: d.current_label || 'O',
             wordText: d.word_text,
             lineId: d.line_id,
             wordId: d.word_id,
@@ -781,30 +664,10 @@ const WithinReceiptVerification: React.FC = () => {
       }
     });
 
-    // Financial decisions (from equation involved_words)
-    financial_math.equations.forEach((eq, eqIdx) => {
-      eq.involved_words.forEach((d) => {
-        if (d.decision && isWordScanned(d.line_id, d.word_id, passState.financial)) {
-          const word = words.find(w => w.line_id === d.line_id && w.word_id === d.word_id);
-          if (word) {
-            decisions.push({
-              key: `financial_${eqIdx}_${d.line_id}_${d.word_id}`,
-              pass: 'financial',
-              decision: d.decision,
-              wordText: d.word_text,
-              lineId: d.line_id,
-              wordId: d.word_id,
-              bbox: word.bbox,
-            });
-          }
-        }
-      });
-    });
-
     setRevealedDecisions(decisions);
   }, [currentReceipt, passState]);
 
-  // Animation loop - sequential passes
+  // Animation loop - sequential passes: Place → Format
   useEffect(() => {
     if (!inView || receipts.length === 0) {
       return;
@@ -815,13 +678,10 @@ const WithinReceiptVerification: React.FC = () => {
     }
     isAnimatingRef.current = true;
 
-    // Sequential timing: Place → Format → Financial
     const placeEnd = PLACE_DURATION;
     const formatStart = placeEnd;
     const formatEnd = formatStart + FORMAT_DURATION;
-    const financialStart = formatEnd;
-    const financialEnd = financialStart + FINANCIAL_DURATION;
-    const allScannersEnd = financialEnd;
+    const allScannersEnd = formatEnd;
     const holdEnd = allScannersEnd + HOLD_DURATION;
     const totalCycle = holdEnd + TRANSITION_DURATION;
 
@@ -831,7 +691,7 @@ const WithinReceiptVerification: React.FC = () => {
     setPhase("scanning");
     setIsTransitioning(false);
     setActivePass("place");
-    setPassState({ place: 0, format: 0, financial: 0 });
+    setPassState({ place: 0, format: 0 });
 
     let isInTransition = false;
 
@@ -845,26 +705,15 @@ const WithinReceiptVerification: React.FC = () => {
       const elapsed = time - startTime;
 
       if (elapsed < allScannersEnd) {
-        // Pass 1: Place
         const placeProgress = Math.min((elapsed / PLACE_DURATION) * 100, 100);
 
-        // Pass 2: Format (after Place completes)
         let formatProgress = 0;
         if (elapsed >= formatStart) {
           formatProgress = Math.min(((elapsed - formatStart) / FORMAT_DURATION) * 100, 100);
         }
 
-        // Pass 3: Financial (after Format completes)
-        let financialProgress = 0;
-        if (elapsed >= financialStart) {
-          financialProgress = Math.min(((elapsed - financialStart) / FINANCIAL_DURATION) * 100, 100);
-        }
-
-        // Determine active pass
         let currentActivePass: PassName = "place";
-        if (elapsed >= financialStart) {
-          currentActivePass = "financial";
-        } else if (elapsed >= formatStart) {
+        if (elapsed >= formatStart) {
           currentActivePass = "format";
         }
 
@@ -874,22 +723,18 @@ const WithinReceiptVerification: React.FC = () => {
         setPassState({
           place: placeProgress,
           format: formatProgress,
-          financial: financialProgress,
         });
       } else if (elapsed < holdEnd) {
-        // Hold phase
         setPhase("complete");
         setIsTransitioning(false);
         setActivePass(null);
-        setPassState({ place: 100, format: 100, financial: 100 });
+        setPassState({ place: 100, format: 100 });
       } else if (elapsed < totalCycle) {
-        // Transition phase
         if (!isInTransition) {
           isInTransition = true;
           setIsTransitioning(true);
         }
       } else {
-        // Next receipt
         receiptIdx = (receiptIdx + 1) % currentReceipts.length;
         isInTransition = false;
         setCurrentIndex(receiptIdx);
@@ -897,7 +742,7 @@ const WithinReceiptVerification: React.FC = () => {
         setPhase("scanning");
         setIsTransitioning(false);
         setActivePass("place");
-        setPassState({ place: 0, format: 0, financial: 0 });
+        setPassState({ place: 0, format: 0 });
         setRevealedDecisions([]);
         startTime = time;
       }
@@ -978,7 +823,7 @@ const WithinReceiptVerification: React.FC = () => {
             <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
               <ReceiptViewer
                 receipt={nextReceipt}
-                passState={{ place: 0, format: 0, financial: 0 }}
+                passState={{ place: 0, format: 0 }}
                 phase="idle"
                 revealedDecisions={[]}
                 formatSupport={formatSupport}

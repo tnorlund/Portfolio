@@ -364,48 +364,6 @@
   color: var(--text-color);
 }
 
-/* Equations Card */
-.equationItem {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  border-radius: 6px;
-  background: rgba(128, 128, 128, 0.05);
-}
-
-.equationDesc {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-color);
-  word-break: break-word;
-}
-
-.equationValues {
-  display: flex;
-  gap: 0.75rem;
-  font-size: 0.7rem;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-.equationExpected {
-  color: var(--color-green);
-}
-
-.equationActual {
-  color: var(--text-color);
-}
-
-.equationDiff {
-  color: var(--color-red);
-}
-
-.equationDiff.zero {
-  color: var(--color-green);
-}
-
 /* Scanner progress bar below pass dot */
 .passProgress {
   width: 100%;
@@ -431,24 +389,6 @@
   opacity: 0.6;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
   text-align: center;
-}
-
-/* Decision Indicator Circles on Receipt */
-.decisionIndicator {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: popIn 0.25s ease-out forwards;
-}
-
-@keyframes popIn {
-  from {
-    transform: scale(0);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
 }
 
 /* Loading / Error states */

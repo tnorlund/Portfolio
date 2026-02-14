@@ -12,11 +12,11 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
+  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
   FinancialMathOverlay,
-  LabelEvaluatorVisualization,
   WithinReceiptVerification,
   LabelValidationTimeline,
   LabelWordCloud,
@@ -308,13 +308,14 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        The idea: show AI a receipt, ask it to tag each word with a label, then
-        compare its answers to other receipts from the same store to see if
-        the patterns still hold.
+        The idea: show AI a receipt, ask it to tag each word with a label.
+        Then cross-check those labels against what we already know — does the
+        store name match Google Places? Are the dates and phone numbers
+        formatted correctly?
       </p>
 
       <ClientOnly>
-        <LabelEvaluatorVisualization />
+        <WithinReceiptVerification />
       </ClientOnly>
 
       <p>
@@ -327,8 +328,14 @@ M1LK 2%           1    $4.4g`}</code>
         <FinancialMathOverlay />
       </ClientOnly>
 
+      <p>
+        Then I compare the labels across receipts from the same store. If
+        every other Trader Joe's receipt calls that field a line total, but
+        this one says subtotal, something's off.
+      </p>
+
       <ClientOnly>
-        <WithinReceiptVerification />
+        <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>
