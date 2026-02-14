@@ -184,9 +184,28 @@ interface FlyingReceiptProps {
   isFlying: boolean;
 }
 
+/**
+ * Hook to preload an image and return its natural dimensions.
+ * Since the browser caches images, this resolves instantly for already-loaded
+ * images (queue thumbnails use the same URL).
+ */
+function useImageDimensions(url: string | null): { width: number; height: number } | null {
+  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!url) { setDims(null); return; }
+    const img = new Image();
+    img.onload = () => setDims({ width: img.naturalWidth, height: img.naturalHeight });
+    img.src = url;
+    // If already cached, onload fires synchronously in some browsers;
+    // check complete flag as fallback.
+    if (img.complete && img.naturalWidth > 0) {
+      setDims({ width: img.naturalWidth, height: img.naturalHeight });
+    }
+  }, [url]);
+  return dims;
+}
+
 const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, isFlying }) => {
-  const width = Math.max(receipt?.width ?? 100, 1);
-  const height = Math.max(receipt?.height ?? 150, 1);
   const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
@@ -200,15 +219,20 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, i
     return getBestImageUrl(cdnKeys, formatSupport);
   }, [cdnKeys, formatSupport]);
 
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = 350;
+  // Preload image to get natural dimensions (cached → instant)
+  const naturalDims = useImageDimensions(imageUrl);
 
-  let displayHeight = Math.min(maxHeight, height);
+  // Use natural dims > receipt data > fallback
+  const width = naturalDims?.width ?? receipt?.width ?? 100;
+  const height = naturalDims?.height ?? receipt?.height ?? 150;
+
+  const aspectRatio = width / height;
+
+  let displayHeight = Math.min(CENTER_COLUMN_HEIGHT, height);
   let displayWidth = displayHeight * aspectRatio;
 
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
+  if (displayWidth > CENTER_COLUMN_WIDTH) {
+    displayWidth = CENTER_COLUMN_WIDTH;
     displayHeight = displayWidth / aspectRatio;
   }
 
