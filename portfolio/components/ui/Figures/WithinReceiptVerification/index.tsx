@@ -564,12 +564,10 @@ const RightPanel: React.FC<{
       <PassIndicator passState={passState} activePass={activePass} />
       <div className={styles.cardContainer}>
         {!showFormat && (
-          <div className={styles.card}>
-            <PlaceCard receipt={receipt} />
-          </div>
+          <PlaceCard receipt={receipt} />
         )}
         {showFormat && (
-          <div className={`${styles.card} ${styles.cardFadeIn}`}>
+          <div className={styles.cardFadeIn}>
             <FormatPatternsCard receipt={receipt} />
           </div>
         )}
@@ -611,6 +609,7 @@ const WithinReceiptVerification: React.FC = () => {
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
+  const currentIndexRef = useRef(0);
 
   // Detect image format support
   useEffect(() => {
@@ -652,58 +651,66 @@ const WithinReceiptVerification: React.FC = () => {
 
   const currentReceipt = receipts[currentIndex];
 
+  // Build word lookup map once per receipt (O(W) once, then O(1) per lookup)
+  const wordLookup = useMemo(() => {
+    if (!currentReceipt) return new Map<string, { bbox: { x: number; y: number; width: number; height: number } }>();
+    const map = new Map<string, { bbox: { x: number; y: number; width: number; height: number } }>();
+    for (const w of currentReceipt.words) {
+      map.set(`${w.line_id}_${w.word_id}`, w);
+    }
+    return map;
+  }, [currentReceipt]);
+
   // Calculate revealed decisions based on pass progress
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const { words, place_validation, format_validation } = currentReceipt;
+    const { place_validation, format_validation } = currentReceipt;
     const decisions: RevealedDecision[] = [];
 
-    const isWordScanned = (lineId: number, wordId: number, progress: number) => {
-      const word = words.find(w => w.line_id === lineId && w.word_id === wordId);
-      if (!word) return false;
+    const getWordIfScanned = (lineId: number, wordId: number, progress: number) => {
+      const word = wordLookup.get(`${lineId}_${wordId}`);
+      if (!word) return null;
       const wordTopY = 1 - word.bbox.y - word.bbox.height;
-      return wordTopY <= (progress / 100);
+      return wordTopY <= (progress / 100) ? word : null;
     };
 
     // Place decisions
-    place_validation.decisions.forEach((d) => {
-      if (d.decision && isWordScanned(d.line_id, d.word_id, passState.place)) {
-        const word = words.find(w => w.line_id === d.line_id && w.word_id === d.word_id);
-        if (word) {
-          decisions.push({
-            key: `place_${d.line_id}_${d.word_id}`,
-            pass: 'place',
-            currentLabel: d.current_label || 'O',
-            wordText: d.word_text,
-            lineId: d.line_id,
-            wordId: d.word_id,
-            bbox: word.bbox,
-          });
-        }
+    for (const d of place_validation.decisions) {
+      if (!d.decision) continue;
+      const word = getWordIfScanned(d.line_id, d.word_id, passState.place);
+      if (word) {
+        decisions.push({
+          key: `place_${d.line_id}_${d.word_id}`,
+          pass: 'place',
+          currentLabel: d.current_label || 'O',
+          wordText: d.word_text,
+          lineId: d.line_id,
+          wordId: d.word_id,
+          bbox: word.bbox,
+        });
       }
-    });
+    }
 
     // Format decisions
-    format_validation.decisions.forEach((d) => {
-      if (d.decision && isWordScanned(d.line_id, d.word_id, passState.format)) {
-        const word = words.find(w => w.line_id === d.line_id && w.word_id === d.word_id);
-        if (word) {
-          decisions.push({
-            key: `format_${d.line_id}_${d.word_id}`,
-            pass: 'format',
-            currentLabel: d.current_label || 'O',
-            wordText: d.word_text,
-            lineId: d.line_id,
-            wordId: d.word_id,
-            bbox: word.bbox,
-          });
-        }
+    for (const d of format_validation.decisions) {
+      if (!d.decision) continue;
+      const word = getWordIfScanned(d.line_id, d.word_id, passState.format);
+      if (word) {
+        decisions.push({
+          key: `format_${d.line_id}_${d.word_id}`,
+          pass: 'format',
+          currentLabel: d.current_label || 'O',
+          wordText: d.word_text,
+          lineId: d.line_id,
+          wordId: d.word_id,
+          bbox: word.bbox,
+        });
       }
-    });
+    }
 
     setRevealedDecisions(decisions);
-  }, [currentReceipt, passState]);
+  }, [currentReceipt, passState, wordLookup]);
 
   // Animation loop - sequential passes: Place → Format
   useEffect(() => {
@@ -723,7 +730,7 @@ const WithinReceiptVerification: React.FC = () => {
     const holdEnd = allScannersEnd + HOLD_DURATION;
     const totalCycle = holdEnd + TRANSITION_DURATION;
 
-    let receiptIdx = currentIndex;
+    let receiptIdx = currentIndexRef.current;
     let startTime = performance.now();
 
     setPhase("scanning");
@@ -775,6 +782,7 @@ const WithinReceiptVerification: React.FC = () => {
       } else {
         receiptIdx = (receiptIdx + 1) % currentReceipts.length;
         isInTransition = false;
+        currentIndexRef.current = receiptIdx;
         setCurrentIndex(receiptIdx);
 
         setPhase("scanning");
@@ -796,7 +804,8 @@ const WithinReceiptVerification: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, currentIndex]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, receipts.length > 0]);
 
   if (loading) {
     return (
