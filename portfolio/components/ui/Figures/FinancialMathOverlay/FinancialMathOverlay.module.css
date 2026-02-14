@@ -1,9 +1,9 @@
 /* Container */
 .container {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1024px;
   margin: 2rem auto;
-  padding: 1.5rem;
+  padding: 2rem;
   background: var(--background-color);
   border-radius: 12px;
 }
@@ -12,7 +12,7 @@
 .mainWrapper {
   display: flex;
   gap: 1.5rem;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-height: 500px;
 }

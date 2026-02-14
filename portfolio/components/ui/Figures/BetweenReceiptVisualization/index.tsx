@@ -706,7 +706,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
         <div className={styles.centerColumn}>
           {/* Current receipt */}
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles["fade-out"] : ""}`}>
+          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}>
             <ReceiptViewer
               receipt={currentReceipt}
               scanProgress={scanProgress}
@@ -729,7 +729,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
           {/* Next receipt for mobile crossfade */}
           {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles["fade-in"]}`}>
+            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
               <ReceiptViewer
                 receipt={nextReceipt}
                 scanProgress={0}
