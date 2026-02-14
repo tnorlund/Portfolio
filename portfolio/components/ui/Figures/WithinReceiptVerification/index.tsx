@@ -556,16 +556,19 @@ const RightPanel: React.FC<{
   activePass: PassName | null;
   isTransitioning: boolean;
 }> = ({ receipt, passState, activePass, isTransitioning }) => {
+  // Show format card during the format pass AND during the hold phase (activePass=null)
+  // so the card doesn't flicker back to place after format completes.
+  const showFormat = activePass === 'format' || (activePass === null && passState.format >= 100);
   return (
     <div className={styles.rightPanel} style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}>
       <PassIndicator passState={passState} activePass={activePass} />
       <div className={styles.cardContainer}>
-        {(!activePass || activePass === 'place') && (
+        {!showFormat && (
           <div className={styles.card}>
             <PlaceCard receipt={receipt} />
           </div>
         )}
-        {activePass === 'format' && (
+        {showFormat && (
           <div className={`${styles.card} ${styles.cardFadeIn}`}>
             <FormatPatternsCard receipt={receipt} />
           </div>
