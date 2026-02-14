@@ -852,8 +852,8 @@ export interface WithinReceiptVerificationReceipt {
   cdn_medium_s3_key?: string;
   cdn_medium_webp_s3_key?: string;
   cdn_medium_avif_s3_key?: string;
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
 }
 
 export interface WithinReceiptVerificationResponse {

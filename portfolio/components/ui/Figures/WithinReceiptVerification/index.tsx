@@ -6,8 +6,19 @@ import {
   WithinReceiptVerificationReceipt,
   WithinReceiptWordDecision,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
+import { detectImageFormatSupport, getBestImageUrl, ImageFormats } from "../../../../utils/imageFormat";
 import styles from "./WithinReceiptVerification.module.css";
+
+// Build CDN keys from image_id and receipt_id
+function buildCdnKeys(imageId: string, receiptId: number): ImageFormats {
+  const paddedId = String(receiptId).padStart(5, "0");
+  const base = `assets/${imageId}_RECEIPT_${paddedId}`;
+  return {
+    cdn_s3_key: `${base}.jpg`,
+    cdn_webp_s3_key: `${base}.webp`,
+    cdn_avif_s3_key: `${base}.avif`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Types & Constants
@@ -120,8 +131,10 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   return (
     <div className={styles.receiptQueue}>
       {visibleReceipts.map((receipt, idx) => {
-        const imageUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
-        const { width, height } = receipt;
+        const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+        const imageUrl = getBestImageUrl(cdnKeys, formatSupport, 'thumbnail');
+        const width = receipt.width || 100;
+        const height = receipt.height || 150;
         const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptId);
 
@@ -177,7 +190,8 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, i
 
   const imageUrl = useMemo(() => {
     if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
+    const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+    return getBestImageUrl(cdnKeys, formatSupport);
   }, [receipt, formatSupport]);
 
   const aspectRatio = width / height;
@@ -255,12 +269,15 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   revealedDecisions,
   formatSupport,
 }) => {
-  const { width, height } = receipt;
+  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
+  const width = dims?.width ?? receipt.width ?? 300;
+  const height = dims?.height ?? receipt.height ?? 450;
   const filterId = `scanLineGlow_wr_${receipt.image_id}_${receipt.receipt_id}`;
 
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    return getBestImageUrl(receipt, formatSupport);
+    const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+    return getBestImageUrl(cdnKeys, formatSupport);
   }, [receipt, formatSupport]);
 
   if (!imageUrl) {
@@ -282,6 +299,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (img.naturalWidth > 0) {
+                setDims({ width: img.naturalWidth, height: img.naturalHeight });
+              }
+            }}
           />
           <svg
             className={styles.svgOverlay}
