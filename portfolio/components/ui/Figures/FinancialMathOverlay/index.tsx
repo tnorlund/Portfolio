@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { animated, useSpring, to } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
-import Image from "next/image";
 import { api } from "../../../../services/api";
 import {
   FinancialMathReceipt,
@@ -10,6 +9,7 @@ import {
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  getJpegFallbackUrl,
   FormatSupport,
   ImageFormats,
 } from "../../../../utils/imageFormat";
@@ -31,10 +31,13 @@ const TRANSITION_DURATION = 600;
 const QUEUE_REFETCH_THRESHOLD = 7;
 const MAX_EMPTY_FETCHES = 3;
 
-// Build CDN keys from image_id and receipt_id
-function buildCdnKeys(imageId: string, receiptId: number): ImageFormats {
-  const paddedId = String(receiptId).padStart(5, "0");
-  const base = `assets/${imageId}_RECEIPT_${paddedId}`;
+// Get CDN keys: prefer API-provided, fallback to constructed
+function getCdnKeys(receipt: FinancialMathReceipt): ImageFormats {
+  if (receipt.cdn_s3_key) {
+    return receipt as unknown as ImageFormats;
+  }
+  const paddedId = String(receipt.receipt_id).padStart(5, "0");
+  const base = `assets/${receipt.image_id}_RECEIPT_${paddedId}`;
   return {
     cdn_s3_key: `${base}.jpg`,
     cdn_webp_s3_key: `${base}.webp`,
@@ -114,8 +117,8 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   return (
     <div className={styles.receiptQueue}>
       {visibleReceipts.map((receipt, idx) => {
-        const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
-        const imageUrl = getBestImageUrl(cdnKeys, formatSupport);
+        const cdnKeys = getCdnKeys(receipt);
+        const imageUrl = getBestImageUrl(cdnKeys, formatSupport, 'thumbnail');
         const receiptKey = `${receipt.image_id}-${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptKey);
 
@@ -142,14 +145,21 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             }}
           >
             {imageUrl && (
-              <Image
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
                 src={imageUrl}
                 alt={`Queued receipt ${idx + 1}`}
                 width={100}
                 height={150}
                 style={{ width: "100%", height: "auto", display: "block" }}
-                sizes="100px"
                 onLoad={() => handleImageLoad(idx)}
+                onError={(e) => {
+                  const fallback = getJpegFallbackUrl(cdnKeys);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                  handleImageLoad(idx);
+                }}
               />
             )}
           </div>
@@ -181,13 +191,15 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     : "";
   const { rotation, leftOffset } = getQueuePosition(receiptKey);
 
+  const cdnKeys = useMemo(() => {
+    if (!receipt) return null;
+    return getCdnKeys(receipt);
+  }, [receipt]);
+
   const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(
-      buildCdnKeys(receipt.image_id, receipt.receipt_id),
-      formatSupport
-    );
-  }, [receipt, formatSupport]);
+    if (!formatSupport || !cdnKeys) return null;
+    return getBestImageUrl(cdnKeys, formatSupport);
+  }, [cdnKeys, formatSupport]);
 
   const aspectRatio = width / height;
   const displayHeight = Math.min(500, height);
@@ -244,6 +256,13 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
         style={{ width: displayWidth, height: displayHeight }}
+        onError={(e) => {
+          if (!cdnKeys) return;
+          const fallback = getJpegFallbackUrl(cdnKeys);
+          if (e.currentTarget.src !== fallback) {
+            e.currentTarget.src = fallback;
+          }
+        }}
       />
     </animated.div>
   );
@@ -268,13 +287,12 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 }) => {
   const [imgDim, setImgDim] = useState<{ w: number; h: number } | null>(null);
 
+  const cdnKeys = useMemo(() => getCdnKeys(receipt), [receipt]);
+
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    return getBestImageUrl(
-      buildCdnKeys(receipt.image_id, receipt.receipt_id),
-      formatSupport
-    );
-  }, [receipt, formatSupport]);
+    return getBestImageUrl(cdnKeys, formatSupport);
+  }, [cdnKeys, formatSupport]);
 
   const handleLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -302,6 +320,12 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             alt="Receipt"
             className={styles.receiptImage}
             onLoad={handleLoad}
+            onError={(e) => {
+              const fallback = getJpegFallbackUrl(cdnKeys);
+              if (e.currentTarget.src !== fallback) {
+                e.currentTarget.src = fallback;
+              }
+            }}
           />
 
           <svg
@@ -309,43 +333,15 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
           >
-            {/* Scan line */}
-            <defs>
-              <linearGradient
-                id={`scanGrad-${receipt.image_id}-${receipt.receipt_id}`}
-                x1="0%"
-                y1="0%"
-                x2="100%"
-                y2="0%"
-              >
-                <stop offset="0%" stopColor="transparent" />
-                <stop offset="20%" stopColor="var(--color-red)" />
-                <stop offset="80%" stopColor="var(--color-red)" />
-                <stop offset="100%" stopColor="transparent" />
-              </linearGradient>
-              <filter
-                id={`scanGlow-${receipt.image_id}-${receipt.receipt_id}`}
-                x="-50%"
-                y="-50%"
-                width="200%"
-                height="200%"
-              >
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {scanProgress > 0 && (
+            {/* Scan line — subtle monochrome, matching other components */}
+            {scanProgress > 0 && scanProgress < 100 && (
               <rect
                 x="0"
                 y={(scanProgress / 100) * h}
                 width={w}
-                height={Math.max(h * 0.005, 3)}
-                fill={`url(#scanGrad-${receipt.image_id}-${receipt.receipt_id})`}
-                filter={`url(#scanGlow-${receipt.image_id}-${receipt.receipt_id})`}
+                height={1}
+                fill="var(--text-color)"
+                opacity={0.3}
               />
             )}
 
@@ -450,7 +446,8 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
 }) => {
   return (
     <div
-      className={`${styles.equationPanel} ${isTransitioning ? styles.equationPanelHidden : ""}`}
+      className={styles.equationPanel}
+      style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}
     >
       {equations.map((eq, idx) => {
         const color = getEquationColor(eq);

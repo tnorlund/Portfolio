@@ -159,19 +159,13 @@
   flex-shrink: 0;
 }
 
-/* Pass Progress Indicator - three connected dots */
+/* Pass Progress Indicator - two connected dots */
 .passIndicator {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0;
   margin-bottom: 0.5rem;
-}
-
-.passStep {
-  display: flex;
-  align-items: center;
-  gap: 0;
 }
 
 .passDot {
@@ -184,7 +178,8 @@
   font-size: 0.5rem;
   font-weight: 700;
   color: var(--background-color);
-  transition: background-color 0.3s ease, opacity 0.3s ease;
+  background-color: var(--text-color);
+  transition: opacity 0.3s ease;
   opacity: 0.2;
 }
 
@@ -364,32 +359,6 @@
   color: var(--text-color);
 }
 
-/* Scanner progress bar below pass dot */
-.passProgress {
-  width: 100%;
-  height: 2px;
-  background: var(--text-color);
-  opacity: 0.08;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: 0.25rem;
-}
-
-.passProgressFill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-/* Duration badge */
-.durationBadge {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: var(--text-color);
-  opacity: 0.6;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  text-align: center;
-}
 
 /* Loading / Error states */
 .loading,

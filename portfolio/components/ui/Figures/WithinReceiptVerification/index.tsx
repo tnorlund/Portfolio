@@ -6,13 +6,16 @@ import {
   WithinReceiptVerificationReceipt,
   WithinReceiptWordDecision,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl, ImageFormats } from "../../../../utils/imageFormat";
+import { detectImageFormatSupport, getBestImageUrl, getJpegFallbackUrl, ImageFormats } from "../../../../utils/imageFormat";
 import styles from "./WithinReceiptVerification.module.css";
 
-// Build CDN keys from image_id and receipt_id
-function buildCdnKeys(imageId: string, receiptId: number): ImageFormats {
-  const paddedId = String(receiptId).padStart(5, "0");
-  const base = `assets/${imageId}_RECEIPT_${paddedId}`;
+// Get CDN keys: prefer API-provided, fallback to constructed
+function getCdnKeys(receipt: WithinReceiptVerificationReceipt): ImageFormats {
+  if (receipt.cdn_s3_key) {
+    return receipt as unknown as ImageFormats;
+  }
+  const paddedId = String(receipt.receipt_id).padStart(5, "0");
+  const base = `assets/${receipt.image_id}_RECEIPT_${paddedId}`;
   return {
     cdn_s3_key: `${base}.jpg`,
     cdn_webp_s3_key: `${base}.webp`,
@@ -57,11 +60,6 @@ const LABEL_COLORS: Record<string, string> = {
   O: "var(--text-color)",
 };
 
-// Pass colors
-const PASS_COLORS: Record<PassName, string> = {
-  place: "var(--color-blue)",
-  format: "var(--color-teal, #2dd4bf)",
-};
 
 // Animation timing
 const PLACE_DURATION = 2000;
@@ -129,7 +127,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   return (
     <div className={styles.receiptQueue}>
       {visibleReceipts.map((receipt, idx) => {
-        const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+        const cdnKeys = getCdnKeys(receipt);
         const imageUrl = getBestImageUrl(cdnKeys, formatSupport, 'thumbnail');
         const width = receipt.width || 100;
         const height = receipt.height || 150;
@@ -161,6 +159,12 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
                 width={width}
                 height={height}
                 style={{ width: "100%", height: "auto", display: "block" }}
+                onError={(e) => {
+                  const fallback = getJpegFallbackUrl(cdnKeys);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
               />
             )}
           </div>
@@ -186,11 +190,15 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, i
   const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
+  const cdnKeys = useMemo(() => {
+    if (!receipt) return null;
+    return getCdnKeys(receipt);
+  }, [receipt]);
+
   const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
+    if (!formatSupport || !cdnKeys) return null;
     return getBestImageUrl(cdnKeys, formatSupport);
-  }, [receipt, formatSupport]);
+  }, [cdnKeys, formatSupport]);
 
   const aspectRatio = width / height;
   const maxHeight = 500;
@@ -243,6 +251,13 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({ receipt, formatSupport, i
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
         style={{ width: displayWidth, height: displayHeight }}
+        onError={(e) => {
+          if (!cdnKeys) return;
+          const fallback = getJpegFallbackUrl(cdnKeys);
+          if (e.currentTarget.src !== fallback) {
+            e.currentTarget.src = fallback;
+          }
+        }}
       />
     </animated.div>
   );
@@ -271,11 +286,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   const width = dims?.width ?? receipt.width ?? 300;
   const height = dims?.height ?? receipt.height ?? 450;
 
+  const cdnKeys = useMemo(() => getCdnKeys(receipt), [receipt]);
+
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    const cdnKeys = buildCdnKeys(receipt.image_id, receipt.receipt_id);
     return getBestImageUrl(cdnKeys, formatSupport);
-  }, [receipt, formatSupport]);
+  }, [cdnKeys, formatSupport]);
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -299,6 +315,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
               const img = e.currentTarget;
               if (img.naturalWidth > 0) {
                 setDims({ width: img.naturalWidth, height: img.naturalHeight });
+              }
+            }}
+            onError={(e) => {
+              const fallback = getJpegFallbackUrl(cdnKeys);
+              if (e.currentTarget.src !== fallback) {
+                e.currentTarget.src = fallback;
               }
             }}
           />
@@ -480,30 +502,18 @@ const PassIndicator: React.FC<{
   return (
     <div className={styles.passIndicator}>
       {passes.map((pass, i) => {
-        const progress = passState[pass];
         const isActive = activePass === pass;
-        const isComplete = progress >= 100;
+        const isComplete = passState[pass] >= 100;
 
         return (
           <React.Fragment key={pass}>
             {i > 0 && (
               <div className={`${styles.passConnector} ${passState[passes[i - 1]] >= 100 ? styles.active : ''}`} />
             )}
-            <div className={styles.passStep}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <div
-                  className={`${styles.passDot} ${isActive ? styles.active : ''} ${isComplete ? styles.complete : ''}`}
-                  style={{ backgroundColor: PASS_COLORS[pass] }}
-                >
-                  {i + 1}
-                </div>
-                <div className={styles.passProgress}>
-                  <div
-                    className={styles.passProgressFill}
-                    style={{ width: `${progress}%`, backgroundColor: PASS_COLORS[pass] }}
-                  />
-                </div>
-              </div>
+            <div
+              className={`${styles.passDot} ${isActive ? styles.active : ''} ${isComplete ? styles.complete : ''}`}
+            >
+              {i + 1}
             </div>
           </React.Fragment>
         );
@@ -520,9 +530,10 @@ const RightPanel: React.FC<{
   receipt: WithinReceiptVerificationReceipt;
   passState: PassState;
   activePass: PassName | null;
-}> = ({ receipt, passState, activePass }) => {
+  isTransitioning: boolean;
+}> = ({ receipt, passState, activePass, isTransitioning }) => {
   return (
-    <div className={styles.rightPanel}>
+    <div className={styles.rightPanel} style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}>
       <PassIndicator passState={passState} activePass={activePass} />
       <div className={styles.cardContainer}>
         {(!activePass || activePass === 'place') && (
@@ -836,6 +847,7 @@ const WithinReceiptVerification: React.FC = () => {
           receipt={currentReceipt}
           passState={passState}
           activePass={activePass}
+          isTransitioning={isTransitioning}
         />
       </div>
     </div>

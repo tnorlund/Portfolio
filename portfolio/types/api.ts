@@ -736,6 +736,15 @@ export interface FinancialMathReceipt {
     has_invalid: boolean;
     has_needs_review: boolean;
   };
+  // CDN image keys (populated by Spark cache enrichment)
+  cdn_s3_key?: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface FinancialMathResponse {

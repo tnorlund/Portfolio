@@ -1233,6 +1233,12 @@ def run_evaluator_viz_cache(
                     unified_rows=unified_rows,
                     data_rows=data_rows,
                 )
+            elif prefix == "financial-math":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    data_rows=data_rows,
+                )
             else:
                 results = helper_fn(parquet_dir=parquet_dir, rows=trace_rows)
             if not isinstance(results, list):
