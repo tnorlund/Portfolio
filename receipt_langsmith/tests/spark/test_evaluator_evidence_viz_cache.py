@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from receipt_langsmith.spark.evaluator_evidence_viz_cache import (
     _build_issue_entry,
@@ -323,6 +321,46 @@ class TestWriteSampleOutput:
 
 class TestEdgeCases:
     """Edge cases that should be handled gracefully."""
+
+    def test_unified_rows_source(self):
+        """Unified rows with review_all_decisions should produce evidence."""
+        unified_rows = [
+            {
+                "image_id": "img-unified",
+                "receipt_id": 9,
+                "merchant_name": "Unified Store",
+                "trace_id": "trace-unified",
+                "review_all_decisions": [REVIEW_DECISION],
+            }
+        ]
+
+        results = build_evidence_cache(unified_rows=unified_rows)
+        assert len(results) == 1
+        assert results[0]["image_id"] == "img-unified"
+        assert results[0]["receipt_id"] == 9
+        assert results[0]["merchant_name"] == "Unified Store"
+        assert len(results[0]["issues_with_evidence"]) == 1
+        assert results[0]["issues_with_evidence"][0]["word_text"] == "5.99"
+        assert results[0]["summary"]["issues_with_evidence"] == 1
+
+    def test_unified_rows_fallback_to_trace_rows(self, tmp_path: Path):
+        """If unified rows have no decisions, trace parsing should still
+        work."""
+        rows = _sample_rows()
+        _write_parquet(rows, str(tmp_path))
+
+        unified_rows = [
+            {
+                "image_id": "img-empty",
+                "receipt_id": 0,
+                "review_all_decisions": [],
+            }
+        ]
+        results = build_evidence_cache(
+            str(tmp_path), unified_rows=unified_rows
+        )
+        assert len(results) == 1
+        assert results[0]["image_id"] == "img-abc"
 
     def test_empty_directory(self, tmp_path: Path):
         results = build_evidence_cache(str(tmp_path))
