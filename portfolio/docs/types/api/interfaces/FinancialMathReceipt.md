@@ -1,0 +1,133 @@
+[**portfolio**](../../../README.md)
+
+***
+
+[portfolio](../../../modules.md) / [types/api](../README.md) / FinancialMathReceipt
+
+# Interface: FinancialMathReceipt
+
+Defined in: [types/api.ts:728](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L728)
+
+## Properties
+
+### equations
+
+> **equations**: [`FinancialMathEquation`](FinancialMathEquation.md)[]
+
+Defined in: [types/api.ts:733](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L733)
+
+***
+
+### image\_id
+
+> **image\_id**: `string`
+
+Defined in: [types/api.ts:729](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L729)
+
+***
+
+### merchant\_name
+
+> **merchant\_name**: `string`
+
+Defined in: [types/api.ts:731](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L731)
+
+***
+
+### receipt\_id
+
+> **receipt\_id**: `number`
+
+Defined in: [types/api.ts:730](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L730)
+
+***
+
+### summary
+
+> **summary**: `object`
+
+Defined in: [types/api.ts:734](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L734)
+
+#### has\_invalid
+
+> **has\_invalid**: `boolean`
+
+#### has\_needs\_review
+
+> **has\_needs\_review**: `boolean`
+
+#### total\_equations
+
+> **total\_equations**: `number`
+
+***
+
+### trace\_id
+
+> **trace\_id**: `string`
+
+Defined in: [types/api.ts:732](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L732)
+
+***
+
+### cdn\_avif\_s3\_key?
+
+> `optional` **cdn\_avif\_s3\_key**: `string`
+
+Defined in: [types/api.ts:742](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L742)
+
+***
+
+### cdn\_medium\_avif\_s3\_key?
+
+> `optional` **cdn\_medium\_avif\_s3\_key**: `string`
+
+Defined in: [types/api.ts:745](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L745)
+
+***
+
+### cdn\_medium\_s3\_key?
+
+> `optional` **cdn\_medium\_s3\_key**: `string`
+
+Defined in: [types/api.ts:743](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L743)
+
+***
+
+### cdn\_medium\_webp\_s3\_key?
+
+> `optional` **cdn\_medium\_webp\_s3\_key**: `string`
+
+Defined in: [types/api.ts:744](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L744)
+
+***
+
+### cdn\_s3\_key?
+
+> `optional` **cdn\_s3\_key**: `string`
+
+Defined in: [types/api.ts:740](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L740)
+
+***
+
+### cdn\_webp\_s3\_key?
+
+> `optional` **cdn\_webp\_s3\_key**: `string`
+
+Defined in: [types/api.ts:741](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L741)
+
+***
+
+### height?
+
+> `optional` **height**: `number`
+
+Defined in: [types/api.ts:747](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L747)
+
+***
+
+### width?
+
+> `optional` **width**: `number`
+
+Defined in: [types/api.ts:746](https://github.com/tnorlund/Portfolio/blob/e26490151541f3747c316e1f22331cf7151b688a/portfolio/types/api.ts#L746)
