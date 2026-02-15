@@ -10,6 +10,8 @@ field tracks all line IDs in a visual row, while the primary line_id is the
 first (leftmost) line in the row.
 """
 
+import json
+import logging
 from collections.abc import Sequence
 from typing import List, Optional, TypedDict
 
@@ -21,21 +23,11 @@ from receipt_chroma.embedding.utils.normalize import (
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
-# Chroma Cloud limits metadata key names to 36 bytes
-_MAX_METADATA_KEY_BYTES = 36
+logger = logging.getLogger(__name__)
 
 
 class LineMetadata(TypedDict, total=False):
-    """Metadata structure for line embeddings in ChromaDB.
-
-    For row-based embeddings (v2):
-    - line_id: Primary line ID (first/leftmost line in visual row)
-    - row_line_ids: JSON string of all line IDs in the visual row
-    - text: Combined text of all lines in the visual row
-
-    Legacy fields (for backward compatibility):
-    - prev_line, next_line: Legacy context fields
-    """
+    """Metadata structure for line embeddings in ChromaDB."""
 
     image_id: str
     receipt_id: int
@@ -58,9 +50,10 @@ class LineMetadata(TypedDict, total=False):
     normalized_phone_10: str  # Optional, only if anchors exist
     normalized_full_address: str  # Optional, only if anchors exist
     normalized_url: str  # Optional, only if anchors exist
-    # Row-based fields (v2)
     row_line_ids: str  # JSON array of line IDs in the visual row
     label_status: str  # Optional: validated, auto_suggested, unvalidated
+    valid_labels_array: list[str]  # Canonical valid label array
+    invalid_labels_array: list[str]  # Canonical invalid label array
 
 
 def create_line_metadata(
@@ -72,30 +65,14 @@ def create_line_metadata(
     section_label: Optional[str] = None,
     source: str = "openai_embedding_batch",
 ) -> LineMetadata:
-    """
-    Create comprehensive metadata for a line embedding.
-
-    Args:
-        line: The ReceiptLine entity
-        prev_line: Previous line text (or "<EDGE>")
-        next_line: Next line text (or "<EDGE>")
-        merchant_name: Optional merchant name
-        avg_word_confidence: Optional average word confidence
-        section_label: Optional section label
-        source: Source identifier (default: "openai_embedding_batch")
-
-    Returns:
-        Dictionary of metadata for ChromaDB
-    """
-    # Use line confidence if avg_word_confidence not provided
+    """Create comprehensive metadata for a line embedding."""
     if avg_word_confidence is None:
         avg_word_confidence = line.confidence
 
-    # Standardize merchant name format
     if merchant_name:
         merchant_name = merchant_name.strip().title()
 
-    metadata = {
+    metadata: LineMetadata = {
         "image_id": line.image_id,
         "receipt_id": line.receipt_id,
         "line_id": line.line_id,
@@ -108,11 +85,10 @@ def create_line_metadata(
         "height": line.bounding_box["height"],
         "prev_line": prev_line,
         "next_line": next_line,
-        "merchant_name": merchant_name,
+        "merchant_name": merchant_name or "",
         "source": source,
     }
 
-    # Add section label if available
     if section_label:
         metadata["section_label"] = section_label
 
@@ -123,18 +99,7 @@ def enrich_line_metadata_with_anchors(
     metadata: LineMetadata,
     line_words: List[ReceiptWord],
 ) -> LineMetadata:
-    """
-    Enrich line metadata with anchor fields (phone, address, URL) if available.
-
-    Anchor-only enrichment: attach fields only if this line has anchor words.
-
-    Args:
-        metadata: Base metadata dictionary to enrich
-        line_words: List of ReceiptWord entities for this line
-
-    Returns:
-        Enriched metadata dictionary
-    """
+    """Enrich line metadata with anchor fields (phone, address, URL)."""
     try:
         anchor_phone = ""
         anchor_address = ""
@@ -148,14 +113,13 @@ def enrich_line_metadata_with_anchors(
                 if ph:
                     anchor_phone = ph
             elif etype == "address" and not anchor_address:
-                # Build from this single word; function will normalize
                 addr = build_full_address_from_words([w])
                 if addr:
                     anchor_address = addr
             elif etype == "url" and not anchor_url:
-                u = normalize_url(val or getattr(w, "text", ""))
-                if u:
-                    anchor_url = u
+                url_norm = normalize_url(val or getattr(w, "text", ""))
+                if url_norm:
+                    anchor_url = url_norm
             if anchor_phone and anchor_address and anchor_url:
                 break
 
@@ -166,11 +130,9 @@ def enrich_line_metadata_with_anchors(
         if anchor_url:
             metadata["normalized_url"] = anchor_url
     except Exception:
-        # Silently fail - anchor enrichment is optional
-        pass
+        logger.debug("Anchor enrichment failed for line", exc_info=True)
 
-    return metadata  # type: ignore[return-value]
-    # Dict operations return Dict[str, Any], but structure matches TypedDict
+    return metadata
 
 
 def create_row_metadata(
@@ -178,36 +140,13 @@ def create_row_metadata(
     merchant_name: Optional[str] = None,
     source: str = "openai_embedding_batch",
 ) -> LineMetadata:
-    """Create metadata for a visual row embedding.
-
-    For row-based embeddings, the metadata includes:
-    - Primary identifiers from the first (leftmost) line
-    - Combined text from all lines in the row
-    - row_line_ids tracking all line IDs in the visual row
-
-    Args:
-        row_lines: Lines in the visual row, sorted left-to-right
-        merchant_name: Optional merchant name
-        source: Source identifier (default: "openai_embedding_batch")
-
-    Returns:
-        Dictionary of metadata for ChromaDB
-
-    Raises:
-        ValueError: If row_lines is empty
-    """
-    import json
-
+    """Create metadata for a visual row embedding."""
     if not row_lines:
         raise ValueError("Cannot create metadata for empty row")
 
-    # Primary line is the first (leftmost) line
     primary_line = row_lines[0]
-
-    # Combine text from all lines in the row
     combined_text = " ".join(line.text for line in row_lines)
 
-    # Calculate bounding box spanning all lines
     min_x = min(line.bounding_box["x"] for line in row_lines)
     max_x = max(
         line.bounding_box["x"] + line.bounding_box["width"]
@@ -218,23 +157,19 @@ def create_row_metadata(
         line.bounding_box["y"] + line.bounding_box["height"]
         for line in row_lines
     )
-
-    # Calculate average confidence
     avg_confidence = sum(line.confidence for line in row_lines) / len(
         row_lines
     )
 
-    # Standardize merchant name format
     if merchant_name:
         merchant_name = merchant_name.strip().title()
 
-    # Collect all line IDs
     line_ids = [line.line_id for line in row_lines]
 
     metadata: LineMetadata = {
         "image_id": primary_line.image_id,
         "receipt_id": primary_line.receipt_id,
-        "line_id": primary_line.line_id,  # Primary line ID
+        "line_id": primary_line.line_id,
         "text": combined_text,
         "confidence": avg_confidence,
         "avg_word_confidence": avg_confidence,
@@ -256,19 +191,7 @@ def enrich_row_metadata_with_anchors(
     metadata: LineMetadata,
     row_words: Sequence[ReceiptWord],
 ) -> LineMetadata:
-    """Enrich row metadata with anchor fields from all words in the row.
-
-    Similar to enrich_line_metadata_with_anchors but operates on all words
-    across all lines in the visual row.
-
-    Args:
-        metadata: Base metadata dictionary to enrich
-        row_words: List of ReceiptWord entities for all lines in the row
-
-    Returns:
-        Enriched metadata dictionary
-    """
-    # Reuse the existing enrichment logic
+    """Enrich row metadata with anchor fields from all words in the row."""
     return enrich_line_metadata_with_anchors(metadata, list(row_words))
 
 
@@ -277,61 +200,57 @@ def enrich_row_metadata_with_labels(
     row_words: Sequence[ReceiptWord],
     all_labels: Sequence[ReceiptWordLabel],
 ) -> LineMetadata:
-    """Enrich row metadata with aggregated label fields from all words in the row.
+    """Enrich row metadata with aggregated valid/invalid label arrays."""
+    row_word_keys = {
+        (w.image_id, w.receipt_id, w.line_id, w.word_id) for w in row_words
+    }
 
-    Aggregates VALID/INVALID labels from all words in the visual row into
-    boolean metadata fields:
-    - `label_X=True` if any word in row has VALID for X
-    - `label_X=False` if no VALID exists but at least one INVALID for X
-
-    VALID takes precedence over INVALID for the same label, preserving
-    "positive evidence wins" semantics when mixed decisions exist in a row.
-
-    Args:
-        metadata: Base metadata dictionary to enrich
-        row_words: List of ReceiptWord entities for all lines in the row
-        all_labels: List of all ReceiptWordLabel entities for the receipt
-
-    Returns:
-        Enriched metadata dictionary with label_* boolean fields
-    """
-    # Build set of (line_id, word_id) for words in this row
-    row_word_keys = {(w.line_id, w.word_id) for w in row_words}
-
-    # Filter labels to only those belonging to words in this row
     row_labels = [
         lbl
         for lbl in all_labels
-        if (lbl.line_id, lbl.word_id) in row_word_keys
+        if (lbl.image_id, lbl.receipt_id, lbl.line_id, lbl.word_id)
+        in row_word_keys
     ]
 
     has_validated = False
     has_pending = False
+    valid_labels: set[str] = set()
+    invalid_labels: set[str] = set()
 
-    # Aggregate VALID/INVALID labels into boolean fields.
-    # Only labels with valid names are included:
-    # - Must be in CORE_LABELS (not garbage/notes)
-    # - Must fit within Chroma Cloud's 36-byte key limit
     for lbl in row_labels:
+        if not lbl.label:
+            continue
+        normalized_label = lbl.label.strip().upper()
+        if not normalized_label:
+            continue
+        if normalized_label not in CORE_LABELS:
+            continue
+
         status = lbl.validation_status
-        # Filter non-core labels before checking status so that
-        # garbage label names never influence label_status.
-        if lbl.label not in CORE_LABELS:
-            continue
-        field_name = f"label_{lbl.label}"
-        # Defensive check for Chroma Cloud quota
-        if len(field_name.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
-            continue
         if status == ValidationStatus.PENDING.value:
             has_pending = True
             continue
         if status == ValidationStatus.VALID.value:
-            metadata[field_name] = True  # type: ignore[literal-required]
+            valid_labels.add(normalized_label)
+            invalid_labels.discard(normalized_label)
             has_validated = True
         elif status == ValidationStatus.INVALID.value:
-            # VALID takes precedence if both states exist for a label.
-            metadata.setdefault(field_name, False)
+            if normalized_label not in valid_labels:
+                invalid_labels.add(normalized_label)
             has_validated = True
+
+    canonical_valid = sorted(valid_labels)
+    canonical_invalid = sorted(invalid_labels)
+
+    if canonical_valid:
+        metadata["valid_labels_array"] = canonical_valid
+    else:
+        metadata.pop("valid_labels_array", None)
+
+    if canonical_invalid:
+        metadata["invalid_labels_array"] = canonical_invalid
+    else:
+        metadata.pop("invalid_labels_array", None)
 
     if has_validated:
         metadata["label_status"] = "validated"
@@ -340,4 +259,4 @@ def enrich_row_metadata_with_labels(
     else:
         metadata["label_status"] = "unvalidated"
 
-    return metadata  # type: ignore[return-value]
+    return metadata

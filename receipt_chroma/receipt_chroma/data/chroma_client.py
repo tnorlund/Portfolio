@@ -14,6 +14,7 @@ import gc
 import logging
 import os
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
@@ -23,6 +24,11 @@ import chromadb
 from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
+
+from receipt_chroma.chroma_types import (
+    ChromaMetadataInput,
+    to_chroma_metadata_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -479,7 +485,7 @@ class ChromaClient:
         ids: List[str],
         embeddings: Optional[List[List[float]]] = None,
         documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
+        metadatas: Optional[Sequence[ChromaMetadataInput]] = None,
     ) -> None:
         """
         Upsert vectors into a collection.
@@ -502,7 +508,9 @@ class ChromaClient:
         if documents is not None:
             upsert_args["documents"] = documents
         if metadatas is not None:
-            upsert_args["metadatas"] = metadatas
+            upsert_args["metadatas"] = [
+                to_chroma_metadata_dict(metadata) for metadata in metadatas
+            ]
 
         try:
             collection.upsert(**upsert_args)
@@ -656,7 +664,7 @@ class ChromaClient:
         ids: List[str],
         embeddings: Optional[List[List[float]]] = None,
         documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
+        metadatas: Optional[Sequence[ChromaMetadataInput]] = None,
     ) -> None:
         """
         Upsert vectors into a collection (alias for upsert for backward

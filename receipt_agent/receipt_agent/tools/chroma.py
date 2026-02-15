@@ -11,7 +11,15 @@ from typing import Any, Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from receipt_agent.state.models import ChromaSearchResult
+from receipt_agent.utils.chroma_types import (
+    ChromaWhereClause,
+    extract_get_metadata_rows,
+    extract_query_metadata_rows,
+)
+from receipt_agent.utils.label_metadata import (
+    combine_where_clauses,
+    metadata_matches_label_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +42,15 @@ class QuerySimilarLinesInput(BaseModel):
         default=None,
         description="Optional merchant name to filter results",
     )
+    label_filter: Optional[str] = Field(
+        default=None,
+        description="Optional label to filter by (checks valid/invalid arrays)",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
+    )
     min_similarity: float = Field(
         default=0.5,
         description="Minimum similarity score threshold",
@@ -51,6 +68,11 @@ class QuerySimilarWordsInput(BaseModel):
         description=(
             "Filter by label type (e.g., 'MERCHANT_NAME', 'PHONE', 'ADDRESS')"
         ),
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
     )
     n_results: int = Field(
         default=10,
@@ -83,6 +105,8 @@ def query_similar_lines(
     query_text: str,
     n_results: int = 10,
     merchant_filter: Optional[str] = None,
+    label_filter: Optional[str] = None,
+    label_state: str = "any",
     min_similarity: float = 0.5,
     # Injected at runtime
     _chroma_client: Any = None,
@@ -110,18 +134,20 @@ def query_similar_lines(
 
         query_embedding = _embed_fn([query_text])[0]
 
-        # Build where clause for filtering
-        where_clause = None
+        merchant_clause: Optional[ChromaWhereClause] = None
         if merchant_filter:
-            where_clause = {
+            merchant_clause = {
                 "merchant_name": {"$eq": merchant_filter.strip().title()}
             }
+
+        where_clause = combine_where_clauses([merchant_clause])
+        query_limit = n_results if not label_filter else max(n_results * 5, 50)
 
         # Query ChromaDB
         results = _chroma_client.query(
             collection_name="lines",
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=query_limit,
             where=where_clause,
             include=["metadatas", "documents", "distances"],
         )
@@ -130,7 +156,7 @@ def query_similar_lines(
         output: list[dict[str, Any]] = []
         ids = results.get("ids", [[]])[0]
         documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
         distances = results.get("distances", [[]])[0]
 
         for idx, (doc_id, doc, meta, dist) in enumerate(
@@ -141,6 +167,10 @@ def query_similar_lines(
             similarity = max(0.0, 1.0 - (dist / 2))
 
             if similarity < min_similarity:
+                continue
+            if label_filter and not metadata_matches_label_state(
+                meta, label_filter, label_state
+            ):
                 continue
 
             output.append(
@@ -157,6 +187,8 @@ def query_similar_lines(
                     "normalized_address": meta.get("normalized_full_address"),
                 }
             )
+            if len(output) >= n_results:
+                break
 
         logger.info(
             "Found %s similar lines above threshold %s",
@@ -174,6 +206,7 @@ def query_similar_lines(
 def query_similar_words(
     word_text: str,
     label_type: Optional[str] = None,
+    label_state: str = "any",
     n_results: int = 10,
     # Injected at runtime
     _chroma_client: Any = None,
@@ -198,29 +231,30 @@ def query_similar_words(
 
         query_embedding = _embed_fn([word_text])[0]
 
-        # Build where clause for label filtering
-        where_clause = None
-        if label_type:
-            where_clause = {"label": {"$eq": label_type.upper()}}
+        query_limit = n_results if not label_type else max(n_results * 5, 50)
 
         results = _chroma_client.query(
             collection_name="words",
             query_embeddings=[query_embedding],
-            n_results=n_results,
-            where=where_clause,
+            n_results=query_limit,
+            where=None,
             include=["metadatas", "documents", "distances"],
         )
 
         output: list[dict[str, Any]] = []
         ids = results.get("ids", [[]])[0]
         documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
         distances = results.get("distances", [[]])[0]
 
         for idx, (doc_id, doc, meta, dist) in enumerate(
             zip(ids, documents, metadatas, distances)
         ):
             similarity = max(0.0, 1.0 - (dist / 2))
+            if label_type and not metadata_matches_label_state(
+                meta, label_type, label_state
+            ):
+                continue
 
             output.append(
                 {
@@ -236,6 +270,8 @@ def query_similar_words(
                     "validation_status": meta.get("validation_status"),
                 }
             )
+            if len(output) >= n_results:
+                break
 
         return output
 
@@ -286,7 +322,7 @@ def search_by_merchant_name(
             include=["metadatas"],
         )
 
-        metadatas = results.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(results)
 
         # Aggregate results
         receipts_found: set[tuple[str, int]] = set()
@@ -364,7 +400,7 @@ def search_by_place_id(
             limit=100,
         )
 
-        metadatas = results.get("metadatas", [])
+        metadatas = extract_get_metadata_rows(results)
 
         # Aggregate
         merchant_names: dict[str, int] = {}

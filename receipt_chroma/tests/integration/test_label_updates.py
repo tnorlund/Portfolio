@@ -30,7 +30,6 @@ class TestLabelUpdates:
                 {
                     "text": "Total",
                     "label_status": "auto_suggested",
-                    # No boolean label fields yet - word is pending validation
                 }
             ],
         )
@@ -92,7 +91,7 @@ class TestLabelUpdates:
             persist_directory=temp_chromadb_dir, mode="write"
         )
 
-        # Add initial data with label metadata (using boolean format)
+        # Add initial data with label metadata.
         client.upsert(
             collection_name="words",
             ids=["IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001"],
@@ -101,7 +100,7 @@ class TestLabelUpdates:
                 {
                     "text": "Total",
                     "label_status": "validated",
-                    "label_TOTAL": True,  # Boolean format for validated label
+                    "valid_labels_array": ["TOTAL"],
                 }
             ],
         )
@@ -144,9 +143,8 @@ class TestLabelUpdates:
         # Should have label fields cleared (removed from metadata)
         metadata = embeddings_data["metadatas"][0]
         assert metadata.get("label_status") is None  # Field removed
-        assert (
-            metadata.get("label_TOTAL") is None
-        )  # Boolean label field removed
+        assert metadata.get("valid_labels_array") is None  # Field removed
+        assert metadata.get("invalid_labels_array") is None  # Field removed
         assert "labels_removed_at" in metadata  # Timestamp added
 
         client.close()
@@ -172,12 +170,10 @@ class TestLabelUpdates:
                 {
                     "text": "Total",
                     "label_status": "auto_suggested",
-                    # No boolean label fields yet - word is pending validation
                 },
                 {
                     "text": "$10.00",
                     "label_status": "auto_suggested",
-                    # No boolean label fields yet - word is pending validation
                 },
             ],
         )

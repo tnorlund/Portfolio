@@ -47,6 +47,8 @@ from receipt_agent.prompts.structured_outputs import (
     PatternDiscoveryResponse,
     extract_json_from_response,
 )
+from receipt_agent.utils.chroma_types import extract_query_metadata_rows
+from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -154,18 +156,18 @@ class PatternDiscoveryConfig:
         """
         return cls(
             openrouter_api_key=(
-                os.environ.get("OPENROUTER_API_KEY")
+                os.environ.get("OPENROUTER_API_KEY", "")
                 or os.environ.get("RECEIPT_AGENT_OPENROUTER_API_KEY", "")
             ),
             openrouter_base_url=(
-                os.environ.get("OPENROUTER_BASE_URL")
+                os.environ.get("OPENROUTER_BASE_URL", "")
                 or os.environ.get(
                     "RECEIPT_AGENT_OPENROUTER_BASE_URL",
                     "https://openrouter.ai/api/v1",
                 )
             ),
             openrouter_model=(
-                os.environ.get("OPENROUTER_MODEL")
+                os.environ.get("OPENROUTER_MODEL", "")
                 or os.environ.get(
                     "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b"
                 )
@@ -228,14 +230,16 @@ def query_label_examples_from_chroma(
                     include=["metadatas", "distances"],
                 )
 
-                metadatas = query_result.get("metadatas", [[]])[0]
+                metadatas = extract_query_metadata_rows(query_result)
                 count = 0
                 for metadata in metadatas:
                     if count >= max_per_label:
                         break
-                    # Check if this word has the label we're looking for
-                    valid_labels_str = metadata.get("valid_labels", "")
-                    if label in valid_labels_str:
+                    valid_labels = parse_labels_from_metadata(
+                        metadata,
+                        array_field="valid_labels_array",
+                    )
+                    if label in valid_labels:
                         example = LabelExample(
                             word_text=metadata.get("text", ""),
                             label=label,
@@ -306,15 +310,12 @@ def query_label_examples_simple(
             include=["metadatas", "distances"],
         )
 
-        metadatas = query_result.get("metadatas", [[]])[0]
+        metadatas = extract_query_metadata_rows(query_result)
         for metadata in metadatas:
-            # Parse valid_labels (comma-separated string)
-            valid_labels_str = metadata.get("valid_labels", "")
-            valid_labels = [
-                lbl.strip()
-                for lbl in valid_labels_str.split(",")
-                if lbl.strip()
-            ]
+            valid_labels = parse_labels_from_metadata(
+                metadata,
+                array_field="valid_labels_array",
+            )
 
             for label in valid_labels:
                 if label in LINE_ITEM_LABELS:
@@ -694,7 +695,7 @@ def _call_llm_with_tracing(
     """Make LLM call with LangSmith tracing."""
     # Import child_trace dynamically to avoid import errors when not in Lambda
     try:
-        from tracing import child_trace
+        from tracing import child_trace  # type: ignore[import-not-found]
     except ImportError:
         # Fall back to direct call if tracing not available
         logger.warning("Tracing not available, falling back to direct call")
@@ -763,6 +764,10 @@ def _parse_llm_response(content: str) -> dict | None:
         parsed = json.loads(content)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse LLM response as JSON: %s", e)
+        return None
+
+    if not isinstance(parsed, dict):
+        logger.warning("LLM response JSON was not an object")
         return None
 
     # Try structured validation (validates schema and enum values)

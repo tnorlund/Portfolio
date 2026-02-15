@@ -16,11 +16,12 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional, TypedDict
 
 from receipt_chroma.s3 import download_snapshot_atomic
-from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
+from receipt_agent.utils.chroma_types import extract_query_metadata_rows
+from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +247,7 @@ def build_word_chroma_id(
 
 def build_line_chroma_id(image_id: str, receipt_id: int, line_id: int) -> str:
     """Build ChromaDB ID for a visual-row line embedding."""
-    return (
-        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-        f"#LINE#{line_id:05d}"
-    )
+    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}" f"#LINE#{line_id:05d}"
 
 
 def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
@@ -274,51 +272,6 @@ def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
         int(parts[5]),  # line_id
         int(parts[7]),  # word_id
     )
-
-
-def parse_labels_from_metadata(
-    metadata: dict[str, Any],
-) -> tuple[list[str], list[str]]:
-    """
-    Parse valid and invalid labels from ChromaDB metadata.
-
-    Supports two formats for backwards compatibility:
-    1. New boolean format: label_TOTAL=True, label_TAX=False
-    2. Old comma-delimited format: valid_labels=",TOTAL,TAX,"
-
-    Args:
-        metadata: ChromaDB metadata dictionary
-
-    Returns:
-        Tuple of (valid_labels, invalid_labels) lists
-    """
-    valid_labels: list[str] = []
-    invalid_labels: list[str] = []
-
-    # Check for new boolean format first (label_* fields)
-    has_boolean_labels = False
-    for label_name in CORE_LABELS:
-        field_name = f"label_{label_name}"
-        if field_name in metadata:
-            has_boolean_labels = True
-            value = metadata[field_name]
-            if value is True:
-                valid_labels.append(label_name)
-            elif value is False:
-                invalid_labels.append(label_name)
-
-    # Fall back to old comma-delimited format if no boolean fields found
-    if not has_boolean_labels:
-        valid_labels_str = metadata.get("valid_labels", "")
-        invalid_labels_str = metadata.get("invalid_labels", "")
-        valid_labels = [
-            lbl for lbl in valid_labels_str.split(",") if lbl.strip()
-        ]
-        invalid_labels = [
-            lbl for lbl in invalid_labels_str.split(",") if lbl.strip()
-        ]
-
-    return valid_labels, invalid_labels
 
 
 # =============================================================================
@@ -415,7 +368,9 @@ def _get_word_query_embedding(
             include=["embeddings"],
         )
     except Exception as exc:
-        logger.warning("Error getting embedding for %s: %s", word_chroma_id, exc)
+        logger.warning(
+            "Error getting embedding for %s: %s", word_chroma_id, exc
+        )
         return None
 
     embeddings = result.get("embeddings")
@@ -570,7 +525,9 @@ def _query_label_evidence_for_collection(
             if not isinstance(metadata, dict):
                 continue
 
-            result_id = _result_chroma_id_for_metadata(collection_name, metadata)
+            result_id = _result_chroma_id_for_metadata(
+                collection_name, metadata
+            )
             if result_id == exclude_chroma_id:
                 continue
 
@@ -957,14 +914,14 @@ def query_similar_words(
             include=["metadatas", "distances"],
         )
 
-        metadatas = results.get("metadatas")
-        if metadatas is None or len(metadatas) == 0 or len(metadatas[0]) == 0:
+        metadatas = extract_query_metadata_rows(results)
+        if not metadatas:
             return []
 
         evidence_list: list[SimilarWordEvidence] = []
         distances = results.get("distances", [[]])[0]
 
-        for metadata, distance in zip(metadatas[0], distances, strict=True):
+        for metadata, distance in zip(metadatas, distances, strict=True):
             # Convert L2 distance to similarity score (0-1)
             similarity = max(0.0, 1.0 - (distance / 2.0))
 
@@ -985,8 +942,14 @@ def query_similar_words(
             merchant = metadata.get("merchant_name", "Unknown")
             is_same = merchant.lower() == target_merchant.lower()
 
-            # Parse valid/invalid labels (supports both boolean and comma-delimited)
-            valid_labels, invalid_labels = parse_labels_from_metadata(metadata)
+            valid_labels = parse_labels_from_metadata(
+                metadata,
+                array_field="valid_labels_array",
+            )
+            invalid_labels = parse_labels_from_metadata(
+                metadata,
+                array_field="invalid_labels_array",
+            )
 
             evidence: SimilarWordEvidence = {
                 "word_text": metadata.get("text", ""),
@@ -1340,7 +1303,7 @@ def query_similar_validated_words(
 
         ids = list(results.get("ids", [[]])[0])
         documents = list(results.get("documents", [[]])[0])
-        metadatas = list(results.get("metadatas", [[]])[0])
+        metadatas = extract_query_metadata_rows(results)
         distances = list(results.get("distances", [[]])[0])
 
         similar_words: List[SimilarWordResult] = []
@@ -1371,8 +1334,14 @@ def query_similar_validated_words(
             if similarity < min_similarity:
                 continue
 
-            # Parse valid/invalid labels (supports both boolean and comma-delimited)
-            valid_labels, invalid_labels = parse_labels_from_metadata(meta)
+            valid_labels = parse_labels_from_metadata(
+                meta,
+                array_field="valid_labels_array",
+            )
+            invalid_labels = parse_labels_from_metadata(
+                meta,
+                array_field="invalid_labels_array",
+            )
 
             similar_words.append(
                 SimilarWordResult(

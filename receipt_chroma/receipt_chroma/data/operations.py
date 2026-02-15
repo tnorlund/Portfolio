@@ -5,20 +5,48 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
+from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
-def _label_field_name(label: str) -> str:
-    """Generate the metadata field name for a label.
+def _normalize_labels(labels: list[str]) -> list[str]:
+    """Normalize labels to stable, deduplicated arrays."""
+    return sorted(
+        {lbl.strip().upper() for lbl in labels if lbl and lbl.strip()}
+    )
 
-    Args:
-        label: The label name (e.g., "GRAND_TOTAL")
 
-    Returns:
-        Field name with prefix (e.g., "label_GRAND_TOTAL")
-    """
-    return f"label_{label}"
+def _labels_from_array_metadata(
+    metadata: Dict[str, Any],
+    array_field: str,
+) -> set[str]:
+    """Read labels from canonical array metadata."""
+    array_val = metadata.get(array_field)
+    if isinstance(array_val, list):
+        return {
+            str(lbl).strip().upper() for lbl in array_val if str(lbl).strip()
+        }
+    return set()
+
+
+def _set_label_array_fields(
+    metadata: Dict[str, Any],
+    valid_labels: set[str],
+    invalid_labels: set[str],
+) -> None:
+    """Write canonical label arrays with Chroma-safe clear semantics."""
+    canonical_valid = _normalize_labels(list(valid_labels))
+    canonical_invalid = _normalize_labels(list(invalid_labels))
+
+    if canonical_valid:
+        metadata["valid_labels_array"] = canonical_valid
+    elif "valid_labels_array" in metadata:
+        metadata["valid_labels_array"] = None
+
+    if canonical_invalid:
+        metadata["invalid_labels_array"] = canonical_invalid
+    elif "invalid_labels_array" in metadata:
+        metadata["invalid_labels_array"] = None
 
 
 def update_receipt_place(
@@ -603,8 +631,7 @@ def update_word_labels(
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
-            # Add/update current label in validated/invalid sets when status
-            # given
+            # Add/update current label in canonical valid/invalid arrays.
             if changes and "validation_status" in changes:
                 change = changes["validation_status"]
                 # Handle both FieldChange objects and plain dicts
@@ -621,17 +648,31 @@ def update_word_labels(
             current_label = None
             if entity_data and isinstance(entity_data, dict):
                 current_label = entity_data.get("label")
-            if current_label:
-                # Set boolean field for this label based on validation status
-                field_name = _label_field_name(current_label)
-                if status == "VALID":
-                    updated_metadata[field_name] = True
-                elif status == "INVALID":
-                    updated_metadata[field_name] = False
-                # PENDING status: remove the field (not yet validated)
-                elif status == "PENDING" and field_name in updated_metadata:
-                    updated_metadata[field_name] = (
-                        None  # ChromaDB removes None
+            if current_label and status:
+                normalized_label = str(current_label).strip().upper()
+                if normalized_label:
+                    valid_set = _labels_from_array_metadata(
+                        updated_metadata,
+                        array_field="valid_labels_array",
+                    )
+                    invalid_set = _labels_from_array_metadata(
+                        updated_metadata,
+                        array_field="invalid_labels_array",
+                    )
+                    if status == "VALID":
+                        valid_set.add(normalized_label)
+                        invalid_set.discard(normalized_label)
+                    elif status == "INVALID":
+                        if normalized_label not in valid_set:
+                            invalid_set.add(normalized_label)
+                    elif status == "PENDING":
+                        valid_set.discard(normalized_label)
+                        invalid_set.discard(normalized_label)
+
+                    _set_label_array_fields(
+                        updated_metadata,
+                        valid_labels=valid_set,
+                        invalid_labels=invalid_set,
                     )
         else:
             updated_metadata.update(reconstructed_metadata)
@@ -644,12 +685,11 @@ def update_word_labels(
         # Update the ChromaDB record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
-        # Count validated labels (boolean fields that are True)
-        valid_count = sum(
-            1
-            for key, val in updated_metadata.items()
-            if key.startswith("label_") and val is True
-        )
+        valid_labels_array = updated_metadata.get("valid_labels_array", [])
+        if isinstance(valid_labels_array, list):
+            valid_count = len(valid_labels_array)
+        else:
+            valid_count = 0
 
         if logger:
             logger.info(
@@ -718,6 +758,8 @@ def remove_word_labels(
             "label_status",
             "label_confidence",
             "label_proposed_by",
+            "valid_labels_array",
+            "invalid_labels_array",
             "label_validated_at",
         ]
 
@@ -726,13 +768,7 @@ def remove_word_labels(
             if field in updated_metadata:
                 updated_metadata[field] = None
 
-        # Set all boolean label fields to None (label_GRAND_TOTAL, etc.)
-        for label in CORE_LABELS:
-            field_name = _label_field_name(label)
-            if field_name in updated_metadata:
-                updated_metadata[field_name] = None
-
-        # Also remove any other fields starting with "label_" (legacy cleanup)
+        # Remove any remaining fields starting with "label_".
         for key in list(updated_metadata.keys()):
             if (
                 key.startswith("label_")
@@ -791,7 +827,8 @@ def reconstruct_label_metadata(
 
     Returns:
         Dictionary with reconstructed label metadata fields:
-        - label_{NAME}: True/False for each evaluated label
+        - valid_labels_array: array of valid labels (None if empty)
+        - invalid_labels_array: array of invalid labels (None if empty)
         - label_status: overall status
           (validated/auto_suggested/unvalidated)
         - label_confidence: confidence from latest pending label
@@ -837,6 +874,20 @@ def reconstruct_label_metadata(
         label_confidence = None
         label_proposed_by = None
 
+    # valid_labels - all labels with status VALID
+    valid_labels_list = [
+        lbl.label
+        for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.VALID.value
+    ]
+
+    # invalid_labels - all labels with status INVALID
+    invalid_labels = [
+        lbl.label
+        for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.INVALID.value
+    ]
+
     # label_validated_at - timestamp of most recent VALID label
     valid_labels = [
         lbl
@@ -862,15 +913,11 @@ def reconstruct_label_metadata(
     if label_proposed_by is not None:
         label_metadata["label_proposed_by"] = label_proposed_by
 
-    # Set boolean fields for each label
-    # True = validated, False = invalid, absent = not evaluated
-    for lbl in word_labels:
-        field_name = _label_field_name(lbl.label)
-        if lbl.validation_status == ValidationStatus.VALID.value:
-            label_metadata[field_name] = True
-        elif lbl.validation_status == ValidationStatus.INVALID.value:
-            label_metadata[field_name] = False
-        # PENDING labels are not added - they're "not yet validated"
+    _set_label_array_fields(
+        label_metadata,
+        valid_labels=set(valid_labels_list),
+        invalid_labels=set(invalid_labels),
+    )
 
     if label_validated_at is not None:
         label_metadata["label_validated_at"] = label_validated_at

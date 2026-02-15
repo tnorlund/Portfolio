@@ -21,6 +21,14 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
+from receipt_agent.utils.chroma_types import (
+    ChromaWhereClause,
+    extract_query_metadata_rows,
+)
+from receipt_agent.utils.label_metadata import (
+    combine_where_clauses,
+    metadata_matches_label_state,
+)
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -96,6 +104,15 @@ class SearchLinesInput(BaseModel):
     merchant_filter: Optional[str] = Field(
         default=None, description="Optionally filter by merchant"
     )
+    label_filter: Optional[str] = Field(
+        default=None,
+        description="Optional label filter (checks valid/invalid label arrays)",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
+    )
 
 
 class SearchWordsInput(BaseModel):
@@ -105,6 +122,11 @@ class SearchWordsInput(BaseModel):
     label_filter: Optional[str] = Field(
         default=None,
         description="Filter by label: MERCHANT_NAME, PHONE, ADDRESS, TOTAL, etc.",
+    )
+    label_state: str = Field(
+        default="any",
+        description="Label state to filter: valid, invalid, or any",
+        pattern="^(valid|invalid|any)$",
     )
     n_results: int = Field(
         default=10, ge=1, le=20, description="Number of results (max 20)"
@@ -487,7 +509,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -603,7 +625,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -647,7 +669,11 @@ def create_agentic_tools(
 
     @tool(args_schema=SearchLinesInput)
     def search_lines(
-        query: str, n_results: int = 10, merchant_filter: Optional[str] = None
+        query: str,
+        n_results: int = 10,
+        merchant_filter: Optional[str] = None,
+        label_filter: Optional[str] = None,
+        label_state: str = "any",
     ) -> list[dict]:
         """
         Search for lines similar to arbitrary text.
@@ -658,6 +684,8 @@ def create_agentic_tools(
             query: Text to search for (e.g., "123 Main Street" or "510-555-1234")
             n_results: How many results (max 20)
             merchant_filter: Optionally limit results to a specific merchant
+            label_filter: Optional label to filter by
+            label_state: Whether to check valid, invalid, or both label arrays
 
         Returns matching lines with merchant metadata.
         """
@@ -673,17 +701,21 @@ def create_agentic_tools(
             # Generate embedding for query
             query_embedding = embed_fn([query])[0]
 
-            # Build where clause
-            where_clause = None
+            merchant_clause: Optional[ChromaWhereClause] = None
             if merchant_filter:
-                where_clause = {
+                merchant_clause = {
                     "merchant_name": {"$eq": merchant_filter.strip()}
                 }
+
+            where_clause = combine_where_clauses([merchant_clause])
+            query_n_results = (
+                n_results + 5 if not label_filter else max(n_results * 5, 50)
+            )
 
             results = chroma_client.query(
                 collection_name="lines",
                 query_embeddings=[query_embedding],
-                n_results=n_results + 5,
+                n_results=query_n_results,
                 where=where_clause,
                 include=["metadatas", "documents", "distances"],
             )
@@ -691,7 +723,7 @@ def create_agentic_tools(
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -705,6 +737,10 @@ def create_agentic_tools(
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
+                if label_filter and not metadata_matches_label_state(
+                    meta, label_filter, label_state
+                ):
+                    continue
 
                 output.append(
                     {
@@ -734,7 +770,10 @@ def create_agentic_tools(
 
     @tool(args_schema=SearchWordsInput)
     def search_words(
-        query: str, label_filter: Optional[str] = None, n_results: int = 10
+        query: str,
+        label_filter: Optional[str] = None,
+        label_state: str = "any",
+        n_results: int = 10,
     ) -> list[dict]:
         """
         Search for words similar to arbitrary text.
@@ -742,6 +781,7 @@ def create_agentic_tools(
         Args:
             query: Word to search for
             label_filter: Filter by label (MERCHANT_NAME, PHONE, ADDRESS, TOTAL)
+            label_state: Whether to check valid, invalid, or both label arrays
             n_results: How many results (max 20)
 
         Returns matching words with their labels.
@@ -757,22 +797,22 @@ def create_agentic_tools(
         try:
             query_embedding = embed_fn([query])[0]
 
-            where_clause = None
-            if label_filter:
-                where_clause = {"label": {"$eq": label_filter.upper()}}
+            query_n_results = (
+                n_results + 5 if not label_filter else max(n_results * 5, 50)
+            )
 
             results = chroma_client.query(
                 collection_name="words",
                 query_embeddings=[query_embedding],
-                n_results=n_results + 5,
-                where=where_clause,
+                n_results=query_n_results,
+                where=None,
                 include=["metadatas", "documents", "distances"],
             )
 
             output = []
             ids = results.get("ids", [[]])[0]
             documents = results.get("documents", [[]])[0]
-            metadatas = results.get("metadatas", [[]])[0]
+            metadatas = extract_query_metadata_rows(results)
             distances = results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
@@ -785,6 +825,10 @@ def create_agentic_tools(
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
+                if label_filter and not metadata_matches_label_state(
+                    meta, label_filter, label_state
+                ):
+                    continue
 
                 output.append(
                     {
@@ -836,9 +880,9 @@ def create_agentic_tools(
                 }
 
             # Aggregate
-            place_ids = {}
-            addresses = {}
-            phones = {}
+            place_ids: dict[str, int] = {}
+            addresses: dict[str, int] = {}
+            phones: dict[str, int] = {}
 
             for place in places:
                 if place.place_id:
@@ -968,11 +1012,7 @@ def create_agentic_tools(
             )
 
             # Query results are nested in lists
-            metadatas = (
-                results.get("metadatas", [[]])[0]
-                if results.get("metadatas")
-                else []
-            )
+            metadatas = extract_query_metadata_rows(results)
 
             if not metadatas:
                 return {

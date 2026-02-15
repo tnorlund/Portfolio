@@ -5,7 +5,7 @@ metadata) aligned with the same schema used for persisted snapshots/deltas.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, cast
+from typing import Any, Dict, Iterable, List, Optional
 
 from receipt_chroma.embedding.formatting.line_format import (
     LineLike,
@@ -23,7 +23,6 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_labels,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
-    WordMetadata,
     create_word_metadata,
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
@@ -207,20 +206,16 @@ def build_word_payload(
             label_status="unvalidated",
             source="openai_embedding_batch",
         )
-        metadata_dict: Dict[str, Any] = dict(metadata)
-
         word_key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
-        metadata_with_labels = enrich_word_metadata_with_labels(
-            cast(WordMetadata, metadata_dict), labels_by_key.get(word_key, [])
+        metadata = enrich_word_metadata_with_labels(
+            metadata, labels_by_key.get(word_key, [])
         )
-        metadata_dict = enrich_word_metadata_with_anchors(
-            cast(Dict[str, Any], metadata_with_labels), word
-        )
+        metadata = enrich_word_metadata_with_anchors(metadata, word)
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)
         documents.append(record.document)
-        metadatas.append(dict(metadata_dict))
+        metadatas.append(dict(metadata))
 
     return {
         "ids": ids,
@@ -295,7 +290,7 @@ def build_row_payload(
 
 def build_rows_from_lines(
     lines: List[ReceiptLine],
-) -> List[List[ReceiptLine]]:
+) -> List[List[LineLike]]:
     """Group lines into visual rows for embedding.
 
     Utility function to convert a flat list of ReceiptLine entities into
