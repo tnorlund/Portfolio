@@ -32,6 +32,24 @@ class StructuredOutputResult(Generic[T]):
     error_message: str | None = None
 
 
+def _coerce_structured_response(response: Any, schema: type[T]) -> T:
+    """Validate/coerce response into the requested schema type."""
+    if isinstance(response, schema):
+        return response
+
+    model_validate = getattr(schema, "model_validate", None)
+    if callable(model_validate):
+        validated = model_validate(response)
+        if isinstance(validated, schema):
+            return validated
+
+    raise TypeError(
+        "Structured output did not match requested schema "
+        f"{getattr(schema, '__name__', str(schema))}; "
+        f"received {type(response).__name__}"
+    )
+
+
 def _parse_bool_env(
     env_name: str,
     default: bool,
@@ -119,7 +137,8 @@ def invoke_structured_with_retry(
             attempts=0,
             error_type="missing_with_structured_output",
             error_message=(
-                f"LLM {type(llm).__name__} does not support " "with_structured_output"
+                f"LLM {type(llm).__name__} does not support "
+                "with_structured_output"
             ),
         )
 
@@ -131,9 +150,10 @@ def invoke_structured_with_retry(
                 response: T = structured_llm.invoke(input_payload)
             else:
                 response = structured_llm.invoke(input_payload, config=config)
+            validated_response = _coerce_structured_response(response, schema)
             return StructuredOutputResult(
                 success=True,
-                response=response,
+                response=validated_response,
                 attempts=attempt,
             )
         except LLMRateLimitError:
@@ -169,7 +189,8 @@ async def ainvoke_structured_with_retry(
             attempts=0,
             error_type="missing_with_structured_output",
             error_message=(
-                f"LLM {type(llm).__name__} does not support " "with_structured_output"
+                f"LLM {type(llm).__name__} does not support "
+                "with_structured_output"
             ),
         )
 
@@ -197,9 +218,10 @@ async def ainvoke_structured_with_retry(
                         config=config,
                     )
 
+            validated_response = _coerce_structured_response(response, schema)
             return StructuredOutputResult(
                 success=True,
-                response=response,
+                response=validated_response,
                 attempts=attempt,
             )
         except LLMRateLimitError:
