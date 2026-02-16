@@ -511,8 +511,9 @@ export default function FinancialMathOverlay() {
 
 
   // Animation loop
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) return;
+    if (!inView || !hasReceipts) return;
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
 
@@ -583,7 +584,7 @@ export default function FinancialMathOverlay() {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, computeRevealed]);
+  }, [inView, hasReceipts, computeRevealed]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
 

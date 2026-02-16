@@ -25,14 +25,14 @@ export const ReceiptFlowShell: React.FC<ReceiptFlowShellProps> = ({
       <div className={styles.queuePane}>{queue}</div>
 
       <div className={styles.centerColumn}>
-        <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}>
+        <div className={`${styles.receiptContainer} ${isTransitioning ? styles["fade-out"] : ""}`}>
           {center}
         </div>
 
         <div className={styles.flyingReceiptContainer} data-rf-target>{flying}</div>
 
         {next ? (
-          <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${isTransitioning ? styles.fadeIn : ""}`}>
+          <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${isTransitioning ? styles["fade-in"] : ""}`}>
             {next}
           </div>
         ) : null}

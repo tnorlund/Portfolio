@@ -353,9 +353,10 @@ const MOBILE_MAX_CARDS = 3;
 
 interface EvidencePanelProps {
   revealedCards: RevealedCard[];
+  isTransitioning?: boolean;
 }
 
-const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards }) => {
+const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards, isTransitioning = false }) => {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -374,7 +375,10 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards }) => {
     : 0;
 
   return (
-    <div className={styles.evidencePanel}>
+    <div
+      className={styles.evidencePanel}
+      style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}
+    >
       {visibleCards.map((card) => (
         <EvidenceCard
           key={card.key}
@@ -640,7 +644,7 @@ const BetweenReceiptVisualization: React.FC = () => {
             />
           ) : null
         }
-        legend={<EvidencePanel revealedCards={revealedCards} />}
+        legend={<EvidencePanel revealedCards={revealedCards} isTransitioning={isTransitioning} />}
       />
     </div>
   );

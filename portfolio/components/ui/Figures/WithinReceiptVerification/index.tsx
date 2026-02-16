@@ -552,8 +552,9 @@ const WithinReceiptVerification: React.FC = () => {
   }, [currentReceipt, passState, wordLookup]);
 
   // Animation loop - sequential passes: Place → Format
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) {
+    if (!inView || !hasReceipts) {
       return;
     }
 
@@ -643,8 +644,7 @@ const WithinReceiptVerification: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, receipts.length > 0]);
+  }, [inView, hasReceipts]);
 
   if (loading) {
     return (

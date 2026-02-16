@@ -488,8 +488,9 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) {
+    if (!inView || !hasReceipts) {
       return;
     }
 
@@ -576,7 +577,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0]); // Only restart when receipts become available
+  }, [inView, hasReceipts]);
 
   // Get next receipt - use modulo when pool is exhausted for looping
   const getNextReceipt = useCallback(

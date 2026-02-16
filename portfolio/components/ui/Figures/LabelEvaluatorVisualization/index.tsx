@@ -1204,8 +1204,9 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
   }, [currentReceipt, scannerState]);
 
   // Animation loop - each scanner progresses independently based on actual durations
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) {
+    if (!inView || !hasReceipts) {
       return;
     }
 
@@ -1378,7 +1379,7 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, currentIndex]);
+  }, [inView, hasReceipts, currentIndex]);
 
   const flyingImageUrl = useMemo(() => {
     if (!formatSupport || !flyingItem) return null;
