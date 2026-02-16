@@ -202,18 +202,18 @@ interface EvidenceCardProps {
 
 const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
   const { issue, evidence, llm_review } = decision;
-  const displayLabel = issue.current_label;
+  const displayLabel = issue.current_label ?? issue.suggested_label;
   const decisionColor = DECISION_COLORS[llm_review.decision] || "var(--text-color)";
 
+  // Show label change when the LLM proposes a different label
+  const proposedLabel = llm_review.suggested_label ?? issue.suggested_label;
   const showLabelChange =
-    llm_review.decision === "INVALID" &&
-    issue.current_label !== null &&
-    issue.current_label !== llm_review.suggested_label &&
-    llm_review.suggested_label !== null;
+    proposedLabel !== null &&
+    proposedLabel !== issue.current_label;
 
   return (
     <div className={styles.evidenceCard}>
-      {/* Word + current label */}
+      {/* Word + current/proposed label */}
       <div className={styles.cardHeader}>
         <span className={styles.cardWord}>&ldquo;{issue.word_text}&rdquo;</span>
         {displayLabel && (
@@ -240,9 +240,9 @@ const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
       {/* Label change (before → after) */}
       {showLabelChange && (
         <div className={styles.labelChange}>
-          <span className={styles.labelBefore}>{issue.current_label}</span>
+          <span className={styles.labelBefore}>{issue.current_label ?? 'O'}</span>
           <span className={styles.cardArrow}>&rarr;</span>
-          <span className={styles.labelAfter}>{llm_review.suggested_label}</span>
+          <span className={styles.labelAfter}>{proposedLabel}</span>
         </div>
       )}
 
@@ -318,8 +318,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             {/* Bounding boxes for flagged words */}
             {revealedCards.map((card) => {
               const { word } = card;
-              const currentLabel = card.decision.issue.current_label;
-              const color = currentLabel ? (LABEL_COLORS[currentLabel] || "var(--text-color)") : "var(--text-color)";
+              const effectiveLabel = card.decision.issue.current_label ?? card.decision.issue.suggested_label;
+              const color = effectiveLabel ? (LABEL_COLORS[effectiveLabel] || "var(--text-color)") : "var(--text-color)";
               const x = word.bbox.x * width;
               const y = (1 - word.bbox.y - word.bbox.height) * height;
               const w = word.bbox.width * width;
