@@ -44,6 +44,13 @@ from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
     extract_json_from_response,
 )
+from receipt_agent.utils import (
+    LLMRateLimitError,
+    ainvoke_structured_with_retry,
+    build_structured_failure_decisions,
+    get_structured_output_settings,
+    invoke_structured_with_retry,
+)
 
 from .state import EvaluationIssue, VisualLine, WordContext
 
@@ -428,6 +435,12 @@ def parse_currency_evaluation_response(
         return [fallback.copy() for _ in range(num_words)]
 
 
+def _response_to_text(response: Any) -> str:
+    """Convert chat-model response content to a plain string."""
+    content = response.content if hasattr(response, "content") else response
+    return content if isinstance(content, str) else str(content)
+
+
 # =============================================================================
 # Main Evaluation Function
 # =============================================================================
@@ -498,90 +511,105 @@ def evaluate_currency_labels(
         merchant_name=merchant_name,
     )
 
-    # Try structured output with retries, then fall back to text parsing
-    structured_retries = 3
-    text_retries = 2
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_words = len(currency_words)
-    decisions = None
+    decisions: list[dict[str, Any]] | None = None
 
-    # Check if LLM supports structured output
-    use_structured = hasattr(llm, "with_structured_output")
+    if strict_structured_output:
+        structured_result = invoke_structured_with_retry(
+            llm=llm,
+            schema=CurrencyEvaluationResponse,
+            input_payload=prompt,
+            retries=structured_retries,
+        )
+        if (
+            structured_result.success
+            and structured_result.response is not None
+        ):
+            decisions = structured_result.response.to_ordered_list(num_words)
+            logger.debug(
+                "Structured output succeeded with %d evaluations",
+                len(decisions),
+            )
+        else:
+            failure_reason = (
+                "Strict structured output failed for currency evaluation "
+                f"(attempts={structured_result.attempts}, "
+                f"error={structured_result.error_type or 'unknown'})."
+            )
+            logger.warning("%s", failure_reason)
+            decisions = build_structured_failure_decisions(
+                num_words,
+                failure_reason=failure_reason,
+            )
+    else:
+        logger.info(
+            "Strict structured output disabled for currency evaluation; "
+            "using legacy text parsing fallback."
+        )
+        text_retries = 2
+        use_structured = hasattr(llm, "with_structured_output")
 
-    # Phase 1: Try structured output multiple times
-    if use_structured:
-        for attempt in range(structured_retries):
-            try:
-                structured_llm = llm.with_structured_output(
-                    CurrencyEvaluationResponse
-                )
-                response: CurrencyEvaluationResponse = structured_llm.invoke(
-                    prompt
-                )
-                decisions = response.to_ordered_list(num_words)
-                logger.debug(
-                    "Structured output succeeded with %d evaluations",
-                    len(decisions),
-                )
-                break  # Success, exit retry loop
-            except Exception as struct_err:
-                # Check if this is a rate limit error that should propagate
-                from receipt_agent.utils import LLMRateLimitError
-
-                if isinstance(struct_err, LLMRateLimitError):
-                    logger.error(
-                        "Currency LLM rate limited, propagating for retry: %s",
+        if use_structured:
+            for attempt in range(structured_retries):
+                try:
+                    structured_llm = llm.with_structured_output(
+                        CurrencyEvaluationResponse
+                    )
+                    structured_response = structured_llm.invoke(prompt)
+                    if not isinstance(
+                        structured_response, CurrencyEvaluationResponse
+                    ):
+                        raise TypeError(
+                            "Expected CurrencyEvaluationResponse from "
+                            "with_structured_output"
+                        )
+                    decisions = structured_response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                    break
+                except LLMRateLimitError:
+                    raise
+                except Exception as struct_err:
+                    logger.warning(
+                        "Structured output failed (attempt %d/%d): %s",
+                        attempt + 1,
+                        structured_retries,
                         struct_err,
                     )
-                    raise  # Let Step Function retry handle this
 
-                logger.warning(
-                    "Structured output failed (attempt %d/%d): %s",
-                    attempt + 1,
-                    structured_retries,
-                    struct_err,
-                )
-                if attempt == structured_retries - 1:
-                    logger.info(
-                        "All %d structured output attempts failed, "
-                        "falling back to text parsing",
-                        structured_retries,
+        if decisions is None:
+            for attempt in range(text_retries):
+                try:
+                    text_response = llm.invoke(prompt)
+                    response_text = _response_to_text(text_response)
+                    decisions = parse_currency_evaluation_response(
+                        response_text, num_words
                     )
 
-    # Phase 2: Fall back to text parsing if structured output failed or unavailable
-    if decisions is None:
-        for attempt in range(text_retries):
-            try:
-                response = llm.invoke(prompt)
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_currency_evaluation_response(
-                    response_text, num_words
-                )
-
-                # Check if all decisions failed to parse
-                parse_failures = sum(
-                    1
-                    for d in decisions
-                    if "Failed to parse" in d.get("reasoning", "")
-                )
-
-                if parse_failures == 0:
-                    logger.debug(
-                        "Text parsing succeeded with %d evaluations",
-                        len(decisions),
+                    parse_failures = sum(
+                        1
+                        for d in decisions
+                        if "Failed to parse" in d.get("reasoning", "")
                     )
-                    break
-                elif parse_failures < len(decisions):
-                    logger.info(
-                        "Partial text parse success: %d/%d parsed",
-                        len(decisions) - parse_failures,
-                        len(decisions),
-                    )
-                    break
-                else:
+                    if parse_failures == 0:
+                        logger.debug(
+                            "Text parsing succeeded with %d evaluations",
+                            len(decisions),
+                        )
+                        break
+                    if parse_failures < len(decisions):
+                        logger.info(
+                            "Partial text parse success: %d/%d parsed",
+                            len(decisions) - parse_failures,
+                            len(decisions),
+                        )
+                        break
+
                     if attempt < text_retries - 1:
                         logger.warning(
                             "All %d decisions failed text parse "
@@ -597,28 +625,26 @@ def evaluate_currency_labels(
                             len(decisions),
                             text_retries,
                         )
-            except Exception as e:
-                logger.error(
-                    "Text parsing failed on attempt %d: %s", attempt + 1, e
-                )
-                if attempt == text_retries - 1:
-                    decisions = None
+                except LLMRateLimitError:
+                    raise
+                except Exception as error:
+                    logger.error(
+                        "Text parsing failed on attempt %d: %s",
+                        attempt + 1,
+                        error,
+                    )
+                    if attempt == text_retries - 1:
+                        decisions = None
 
-    # Use the decisions we got (best effort)
-    if decisions is None:
-        decisions = [
-            {
-                "decision": "NEEDS_REVIEW",
-                "reasoning": "No response received",
-                "suggested_label": None,
-                "confidence": "low",
-            }
-            for _ in currency_words
-        ]
+        if decisions is None:
+            decisions = build_structured_failure_decisions(
+                num_words,
+                failure_reason="No response received",
+            )
 
     # Step 5: Format output for apply_llm_decisions
     # Handle length mismatches by padding with NEEDS_REVIEW fallback
-    results = []
+    results: list[dict[str, Any]] = []
     num_words = len(currency_words)
     num_decisions = len(decisions)
     if num_decisions != num_words:
@@ -730,162 +756,161 @@ async def evaluate_currency_labels_async(
         merchant_name=merchant_name,
     )
 
-    # Step 4: Call LLM asynchronously
-    max_retries = 3
-    last_decisions = None
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_words = len(currency_words)
+    decisions: list[dict[str, Any]] | None = None
 
-    # Check if LLM supports structured output
-    use_structured = hasattr(llm, "with_structured_output")
+    if strict_structured_output:
+        structured_result = await ainvoke_structured_with_retry(
+            llm=llm,
+            schema=CurrencyEvaluationResponse,
+            input_payload=prompt,
+            retries=structured_retries,
+        )
+        if (
+            structured_result.success
+            and structured_result.response is not None
+        ):
+            decisions = structured_result.response.to_ordered_list(num_words)
+            logger.debug(
+                "Structured output succeeded with %d evaluations",
+                len(decisions),
+            )
+        else:
+            failure_reason = (
+                "Strict structured output failed for currency evaluation "
+                f"(attempts={structured_result.attempts}, "
+                f"error={structured_result.error_type or 'unknown'})."
+            )
+            logger.warning("%s", failure_reason)
+            decisions = build_structured_failure_decisions(
+                num_words,
+                failure_reason=failure_reason,
+            )
+    else:
+        logger.info(
+            "Strict structured output disabled for currency evaluation; "
+            "using legacy text parsing fallback."
+        )
+        max_retries = 3
+        last_decisions: list[dict[str, Any]] | None = None
+        use_structured = hasattr(llm, "with_structured_output")
 
-    for attempt in range(max_retries):
-        try:
-            if use_structured:
-                try:
-                    structured_llm = llm.with_structured_output(
-                        CurrencyEvaluationResponse
-                    )
-                    # Use ainvoke for async call
-                    if hasattr(structured_llm, "ainvoke"):
-                        response: CurrencyEvaluationResponse = (
-                            await structured_llm.ainvoke(prompt)
+        for attempt in range(max_retries):
+            try:
+                if use_structured:
+                    try:
+                        structured_llm = llm.with_structured_output(
+                            CurrencyEvaluationResponse
                         )
-                    else:
-                        # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
-                        response: CurrencyEvaluationResponse = (
-                            await asyncio.to_thread(
+                        if hasattr(structured_llm, "ainvoke"):
+                            structured_response = await structured_llm.ainvoke(
+                                prompt
+                            )
+                        else:
+                            structured_response = await asyncio.to_thread(
                                 structured_llm.invoke,
                                 prompt,
                             )
+                        if not isinstance(
+                            structured_response, CurrencyEvaluationResponse
+                        ):
+                            raise TypeError(
+                                "Expected CurrencyEvaluationResponse from "
+                                "with_structured_output"
+                            )
+                        current_decisions = (
+                            structured_response.to_ordered_list(num_words)
                         )
-                    decisions = response.to_ordered_list(num_words)
-                    logger.debug(
-                        "Structured output succeeded with %d evaluations",
-                        len(decisions),
-                    )
-                except Exception as struct_err:
-                    # Structured output failed, fall back to text parsing
-                    logger.warning(
-                        "Structured output failed (attempt %d), falling back to text: %s",
-                        attempt + 1,
-                        struct_err,
-                    )
+                    except LLMRateLimitError:
+                        raise
+                    except Exception as struct_err:
+                        logger.warning(
+                            "Structured output failed (attempt %d), "
+                            "falling back to text: %s",
+                            attempt + 1,
+                            struct_err,
+                        )
+                        if hasattr(llm, "ainvoke"):
+                            text_response = await llm.ainvoke(prompt)
+                        else:
+                            text_response = await asyncio.to_thread(
+                                llm.invoke, prompt
+                            )
+                        response_text = _response_to_text(text_response)
+                        current_decisions = parse_currency_evaluation_response(
+                            response_text, num_words
+                        )
+                else:
                     if hasattr(llm, "ainvoke"):
-                        response = await llm.ainvoke(prompt)
+                        text_response = await llm.ainvoke(prompt)
                     else:
-                        # Run sync invoke in thread pool to avoid blocking event loop
-                        response = await asyncio.to_thread(
-                            llm.invoke, prompt,
+                        text_response = await asyncio.to_thread(
+                            llm.invoke, prompt
                         )
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
-                    decisions = parse_currency_evaluation_response(
+                    response_text = _response_to_text(text_response)
+                    current_decisions = parse_currency_evaluation_response(
                         response_text, num_words
                     )
-            else:
-                # Use ainvoke if available, otherwise fall back to invoke
-                if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt)
-                else:
-                    # Run sync invoke in thread pool to avoid blocking event loop
-                    response = await asyncio.to_thread(
-                        llm.invoke, prompt,
+
+                last_decisions = current_decisions
+                parse_failures = sum(
+                    1
+                    for decision in current_decisions
+                    if "Failed to parse" in decision.get("reasoning", "")
+                )
+                if parse_failures == 0:
+                    break
+                if parse_failures < len(current_decisions):
+                    logger.info(
+                        "Partial parse success: %d/%d parsed on attempt %d",
+                        len(current_decisions) - parse_failures,
+                        len(current_decisions),
+                        attempt + 1,
                     )
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_currency_evaluation_response(
-                    response_text, num_words
-                )
-
-            last_decisions = decisions
-
-            # Check if all decisions failed to parse
-            parse_failures = sum(
-                1
-                for d in decisions
-                if "Failed to parse" in d.get("reasoning", "")
-            )
-
-            if parse_failures == 0:
-                break
-            elif parse_failures < len(decisions):
-                logger.info(
-                    "Partial parse success: %d/%d parsed on attempt %d",
-                    len(decisions) - parse_failures,
-                    len(decisions),
-                    attempt + 1,
-                )
-                break
-            else:
+                    break
                 if attempt < max_retries - 1:
                     logger.warning(
-                        "All %d decisions failed to parse on attempt %d, retrying...",
-                        len(decisions),
+                        "All %d decisions failed to parse on attempt %d, "
+                        "retrying...",
+                        len(current_decisions),
                         attempt + 1,
                     )
                 else:
                     logger.warning(
                         "All %d decisions failed to parse after %d attempts",
-                        len(decisions),
+                        len(current_decisions),
                         max_retries,
                     )
-
-        except Exception as e:
-            from receipt_agent.utils import LLMRateLimitError
-
-            if isinstance(e, LLMRateLimitError):
-                logger.error(
-                    "Currency LLM rate limited, propagating for retry: %s", e
-                )
+            except LLMRateLimitError:
                 raise
-
-            logger.error(
-                "Currency LLM call failed on attempt %d: %s", attempt + 1, e
-            )
-            if attempt == max_retries - 1:
-                # Final attempt failed - return NEEDS_REVIEW for all
-                results = []
-                for cw in currency_words:
-                    wc = cw.word_context
-                    results.append(
-                        {
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                            "issue": {
-                                "line_id": wc.word.line_id,
-                                "word_id": wc.word.word_id,
-                                "current_label": cw.current_label,
-                                "word_text": wc.word.text,
-                            },
-                            "llm_review": {
-                                "decision": "NEEDS_REVIEW",
-                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
-                                "suggested_label": None,
-                                "confidence": "low",
-                            },
-                        }
+            except Exception as error:
+                logger.error(
+                    "Currency LLM call failed on attempt %d: %s",
+                    attempt + 1,
+                    error,
+                )
+                if attempt == max_retries - 1:
+                    last_decisions = build_structured_failure_decisions(
+                        num_words,
+                        failure_reason=(
+                            "LLM call failed after "
+                            f"{max_retries} attempts: {error}"
+                        ),
                     )
-                return results
 
-    # Use the last decisions we got (best effort)
-    decisions = last_decisions or [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": "No response received",
-            "suggested_label": None,
-            "confidence": "low",
-        }
-        for _ in currency_words
-    ]
+        decisions = last_decisions
+
+    if decisions is None:
+        decisions = build_structured_failure_decisions(
+            num_words,
+            failure_reason="No response received",
+        )
 
     # Step 5: Format output for apply_llm_decisions
-    results = []
+    results: list[dict[str, Any]] = []
     num_words = len(currency_words)
     num_decisions = len(decisions)
     if num_decisions != num_words:

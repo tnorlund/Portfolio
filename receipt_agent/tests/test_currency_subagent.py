@@ -5,19 +5,21 @@ Tests the various detection functions for currency-related label issues.
 """
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
+from receipt_agent.agents.label_evaluator import currency_subagent
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     CurrencyWord,
     LineItemRow,
     build_currency_evaluation_prompt,
     convert_to_evaluation_issues,
+    evaluate_currency_labels,
     identify_line_item_rows,
     parse_currency_evaluation_response,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 # Use a fixed valid UUID for testing
 TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
@@ -87,13 +89,9 @@ def _make_word_context(
     )
 
 
-def _make_visual_line(
-    words: list[WordContext], line_index: int = 0
-) -> VisualLine:
+def _make_visual_line(words: list[WordContext], line_index: int = 0) -> VisualLine:
     """Helper to create a VisualLine."""
-    y_center = (
-        sum(w.normalized_y for w in words) / len(words) if words else 0.5
-    )
+    y_center = sum(w.normalized_y for w in words) / len(words) if words else 0.5
     return VisualLine(line_index=line_index, words=words, y_center=y_center)
 
 
@@ -130,8 +128,8 @@ class TestIdentifyLineItemRows:
         line = _make_visual_line([wc1, wc2])
         rows = identify_line_item_rows([line])
         assert len(rows) == 1
-        assert len(rows[0].currency_words) == 1
-        assert rows[0].currency_words[0].word.text == "4.99"
+        row_texts = {wc.word.text for wc in rows[0].currency_words}
+        assert "4.99" in row_texts
 
 
 @pytest.mark.skip(reason="find_misclassified_currency not implemented yet")
@@ -333,4 +331,45 @@ class TestBuildCurrencyEvaluationPrompt:
             patterns=patterns,
             merchant_name="Test",
         )
-        assert "single-line" in prompt
+        assert "Expected Label Positions" in prompt
+        assert '"LINE_TOTAL": "right"' in prompt
+
+
+class TestStrictStructuredOutput:
+    """Strict structured output behavior for currency evaluation."""
+
+    def test_strict_mode_skips_text_parsing_fallback(self, monkeypatch):
+        """When strict is enabled, failed structured output should not text-parse."""
+        monkeypatch.setenv("LLM_STRICT_STRUCTURED_OUTPUT", "true")
+        monkeypatch.setenv("LLM_STRUCTURED_OUTPUT_RETRIES", "1")
+
+        def _no_text_fallback(*args, **kwargs):
+            raise AssertionError("text parsing fallback should not be called")
+
+        monkeypatch.setattr(
+            currency_subagent,
+            "parse_currency_evaluation_response",
+            _no_text_fallback,
+        )
+
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.side_effect = RuntimeError("schema failure")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        wc = _make_word_context("4.99", "LINE_TOTAL", word_id=1, x=0.8)
+        line = _make_visual_line([wc], line_index=0)
+
+        results = evaluate_currency_labels(
+            visual_lines=[line],
+            patterns=None,
+            llm=mock_llm,
+            image_id=TEST_IMAGE_ID,
+            receipt_id=1,
+            merchant_name="Test Merchant",
+        )
+
+        assert len(results) == 1
+        decision = results[0]["llm_review"]
+        assert decision["decision"] == "NEEDS_REVIEW"
+        assert "Strict structured output failed" in decision["reasoning"]

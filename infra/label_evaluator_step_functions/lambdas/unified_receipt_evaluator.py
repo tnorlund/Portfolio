@@ -46,7 +46,6 @@ try:
         end_receipt_trace,
         flush_langsmith_traces,
     )
-
     from utils.s3_helpers import (
         download_chromadb_snapshot,
         get_merchant_hash,
@@ -882,10 +881,11 @@ async def unified_receipt_evaluator(
                     "conflicting_words": len(conflicting_keys),
                 },
             ) as correction_ctx:
+                from receipt_dynamo import DynamoClient
+
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
                 )
-                from receipt_dynamo import DynamoClient
 
                 dynamo_client = DynamoClient(table_name=dynamo_table)
 
@@ -1149,7 +1149,7 @@ async def unified_receipt_evaluator(
                             cloud_has_words = True
                         except Exception as e:
                             logger.warning(
-                                "Chroma Cloud words collection " "not available: %s",
+                                "Chroma Cloud words collection not available: %s",
                                 e,
                             )
                         cloud_has_lines = False
@@ -1158,7 +1158,7 @@ async def unified_receipt_evaluator(
                             cloud_has_lines = True
                         except Exception as e:
                             logger.warning(
-                                "Chroma Cloud lines collection " "not available: %s",
+                                "Chroma Cloud lines collection not available: %s",
                                 e,
                             )
                         if cloud_has_words or cloud_has_lines:
@@ -1244,6 +1244,7 @@ async def unified_receipt_evaluator(
                 try:
                     if geometric_issues and chroma_client:
                         from langchain_core.messages import HumanMessage
+
                         from receipt_agent.agents.label_evaluator.llm_review import (
                             assemble_receipt_text,
                         )
@@ -1251,10 +1252,17 @@ async def unified_receipt_evaluator(
                             build_receipt_context_prompt,
                             parse_batched_llm_response,
                         )
+                        from receipt_agent.prompts.structured_outputs import (
+                            BatchedReviewResponse,
+                        )
                         from receipt_agent.utils.chroma_helpers import (
                             compute_label_consensus,
                             format_label_evidence_for_prompt,
                             query_label_evidence,
+                        )
+                        from receipt_agent.utils.structured_output import (
+                            ainvoke_structured_with_retry,
+                            get_structured_output_settings,
                         )
 
                         # Gather context for issues using targeted boolean queries.
@@ -1448,24 +1456,70 @@ async def unified_receipt_evaluator(
                                     line_item_patterns=line_item_patterns,
                                 )
 
-                                # Make async LLM call (child_trace sets
-                                # tracing_context so LLM calls auto-nest under
-                                # phase3_llm_review span).
-                                response = await llm_invoker.ainvoke(
-                                    [HumanMessage(content=prompt)],
+                                (
+                                    strict_structured_output,
+                                    structured_retries,
+                                ) = get_structured_output_settings(
+                                    logger_instance=logger
                                 )
 
-                                # Parse response
-                                response_text = (
-                                    response.content
-                                    if hasattr(response, "content")
-                                    else str(response)
-                                )
-                                chunk_reviews = parse_batched_llm_response(
-                                    response_text.strip(),
-                                    expected_count=len(llm_candidates),
-                                    raise_on_parse_error=False,
-                                )
+                                if strict_structured_output:
+                                    structured_result = (
+                                        await ainvoke_structured_with_retry(
+                                            llm=llm_invoker,
+                                            schema=BatchedReviewResponse,
+                                            input_payload=[
+                                                HumanMessage(content=prompt)
+                                            ],
+                                            retries=structured_retries,
+                                        )
+                                    )
+
+                                    if (
+                                        structured_result.success
+                                        and structured_result.response is not None
+                                    ):
+                                        chunk_reviews = (
+                                            structured_result.response.to_ordered_list(
+                                                len(llm_candidates)
+                                            )
+                                        )
+                                    else:
+                                        failure_reason = (
+                                            "Strict structured output failed for "
+                                            "phase3 LLM review "
+                                            f"(attempts={structured_result.attempts}, "
+                                            f"error={structured_result.error_type or 'unknown'})."
+                                        )
+                                        logger.warning("%s", failure_reason)
+                                        chunk_reviews = [
+                                            {
+                                                "decision": "NEEDS_REVIEW",
+                                                "reasoning": failure_reason,
+                                                "suggested_label": None,
+                                                "confidence": "low",
+                                            }
+                                            for _ in llm_candidates
+                                        ]
+                                else:
+                                    # Make async LLM call (child_trace sets
+                                    # tracing_context so LLM calls auto-nest under
+                                    # phase3_llm_review span).
+                                    response = await llm_invoker.ainvoke(
+                                        [HumanMessage(content=prompt)],
+                                    )
+
+                                    # Parse response
+                                    response_text = (
+                                        response.content
+                                        if hasattr(response, "content")
+                                        else str(response)
+                                    )
+                                    chunk_reviews = parse_batched_llm_response(
+                                        response_text.strip(),
+                                        expected_count=len(llm_candidates),
+                                        raise_on_parse_error=False,
+                                    )
 
                                 for meta, review_result in zip(
                                     llm_candidates,

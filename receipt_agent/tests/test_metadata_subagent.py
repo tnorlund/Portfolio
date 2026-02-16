@@ -5,17 +5,19 @@ Tests the auto-resolve logic, pattern detection, and skip logic.
 """
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
+from receipt_agent.agents.label_evaluator import metadata_subagent
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     MetadataWord,
     auto_resolve_metadata_words,
     detect_pattern_type,
+    evaluate_metadata_labels,
     should_skip_for_metadata_evaluation,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
 
@@ -165,9 +167,7 @@ class TestAutoResolveMetadataWords:
 
     def test_detected_type_confirms_time(self):
         """Word labeled TIME matching time regex → auto-VALID."""
-        mw = _make_metadata_word(
-            "14:30", current_label="TIME", detected_type="TIME"
-        )
+        mw = _make_metadata_word("14:30", current_label="TIME", detected_type="TIME")
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 1
         assert resolved[0][1]["decision"] == "VALID"
@@ -192,9 +192,7 @@ class TestAutoResolveMetadataWords:
 
     def test_no_confirming_signal_goes_to_llm(self):
         """Word with label but no place_match or detected_type → unresolved."""
-        mw = _make_metadata_word(
-            "Mon-Fri 9-5", current_label="STORE_HOURS"
-        )
+        mw = _make_metadata_word("Mon-Fri 9-5", current_label="STORE_HOURS")
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 0
         assert len(unresolved) == 1
@@ -223,18 +221,14 @@ class TestAutoResolveMetadataWords:
 
     def test_coupon_always_goes_to_llm(self):
         """COUPON label with no signals → unresolved (rare label)."""
-        mw = _make_metadata_word(
-            "SAVE20", current_label="COUPON"
-        )
+        mw = _make_metadata_word("SAVE20", current_label="COUPON")
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 0
         assert len(unresolved) == 1
 
     def test_loyalty_id_always_goes_to_llm(self):
         """LOYALTY_ID label with no signals → unresolved (rare label)."""
-        mw = _make_metadata_word(
-            "MEMBER123", current_label="LOYALTY_ID"
-        )
+        mw = _make_metadata_word("MEMBER123", current_label="LOYALTY_ID")
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 0
         assert len(unresolved) == 1
@@ -244,22 +238,30 @@ class TestAutoResolveMetadataWords:
         words = [
             # Auto-VALID: merchant matches place
             _make_metadata_word(
-                "Sprouts", current_label="MERCHANT_NAME",
-                place_match="MERCHANT_NAME", word_id=1,
+                "Sprouts",
+                current_label="MERCHANT_NAME",
+                place_match="MERCHANT_NAME",
+                word_id=1,
             ),
             # Auto-VALID: date matches regex
             _make_metadata_word(
-                "12/25/2024", current_label="DATE",
-                detected_type="DATE", word_id=2,
+                "12/25/2024",
+                current_label="DATE",
+                detected_type="DATE",
+                word_id=2,
             ),
             # Unresolved: store hours, no signal
             _make_metadata_word(
-                "Mon-Fri", current_label="STORE_HOURS", word_id=3,
+                "Mon-Fri",
+                current_label="STORE_HOURS",
+                word_id=3,
             ),
             # Unresolved: unlabeled
             _make_metadata_word(
-                "www.sprouts.com", detected_type="WEBSITE",
-                place_match="WEBSITE", word_id=4,
+                "www.sprouts.com",
+                detected_type="WEBSITE",
+                place_match="WEBSITE",
+                word_id=4,
             ),
         ]
         resolved, unresolved = auto_resolve_metadata_words(words)
@@ -282,12 +284,16 @@ class TestAutoResolveMetadataWords:
         """All words have confirming signals → all resolved, none unresolved."""
         words = [
             _make_metadata_word(
-                "Sprouts", current_label="MERCHANT_NAME",
-                place_match="MERCHANT_NAME", word_id=1,
+                "Sprouts",
+                current_label="MERCHANT_NAME",
+                place_match="MERCHANT_NAME",
+                word_id=1,
             ),
             _make_metadata_word(
-                "14:30", current_label="TIME",
-                detected_type="TIME", word_id=2,
+                "14:30",
+                current_label="TIME",
+                detected_type="TIME",
+                word_id=2,
             ),
         ]
         resolved, unresolved = auto_resolve_metadata_words(words)
@@ -298,10 +304,14 @@ class TestAutoResolveMetadataWords:
         """No words have confirming signals → none resolved, all unresolved."""
         words = [
             _make_metadata_word(
-                "Mon-Fri", current_label="STORE_HOURS", word_id=1,
+                "Mon-Fri",
+                current_label="STORE_HOURS",
+                word_id=1,
             ),
             _make_metadata_word(
-                "SAVE20", current_label="COUPON", word_id=2,
+                "SAVE20",
+                current_label="COUPON",
+                word_id=2,
             ),
         ]
         resolved, unresolved = auto_resolve_metadata_words(words)
@@ -323,7 +333,8 @@ class TestAutoResolveMetadataWords:
     def test_resolved_decision_format(self):
         """Auto-resolved decisions have the expected format."""
         mw = _make_metadata_word(
-            "Sprouts", current_label="MERCHANT_NAME",
+            "Sprouts",
+            current_label="MERCHANT_NAME",
             place_match="MERCHANT_NAME",
         )
         resolved, _ = auto_resolve_metadata_words([mw])
@@ -407,3 +418,43 @@ class TestShouldSkipForMetadataEvaluation:
     def test_normal_words_not_skipped(self):
         assert should_skip_for_metadata_evaluation("Sprouts") is False
         assert should_skip_for_metadata_evaluation("12/25/2024") is False
+
+
+class TestStrictStructuredOutput:
+    """Strict structured output behavior for metadata evaluation."""
+
+    def test_strict_mode_skips_text_parsing_fallback(self, monkeypatch):
+        """When strict is enabled, failed structured output should not text-parse."""
+        monkeypatch.setenv("LLM_STRICT_STRUCTURED_OUTPUT", "true")
+        monkeypatch.setenv("LLM_STRUCTURED_OUTPUT_RETRIES", "1")
+
+        def _no_text_fallback(*args, **kwargs):
+            raise AssertionError("text parsing fallback should not be called")
+
+        monkeypatch.setattr(
+            metadata_subagent,
+            "parse_metadata_evaluation_response",
+            _no_text_fallback,
+        )
+
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.side_effect = RuntimeError("schema failure")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        wc = _make_word_context("Mon-Fri", "STORE_HOURS", word_id=1, x=0.1)
+        line = VisualLine(line_index=0, words=[wc], y_center=wc.normalized_y)
+
+        results = evaluate_metadata_labels(
+            visual_lines=[line],
+            place=None,
+            llm=mock_llm,
+            image_id=TEST_IMAGE_ID,
+            receipt_id=1,
+            merchant_name="Test Merchant",
+        )
+
+        assert len(results) == 1
+        decision = results[0]["llm_review"]
+        assert decision["decision"] == "NEEDS_REVIEW"
+        assert "Strict structured output failed" in decision["reasoning"]
