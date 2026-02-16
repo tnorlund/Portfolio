@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import dataclasses
 import logging
 import os
 import sys
@@ -27,6 +28,35 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _entity_to_dict(entity: object) -> dict:
+    """Best-effort serialization for Dynamo entity objects."""
+    to_dict = getattr(entity, "to_dict", None)
+    if callable(to_dict):
+        data = to_dict()
+        if isinstance(data, dict):
+            return data
+
+    if dataclasses.is_dataclass(entity):
+        data = dataclasses.asdict(entity)
+        if isinstance(data, dict):
+            return data
+
+    iterator = getattr(entity, "__iter__", None)
+    if callable(iterator):
+        try:
+            data = dict(entity)  # type: ignore[arg-type]
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    raw = getattr(entity, "__dict__", None)
+    if isinstance(raw, dict):
+        return {key: value for key, value in raw.items() if not key.startswith("_")}
+
+    raise TypeError(f"Could not serialize entity of type {type(entity).__name__}")
 
 
 def load_config() -> dict:
@@ -65,15 +95,11 @@ def main():
     parser.add_argument(
         "--apply", action="store_true", help="Apply decisions to DynamoDB"
     )
-    parser.add_argument(
-        "--skip-llm", action="store_true", help="Skip LLM review"
-    )
+    parser.add_argument("--skip-llm", action="store_true", help="Skip LLM review")
     parser.add_argument(
         "--skip-patterns", action="store_true", help="Skip pattern discovery"
     )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose output"
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
     if args.verbose:
@@ -88,10 +114,6 @@ def main():
         sys.exit(1)
 
     # Import after setting env vars
-    from receipt_dynamo import DynamoClient
-
-    from receipt_agent.utils.llm_factory import create_llm
-
     from receipt_agent.agents.label_evaluator import (  # Pattern discovery; Patterns; Evaluation; LLM Review
         EvaluatorState,
         OtherReceiptData,
@@ -108,6 +130,8 @@ def main():
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
         discover_patterns_with_llm,
     )
+    from receipt_agent.utils.llm_factory import create_llm
+    from receipt_dynamo import DynamoClient
 
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
 
@@ -147,16 +171,12 @@ def main():
             patterns = get_default_patterns(merchant_name, "no_data")
 
     logger.info("  Receipt type: %s", patterns.get("receipt_type", "unknown"))
-    logger.info(
-        "  Item structure: %s", patterns.get("item_structure", "unknown")
-    )
+    logger.info("  Item structure: %s", patterns.get("item_structure", "unknown"))
 
     # 3. Load training receipts and compute merchant patterns
     logger.info("Loading training receipts...")
     other_receipts = []
-    places, _ = dynamo_client.get_receipt_places_by_merchant(
-        merchant_name, limit=20
-    )
+    places, _ = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=20)
     for p in places:
         if p.image_id == args.image_id and p.receipt_id == args.receipt_id:
             continue
@@ -166,25 +186,17 @@ def main():
             other_words = dynamo_client.list_receipt_words_from_receipt(
                 p.image_id, p.receipt_id
             )
-            other_labels, _ = (
-                dynamo_client.list_receipt_word_labels_for_receipt(
-                    p.image_id, p.receipt_id
-                )
+            other_labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+                p.image_id, p.receipt_id
             )
             other_receipts.append(
-                OtherReceiptData(
-                    place=p, words=other_words, labels=other_labels
-                )
+                OtherReceiptData(place=p, words=other_words, labels=other_labels)
             )
         except Exception as e:
-            logger.warning(
-                "  Failed to load %s#%s: %s", p.image_id, p.receipt_id, e
-            )
+            logger.warning("  Failed to load %s#%s: %s", p.image_id, p.receipt_id, e)
 
     logger.info("  Loaded %d training receipts", len(other_receipts))
-    merchant_patterns = compute_merchant_patterns(
-        other_receipts, merchant_name
-    )
+    merchant_patterns = compute_merchant_patterns(other_receipts, merchant_name)
 
     # 4. Run evaluation
     logger.info("Running label evaluation...")
@@ -223,13 +235,12 @@ def main():
                         "infra/label_evaluator_step_functions/lambdas/utils",
                     ),
                 )
-                from receipt_chroma import ChromaClient
                 from s3_helpers import download_chromadb_snapshot
 
+                from receipt_chroma import ChromaClient
+
                 s3 = boto3.client("s3")
-                chroma_path = os.path.join(
-                    tempfile.gettempdir(), "chromadb_dev"
-                )
+                chroma_path = os.path.join(tempfile.gettempdir(), "chromadb_dev")
                 download_chromadb_snapshot(
                     s3, config["chromadb_bucket"], "words", chroma_path
                 )
@@ -243,8 +254,8 @@ def main():
             llm = create_llm(temperature=0.0)
 
             # Serialize words and labels to dicts
-            words_dicts = [w.to_dict() for w in words]
-            labels_dicts = [lbl.to_dict() for lbl in labels]
+            words_dicts = [_entity_to_dict(w) for w in words]
+            labels_dicts = [_entity_to_dict(lbl) for lbl in labels]
 
             reviewed_issues = review_all_issues(
                 issues=issues,
@@ -320,9 +331,7 @@ def main():
     print("=" * 60)
 
     if config["langchain_api_key"]:
-        print(
-            "\nTrace: https://smith.langchain.com/ (project: label-evaluator-dev)"
-        )
+        print("\nTrace: https://smith.langchain.com/ (project: label-evaluator-dev)")
 
 
 if __name__ == "__main__":
