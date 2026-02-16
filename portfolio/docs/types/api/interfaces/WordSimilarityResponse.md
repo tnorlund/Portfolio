@@ -6,7 +6,7 @@
 
 # Interface: WordSimilarityResponse
 
-Defined in: [types/api.ts:246](https://github.com/tnorlund/Portfolio/blob/3bf370d606c86e1c743df3668c6c82a36c118bf3/portfolio/types/api.ts#L246)
+Defined in: [types/api.ts:246](https://github.com/tnorlund/Portfolio/blob/2aa640249956df3c991f5ed274179111c94b4c42/portfolio/types/api.ts#L246)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:246](https://github.com/tnorlund/Portfolio/blob/3bf370
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/3bf370d606c86e1c743df3668c6c82a36c118bf3/portfolio/types/api.ts#L265)
+Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/2aa640249956df3c991f5ed274179111c94b4c42/portfolio/types/api.ts#L265)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/3bf370
 
 > **original**: `object`
 
-Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/3bf370d606c86e1c743df3668c6c82a36c118bf3/portfolio/types/api.ts#L248)
+Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/2aa640249956df3c991f5ed274179111c94b4c42/portfolio/types/api.ts#L248)
 
 #### labels
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/3bf370
 
 > **query\_word**: `string`
 
-Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/3bf370d606c86e1c743df3668c6c82a36c118bf3/portfolio/types/api.ts#L247)
+Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/2aa640249956df3c991f5ed274179111c94b4c42/portfolio/types/api.ts#L247)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/3bf370
 
 > **similar**: `object`[]
 
-Defined in: [types/api.ts:256](https://github.com/tnorlund/Portfolio/blob/3bf370d606c86e1c743df3668c6c82a36c118bf3/portfolio/types/api.ts#L256)
+Defined in: [types/api.ts:256](https://github.com/tnorlund/Portfolio/blob/2aa640249956df3c991f5ed274179111c94b4c42/portfolio/types/api.ts#L256)
 
 #### labels
 
