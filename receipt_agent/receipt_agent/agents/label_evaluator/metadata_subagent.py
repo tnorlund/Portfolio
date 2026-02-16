@@ -44,6 +44,12 @@ from receipt_agent.prompts.structured_outputs import (
     MetadataEvaluationResponse,
     extract_json_from_response,
 )
+from receipt_agent.utils import (
+    LLMRateLimitError,
+    ainvoke_structured_with_retry,
+    get_structured_output_settings,
+    invoke_structured_with_retry,
+)
 
 from .state import VisualLine, WordContext
 
@@ -599,6 +605,23 @@ def parse_metadata_evaluation_response(
         return [fallback.copy() for _ in range(num_words)]
 
 
+def _build_structured_failure_decisions(
+    num_words: int,
+    *,
+    failure_reason: str,
+) -> list[dict[str, Any]]:
+    """Build deterministic fallback decisions when strict structure fails."""
+    return [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": failure_reason,
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in range(num_words)
+    ]
+
+
 # =============================================================================
 # Main Evaluation Function
 # =============================================================================
@@ -655,7 +678,7 @@ def evaluate_metadata_labels(
         )
 
     # Format auto-resolved results
-    auto_results = []
+    auto_results: list[dict[str, Any]] = []
     for mw, decision in resolved_pairs:
         wc = mw.word_context
         auto_results.append(
@@ -685,90 +708,104 @@ def evaluate_metadata_labels(
         merchant_name=merchant_name,
     )
 
-    # Try structured output, then fall back to text parsing
-    structured_retries = 1
-    text_retries = 1
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_words = len(remaining_words)
-    decisions = None
+    decisions: list[dict[str, Any]] | None = None
 
-    # Check if LLM supports structured output
-    use_structured = hasattr(llm, "with_structured_output")
+    if strict_structured_output:
+        structured_result = invoke_structured_with_retry(
+            llm=llm,
+            schema=MetadataEvaluationResponse,
+            input_payload=prompt,
+            retries=structured_retries,
+        )
+        if (
+            structured_result.success
+            and structured_result.response is not None
+        ):
+            decisions = structured_result.response.to_ordered_list(num_words)
+            logger.debug(
+                "Structured output succeeded with %d evaluations",
+                len(decisions),
+            )
+        else:
+            failure_reason = (
+                "Strict structured output failed for metadata evaluation "
+                f"(attempts={structured_result.attempts}, "
+                f"error={structured_result.error_type or 'unknown'})."
+            )
+            logger.warning("%s", failure_reason)
+            decisions = _build_structured_failure_decisions(
+                num_words,
+                failure_reason=failure_reason,
+            )
+    else:
+        logger.info(
+            "Strict structured output disabled for metadata evaluation; "
+            "using legacy text parsing fallback."
+        )
+        text_retries = 1
+        use_structured = hasattr(llm, "with_structured_output")
 
-    # Phase 1: Try structured output multiple times
-    if use_structured:
-        for attempt in range(structured_retries):
-            try:
-                structured_llm = llm.with_structured_output(
-                    MetadataEvaluationResponse
-                )
-                response: MetadataEvaluationResponse = structured_llm.invoke(
-                    prompt
-                )
-                decisions = response.to_ordered_list(num_words)
-                logger.debug(
-                    "Structured output succeeded with %d evaluations",
-                    len(decisions),
-                )
-                break  # Success, exit retry loop
-            except Exception as struct_err:
-                # Check if this is a rate limit error that should propagate
-                from receipt_agent.utils import LLMRateLimitError
-
-                if isinstance(struct_err, LLMRateLimitError):
-                    logger.error(
-                        "Metadata LLM rate limited, propagating for retry: %s",
+        if use_structured:
+            for attempt in range(structured_retries):
+                try:
+                    structured_llm = llm.with_structured_output(
+                        MetadataEvaluationResponse
+                    )
+                    response: MetadataEvaluationResponse = (
+                        structured_llm.invoke(prompt)
+                    )
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                    break
+                except LLMRateLimitError:
+                    raise
+                except Exception as struct_err:
+                    logger.warning(
+                        "Structured output failed (attempt %d/%d): %s",
+                        attempt + 1,
+                        structured_retries,
                         struct_err,
                     )
-                    raise  # Let Step Function retry handle this
 
-                logger.warning(
-                    "Structured output failed (attempt %d/%d): %s",
-                    attempt + 1,
-                    structured_retries,
-                    struct_err,
-                )
-                if attempt == structured_retries - 1:
-                    logger.info(
-                        "All %d structured output attempts failed, "
-                        "falling back to text parsing",
-                        structured_retries,
+        if decisions is None:
+            for attempt in range(text_retries):
+                try:
+                    response = llm.invoke(prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_metadata_evaluation_response(
+                        response_text, num_words
                     )
 
-    # Phase 2: Fall back to text parsing if structured output failed or unavailable
-    if decisions is None:
-        for attempt in range(text_retries):
-            try:
-                response = llm.invoke(prompt)
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_metadata_evaluation_response(
-                    response_text, num_words
-                )
-
-                # Check if all decisions failed to parse
-                parse_failures = sum(
-                    1
-                    for d in decisions
-                    if "Failed to parse" in d.get("reasoning", "")
-                )
-
-                if parse_failures == 0:
-                    logger.debug(
-                        "Text parsing succeeded with %d evaluations",
-                        len(decisions),
+                    parse_failures = sum(
+                        1
+                        for decision in decisions
+                        if "Failed to parse" in decision.get("reasoning", "")
                     )
-                    break
-                elif parse_failures < len(decisions):
-                    logger.info(
-                        "Partial text parse success: %d/%d parsed",
-                        len(decisions) - parse_failures,
-                        len(decisions),
-                    )
-                    break
-                else:
+                    if parse_failures == 0:
+                        logger.debug(
+                            "Text parsing succeeded with %d evaluations",
+                            len(decisions),
+                        )
+                        break
+                    if parse_failures < len(decisions):
+                        logger.info(
+                            "Partial text parse success: %d/%d parsed",
+                            len(decisions) - parse_failures,
+                            len(decisions),
+                        )
+                        break
+
                     if attempt < text_retries - 1:
                         logger.warning(
                             "All %d decisions failed text parse "
@@ -784,27 +821,25 @@ def evaluate_metadata_labels(
                             len(decisions),
                             text_retries,
                         )
-            except Exception as e:
-                logger.error(
-                    "Text parsing failed on attempt %d: %s", attempt + 1, e
-                )
-                if attempt == text_retries - 1:
-                    decisions = None
+                except LLMRateLimitError:
+                    raise
+                except Exception as error:
+                    logger.error(
+                        "Text parsing failed on attempt %d: %s",
+                        attempt + 1,
+                        error,
+                    )
+                    if attempt == text_retries - 1:
+                        decisions = None
 
-    # Use the decisions we got (best effort)
-    if decisions is None:
-        decisions = [
-            {
-                "decision": "NEEDS_REVIEW",
-                "reasoning": "No response received",
-                "suggested_label": None,
-                "confidence": "low",
-            }
-            for _ in remaining_words
-        ]
+        if decisions is None:
+            decisions = _build_structured_failure_decisions(
+                num_words,
+                failure_reason="No response received",
+            )
 
     # Step 4: Format output for apply_llm_decisions
-    llm_results = []
+    llm_results: list[dict[str, Any]] = []
     for mw, decision in zip(remaining_words, decisions, strict=True):
         wc = mw.word_context
         llm_results.append(
@@ -898,7 +933,7 @@ async def evaluate_metadata_labels_async(
         )
 
     # Format auto-resolved results
-    auto_results = []
+    auto_results: list[dict[str, Any]] = []
     for mw, decision in resolved_pairs:
         wc = mw.word_context
         auto_results.append(
@@ -928,155 +963,158 @@ async def evaluate_metadata_labels_async(
         merchant_name=merchant_name,
     )
 
-    # Step 3: Call LLM asynchronously
-    max_retries = 2
-    last_decisions = None
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_words = len(remaining_words)
+    decisions: list[dict[str, Any]] | None = None
 
-    use_structured = hasattr(llm, "with_structured_output")
+    if strict_structured_output:
+        structured_result = await ainvoke_structured_with_retry(
+            llm=llm,
+            schema=MetadataEvaluationResponse,
+            input_payload=prompt,
+            retries=structured_retries,
+        )
+        if (
+            structured_result.success
+            and structured_result.response is not None
+        ):
+            decisions = structured_result.response.to_ordered_list(num_words)
+            logger.debug(
+                "Structured output succeeded with %d evaluations",
+                len(decisions),
+            )
+        else:
+            failure_reason = (
+                "Strict structured output failed for metadata evaluation "
+                f"(attempts={structured_result.attempts}, "
+                f"error={structured_result.error_type or 'unknown'})."
+            )
+            logger.warning("%s", failure_reason)
+            decisions = _build_structured_failure_decisions(
+                num_words,
+                failure_reason=failure_reason,
+            )
+    else:
+        logger.info(
+            "Strict structured output disabled for metadata evaluation; "
+            "using legacy text parsing fallback."
+        )
+        max_retries = 2
+        last_decisions: list[dict[str, Any]] | None = None
+        use_structured = hasattr(llm, "with_structured_output")
 
-    for attempt in range(max_retries):
-        try:
-            if use_structured:
-                try:
-                    structured_llm = llm.with_structured_output(
-                        MetadataEvaluationResponse
-                    )
-                    if hasattr(structured_llm, "ainvoke"):
-                        response: MetadataEvaluationResponse = (
-                            await structured_llm.ainvoke(prompt)
+        for attempt in range(max_retries):
+            try:
+                if use_structured:
+                    try:
+                        structured_llm = llm.with_structured_output(
+                            MetadataEvaluationResponse
                         )
-                    else:
-                        # Run sync invoke in thread pool to avoid blocking event loop
-                        response: MetadataEvaluationResponse = (
-                            await asyncio.to_thread(
+                        if hasattr(structured_llm, "ainvoke"):
+                            response: MetadataEvaluationResponse = (
+                                await structured_llm.ainvoke(prompt)
+                            )
+                        else:
+                            response = await asyncio.to_thread(
                                 structured_llm.invoke,
                                 prompt,
                             )
+                        current_decisions = response.to_ordered_list(num_words)
+                    except LLMRateLimitError:
+                        raise
+                    except Exception as struct_err:
+                        logger.warning(
+                            "Structured output failed (attempt %d), "
+                            "falling back to text: %s",
+                            attempt + 1,
+                            struct_err,
                         )
-                    decisions = response.to_ordered_list(num_words)
-                    logger.debug(
-                        "Structured output succeeded with %d evaluations",
-                        len(decisions),
-                    )
-                except Exception as struct_err:
-                    logger.warning(
-                        "Structured output failed (attempt %d), falling back to text: %s",
-                        attempt + 1,
-                        struct_err,
-                    )
+                        if hasattr(llm, "ainvoke"):
+                            response = await llm.ainvoke(prompt)
+                        else:
+                            response = await asyncio.to_thread(
+                                llm.invoke, prompt
+                            )
+                        response_text = (
+                            response.content
+                            if hasattr(response, "content")
+                            else str(response)
+                        )
+                        current_decisions = parse_metadata_evaluation_response(
+                            response_text, num_words
+                        )
+                else:
                     if hasattr(llm, "ainvoke"):
                         response = await llm.ainvoke(prompt)
                     else:
-                        # Run sync invoke in thread pool to avoid blocking event loop
-                        response = await asyncio.to_thread(
-                            llm.invoke, prompt,
-                        )
+                        response = await asyncio.to_thread(llm.invoke, prompt)
                     response_text = (
                         response.content
                         if hasattr(response, "content")
                         else str(response)
                     )
-                    decisions = parse_metadata_evaluation_response(
+                    current_decisions = parse_metadata_evaluation_response(
                         response_text, num_words
                     )
-            else:
-                if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt)
-                else:
-                    # Run sync invoke in thread pool to avoid blocking event loop
-                    response = await asyncio.to_thread(
-                        llm.invoke, prompt,
+
+                last_decisions = current_decisions
+                parse_failures = sum(
+                    1
+                    for decision in current_decisions
+                    if "Failed to parse" in decision.get("reasoning", "")
+                )
+                if parse_failures == 0:
+                    break
+                if parse_failures < len(current_decisions):
+                    logger.info(
+                        "Partial parse success: %d/%d parsed on attempt %d",
+                        len(current_decisions) - parse_failures,
+                        len(current_decisions),
+                        attempt + 1,
                     )
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_metadata_evaluation_response(
-                    response_text, num_words
-                )
-
-            last_decisions = decisions
-
-            parse_failures = sum(
-                1
-                for d in decisions
-                if "Failed to parse" in d.get("reasoning", "")
-            )
-
-            if parse_failures == 0:
-                break
-            elif parse_failures < len(decisions):
-                logger.info(
-                    "Partial parse success: %d/%d parsed on attempt %d",
-                    len(decisions) - parse_failures,
-                    len(decisions),
-                    attempt + 1,
-                )
-                break
-            else:
+                    break
                 if attempt < max_retries - 1:
                     logger.warning(
-                        "All %d decisions failed to parse on attempt %d, retrying...",
-                        len(decisions),
+                        "All %d decisions failed to parse on attempt %d, "
+                        "retrying...",
+                        len(current_decisions),
                         attempt + 1,
                     )
                 else:
                     logger.warning(
                         "All %d decisions failed to parse after %d attempts",
-                        len(decisions),
+                        len(current_decisions),
                         max_retries,
                     )
-
-        except Exception as e:
-            from receipt_agent.utils import LLMRateLimitError
-
-            if isinstance(e, LLMRateLimitError):
-                logger.error(
-                    "Metadata LLM rate limited, propagating for retry: %s", e
-                )
+            except LLMRateLimitError:
                 raise
-
-            logger.error(
-                "Metadata LLM call failed on attempt %d: %s", attempt + 1, e
-            )
-            if attempt == max_retries - 1:
-                llm_results = []
-                for mw in remaining_words:
-                    wc = mw.word_context
-                    llm_results.append(
-                        {
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                            "issue": {
-                                "line_id": wc.word.line_id,
-                                "word_id": wc.word.word_id,
-                                "current_label": mw.current_label,
-                                "word_text": wc.word.text,
-                            },
-                            "llm_review": {
-                                "decision": "NEEDS_REVIEW",
-                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
-                                "suggested_label": None,
-                                "confidence": "low",
-                            },
-                        }
+            except Exception as error:
+                logger.error(
+                    "Metadata LLM call failed on attempt %d: %s",
+                    attempt + 1,
+                    error,
+                )
+                if attempt == max_retries - 1:
+                    last_decisions = _build_structured_failure_decisions(
+                        num_words,
+                        failure_reason=(
+                            "LLM call failed after "
+                            f"{max_retries} attempts: {error}"
+                        ),
                     )
-                return auto_results + llm_results
 
-    decisions = last_decisions or [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": "No response received",
-            "suggested_label": None,
-            "confidence": "low",
-        }
-        for _ in remaining_words
-    ]
+        decisions = last_decisions
+
+    if decisions is None:
+        decisions = _build_structured_failure_decisions(
+            num_words,
+            failure_reason="No response received",
+        )
 
     # Step 4: Format output
-    llm_results = []
+    llm_results: list[dict[str, Any]] = []
     for mw, decision in zip(remaining_words, decisions, strict=True):
         wc = mw.word_context
         llm_results.append(

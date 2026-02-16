@@ -39,6 +39,14 @@ from .llm_factory import (  # Primary exports; Backward compatibility aliases (k
     is_service_error,
     is_timeout_error,
 )
+from .structured_output import (
+    DEFAULT_STRICT_STRUCTURED_OUTPUT,
+    DEFAULT_STRUCTURED_OUTPUT_RETRIES,
+    StructuredOutputResult,
+    ainvoke_structured_with_retry,
+    get_structured_output_settings,
+    invoke_structured_with_retry,
+)
 
 __all__ = [
     # ChromaDB utilities
@@ -79,4 +87,11 @@ __all__ = [
     "create_resilient_llm",
     "is_fallback_error",
     "is_server_error",
+    # Structured output utilities
+    "StructuredOutputResult",
+    "DEFAULT_STRICT_STRUCTURED_OUTPUT",
+    "DEFAULT_STRUCTURED_OUTPUT_RETRIES",
+    "get_structured_output_settings",
+    "invoke_structured_with_retry",
+    "ainvoke_structured_with_retry",
 ]

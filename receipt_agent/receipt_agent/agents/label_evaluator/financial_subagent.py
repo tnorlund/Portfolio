@@ -44,11 +44,16 @@ from langchain_core.language_models import BaseChatModel
 from langsmith import traceable
 from pydantic import ValidationError
 
-
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
     FinancialEvaluationResponse,
     extract_json_from_response,
+)
+from receipt_agent.utils import (
+    LLMRateLimitError,
+    ainvoke_structured_with_retry,
+    get_structured_output_settings,
+    invoke_structured_with_retry,
 )
 
 from .state import VisualLine, WordContext
@@ -210,7 +215,11 @@ def check_grand_total_math(
 
     # Build description showing all components
     subtotal_desc = " + ".join(f"{s.numeric_value:.2f}" for s in subtotals)
-    tax_desc = " + ".join(f"{t.numeric_value:.2f}" for t in taxes) if taxes else "0.00"
+    tax_desc = (
+        " + ".join(f"{t.numeric_value:.2f}" for t in taxes)
+        if taxes
+        else "0.00"
+    )
 
     return MathIssue(
         issue_type="GRAND_TOTAL_MISMATCH",
@@ -295,7 +304,7 @@ def check_line_item_math(
         unit_price = line_vals.get("UNIT_PRICE")
         line_total = line_vals.get("LINE_TOTAL")
 
-        if not all([qty, unit_price, line_total]):
+        if qty is None or unit_price is None or line_total is None:
             continue
 
         expected = qty.numeric_value * unit_price.numeric_value
@@ -539,6 +548,24 @@ def parse_financial_evaluation_response(
         return [fallback.copy() for _ in range(num_values)]
 
 
+def _build_structured_failure_decisions(
+    num_values: int,
+    *,
+    failure_reason: str,
+) -> list[dict[str, Any]]:
+    """Build deterministic fallback decisions when strict structure fails."""
+    return [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": failure_reason,
+            "suggested_label": None,
+            "confidence": "low",
+            "issue_type": "UNKNOWN",
+        }
+        for _ in range(num_values)
+    ]
+
+
 def _structured_to_per_value(
     evaluations: list,
     num_values: int,
@@ -664,16 +691,16 @@ def _pad_decisions(
     Returns:
         List of exactly num_values decisions
     """
-    num_decisions = len(decisions) if decisions else 0
+    normalized_decisions = decisions or []
+    num_decisions = len(normalized_decisions)
     if num_decisions != num_values:
         logger.warning(
             "Decision count mismatch: %d values, %d decisions",
             num_values,
             num_decisions,
         )
-        decisions = decisions or []
-        while len(decisions) < num_values:
-            decisions.append(
+        while len(normalized_decisions) < num_values:
+            normalized_decisions.append(
                 {
                     "decision": "NEEDS_REVIEW",
                     "reasoning": "No decision from LLM (count mismatch)",
@@ -682,8 +709,8 @@ def _pad_decisions(
                     "issue_type": "UNKNOWN",
                 }
             )
-        decisions = decisions[:num_values]
-    return decisions
+        normalized_decisions = normalized_decisions[:num_values]
+    return normalized_decisions
 
 
 def _format_financial_results(
@@ -707,7 +734,7 @@ def _format_financial_results(
     Returns:
         List of result dicts ready for apply_llm_decisions()
     """
-    results = []
+    results: list[dict[str, Any]] = []
     decision_idx = 0
     for issue in math_issues:
         for fv in issue.involved_values:
@@ -750,7 +777,12 @@ def _format_financial_results(
     # Log summary
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
     for r in results:
-        dec = r["llm_review"]["decision"]
+        llm_review = r.get("llm_review", {})
+        dec = (
+            llm_review.get("decision", "NEEDS_REVIEW")
+            if isinstance(llm_review, dict)
+            else "NEEDS_REVIEW"
+        )
         if dec in decision_counts:
             decision_counts[dec] += 1
     logger.info("Financial validation results: %s", decision_counts)
@@ -805,71 +837,109 @@ def evaluate_financial_math(
         merchant_name=merchant_name,
     )
 
-    # Try structured output first, fall back to text parsing
-    max_retries = 3
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_values = sum(len(issue.involved_values) for issue in math_issues)
-    use_structured = hasattr(llm, "with_structured_output")
 
     try:
-        decisions = None
+        decisions: list[dict[str, Any]] | None = None
 
-        for attempt in range(max_retries):
-            try:
-                if use_structured:
-                    try:
-                        structured_llm = llm.with_structured_output(
-                            FinancialEvaluationResponse
-                        )
-                        response: FinancialEvaluationResponse = (
-                            structured_llm.invoke(prompt)
-                        )
-                        decisions = _structured_to_per_value(
-                            response.evaluations, num_values, math_issues
-                        )
-                        logger.debug(
-                            "Structured output succeeded with %d evaluations",
+        if strict_structured_output:
+            structured_result = invoke_structured_with_retry(
+                llm=llm,
+                schema=FinancialEvaluationResponse,
+                input_payload=prompt,
+                retries=structured_retries,
+            )
+            if (
+                structured_result.success
+                and structured_result.response is not None
+            ):
+                decisions = _structured_to_per_value(
+                    structured_result.response.evaluations,
+                    num_values,
+                    math_issues,
+                )
+                logger.debug(
+                    "Structured output succeeded with %d evaluations",
+                    len(decisions),
+                )
+            else:
+                failure_reason = (
+                    "Strict structured output failed for financial validation "
+                    f"(attempts={structured_result.attempts}, "
+                    f"error={structured_result.error_type or 'unknown'})."
+                )
+                logger.warning("%s", failure_reason)
+                decisions = _build_structured_failure_decisions(
+                    num_values,
+                    failure_reason=failure_reason,
+                )
+        else:
+            logger.info(
+                "Strict structured output disabled for financial validation; "
+                "using legacy text parsing fallback."
+            )
+            max_retries = 3
+            use_structured = hasattr(llm, "with_structured_output")
+
+            for attempt in range(max_retries):
+                try:
+                    if use_structured:
+                        try:
+                            structured_llm = llm.with_structured_output(
+                                FinancialEvaluationResponse
+                            )
+                            response: FinancialEvaluationResponse = (
+                                structured_llm.invoke(prompt)
+                            )
+                            decisions = _structured_to_per_value(
+                                response.evaluations, num_values, math_issues
+                            )
+                            logger.debug(
+                                "Structured output succeeded with %d evaluations",
+                                len(decisions),
+                            )
+                            break
+                        except LLMRateLimitError:
+                            raise
+                        except Exception as struct_err:
+                            logger.warning(
+                                "Structured output failed (attempt %d), "
+                                "falling back to text: %s",
+                                attempt + 1,
+                                struct_err,
+                            )
+
+                    response = llm.invoke(prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_financial_evaluation_response(
+                        response_text, num_values, math_issues
+                    )
+
+                    parse_failures = sum(
+                        1
+                        for decision in decisions
+                        if "Failed to parse" in decision.get("reasoning", "")
+                    )
+                    if parse_failures == 0:
+                        break
+                    if parse_failures < len(decisions):
+                        logger.info(
+                            "Partial parse success: %d/%d parsed",
+                            len(decisions) - parse_failures,
                             len(decisions),
                         )
-                        break  # Success
-                    except Exception as struct_err:
-                        logger.warning(
-                            "Structured output failed (attempt %d), "
-                            "falling back to text: %s",
-                            attempt + 1,
-                            struct_err,
-                        )
-                        # Fall through to text parsing
-
-                # Text parsing fallback
-                response = llm.invoke(prompt)
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_financial_evaluation_response(
-                    response_text, num_values, math_issues
-                )
-
-                # Check if all decisions failed to parse
-                parse_failures = sum(
-                    1
-                    for d in decisions
-                    if "Failed to parse" in d.get("reasoning", "")
-                )
-                if parse_failures == 0:
-                    break
-                elif parse_failures < len(decisions):
-                    logger.info(
-                        "Partial parse success: %d/%d parsed",
-                        len(decisions) - parse_failures,
-                        len(decisions),
-                    )
-                    break
-                else:
+                        break
                     if attempt < max_retries - 1:
                         logger.warning(
-                            "All decisions failed to parse, retrying (attempt %d)",
+                            "All decisions failed to parse, retrying "
+                            "(attempt %d)",
                             attempt + 1,
                         )
                     else:
@@ -877,15 +947,22 @@ def evaluate_financial_math(
                             "All decisions failed after %d attempts",
                             max_retries,
                         )
+                except LLMRateLimitError:
+                    raise
+                except Exception as inner_err:
+                    if attempt == max_retries - 1:
+                        raise inner_err
+                    logger.warning(
+                        "LLM invocation failed (attempt %d): %s",
+                        attempt + 1,
+                        inner_err,
+                    )
 
-            except Exception as inner_err:
-                if attempt == max_retries - 1:
-                    raise inner_err
-                logger.warning(
-                    "LLM invocation failed (attempt %d): %s",
-                    attempt + 1,
-                    inner_err,
-                )
+        if decisions is None:
+            decisions = _build_structured_failure_decisions(
+                num_values,
+                failure_reason="No response received",
+            )
 
         # Step 3: Pad decisions to match total involved values
         decisions = _pad_decisions(decisions, num_values)
@@ -896,9 +973,6 @@ def evaluate_financial_math(
         )
 
     except Exception as e:
-        # Check for rate limit errors
-        from receipt_agent.utils import LLMRateLimitError
-
         if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Financial LLM rate limited, propagating for retry: %s", e
@@ -990,84 +1064,118 @@ async def evaluate_financial_math_async(
         merchant_name=merchant_name,
     )
 
-    # Step 3: Call LLM asynchronously
-    max_retries = 3
+    strict_structured_output, structured_retries = (
+        get_structured_output_settings(logger_instance=logger)
+    )
     num_values = sum(len(issue.involved_values) for issue in math_issues)
-    use_structured = hasattr(llm, "with_structured_output")
 
     try:
-        decisions = None
+        decisions: list[dict[str, Any]] | None = None
 
-        for attempt in range(max_retries):
-            try:
-                if use_structured:
-                    try:
-                        structured_llm = llm.with_structured_output(
-                            FinancialEvaluationResponse
-                        )
-                        if hasattr(structured_llm, "ainvoke"):
-                            response: FinancialEvaluationResponse = (
-                                await structured_llm.ainvoke(
-                                    prompt                                )
+        if strict_structured_output:
+            structured_result = await ainvoke_structured_with_retry(
+                llm=llm,
+                schema=FinancialEvaluationResponse,
+                input_payload=prompt,
+                retries=structured_retries,
+            )
+            if (
+                structured_result.success
+                and structured_result.response is not None
+            ):
+                decisions = _structured_to_per_value(
+                    structured_result.response.evaluations,
+                    num_values,
+                    math_issues,
+                )
+                logger.debug(
+                    "Structured output succeeded with %d evaluations",
+                    len(decisions),
+                )
+            else:
+                failure_reason = (
+                    "Strict structured output failed for financial validation "
+                    f"(attempts={structured_result.attempts}, "
+                    f"error={structured_result.error_type or 'unknown'})."
+                )
+                logger.warning("%s", failure_reason)
+                decisions = _build_structured_failure_decisions(
+                    num_values,
+                    failure_reason=failure_reason,
+                )
+        else:
+            logger.info(
+                "Strict structured output disabled for financial validation; "
+                "using legacy text parsing fallback."
+            )
+            max_retries = 3
+            use_structured = hasattr(llm, "with_structured_output")
+
+            for attempt in range(max_retries):
+                try:
+                    if use_structured:
+                        try:
+                            structured_llm = llm.with_structured_output(
+                                FinancialEvaluationResponse
                             )
-                        else:
-                            # Run sync invoke in thread pool to avoid blocking event loop
-                            response: FinancialEvaluationResponse = (
-                                await asyncio.to_thread(
+                            if hasattr(structured_llm, "ainvoke"):
+                                response: FinancialEvaluationResponse = (
+                                    await structured_llm.ainvoke(prompt)
+                                )
+                            else:
+                                response = await asyncio.to_thread(
                                     structured_llm.invoke,
                                     prompt,
                                 )
+                            decisions = _structured_to_per_value(
+                                response.evaluations, num_values, math_issues
                             )
-                        decisions = _structured_to_per_value(
-                            response.evaluations, num_values, math_issues
-                        )
-                        logger.debug(
-                            "Structured output succeeded with %d evaluations",
+                            logger.debug(
+                                "Structured output succeeded with %d evaluations",
+                                len(decisions),
+                            )
+                            break
+                        except LLMRateLimitError:
+                            raise
+                        except Exception as struct_err:
+                            logger.warning(
+                                "Structured output failed (attempt %d), "
+                                "falling back to text: %s",
+                                attempt + 1,
+                                struct_err,
+                            )
+
+                    if hasattr(llm, "ainvoke"):
+                        response = await llm.ainvoke(prompt)
+                    else:
+                        response = await asyncio.to_thread(llm.invoke, prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_financial_evaluation_response(
+                        response_text, num_values, math_issues
+                    )
+
+                    parse_failures = sum(
+                        1
+                        for decision in decisions
+                        if "Failed to parse" in decision.get("reasoning", "")
+                    )
+                    if parse_failures == 0:
+                        break
+                    if parse_failures < len(decisions):
+                        logger.info(
+                            "Partial parse success: %d/%d parsed",
+                            len(decisions) - parse_failures,
                             len(decisions),
                         )
                         break
-                    except Exception as struct_err:
-                        logger.warning(
-                            "Structured output failed (attempt %d), "
-                            "falling back to text: %s",
-                            attempt + 1,
-                            struct_err,
-                        )
-
-                # Text parsing fallback
-                if hasattr(llm, "ainvoke"):
-                    response = await llm.ainvoke(prompt)
-                else:
-                    # Run sync invoke in thread pool to avoid blocking event loop
-                    response = await asyncio.to_thread(
-                        llm.invoke, prompt                    )
-                response_text = (
-                    response.content
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-                decisions = parse_financial_evaluation_response(
-                    response_text, num_values, math_issues
-                )
-
-                parse_failures = sum(
-                    1
-                    for d in decisions
-                    if "Failed to parse" in d.get("reasoning", "")
-                )
-                if parse_failures == 0:
-                    break
-                elif parse_failures < len(decisions):
-                    logger.info(
-                        "Partial parse success: %d/%d parsed",
-                        len(decisions) - parse_failures,
-                        len(decisions),
-                    )
-                    break
-                else:
                     if attempt < max_retries - 1:
                         logger.warning(
-                            "All decisions failed to parse, retrying (attempt %d)",
+                            "All decisions failed to parse, retrying "
+                            "(attempt %d)",
                             attempt + 1,
                         )
                     else:
@@ -1075,15 +1183,22 @@ async def evaluate_financial_math_async(
                             "All decisions failed after %d attempts",
                             max_retries,
                         )
+                except LLMRateLimitError:
+                    raise
+                except Exception as inner_err:
+                    if attempt == max_retries - 1:
+                        raise inner_err
+                    logger.warning(
+                        "LLM invocation failed (attempt %d): %s",
+                        attempt + 1,
+                        inner_err,
+                    )
 
-            except Exception as inner_err:
-                if attempt == max_retries - 1:
-                    raise inner_err
-                logger.warning(
-                    "LLM invocation failed (attempt %d): %s",
-                    attempt + 1,
-                    inner_err,
-                )
+        if decisions is None:
+            decisions = _build_structured_failure_decisions(
+                num_values,
+                failure_reason="No response received",
+            )
 
         # Step 4: Format output
         decisions = _pad_decisions(decisions, num_values)
@@ -1092,8 +1207,6 @@ async def evaluate_financial_math_async(
         )
 
     except Exception as e:
-        from receipt_agent.utils import LLMRateLimitError
-
         if isinstance(e, LLMRateLimitError):
             logger.error(
                 "Financial LLM rate limited, propagating for retry: %s", e
