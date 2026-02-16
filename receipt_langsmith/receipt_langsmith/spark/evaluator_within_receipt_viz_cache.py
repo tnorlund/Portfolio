@@ -264,6 +264,7 @@ def build_within_receipt_cache(
     rows: list[dict[str, Any]] | None = None,
     unified_rows: list[dict[str, Any]] | None = None,
     data_rows: list[dict[str, Any]] | None = None,
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[dict]:
     """Return within-receipt verification viz-cache dicts.
 
@@ -275,6 +276,8 @@ def build_within_receipt_cache(
         rows: Optional preloaded trace rows (for financial_validation spans).
         unified_rows: Unified S3 rows with metadata/financial all_decisions.
         data_rows: Data S3 rows with place info and word bboxes.
+        receipt_lookup: Optional (image_id, receipt_id) -> receipt data dict
+            containing CDN keys and dimensions.
 
     Returns:
         List of viz-cache dicts, one per receipt.
@@ -414,21 +417,26 @@ def build_within_receipt_cache(
             place_duration = None
             format_duration = None
 
-        # CDN keys from data row (cdn_s3_key is required)
+        # CDN keys: prefer receipt_lookup (written by lambda with CDN data),
+        # fall back to data_row (which may lack CDN fields).
         cdn_keys: dict[str, str] = {"cdn_s3_key": ""}
-        if data_row:
+        width = 0
+        height = 0
+        lookup_row = None
+        if receipt_lookup and receipt_id is not None:
+            lookup_row = receipt_lookup.get((str(image_id), int(receipt_id)))
+        cdn_source = lookup_row or data_row
+        if cdn_source:
             for key in (
                 "cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key",
                 "cdn_medium_s3_key", "cdn_medium_webp_s3_key",
                 "cdn_medium_avif_s3_key",
             ):
-                val = data_row.get(key)
-                if val:
+                val = cdn_source.get(key)
+                if val is not None:
                     cdn_keys[key] = val
-
-        # Width / height
-        width = data_row.get("width", 0) if data_row else 0
-        height = data_row.get("height", 0) if data_row else 0
+            width = cdn_source.get("width", 0) or 0
+            height = cdn_source.get("height", 0) or 0
 
         result: dict[str, Any] = {
             "image_id": image_id,

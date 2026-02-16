@@ -258,7 +258,9 @@ def build_financial_math_cache(
         summary = _build_summary(equations)
 
         # Enrich with CDN keys and dimensions from receipt lookup
-        cdn_fields: dict[str, Any] = {}
+        cdn_fields: dict[str, Any] = {"cdn_s3_key": ""}
+        width = 0
+        height = 0
         if receipt_lookup and receipt_id is not None:
             lookup_row = receipt_lookup.get(
                 (str(image_id), int(receipt_id))
@@ -273,12 +275,10 @@ def build_financial_math_cache(
                     "cdn_medium_avif_s3_key",
                 ):
                     val = lookup_row.get(key)
-                    if val:
+                    if val is not None:
                         cdn_fields[key] = val
-                for dim in ("width", "height"):
-                    val = lookup_row.get(dim)
-                    if val:
-                        cdn_fields[dim] = val
+                width = lookup_row.get("width", 0) or 0
+                height = lookup_row.get("height", 0) or 0
 
         results.append(
             {
@@ -288,6 +288,8 @@ def build_financial_math_cache(
                 "trace_id": trace_id,
                 "equations": equations,
                 "summary": summary,
+                "width": width,
+                "height": height,
                 **cdn_fields,
             }
         )

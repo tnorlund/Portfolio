@@ -55,6 +55,9 @@ def test_receipt_structure(cache_results):
         "trace_id",
         "equations",
         "summary",
+        "cdn_s3_key",
+        "width",
+        "height",
     }
     for receipt in cache_results:
         assert required_keys.issubset(

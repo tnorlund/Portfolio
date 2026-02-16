@@ -1,12 +1,21 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useSpring, useTransition, to } from "@react-spring/web";
+import { animated } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelValidationReceipt,
   LabelValidationWord,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl } from "../../../../utils/imageFormat";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
+import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LabelValidationVisualization.module.css";
 
 // Animation state for two-tier validation
@@ -105,21 +114,13 @@ const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): s
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 };
 
-// Generate stable random positions for queue items
-const getQueuePosition = (receiptId: string) => {
-  const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const random1 = Math.sin(hash * 9301 + 49297) % 1;
-  const random2 = Math.sin(hash * 7919 + 12345) % 1;
-  const rotation = (Math.abs(random1) * 24 - 12);
-  const leftOffset = (Math.abs(random2) * 10 - 5);
-  return { rotation, leftOffset };
-};
+const QUEUE_ITEM_LEFT_INSET = 90;
 
 // Receipt Queue Component
 interface ReceiptQueueProps {
   receipts: LabelValidationReceipt[];
   currentIndex: number;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
 }
 
@@ -133,14 +134,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-    const result: LabelValidationReceipt[] = [];
-    const totalReceipts = receipts.length;
-
-    for (let i = 1; i <= maxVisible; i++) {
-      const idx = (currentIndex + i) % totalReceipts;
-      result.push(receipts[idx]);
-    }
-    return result;
+    return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, true).map(
+      (idx) => receipts[idx]
+    );
   }, [receipts, currentIndex]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
@@ -150,7 +146,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20;
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         const { width, height } = receipt;
@@ -163,7 +159,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         const isFlying = isTransitioning && idx === 0;
 
         const queueKey = `${receiptId}-queue-${idx}`;
-        const centeredLeft = 90 + leftOffset;
+        const centeredLeft = QUEUE_ITEM_LEFT_INSET + leftOffset;
 
         return (
           <div
@@ -194,109 +190,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// Flying Receipt Component
-interface FlyingReceiptProps {
-  receipt: LabelValidationReceipt | null;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  isFlying: boolean;
-  measuredContainerWidth?: number | null;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-  measuredContainerWidth,
-}) => {
-  const width = receipt?.width ?? 100;
-  const height = receipt?.height ?? 150;
-  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = measuredContainerWidth ?? 350;
-
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const queueItemWidth = 100;
-  const queueWidth = 280;
-  const gap = 24;
-  const centerColumnWidth = 350;
-  const centerColumnHeight = 500;
-  const queueHeight = 400;
-
-  const queueItemLeft = 90 + leftOffset;
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (queueItemLeft + queueItemWidth / 2));
-  const startX = -distanceToQueueItemCenter;
-
-  const queueItemHeight = (height / width) * queueItemWidth;
-  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
-  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
-
-  const startScale = queueItemWidth / displayWidth;
-
-  const { x, y, scale, rotate } = useSpring({
-    from: {
-      x: startX,
-      y: startY,
-      scale: startScale,
-      rotate: rotation,
-    },
-    to: {
-      x: 0,
-      y: 0,
-      scale: 1,
-      rotate: 0,
-    },
-    reset: true,
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{
-          width: displayWidth,
-          height: displayHeight,
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -458,8 +351,7 @@ interface ReceiptViewerProps {
   receipt: LabelValidationReceipt;
   validationState: ValidationState;
   phase: Phase;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  onContainerMeasure?: (containerWidth: number) => void;
+  formatSupport: ImageFormatSupport | null;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -467,21 +359,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   validationState,
   phase,
   formatSupport,
-  onContainerMeasure,
 }) => {
   const { words, width, height } = receipt;
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
-
-  const handleImageLoad = () => {
-    if (wrapperRef.current && onContainerMeasure) {
-      onContainerMeasure(wrapperRef.current.offsetWidth);
-    }
-  };
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -513,7 +397,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   return (
     <div className={styles.receiptViewer}>
-      <div ref={wrapperRef} className={styles.receiptImageWrapper}>
+      <div className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -522,7 +406,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
-            onLoad={handleImageLoad}
           />
           <svg
             className={styles.svgOverlay}
@@ -727,56 +610,38 @@ const ValidationLegend: React.FC<ValidationLegendProps> = ({
   );
 };
 
-const LabelValidationVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
-    threshold: 0.3,
-    triggerOnce: false,
-  });
+// Inner component - only mounted when receipts are loaded
+interface LabelValidationInnerProps {
+  observerRef: (node?: Element | null) => void;
+  inView: boolean;
+  receipts: LabelValidationReceipt[];
+  formatSupport: ImageFormatSupport | null;
+}
 
-  const [receipts, setReceipts] = useState<LabelValidationReceipt[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
+  observerRef,
+  inView,
+  receipts,
+  formatSupport,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [validationState, setValidationState] = useState<ValidationState>({
     chromaProgress: 0,
     llmProgress: 0,
   });
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsWebP: boolean;
-    supportsAVIF: boolean;
-  } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
+
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+  );
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
-
-  // Detect image format support
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
-
-  // Fetch visualization data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await api.fetchLabelValidationVisualization();
-        if (response && response.receipts) {
-          setReceipts(response.receipts);
-        }
-      } catch (err) {
-        console.error("Failed to fetch label validation data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
 
   const currentReceipt = receipts[currentIndex];
 
@@ -889,6 +754,113 @@ const LabelValidationVisualization: React.FC = () => {
     };
   }, [inView, receipts.length, currentIndex]);
 
+  const nextIndex = (currentIndex + 1) % receipts.length;
+  const nextReceipt = receipts[nextIndex];
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const ar = flyingItem.width / flyingItem.height;
+    let dh = Math.min(500, flyingItem.height);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        queueItemLeftInset={QUEUE_ITEM_LEFT_INSET}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
+
+  return (
+    <div ref={observerRef} className={styles.container}>
+      <ReceiptFlowShell
+        layoutVars={
+          {
+            "--rf-queue-width": "280px",
+            "--rf-queue-height": "400px",
+            "--rf-center-max-width": "350px",
+            "--rf-center-height": "500px",
+            "--rf-mobile-center-height": "400px",
+            "--rf-mobile-center-height-sm": "320px",
+            "--rf-gap": "1.5rem",
+          } as React.CSSProperties
+        }
+        isTransitioning={isTransitioning}
+        queue={
+          <ReceiptQueue
+            receipts={receipts}
+            currentIndex={currentIndex}
+            formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+          />
+        }
+        center={
+          <ReceiptViewer
+            receipt={currentReceipt}
+            validationState={validationState}
+            phase={phase}
+            formatSupport={formatSupport}
+          />
+        }
+        flying={flyingElement}
+        next={
+          isTransitioning && nextReceipt ? (
+            <ReceiptViewer
+              receipt={nextReceipt}
+              validationState={{ chromaProgress: 0, llmProgress: 0 }}
+              phase="idle"
+              formatSupport={formatSupport}
+            />
+          ) : null
+        }
+        legend={
+          <ValidationLegend
+          receipt={currentReceipt}
+          validationState={validationState}
+          />
+        }
+      />
+    </div>
+  );
+};
+
+// Outer component - handles data fetching and loading guards
+const LabelValidationVisualization: React.FC = () => {
+  const { ref, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+
+  const [receipts, setReceipts] = useState<LabelValidationReceipt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const formatSupport = useImageFormatSupport();
+
+  // Fetch visualization data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await api.fetchLabelValidationVisualization();
+        if (response && response.receipts) {
+          setReceipts(response.receipts);
+        }
+      } catch (err) {
+        console.error("Failed to fetch label validation data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   if (loading) {
     return (
       <div ref={ref} className={styles.loading}>
@@ -913,60 +885,13 @@ const LabelValidationVisualization: React.FC = () => {
     );
   }
 
-  const nextIndex = (currentIndex + 1) % receipts.length;
-  const nextReceipt = receipts[nextIndex];
-
   return (
-    <div ref={ref} className={styles.container}>
-      <div className={styles.mainWrapper}>
-        <ReceiptQueue
-          receipts={receipts}
-          currentIndex={currentIndex}
-          formatSupport={formatSupport}
-          isTransitioning={isTransitioning}
-        />
-
-        <div className={styles.centerColumn}>
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
-            <ReceiptViewer
-              receipt={currentReceipt}
-              validationState={validationState}
-              phase={phase}
-              formatSupport={formatSupport}
-              onContainerMeasure={setMeasuredContainerWidth}
-            />
-          </div>
-
-          <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
-              <FlyingReceipt
-                key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
-                formatSupport={formatSupport}
-                isFlying={isTransitioning}
-                measuredContainerWidth={measuredContainerWidth}
-              />
-            )}
-          </div>
-
-          {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
-              <ReceiptViewer
-                receipt={nextReceipt}
-                validationState={{ chromaProgress: 0, llmProgress: 0 }}
-                phase="idle"
-                formatSupport={formatSupport}
-              />
-            </div>
-          )}
-        </div>
-
-        <ValidationLegend
-          receipt={currentReceipt}
-          validationState={validationState}
-        />
-      </div>
-    </div>
+    <LabelValidationInner
+      observerRef={ref}
+      inView={inView}
+      receipts={receipts}
+      formatSupport={formatSupport}
+    />
   );
 };
 

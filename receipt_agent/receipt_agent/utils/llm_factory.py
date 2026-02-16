@@ -507,6 +507,9 @@ class LLMInvoker:
         llm: The LangChain LLM instance
         max_jitter_seconds: Maximum random jitter between calls (default 0.25s)
         max_retries: Maximum retry attempts (default 3)
+        invoke_timeout: Hard asyncio timeout per ainvoke() call in seconds.
+            Acts as a safety net above the httpx-level timeout to catch
+            hung connections that the HTTP client misses (default 150s).
         call_count: Number of calls made
         consecutive_errors: Current consecutive error count
         total_errors: Total errors encountered
@@ -515,6 +518,7 @@ class LLMInvoker:
     llm: Any  # BaseChatModel
     max_jitter_seconds: float = 0.25
     max_retries: int = 3
+    invoke_timeout: float = 150.0
     call_count: int = field(default=0, init=False)
     consecutive_errors: int = field(default=0, init=False)
     total_errors: int = field(default=0, init=False)
@@ -684,8 +688,11 @@ class LLMInvoker:
                 self.call_count += 1
 
             try:
-                response = await self.llm.ainvoke(
-                    messages, config=merged_config, **kwargs
+                response = await asyncio.wait_for(
+                    self.llm.ainvoke(
+                        messages, config=merged_config, **kwargs
+                    ),
+                    timeout=self.invoke_timeout,
                 )
 
                 # Check for empty response
@@ -698,6 +705,22 @@ class LLMInvoker:
                 async with self._get_async_lock():
                     self.consecutive_errors = 0
                 return response
+
+            except asyncio.TimeoutError:
+                async with self._get_async_lock():
+                    self.consecutive_errors += 1
+                    self.total_errors += 1
+                last_error = LLMRateLimitError(
+                    f"ainvoke timed out after {self.invoke_timeout}s",
+                    consecutive_errors=self.consecutive_errors,
+                    total_errors=self.total_errors,
+                )
+                logger.warning(
+                    "ainvoke timed out after %.0fs on attempt %d/%d",
+                    self.invoke_timeout,
+                    attempt + 1,
+                    self.max_retries,
+                )
 
             except EmptyResponseError:
                 async with self._get_async_lock():
@@ -848,6 +871,7 @@ def create_llm_invoker(
         llm=llm,
         max_jitter_seconds=max_jitter_seconds,
         max_retries=max_retries,
+        invoke_timeout=float(timeout) + 30.0,
     )
 
 

@@ -1,4 +1,3 @@
-import { animated, to, useSpring } from "@react-spring/web";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
@@ -9,7 +8,16 @@ import {
   ReviewDecision,
   ReviewEvidence,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
+import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./BetweenReceiptVisualization.module.css";
 
 // Type guard to narrow union to ReviewDecision
@@ -49,25 +57,6 @@ const SCAN_DURATION = 3000;
 const HOLD_DURATION = 1500;
 const TRANSITION_DURATION = 600;
 
-// Layout constants
-const QUEUE_WIDTH = 120;
-const QUEUE_ITEM_WIDTH = 100;
-const QUEUE_ITEM_LEFT_INSET = 10;
-const CENTER_COLUMN_WIDTH = 350;
-const CENTER_COLUMN_HEIGHT = 500;
-const QUEUE_HEIGHT = 400;
-const COLUMN_GAP = 24;
-
-// Generate stable random positions for queue items
-const getQueuePosition = (receiptId: string) => {
-  const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const random1 = Math.sin(hash * 9301 + 49297) % 1;
-  const random2 = Math.sin(hash * 7919 + 12345) % 1;
-  const rotation = (Math.abs(random1) * 24 - 12);
-  const leftOffset = (Math.abs(random2) * 10 - 5);
-  return { rotation, leftOffset };
-};
-
 // Revealed card for tracking which review decisions are visible
 interface RevealedCard {
   key: string;
@@ -80,7 +69,7 @@ interface RevealedCard {
 interface ReceiptQueueProps {
   receipts: LabelEvaluatorReceipt[];
   currentIndex: number;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
 }
 
@@ -94,13 +83,10 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-    const result: LabelEvaluatorReceipt[] = [];
-    const total = receipts.length;
-    for (let i = 1; i <= maxVisible; i++) {
-      result.push(receipts[(currentIndex + i) % total]);
-    }
-    return result;
-  }, [receipts, currentIndex]);
+    return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, true).map(
+      (idx) => receipts[idx]
+    );
+  }, [receipts, currentIndex, maxVisible]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
     return <div className={styles.receiptQueue} />;
@@ -109,7 +95,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20;
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt, formatSupport, "thumbnail");
         const { width, height } = receipt;
@@ -127,7 +113,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
+              left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -152,94 +138,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// ─── FlyingReceipt ───────────────────────────────────────────────────
-
-interface FlyingReceiptProps {
-  receipt: LabelEvaluatorReceipt | null;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  isFlying: boolean;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-}) => {
-  const width = Math.max(receipt?.width ?? 100, 1);
-  const height = Math.max(receipt?.height ?? 150, 1);
-  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : "";
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = 350;
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const distanceToQueueItemCenter =
-    CENTER_COLUMN_WIDTH / 2 +
-    COLUMN_GAP +
-    (QUEUE_WIDTH - (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH / 2));
-  const startX = -distanceToQueueItemCenter;
-
-  const queueItemHeight = (height / width) * QUEUE_ITEM_WIDTH;
-  const queueItemCenterFromTop =
-    (CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2 + queueItemHeight / 2;
-  const startY = queueItemCenterFromTop - CENTER_COLUMN_HEIGHT / 2;
-  const startScale = QUEUE_ITEM_WIDTH / displayWidth;
-
-  const { x, y, scale, rotate } = useSpring({
-    from: { x: startX, y: startY, scale: startScale, rotate: rotation },
-    to: { x: 0, y: 0, scale: 1, rotate: 0 },
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
-        onError={(e) => {
-          if (!receipt) return;
-          const fallback = getJpegFallbackUrl(receipt);
-          if (e.currentTarget.src !== fallback) {
-            e.currentTarget.src = fallback;
-          }
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -304,18 +202,18 @@ interface EvidenceCardProps {
 
 const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
   const { issue, evidence, llm_review } = decision;
-  const displayLabel = issue.current_label;
+  const displayLabel = issue.current_label ?? issue.suggested_label;
   const decisionColor = DECISION_COLORS[llm_review.decision] || "var(--text-color)";
 
+  // Show label change when the LLM proposes a different label
+  const proposedLabel = llm_review.suggested_label ?? issue.suggested_label;
   const showLabelChange =
-    llm_review.decision === "INVALID" &&
-    issue.current_label !== null &&
-    issue.current_label !== llm_review.suggested_label &&
-    llm_review.suggested_label !== null;
+    proposedLabel !== null &&
+    proposedLabel !== issue.current_label;
 
   return (
     <div className={styles.evidenceCard}>
-      {/* Word + current label */}
+      {/* Word + current/proposed label */}
       <div className={styles.cardHeader}>
         <span className={styles.cardWord}>&ldquo;{issue.word_text}&rdquo;</span>
         {displayLabel && (
@@ -342,9 +240,9 @@ const EvidenceCard: React.FC<EvidenceCardProps> = ({ decision, word }) => {
       {/* Label change (before → after) */}
       {showLabelChange && (
         <div className={styles.labelChange}>
-          <span className={styles.labelBefore}>{issue.current_label}</span>
+          <span className={styles.labelBefore}>{issue.current_label ?? 'O'}</span>
           <span className={styles.cardArrow}>&rarr;</span>
-          <span className={styles.labelAfter}>{llm_review.suggested_label}</span>
+          <span className={styles.labelAfter}>{proposedLabel}</span>
         </div>
       )}
 
@@ -360,7 +258,7 @@ interface ReceiptViewerProps {
   receipt: LabelEvaluatorReceipt;
   scanProgress: number;
   revealedCards: RevealedCard[];
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -420,8 +318,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             {/* Bounding boxes for flagged words */}
             {revealedCards.map((card) => {
               const { word } = card;
-              const currentLabel = card.decision.issue.current_label;
-              const color = currentLabel ? (LABEL_COLORS[currentLabel] || "var(--text-color)") : "var(--text-color)";
+              const effectiveLabel = card.decision.issue.current_label ?? card.decision.issue.suggested_label;
+              const color = effectiveLabel ? (LABEL_COLORS[effectiveLabel] || "var(--text-color)") : "var(--text-color)";
               const x = word.bbox.x * width;
               const y = (1 - word.bbox.y - word.bbox.height) * height;
               const w = word.bbox.width * width;
@@ -451,42 +349,30 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
 // ─── EvidencePanel ───────────────────────────────────────────────────
 
-const MOBILE_MAX_CARDS = 3;
-
 interface EvidencePanelProps {
   revealedCards: RevealedCard[];
+  isTransitioning?: boolean;
 }
 
-const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards }) => {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
-  const visibleCards = isMobile
-    ? revealedCards.slice(0, MOBILE_MAX_CARDS)
-    : revealedCards;
-  const hiddenCount = isMobile
-    ? Math.max(0, revealedCards.length - MOBILE_MAX_CARDS)
-    : 0;
-
+const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards, isTransitioning = false }) => {
   return (
-    <div className={styles.evidencePanel}>
-      {visibleCards.map((card) => (
-        <EvidenceCard
+    <div
+      className={`${styles.evidencePanel}${isTransitioning ? ` ${styles.evidencePanelHidden}` : ""}`}
+    >
+      {revealedCards.map((card, idx) => (
+        <div
           key={card.key}
-          decision={card.decision}
-          word={card.word}
-        />
+          className={idx >= 3 ? styles.mobileHidden : undefined}
+        >
+          <EvidenceCard
+            decision={card.decision}
+            word={card.word}
+          />
+        </div>
       ))}
-      {hiddenCount > 0 && (
+      {revealedCards.length > 3 && (
         <div className={styles.overflowIndicator}>
-          +{hiddenCount} more
+          +{revealedCards.length - 3} more
         </div>
       )}
     </div>
@@ -507,40 +393,19 @@ const BetweenReceiptVisualization: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [revealedCards, setRevealedCards] = useState<RevealedCard[]>([]);
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsWebP: boolean;
-    supportsAVIF: boolean;
-  } | null>(null);
+  const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
-  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
-  // Detect image format support
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
-
-  // Control flying receipt visibility
-  useEffect(() => {
-    if (isTransitioning) {
-      const next = receipts.length > 0
-        ? receipts[(currentIndex + 1) % receipts.length]
-        : null;
-      setFlyingReceipt(next);
-      setShowFlyingReceipt(true);
-      return;
-    }
-    const timeout = setTimeout(() => {
-      setShowFlyingReceipt(false);
-      setFlyingReceipt(null);
-    }, 50);
-    return () => clearTimeout(timeout);
-  }, [isTransitioning, currentIndex, receipts]);
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+  );
 
   // Fetch data — filter to receipts with review decisions
   useEffect(() => {
@@ -564,6 +429,33 @@ const BetweenReceiptVisualization: React.FC = () => {
   }, []);
 
   const currentReceipt = receipts[currentIndex];
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const fw = Math.max(flyingItem.width, 1);
+    const fh = Math.max(flyingItem.height, 1);
+    const ar = fw / fh;
+    let dh = Math.min(500, fh);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   // Build word lookup for current receipt
   const wordLookup = useMemo(() => {
@@ -696,52 +588,49 @@ const BetweenReceiptVisualization: React.FC = () => {
 
   return (
     <div ref={ref} className={styles.container}>
-      <div className={styles.mainWrapper}>
-        <ReceiptQueue
-          receipts={receipts}
-          currentIndex={currentIndex}
-          formatSupport={formatSupport}
-          isTransitioning={isTransitioning}
-        />
-
-        <div className={styles.centerColumn}>
-          {/* Current receipt */}
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}>
+      <ReceiptFlowShell
+        layoutVars={
+          {
+            "--rf-queue-width": "120px",
+            "--rf-queue-height": "400px",
+            "--rf-center-max-width": "350px",
+            "--rf-center-height": "500px",
+            "--rf-mobile-center-height": "400px",
+            "--rf-mobile-center-height-sm": "320px",
+            "--rf-gap": "1.5rem",
+            "--rf-align-items": "flex-start",
+          } as React.CSSProperties
+        }
+        isTransitioning={isTransitioning}
+        queue={
+          <ReceiptQueue
+            receipts={receipts}
+            currentIndex={currentIndex}
+            formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+          />
+        }
+        center={
+          <ReceiptViewer
+            receipt={currentReceipt}
+            scanProgress={scanProgress}
+            revealedCards={revealedCards}
+            formatSupport={formatSupport}
+          />
+        }
+        flying={flyingElement}
+        next={
+          isTransitioning && nextReceipt ? (
             <ReceiptViewer
-              receipt={currentReceipt}
-              scanProgress={scanProgress}
-              revealedCards={revealedCards}
+              receipt={nextReceipt}
+              scanProgress={0}
+              revealedCards={[]}
               formatSupport={formatSupport}
             />
-          </div>
-
-          {/* Flying receipt for desktop transition */}
-          <div className={styles.flyingReceiptContainer}>
-            {showFlyingReceipt && flyingReceipt && (
-              <FlyingReceipt
-                key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
-                receipt={flyingReceipt}
-                formatSupport={formatSupport}
-                isFlying={showFlyingReceipt}
-              />
-            )}
-          </div>
-
-          {/* Next receipt for mobile crossfade */}
-          {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
-              <ReceiptViewer
-                receipt={nextReceipt}
-                scanProgress={0}
-                revealedCards={[]}
-                formatSupport={formatSupport}
-              />
-            </div>
-          )}
-        </div>
-
-        <EvidencePanel revealedCards={revealedCards} />
-      </div>
+          ) : null
+        }
+        legend={<EvidencePanel revealedCards={revealedCards} isTransitioning={isTransitioning} />}
+      />
     </div>
   );
 };

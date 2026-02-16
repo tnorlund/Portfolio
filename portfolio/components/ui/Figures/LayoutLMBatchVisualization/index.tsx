@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { animated, useSpring, to } from "@react-spring/web";
+import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import Image from "next/image";
 import { api } from "../../../../services/api";
@@ -7,7 +7,16 @@ import {
   LayoutLMReceiptInference,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl } from "../../../../utils/imageFormat";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
+import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
 // Label colors for 8-label hybrid model
@@ -64,29 +73,12 @@ const TRANSITION_DURATION = 600;
 interface ReceiptQueueProps {
   receipts: LayoutLMReceiptInference[];
   currentIndex: number;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
   isPoolExhausted: boolean;
   shouldAnimate: boolean;
   fadeDelay?: number;
 }
-
-// Generate stable random positions for queue items based on receipt ID only
-const getQueuePosition = (receiptId: string) => {
-  // Use receipt ID to generate consistent random values
-  const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-
-  // Pseudo-random based on hash only (not index)
-  const random1 = Math.sin(hash * 9301 + 49297) % 1;
-  const random2 = Math.sin(hash * 7919 + 12345) % 1;
-
-  // Rotation between -12 and 12 degrees
-  const rotation = (Math.abs(random1) * 24 - 12);
-  // Small horizontal offset (-5 to 5 pixels)
-  const leftOffset = (Math.abs(random2) * 10 - 5);
-
-  return { rotation, leftOffset };
-};
 
 const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   receipts,
@@ -108,24 +100,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   // Build visible receipts array - handles looping when pool is exhausted
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-
-    const result: LayoutLMReceiptInference[] = [];
-    const totalReceipts = receipts.length;
-
-    for (let i = 1; i <= maxVisible; i++) {
-      const idx = currentIndex + i;
-
-      if (isPoolExhausted) {
-        // When pool is exhausted, wrap around using modulo
-        result.push(receipts[idx % totalReceipts]);
-      } else if (idx < totalReceipts) {
-        // Normal behavior - show next receipts if available
-        result.push(receipts[idx]);
-      }
-      // Otherwise, no receipt to show at this position (still loading)
-    }
-
-    return result;
+    return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, isPoolExhausted).map(
+      (idx) => receipts[idx]
+    );
   }, [receipts, currentIndex, isPoolExhausted]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
@@ -135,7 +112,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20; // Gap between stacked receipts
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt.original.receipt, formatSupport);
         const { width, height } = receipt.original.receipt;
@@ -188,125 +165,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// Flying receipt that animates from queue to center
-interface FlyingReceiptProps {
-  receipt: LayoutLMReceiptInference | null;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  isFlying: boolean;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-}) => {
-  // Extract values with fallbacks to satisfy hooks rules (hooks must be called unconditionally)
-  const width = receipt?.original.receipt.width ?? 100;
-  const height = receipt?.original.receipt.height ?? 150;
-  const receiptId = receipt?.receipt_id ?? '';
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt.original.receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  // Calculate the display dimensions - max height 500px, maintain aspect ratio
-  const aspectRatio = width / height;
-  const displayHeight = Math.min(500, height);
-  const displayWidth = displayHeight * aspectRatio;
-
-  // Calculate starting position to match queue item position
-  // The flying receipt center needs to move from center of centerColumn to center of queue item
-
-  // Layout dimensions
-  const queueItemWidth = 100;
-  const queueWidth = 120;
-  const gap = 24; // 1.5rem
-  const centerColumnWidth = 350;
-  const queueHeight = 400;
-  const centerColumnHeight = 500;
-
-  // X calculation:
-  // From center of centerColumn, go left to reach queue item center
-  // - Half of center column width to reach left edge: 175px
-  // - Gap between columns: 24px
-  // - Queue item center is at (10 + leftOffset + 50) = (60 + leftOffset) from left of queue
-  // - So from right edge of queue to queue item center: 120 - (60 + leftOffset) = (60 - leftOffset)
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
-  const startX = -distanceToQueueItemCenter;
-
-  // Y calculation:
-  // Both containers are vertically centered (align-items: center)
-  // Queue top is at (centerColumnHeight - queueHeight) / 2 = 50px from top of centerColumn
-  // Queue item at idx 0 is at top: 0, so its top is 50px from top of centerColumn
-  // Queue item height based on aspect ratio
-  const queueItemHeight = (height / width) * queueItemWidth;
-  // Queue item center Y from top of centerColumn
-  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
-  // Center of centerColumn is at centerColumnHeight / 2 = 250px
-  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
-
-  // Scale: queue item is 100px wide, so scale = 100 / displayWidth
-  const startScale = queueItemWidth / displayWidth;
-
-  // End position fine-tuning to match exactly where active receipt appears
-  // The active receipt is centered in receiptImageWrapper using flexbox
-  // Adjust these if the landing position doesn't match perfectly
-  const endX = 0;
-  const endY = 0;
-
-  const { x, y, scale, rotate } = useSpring({
-    from: {
-      x: startX,
-      y: startY,
-      scale: startScale,
-      rotate: rotation,
-    },
-    to: {
-      x: endX,
-      y: endY,
-      scale: 1,
-      rotate: 0,
-    },
-    config: { tension: 120, friction: 18 },
-  });
-
-  // Early return after all hooks
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  // Account for the 1px border on each side when centering
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{
-          width: displayWidth,
-          height: displayHeight,
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -384,7 +242,7 @@ interface ActiveReceiptViewerProps {
   receipt: LayoutLMReceiptInference;
   scanProgress: number;
   revealedWordIds: Set<string>;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
 }
 
 const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
@@ -512,44 +370,39 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 const QUEUE_REFETCH_THRESHOLD = 7;
 const MAX_EMPTY_FETCHES = 3; // After this many fetches with no new receipts, stop trying
 
-const LayoutLMBatchVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
-    threshold: 0.3,
-    triggerOnce: false,
-  });
+// Inner component - only mounted when receipts are loaded
+interface LayoutLMBatchInnerProps {
+  observerRef: (node?: Element | null) => void;
+  inView: boolean;
+  receipts: LayoutLMReceiptInference[];
+  formatSupport: ImageFormatSupport | null;
+  isPoolExhausted: boolean;
+  onFetchMore: () => void;
+}
 
-  // Receipt queue - continuously grows as we fetch more
-  const [receipts, setReceipts] = useState<LayoutLMReceiptInference[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
+  observerRef,
+  inView,
+  receipts,
+  formatSupport,
+  isPoolExhausted,
+  onFetchMore,
+}) => {
   const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [revealedEntityTypes, setRevealedEntityTypes] = useState<Set<string>>(new Set());
   const [showInferenceTime, setShowInferenceTime] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsWebP: boolean;
-    supportsAVIF: boolean;
-  } | null>(null);
-  const [isPoolExhausted, setIsPoolExhausted] = useState(false);
   const [startQueueAnimation, setStartQueueAnimation] = useState(false);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
-  const isFetchingRef = useRef(false);
-  const seenReceiptIds = useRef<Set<string>>(new Set());
-  const emptyFetchCountRef = useRef(0);
   const isPoolExhaustedRef = useRef(isPoolExhausted);
 
-  // Keep ref in sync with state for animation loop access
+  // Keep ref in sync with prop for animation loop access
   useEffect(() => {
     isPoolExhaustedRef.current = isPoolExhausted;
   }, [isPoolExhausted]);
-
-  // Detect image format support
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
 
   // Start queue animation when in view and receipts are loaded
   useEffect(() => {
@@ -558,95 +411,14 @@ const LayoutLMBatchVisualization: React.FC = () => {
     }
   }, [inView, receipts.length, startQueueAnimation]);
 
-  // Fetch a batch of receipts and append to queue (with deduplication)
-  const fetchMoreReceipts = useCallback(async () => {
-    if (isFetchingRef.current || isPoolExhausted) return;
-    isFetchingRef.current = true;
-
-    try {
-      const response = await api.fetchLayoutLMInference();
-      if (response && response.receipts) {
-        // Filter out duplicates
-        const newReceipts = response.receipts.filter(
-          (r) => !seenReceiptIds.current.has(r.receipt_id)
-        );
-
-        // Track new receipt IDs
-        newReceipts.forEach((r) => seenReceiptIds.current.add(r.receipt_id));
-
-        if (newReceipts.length > 0) {
-          setReceipts((prev) => [...prev, ...newReceipts]);
-          // Reset empty fetch counter when we get new receipts
-          emptyFetchCountRef.current = 0;
-        } else {
-          // No new receipts - increment empty fetch counter
-          emptyFetchCountRef.current += 1;
-          if (emptyFetchCountRef.current >= MAX_EMPTY_FETCHES) {
-            // Pool is exhausted - stop fetching and enable looping
-            setIsPoolExhausted(true);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch more receipts:", err);
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }, [isPoolExhausted]);
-
-  // Initial fetch - get 2 batches to start with ~10 receipts
-  useEffect(() => {
-    const initialFetch = async () => {
-      try {
-        // Fetch 2 batches in parallel
-        const [response1, response2] = await Promise.all([
-          api.fetchLayoutLMInference(),
-          api.fetchLayoutLMInference(),
-        ]);
-
-        const allReceipts: LayoutLMReceiptInference[] = [];
-
-        // Add receipts from first batch
-        if (response1?.receipts) {
-          response1.receipts.forEach((r) => {
-            if (!seenReceiptIds.current.has(r.receipt_id)) {
-              seenReceiptIds.current.add(r.receipt_id);
-              allReceipts.push(r);
-            }
-          });
-        }
-
-        // Add receipts from second batch (deduplicated)
-        if (response2?.receipts) {
-          response2.receipts.forEach((r) => {
-            if (!seenReceiptIds.current.has(r.receipt_id)) {
-              seenReceiptIds.current.add(r.receipt_id);
-              allReceipts.push(r);
-            }
-          });
-        }
-
-        setReceipts(allReceipts);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to fetch initial receipts:", err);
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    initialFetch();
-  }, []);
-
   // Check if we need to fetch more receipts (when queue is getting low)
   // Skip fetching if pool is exhausted (we'll loop instead)
   const remainingReceipts = receipts.length - currentReceiptIndex;
   useEffect(() => {
-    if (remainingReceipts < QUEUE_REFETCH_THRESHOLD && !isFetchingRef.current && !initialLoading && !isPoolExhausted) {
-      fetchMoreReceipts();
+    if (remainingReceipts < QUEUE_REFETCH_THRESHOLD && !isPoolExhausted) {
+      onFetchMore();
     }
-  }, [remainingReceipts, fetchMoreReceipts, initialLoading, isPoolExhausted]);
+  }, [remainingReceipts, onFetchMore, isPoolExhausted]);
 
   // Calculate revealed word IDs based on scan progress
   const revealedWordIds = useMemo(() => {
@@ -716,8 +488,9 @@ const LayoutLMBatchVisualization: React.FC = () => {
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) {
+    if (!inView || !hasReceipts) {
       return;
     }
 
@@ -804,7 +577,204 @@ const LayoutLMBatchVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0]); // Only restart when receipts become available
+  }, [inView, hasReceipts]);
+
+  // Get next receipt - use modulo when pool is exhausted for looping
+  const getNextReceipt = useCallback(
+    (items: LayoutLMReceiptInference[], idx: number) => {
+      const next = idx + 1;
+      return isPoolExhausted ? items[next % items.length] : items[next] ?? null;
+    },
+    [isPoolExhausted],
+  );
+
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentReceiptIndex,
+    getNextReceipt,
+  );
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem.original.receipt, formatSupport);
+    if (!fUrl) return null;
+    const { width, height } = flyingItem.original.receipt;
+    const ar = width / height;
+    let dh = Math.min(500, height);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={flyingItem.receipt_id}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
+
+  const currentReceipt = receipts[currentReceiptIndex];
+
+  const nextReceipt = isPoolExhausted
+    ? receipts[(currentReceiptIndex + 1) % receipts.length]
+    : receipts[currentReceiptIndex + 1];
+
+  return (
+    <div ref={observerRef} className={styles.container}>
+      <ReceiptFlowShell
+        layoutVars={
+          {
+            "--rf-queue-width": "120px",
+            "--rf-queue-height": "400px",
+            "--rf-center-max-width": "350px",
+            "--rf-center-height": "500px",
+            "--rf-mobile-center-height": "400px",
+            "--rf-mobile-center-height-sm": "320px",
+            "--rf-gap": "1.5rem",
+          } as React.CSSProperties
+        }
+        isTransitioning={isTransitioning}
+        queue={
+          <ReceiptQueue
+            receipts={receipts}
+            currentIndex={currentReceiptIndex}
+            formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+            isPoolExhausted={isPoolExhausted}
+            shouldAnimate={startQueueAnimation}
+            fadeDelay={50}
+          />
+        }
+        center={
+          <ActiveReceiptViewer
+            receipt={currentReceipt}
+            scanProgress={scanProgress}
+            revealedWordIds={revealedWordIds}
+            formatSupport={formatSupport}
+          />
+        }
+        flying={flyingElement}
+        next={
+          isTransitioning && nextReceipt ? (
+            <ActiveReceiptViewer
+              receipt={nextReceipt}
+              scanProgress={0}
+              revealedWordIds={new Set()}
+              formatSupport={formatSupport}
+            />
+          ) : null
+        }
+        legend={
+          <EntityLegend
+          revealedEntityTypes={revealedEntityTypes}
+          inferenceTimeMs={currentReceipt.inference_time_ms}
+          showInferenceTime={showInferenceTime}
+          />
+        }
+      />
+    </div>
+  );
+};
+
+// Outer component - handles data fetching and loading guards
+const LayoutLMBatchVisualization: React.FC = () => {
+  const { ref, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+
+  const [receipts, setReceipts] = useState<LayoutLMReceiptInference[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const formatSupport = useImageFormatSupport();
+  const [isPoolExhausted, setIsPoolExhausted] = useState(false);
+
+  const isFetchingRef = useRef(false);
+  const seenReceiptIds = useRef<Set<string>>(new Set());
+  const emptyFetchCountRef = useRef(0);
+
+  // Fetch a batch of receipts and append to queue (with deduplication)
+  const fetchMoreReceipts = useCallback(async () => {
+    if (isFetchingRef.current || isPoolExhausted) return;
+    isFetchingRef.current = true;
+
+    try {
+      const response = await api.fetchLayoutLMInference();
+      if (response && response.receipts) {
+        // Filter out duplicates
+        const newReceipts = response.receipts.filter(
+          (r) => !seenReceiptIds.current.has(r.receipt_id)
+        );
+
+        // Track new receipt IDs
+        newReceipts.forEach((r) => seenReceiptIds.current.add(r.receipt_id));
+
+        if (newReceipts.length > 0) {
+          setReceipts((prev) => [...prev, ...newReceipts]);
+          // Reset empty fetch counter when we get new receipts
+          emptyFetchCountRef.current = 0;
+        } else {
+          // No new receipts - increment empty fetch counter
+          emptyFetchCountRef.current += 1;
+          if (emptyFetchCountRef.current >= MAX_EMPTY_FETCHES) {
+            // Pool is exhausted - stop fetching and enable looping
+            setIsPoolExhausted(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch more receipts:", err);
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [isPoolExhausted]);
+
+  // Initial fetch - get 2 batches to start with ~10 receipts
+  useEffect(() => {
+    const initialFetch = async () => {
+      try {
+        // Fetch 2 batches in parallel
+        const [response1, response2] = await Promise.all([
+          api.fetchLayoutLMInference(),
+          api.fetchLayoutLMInference(),
+        ]);
+
+        const allReceipts: LayoutLMReceiptInference[] = [];
+
+        // Add receipts from first batch
+        if (response1?.receipts) {
+          response1.receipts.forEach((r) => {
+            if (!seenReceiptIds.current.has(r.receipt_id)) {
+              seenReceiptIds.current.add(r.receipt_id);
+              allReceipts.push(r);
+            }
+          });
+        }
+
+        // Add receipts from second batch (deduplicated)
+        if (response2?.receipts) {
+          response2.receipts.forEach((r) => {
+            if (!seenReceiptIds.current.has(r.receipt_id)) {
+              seenReceiptIds.current.add(r.receipt_id);
+              allReceipts.push(r);
+            }
+          });
+        }
+
+        setReceipts(allReceipts);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch initial receipts:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    initialFetch();
+  }, []);
 
   if (initialLoading) {
     return (
@@ -830,69 +800,15 @@ const LayoutLMBatchVisualization: React.FC = () => {
     );
   }
 
-  const currentReceipt = receipts[currentReceiptIndex];
-  // Get next receipt - use modulo when pool is exhausted for looping
-  const nextIndex = currentReceiptIndex + 1;
-  const nextReceipt = isPoolExhausted
-    ? receipts[nextIndex % receipts.length]
-    : receipts[nextIndex];
-
   return (
-    <div ref={ref} className={styles.container}>
-      <div className={styles.mainWrapper}>
-        <ReceiptQueue
-          receipts={receipts}
-          currentIndex={currentReceiptIndex}
-          formatSupport={formatSupport}
-          isTransitioning={isTransitioning}
-          isPoolExhausted={isPoolExhausted}
-          shouldAnimate={startQueueAnimation}
-          fadeDelay={50}
-        />
-
-        <div className={styles.centerColumn}>
-          {/* Current receipt - fades out during transition */}
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
-            <ActiveReceiptViewer
-              receipt={currentReceipt}
-              scanProgress={scanProgress}
-              revealedWordIds={revealedWordIds}
-              formatSupport={formatSupport}
-            />
-          </div>
-
-          {/* Flying receipt for desktop transition */}
-          <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
-              <FlyingReceipt
-                key={`flying-${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
-                formatSupport={formatSupport}
-                isFlying={isTransitioning}
-              />
-            )}
-          </div>
-
-          {/* Next receipt for mobile crossfade - fades in during transition */}
-          {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
-              <ActiveReceiptViewer
-                receipt={nextReceipt}
-                scanProgress={0}
-                revealedWordIds={new Set()}
-                formatSupport={formatSupport}
-              />
-            </div>
-          )}
-        </div>
-
-        <EntityLegend
-          revealedEntityTypes={revealedEntityTypes}
-          inferenceTimeMs={currentReceipt.inference_time_ms}
-          showInferenceTime={showInferenceTime}
-        />
-      </div>
-    </div>
+    <LayoutLMBatchInner
+      observerRef={ref}
+      inView={inView}
+      receipts={receipts}
+      formatSupport={formatSupport}
+      isPoolExhausted={isPoolExhausted}
+      onFetchMore={fetchMoreReceipts}
+    />
   );
 };
 

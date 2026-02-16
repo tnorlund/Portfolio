@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { animated, useSpring, to } from "@react-spring/web";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
@@ -7,12 +6,18 @@ import {
   FinancialMathEquation,
 } from "../../../../types/api";
 import {
-  detectImageFormatSupport,
   getBestImageUrl,
   getJpegFallbackUrl,
-  FormatSupport,
-  ImageFormats,
 } from "../../../../utils/imageFormat";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
+import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./FinancialMathOverlay.module.css";
 
 // Issue type colors
@@ -27,32 +32,9 @@ const SCAN_DURATION = 3500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
-// Layout constants (must match CSS)
-const QUEUE_WIDTH = 120;
-const QUEUE_ITEM_WIDTH = 100;
-const QUEUE_ITEM_LEFT_INSET = 10;
-const CENTER_COLUMN_WIDTH = 350;
-const CENTER_COLUMN_HEIGHT = 500;
-const QUEUE_HEIGHT = 400;
-const COLUMN_GAP = 24;
-
 // Queue management
 const QUEUE_REFETCH_THRESHOLD = 7;
 const MAX_EMPTY_FETCHES = 3;
-
-// Get CDN keys: prefer API-provided, fallback to constructed
-function getCdnKeys(receipt: FinancialMathReceipt): ImageFormats {
-  if (receipt.cdn_s3_key) {
-    return receipt as unknown as ImageFormats;
-  }
-  const paddedId = String(receipt.receipt_id).padStart(5, "0");
-  const base = `assets/${receipt.image_id}_RECEIPT_${paddedId}`;
-  return {
-    cdn_s3_key: `${base}.jpg`,
-    cdn_webp_s3_key: `${base}.webp`,
-    cdn_avif_s3_key: `${base}.avif`,
-  };
-}
 
 // Get equation-level color based on issue_type or word decisions
 function getEquationColor(equation: FinancialMathEquation): string {
@@ -67,22 +49,12 @@ function getEquationColor(equation: FinancialMathEquation): string {
   return ISSUE_COLORS.VALID;
 }
 
-// Stable random positions for queue items
-const getQueuePosition = (key: string) => {
-  const hash = key.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const random1 = Math.sin(hash * 9301 + 49297) % 1;
-  const random2 = Math.sin(hash * 7919 + 12345) % 1;
-  const rotation = Math.abs(random1) * 24 - 12;
-  const leftOffset = Math.abs(random2) * 10 - 5;
-  return { rotation, leftOffset };
-};
-
 // ─── Receipt Queue (Left Column) ────────────────────────────────────────────
 
 interface ReceiptQueueProps {
   receipts: FinancialMathReceipt[];
   currentIndex: number;
-  formatSupport: FormatSupport | null;
+  formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
   isPoolExhausted: boolean;
 }
@@ -99,16 +71,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-    const result: FinancialMathReceipt[] = [];
-    for (let i = 1; i <= maxVisible; i++) {
-      const idx = currentIndex + i;
-      if (isPoolExhausted) {
-        result.push(receipts[idx % receipts.length]);
-      } else if (idx < receipts.length) {
-        result.push(receipts[idx]);
-      }
-    }
-    return result;
+    return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, isPoolExhausted).map(
+      (idx) => receipts[idx]
+    );
   }, [receipts, currentIndex, isPoolExhausted]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
@@ -116,10 +81,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   }
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
-        const cdnKeys = getCdnKeys(receipt);
-        const imageUrl = getBestImageUrl(cdnKeys, formatSupport, 'thumbnail');
+        const imageUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         const receiptKey = `${receipt.image_id}-${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptKey);
 
@@ -135,7 +99,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
+              left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -149,7 +113,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
                 height={150}
                 style={{ width: "100%", height: "auto", display: "block" }}
                 onError={(e) => {
-                  const fallback = getJpegFallbackUrl(cdnKeys);
+                  const fallback = getJpegFallbackUrl(receipt);
                   if (e.currentTarget.src !== fallback) {
                     e.currentTarget.src = fallback;
                   }
@@ -163,134 +127,13 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   );
 };
 
-// ─── Flying Receipt ─────────────────────────────────────────────────────────
-
-/**
- * Hook to preload an image and return its natural dimensions.
- * Since the browser caches images, this resolves instantly for already-loaded
- * images (queue thumbnails use the same URL).
- */
-function useImageDimensions(url: string | null): { width: number; height: number } | null {
-  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
-  useEffect(() => {
-    if (!url) { setDims(null); return; }
-    const img = new Image();
-    img.onload = () => setDims({ width: img.naturalWidth, height: img.naturalHeight });
-    img.src = url;
-    if (img.complete && img.naturalWidth > 0) {
-      setDims({ width: img.naturalWidth, height: img.naturalHeight });
-    }
-  }, [url]);
-  return dims;
-}
-
-interface FlyingReceiptProps {
-  receipt: FinancialMathReceipt | null;
-  formatSupport: FormatSupport | null;
-  isFlying: boolean;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-}) => {
-  const receiptKey = receipt
-    ? `${receipt.image_id}-${receipt.receipt_id}`
-    : "";
-  const { rotation, leftOffset } = getQueuePosition(receiptKey);
-
-  const cdnKeys = useMemo(() => {
-    if (!receipt) return null;
-    return getCdnKeys(receipt);
-  }, [receipt]);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !cdnKeys) return null;
-    return getBestImageUrl(cdnKeys, formatSupport);
-  }, [cdnKeys, formatSupport]);
-
-  // Preload image to get natural dimensions (cached → instant)
-  const naturalDims = useImageDimensions(imageUrl);
-
-  // Use natural dims > receipt data > fallback
-  const width = naturalDims?.width ?? receipt?.width ?? 100;
-  const height = naturalDims?.height ?? receipt?.height ?? 150;
-
-  const aspectRatio = width / height;
-
-  let displayHeight = Math.min(CENTER_COLUMN_HEIGHT, height);
-  let displayWidth = displayHeight * aspectRatio;
-
-  if (displayWidth > CENTER_COLUMN_WIDTH) {
-    displayWidth = CENTER_COLUMN_WIDTH;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const distanceToQueueItemCenter =
-    CENTER_COLUMN_WIDTH / 2 +
-    COLUMN_GAP +
-    (QUEUE_WIDTH - (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH / 2));
-  const startX = -distanceToQueueItemCenter;
-
-  const queueItemHeight = (height / width) * QUEUE_ITEM_WIDTH;
-  const queueItemCenterFromTop =
-    (CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2 + queueItemHeight / 2;
-  const startY = queueItemCenterFromTop - CENTER_COLUMN_HEIGHT / 2;
-
-  const startScale = QUEUE_ITEM_WIDTH / displayWidth;
-
-  const { x, y, scale, rotate } = useSpring({
-    from: { x: startX, y: startY, scale: startScale, rotate: rotation },
-    to: { x: 0, y: 0, scale: 1, rotate: 0 },
-    reset: true,
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
-        onError={(e) => {
-          if (!cdnKeys) return;
-          const fallback = getJpegFallbackUrl(cdnKeys);
-          if (e.currentTarget.src !== fallback) {
-            e.currentTarget.src = fallback;
-          }
-        }}
-      />
-    </animated.div>
-  );
-};
-
 // ─── Active Receipt Viewer (Center Column) ──────────────────────────────────
 
 interface ActiveReceiptViewerProps {
   receipt: FinancialMathReceipt;
   scanProgress: number;
   revealedEquationIndices: Set<number>;
-  formatSupport: FormatSupport | null;
+  formatSupport: ImageFormatSupport | null;
 }
 
 const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
@@ -301,12 +144,10 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 }) => {
   const [imgDim, setImgDim] = useState<{ w: number; h: number } | null>(null);
 
-  const cdnKeys = useMemo(() => getCdnKeys(receipt), [receipt]);
-
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    return getBestImageUrl(cdnKeys, formatSupport);
-  }, [cdnKeys, formatSupport]);
+    return getBestImageUrl(receipt, formatSupport);
+  }, [receipt, formatSupport]);
 
   const handleLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -334,7 +175,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             className={styles.receiptImage}
             onLoad={handleLoad}
             onError={(e) => {
-              const fallback = getJpegFallbackUrl(cdnKeys);
+              const fallback = getJpegFallbackUrl(receipt);
               if (e.currentTarget.src !== fallback) {
                 e.currentTarget.src = fallback;
               }
@@ -544,11 +385,7 @@ export default function FinancialMathOverlay() {
     Set<number>
   >(new Set());
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
-  const [flyingReceipt, setFlyingReceipt] = useState<FinancialMathReceipt | null>(null);
-  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(
-    null
-  );
+  const formatSupport = useImageFormatSupport();
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
 
   const animationRef = useRef<number | null>(null);
@@ -564,28 +401,20 @@ export default function FinancialMathOverlay() {
     isPoolExhaustedRef.current = isPoolExhausted;
   }, [isPoolExhausted]);
 
-  // Detect image format support
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
+  const getNextReceipt = useCallback(
+    (items: FinancialMathReceipt[], idx: number) => {
+      const next = idx + 1;
+      return isPoolExhausted ? items[next % items.length] : items[next] ?? null;
+    },
+    [isPoolExhausted],
+  );
 
-  // Control flying receipt visibility with delayed cleanup
-  useEffect(() => {
-    if (isTransitioning) {
-      const nextIdx = currentReceiptIndex + 1;
-      const next = isPoolExhausted
-        ? receipts[nextIdx % receipts.length]
-        : receipts[nextIdx] ?? null;
-      setFlyingReceipt(next);
-      setShowFlyingReceipt(true);
-      return;
-    }
-    const timeout = setTimeout(() => {
-      setShowFlyingReceipt(false);
-      setFlyingReceipt(null);
-    }, 50);
-    return () => clearTimeout(timeout);
-  }, [isTransitioning, currentReceiptIndex, receipts, isPoolExhausted]);
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentReceiptIndex,
+    getNextReceipt,
+  );
 
   // Fetch more receipts
   const fetchMoreReceipts = useCallback(async () => {
@@ -682,8 +511,9 @@ export default function FinancialMathOverlay() {
 
 
   // Animation loop
+  const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || receipts.length === 0) return;
+    if (!inView || !hasReceipts) return;
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
 
@@ -754,7 +584,32 @@ export default function FinancialMathOverlay() {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, computeRevealed]);
+  }, [inView, hasReceipts, computeRevealed]);
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const ar = flyingItem.width / flyingItem.height;
+    let dh = Math.min(500, flyingItem.height);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
@@ -790,58 +645,56 @@ export default function FinancialMathOverlay() {
 
   return (
     <div ref={ref} className={styles.container}>
-      <div className={styles.mainWrapper}>
-        <ReceiptQueue
-          receipts={receipts}
-          currentIndex={currentReceiptIndex}
-          formatSupport={formatSupport}
-          isTransitioning={isTransitioning}
-          isPoolExhausted={isPoolExhausted}
-        />
-
-        <div className={styles.centerColumn}>
-          <div
-            className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ""}`}
-          >
+      <ReceiptFlowShell
+        layoutVars={
+          {
+            "--rf-queue-width": "120px",
+            "--rf-queue-height": "400px",
+            "--rf-center-max-width": "350px",
+            "--rf-center-height": "500px",
+            "--rf-mobile-center-height": "400px",
+            "--rf-mobile-center-height-sm": "320px",
+            "--rf-gap": "1.5rem",
+            "--rf-align-items": "flex-start",
+          } as React.CSSProperties
+        }
+        isTransitioning={isTransitioning}
+        queue={
+          <ReceiptQueue
+            receipts={receipts}
+            currentIndex={currentReceiptIndex}
+            formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+            isPoolExhausted={isPoolExhausted}
+          />
+        }
+        center={
+          <ActiveReceiptViewer
+            receipt={currentReceipt}
+            scanProgress={scanProgress}
+            revealedEquationIndices={revealedEquationIndices}
+            formatSupport={formatSupport}
+          />
+        }
+        flying={flyingElement}
+        next={
+          isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer
-              receipt={currentReceipt}
-              scanProgress={scanProgress}
-              revealedEquationIndices={revealedEquationIndices}
+              receipt={nextReceipt}
+              scanProgress={0}
+              revealedEquationIndices={new Set()}
               formatSupport={formatSupport}
             />
-          </div>
-
-          <div className={styles.flyingReceiptContainer}>
-            {showFlyingReceipt && flyingReceipt && (
-              <FlyingReceipt
-                key={`flying-${flyingReceipt.image_id}-${flyingReceipt.receipt_id}`}
-                receipt={flyingReceipt}
-                formatSupport={formatSupport}
-                isFlying={showFlyingReceipt}
-              />
-            )}
-          </div>
-
-          {isTransitioning && nextReceipt && (
-            <div
-              className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}
-            >
-              <ActiveReceiptViewer
-                receipt={nextReceipt}
-                scanProgress={0}
-                revealedEquationIndices={new Set()}
-                formatSupport={formatSupport}
-              />
-            </div>
-          )}
-        </div>
-
-        <EquationPanel
+          ) : null
+        }
+        legend={
+          <EquationPanel
           equations={currentReceipt.equations}
           revealedEquationIndices={revealedEquationIndices}
           isTransitioning={isTransitioning}
-        />
-      </div>
+          />
+        }
+      />
     </div>
   );
 }
