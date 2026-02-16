@@ -351,6 +351,250 @@ Example output:
   ]}""",
             inputSchema={"type": "object", "properties": {}},
         ),
+        Tool(
+            name="label_validation_summary",
+            description="""Get validation status counts for all core receipt labels.
+
+Returns a compact summary showing how many words have each validation status
+(VALID, INVALID, PENDING, NEEDS_REVIEW) for each of the 21 core labels.
+This is the same data that powers the Label Validation bar chart.
+
+Use this as the FIRST step to understand label quality, then drill into
+specific labels with list_words_by_label.
+
+Example output:
+  {"labels": {
+    "GRAND_TOTAL": {"VALID": 450, "INVALID": 12, "PENDING": 3, "NEEDS_REVIEW": 1, "total": 466},
+    "PRODUCT_NAME": {"VALID": 8200, "INVALID": 45, "PENDING": 120, ...},
+    ...
+  }}""",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="list_words_by_label",
+            description="""List a sample of words for a specific label, filtered by validation status.
+
+Returns up to `sample_size` words (default 50) for a given label and optional
+validation status filter. Use this AFTER label_validation_summary to drill
+into a specific label's words.
+
+Each word includes: text, validation_status, image_id, receipt_id, line_id,
+word_id, merchant_name, and timestamp.
+
+To avoid context rot, this returns a bounded sample plus the total count.
+Use status_filter to focus on actionable words (e.g., "PENDING" or "NEEDS_REVIEW").
+
+Example:
+  list_words_by_label("GRAND_TOTAL", status_filter="NEEDS_REVIEW")
+  -> {"label": "GRAND_TOTAL", "status_filter": "NEEDS_REVIEW", "total": 5, "sample_size": 5, "words": [...]}""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "description": "Core label name (e.g., GRAND_TOTAL, PRODUCT_NAME, TAX)",
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": ["VALID", "INVALID", "PENDING", "NEEDS_REVIEW", "NONE"],
+                        "description": "Optional: filter by validation status. Omit to get all statuses.",
+                    },
+                    "sample_size": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Max words to return (default 50). Use smaller values to reduce context.",
+                    },
+                },
+                "required": ["label"],
+            },
+        ),
+        Tool(
+            name="validate_word_similarity",
+            description="""Validate a word's label using ChromaDB similarity search.
+
+Given a specific word (by image_id, receipt_id, line_id, word_id), runs the
+same similarity search used by the label validation system:
+
+1. Retrieves the word's embedding from Chroma Cloud
+2. Queries for similar VALIDATED words where label=True (positive evidence)
+3. Queries for similar VALIDATED words where label=False (negative evidence)
+4. Computes weighted consensus (with same-merchant boosting)
+5. Returns the evidence and a validation decision
+
+Use this to manually review and validate individual words found via
+list_words_by_label.
+
+Returns:
+  - recommended_status: VALID, INVALID, NEEDS_REVIEW, or PENDING (matches ValidationStatus enum in receipt_dynamo)
+  - confidence: 0-1 score
+  - evidence_for: list of similar words supporting the label
+  - evidence_against: list of similar words rejecting the label
+  - suggested_labels: if invalid/uncertain, top alternative label candidates
+
+NOTE: This tool is READ-ONLY. It does NOT write to DynamoDB. It returns a
+recommendation that you can review before taking any action.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the word to validate",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID of the word",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Line ID of the word",
+                    },
+                    "word_id": {
+                        "type": "integer",
+                        "description": "Word ID within the line",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "The label to validate (e.g., GRAND_TOTAL)",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "line_id", "word_id", "label"],
+            },
+        ),
+        Tool(
+            name="update_word_label",
+            description="""Update the validation_status of a ReceiptWordLabel record in DynamoDB.
+
+This tool fetches the existing label record, updates the validation_status,
+and writes it back. The ValidationStatus enum enforces only valid values:
+NONE, PENDING, VALID, INVALID, NEEDS_REVIEW.
+
+The label_proposed_by field is set to "mcp-claude-review" for audit trail.
+
+Use this AFTER reviewing a word with get_receipt (for context) and
+validate_word_similarity (for Chroma evidence). Only update when you are
+confident in the decision.
+
+WARNING: This WRITES to DynamoDB. Double-check the word context before calling.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the word",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID of the word",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Line ID of the word",
+                    },
+                    "word_id": {
+                        "type": "integer",
+                        "description": "Word ID within the line",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "The label name (e.g., PRODUCT_NAME, GRAND_TOTAL)",
+                    },
+                    "new_status": {
+                        "type": "string",
+                        "enum": ["VALID", "INVALID", "PENDING", "NEEDS_REVIEW", "NONE"],
+                        "description": "The new validation status to set",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Why this status was chosen (e.g., 'tax flag indicator, not a product name'). Overwrites existing reasoning.",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "new_status"],
+            },
+        ),
+        Tool(
+            name="create_word_label",
+            description="""Create a NEW ReceiptWordLabel record in DynamoDB.
+
+Use this to add a label to a word that doesn't have one yet. For example,
+labeling a "40.00" word as CASH_BACK when no CASH_BACK label exists for it.
+
+The validation_status is set to VALID and label_proposed_by to "mcp-claude-review".
+
+consolidated_from: Use this when the new label is a CORRECTION of an existing
+wrong label on the same word. Set it to the old label name so we have an audit
+trail (e.g., if a word was labeled PRODUCT_NAME but should be CASH_BACK, set
+consolidated_from="PRODUCT_NAME"). Leave it out when adding a label to a word
+that simply had no label for this concept before.
+
+WARNING: This WRITES to DynamoDB. Will FAIL if a label with the same
+image_id/receipt_id/line_id/word_id/label already exists.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the word",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID of the word",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Line ID of the word",
+                    },
+                    "word_id": {
+                        "type": "integer",
+                        "description": "Word ID within the line",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "The label to assign (e.g., CASH_BACK, GRAND_TOTAL)",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Why this label is being assigned",
+                    },
+                    "consolidated_from": {
+                        "type": "string",
+                        "description": "The old label name this corrects. Set when replacing a wrong label (e.g., 'PRODUCT_NAME' if that was the incorrect label). Omit when adding a brand new label with no predecessor.",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "line_id", "word_id", "label", "reasoning"],
+            },
+        ),
+        Tool(
+            name="get_receipt_words",
+            description="""Get all words for a receipt with their DynamoDB coordinates and labels.
+
+Returns every word on the receipt with its line_id, word_id, text, and any
+existing labels (with validation_status). Words are sorted by line_id then
+word_id.
+
+Use this when you need to find the exact line_id/word_id for a word before
+creating or updating a label. The get_receipt tool shows formatted text but
+hides word coordinates — this tool exposes them.
+
+Optionally filter to a single line_id to reduce output.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Optional: filter to a specific line_id",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
     ]
 
 
@@ -405,6 +649,53 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "list_categories":
             result = await list_categories_impl(dynamo_client)
+        elif name == "label_validation_summary":
+            result = await label_validation_summary_impl(dynamo_client)
+        elif name == "list_words_by_label":
+            result = await list_words_by_label_impl(
+                dynamo_client,
+                label=arguments["label"],
+                status_filter=arguments.get("status_filter"),
+                sample_size=arguments.get("sample_size", 50),
+            )
+        elif name == "validate_word_similarity":
+            result = await validate_word_similarity_impl(
+                chroma_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments["line_id"],
+                word_id=arguments["word_id"],
+                label=arguments["label"],
+            )
+        elif name == "update_word_label":
+            result = await update_word_label_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments["line_id"],
+                word_id=arguments["word_id"],
+                label=arguments["label"],
+                new_status=arguments["new_status"],
+                reasoning=arguments.get("reasoning"),
+            )
+        elif name == "get_receipt_words":
+            result = await get_receipt_words_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments.get("line_id"),
+            )
+        elif name == "create_word_label":
+            result = await create_word_label_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments["line_id"],
+                word_id=arguments["word_id"],
+                label=arguments["label"],
+                reasoning=arguments["reasoning"],
+                consolidated_from=arguments.get("consolidated_from"),
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -1094,6 +1385,495 @@ async def list_categories_impl(dynamo_client) -> dict:
 
     except Exception as e:
         logger.exception("Error listing categories")
+        return {"error": str(e)}
+
+
+async def label_validation_summary_impl(dynamo_client) -> dict:
+    """Get validation status counts for all core labels."""
+    from receipt_dynamo.constants import CORE_LABELS
+
+    try:
+        summary: dict[str, dict[str, int]] = {}
+
+        for label in CORE_LABELS:
+            counts: dict[str, int] = defaultdict(int)
+            last_key = None
+
+            while True:
+                records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                    label=label,
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for record in records:
+                    status = getattr(record, "validation_status", None) or "NONE"
+                    counts[status] += 1
+
+                if last_key is None:
+                    break
+
+            total = sum(counts.values())
+            summary[label] = {
+                "VALID": counts.get("VALID", 0),
+                "INVALID": counts.get("INVALID", 0),
+                "PENDING": counts.get("PENDING", 0),
+                "NEEDS_REVIEW": counts.get("NEEDS_REVIEW", 0),
+                "NONE": counts.get("NONE", 0),
+                "total": total,
+            }
+
+        return {"labels": summary}
+
+    except Exception as e:
+        logger.exception("Error getting label validation summary")
+        return {"error": str(e)}
+
+
+async def list_words_by_label_impl(
+    dynamo_client,
+    label: str,
+    status_filter: Optional[str] = None,
+    sample_size: int = 50,
+) -> dict:
+    """List a sample of words for a specific label, optionally filtered by status."""
+    try:
+        all_words = []
+        total = 0
+        last_key = None
+
+        while True:
+            records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                label=label,
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+
+            for record in records:
+                status = getattr(record, "validation_status", None) or "NONE"
+                if status_filter and status != status_filter:
+                    continue
+                total += 1
+                if len(all_words) < sample_size:
+                    all_words.append(record)
+
+            if last_key is None:
+                break
+
+        sample = all_words
+
+        words = []
+        for record in sample:
+            words.append({
+                "text": getattr(record, "text", ""),
+                "validation_status": getattr(record, "validation_status", None) or "NONE",
+                "image_id": record.image_id,
+                "receipt_id": record.receipt_id,
+                "line_id": record.line_id,
+                "word_id": record.word_id,
+                "label_proposed_by": getattr(record, "label_proposed_by", None),
+            })
+
+        return {
+            "label": label,
+            "status_filter": status_filter,
+            "total": total,
+            "sample_size": len(words),
+            "words": words,
+        }
+
+    except Exception as e:
+        logger.exception("Error listing words by label")
+        return {"error": str(e)}
+
+
+async def validate_word_similarity_impl(
+    chroma_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    label: str,
+) -> dict:
+    """Validate a word's label using ChromaDB similarity search."""
+    from receipt_dynamo.constants import CORE_LABELS
+
+    MIN_SIMILARITY = 0.80
+    MIN_MATCHES = 3
+    CONSENSUS_THRESHOLD = 0.80
+
+    try:
+        # Build the word's ChromaDB ID
+        chroma_id = (
+            f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+            f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
+        )
+
+        # Get the word's embedding from Chroma
+        words_collection = chroma_client.get_collection("words")
+        result = words_collection.get(
+            ids=[chroma_id],
+            include=["embeddings", "metadatas"],
+        )
+
+        if not result["ids"]:
+            return {"error": f"Word not found in Chroma: {chroma_id}"}
+
+        embeddings = result.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            return {"error": "Word has no embedding"}
+
+        embedding = embeddings[0]
+        if hasattr(embedding, "tolist"):
+            embedding = embedding.tolist()
+
+        word_meta = result["metadatas"][0] if result["metadatas"] else {}
+        word_text = word_meta.get("text", "")
+        merchant_name = word_meta.get("merchant_name", "")
+
+        # Distance to similarity conversion (L2)
+        def dist_to_sim(distance: float) -> float:
+            return max(0.0, 1.0 - (distance / 2.0))
+
+        # Query for positive evidence (validated words WITH this label)
+        label_field = f"label_{label}"
+
+        positive_results = words_collection.query(
+            query_embeddings=[embedding],
+            n_results=10,
+            where={
+                "$and": [
+                    {"label_status": "validated"},
+                    {label_field: True},
+                ]
+            },
+            include=["metadatas", "distances"],
+        )
+
+        # Query for negative evidence (validated words WITHOUT this label)
+        negative_results = words_collection.query(
+            query_embeddings=[embedding],
+            n_results=10,
+            where={
+                "$and": [
+                    {"label_status": "validated"},
+                    {label_field: False},
+                ]
+            },
+            include=["metadatas", "distances"],
+        )
+
+        # Process results
+        evidence_for = []
+        evidence_against = []
+
+        for metas, dists in [(positive_results.get("metadatas", [[]]), positive_results.get("distances", [[]]))]:
+            for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
+                sim = dist_to_sim(dist)
+                if sim < MIN_SIMILARITY:
+                    continue
+                # Skip self
+                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
+                if rid == chroma_id:
+                    continue
+                evidence_for.append({
+                    "text": meta.get("text", ""),
+                    "similarity": round(sim, 3),
+                    "merchant": meta.get("merchant_name", ""),
+                    "same_merchant": meta.get("merchant_name", "") == merchant_name,
+                })
+
+        for metas, dists in [(negative_results.get("metadatas", [[]]), negative_results.get("distances", [[]]))]:
+            for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
+                sim = dist_to_sim(dist)
+                if sim < MIN_SIMILARITY:
+                    continue
+                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
+                if rid == chroma_id:
+                    continue
+                evidence_against.append({
+                    "text": meta.get("text", ""),
+                    "similarity": round(sim, 3),
+                    "merchant": meta.get("merchant_name", ""),
+                    "same_merchant": meta.get("merchant_name", "") == merchant_name,
+                })
+
+        total_matches = len(evidence_for) + len(evidence_against)
+
+        if total_matches == 0:
+            return {
+                "word_text": word_text,
+                "label": label,
+                "recommended_status": "PENDING",
+                "confidence": 0.0,
+                "reason": f"No similar validated words found for {label}",
+                "evidence_for": [],
+                "evidence_against": [],
+                "suggested_labels": [],
+            }
+
+        if total_matches < MIN_MATCHES:
+            return {
+                "word_text": word_text,
+                "label": label,
+                "recommended_status": "PENDING",
+                "confidence": 0.0,
+                "reason": f"Only {total_matches} matches (need {MIN_MATCHES})",
+                "evidence_for": evidence_for,
+                "evidence_against": evidence_against,
+                "suggested_labels": [],
+            }
+
+        # Weighted consensus voting
+        SAME_MERCHANT_BOOST = 0.10
+        votes_for = 0.0
+        votes_against = 0.0
+
+        for ev in evidence_for:
+            weight = ev["similarity"]
+            if ev["same_merchant"]:
+                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
+            votes_for += weight
+
+        for ev in evidence_against:
+            weight = ev["similarity"]
+            if ev["same_merchant"]:
+                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
+            votes_against += weight
+
+        total_votes = votes_for + votes_against
+        confidence = votes_for / total_votes if total_votes > 0 else 0.0
+
+        # Map to ValidationStatus enum values (VALID, INVALID, NEEDS_REVIEW, PENDING)
+        if confidence >= CONSENSUS_THRESHOLD:
+            recommended_status = "VALID"
+            reason = f"{confidence:.0%} of similar words validated as {label}"
+        elif confidence <= (1.0 - CONSENSUS_THRESHOLD):
+            recommended_status = "INVALID"
+            reason = f"{1.0 - confidence:.0%} of similar words rejected {label}"
+        else:
+            recommended_status = "NEEDS_REVIEW"
+            reason = f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
+
+        # Find suggested labels if invalid or uncertain
+        suggested_labels = []
+        if recommended_status in ("INVALID", "NEEDS_REVIEW"):
+            for candidate_label in CORE_LABELS:
+                if candidate_label == label:
+                    continue
+                try:
+                    cand_field = f"label_{candidate_label}"
+                    cand_results = words_collection.query(
+                        query_embeddings=[embedding],
+                        n_results=10,
+                        where={
+                            "$and": [
+                                {"label_status": "validated"},
+                                {cand_field: True},
+                            ]
+                        },
+                        include=["distances"],
+                    )
+                    cand_dists = cand_results.get("distances", [[]])[0] if cand_results.get("distances") else []
+                    cand_sims = [dist_to_sim(d) for d in cand_dists if dist_to_sim(d) >= MIN_SIMILARITY]
+                    if cand_sims:
+                        avg_sim = sum(cand_sims) / len(cand_sims)
+                        score = len(cand_sims) * avg_sim
+                        suggested_labels.append({
+                            "label": candidate_label,
+                            "match_count": len(cand_sims),
+                            "avg_similarity": round(avg_sim, 3),
+                            "score": round(score, 3),
+                        })
+                except Exception as e:
+                    logger.warning("Error querying label %s (%s): %s", candidate_label, cand_field, e)
+                    continue
+
+            suggested_labels.sort(key=lambda x: x["score"], reverse=True)
+            suggested_labels = suggested_labels[:5]
+
+        return {
+            "word_text": word_text,
+            "label": label,
+            "recommended_status": recommended_status,
+            "confidence": round(confidence, 3),
+            "reason": reason,
+            "votes_for": round(votes_for, 3),
+            "votes_against": round(votes_against, 3),
+            "evidence_for": evidence_for,
+            "evidence_against": evidence_against,
+            "suggested_labels": suggested_labels,
+        }
+
+    except Exception as e:
+        logger.exception("Error validating word similarity")
+        return {"error": str(e)}
+
+
+async def update_word_label_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    label: str,
+    new_status: str,
+    reasoning: Optional[str] = None,
+) -> dict:
+    """Update the validation_status of a ReceiptWordLabel record."""
+    from receipt_dynamo.constants import ValidationStatus
+    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
+    try:
+        # Validate new_status against the enum
+        try:
+            ValidationStatus(new_status)
+        except ValueError:
+            valid = [s.value for s in ValidationStatus]
+            return {"error": f"Invalid status '{new_status}'. Must be one of: {valid}"}
+
+        # Fetch existing record
+        existing = dynamo_client.get_receipt_word_label(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=label,
+        )
+
+        # Use provided reasoning or keep existing
+        final_reasoning = reasoning if reasoning is not None else existing.reasoning
+
+        # Build updated entity (triggers __post_init__ validation)
+        updated = ReceiptWordLabel(
+            image_id=existing.image_id,
+            receipt_id=existing.receipt_id,
+            line_id=existing.line_id,
+            word_id=existing.word_id,
+            label=existing.label,
+            reasoning=final_reasoning,
+            timestamp_added=existing.timestamp_added,
+            validation_status=new_status,
+            label_proposed_by="mcp-claude-review",
+            label_consolidated_from=existing.label_consolidated_from,
+        )
+
+        # Write back (condition: record must already exist)
+        dynamo_client.update_receipt_word_label(updated)
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "label": label,
+            "old_status": getattr(existing, "validation_status", None) or "NONE",
+            "new_status": new_status,
+            "reasoning": final_reasoning,
+            "label_proposed_by": "mcp-claude-review",
+        }
+
+    except Exception as e:
+        logger.exception("Error updating word label")
+        return {"error": str(e)}
+
+
+async def get_receipt_words_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: Optional[int] = None,
+) -> dict:
+    """Get all words for a receipt with their coordinates and labels."""
+    try:
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+
+        # Build label lookup: (line_id, word_id) -> list of labels
+        labels_by_word: dict[tuple[int, int], list] = defaultdict(list)
+        for label in details.labels:
+            labels_by_word[(label.line_id, label.word_id)].append(
+                {
+                    "label": label.label,
+                    "validation_status": getattr(label, "validation_status", None) or "NONE",
+                    "label_proposed_by": getattr(label, "label_proposed_by", None),
+                }
+            )
+
+        # Build word list
+        words = []
+        for word in sorted(details.words, key=lambda w: (w.line_id, w.word_id)):
+            if line_id is not None and word.line_id != line_id:
+                continue
+            word_labels = labels_by_word.get((word.line_id, word.word_id), [])
+            words.append(
+                {
+                    "line_id": word.line_id,
+                    "word_id": word.word_id,
+                    "text": word.text,
+                    "labels": word_labels if word_labels else None,
+                }
+            )
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id_filter": line_id,
+            "word_count": len(words),
+            "words": words,
+        }
+
+    except Exception as e:
+        logger.exception("Error getting receipt words")
+        return {"error": str(e)}
+
+
+async def create_word_label_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    label: str,
+    reasoning: str,
+    consolidated_from: Optional[str] = None,
+) -> dict:
+    """Create a new ReceiptWordLabel record in DynamoDB."""
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
+    try:
+        normalized_label = label.upper()
+        new_label = ReceiptWordLabel(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=normalized_label,
+            reasoning=reasoning,
+            timestamp_added=datetime.now(timezone.utc).isoformat(),
+            validation_status="VALID",
+            label_proposed_by="mcp-claude-review",
+            label_consolidated_from=consolidated_from,
+        )
+
+        dynamo_client.add_receipt_word_label(new_label)
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "label": normalized_label,
+            "validation_status": "VALID",
+            "reasoning": reasoning,
+            "label_proposed_by": "mcp-claude-review",
+        }
+
+    except Exception as e:
+        logger.exception("Error creating word label")
         return {"error": str(e)}
 
 
