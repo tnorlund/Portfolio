@@ -114,6 +114,8 @@ const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): s
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 };
 
+const QUEUE_ITEM_LEFT_INSET = 90;
+
 // Receipt Queue Component
 interface ReceiptQueueProps {
   receipts: LabelValidationReceipt[];
@@ -157,7 +159,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         const isFlying = isTransitioning && idx === 0;
 
         const queueKey = `${receiptId}-queue-${idx}`;
-        const centeredLeft = 90 + leftOffset;
+        const centeredLeft = QUEUE_ITEM_LEFT_INSET + leftOffset;
 
         return (
           <div
@@ -770,7 +772,7 @@ const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
         displayWidth={dw}
         displayHeight={dh}
         receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
-        queueItemLeftInset={90}
+        queueItemLeftInset={QUEUE_ITEM_LEFT_INSET}
       />
     );
   }, [showFlying, flyingItem, formatSupport]);

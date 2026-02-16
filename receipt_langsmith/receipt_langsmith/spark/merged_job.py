@@ -63,6 +63,7 @@ from receipt_langsmith.spark.processor import LangSmithSparkProcessor
 from receipt_langsmith.spark.s3_io import (
     ReceiptsCachePointer,
     load_json_from_s3,
+    write_json_to_s3,
     write_json_with_default,
     write_receipt_cache_index,
     write_receipt_json,
@@ -784,6 +785,15 @@ def write_viz_cache_metadata(
         cache_version, receipts_prefix, timestamp.isoformat()
     )
     write_receipt_cache_index(s3_client, bucket, metadata, pointer)
+    # Also write inside the prefix so the Lambda can find it via
+    # ``_fetch_metadata("receipts/")``.
+    write_json_to_s3(
+        s3_client,
+        bucket,
+        f"{receipts_prefix}metadata.json",
+        metadata,
+        dump_kwargs={"indent": 2},
+    )
 
     logger.info(
         "Viz-cache metadata written. Version: %s, Receipts: %d",
@@ -886,6 +896,8 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
         return
 
     receipts_with_issues = int(counts_row["receipts_with_issues"] or 0)
+
+    _clean_cache_prefix(s3_client, args.cache_bucket, "receipts")
 
     logger.info("Writing %d viz-cache receipts...", total_receipts)
     write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)
