@@ -46,7 +46,6 @@ try:
         end_receipt_trace,
         flush_langsmith_traces,
     )
-
     from utils.s3_helpers import (
         download_chromadb_snapshot,
         get_merchant_hash,
@@ -882,10 +881,11 @@ async def unified_receipt_evaluator(
                     "conflicting_words": len(conflicting_keys),
                 },
             ) as correction_ctx:
+                from receipt_dynamo import DynamoClient
+
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
                 )
-                from receipt_dynamo import DynamoClient
 
                 dynamo_client = DynamoClient(table_name=dynamo_table)
 
@@ -1149,7 +1149,7 @@ async def unified_receipt_evaluator(
                             cloud_has_words = True
                         except Exception as e:
                             logger.warning(
-                                "Chroma Cloud words collection " "not available: %s",
+                                "Chroma Cloud words collection not available: %s",
                                 e,
                             )
                         cloud_has_lines = False
@@ -1158,7 +1158,7 @@ async def unified_receipt_evaluator(
                             cloud_has_lines = True
                         except Exception as e:
                             logger.warning(
-                                "Chroma Cloud lines collection " "not available: %s",
+                                "Chroma Cloud lines collection not available: %s",
                                 e,
                             )
                         if cloud_has_words or cloud_has_lines:
@@ -1244,6 +1244,7 @@ async def unified_receipt_evaluator(
                 try:
                     if geometric_issues and chroma_client:
                         from langchain_core.messages import HumanMessage
+
                         from receipt_agent.agents.label_evaluator.llm_review import (
                             assemble_receipt_text,
                         )

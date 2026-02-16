@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Generic, Mapping, TypeVar
+from typing import Any, Generic, TypeVar
 
 from .llm_factory import LLMRateLimitError
 
@@ -20,6 +22,9 @@ _FALSE_VALUES = {"0", "false", "no", "n", "off"}
 DEFAULT_STRICT_STRUCTURED_OUTPUT = True
 DEFAULT_STRUCTURED_OUTPUT_RETRIES = 3
 
+_INITIAL_RETRY_BACKOFF_SECONDS = 0.1
+_MAX_RETRY_BACKOFF_SECONDS = 1.0
+
 
 @dataclass(frozen=True)
 class StructuredOutputResult(Generic[T]):
@@ -32,22 +37,32 @@ class StructuredOutputResult(Generic[T]):
     error_message: str | None = None
 
 
-def _coerce_structured_response(response: Any, schema: type[T]) -> T:
-    """Validate/coerce response into the requested schema type."""
-    if isinstance(response, schema):
-        return response
-
-    model_validate = getattr(schema, "model_validate", None)
-    if callable(model_validate):
-        validated = model_validate(response)
-        if isinstance(validated, schema):
-            return validated
-
-    raise TypeError(
-        "Structured output did not match requested schema "
-        f"{getattr(schema, '__name__', str(schema))}; "
-        f"received {type(response).__name__}"
+def _retry_backoff_seconds(attempt: int) -> float:
+    """Return exponential backoff delay for a failed attempt."""
+    return float(
+        min(
+            _MAX_RETRY_BACKOFF_SECONDS,
+            _INITIAL_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)),
+        )
     )
+
+
+def build_structured_failure_decisions(
+    count: int,
+    *,
+    failure_reason: str,
+    extra_fields: Mapping[str, str | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Build deterministic NEEDS_REVIEW decisions for strict-mode failures."""
+    base_decision: dict[str, Any] = {
+        "decision": "NEEDS_REVIEW",
+        "reasoning": failure_reason,
+        "suggested_label": None,
+        "confidence": "low",
+    }
+    if extra_fields:
+        base_decision.update(extra_fields)
+    return [base_decision.copy() for _ in range(count)]
 
 
 def _parse_bool_env(
@@ -127,8 +142,7 @@ def invoke_structured_with_retry(
     config: Mapping[str, Any] | None = None,
 ) -> StructuredOutputResult[T]:
     """Invoke with structured output retries (sync)."""
-    if retries < 1:
-        retries = 1
+    retries = max(retries, 1)
 
     if not hasattr(llm, "with_structured_output"):
         return StructuredOutputResult(
@@ -150,16 +164,23 @@ def invoke_structured_with_retry(
                 response: T = structured_llm.invoke(input_payload)
             else:
                 response = structured_llm.invoke(input_payload, config=config)
-            validated_response = _coerce_structured_response(response, schema)
             return StructuredOutputResult(
                 success=True,
-                response=validated_response,
+                response=response,
                 attempts=attempt,
             )
         except LLMRateLimitError:
             raise
         except Exception as error:
+            logger.warning(
+                "Structured output attempt %d/%d failed: %s",
+                attempt,
+                retries,
+                error,
+            )
             last_error = error
+            if attempt < retries:
+                time.sleep(_retry_backoff_seconds(attempt))
 
     return StructuredOutputResult(
         success=False,
@@ -179,8 +200,7 @@ async def ainvoke_structured_with_retry(
     config: Mapping[str, Any] | None = None,
 ) -> StructuredOutputResult[T]:
     """Invoke with structured output retries (async)."""
-    if retries < 1:
-        retries = 1
+    retries = max(retries, 1)
 
     if not hasattr(llm, "with_structured_output"):
         return StructuredOutputResult(
@@ -218,16 +238,23 @@ async def ainvoke_structured_with_retry(
                         config=config,
                     )
 
-            validated_response = _coerce_structured_response(response, schema)
             return StructuredOutputResult(
                 success=True,
-                response=validated_response,
+                response=response,
                 attempts=attempt,
             )
         except LLMRateLimitError:
             raise
         except Exception as error:
+            logger.warning(
+                "Async structured output attempt %d/%d failed: %s",
+                attempt,
+                retries,
+                error,
+            )
             last_error = error
+            if attempt < retries:
+                await asyncio.sleep(_retry_backoff_seconds(attempt))
 
     return StructuredOutputResult(
         success=False,

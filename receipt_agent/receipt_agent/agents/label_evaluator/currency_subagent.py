@@ -47,6 +47,7 @@ from receipt_agent.prompts.structured_outputs import (
 from receipt_agent.utils import (
     LLMRateLimitError,
     ainvoke_structured_with_retry,
+    build_structured_failure_decisions,
     get_structured_output_settings,
     invoke_structured_with_retry,
 )
@@ -434,21 +435,10 @@ def parse_currency_evaluation_response(
         return [fallback.copy() for _ in range(num_words)]
 
 
-def _build_structured_failure_decisions(
-    num_words: int,
-    *,
-    failure_reason: str,
-) -> list[dict[str, Any]]:
-    """Build deterministic fallback decisions when strict structure fails."""
-    return [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": failure_reason,
-            "suggested_label": None,
-            "confidence": "low",
-        }
-        for _ in range(num_words)
-    ]
+def _response_to_text(response: Any) -> str:
+    """Convert chat-model response content to a plain string."""
+    content = response.content if hasattr(response, "content") else response
+    return content if isinstance(content, str) else str(content)
 
 
 # =============================================================================
@@ -550,7 +540,7 @@ def evaluate_currency_labels(
                 f"error={structured_result.error_type or 'unknown'})."
             )
             logger.warning("%s", failure_reason)
-            decisions = _build_structured_failure_decisions(
+            decisions = build_structured_failure_decisions(
                 num_words,
                 failure_reason=failure_reason,
             )
@@ -568,10 +558,15 @@ def evaluate_currency_labels(
                     structured_llm = llm.with_structured_output(
                         CurrencyEvaluationResponse
                     )
-                    response: CurrencyEvaluationResponse = (
-                        structured_llm.invoke(prompt)
-                    )
-                    decisions = response.to_ordered_list(num_words)
+                    structured_response = structured_llm.invoke(prompt)
+                    if not isinstance(
+                        structured_response, CurrencyEvaluationResponse
+                    ):
+                        raise TypeError(
+                            "Expected CurrencyEvaluationResponse from "
+                            "with_structured_output"
+                        )
+                    decisions = structured_response.to_ordered_list(num_words)
                     logger.debug(
                         "Structured output succeeded with %d evaluations",
                         len(decisions),
@@ -590,12 +585,8 @@ def evaluate_currency_labels(
         if decisions is None:
             for attempt in range(text_retries):
                 try:
-                    response = llm.invoke(prompt)
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
+                    text_response = llm.invoke(prompt)
+                    response_text = _response_to_text(text_response)
                     decisions = parse_currency_evaluation_response(
                         response_text, num_words
                     )
@@ -646,7 +637,7 @@ def evaluate_currency_labels(
                         decisions = None
 
         if decisions is None:
-            decisions = _build_structured_failure_decisions(
+            decisions = build_structured_failure_decisions(
                 num_words,
                 failure_reason="No response received",
             )
@@ -794,7 +785,7 @@ async def evaluate_currency_labels_async(
                 f"error={structured_result.error_type or 'unknown'})."
             )
             logger.warning("%s", failure_reason)
-            decisions = _build_structured_failure_decisions(
+            decisions = build_structured_failure_decisions(
                 num_words,
                 failure_reason=failure_reason,
             )
@@ -815,15 +806,24 @@ async def evaluate_currency_labels_async(
                             CurrencyEvaluationResponse
                         )
                         if hasattr(structured_llm, "ainvoke"):
-                            response: CurrencyEvaluationResponse = (
-                                await structured_llm.ainvoke(prompt)
+                            structured_response = await structured_llm.ainvoke(
+                                prompt
                             )
                         else:
-                            response = await asyncio.to_thread(
+                            structured_response = await asyncio.to_thread(
                                 structured_llm.invoke,
                                 prompt,
                             )
-                        current_decisions = response.to_ordered_list(num_words)
+                        if not isinstance(
+                            structured_response, CurrencyEvaluationResponse
+                        ):
+                            raise TypeError(
+                                "Expected CurrencyEvaluationResponse from "
+                                "with_structured_output"
+                            )
+                        current_decisions = (
+                            structured_response.to_ordered_list(num_words)
+                        )
                     except LLMRateLimitError:
                         raise
                     except Exception as struct_err:
@@ -834,29 +834,23 @@ async def evaluate_currency_labels_async(
                             struct_err,
                         )
                         if hasattr(llm, "ainvoke"):
-                            response = await llm.ainvoke(prompt)
+                            text_response = await llm.ainvoke(prompt)
                         else:
-                            response = await asyncio.to_thread(
+                            text_response = await asyncio.to_thread(
                                 llm.invoke, prompt
                             )
-                        response_text = (
-                            response.content
-                            if hasattr(response, "content")
-                            else str(response)
-                        )
+                        response_text = _response_to_text(text_response)
                         current_decisions = parse_currency_evaluation_response(
                             response_text, num_words
                         )
                 else:
                     if hasattr(llm, "ainvoke"):
-                        response = await llm.ainvoke(prompt)
+                        text_response = await llm.ainvoke(prompt)
                     else:
-                        response = await asyncio.to_thread(llm.invoke, prompt)
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
+                        text_response = await asyncio.to_thread(
+                            llm.invoke, prompt
+                        )
+                    response_text = _response_to_text(text_response)
                     current_decisions = parse_currency_evaluation_response(
                         response_text, num_words
                     )
@@ -899,7 +893,7 @@ async def evaluate_currency_labels_async(
                     error,
                 )
                 if attempt == max_retries - 1:
-                    last_decisions = _build_structured_failure_decisions(
+                    last_decisions = build_structured_failure_decisions(
                         num_words,
                         failure_reason=(
                             "LLM call failed after "
@@ -910,7 +904,7 @@ async def evaluate_currency_labels_async(
         decisions = last_decisions
 
     if decisions is None:
-        decisions = _build_structured_failure_decisions(
+        decisions = build_structured_failure_decisions(
             num_words,
             failure_reason="No response received",
         )

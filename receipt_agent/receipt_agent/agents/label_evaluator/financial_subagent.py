@@ -52,6 +52,7 @@ from receipt_agent.prompts.structured_outputs import (
 from receipt_agent.utils import (
     LLMRateLimitError,
     ainvoke_structured_with_retry,
+    build_structured_failure_decisions,
     get_structured_output_settings,
     invoke_structured_with_retry,
 )
@@ -548,22 +549,10 @@ def parse_financial_evaluation_response(
         return [fallback.copy() for _ in range(num_values)]
 
 
-def _build_structured_failure_decisions(
-    num_values: int,
-    *,
-    failure_reason: str,
-) -> list[dict[str, Any]]:
-    """Build deterministic fallback decisions when strict structure fails."""
-    return [
-        {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": failure_reason,
-            "suggested_label": None,
-            "confidence": "low",
-            "issue_type": "UNKNOWN",
-        }
-        for _ in range(num_values)
-    ]
+def _response_to_text(response: Any) -> str:
+    """Convert chat-model response content to a plain string."""
+    content = response.content if hasattr(response, "content") else response
+    return content if isinstance(content, str) else str(content)
 
 
 def _structured_to_per_value(
@@ -691,7 +680,7 @@ def _pad_decisions(
     Returns:
         List of exactly num_values decisions
     """
-    normalized_decisions = decisions or []
+    normalized_decisions = list(decisions) if decisions else []
     num_decisions = len(normalized_decisions)
     if num_decisions != num_values:
         logger.warning(
@@ -872,9 +861,10 @@ def evaluate_financial_math(
                     f"error={structured_result.error_type or 'unknown'})."
                 )
                 logger.warning("%s", failure_reason)
-                decisions = _build_structured_failure_decisions(
+                decisions = build_structured_failure_decisions(
                     num_values,
                     failure_reason=failure_reason,
+                    extra_fields={"issue_type": "UNKNOWN"},
                 )
         else:
             logger.info(
@@ -891,11 +881,19 @@ def evaluate_financial_math(
                             structured_llm = llm.with_structured_output(
                                 FinancialEvaluationResponse
                             )
-                            response: FinancialEvaluationResponse = (
-                                structured_llm.invoke(prompt)
-                            )
+                            structured_response = structured_llm.invoke(prompt)
+                            if not isinstance(
+                                structured_response,
+                                FinancialEvaluationResponse,
+                            ):
+                                raise TypeError(
+                                    "Expected FinancialEvaluationResponse from "
+                                    "with_structured_output"
+                                )
                             decisions = _structured_to_per_value(
-                                response.evaluations, num_values, math_issues
+                                structured_response.evaluations,
+                                num_values,
+                                math_issues,
                             )
                             logger.debug(
                                 "Structured output succeeded with %d evaluations",
@@ -912,12 +910,8 @@ def evaluate_financial_math(
                                 struct_err,
                             )
 
-                    response = llm.invoke(prompt)
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
+                    text_response = llm.invoke(prompt)
+                    response_text = _response_to_text(text_response)
                     decisions = parse_financial_evaluation_response(
                         response_text, num_values, math_issues
                     )
@@ -959,9 +953,10 @@ def evaluate_financial_math(
                     )
 
         if decisions is None:
-            decisions = _build_structured_failure_decisions(
+            decisions = build_structured_failure_decisions(
                 num_values,
                 failure_reason="No response received",
+                extra_fields={"issue_type": "UNKNOWN"},
             )
 
         # Step 3: Pad decisions to match total involved values
@@ -972,13 +967,12 @@ def evaluate_financial_math(
             math_issues, decisions, image_id, receipt_id
         )
 
+    except LLMRateLimitError as e:
+        logger.error(
+            "Financial LLM rate limited, propagating for retry: %s", e
+        )
+        raise
     except Exception as e:
-        if isinstance(e, LLMRateLimitError):
-            logger.error(
-                "Financial LLM rate limited, propagating for retry: %s", e
-            )
-            raise
-
         logger.error("Financial LLM call failed: %s", e)
 
         # Return NEEDS_REVIEW for all values in all issues
@@ -1099,9 +1093,10 @@ async def evaluate_financial_math_async(
                     f"error={structured_result.error_type or 'unknown'})."
                 )
                 logger.warning("%s", failure_reason)
-                decisions = _build_structured_failure_decisions(
+                decisions = build_structured_failure_decisions(
                     num_values,
                     failure_reason=failure_reason,
+                    extra_fields={"issue_type": "UNKNOWN"},
                 )
         else:
             logger.info(
@@ -1119,16 +1114,26 @@ async def evaluate_financial_math_async(
                                 FinancialEvaluationResponse
                             )
                             if hasattr(structured_llm, "ainvoke"):
-                                response: FinancialEvaluationResponse = (
+                                structured_response = (
                                     await structured_llm.ainvoke(prompt)
                                 )
                             else:
-                                response = await asyncio.to_thread(
+                                structured_response = await asyncio.to_thread(
                                     structured_llm.invoke,
                                     prompt,
                                 )
+                            if not isinstance(
+                                structured_response,
+                                FinancialEvaluationResponse,
+                            ):
+                                raise TypeError(
+                                    "Expected FinancialEvaluationResponse from "
+                                    "with_structured_output"
+                                )
                             decisions = _structured_to_per_value(
-                                response.evaluations, num_values, math_issues
+                                structured_response.evaluations,
+                                num_values,
+                                math_issues,
                             )
                             logger.debug(
                                 "Structured output succeeded with %d evaluations",
@@ -1146,14 +1151,12 @@ async def evaluate_financial_math_async(
                             )
 
                     if hasattr(llm, "ainvoke"):
-                        response = await llm.ainvoke(prompt)
+                        text_response = await llm.ainvoke(prompt)
                     else:
-                        response = await asyncio.to_thread(llm.invoke, prompt)
-                    response_text = (
-                        response.content
-                        if hasattr(response, "content")
-                        else str(response)
-                    )
+                        text_response = await asyncio.to_thread(
+                            llm.invoke, prompt
+                        )
+                    response_text = _response_to_text(text_response)
                     decisions = parse_financial_evaluation_response(
                         response_text, num_values, math_issues
                     )
@@ -1195,9 +1198,10 @@ async def evaluate_financial_math_async(
                     )
 
         if decisions is None:
-            decisions = _build_structured_failure_decisions(
+            decisions = build_structured_failure_decisions(
                 num_values,
                 failure_reason="No response received",
+                extra_fields={"issue_type": "UNKNOWN"},
             )
 
         # Step 4: Format output
@@ -1206,13 +1210,12 @@ async def evaluate_financial_math_async(
             math_issues, decisions, image_id, receipt_id
         )
 
+    except LLMRateLimitError as e:
+        logger.error(
+            "Financial LLM rate limited, propagating for retry: %s", e
+        )
+        raise
     except Exception as e:
-        if isinstance(e, LLMRateLimitError):
-            logger.error(
-                "Financial LLM rate limited, propagating for retry: %s", e
-            )
-            raise
-
         logger.error("Financial LLM call failed: %s", e)
 
         results = []

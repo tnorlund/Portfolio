@@ -42,17 +42,18 @@ from typing import Any, Protocol
 
 import httpx
 from pydantic import ValidationError
+
 from receipt_agent.prompts.structured_outputs import (
     PatternDiscoveryResponse,
     extract_json_from_response,
 )
 from receipt_agent.utils.chroma_types import extract_query_metadata_rows
 from receipt_agent.utils.label_metadata import parse_labels_from_metadata
+from receipt_agent.utils.structured_output import (
+    get_structured_output_settings,
+)
 
 logger = logging.getLogger(__name__)
-
-_TRUE_VALUES = {"1", "true", "yes", "y", "on"}
-_FALSE_VALUES = {"0", "false", "no", "n", "off"}
 
 
 # Labels relevant for line item pattern discovery
@@ -179,28 +180,34 @@ class PatternDiscoveryConfig:
 
 def _is_strict_structured_output_enabled() -> bool:
     """Return whether strict structured output is enabled for LLM calls."""
-    raw_value = os.environ.get("LLM_STRICT_STRUCTURED_OUTPUT", "true")
-    normalized = raw_value.strip().lower()
-    if normalized in _TRUE_VALUES:
-        return True
-    if normalized in _FALSE_VALUES:
-        return False
+    strict_enabled, _ = get_structured_output_settings(logger_instance=logger)
+    return strict_enabled
 
-    logger.warning(
-        "Invalid LLM_STRICT_STRUCTURED_OUTPUT value '%s'; falling back to true",
-        raw_value,
-    )
-    return True
+
+def _set_additional_properties_false(schema_fragment: Any) -> None:
+    """Recursively set additionalProperties=false on every object schema."""
+    if isinstance(schema_fragment, dict):
+        if schema_fragment.get("type") == "object":
+            schema_fragment.setdefault("additionalProperties", False)
+        for value in schema_fragment.values():
+            _set_additional_properties_false(value)
+        return
+
+    if isinstance(schema_fragment, list):
+        for item in schema_fragment:
+            _set_additional_properties_false(item)
 
 
 def _build_pattern_response_format() -> dict[str, Any]:
     """Build OpenAI-style JSON schema response_format for pattern discovery."""
+    schema = PatternDiscoveryResponse.model_json_schema()
+    _set_additional_properties_false(schema)
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "pattern_discovery_response",
             "strict": True,
-            "schema": PatternDiscoveryResponse.model_json_schema(),
+            "schema": schema,
         },
     }
 

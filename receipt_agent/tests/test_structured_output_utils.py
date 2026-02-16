@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import BaseModel
 
 from receipt_agent.utils import (
     LLMRateLimitError,
@@ -15,10 +14,8 @@ from receipt_agent.utils import (
 )
 
 
-class DummySchema(BaseModel):
-    """Simple schema type for structured output tests."""
-
-    value: str
+class DummySchema:
+    """Simple placeholder schema type for structured output tests."""
 
 
 class TestStructuredOutputSettings:
@@ -70,7 +67,7 @@ class TestInvokeStructuredWithRetry:
         """Returns structured response when invocation succeeds."""
         llm = MagicMock()
         structured_llm = MagicMock()
-        structured_response = DummySchema(value="ok")
+        structured_response = MagicMock()
         structured_llm.invoke.return_value = structured_response
         llm.with_structured_output.return_value = structured_llm
 
@@ -85,43 +82,6 @@ class TestInvokeStructuredWithRetry:
         assert result.response == structured_response
         assert result.attempts == 1
         llm.with_structured_output.assert_called_once_with(DummySchema)
-
-    def test_coerces_dict_response_via_model_validate(self):
-        """Dict responses are coerced into the target schema when possible."""
-        llm = MagicMock()
-        structured_llm = MagicMock()
-        structured_llm.invoke.return_value = {"value": "ok"}
-        llm.with_structured_output.return_value = structured_llm
-
-        result = invoke_structured_with_retry(
-            llm=llm,
-            schema=DummySchema,
-            input_payload="hello",
-            retries=1,
-        )
-
-        assert result.success is True
-        assert isinstance(result.response, DummySchema)
-        assert result.response.value == "ok"
-
-    def test_schema_mismatch_returns_failure(self):
-        """Non-schema responses should fail instead of being treated as success."""
-        llm = MagicMock()
-        structured_llm = MagicMock()
-        structured_llm.invoke.return_value = {"wrong": "shape"}
-        llm.with_structured_output.return_value = structured_llm
-
-        result = invoke_structured_with_retry(
-            llm=llm,
-            schema=DummySchema,
-            input_payload="hello",
-            retries=1,
-        )
-
-        assert result.success is False
-        assert result.response is None
-        assert result.attempts == 1
-        assert result.error_type is not None
 
     def test_failure_returns_metadata(self):
         """Returns structured failure metadata after retries are exhausted."""
@@ -156,6 +116,21 @@ class TestInvokeStructuredWithRetry:
                 retries=3,
             )
 
+    def test_missing_structured_support(self):
+        """Returns deterministic failure when with_structured_output is missing."""
+        llm = object()
+        result = invoke_structured_with_retry(
+            llm=llm,
+            schema=DummySchema,
+            input_payload="hello",
+            retries=2,
+        )
+
+        assert result.success is False
+        assert result.response is None
+        assert result.attempts == 0
+        assert result.error_type == "missing_with_structured_output"
+
 
 class TestAinvokeStructuredWithRetry:
     """Tests for async structured output invocation helper."""
@@ -165,7 +140,7 @@ class TestAinvokeStructuredWithRetry:
         """Returns structured response when async invocation succeeds."""
         llm = MagicMock()
         structured_llm = MagicMock()
-        structured_response = DummySchema(value="ok")
+        structured_response = MagicMock()
         structured_llm.ainvoke = AsyncMock(return_value=structured_response)
         llm.with_structured_output.return_value = structured_llm
 
@@ -179,26 +154,6 @@ class TestAinvokeStructuredWithRetry:
         assert result.success is True
         assert result.response == structured_response
         assert result.attempts == 1
-
-    @pytest.mark.asyncio
-    async def test_schema_mismatch_returns_failure(self):
-        """Async helper should fail when response does not match schema."""
-        llm = MagicMock()
-        structured_llm = MagicMock()
-        structured_llm.ainvoke = AsyncMock(return_value={"wrong": "shape"})
-        llm.with_structured_output.return_value = structured_llm
-
-        result = await ainvoke_structured_with_retry(
-            llm=llm,
-            schema=DummySchema,
-            input_payload="hello",
-            retries=1,
-        )
-
-        assert result.success is False
-        assert result.response is None
-        assert result.attempts == 1
-        assert result.error_type is not None
 
     @pytest.mark.asyncio
     async def test_missing_structured_support(self):
@@ -215,3 +170,19 @@ class TestAinvokeStructuredWithRetry:
         assert result.response is None
         assert result.attempts == 0
         assert result.error_type == "missing_with_structured_output"
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_propagates(self):
+        """Rate limit errors are propagated for Step Functions retry handling."""
+        llm = MagicMock()
+        structured_llm = MagicMock()
+        structured_llm.ainvoke = AsyncMock(side_effect=LLMRateLimitError("429"))
+        llm.with_structured_output.return_value = structured_llm
+
+        with pytest.raises(LLMRateLimitError):
+            _ = await ainvoke_structured_with_retry(
+                llm=llm,
+                schema=DummySchema,
+                input_payload="hello",
+                retries=3,
+            )

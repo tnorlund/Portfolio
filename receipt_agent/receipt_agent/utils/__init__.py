@@ -44,6 +44,7 @@ from .structured_output import (
     DEFAULT_STRUCTURED_OUTPUT_RETRIES,
     StructuredOutputResult,
     ainvoke_structured_with_retry,
+    build_structured_failure_decisions,
     get_structured_output_settings,
     invoke_structured_with_retry,
 )
@@ -94,4 +95,5 @@ __all__ = [
     "get_structured_output_settings",
     "invoke_structured_with_retry",
     "ainvoke_structured_with_retry",
+    "build_structured_failure_decisions",
 ]

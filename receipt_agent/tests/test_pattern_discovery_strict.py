@@ -1,6 +1,7 @@
 """Tests for strict pattern discovery response parsing."""
 
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
+    _build_pattern_response_format,
     _parse_llm_response,
 )
 
@@ -41,3 +42,22 @@ def test_parse_llm_response_strict_accepts_valid_schema():
     )
     assert parsed is not None
     assert parsed["receipt_type"] == "itemized"
+
+
+def test_pattern_response_schema_forbids_additional_properties():
+    """Pattern discovery strict schema should reject undeclared object fields."""
+    schema = _build_pattern_response_format()["json_schema"]["schema"]
+
+    def _all_object_nodes(node):
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                yield node
+            for value in node.values():
+                yield from _all_object_nodes(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from _all_object_nodes(value)
+
+    object_nodes = list(_all_object_nodes(schema))
+    assert object_nodes
+    assert all(node.get("additionalProperties") is False for node in object_nodes)
