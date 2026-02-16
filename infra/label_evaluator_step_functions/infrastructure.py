@@ -113,7 +113,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         batch_bucket_arn: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(f"label-evaluator-step-function:{name}", name, None, opts)
+        super().__init__(
+            f"label-evaluator-step-function:{name}", name, None, opts
+        )
         stack = pulumi.get_stack()
 
         self.chromadb_bucket_name = chromadb_bucket_name
@@ -147,7 +149,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self._external_batch_bucket = batch_bucket_name is not None
         if self._external_batch_bucket:
             # Use the externally-provided bucket
-            self._batch_bucket_name = pulumi.Output.from_input(batch_bucket_name)
+            self._batch_bucket_name = pulumi.Output.from_input(
+                batch_bucket_name
+            )
             self._batch_bucket_arn = pulumi.Output.from_input(batch_bucket_arn)
             # Create a dummy object to satisfy attribute access patterns
             # (lambdas reference self.batch_bucket.bucket)
@@ -229,7 +233,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -300,7 +305,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             RolePolicy(
                 f"{name}-lambda-s3-policy",
                 role=lambda_role.id,
-                policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
+                policy=Output.all(
+                    self.batch_bucket.arn, chromadb_bucket_arn
+                ).apply(
                     lambda args: json.dumps(
                         {
                             "Version": "2012-10-17",
@@ -369,7 +376,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "LANGCHAIN_API_KEY": langchain_api_key,
             "LANGCHAIN_TRACING_V2": "true",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-            "LANGCHAIN_PROJECT": config.get("langchain_project") or "label-evaluator",
+            "LANGCHAIN_PROJECT": config.get("langchain_project")
+            or "label-evaluator",
         }
 
         # ============================================================
@@ -397,7 +405,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
                     # Include tracing utilities
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -437,7 +447,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "handlers/evaluator_types.py": FileAsset(
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -511,7 +523,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "aggregate_results.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "aggregate_results.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=120,
@@ -539,7 +553,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "final_aggregate.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "final_aggregate.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -616,7 +632,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_docker_image = CodeBuildDockerImage(
             f"{name}-eval-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.evaluate"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.evaluate"
             ),
             build_context_path=".",
             source_paths=[
@@ -677,7 +694,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
+        discover_patterns_lambda = (
+            discover_patterns_docker_image.lambda_function
+        )
 
         # ============================================================
         # Container Lambda: llm_review (LLM)
@@ -699,12 +718,18 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
+                "CHROMA_CLOUD_ENABLED": (
+                    config.get("CHROMA_CLOUD_ENABLED") or "false"
+                ),
                 "CHROMA_CLOUD_API_KEY": (
                     config.get_secret("CHROMA_CLOUD_API_KEY") or ""
                 ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                "CHROMA_CLOUD_TENANT": (
+                    config.get("CHROMA_CLOUD_TENANT") or ""
+                ),
+                "CHROMA_CLOUD_DATABASE": (
+                    config.get("CHROMA_CLOUD_DATABASE") or ""
+                ),
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "8",
                 "CIRCUIT_BREAKER_THRESHOLD": "5",
@@ -715,7 +740,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_docker_image = CodeBuildDockerImage(
             f"{name}-llm-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.llm"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.llm"
             ),
             build_context_path=".",
             source_paths=[
@@ -758,7 +784,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         currency_docker_image = CodeBuildDockerImage(
             f"{name}-currency-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.currency"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.currency"
             ),
             build_context_path=".",
             source_paths=[
@@ -801,7 +828,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         metadata_docker_image = CodeBuildDockerImage(
             f"{name}-metadata-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.metadata"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.metadata"
             ),
             build_context_path=".",
             source_paths=[
@@ -845,7 +873,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         financial_docker_image = CodeBuildDockerImage(
             f"{name}-financial-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.financial"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.financial"
             ),
             build_context_path=".",
             source_paths=[
@@ -881,7 +910,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         close_trace_docker_image = CodeBuildDockerImage(
             f"{name}-close-trace-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.close_trace"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.close_trace"
             ),
             build_context_path=".",
             source_paths=[
@@ -918,24 +948,29 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
+                "CHROMA_CLOUD_ENABLED": (
+                    config.get("CHROMA_CLOUD_ENABLED") or "false"
+                ),
                 "CHROMA_CLOUD_API_KEY": (
                     config.get_secret("CHROMA_CLOUD_API_KEY") or ""
                 ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                "CHROMA_CLOUD_TENANT": (
+                    config.get("CHROMA_CLOUD_TENANT") or ""
+                ),
+                "CHROMA_CLOUD_DATABASE": (
+                    config.get("CHROMA_CLOUD_DATABASE") or ""
+                ),
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "LLM_MAX_JITTER_SECONDS": "0.25",
-                "LLM_STRICT_STRUCTURED_OUTPUT": "true",
-                "LLM_STRUCTURED_OUTPUT_RETRIES": "3",
             },
         }
 
         unified_docker_image = CodeBuildDockerImage(
             f"{name}-unified-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.unified"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.unified"
             ),
             build_context_path=".",
             source_paths=[
@@ -972,8 +1007,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
-                "LLM_STRICT_STRUCTURED_OUTPUT": "true",
-                "LLM_STRUCTURED_OUTPUT_RETRIES": "3",
                 **tracing_env,
             },
         }
@@ -1026,7 +1059,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],
@@ -1261,7 +1296,9 @@ def handler(event, context):
                 runtime="python3.12",
                 architectures=["arm64"],
                 handler="index.handler",
-                code=AssetArchive({"index.py": StringAsset(trigger_export_code)}),
+                code=AssetArchive(
+                    {"index.py": StringAsset(trigger_export_code)}
+                ),
                 timeout=30,
                 memory_size=128,
                 tags={"environment": stack},
@@ -1278,7 +1315,9 @@ def handler(event, context):
 
             LogGroup(
                 f"{name}-trigger-export-logs",
-                name=trigger_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+                name=trigger_export_lambda.name.apply(
+                    lambda n: f"/aws/lambda/{n}"
+                ),
                 retention_in_days=14,
                 opts=ResourceOptions(parent=self),
             )
@@ -1293,7 +1332,9 @@ def handler(event, context):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],
@@ -1368,7 +1409,9 @@ def handler(event, context):
                 runtime="python3.12",
                 architectures=["arm64"],
                 handler="index.handler",
-                code=AssetArchive({"index.py": StringAsset(check_export_code)}),
+                code=AssetArchive(
+                    {"index.py": StringAsset(check_export_code)}
+                ),
                 timeout=30,
                 memory_size=128,
                 tags={"environment": stack},
@@ -1382,7 +1425,9 @@ def handler(event, context):
 
             LogGroup(
                 f"{name}-check-export-logs",
-                name=check_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+                name=check_export_lambda.name.apply(
+                    lambda n: f"/aws/lambda/{n}"
+                ),
                 retention_in_days=14,
                 opts=ResourceOptions(parent=self),
             )
@@ -1591,7 +1636,11 @@ def handler(event, context):
             )
 
         # Add viz-cache outputs if enabled (indices 21-23)
-        if self.viz_cache_enabled and trigger_export_lambda and check_export_lambda:
+        if (
+            self.viz_cache_enabled
+            and trigger_export_lambda
+            and check_export_lambda
+        ):
             base_outputs.extend(
                 [
                     self.cache_bucket,  # 21
@@ -1607,7 +1656,9 @@ def handler(event, context):
             viz_base_idx = 21  # After EMR params
 
             config = EmrConfig(
-                application_id=(args[emr_base_idx] if self.emr_enabled else None),
+                application_id=(
+                    args[emr_base_idx] if self.emr_enabled else None
+                ),
                 job_execution_role_arn=(
                     args[emr_base_idx + 1] if self.emr_enabled else None
                 ),

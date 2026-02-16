@@ -49,9 +49,6 @@ from receipt_agent.prompts.structured_outputs import (
 )
 from receipt_agent.utils.chroma_types import extract_query_metadata_rows
 from receipt_agent.utils.label_metadata import parse_labels_from_metadata
-from receipt_agent.utils.structured_output import (
-    get_structured_output_settings,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +96,9 @@ class LabelExample:
 class LabelExamples:
     """Collection of validated label examples by label type."""
 
-    examples_by_label: dict[str, list[LabelExample]] = field(default_factory=dict)
+    examples_by_label: dict[str, list[LabelExample]] = field(
+        default_factory=dict
+    )
     merchant_name: str = ""
     total_examples: int = 0
 
@@ -125,9 +124,7 @@ class LabelExamples:
             if examples:
                 example_strs = []
                 for ex in examples:
-                    context = (
-                        f"[{ex.left_neighbor}] {ex.word_text} [{ex.right_neighbor}]"
-                    )
+                    context = f"[{ex.left_neighbor}] {ex.word_text} [{ex.right_neighbor}]"
                     example_strs.append(
                         f'"{ex.word_text}" at x={ex.x_position:.2f} ({context})'
                     )
@@ -178,40 +175,6 @@ class PatternDiscoveryConfig:
         )
 
 
-def _is_strict_structured_output_enabled() -> bool:
-    """Return whether strict structured output is enabled for LLM calls."""
-    strict_enabled, _ = get_structured_output_settings(logger_instance=logger)
-    return strict_enabled
-
-
-def _set_additional_properties_false(schema_fragment: Any) -> None:
-    """Recursively set additionalProperties=false on every object schema."""
-    if isinstance(schema_fragment, dict):
-        if schema_fragment.get("type") == "object":
-            schema_fragment.setdefault("additionalProperties", False)
-        for value in schema_fragment.values():
-            _set_additional_properties_false(value)
-        return
-
-    if isinstance(schema_fragment, list):
-        for item in schema_fragment:
-            _set_additional_properties_false(item)
-
-
-def _build_pattern_response_format() -> dict[str, Any]:
-    """Build OpenAI-style JSON schema response_format for pattern discovery."""
-    schema = PatternDiscoveryResponse.model_json_schema()
-    _set_additional_properties_false(schema)
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "pattern_discovery_response",
-            "strict": True,
-            "schema": schema,
-        },
-    }
-
-
 # =============================================================================
 # ChromaDB Query Functions
 # =============================================================================
@@ -257,7 +220,11 @@ def query_label_examples_from_chroma(
                     where={
                         "$and": [
                             {"merchant_name": {"$eq": merchant_name}},
-                            {"label_status": {"$in": ["validated", "auto_suggested"]}},
+                            {
+                                "label_status": {
+                                    "$in": ["validated", "auto_suggested"]
+                                }
+                            },
                         ]
                     },
                     include=["metadatas", "distances"],
@@ -392,11 +359,15 @@ def build_receipt_structure(
     Returns:
         List of receipt structures with lines and word data
     """
-    result = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=limit)
+    result = dynamo_client.get_receipt_places_by_merchant(
+        merchant_name, limit=limit
+    )
     receipt_places = result[0] if result else []
 
     if not receipt_places:
-        logger.warning("No receipt places found for merchant: %s", merchant_name)
+        logger.warning(
+            "No receipt places found for merchant: %s", merchant_name
+        )
         return []
 
     receipts_data = []
@@ -443,7 +414,9 @@ def build_receipt_structure(
         # Sort lines by y-position (top to bottom)
         sorted_lines = []
         for line_id, line_words in lines.items():
-            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(line_words)
+            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(
+                line_words
+            )
             line_words.sort(key=lambda w: w.bounding_box["x"])
             sorted_lines.append((line_id, avg_y, line_words))
         sorted_lines.sort(key=lambda x: -x[1])  # Highest y (top) first
@@ -488,7 +461,9 @@ def build_receipt_structure(
             # Include some context before and after
             context_lines = 5
             start_idx = max(0, first_item_idx - context_lines)
-            end_idx = min(len(receipt_lines), last_item_idx + context_lines + 1)
+            end_idx = min(
+                len(receipt_lines), last_item_idx + context_lines + 1
+            )
 
             # If the section is too large, prioritize from the start
             if end_idx - start_idx > max_lines:
@@ -542,7 +517,11 @@ def build_discovery_prompt(
         # Include more lines now that we're focused on line items section
         for line in receipt["lines"][:60]:
             words_str = " ".join(
-                (f"{w['text']}[{','.join(w['labels'])}]" if w["labels"] else w["text"])
+                (
+                    f"{w['text']}[{','.join(w['labels'])}]"
+                    if w["labels"]
+                    else w["text"]
+                )
                 for w in line["words"]
             )
             lines.append(f"  y={line['y']:.2f} | {words_str}")
@@ -661,25 +640,16 @@ def discover_patterns_with_llm(
             {"role": "user", "content": prompt},
         ],
     }
-    strict_structured_output = _is_strict_structured_output_enabled()
 
     try:
         # If we have a trace context with child_trace, use it
         if trace_ctx is not None:
             return _call_llm_with_tracing(
-                prompt,
-                config,
-                llm_inputs,
-                trace_ctx,
-                strict_structured_output=strict_structured_output,
+                prompt, config, llm_inputs, trace_ctx
             )
 
         # No tracing - direct call
-        return _call_llm_direct(
-            config,
-            llm_inputs,
-            strict_structured_output=strict_structured_output,
-        )
+        return _call_llm_direct(config, llm_inputs)
 
     except json.JSONDecodeError as e:
         logger.exception("Failed to parse LLM response as JSON: %s", e)
@@ -690,20 +660,9 @@ def discover_patterns_with_llm(
 
 
 def _call_llm_direct(
-    config: PatternDiscoveryConfig,
-    llm_inputs: dict,
-    *,
-    strict_structured_output: bool,
+    config: PatternDiscoveryConfig, llm_inputs: dict
 ) -> dict | None:
     """Make LLM call without tracing."""
-    request_payload: dict[str, Any] = {
-        "model": config.openrouter_model,
-        "messages": llm_inputs["messages"],
-        "temperature": 0.0,
-    }
-    if strict_structured_output:
-        request_payload["response_format"] = _build_pattern_response_format()
-
     with httpx.Client(timeout=120.0) as client:
         response = client.post(
             f"{config.openrouter_base_url}/chat/completions",
@@ -711,17 +670,20 @@ def _call_llm_direct(
                 "Authorization": f"Bearer {config.openrouter_api_key}",
                 "Content-Type": "application/json",
             },
-            json=request_payload,
+            json={
+                "model": config.openrouter_model,
+                "messages": llm_inputs["messages"],
+                "temperature": 0.0,
+            },
         )
         response.raise_for_status()
         result = response.json()
 
     # OpenRouter uses OpenAI-compatible response format
-    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-    return _parse_llm_response(
-        content,
-        strict_structured_output=strict_structured_output,
+    content = (
+        result.get("choices", [{}])[0].get("message", {}).get("content", "")
     )
+    return _parse_llm_response(content)
 
 
 def _call_llm_with_tracing(
@@ -729,8 +691,6 @@ def _call_llm_with_tracing(
     config: PatternDiscoveryConfig,
     llm_inputs: dict,
     trace_ctx: Any,
-    *,
-    strict_structured_output: bool,
 ) -> dict | None:
     """Make LLM call with LangSmith tracing."""
     # Import child_trace dynamically to avoid import errors when not in Lambda
@@ -739,11 +699,7 @@ def _call_llm_with_tracing(
     except ImportError:
         # Fall back to direct call if tracing not available
         logger.warning("Tracing not available, falling back to direct call")
-        return _call_llm_direct(
-            config,
-            llm_inputs,
-            strict_structured_output=strict_structured_output,
-        )
+        return _call_llm_direct(config, llm_inputs)
 
     with child_trace(
         "llm_pattern_discovery",
@@ -755,14 +711,6 @@ def _call_llm_with_tracing(
         },
         inputs=llm_inputs,
     ) as llm_trace_ctx:
-        request_payload: dict[str, Any] = {
-            "model": config.openrouter_model,
-            "messages": llm_inputs["messages"],
-            "temperature": 0.0,
-        }
-        if strict_structured_output:
-            request_payload["response_format"] = _build_pattern_response_format()
-
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
                 f"{config.openrouter_base_url}/chat/completions",
@@ -770,34 +718,39 @@ def _call_llm_with_tracing(
                     "Authorization": f"Bearer {config.openrouter_api_key}",
                     "Content-Type": "application/json",
                 },
-                json=request_payload,
+                json={
+                    "model": config.openrouter_model,
+                    "messages": llm_inputs["messages"],
+                    "temperature": 0.0,
+                },
             )
             response.raise_for_status()
             result = response.json()
 
         # OpenRouter uses OpenAI-compatible response format
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        content = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
 
         # Capture raw output in trace
         llm_trace_ctx.set_outputs(
             {
-                "raw_response": (content[:2000] if len(content) > 2000 else content),
+                "raw_response": (
+                    content[:2000] if len(content) > 2000 else content
+                ),
                 "model": result.get("model"),
-                "finish_reason": result.get("choices", [{}])[0].get("finish_reason"),
+                "finish_reason": result.get("choices", [{}])[0].get(
+                    "finish_reason"
+                ),
             }
         )
 
-        return _parse_llm_response(
-            content,
-            strict_structured_output=strict_structured_output,
-        )
+        return _parse_llm_response(content)
 
 
-def _parse_llm_response(
-    content: str,
-    *,
-    strict_structured_output: bool = True,
-) -> dict | None:
+def _parse_llm_response(content: str) -> dict | None:
     """Parse LLM response, handling markdown code blocks.
 
     First attempts to parse using the PatternDiscoveryResponse Pydantic model,
@@ -822,17 +775,10 @@ def _parse_llm_response(
         structured_response = PatternDiscoveryResponse.model_validate(parsed)
         return structured_response.to_dict()
     except ValidationError as e:
-        if strict_structured_output:
-            logger.warning(
-                "Strict structured validation failed for pattern discovery: %s",
-                e,
-            )
-            return None
-
         logger.debug(
-            "Structured validation failed, returning raw parsed JSON: %s",
-            e,
+            "Structured validation failed, returning raw parsed JSON: %s", e
         )
+        # Return the already-parsed dict for backwards compatibility
         return parsed
 
 
