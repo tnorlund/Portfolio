@@ -205,7 +205,12 @@ def _apply_line_label_updates(
         try:
             # Query all line embeddings for this receipt
             existing_results = collection_obj.get(
-                where={"image_id": image_id, "receipt_id": receipt_id},
+                where={
+                    "$and": [
+                        {"image_id": {"$eq": image_id}},
+                        {"receipt_id": {"$eq": receipt_id}},
+                    ]
+                },
                 include=["metadatas"],
             )
 
