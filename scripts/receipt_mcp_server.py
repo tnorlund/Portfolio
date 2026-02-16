@@ -661,7 +661,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         elif name == "validate_word_similarity":
             result = await validate_word_similarity_impl(
                 chroma_client,
-                embed_fn,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -1440,6 +1439,7 @@ async def list_words_by_label_impl(
     """List a sample of words for a specific label, optionally filtered by status."""
     try:
         all_words = []
+        total = 0
         last_key = None
 
         while True:
@@ -1453,14 +1453,14 @@ async def list_words_by_label_impl(
                 status = getattr(record, "validation_status", None) or "NONE"
                 if status_filter and status != status_filter:
                     continue
-                all_words.append(record)
+                total += 1
+                if len(all_words) < sample_size:
+                    all_words.append(record)
 
             if last_key is None:
                 break
 
-        # Build compact word summaries (bounded by sample_size)
-        total = len(all_words)
-        sample = all_words[:sample_size]
+        sample = all_words
 
         words = []
         for record in sample:
@@ -1489,7 +1489,6 @@ async def list_words_by_label_impl(
 
 async def validate_word_similarity_impl(
     chroma_client,
-    embed_fn,
     image_id: str,
     receipt_id: int,
     line_id: int,
@@ -1686,7 +1685,8 @@ async def validate_word_similarity_impl(
                             "avg_similarity": round(avg_sim, 3),
                             "score": round(score, 3),
                         })
-                except Exception:
+                except Exception as e:
+                    logger.warning("Error querying label %s (%s): %s", candidate_label, cand_field, e)
                     continue
 
             suggested_labels.sort(key=lambda x: x["score"], reverse=True)
@@ -1844,12 +1844,13 @@ async def create_word_label_impl(
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
     try:
+        normalized_label = label.upper()
         new_label = ReceiptWordLabel(
             image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
-            label=label,
+            label=normalized_label,
             reasoning=reasoning,
             timestamp_added=datetime.now(timezone.utc).isoformat(),
             validation_status="VALID",
@@ -1865,7 +1866,7 @@ async def create_word_label_impl(
             "receipt_id": receipt_id,
             "line_id": line_id,
             "word_id": word_id,
-            "label": label.upper(),
+            "label": normalized_label,
             "validation_status": "VALID",
             "reasoning": reasoning,
             "label_proposed_by": "mcp-claude-review",
