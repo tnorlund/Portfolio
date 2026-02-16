@@ -7,11 +7,11 @@ Moved from infra/label_evaluator_step_functions/lambdas/llm_review.py.
 
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
-
 from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
 from receipt_agent.constants import CORE_LABELS_SET
 from receipt_agent.prompts.structured_outputs import (
@@ -79,9 +79,7 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get(
-                "discovered_from_receipts"
-            ),
+            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
             **nested,
         }
 
@@ -138,19 +136,11 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if (
-        special_markers
-        and isinstance(special_markers, list)
-        and special_markers
-    ):
+    if special_markers and isinstance(special_markers, list) and special_markers:
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if (
-        product_patterns
-        and isinstance(product_patterns, list)
-        and product_patterns
-    ):
+    if product_patterns and isinstance(product_patterns, list) and product_patterns:
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -215,9 +205,7 @@ def compute_currency_math_hints(currency_items: list[dict]) -> str:
             label_desc.append(f"{len(line_totals)} LINE_TOTAL")
         if unit_prices:
             label_desc.append(f"{len(unit_prices)} UNIT_PRICE")
-        hints.append(
-            f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}"
-        )
+        hints.append(f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}")
 
     # Check for GRAND_TOTAL match against item amounts
     grand_totals = by_label.get("GRAND_TOTAL", [])
@@ -293,9 +281,7 @@ def build_review_prompt(
     other_merchant_examples = []
 
     for e in similar_evidence[:30]:  # Show top 30
-        line = (
-            f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
-        )
+        line = f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
         line += f"\n  Context: `{e['left_neighbor']}` | **{e['word_text']}** "
         line += f"| `{e['right_neighbor']}`"
         line += f"\n  Position: {e['position_description']}"
@@ -303,9 +289,7 @@ def build_review_prompt(
         if e["validated_as"]:
             for v in e["validated_as"][:2]:
                 reasoning = v.get("reasoning") or "no reasoning recorded"
-                line += (
-                    f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
-                )
+                line += f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
 
         if e["invalidated_as"]:
             for v in e["invalidated_as"][:2]:
@@ -330,9 +314,7 @@ def build_review_prompt(
 
     # Build label distribution
     label_summary_lines = []
-    for label, stats in sorted(
-        label_dist.items(), key=lambda x: -x[1]["count"]
-    )[:10]:
+    for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[:10]:
         examples = ", ".join(stats["example_words"][:3])
         label_summary_lines.append(
             f"- **{label}**: {stats['count']} occurrences "
@@ -431,17 +413,22 @@ price on separate lines that all belong to the same item.
 Based on all evidence above, determine:
 
 1. **Decision**:
-   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
-   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
+   - VALID: The current label state is correct (including "NONE (unlabeled)" for words that should stay unlabeled, like footer/legal/promotional text)
+   - INVALID: The current label state is wrong (wrong label, missing label, or label should be removed)
    - NEEDS_REVIEW: Genuinely ambiguous, needs human review
 
 2. **Reasoning**: Cite specific evidence from the similar words
 
-3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
+3. **Suggested Label**:
+   - If INVALID and the word should have a CORE_LABEL, provide that label.
+   - If INVALID and the word should be unlabeled, use null.
+   - NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
 
 4. **Confidence**: low / medium / high
 
-**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
+**IMPORTANT**:
+- Correctly unlabeled words: use VALID with null suggested_label.
+- Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
 
 Respond with ONLY a JSON object:
 ```json
@@ -557,17 +544,22 @@ receipts from **{merchant_name}**. Analyze each issue and provide decisions.
 For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
 
 1. **Decision**:
-   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
-   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
+   - VALID: The current label state is correct (including "NONE (unlabeled)" for words that should stay unlabeled, like footer/legal/promotional text)
+   - INVALID: The current label state is wrong (wrong label, missing label, or label should be removed)
    - NEEDS_REVIEW: Genuinely ambiguous, needs human review
 
 2. **Reasoning**: Brief justification citing evidence
 
-3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
+3. **Suggested Label**:
+   - If INVALID and the word should have a CORE_LABEL, provide that label.
+   - If INVALID and the word should be unlabeled, use null.
+   - NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
 
 4. **Confidence**: low / medium / high
 
-**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
+**IMPORTANT**:
+- Correctly unlabeled words: use VALID with null suggested_label.
+- Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
 
 Respond with ONLY a JSON object containing a "reviews" array:
 ```json
@@ -709,8 +701,8 @@ Receipts analyzed from this merchant: {merchant_receipt_count}
 
 ## Your Task
 For each issue, decide:
-- **VALID**: The current label is correct
-- **INVALID**: The label is wrong - provide the correct label
+- **VALID**: The current label state is correct (including words that should stay unlabeled)
+- **INVALID**: The current label state is wrong (wrong label, missing label, or label should be removed)
 - **NEEDS_REVIEW**: Uncertain - needs human review
 
 Consider:
@@ -721,7 +713,8 @@ Consider:
 
 **IMPORTANT**:
 - Use ONLY labels listed in CORE_LABELS above.
-- If the word should remain unlabeled (promo/legal/footer text), use VALID with null suggested_label.
+- Correctly unlabeled words: use VALID with null suggested_label.
+- Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
 
 Respond with ONLY a JSON object:
 ```json
@@ -743,9 +736,7 @@ You MUST provide exactly {len(issues_with_context)} reviews, one for each issue 
     return prompt
 
 
-def _build_legacy_similar_text(
-    similar_evidence: list[dict[str, Any]], idx: int
-) -> str:
+def _build_legacy_similar_text(similar_evidence: list[dict[str, Any]], idx: int) -> str:
     """Build similar text from legacy similar_evidence format."""
     similar_lines = []
     for e_idx, e in enumerate(similar_evidence[:10]):
@@ -794,9 +785,7 @@ def _build_legacy_similar_text(
             line += f" | {'; '.join(invalidated_info)}"
         similar_lines.append(line)
 
-    return (
-        "\n".join(similar_lines) if similar_lines else "No similar words found"
-    )
+    return "\n".join(similar_lines) if similar_lines else "No similar words found"
 
 
 def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
@@ -818,12 +807,10 @@ def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
     ]
 
     if non_culprits:
-        drill_down_lines.append(
-            f"Normal positions ({len(non_culprits)} words):"
-        )
-        for w in sorted(
-            non_culprits, key=lambda x: _get_y_position(x.get("position"))
-        )[:5]:
+        drill_down_lines.append(f"Normal positions ({len(non_culprits)} words):")
+        for w in sorted(non_culprits, key=lambda x: _get_y_position(x.get("position")))[
+            :5
+        ]:
             y = _get_y_position(w.get("position"))
             drill_down_lines.append(f'  - "{w.get("text", "?")}" at y={y:.2f}')
 
@@ -850,6 +837,90 @@ def _build_patterns_text(line_item_patterns: Optional[dict]) -> str:
 """
 
 
+def _normalize_suggested_label(raw_label: Any) -> Optional[str]:
+    """Normalize suggested_label to a valid CORE_LABEL, otherwise None."""
+    if raw_label is None:
+        return None
+
+    label_text = str(raw_label).strip().upper()
+    if not label_text:
+        return None
+
+    if label_text in CORE_LABELS_SET:
+        return label_text
+
+    logger.debug(
+        "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+        raw_label,
+    )
+    return None
+
+
+def _infer_label_from_reasoning(reasoning: str) -> Optional[str]:
+    """Infer a CORE_LABEL from reasoning text when phrased as assignment."""
+    if not reasoning:
+        return None
+
+    upper_reasoning = reasoning.upper()
+    assignment_markers = (
+        r"\bSHOULD BE\b",
+        r"\bLABEL SHOULD BE\b",
+        r"\bCORRECT LABEL\b",
+        r"\bSET TO\b",
+        r"\bMARK AS\b",
+        r"\bUSE\b",
+    )
+    if not any(re.search(pattern, upper_reasoning) for pattern in assignment_markers):
+        return None
+
+    for label in sorted(CORE_LABELS_SET, key=len, reverse=True):
+        label_token = re.escape(label)
+        label_with_spaces = re.escape(label.replace("_", " "))
+
+        assignment_patterns = (
+            rf"(?:SHOULD BE|LABEL SHOULD BE|CORRECT LABEL(?: IS)?|SET TO|MARK AS|USE)\s+(?:THE\s+)?(?:A\s+)?{label_token}\b",
+            rf"(?:SHOULD BE|LABEL SHOULD BE|CORRECT LABEL(?: IS)?|SET TO|MARK AS|USE)\s+(?:THE\s+)?(?:A\s+)?{label_with_spaces}\b",
+        )
+        if any(re.search(pattern, upper_reasoning) for pattern in assignment_patterns):
+            return label
+
+    return None
+
+
+def _normalize_review_result(review: dict[str, Any]) -> dict[str, Any]:
+    """Normalize/validate a parsed review decision payload."""
+    decision = str(review.get("decision", "NEEDS_REVIEW")).strip().upper()
+    if decision not in {"VALID", "INVALID", "NEEDS_REVIEW"}:
+        decision = "NEEDS_REVIEW"
+
+    confidence = str(review.get("confidence", "medium")).strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        confidence = "medium"
+
+    reasoning_value = review.get("reasoning")
+    reasoning = (
+        str(reasoning_value).strip()
+        if reasoning_value is not None and str(reasoning_value).strip()
+        else "No reasoning provided"
+    )
+
+    suggested_label = _normalize_suggested_label(review.get("suggested_label"))
+    if decision != "INVALID":
+        # For VALID/NEEDS_REVIEW, any suggested label is inconsistent.
+        suggested_label = None
+    elif suggested_label is None:
+        inferred_label = _infer_label_from_reasoning(reasoning)
+        if inferred_label:
+            suggested_label = inferred_label
+
+    return {
+        "decision": decision,
+        "reasoning": reasoning,
+        "suggested_label": suggested_label,
+        "confidence": confidence,
+    }
+
+
 # =============================================================================
 # Response Parsing
 # =============================================================================
@@ -866,36 +937,9 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
 
     try:
         result = json.loads(response_text)
-        decision = result.get("decision", "NEEDS_REVIEW")
-        if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
-            decision = "NEEDS_REVIEW"
-
-        confidence = result.get("confidence", "medium")
-        if confidence not in ("low", "medium", "high"):
-            confidence = "medium"
-
-        # Validate suggested_label is in CORE_LABELS
-        suggested_label = result.get("suggested_label")
-        if suggested_label:
-            suggested_upper = suggested_label.upper()
-            if suggested_upper not in CORE_LABELS_SET:
-                # Debug level: This is expected behavior - LLM may suggest
-                # invalid labels like "OTHER" which we reject, causing the
-                # word to remain unlabeled (which is often correct)
-                logger.debug(
-                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
-                    suggested_label,
-                )
-                suggested_label = None
-            else:
-                suggested_label = suggested_upper  # Normalize to uppercase
-
-        return {
-            "decision": decision,
-            "reasoning": result.get("reasoning", "No reasoning provided"),
-            "suggested_label": suggested_label,
-            "confidence": confidence,
-        }
+        if not isinstance(result, dict):
+            raise json.JSONDecodeError("Expected JSON object", response_text, 0)
+        return _normalize_review_result(result)
     except json.JSONDecodeError:
         return {
             "decision": "NEEDS_REVIEW",
@@ -953,7 +997,10 @@ def parse_batched_llm_response(
     # Try structured validation (validates schema and label values)
     try:
         structured_response = BatchedReviewResponse.model_validate(result)
-        return structured_response.to_ordered_list(expected_count)
+        return [
+            _normalize_review_result(review)
+            for review in structured_response.to_ordered_list(expected_count)
+        ]
     except ValidationError as e:
         logger.debug(
             "Structured validation failed, falling back to manual parsing: %s",
@@ -979,36 +1026,7 @@ def parse_batched_llm_response(
         if idx is None or not isinstance(idx, int):
             continue
 
-        decision = review.get("decision", "NEEDS_REVIEW")
-        if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
-            decision = "NEEDS_REVIEW"
-
-        confidence = review.get("confidence", "medium")
-        if confidence not in ("low", "medium", "high"):
-            confidence = "medium"
-
-        # Validate suggested_label is in CORE_LABELS
-        suggested_label = review.get("suggested_label")
-        if suggested_label:
-            suggested_upper = suggested_label.upper()
-            if suggested_upper not in CORE_LABELS_SET:
-                # Debug level: This is expected behavior - LLM may suggest
-                # invalid labels like "OTHER" which we reject, causing the
-                # word to remain unlabeled (which is often correct)
-                logger.debug(
-                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
-                    suggested_label,
-                )
-                suggested_label = None
-            else:
-                suggested_label = suggested_upper  # Normalize to uppercase
-
-        reviews_by_index[idx] = {
-            "decision": decision,
-            "reasoning": review.get("reasoning", "No reasoning provided"),
-            "suggested_label": suggested_label,
-            "confidence": confidence,
-        }
+        reviews_by_index[idx] = _normalize_review_result(review)
 
     # Build ordered list, using fallback for missing indices
     ordered_reviews = []
@@ -1068,12 +1086,15 @@ def invoke_with_structured_output(
         structured_llm = llm.with_structured_output(BatchedReviewResponse)
 
         # Invoke with structured output
-        response: BatchedReviewResponse = structured_llm.invoke(
+        structured_response: BatchedReviewResponse = structured_llm.invoke(
             [HumanMessage(content=prompt)],
             config={"run_name": run_name},
         )
 
-        return response.to_ordered_list(expected_count)
+        return [
+            _normalize_review_result(review)
+            for review in structured_response.to_ordered_list(expected_count)
+        ]
 
     except Exception as e:
         logger.warning(
