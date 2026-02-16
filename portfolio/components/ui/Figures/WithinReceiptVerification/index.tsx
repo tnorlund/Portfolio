@@ -646,6 +646,31 @@ const WithinReceiptVerification: React.FC = () => {
     };
   }, [inView, hasReceipts]);
 
+  const flyingElement = useMemo(() => {
+    if (!showFlyingReceipt || !flyingReceipt || !formatSupport) return null;
+    const imageUrl = getBestImageUrl(flyingReceipt, formatSupport);
+    if (!imageUrl) return null;
+    const aspect = flyingReceipt.width / flyingReceipt.height;
+    let dh = Math.min(500, flyingReceipt.height);
+    let dw = dh * aspect;
+    if (dw > 350) { dw = 350; dh = dw / aspect; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
+        imageUrl={imageUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingReceipt);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlyingReceipt, flyingReceipt, formatSupport]);
+
   if (loading) {
     return (
       <div ref={ref} className={styles.loading}>
@@ -672,31 +697,6 @@ const WithinReceiptVerification: React.FC = () => {
 
   const nextIndex = (currentIndex + 1) % receipts.length;
   const nextReceipt = receipts[nextIndex];
-
-  const flyingElement = useMemo(() => {
-    if (!showFlyingReceipt || !flyingReceipt || !formatSupport) return null;
-    const imageUrl = getBestImageUrl(flyingReceipt, formatSupport);
-    if (!imageUrl) return null;
-    const aspect = flyingReceipt.width / flyingReceipt.height;
-    let dh = Math.min(500, flyingReceipt.height);
-    let dw = dh * aspect;
-    if (dw > 350) { dw = 350; dh = dw / aspect; }
-    return (
-      <FlyingReceipt
-        key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
-        imageUrl={imageUrl}
-        displayWidth={dw}
-        displayHeight={dh}
-        receiptId={`${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
-        onImageError={(e) => {
-          const fallback = getJpegFallbackUrl(flyingReceipt);
-          if ((e.target as HTMLImageElement).src !== fallback) {
-            (e.target as HTMLImageElement).src = fallback;
-          }
-        }}
-      />
-    );
-  }, [showFlyingReceipt, flyingReceipt, formatSupport]);
 
   return (
     <div ref={ref} className={styles.container}>

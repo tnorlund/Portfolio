@@ -586,6 +586,31 @@ export default function FinancialMathOverlay() {
     };
   }, [inView, hasReceipts, computeRevealed]);
 
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const ar = flyingItem.width / flyingItem.height;
+    let dh = Math.min(500, flyingItem.height);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
+
   // ─── Render ─────────────────────────────────────────────────────────────
 
   if (initialLoading) {
@@ -617,31 +642,6 @@ export default function FinancialMathOverlay() {
   const nextReceipt = isPoolExhausted
     ? receipts[nextIndex % receipts.length]
     : receipts[nextIndex];
-
-  const flyingElement = useMemo(() => {
-    if (!showFlying || !flyingItem || !formatSupport) return null;
-    const fUrl = getBestImageUrl(flyingItem, formatSupport);
-    if (!fUrl) return null;
-    const ar = flyingItem.width / flyingItem.height;
-    let dh = Math.min(500, flyingItem.height);
-    let dw = dh * ar;
-    if (dw > 350) { dw = 350; dh = dw / ar; }
-    return (
-      <FlyingReceipt
-        key={`flying-${flyingItem.image_id}-${flyingItem.receipt_id}`}
-        imageUrl={fUrl}
-        displayWidth={dw}
-        displayHeight={dh}
-        receiptId={`${flyingItem.image_id}-${flyingItem.receipt_id}`}
-        onImageError={(e) => {
-          const fallback = getJpegFallbackUrl(flyingItem);
-          if ((e.target as HTMLImageElement).src !== fallback) {
-            (e.target as HTMLImageElement).src = fallback;
-          }
-        }}
-      />
-    );
-  }, [showFlying, flyingItem, formatSupport]);
 
   return (
     <div ref={ref} className={styles.container}>
