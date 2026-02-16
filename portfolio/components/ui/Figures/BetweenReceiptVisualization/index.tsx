@@ -1,4 +1,3 @@
-import { animated, to, useSpring } from "@react-spring/web";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
@@ -12,12 +11,13 @@ import {
 import { getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
-  calculateFlyingTransform,
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
-import { ImageFormatSupport, ReceiptFlowGeometry } from "../ReceiptFlow/types";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./BetweenReceiptVisualization.module.css";
 
 // Type guard to narrow union to ReviewDecision
@@ -57,25 +57,6 @@ const SCAN_DURATION = 3000;
 const HOLD_DURATION = 1500;
 const TRANSITION_DURATION = 600;
 
-// Layout constants
-const QUEUE_WIDTH = 120;
-const QUEUE_ITEM_WIDTH = 100;
-const QUEUE_ITEM_LEFT_INSET = 10;
-const CENTER_COLUMN_WIDTH = 350;
-const CENTER_COLUMN_HEIGHT = 500;
-const QUEUE_HEIGHT = 400;
-const COLUMN_GAP = 24;
-
-const FLOW_GEOMETRY: ReceiptFlowGeometry = {
-  queueItemWidth: QUEUE_ITEM_WIDTH,
-  queueWidth: QUEUE_WIDTH,
-  queueHeight: QUEUE_HEIGHT,
-  queueItemLeftInset: QUEUE_ITEM_LEFT_INSET,
-  centerColumnWidth: CENTER_COLUMN_WIDTH,
-  centerColumnHeight: CENTER_COLUMN_HEIGHT,
-  gap: COLUMN_GAP,
-};
-
 // Revealed card for tracking which review decisions are visible
 interface RevealedCard {
   key: string;
@@ -114,7 +95,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20;
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt, formatSupport, "thumbnail");
         const { width, height } = receipt;
@@ -132,7 +113,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
+              left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -157,90 +138,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// ─── FlyingReceipt ───────────────────────────────────────────────────
-
-interface FlyingReceiptProps {
-  receipt: LabelEvaluatorReceipt | null;
-  formatSupport: ImageFormatSupport | null;
-  isFlying: boolean;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-}) => {
-  const width = Math.max(receipt?.width ?? 100, 1);
-  const height = Math.max(receipt?.height ?? 150, 1);
-  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : "";
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = 350;
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const { startX, startY, startScale } = calculateFlyingTransform({
-    itemWidth: width,
-    itemHeight: height,
-    displayWidth,
-    leftOffset,
-    geometry: FLOW_GEOMETRY,
-  });
-
-  const { x, y, scale, rotate } = useSpring({
-    from: { x: startX, y: startY, scale: startScale, rotate: rotation },
-    to: { x: 0, y: 0, scale: 1, rotate: 0 },
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
-        onError={(e) => {
-          if (!receipt) return;
-          const fallback = getJpegFallbackUrl(receipt);
-          if (e.currentTarget.src !== fallback) {
-            e.currentTarget.src = fallback;
-          }
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -510,30 +407,17 @@ const BetweenReceiptVisualization: React.FC = () => {
   const [revealedCards, setRevealedCards] = useState<RevealedCard[]>([]);
   const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
-  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
-  // Control flying receipt visibility
-  useEffect(() => {
-    if (isTransitioning) {
-      const next = receipts.length > 0
-        ? receipts[(currentIndex + 1) % receipts.length]
-        : null;
-      setFlyingReceipt(next);
-      setShowFlyingReceipt(true);
-      return;
-    }
-    const timeout = setTimeout(() => {
-      setShowFlyingReceipt(false);
-      setFlyingReceipt(null);
-    }, 50);
-    return () => clearTimeout(timeout);
-  }, [isTransitioning, currentIndex, receipts]);
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+  );
 
   // Fetch data — filter to receipts with review decisions
   useEffect(() => {
@@ -720,14 +604,31 @@ const BetweenReceiptVisualization: React.FC = () => {
           />
         }
         flying={
-          showFlyingReceipt && flyingReceipt ? (
-            <FlyingReceipt
-              key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
-              receipt={flyingReceipt}
-              formatSupport={formatSupport}
-              isFlying={showFlyingReceipt}
-            />
-          ) : null
+          showFlying && flyingItem ? (() => {
+            const fUrl = getBestImageUrl(flyingItem, formatSupport!);
+            if (!fUrl) return null;
+            const fw = Math.max(flyingItem.width, 1);
+            const fh = Math.max(flyingItem.height, 1);
+            const ar = fw / fh;
+            let dh = Math.min(500, fh);
+            let dw = dh * ar;
+            if (dw > 350) { dw = 350; dh = dw / ar; }
+            return (
+              <FlyingReceipt
+                key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+                imageUrl={fUrl}
+                displayWidth={dw}
+                displayHeight={dh}
+                receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+                onImageError={(e) => {
+                  const fallback = getJpegFallbackUrl(flyingItem);
+                  if ((e.target as HTMLImageElement).src !== fallback) {
+                    (e.target as HTMLImageElement).src = fallback;
+                  }
+                }}
+              />
+            );
+          })() : null
         }
         next={
           isTransitioning && nextReceipt ? (

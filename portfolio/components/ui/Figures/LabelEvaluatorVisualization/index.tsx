@@ -1,4 +1,4 @@
-import { animated, to, useSpring, useTransition } from "@react-spring/web";
+import { animated, useSpring, useTransition } from "@react-spring/web";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
@@ -8,12 +8,13 @@ import {
 import { getBestImageUrl } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
-  calculateFlyingTransform,
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
-import { ImageFormatSupport, ReceiptFlowGeometry } from "../ReceiptFlow/types";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LabelEvaluatorVisualization.module.css";
 
 // Animation state - each scanner has independent progress
@@ -68,25 +69,6 @@ const MIN_PHASE_DURATION = 800;      // Minimum animation duration for visibilit
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
-// Layout constants - must match CSS values in LabelEvaluatorVisualization.module.css
-const QUEUE_WIDTH = 120;
-const QUEUE_ITEM_WIDTH = 100;
-const QUEUE_ITEM_LEFT_INSET = 10;
-const CENTER_COLUMN_WIDTH = 350;
-const CENTER_COLUMN_HEIGHT = 500;
-const QUEUE_HEIGHT = 400;
-const COLUMN_GAP = 24; // 1.5rem at 16px root
-
-const FLOW_GEOMETRY: ReceiptFlowGeometry = {
-  queueItemWidth: QUEUE_ITEM_WIDTH,
-  queueWidth: QUEUE_WIDTH,
-  queueHeight: QUEUE_HEIGHT,
-  queueItemLeftInset: QUEUE_ITEM_LEFT_INSET,
-  centerColumnWidth: CENTER_COLUMN_WIDTH,
-  centerColumnHeight: CENTER_COLUMN_HEIGHT,
-  gap: COLUMN_GAP,
-};
-
 // Tally layout constants - must match CSS values
 const LEGEND_WIDTH = 280;
 const LEGEND_PADDING = 32; // 1rem * 2 (left + right) at 16px root
@@ -132,7 +114,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20;
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         const { width, height } = receipt;
@@ -152,7 +134,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
+              left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -175,102 +157,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// Flying Receipt Component
-interface FlyingReceiptProps {
-  receipt: LabelEvaluatorReceipt | null;
-  formatSupport: ImageFormatSupport | null;
-  isFlying: boolean;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-}) => {
-  // Guard against zero/invalid dimensions to prevent divide-by-zero
-  const width = Math.max(receipt?.width ?? 100, 1);
-  const height = Math.max(receipt?.height ?? 150, 1);
-  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  // Calculate display dimensions with both height and width constraints
-  // to match how CSS constrains the final ReceiptViewer image
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = 350; // matches centerColumn max-width in CSS
-
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-
-  // For landscape receipts, cap width and recalculate height
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const { startX, startY, startScale } = calculateFlyingTransform({
-    itemWidth: width,
-    itemHeight: height,
-    displayWidth,
-    leftOffset,
-    geometry: FLOW_GEOMETRY,
-  });
-
-  const { x, y, scale, rotate } = useSpring({
-    from: {
-      x: startX,
-      y: startY,
-      scale: startScale,
-      rotate: rotation,
-    },
-    to: {
-      x: 0,
-      y: 0,
-      scale: 1,
-      rotate: 0,
-    },
-    reset: true,
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{
-          width: displayWidth,
-          height: displayHeight,
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -1185,15 +1071,20 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
   );
 };
 
-const LabelEvaluatorVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
-    threshold: 0.3,
-    triggerOnce: false,
-  });
+// Inner component - only mounted when receipts are loaded
+interface LabelEvaluatorInnerProps {
+  observerRef: (node?: Element | null) => void;
+  inView: boolean;
+  receipts: LabelEvaluatorReceipt[];
+  formatSupport: ImageFormatSupport | null;
+}
 
-  const [receipts, setReceipts] = useState<LabelEvaluatorReceipt[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
+  observerRef,
+  inView,
+  receipts,
+  formatSupport,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [scannerState, setScannerState] = useState<ScannerState>({
@@ -1205,53 +1096,18 @@ const LabelEvaluatorVisualization: React.FC = () => {
     review: 0,
   });
   const [revealedDecisions, setRevealedDecisions] = useState<RevealedDecision[]>([]);
-  const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
-  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
-  // Control flying receipt visibility with delay to prevent flash.
-  // Snapshot the target receipt when transition starts to avoid showing
-  // the wrong receipt if currentIndex advances during the delay.
-  useEffect(() => {
-    if (isTransitioning) {
-      const next = receipts.length > 0 ? receipts[(currentIndex + 1) % receipts.length] : null;
-      setFlyingReceipt(next);
-      setShowFlyingReceipt(true);
-      return;
-    }
-
-    // Delay hiding to let the next receipt render first
-    const timeout = setTimeout(() => {
-      setShowFlyingReceipt(false);
-      setFlyingReceipt(null);
-    }, 50);
-    return () => clearTimeout(timeout);
-  }, [isTransitioning, currentIndex, receipts]);
-
-  // Fetch visualization data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await api.fetchLabelEvaluatorVisualization();
-        if (response && response.receipts) {
-          setReceipts(response.receipts);
-        }
-      } catch (err) {
-        console.error("Failed to fetch label evaluator data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+  );
 
   const currentReceipt = receipts[currentIndex];
 
@@ -1524,36 +1380,28 @@ const LabelEvaluatorVisualization: React.FC = () => {
     };
   }, [inView, receipts.length > 0, currentIndex]);
 
-  if (loading) {
-    return (
-      <div ref={ref} className={styles.loading}>
-        Loading label evaluator data...
-      </div>
-    );
-  }
+  const flyingImageUrl = useMemo(() => {
+    if (!formatSupport || !flyingItem) return null;
+    return getBestImageUrl(flyingItem, formatSupport);
+  }, [flyingItem, formatSupport]);
 
-  if (error) {
-    return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
-      </div>
-    );
-  }
-
-  if (receipts.length === 0) {
-    return (
-      <div ref={ref} className={styles.loading}>
-        No label evaluator data available
-      </div>
-    );
-  }
+  const flyingDims = useMemo(() => {
+    if (!flyingItem) return { w: 0, h: 0 };
+    const w = Math.max(flyingItem.width, 1);
+    const h = Math.max(flyingItem.height, 1);
+    const ar = w / h;
+    let dh = Math.min(500, h);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return { w: dw, h: dh };
+  }, [flyingItem]);
 
   // Get next receipt for flying animation (loops)
   const nextIndex = (currentIndex + 1) % receipts.length;
   const nextReceipt = receipts[nextIndex];
 
   return (
-    <div ref={ref} className={styles.container}>
+    <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
         layoutVars={
           {
@@ -1585,12 +1433,13 @@ const LabelEvaluatorVisualization: React.FC = () => {
           />
         }
         flying={
-          showFlyingReceipt && flyingReceipt ? (
+          showFlying && flyingItem && flyingImageUrl ? (
             <FlyingReceipt
-              key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
-              receipt={flyingReceipt}
-              formatSupport={formatSupport}
-              isFlying={showFlyingReceipt}
+              key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+              imageUrl={flyingImageUrl}
+              displayWidth={flyingDims.w}
+              displayHeight={flyingDims.h}
+              receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
             />
           ) : null
         }
@@ -1616,6 +1465,71 @@ const LabelEvaluatorVisualization: React.FC = () => {
         }
       />
     </div>
+  );
+};
+
+// Outer component - handles data fetching and loading guards
+const LabelEvaluatorVisualization: React.FC = () => {
+  const { ref, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+
+  const [receipts, setReceipts] = useState<LabelEvaluatorReceipt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const formatSupport = useImageFormatSupport();
+
+  // Fetch visualization data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await api.fetchLabelEvaluatorVisualization();
+        if (response && response.receipts) {
+          setReceipts(response.receipts);
+        }
+      } catch (err) {
+        console.error("Failed to fetch label evaluator data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div ref={ref} className={styles.loading}>
+        Loading label evaluator data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div ref={ref} className={styles.error}>
+        Error: {error}
+      </div>
+    );
+  }
+
+  if (receipts.length === 0) {
+    return (
+      <div ref={ref} className={styles.loading}>
+        No label evaluator data available
+      </div>
+    );
+  }
+
+  return (
+    <LabelEvaluatorInner
+      observerRef={ref}
+      inView={inView}
+      receipts={receipts}
+      formatSupport={formatSupport}
+    />
   );
 };
 

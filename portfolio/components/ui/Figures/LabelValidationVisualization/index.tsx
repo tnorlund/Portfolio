@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useSpring, useTransition, to } from "@react-spring/web";
+import { animated } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelValidationReceipt,
@@ -9,12 +9,12 @@ import {
 import { getBestImageUrl } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
-  calculateFlyingTransform,
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
-import { ImageFormatSupport, ReceiptFlowGeometry } from "../ReceiptFlow/types";
+import { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import styles from "./LabelValidationVisualization.module.css";
 
 // Animation state for two-tier validation
@@ -93,16 +93,6 @@ const MIN_PHASE_DURATION = 800;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
-const FLOW_GEOMETRY: ReceiptFlowGeometry = {
-  queueItemWidth: 100,
-  queueWidth: 280,
-  queueHeight: 400,
-  queueItemLeftInset: 90,
-  centerColumnWidth: 350,
-  centerColumnHeight: 500,
-  gap: 24,
-};
-
 // Generate SVG path for a pie slice from 12 o'clock, filling clockwise
 const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
   if (progress <= 0) return '';
@@ -153,7 +143,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   const STACK_GAP = 20;
 
   return (
-    <div className={styles.receiptQueue}>
+    <div className={styles.receiptQueue} data-rf-queue>
       {visibleReceipts.map((receipt, idx) => {
         const imageUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         const { width, height } = receipt;
@@ -197,100 +187,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         );
       })}
     </div>
-  );
-};
-
-// Flying Receipt Component
-interface FlyingReceiptProps {
-  receipt: LabelValidationReceipt | null;
-  formatSupport: ImageFormatSupport | null;
-  isFlying: boolean;
-  measuredContainerWidth?: number | null;
-}
-
-const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
-  receipt,
-  formatSupport,
-  isFlying,
-  measuredContainerWidth,
-}) => {
-  const width = receipt?.width ?? 100;
-  const height = receipt?.height ?? 150;
-  const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
-  const { rotation, leftOffset } = getQueuePosition(receiptId);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport);
-  }, [receipt, formatSupport]);
-
-  const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = measuredContainerWidth ?? 350;
-
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
-
-  const { startX, startY, startScale } = calculateFlyingTransform({
-    itemWidth: width,
-    itemHeight: height,
-    displayWidth,
-    leftOffset,
-    geometry: FLOW_GEOMETRY,
-  });
-
-  const { x, y, scale, rotate } = useSpring({
-    from: {
-      x: startX,
-      y: startY,
-      scale: startScale,
-      rotate: rotation,
-    },
-    to: {
-      x: 0,
-      y: 0,
-      scale: 1,
-      rotate: 0,
-    },
-    reset: true,
-    config: { tension: 120, friction: 18 },
-  });
-
-  if (!receipt || !imageUrl || !isFlying) return null;
-
-  const borderWidth = 1;
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
-  return (
-    <animated.div
-      className={styles.flyingReceipt}
-      style={{
-        transform: to(
-          [x, y, scale, rotate],
-          (xVal, yVal, scaleVal, rotateVal) =>
-            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
-        ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt="Flying receipt"
-        className={styles.flyingReceiptImage}
-        style={{
-          width: displayWidth,
-          height: displayHeight,
-        }}
-      />
-    </animated.div>
   );
 };
 
@@ -453,7 +349,6 @@ interface ReceiptViewerProps {
   validationState: ValidationState;
   phase: Phase;
   formatSupport: ImageFormatSupport | null;
-  onContainerMeasure?: (containerWidth: number) => void;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -461,21 +356,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   validationState,
   phase,
   formatSupport,
-  onContainerMeasure,
 }) => {
   const { words, width, height } = receipt;
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
-
-  const handleImageLoad = () => {
-    if (wrapperRef.current && onContainerMeasure) {
-      onContainerMeasure(wrapperRef.current.offsetWidth);
-    }
-  };
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -507,7 +394,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   return (
     <div className={styles.receiptViewer}>
-      <div ref={wrapperRef} className={styles.receiptImageWrapper}>
+      <div className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -516,7 +403,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
-            onLoad={handleImageLoad}
           />
           <svg
             className={styles.svgOverlay}
@@ -721,48 +607,32 @@ const ValidationLegend: React.FC<ValidationLegendProps> = ({
   );
 };
 
-const LabelValidationVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
-    threshold: 0.3,
-    triggerOnce: false,
-  });
+// Inner component - only mounted when receipts are loaded
+interface LabelValidationInnerProps {
+  observerRef: (node?: Element | null) => void;
+  inView: boolean;
+  receipts: LabelValidationReceipt[];
+  formatSupport: ImageFormatSupport | null;
+}
 
-  const [receipts, setReceipts] = useState<LabelValidationReceipt[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
+  observerRef,
+  inView,
+  receipts,
+  formatSupport,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [validationState, setValidationState] = useState<ValidationState>({
     chromaProgress: 0,
     llmProgress: 0,
   });
-  const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
-
-  // Fetch visualization data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await api.fetchLabelValidationVisualization();
-        if (response && response.receipts) {
-          setReceipts(response.receipts);
-        }
-      } catch (err) {
-        console.error("Failed to fetch label validation data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
 
   const currentReceipt = receipts[currentIndex];
 
@@ -875,35 +745,27 @@ const LabelValidationVisualization: React.FC = () => {
     };
   }, [inView, receipts.length, currentIndex]);
 
-  if (loading) {
-    return (
-      <div ref={ref} className={styles.loading}>
-        Loading label validation data...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
-      </div>
-    );
-  }
-
-  if (receipts.length === 0) {
-    return (
-      <div ref={ref} className={styles.loading}>
-        No label validation data available
-      </div>
-    );
-  }
-
   const nextIndex = (currentIndex + 1) % receipts.length;
   const nextReceipt = receipts[nextIndex];
 
+  const flyingImageUrl = useMemo(() => {
+    if (!formatSupport || !nextReceipt || !isTransitioning) return null;
+    return getBestImageUrl(nextReceipt, formatSupport);
+  }, [nextReceipt, formatSupport, isTransitioning]);
+
+  const flyingDims = useMemo(() => {
+    if (!nextReceipt) return { w: 0, h: 0 };
+    const w = nextReceipt.width;
+    const h = nextReceipt.height;
+    const ar = w / h;
+    let dh = Math.min(500, h);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return { w: dw, h: dh };
+  }, [nextReceipt]);
+
   return (
-    <div ref={ref} className={styles.container}>
+    <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
         layoutVars={
           {
@@ -931,17 +793,17 @@ const LabelValidationVisualization: React.FC = () => {
             validationState={validationState}
             phase={phase}
             formatSupport={formatSupport}
-            onContainerMeasure={setMeasuredContainerWidth}
           />
         }
         flying={
-          isTransitioning && nextReceipt ? (
+          isTransitioning && nextReceipt && flyingImageUrl ? (
             <FlyingReceipt
               key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-              receipt={nextReceipt}
-              formatSupport={formatSupport}
-              isFlying={isTransitioning}
-              measuredContainerWidth={measuredContainerWidth}
+              imageUrl={flyingImageUrl}
+              displayWidth={flyingDims.w}
+              displayHeight={flyingDims.h}
+              receiptId={`${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
+              queueItemLeftInset={90}
             />
           ) : null
         }
@@ -963,6 +825,71 @@ const LabelValidationVisualization: React.FC = () => {
         }
       />
     </div>
+  );
+};
+
+// Outer component - handles data fetching and loading guards
+const LabelValidationVisualization: React.FC = () => {
+  const { ref, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+
+  const [receipts, setReceipts] = useState<LabelValidationReceipt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const formatSupport = useImageFormatSupport();
+
+  // Fetch visualization data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await api.fetchLabelValidationVisualization();
+        if (response && response.receipts) {
+          setReceipts(response.receipts);
+        }
+      } catch (err) {
+        console.error("Failed to fetch label validation data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div ref={ref} className={styles.loading}>
+        Loading label validation data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div ref={ref} className={styles.error}>
+        Error: {error}
+      </div>
+    );
+  }
+
+  if (receipts.length === 0) {
+    return (
+      <div ref={ref} className={styles.loading}>
+        No label validation data available
+      </div>
+    );
+  }
+
+  return (
+    <LabelValidationInner
+      observerRef={ref}
+      inView={inView}
+      receipts={receipts}
+      formatSupport={formatSupport}
+    />
   );
 };
 

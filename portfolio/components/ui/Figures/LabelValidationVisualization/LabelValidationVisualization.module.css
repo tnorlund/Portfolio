@@ -32,24 +32,6 @@
   pointer-events: none;
 }
 
-/* Flying receipt - animates from queue to center */
-.flyingReceipt {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform-origin: center center;
-  z-index: 10;
-  overflow: hidden;
-}
-
-.flyingReceiptImage {
-  display: block;
-  max-height: 500px;
-  max-width: 100%;
-  object-fit: contain;
-  border: 1px solid #ccc;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
 
 /* Receipt Viewer */
 .receiptViewer {

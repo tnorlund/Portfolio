@@ -1,4 +1,4 @@
-import { ReceiptFlowGeometry, ReceiptQueuePosition } from "./types";
+import { ReceiptQueuePosition } from "./types";
 
 export const getQueuePosition = (receiptId: string): ReceiptQueuePosition => {
   const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -32,46 +32,4 @@ export const getVisibleQueueIndices = (
   }
 
   return indices;
-};
-
-export interface FlyingTransformInput {
-  itemWidth: number;
-  itemHeight: number;
-  displayWidth: number;
-  leftOffset: number;
-  geometry: ReceiptFlowGeometry;
-}
-
-export interface FlyingTransformResult {
-  startX: number;
-  startY: number;
-  startScale: number;
-}
-
-export const calculateFlyingTransform = ({
-  itemWidth,
-  itemHeight,
-  displayWidth,
-  leftOffset,
-  geometry,
-}: FlyingTransformInput): FlyingTransformResult => {
-  const safeItemWidth = Math.max(itemWidth, 1);
-  const safeItemHeight = Math.max(itemHeight, 1);
-  const safeDisplayWidth = Math.max(displayWidth, 1);
-
-  const queueItemCenterX = geometry.queueItemLeftInset + leftOffset + geometry.queueItemWidth / 2;
-  const distanceToQueueItemCenter =
-    geometry.centerColumnWidth / 2 +
-    geometry.gap +
-    (geometry.queueWidth - queueItemCenterX);
-
-  const queueItemHeight = (safeItemHeight / safeItemWidth) * geometry.queueItemWidth;
-  const queueItemCenterFromTop =
-    (geometry.centerColumnHeight - geometry.queueHeight) / 2 + queueItemHeight / 2;
-
-  return {
-    startX: -distanceToQueueItemCenter,
-    startY: queueItemCenterFromTop - geometry.centerColumnHeight / 2,
-    startScale: geometry.queueItemWidth / safeDisplayWidth,
-  };
 };

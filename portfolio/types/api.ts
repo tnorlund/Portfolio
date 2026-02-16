@@ -570,7 +570,7 @@ export interface LabelEvaluatorGeometric {
 export interface LabelEvaluatorReceipt {
   image_id: string;
   receipt_id: number;
-  merchant_name?: string;
+  merchant_name: string | null;
   issues_found: number;
   words: LabelEvaluatorWord[];
   geometric: LabelEvaluatorGeometric;
@@ -728,7 +728,7 @@ export interface FinancialMathEquation {
 export interface FinancialMathReceipt {
   image_id: string;
   receipt_id: number;
-  merchant_name: string;
+  merchant_name: string | null;
   trace_id: string;
   equations: FinancialMathEquation[];
   summary: {
@@ -737,14 +737,14 @@ export interface FinancialMathReceipt {
     has_needs_review: boolean;
   };
   // CDN image keys (populated by Spark cache enrichment)
-  cdn_s3_key?: string;
+  cdn_s3_key: string;
   cdn_webp_s3_key?: string;
   cdn_avif_s3_key?: string;
   cdn_medium_s3_key?: string;
   cdn_medium_webp_s3_key?: string;
   cdn_medium_avif_s3_key?: string;
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
 }
 
 export interface FinancialMathResponse {
@@ -861,8 +861,8 @@ export interface WithinReceiptVerificationReceipt {
   cdn_medium_s3_key?: string;
   cdn_medium_webp_s3_key?: string;
   cdn_medium_avif_s3_key?: string;
-  width: number | null;
-  height: number | null;
+  width: number;
+  height: number;
 }
 
 export interface WithinReceiptVerificationResponse {
