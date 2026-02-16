@@ -64,13 +64,24 @@ class OperationLogger:
         """Log debug message with additional context."""
         self._log_with_context(logging.DEBUG, message, **kwargs)
 
+    def exception(self, message: str, **kwargs):
+        """Log error message with exception traceback."""
+        self._log_with_context(logging.ERROR, message, exc_info=True, **kwargs)
+
     def _log_with_context(self, level: int, message: str, **kwargs):
         """Log message with correlation ID and extra context."""
+        import sys
+
+        exc_info = kwargs.pop("exc_info", None)
+        if exc_info is True:
+            exc_info = sys.exc_info()
+        elif exc_info is False:
+            exc_info = None
+
         extra_fields = {"correlation_id": self.correlation_id, **kwargs}
 
-        # Create a new LogRecord with extra fields
         record = self.logger.makeRecord(
-            self.logger.name, level, "", 0, message, (), None
+            self.logger.name, level, "", 0, message, (), exc_info
         )
         record.extra_fields = extra_fields
         self.logger.handle(record)
@@ -92,7 +103,7 @@ class OperationLogger:
             yield operation_id
         except Exception as e:
             duration = time.time() - start_time
-            self.error(
+            self.exception(
                 f"Operation failed: {operation_name}",
                 operation_id=operation_id,
                 operation_name=operation_name,
