@@ -70,3 +70,19 @@ def test_parse_batched_llm_response_normalizes_invalid_and_valid_cases():
     assert result[0]["suggested_label"] == "GRAND_TOTAL"
     assert result[1]["decision"] == "VALID"
     assert result[1]["suggested_label"] is None
+
+
+@pytest.mark.unit
+def test_parse_llm_response_does_not_infer_from_because_use_substring():
+    """`USE` marker should not match inside words like `because`."""
+    payload = {
+        "decision": "INVALID",
+        "reasoning": "Wrong because tax details are footer text.",
+        "suggested_label": "OTHER",
+        "confidence": "medium",
+    }
+
+    result = parse_llm_response(json.dumps(payload))
+
+    assert result["decision"] == "INVALID"
+    assert result["suggested_label"] is None

@@ -862,17 +862,15 @@ def _infer_label_from_reasoning(reasoning: str) -> Optional[str]:
         return None
 
     upper_reasoning = reasoning.upper()
-    if not any(
-        marker in upper_reasoning
-        for marker in (
-            "SHOULD BE",
-            "LABEL SHOULD BE",
-            "CORRECT LABEL",
-            "SET TO",
-            "MARK AS",
-            "USE",
-        )
-    ):
+    assignment_markers = (
+        r"\bSHOULD BE\b",
+        r"\bLABEL SHOULD BE\b",
+        r"\bCORRECT LABEL\b",
+        r"\bSET TO\b",
+        r"\bMARK AS\b",
+        r"\bUSE\b",
+    )
+    if not any(re.search(pattern, upper_reasoning) for pattern in assignment_markers):
         return None
 
     for label in sorted(CORE_LABELS_SET, key=len, reverse=True):

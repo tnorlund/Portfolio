@@ -1339,22 +1339,34 @@ async def unified_receipt_evaluator(
                         # Then short-circuit high-consensus cases without an LLM
                         # call to reduce latency/cost and make decision provenance
                         # explicit in outputs.
-                        consensus_threshold = float(
-                            os.environ.get(
-                                "LLM_REVIEW_CONSENSUS_THRESHOLD", "0.75"
-                            )
+                        raw_threshold = os.environ.get(
+                            "LLM_REVIEW_CONSENSUS_THRESHOLD", "0.75"
                         )
+                        try:
+                            consensus_threshold = float(raw_threshold)
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                "Invalid LLM_REVIEW_CONSENSUS_THRESHOLD '%s'; "
+                                "falling back to 0.75",
+                                raw_threshold,
+                            )
+                            consensus_threshold = 0.75
                         consensus_threshold = min(
                             max(consensus_threshold, 0.0), 1.0
                         )
-                        consensus_min_evidence = max(
-                            1,
-                            int(
-                                os.environ.get(
-                                    "LLM_REVIEW_CONSENSUS_MIN_EVIDENCE", "4"
-                                )
-                            ),
+                        raw_min_evidence = os.environ.get(
+                            "LLM_REVIEW_CONSENSUS_MIN_EVIDENCE", "4"
                         )
+                        try:
+                            parsed_min_evidence = int(raw_min_evidence)
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                "Invalid LLM_REVIEW_CONSENSUS_MIN_EVIDENCE '%s'; "
+                                "falling back to 4",
+                                raw_min_evidence,
+                            )
+                            parsed_min_evidence = 4
+                        consensus_min_evidence = max(1, parsed_min_evidence)
 
                         issues_with_context = []
                         for issue_index, issue in enumerate(
