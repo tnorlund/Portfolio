@@ -49,6 +49,9 @@ class TimeoutProtection:
     def set_lambda_context(self, context):
         """Set Lambda context for accurate timeout tracking.
 
+        Called at the start of each invocation so timing resets correctly
+        on warm-start container reuse.
+
         Args:
             context: AWS Lambda context object
         """
@@ -60,20 +63,28 @@ class TimeoutProtection:
                 context.get_remaining_time_in_millis() / 1000
             )
             self._has_context = True
+            # Reset start_time so elapsed tracking is correct for this
+            # invocation — the global singleton persists across warm starts.
+            self.start_time = time.time()
 
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
-        elapsed = time.time() - self.start_time
-        # No real context: return generous default
-        if not self._has_context:
-            return float(os.environ.get("DEFAULT_REMAINING_SECONDS", "300"))
-        remaining = self.lambda_timeout - elapsed
-        if remaining <= 0:
-            return 0.0
-        return remaining
+        # Use the live Lambda context method when available — it returns
+        # the authoritative remaining time directly from the runtime.
+        if self._has_context and hasattr(
+            self, "_lambda_context_remaining_time_ms"
+        ):
+            remaining_ms = self._lambda_context_remaining_time_ms()
+            return max(remaining_ms / 1000.0, 0.0)
+        return float(os.environ.get("DEFAULT_REMAINING_SECONDS", "300"))
 
     def get_elapsed_time(self) -> float:
         """Get elapsed execution time in seconds."""
+        if self._has_context and hasattr(
+            self, "_lambda_context_remaining_time_ms"
+        ):
+            remaining_ms = self._lambda_context_remaining_time_ms()
+            return self.lambda_timeout - (remaining_ms / 1000.0)
         return time.time() - self.start_time
 
     def is_approaching_timeout(self) -> bool:
