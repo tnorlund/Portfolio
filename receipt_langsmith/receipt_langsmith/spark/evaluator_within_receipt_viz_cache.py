@@ -423,12 +423,12 @@ def build_within_receipt_cache(
                 "cdn_medium_avif_s3_key",
             ):
                 val = data_row.get(key)
-                if val:
+                if val is not None:
                     cdn_keys[key] = val
 
         # Width / height
-        width = data_row.get("width", 0) if data_row else 0
-        height = data_row.get("height", 0) if data_row else 0
+        width = (data_row.get("width", 0) or 0) if data_row else 0
+        height = (data_row.get("height", 0) or 0) if data_row else 0
 
         result: dict[str, Any] = {
             "image_id": image_id,
