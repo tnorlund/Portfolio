@@ -10,8 +10,8 @@
 
 /* Receipt Queue - Left Column */
 .receiptQueue {
-  width: 120px;
-  height: 400px;
+  width: var(--rf-queue-width, 120px);
+  height: var(--rf-queue-height, 400px);
   position: relative;
   flex-shrink: 0;
   z-index: 1;
@@ -82,6 +82,11 @@
   flex-shrink: 0;
   overflow-y: auto;
   max-height: 500px;
+  transition: opacity 0.3s ease;
+}
+
+.evidencePanelHidden {
+  opacity: 0;
 }
 
 /* Evidence Card */
@@ -207,6 +212,11 @@
   -webkit-box-orient: vertical;
 }
 
+/* Hidden on mobile only */
+.mobileHidden {
+  display: contents;
+}
+
 /* Overflow indicator for mobile */
 .overflowIndicator {
   display: none;
@@ -269,6 +279,10 @@
     max-height: none;
     overflow-y: visible;
     padding: 0;
+  }
+
+  .mobileHidden {
+    display: none;
   }
 
   .overflowIndicator {

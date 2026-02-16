@@ -5,6 +5,8 @@
   top: 50%;
   transform-origin: center center;
   z-index: 10;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
 
@@ -13,6 +15,4 @@
   max-height: 500px;
   max-width: 100%;
   object-fit: contain;
-  border: 1px solid #ccc;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }

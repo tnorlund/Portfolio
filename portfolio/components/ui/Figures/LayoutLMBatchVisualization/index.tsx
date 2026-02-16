@@ -595,21 +595,25 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     getNextReceipt,
   );
 
-  // Compute display dimensions for the flying receipt
-  const flyingImageUrl = useMemo(() => {
-    if (!formatSupport || !flyingItem) return null;
-    return getBestImageUrl(flyingItem.original.receipt, formatSupport);
-  }, [flyingItem, formatSupport]);
-
-  const { flyingDisplayWidth, flyingDisplayHeight } = useMemo(() => {
-    if (!flyingItem) return { flyingDisplayWidth: 0, flyingDisplayHeight: 0 };
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem.original.receipt, formatSupport);
+    if (!fUrl) return null;
     const { width, height } = flyingItem.original.receipt;
     const ar = width / height;
     let dh = Math.min(500, height);
     let dw = dh * ar;
     if (dw > 350) { dw = 350; dh = dw / ar; }
-    return { flyingDisplayWidth: dw, flyingDisplayHeight: dh };
-  }, [flyingItem]);
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={flyingItem.receipt_id}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   const currentReceipt = receipts[currentReceiptIndex];
 
@@ -651,17 +655,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
             formatSupport={formatSupport}
           />
         }
-        flying={
-          showFlying && flyingItem && flyingImageUrl ? (
-            <FlyingReceipt
-              key={`flying-${flyingItem.receipt_id}`}
-              imageUrl={flyingImageUrl}
-              displayWidth={flyingDisplayWidth}
-              displayHeight={flyingDisplayHeight}
-              receiptId={flyingItem.receipt_id}
-            />
-          ) : null
-        }
+        flying={flyingElement}
         next={
           isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer

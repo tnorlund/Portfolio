@@ -86,7 +86,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
     return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, true).map(
       (idx) => receipts[idx]
     );
-  }, [receipts, currentIndex]);
+  }, [receipts, currentIndex, maxVisible]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
     return <div className={styles.receiptQueue} />;
@@ -349,46 +349,30 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
 // ─── EvidencePanel ───────────────────────────────────────────────────
 
-const MOBILE_MAX_CARDS = 3;
-
 interface EvidencePanelProps {
   revealedCards: RevealedCard[];
   isTransitioning?: boolean;
 }
 
 const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards, isTransitioning = false }) => {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
-  const visibleCards = isMobile
-    ? revealedCards.slice(0, MOBILE_MAX_CARDS)
-    : revealedCards;
-  const hiddenCount = isMobile
-    ? Math.max(0, revealedCards.length - MOBILE_MAX_CARDS)
-    : 0;
-
   return (
     <div
-      className={styles.evidencePanel}
-      style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}
+      className={`${styles.evidencePanel}${isTransitioning ? ` ${styles.evidencePanelHidden}` : ""}`}
     >
-      {visibleCards.map((card) => (
-        <EvidenceCard
+      {revealedCards.map((card, idx) => (
+        <div
           key={card.key}
-          decision={card.decision}
-          word={card.word}
-        />
+          className={idx >= 3 ? styles.mobileHidden : undefined}
+        >
+          <EvidenceCard
+            decision={card.decision}
+            word={card.word}
+          />
+        </div>
       ))}
-      {hiddenCount > 0 && (
+      {revealedCards.length > 3 && (
         <div className={styles.overflowIndicator}>
-          +{hiddenCount} more
+          +{revealedCards.length - 3} more
         </div>
       )}
     </div>
@@ -445,6 +429,33 @@ const BetweenReceiptVisualization: React.FC = () => {
   }, []);
 
   const currentReceipt = receipts[currentIndex];
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const fw = Math.max(flyingItem.width, 1);
+    const fh = Math.max(flyingItem.height, 1);
+    const ar = fw / fh;
+    let dh = Math.min(500, fh);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   // Build word lookup for current receipt
   const wordLookup = useMemo(() => {
@@ -607,33 +618,7 @@ const BetweenReceiptVisualization: React.FC = () => {
             formatSupport={formatSupport}
           />
         }
-        flying={
-          showFlying && flyingItem ? (() => {
-            const fUrl = getBestImageUrl(flyingItem, formatSupport!);
-            if (!fUrl) return null;
-            const fw = Math.max(flyingItem.width, 1);
-            const fh = Math.max(flyingItem.height, 1);
-            const ar = fw / fh;
-            let dh = Math.min(500, fh);
-            let dw = dh * ar;
-            if (dw > 350) { dw = 350; dh = dw / ar; }
-            return (
-              <FlyingReceipt
-                key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
-                imageUrl={fUrl}
-                displayWidth={dw}
-                displayHeight={dh}
-                receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
-                onImageError={(e) => {
-                  const fallback = getJpegFallbackUrl(flyingItem);
-                  if ((e.target as HTMLImageElement).src !== fallback) {
-                    (e.target as HTMLImageElement).src = fallback;
-                  }
-                }}
-              />
-            );
-          })() : null
-        }
+        flying={flyingElement}
         next={
           isTransitioning && nextReceipt ? (
             <ReceiptViewer

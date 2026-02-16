@@ -1110,6 +1110,39 @@ def _build_evaluator_item_key(
     return f"{prefix}/{image_id}_{receipt_id}.json"
 
 
+def _clean_cache_prefix(
+    s3_client: Any,
+    bucket: str,
+    prefix: str,
+) -> None:
+    """Delete all existing objects under a viz-cache prefix.
+
+    This prevents stale files from previous runs from being served
+    alongside fresh results.
+    """
+    paginator = s3_client.get_paginator("list_objects_v2")
+    to_delete: list[dict[str, str]] = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=f"{prefix}/"):
+        for obj in page.get("Contents", []):
+            to_delete.append({"Key": obj["Key"]})
+
+    if not to_delete:
+        return
+
+    # delete_objects accepts up to 1000 keys per call
+    for i in range(0, len(to_delete), 1000):
+        batch = to_delete[i : i + 1000]
+        s3_client.delete_objects(
+            Bucket=bucket, Delete={"Objects": batch}
+        )
+    logger.info(
+        "Cleaned %d stale objects from %s/%s/",
+        len(to_delete),
+        bucket,
+        prefix,
+    )
+
+
 def _write_evaluator_cache_parallel(
     spark: SparkSession,
     bucket: str,
@@ -1232,6 +1265,10 @@ def run_evaluator_viz_cache(
         ("within-receipt", build_within_receipt_cache, False),
     ]
 
+    # Clean stale cache files from previous runs before writing new ones.
+    for prefix, _, _ in helpers:
+        _clean_cache_prefix(s3_client, cache_bucket, prefix)
+
     failures: list[str] = []
     helper_counts: dict[str, int] = {}
 
@@ -1257,6 +1294,7 @@ def run_evaluator_viz_cache(
                     rows=trace_rows,
                     unified_rows=unified_rows,
                     data_rows=data_rows,
+                    receipt_lookup=receipt_lookup or None,
                 )
             elif prefix in ("financial-math", "diff"):
                 results = helper_fn(

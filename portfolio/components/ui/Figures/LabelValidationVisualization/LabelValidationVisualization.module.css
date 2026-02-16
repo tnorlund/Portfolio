@@ -10,8 +10,8 @@
 
 /* Receipt Queue - Left Column */
 .receiptQueue {
-  width: 280px;
-  height: 400px;
+  width: var(--rf-queue-width, 280px);
+  height: var(--rf-queue-height, 400px);
   position: relative;
   flex-shrink: 0;
   z-index: 1;

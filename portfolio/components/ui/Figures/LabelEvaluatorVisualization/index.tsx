@@ -1381,21 +1381,26 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
     };
   }, [inView, hasReceipts, currentIndex]);
 
-  const flyingImageUrl = useMemo(() => {
-    if (!formatSupport || !flyingItem) return null;
-    return getBestImageUrl(flyingItem, formatSupport);
-  }, [flyingItem, formatSupport]);
-
-  const flyingDims = useMemo(() => {
-    if (!flyingItem) return { w: 0, h: 0 };
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
     const w = Math.max(flyingItem.width, 1);
     const h = Math.max(flyingItem.height, 1);
     const ar = w / h;
     let dh = Math.min(500, h);
     let dw = dh * ar;
     if (dw > 350) { dw = 350; dh = dw / ar; }
-    return { w: dw, h: dh };
-  }, [flyingItem]);
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   // Get next receipt for flying animation (loops)
   const nextIndex = (currentIndex + 1) % receipts.length;
@@ -1433,17 +1438,7 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
             formatSupport={formatSupport}
           />
         }
-        flying={
-          showFlying && flyingItem && flyingImageUrl ? (
-            <FlyingReceipt
-              key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
-              imageUrl={flyingImageUrl}
-              displayWidth={flyingDims.w}
-              displayHeight={flyingDims.h}
-              receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
-            />
-          ) : null
-        }
+        flying={flyingElement}
         next={
           isTransitioning && nextReceipt ? (
             <ReceiptViewer

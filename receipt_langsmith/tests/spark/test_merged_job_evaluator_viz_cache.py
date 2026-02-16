@@ -249,12 +249,25 @@ class _FakeSparkSession:
         self.sparkContext = _FakeSparkContext()
 
 
+class _FakePaginator:
+    """Fake paginator that returns no objects (empty bucket)."""
+
+    def paginate(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [{"Contents": []}]
+
+
 class _FakeS3Client:
     def __init__(self) -> None:
         self.puts: list[dict[str, Any]] = []
 
     def put_object(self, **kwargs: Any) -> None:
         self.puts.append(kwargs)
+
+    def get_paginator(self, _operation: str) -> _FakePaginator:
+        return _FakePaginator()
+
+    def delete_objects(self, **_kwargs: Any) -> None:
+        pass
 
 
 class _FakeColExpr:
@@ -308,10 +321,9 @@ def test_run_evaluator_cache_reuses_shared_rows(
             parquet_dir: str | None = None,
             *,
             rows: list[dict[str, Any]] | None = None,
-            unified_rows: list[dict[str, Any]] | None = None,
+            **_kwargs: Any,
         ) -> list[dict[str, Any]]:
             del parquet_dir
-            del unified_rows
             captured_rows[prefix] = rows
             if merchant_keyed:
                 return [{"merchant_name": "Test Merchant"}]

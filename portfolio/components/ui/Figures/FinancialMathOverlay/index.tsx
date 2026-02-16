@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
@@ -618,6 +618,31 @@ export default function FinancialMathOverlay() {
     ? receipts[nextIndex % receipts.length]
     : receipts[nextIndex];
 
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const ar = flyingItem.width / flyingItem.height;
+    let dh = Math.min(500, flyingItem.height);
+    let dw = dh * ar;
+    if (dw > 350) { dw = 350; dh = dw / ar; }
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}-${flyingItem.receipt_id}`}
+        onImageError={(e) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if ((e.target as HTMLImageElement).src !== fallback) {
+            (e.target as HTMLImageElement).src = fallback;
+          }
+        }}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
+
   return (
     <div ref={ref} className={styles.container}>
       <ReceiptFlowShell
@@ -651,31 +676,7 @@ export default function FinancialMathOverlay() {
             formatSupport={formatSupport}
           />
         }
-        flying={
-          showFlying && flyingItem ? (() => {
-            const fUrl = getBestImageUrl(flyingItem, formatSupport!);
-            if (!fUrl) return null;
-            const ar = flyingItem.width / flyingItem.height;
-            let dh = Math.min(500, flyingItem.height);
-            let dw = dh * ar;
-            if (dw > 350) { dw = 350; dh = dw / ar; }
-            return (
-              <FlyingReceipt
-                key={`flying-${flyingItem.image_id}-${flyingItem.receipt_id}`}
-                imageUrl={fUrl}
-                displayWidth={dw}
-                displayHeight={dh}
-                receiptId={`${flyingItem.image_id}-${flyingItem.receipt_id}`}
-                onImageError={(e) => {
-                  const fallback = getJpegFallbackUrl(flyingItem);
-                  if ((e.target as HTMLImageElement).src !== fallback) {
-                    (e.target as HTMLImageElement).src = fallback;
-                  }
-                }}
-              />
-            );
-          })() : null
-        }
+        flying={flyingElement}
         next={
           isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer

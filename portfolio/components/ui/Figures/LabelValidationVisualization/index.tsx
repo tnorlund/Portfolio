@@ -15,6 +15,7 @@ import {
 import { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LabelValidationVisualization.module.css";
 
 // Animation state for two-tier validation
@@ -629,6 +630,12 @@ const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
   });
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+  );
+
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const receiptsRef = useRef(receipts);
@@ -748,21 +755,25 @@ const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
   const nextIndex = (currentIndex + 1) % receipts.length;
   const nextReceipt = receipts[nextIndex];
 
-  const flyingImageUrl = useMemo(() => {
-    if (!formatSupport || !nextReceipt || !isTransitioning) return null;
-    return getBestImageUrl(nextReceipt, formatSupport);
-  }, [nextReceipt, formatSupport, isTransitioning]);
-
-  const flyingDims = useMemo(() => {
-    if (!nextReceipt) return { w: 0, h: 0 };
-    const w = nextReceipt.width;
-    const h = nextReceipt.height;
-    const ar = w / h;
-    let dh = Math.min(500, h);
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+    const fUrl = getBestImageUrl(flyingItem, formatSupport);
+    if (!fUrl) return null;
+    const ar = flyingItem.width / flyingItem.height;
+    let dh = Math.min(500, flyingItem.height);
     let dw = dh * ar;
     if (dw > 350) { dw = 350; dh = dw / ar; }
-    return { w: dw, h: dh };
-  }, [nextReceipt]);
+    return (
+      <FlyingReceipt
+        key={`flying-${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        imageUrl={fUrl}
+        displayWidth={dw}
+        displayHeight={dh}
+        receiptId={`${flyingItem.image_id}_${flyingItem.receipt_id}`}
+        queueItemLeftInset={90}
+      />
+    );
+  }, [showFlying, flyingItem, formatSupport]);
 
   return (
     <div ref={observerRef} className={styles.container}>
@@ -795,18 +806,7 @@ const LabelValidationInner: React.FC<LabelValidationInnerProps> = ({
             formatSupport={formatSupport}
           />
         }
-        flying={
-          isTransitioning && nextReceipt && flyingImageUrl ? (
-            <FlyingReceipt
-              key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-              imageUrl={flyingImageUrl}
-              displayWidth={flyingDims.w}
-              displayHeight={flyingDims.h}
-              receiptId={`${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-              queueItemLeftInset={90}
-            />
-          ) : null
-        }
+        flying={flyingElement}
         next={
           isTransitioning && nextReceipt ? (
             <ReceiptViewer
