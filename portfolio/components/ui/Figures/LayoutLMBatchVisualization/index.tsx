@@ -7,7 +7,15 @@ import {
   LayoutLMReceiptInference,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl } from "../../../../utils/imageFormat";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  calculateFlyingTransform,
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import { ImageFormatSupport, ReceiptFlowGeometry } from "../ReceiptFlow/types";
+import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
 // Label colors for 8-label hybrid model
@@ -64,28 +72,21 @@ const TRANSITION_DURATION = 600;
 interface ReceiptQueueProps {
   receipts: LayoutLMReceiptInference[];
   currentIndex: number;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
   isPoolExhausted: boolean;
   shouldAnimate: boolean;
   fadeDelay?: number;
 }
 
-// Generate stable random positions for queue items based on receipt ID only
-const getQueuePosition = (receiptId: string) => {
-  // Use receipt ID to generate consistent random values
-  const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-
-  // Pseudo-random based on hash only (not index)
-  const random1 = Math.sin(hash * 9301 + 49297) % 1;
-  const random2 = Math.sin(hash * 7919 + 12345) % 1;
-
-  // Rotation between -12 and 12 degrees
-  const rotation = (Math.abs(random1) * 24 - 12);
-  // Small horizontal offset (-5 to 5 pixels)
-  const leftOffset = (Math.abs(random2) * 10 - 5);
-
-  return { rotation, leftOffset };
+const FLOW_GEOMETRY: ReceiptFlowGeometry = {
+  queueItemWidth: 100,
+  queueWidth: 120,
+  queueHeight: 400,
+  queueItemLeftInset: 10,
+  centerColumnWidth: 350,
+  centerColumnHeight: 500,
+  gap: 24,
 };
 
 const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
@@ -108,24 +109,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   // Build visible receipts array - handles looping when pool is exhausted
   const visibleReceipts = useMemo(() => {
     if (receipts.length === 0) return [];
-
-    const result: LayoutLMReceiptInference[] = [];
-    const totalReceipts = receipts.length;
-
-    for (let i = 1; i <= maxVisible; i++) {
-      const idx = currentIndex + i;
-
-      if (isPoolExhausted) {
-        // When pool is exhausted, wrap around using modulo
-        result.push(receipts[idx % totalReceipts]);
-      } else if (idx < totalReceipts) {
-        // Normal behavior - show next receipts if available
-        result.push(receipts[idx]);
-      }
-      // Otherwise, no receipt to show at this position (still loading)
-    }
-
-    return result;
+    return getVisibleQueueIndices(receipts.length, currentIndex, maxVisible, isPoolExhausted).map(
+      (idx) => receipts[idx]
+    );
   }, [receipts, currentIndex, isPoolExhausted]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
@@ -194,7 +180,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 // Flying receipt that animates from queue to center
 interface FlyingReceiptProps {
   receipt: LayoutLMReceiptInference | null;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
   isFlying: boolean;
 }
 
@@ -219,45 +205,13 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   const displayHeight = Math.min(500, height);
   const displayWidth = displayHeight * aspectRatio;
 
-  // Calculate starting position to match queue item position
-  // The flying receipt center needs to move from center of centerColumn to center of queue item
-
-  // Layout dimensions
-  const queueItemWidth = 100;
-  const queueWidth = 120;
-  const gap = 24; // 1.5rem
-  const centerColumnWidth = 350;
-  const queueHeight = 400;
-  const centerColumnHeight = 500;
-
-  // X calculation:
-  // From center of centerColumn, go left to reach queue item center
-  // - Half of center column width to reach left edge: 175px
-  // - Gap between columns: 24px
-  // - Queue item center is at (10 + leftOffset + 50) = (60 + leftOffset) from left of queue
-  // - So from right edge of queue to queue item center: 120 - (60 + leftOffset) = (60 - leftOffset)
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
-  const startX = -distanceToQueueItemCenter;
-
-  // Y calculation:
-  // Both containers are vertically centered (align-items: center)
-  // Queue top is at (centerColumnHeight - queueHeight) / 2 = 50px from top of centerColumn
-  // Queue item at idx 0 is at top: 0, so its top is 50px from top of centerColumn
-  // Queue item height based on aspect ratio
-  const queueItemHeight = (height / width) * queueItemWidth;
-  // Queue item center Y from top of centerColumn
-  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
-  // Center of centerColumn is at centerColumnHeight / 2 = 250px
-  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
-
-  // Scale: queue item is 100px wide, so scale = 100 / displayWidth
-  const startScale = queueItemWidth / displayWidth;
-
-  // End position fine-tuning to match exactly where active receipt appears
-  // The active receipt is centered in receiptImageWrapper using flexbox
-  // Adjust these if the landing position doesn't match perfectly
-  const endX = 0;
-  const endY = 0;
+  const { startX, startY, startScale } = calculateFlyingTransform({
+    itemWidth: width,
+    itemHeight: height,
+    displayWidth,
+    leftOffset,
+    geometry: FLOW_GEOMETRY,
+  });
 
   const { x, y, scale, rotate } = useSpring({
     from: {
@@ -267,8 +221,8 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
       rotate: rotation,
     },
     to: {
-      x: endX,
-      y: endY,
+      x: 0,
+      y: 0,
       scale: 1,
       rotate: 0,
     },
@@ -384,7 +338,7 @@ interface ActiveReceiptViewerProps {
   receipt: LayoutLMReceiptInference;
   scanProgress: number;
   revealedWordIds: Set<string>;
-  formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  formatSupport: ImageFormatSupport | null;
 }
 
 const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
@@ -527,10 +481,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
   const [revealedEntityTypes, setRevealedEntityTypes] = useState<Set<string>>(new Set());
   const [showInferenceTime, setShowInferenceTime] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [formatSupport, setFormatSupport] = useState<{
-    supportsWebP: boolean;
-    supportsAVIF: boolean;
-  } | null>(null);
+  const formatSupport = useImageFormatSupport();
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
   const [startQueueAnimation, setStartQueueAnimation] = useState(false);
 
@@ -545,11 +496,6 @@ const LayoutLMBatchVisualization: React.FC = () => {
   useEffect(() => {
     isPoolExhaustedRef.current = isPoolExhausted;
   }, [isPoolExhausted]);
-
-  // Detect image format support
-  useEffect(() => {
-    detectImageFormatSupport().then(setFormatSupport);
-  }, []);
 
   // Start queue animation when in view and receipts are loaded
   useEffect(() => {
@@ -839,59 +785,66 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   return (
     <div ref={ref} className={styles.container}>
-      <div className={styles.mainWrapper}>
-        <ReceiptQueue
-          receipts={receipts}
-          currentIndex={currentReceiptIndex}
-          formatSupport={formatSupport}
-          isTransitioning={isTransitioning}
-          isPoolExhausted={isPoolExhausted}
-          shouldAnimate={startQueueAnimation}
-          fadeDelay={50}
-        />
-
-        <div className={styles.centerColumn}>
-          {/* Current receipt - fades out during transition */}
-          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
+      <ReceiptFlowShell
+        layoutVars={
+          {
+            "--rf-queue-width": "120px",
+            "--rf-queue-height": "400px",
+            "--rf-center-max-width": "350px",
+            "--rf-center-height": "500px",
+            "--rf-mobile-center-height": "400px",
+            "--rf-mobile-center-height-sm": "320px",
+            "--rf-gap": "1.5rem",
+          } as React.CSSProperties
+        }
+        isTransitioning={isTransitioning}
+        queue={
+          <ReceiptQueue
+            receipts={receipts}
+            currentIndex={currentReceiptIndex}
+            formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+            isPoolExhausted={isPoolExhausted}
+            shouldAnimate={startQueueAnimation}
+            fadeDelay={50}
+          />
+        }
+        center={
+          <ActiveReceiptViewer
+            receipt={currentReceipt}
+            scanProgress={scanProgress}
+            revealedWordIds={revealedWordIds}
+            formatSupport={formatSupport}
+          />
+        }
+        flying={
+          isTransitioning && nextReceipt ? (
+            <FlyingReceipt
+              key={`flying-${nextReceipt.receipt_id}`}
+              receipt={nextReceipt}
+              formatSupport={formatSupport}
+              isFlying={isTransitioning}
+            />
+          ) : null
+        }
+        next={
+          isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer
-              receipt={currentReceipt}
-              scanProgress={scanProgress}
-              revealedWordIds={revealedWordIds}
+              receipt={nextReceipt}
+              scanProgress={0}
+              revealedWordIds={new Set()}
               formatSupport={formatSupport}
             />
-          </div>
-
-          {/* Flying receipt for desktop transition */}
-          <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
-              <FlyingReceipt
-                key={`flying-${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
-                formatSupport={formatSupport}
-                isFlying={isTransitioning}
-              />
-            )}
-          </div>
-
-          {/* Next receipt for mobile crossfade - fades in during transition */}
-          {isTransitioning && nextReceipt && (
-            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
-              <ActiveReceiptViewer
-                receipt={nextReceipt}
-                scanProgress={0}
-                revealedWordIds={new Set()}
-                formatSupport={formatSupport}
-              />
-            </div>
-          )}
-        </div>
-
-        <EntityLegend
+          ) : null
+        }
+        legend={
+          <EntityLegend
           revealedEntityTypes={revealedEntityTypes}
           inferenceTimeMs={currentReceipt.inference_time_ms}
           showInferenceTime={showInferenceTime}
-        />
-      </div>
+          />
+        }
+      />
     </div>
   );
 };
