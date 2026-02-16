@@ -1,7 +1,7 @@
 .mainWrapper {
   display: flex;
   gap: var(--rf-gap, 1.5rem);
-  align-items: center;
+  align-items: var(--rf-align-items, center);
   justify-content: center;
   min-height: var(--rf-center-height, 500px);
 }
