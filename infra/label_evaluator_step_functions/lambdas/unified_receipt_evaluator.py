@@ -1149,6 +1149,8 @@ async def unified_receipt_evaluator(
                     merchant_name=merchant_name,
                     words=words,
                     line_item_patterns=line_item_patterns,
+                    labels=fresh_labels,
+                    chroma_client=chroma_client,
                 )
                 financial_duration = time.time() - financial_start
 
