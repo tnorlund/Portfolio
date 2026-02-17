@@ -1,4 +1,10 @@
 import dynamic from "next/dynamic";
+import React from "react";
+import { ReceiptFlowLoadingShell } from "./ReceiptFlow/ReceiptFlowLoadingShell";
+
+function loadingShell(variant: React.ComponentProps<typeof ReceiptFlowLoadingShell>["variant"]) {
+  return React.createElement(ReceiptFlowLoadingShell, { variant });
+}
 
 // Make MerchantCount and LabelValidationCount client-side only to prevent SSR issues during static export
 const ClientMerchantCount = dynamic(() => import("./MerchantCount"), {
@@ -48,7 +54,10 @@ export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";
 export { default as ImageStack } from "./ImageStack";
 export const LayoutLMInferenceVisualization = dynamic(
   () => import("./LayoutLMBatchVisualization"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => loadingShell("layoutlm"),
+  }
 );
 export { default as PageCurlLetter } from "./PageCurlLetter";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
@@ -60,7 +69,10 @@ export const TrainingMetricsAnimation = dynamic(
 );
 export const LayoutLMBatchVisualization = dynamic(
   () => import("./LayoutLMBatchVisualization"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => loadingShell("layoutlm"),
+  }
 );
 export const LabelValidationTimeline = dynamic(
   () => import("./LabelValidationTimeline"),
@@ -85,13 +97,22 @@ export const LabelValidationVisualization = dynamic(
 );
 export const BetweenReceiptVisualization = dynamic(
   () => import("./BetweenReceiptVisualization"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => loadingShell("between"),
+  }
 );
 export const FinancialMathOverlay = dynamic(
   () => import("./FinancialMathOverlay"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => loadingShell("financial"),
+  }
 );
 export const WithinReceiptVerification = dynamic(
   () => import("./WithinReceiptVerification"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => loadingShell("within"),
+  }
 );
