@@ -917,10 +917,11 @@ def _build_valid_decisions(
     compatible with ``apply_llm_decisions`` so those labels get written
     as VALID in DynamoDB.
 
-    Only values with a real WordContext (not dummy) produce decisions.
-    A FinancialValue is considered "real" when its ``word_context.word``
-    has ``line_id`` matching ``line_index`` (dummy uses first word in
-    receipt which almost never matches).
+    Only values with a real WordContext produce decisions.  Dummy
+    WordContext (from unmatched LLM fallback items) is detected by
+    comparing the ReceiptWord's text with the FinancialValue's
+    word_text — a dummy wraps words[0] whose text won't match the
+    financial value.
     """
     decisions: list[dict[str, Any]] = []
     seen: set[tuple[int, int, str]] = set()
@@ -937,8 +938,11 @@ def _build_valid_decisions(
             if lid is None or wid is None:
                 continue
 
-            # Skip dummy WordContext: real matches have line_id == line_index
-            if lid != fv.line_index:
+            # Skip dummy WordContext: for a real match, the word's text
+            # should parse to the same numeric value as the FinancialValue.
+            # Dummies wrap words[0] which is typically a non-numeric word.
+            word_num = _extract_number(getattr(w, "text", ""))
+            if word_num is None or abs(word_num - fv.numeric_value) > 0.01:
                 continue
 
             # Deduplicate (same word can appear under LINE_TOTAL and UNIT_PRICE)
