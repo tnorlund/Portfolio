@@ -224,6 +224,7 @@ def create_llm(
     temperature: float = 0.0,
     timeout: int = 120,
     reasoning: Optional[bool] = None,
+    reasoning_effort: Optional[str] = None,
     **kwargs: Any,
 ) -> "BaseChatModel":
     """
@@ -235,11 +236,14 @@ def create_llm(
         api_key: API key (default from OPENROUTER_API_KEY env var)
         temperature: LLM temperature (default 0.0)
         timeout: Request timeout in seconds (default 120)
-        reasoning: Enable/disable reasoning tokens for supported models
-            (e.g., Grok 4.1 Fast, Claude with extended thinking).
+        reasoning: Enable/disable reasoning tokens for supported models.
             None = use model's default behavior.
             True = explicitly enable reasoning.
             False = explicitly disable reasoning.
+        reasoning_effort: Reasoning effort level ("low", "medium", "high").
+            Controls how much thinking the model does before responding.
+            Only supported by models with reasoning capability (e.g.,
+            openai/gpt-oss-120b). Takes precedence over ``reasoning``.
         **kwargs: Additional arguments passed to ChatOpenAI
 
     Returns:
@@ -277,10 +281,12 @@ def create_llm(
         )
 
     logger.debug(
-        "Creating OpenRouter LLM: model=%s, base_url=%s, reasoning=%s",
+        "Creating OpenRouter LLM: model=%s, base_url=%s, reasoning=%s, "
+        "reasoning_effort=%s",
         _model,
         _base_url,
         reasoning,
+        reasoning_effort,
     )
 
     default_headers = kwargs.pop("default_headers", {})
@@ -291,7 +297,9 @@ def create_llm(
 
     # Build extra_body for OpenRouter-specific parameters
     extra_body = kwargs.pop("extra_body", {})
-    if reasoning is not None:
+    if reasoning_effort is not None:
+        extra_body["reasoning"] = {"effort": reasoning_effort}
+    elif reasoning is not None:
         extra_body["reasoning"] = {"enabled": reasoning}
 
     # Only pass extra_body if it has content
@@ -846,6 +854,7 @@ def create_llm_invoker(
     max_jitter_seconds: float = 0.25,
     max_retries: int = 3,
     reasoning: Optional[bool] = None,
+    reasoning_effort: Optional[str] = None,
     **kwargs: Any,
 ) -> LLMInvoker:
     """
@@ -861,6 +870,7 @@ def create_llm_invoker(
         max_retries: Max retry attempts (default 3)
         reasoning: Enable/disable reasoning tokens for supported models.
             None = use model's default, True = enable, False = disable.
+        reasoning_effort: Reasoning effort level ("low", "medium", "high").
         **kwargs: Additional arguments passed to create_llm()
 
     Returns:
@@ -871,6 +881,7 @@ def create_llm_invoker(
         temperature=temperature,
         timeout=timeout,
         reasoning=reasoning,
+        reasoning_effort=reasoning_effort,
         **kwargs,
     )
 

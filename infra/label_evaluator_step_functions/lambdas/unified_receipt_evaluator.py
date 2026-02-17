@@ -523,6 +523,7 @@ async def unified_receipt_evaluator(
                 timeout=120,
                 circuit_breaker_threshold=5,
                 max_jitter_seconds=0.25,
+                reasoning_effort="high",
             )
 
         # Initialize results
