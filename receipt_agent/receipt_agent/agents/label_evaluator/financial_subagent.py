@@ -699,7 +699,7 @@ def _match_llm_items_to_words(
                 # Strategy 2: numeric value match
                 if found_word is None:
                     for w in line_words:
-                        num = _extract_number(w.text)
+                        num = extract_number(w.text)
                         if num is not None and abs(abs(num) - llm_amount) < 0.01:
                             found_word = w
                             break
@@ -961,7 +961,7 @@ def _build_valid_decisions(
             # Skip dummy WordContext: for a real match, the word's text
             # should parse to the same numeric value as the FinancialValue.
             # Dummies wrap words[0] which is typically a non-numeric word.
-            word_num = _extract_number(getattr(w, "text", ""))
+            word_num = extract_number(getattr(w, "text", ""))
             if word_num is None or abs(word_num - fv.numeric_value) > 0.01:
                 continue
 

@@ -1160,11 +1160,25 @@ async def unified_receipt_evaluator(
                         apply_llm_decisions,
                     )
 
+                    # Only apply decisions that reference real financial
+                    # label names.  Text-scan results use issue-type names
+                    # like "TOTAL_CHECK" and lack real word coordinates.
+                    _FINANCIAL_LABELS = {
+                        "GRAND_TOTAL",
+                        "SUBTOTAL",
+                        "TAX",
+                        "LINE_TOTAL",
+                        "DISCOUNT",
+                        "UNIT_PRICE",
+                        "QUANTITY",
+                    }
                     actionable_financial = [
                         d
                         for d in financial_result
                         if d.get("llm_review", {}).get("decision")
                         in ("VALID", "INVALID")
+                        and d.get("issue", {}).get("current_label")
+                        in _FINANCIAL_LABELS
                     ]
                     if actionable_financial:
                         apply_llm_decisions(
