@@ -6,7 +6,7 @@ import {
   LabelValidationReceipt,
   LabelValidationWord,
 } from "../../../../types/api";
-import { getBestImageUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
   getQueuePosition,
@@ -841,6 +841,8 @@ const LabelValidationVisualization: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const formatSupport = useImageFormatSupport();
+
+  usePreloadReceiptImages(receipts, formatSupport);
 
   // Fetch visualization data
   useEffect(() => {

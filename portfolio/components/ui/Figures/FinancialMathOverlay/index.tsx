@@ -8,6 +8,7 @@ import {
 import {
   getBestImageUrl,
   getJpegFallbackUrl,
+  usePreloadReceiptImages,
 } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
@@ -387,6 +388,8 @@ export default function FinancialMathOverlay() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const formatSupport = useImageFormatSupport();
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
+
+  usePreloadReceiptImages(receipts, formatSupport);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);

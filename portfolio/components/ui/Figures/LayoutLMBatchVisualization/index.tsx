@@ -7,7 +7,7 @@ import {
   LayoutLMReceiptInference,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
-import { getBestImageUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
   getQueuePosition,
@@ -690,6 +690,9 @@ const LayoutLMBatchVisualization: React.FC = () => {
   const [initialLoading, setInitialLoading] = useState(true);
   const formatSupport = useImageFormatSupport();
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
+
+  const allImageFormats = useMemo(() => receipts.map((r) => r.original.receipt), [receipts]);
+  usePreloadReceiptImages(allImageFormats, formatSupport);
 
   const isFetchingRef = useRef(false);
   const seenReceiptIds = useRef<Set<string>>(new Set());

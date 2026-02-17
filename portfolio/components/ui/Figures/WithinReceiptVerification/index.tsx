@@ -5,7 +5,7 @@ import {
   WithinReceiptVerificationReceipt,
   WithinReceiptWordDecision,
 } from "../../../../types/api";
-import { getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl, getJpegFallbackUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
   getQueuePosition,
@@ -457,6 +457,8 @@ const WithinReceiptVerification: React.FC = () => {
   const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activePass, setActivePass] = useState<PassName | null>(null);
+
+  usePreloadReceiptImages(receipts, formatSupport);
 
   const { flyingItem: flyingReceipt, showFlying: showFlyingReceipt } = useFlyingReceipt(
     isTransitioning,

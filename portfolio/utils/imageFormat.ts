@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export interface FormatSupport {
   supportsAVIF: boolean;
   supportsWebP: boolean;
@@ -193,6 +195,37 @@ export const getBestImageUrl = (
 
   // Ultimate fallback to full-size JPEG if specific size not available
   return `${baseUrl}/${image.cdn_s3_key}`;
+};
+
+/**
+ * Preload full-size and thumbnail images for all receipts so they're
+ * browser-cached before flying-receipt animations need them.
+ * Uses a ref-based set to avoid re-fetching already-preloaded URLs,
+ * which keeps it efficient for components that continuously append receipts.
+ */
+export const usePreloadReceiptImages = (
+  images: ImageFormats[],
+  formatSupport: FormatSupport | null,
+): void => {
+  const preloadedRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!formatSupport || images.length === 0) return;
+    for (const image of images) {
+      const fullUrl = getBestImageUrl(image, formatSupport);
+      if (!preloadedRef.current.has(fullUrl)) {
+        preloadedRef.current.add(fullUrl);
+        const img = new Image();
+        img.src = fullUrl;
+      }
+      const thumbUrl = getBestImageUrl(image, formatSupport, "thumbnail");
+      if (thumbUrl !== fullUrl && !preloadedRef.current.has(thumbUrl)) {
+        preloadedRef.current.add(thumbUrl);
+        const img = new Image();
+        img.src = thumbUrl;
+      }
+    }
+  }, [images, formatSupport]);
 };
 
 /**
