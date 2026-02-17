@@ -8,7 +8,7 @@ import {
   ReviewDecision,
   ReviewEvidence,
 } from "../../../../types/api";
-import { getBestImageUrl, getJpegFallbackUrl } from "../../../../utils/imageFormat";
+import { getBestImageUrl, getJpegFallbackUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
   getQueuePosition,
@@ -395,6 +395,8 @@ const BetweenReceiptVisualization: React.FC = () => {
   const [revealedCards, setRevealedCards] = useState<RevealedCard[]>([]);
   const formatSupport = useImageFormatSupport();
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  usePreloadReceiptImages(receipts, formatSupport);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);

@@ -46,7 +46,8 @@ from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-from receipt_dynamo.entities.receipt_word import EmbeddingStatus, ReceiptWord
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
 
