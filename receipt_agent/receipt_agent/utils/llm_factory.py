@@ -356,6 +356,11 @@ def _is_empty_response(response: Any) -> bool:
     if hasattr(response, "model_dump") and not hasattr(response, "content"):
         return False
 
+    # include_raw=True responses are dicts with "parsed" key — never empty
+    # if a parsed model is present.
+    if isinstance(response, dict) and "parsed" in response:
+        return response["parsed"] is None
+
     # Get content from response
     content = None
     if hasattr(response, "content"):
@@ -768,7 +773,7 @@ class LLMInvoker:
             total_errors=self.total_errors,
         )
 
-    def with_structured_output(self, schema: type) -> "LLMInvoker":
+    def with_structured_output(self, schema: type, **kwargs) -> "LLMInvoker":
         """
         Create a new LLMInvoker with structured output.
 
@@ -777,6 +782,8 @@ class LLMInvoker:
 
         Args:
             schema: A Pydantic model class defining the expected output structure
+            **kwargs: Additional arguments forwarded to the underlying LLM's
+                with_structured_output (e.g. include_raw=True)
 
         Returns:
             New LLMInvoker instance with structured output enabled
@@ -792,7 +799,7 @@ class LLMInvoker:
             response = structured_invoker.invoke(messages)  # Returns ReviewResponse
         """
         if hasattr(self.llm, "with_structured_output"):
-            structured_llm = self.llm.with_structured_output(schema)
+            structured_llm = self.llm.with_structured_output(schema, **kwargs)
         else:
             logger.warning(
                 "LLM %s does not support with_structured_output",
