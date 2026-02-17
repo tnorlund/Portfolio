@@ -19,7 +19,17 @@ from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable, Dict, Generator, List, Optional, Protocol, Type, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Protocol,
+    Type,
+    TypeVar,
+)
 
 import chromadb
 from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
@@ -69,7 +79,7 @@ def _retry_with_backoff(
             last_exc = exc
             if attempt == max_retries:
                 break
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             jitter = random.uniform(0, delay * 0.5)  # noqa: S311
             sleep_time = delay + jitter
             logger.warning(
