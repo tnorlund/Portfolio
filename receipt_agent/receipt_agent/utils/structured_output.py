@@ -159,11 +159,16 @@ def invoke_structured_with_retry(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            structured_llm = llm.with_structured_output(schema)
+            structured_llm = llm.with_structured_output(
+                schema, include_raw=True
+            )
             if config is None:
-                response: T = structured_llm.invoke(input_payload)
+                result = structured_llm.invoke(input_payload)
             else:
-                response = structured_llm.invoke(input_payload, config=config)
+                result = structured_llm.invoke(input_payload, config=config)
+            if result.get("parsing_error") is not None:
+                raise result["parsing_error"]
+            response: T = result["parsed"]
             return StructuredOutputResult(
                 success=True,
                 response=response,
@@ -217,27 +222,32 @@ async def ainvoke_structured_with_retry(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            structured_llm = llm.with_structured_output(schema)
+            structured_llm = llm.with_structured_output(
+                schema, include_raw=True
+            )
             if hasattr(structured_llm, "ainvoke"):
                 if config is None:
-                    response: T = await structured_llm.ainvoke(input_payload)
+                    result = await structured_llm.ainvoke(input_payload)
                 else:
-                    response = await structured_llm.ainvoke(
+                    result = await structured_llm.ainvoke(
                         input_payload, config=config
                     )
             else:
                 if config is None:
-                    response = await asyncio.to_thread(
+                    result = await asyncio.to_thread(
                         structured_llm.invoke,
                         input_payload,
                     )
                 else:
-                    response = await asyncio.to_thread(
+                    result = await asyncio.to_thread(
                         structured_llm.invoke,
                         input_payload,
                         config=config,
                     )
 
+            if result.get("parsing_error") is not None:
+                raise result["parsing_error"]
+            response: T = result["parsed"]
             return StructuredOutputResult(
                 success=True,
                 response=response,
