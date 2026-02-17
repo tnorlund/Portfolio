@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -45,6 +47,122 @@ def _retry_backoff_seconds(attempt: int) -> float:
             _INITIAL_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)),
         )
     )
+
+
+def _build_json_schema_hint(schema: type[T]) -> str:
+    """Build a short instruction telling the LLM to respond in JSON matching the schema."""
+    try:
+        json_schema = json.dumps(schema.model_json_schema(), indent=2)
+    except Exception:
+        json_schema = schema.__name__
+    return (
+        f"Respond ONLY with valid JSON matching this schema (no markdown, "
+        f"no prose, no code fences):\n{json_schema}"
+    )
+
+
+def _append_json_hint(input_payload: Any, schema: type[T]) -> Any:
+    """Append a JSON schema hint to the input payload for raw fallback calls."""
+    hint = _build_json_schema_hint(schema)
+    # Handle list-of-messages format (most common)
+    if isinstance(input_payload, list):
+        from copy import copy
+
+        payload = copy(input_payload)
+        # Append as a HumanMessage-style tuple or dict
+        payload.append(("human", hint))
+        return payload
+    # Handle string prompt
+    if isinstance(input_payload, str):
+        return input_payload + "\n\n" + hint
+    # Unknown format — return as-is and hope for the best
+    return input_payload
+
+
+def _try_repair_and_parse(
+    raw_text: str,
+    schema: type[T],
+) -> T | None:
+    """Try to repair malformed LLM JSON and parse with the Pydantic schema.
+
+    Handles three common failure modes:
+    1. Markdown wrapping: ```json ... ``` or leading prose before JSON
+    2. Double opening braces: {\\n{ → {
+    3. Array-to-object wrapping: [...] → {"evaluations": [...]} or {"reviews": [...]}
+
+    Returns the parsed model on success, None on failure.
+    """
+    # Step 1: Strip markdown code fences and leading prose
+    cleaned = raw_text.strip()
+    if "```" in cleaned:
+        match = re.search(
+            r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", cleaned, re.DOTALL
+        )
+        if match:
+            cleaned = match.group(1).strip()
+
+    # Strip leading non-JSON characters (periods, prose, whitespace)
+    first_brace = -1
+    first_bracket = -1
+    for i, ch in enumerate(cleaned):
+        if ch == "{" and first_brace == -1:
+            first_brace = i
+        if ch == "[" and first_bracket == -1:
+            first_bracket = i
+        if first_brace != -1 and first_bracket != -1:
+            break
+
+    json_start = -1
+    if first_brace != -1 and first_bracket != -1:
+        json_start = min(first_brace, first_bracket)
+    elif first_brace != -1:
+        json_start = first_brace
+    elif first_bracket != -1:
+        json_start = first_bracket
+
+    if json_start > 0:
+        cleaned = cleaned[json_start:]
+
+    # Step 2: Fix double braces: "{\n{" → "{" and "}}" → "}"
+    if re.match(r"^\{\s*\{", cleaned):
+        cleaned = re.sub(r"^\{\s*\{", "{", cleaned)
+        if re.search(r"\}\s*\}$", cleaned):
+            cleaned = re.sub(r"\}\s*\}$", "}", cleaned)
+
+    # Step 3: Try parsing as-is first
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Try stripping trailing junk after last } or ]
+        last_brace = cleaned.rfind("}")
+        last_bracket = cleaned.rfind("]")
+        last_close = max(last_brace, last_bracket)
+        if last_close > 0:
+            try:
+                obj = json.loads(cleaned[: last_close + 1])
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    # Step 4: If parsed as array, wrap in object for Pydantic model
+    if isinstance(obj, list):
+        # Detect which key the schema expects
+        list_field = None
+        for field_name, field_info in schema.model_fields.items():
+            annotation = field_info.annotation
+            origin = getattr(annotation, "__origin__", None)
+            if origin is list:
+                list_field = field_name
+                break
+        if list_field:
+            obj = {list_field: obj}
+
+    # Step 5: Validate with Pydantic
+    try:
+        return schema.model_validate(obj)
+    except Exception:
+        return None
 
 
 def build_structured_failure_decisions(
@@ -159,11 +277,34 @@ def invoke_structured_with_retry(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            structured_llm = llm.with_structured_output(schema)
+            structured_llm = llm.with_structured_output(
+                schema, include_raw=True
+            )
             if config is None:
-                response: T = structured_llm.invoke(input_payload)
+                result = structured_llm.invoke(input_payload)
             else:
-                response = structured_llm.invoke(input_payload, config=config)
+                result = structured_llm.invoke(input_payload, config=config)
+            if result.get("parsing_error") is not None:
+                # Try to repair the raw response before giving up
+                raw_msg = result.get("raw")
+                raw_text = (
+                    getattr(raw_msg, "content", "") if raw_msg else ""
+                )
+                if raw_text:
+                    repaired = _try_repair_and_parse(raw_text, schema)
+                    if repaired is not None:
+                        logger.info(
+                            "Structured output repaired on attempt %d/%d",
+                            attempt,
+                            retries,
+                        )
+                        return StructuredOutputResult(
+                            success=True,
+                            response=repaired,
+                            attempts=attempt,
+                        )
+                raise result["parsing_error"]
+            response: T = result["parsed"]
             return StructuredOutputResult(
                 success=True,
                 response=response,
@@ -181,6 +322,47 @@ def invoke_structured_with_retry(
             last_error = error
             if attempt < retries:
                 time.sleep(_retry_backoff_seconds(attempt))
+
+    # All structured attempts failed — try one raw LLM call + manual repair
+    try:
+        logger.info("Attempting raw LLM fallback for %s", schema.__name__)
+        hinted_payload = _append_json_hint(input_payload, schema)
+        if config is None:
+            raw_result = llm.invoke(hinted_payload)
+        else:
+            raw_result = llm.invoke(hinted_payload, config=config)
+        raw_text = getattr(raw_result, "content", "")
+        if raw_text:
+            repaired = _try_repair_and_parse(raw_text, schema)
+            if repaired is not None:
+                logger.info(
+                    "Raw LLM fallback repaired response for %s",
+                    schema.__name__,
+                )
+                return StructuredOutputResult(
+                    success=True,
+                    response=repaired,
+                    attempts=retries + 1,
+                )
+            else:
+                logger.warning(
+                    "Raw LLM fallback returned unparseable text for %s: %.200s",
+                    schema.__name__,
+                    raw_text,
+                )
+        else:
+            logger.warning(
+                "Raw LLM fallback returned empty content for %s",
+                schema.__name__,
+            )
+    except LLMRateLimitError:
+        raise
+    except Exception as fallback_error:
+        logger.warning(
+            "Raw LLM fallback also failed for %s: %s",
+            schema.__name__,
+            fallback_error,
+        )
 
     return StructuredOutputResult(
         success=False,
@@ -217,27 +399,50 @@ async def ainvoke_structured_with_retry(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            structured_llm = llm.with_structured_output(schema)
+            structured_llm = llm.with_structured_output(
+                schema, include_raw=True
+            )
             if hasattr(structured_llm, "ainvoke"):
                 if config is None:
-                    response: T = await structured_llm.ainvoke(input_payload)
+                    result = await structured_llm.ainvoke(input_payload)
                 else:
-                    response = await structured_llm.ainvoke(
+                    result = await structured_llm.ainvoke(
                         input_payload, config=config
                     )
             else:
                 if config is None:
-                    response = await asyncio.to_thread(
+                    result = await asyncio.to_thread(
                         structured_llm.invoke,
                         input_payload,
                     )
                 else:
-                    response = await asyncio.to_thread(
+                    result = await asyncio.to_thread(
                         structured_llm.invoke,
                         input_payload,
                         config=config,
                     )
 
+            if result.get("parsing_error") is not None:
+                # Try to repair the raw response before giving up
+                raw_msg = result.get("raw")
+                raw_text = (
+                    getattr(raw_msg, "content", "") if raw_msg else ""
+                )
+                if raw_text:
+                    repaired = _try_repair_and_parse(raw_text, schema)
+                    if repaired is not None:
+                        logger.info(
+                            "Async structured output repaired on attempt %d/%d",
+                            attempt,
+                            retries,
+                        )
+                        return StructuredOutputResult(
+                            success=True,
+                            response=repaired,
+                            attempts=attempt,
+                        )
+                raise result["parsing_error"]
+            response: T = result["parsed"]
             return StructuredOutputResult(
                 success=True,
                 response=response,
@@ -255,6 +460,61 @@ async def ainvoke_structured_with_retry(
             last_error = error
             if attempt < retries:
                 await asyncio.sleep(_retry_backoff_seconds(attempt))
+
+    # All structured attempts failed — try one raw LLM call + manual repair
+    try:
+        logger.info(
+            "Attempting async raw LLM fallback for %s", schema.__name__
+        )
+        hinted_payload = _append_json_hint(input_payload, schema)
+        if hasattr(llm, "ainvoke"):
+            if config is None:
+                raw_result = await llm.ainvoke(hinted_payload)
+            else:
+                raw_result = await llm.ainvoke(
+                    hinted_payload, config=config
+                )
+        else:
+            if config is None:
+                raw_result = await asyncio.to_thread(
+                    llm.invoke, hinted_payload
+                )
+            else:
+                raw_result = await asyncio.to_thread(
+                    llm.invoke, hinted_payload, config=config
+                )
+        raw_text = getattr(raw_result, "content", "")
+        if raw_text:
+            repaired = _try_repair_and_parse(raw_text, schema)
+            if repaired is not None:
+                logger.info(
+                    "Async raw LLM fallback repaired response for %s",
+                    schema.__name__,
+                )
+                return StructuredOutputResult(
+                    success=True,
+                    response=repaired,
+                    attempts=retries + 1,
+                )
+            else:
+                logger.warning(
+                    "Async raw LLM fallback returned unparseable text for %s: %.200s",
+                    schema.__name__,
+                    raw_text,
+                )
+        else:
+            logger.warning(
+                "Async raw LLM fallback returned empty content for %s",
+                schema.__name__,
+            )
+    except LLMRateLimitError:
+        raise
+    except Exception as fallback_error:
+        logger.warning(
+            "Async raw LLM fallback also failed for %s: %s",
+            schema.__name__,
+            fallback_error,
+        )
 
     return StructuredOutputResult(
         success=False,

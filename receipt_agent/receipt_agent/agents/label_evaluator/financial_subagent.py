@@ -430,52 +430,19 @@ For each issue above, analyze the receipt context and determine:
 
 Consider:
 1. **Acceptable rounding**: Small discrepancies (e.g., $0.01-0.02) on large receipts
-   are often acceptable due to per-item rounding. A $0.01 difference on a $500 receipt
-   is likely rounding; the same difference on a $5 receipt may be significant.
+   are often acceptable due to per-item rounding.
 2. **Cumulative rounding**: Receipts with many line items accumulate rounding errors.
-   A $0.05 difference with 20 line items is probably acceptable.
-3. **OCR errors**: Common misreads include 8↔6, 1↔7, 0↔O, causing larger differences.
+3. **OCR errors**: Common misreads include 8<->6, 1<->7, 0<->O, causing larger differences.
 4. **Receipt structure**: Totals usually appear at bottom, line items in middle.
 5. **Context clues**: Which value "looks wrong" based on surrounding text.
 
-Respond with a JSON array containing one decision per involved value.
-Use `value_index` to indicate which value within the issue (0-based index into the
-"Values involved" list above).
-
-```json
-[
-  {{
-    "index": 0,
-    "value_index": 0,
-    "issue_type": "GRAND_TOTAL_MISMATCH",
-    "decision": "VALID",
-    "reasoning": "The GRAND_TOTAL value looks correct based on receipt context...",
-    "suggested_label": null,
-    "confidence": "medium"
-  }},
-  {{
-    "index": 0,
-    "value_index": 1,
-    "issue_type": "GRAND_TOTAL_MISMATCH",
-    "decision": "INVALID",
-    "reasoning": "The SUBTOTAL appears to have an OCR error...",
-    "suggested_label": null,
-    "confidence": "medium"
-  }},
-  ...
-]
-```
+Return one decision per involved value in each issue. Use `value_index` to indicate
+which value within the issue (0-based index into the "Values involved" list above).
 
 ## Decision Guide
 - VALID: The discrepancy is acceptable (e.g., rounding) OR this specific value is correct
 - INVALID: This specific value's label is wrong (suggest correction if applicable)
 - NEEDS_REVIEW: Cannot determine if the discrepancy is acceptable or which value is wrong
-
-Return one decision per involved value in each issue (using `value_index`).
-For example, if issue [0] has 3 involved values, return 3 decisions with
-index=0 and value_index=0, 1, 2.
-
-Respond ONLY with the JSON array, no other text.
 """
     return prompt
 
