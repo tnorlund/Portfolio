@@ -1252,7 +1252,8 @@ async def evaluate_metadata_labels_async(
             }
             for mw in remaining_words
         ]
-        decisions = chroma_fallback_decisions(
+        decisions = await asyncio.to_thread(
+            chroma_fallback_decisions,
             chroma_client=chroma_client,
             words=failure_word_dicts,
             decisions=decisions,

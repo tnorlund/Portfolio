@@ -273,6 +273,8 @@ _SYSTEM_FAILURE_INDICATORS = (
     "LLM call failed",
     "No response received",
     "No decision from LLM",
+    "Failed to parse LLM response",
+    "Failed to parse batched LLM response",
 )
 
 

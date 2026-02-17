@@ -123,8 +123,11 @@ def _try_repair_and_parse(
     if json_start > 0:
         cleaned = cleaned[json_start:]
 
-    # Step 2: Fix double opening braces: "{\n{" → "{"
-    cleaned = re.sub(r"^\{\s*\{", "{", cleaned)
+    # Step 2: Fix double braces: "{\n{" → "{" and "}}" → "}"
+    if re.match(r"^\{\s*\{", cleaned):
+        cleaned = re.sub(r"^\{\s*\{", "{", cleaned)
+        if re.search(r"\}\s*\}$", cleaned):
+            cleaned = re.sub(r"\}\s*\}$", "}", cleaned)
 
     # Step 3: Try parsing as-is first
     try:

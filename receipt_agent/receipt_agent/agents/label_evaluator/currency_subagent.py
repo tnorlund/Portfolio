@@ -1028,7 +1028,8 @@ async def evaluate_currency_labels_async(
             }
             for cw in currency_words
         ]
-        decisions = chroma_fallback_decisions(
+        decisions = await asyncio.to_thread(
+            chroma_fallback_decisions,
             chroma_client=chroma_client,
             words=failure_word_dicts,
             decisions=decisions,

@@ -1574,16 +1574,6 @@ async def unified_receipt_evaluator(
                                 )
                 review_duration = time.time() - review_start
 
-        # Close ChromaDB client after all phases
-        if chroma_client and hasattr(chroma_client, "close"):
-            try:
-                chroma_client.close()
-            except Exception as e:
-                logger.warning(
-                    "Failed to close Chroma client cleanly: %s",
-                    e,
-                )
-
         # 10. Aggregate results
         decision_counts = {
             "currency": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
@@ -1718,6 +1708,16 @@ async def unified_receipt_evaluator(
                 "financial": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             },
         }
+    finally:
+        # Close ChromaDB client on all paths (success, error, rate-limit)
+        if chroma_client and hasattr(chroma_client, "close"):
+            try:
+                chroma_client.close()
+            except Exception as close_err:
+                logger.warning(
+                    "Failed to close Chroma client cleanly: %s",
+                    close_err,
+                )
 
     # Close the receipt trace (created with create_receipt_trace)
     if receipt_trace is not None:
