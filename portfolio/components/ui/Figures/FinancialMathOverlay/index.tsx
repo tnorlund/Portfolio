@@ -250,6 +250,45 @@ function buildEquationNotation(eq: FinancialMathEquation): EquationNotation {
   const words = eq.involved_words;
   const issueType = eq.issue_type || "";
 
+  // HAS_TOTAL: simple single-value display (no addends)
+  if (issueType === "HAS_TOTAL") {
+    return {
+      addends: [],
+      result: eq.actual_value != null ? formatDollar(eq.actual_value) : "N/A",
+    };
+  }
+
+  // TOTAL_CHECK: SUBTOTAL + TAX = TOTAL (text-scanned)
+  if (issueType === "TOTAL_CHECK") {
+    // Parse values from description: "TOTAL ($X) = SUBTOTAL ($Y) + TAX ($Z) = $W"
+    const desc = eq.description || "";
+    const subtotalMatch = desc.match(/SUBTOTAL\s*\(\$?([\d.]+)\)/);
+    const taxMatch = desc.match(/TAX\s*\(\$?([\d.]+)\)/);
+    const totalMatch = desc.match(/TOTAL\s*\(\$?([\d.]+)\)/);
+    const addends = [];
+    if (subtotalMatch) addends.push(`$${subtotalMatch[1]}`);
+    if (taxMatch) addends.push(`$${taxMatch[1]}`);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result: totalMatch ? `$${totalMatch[1]}` : formatDollar(eq.actual_value),
+    };
+  }
+
+  // TIP_CHECK: SUBTOTAL + TIP = TOTAL (text-scanned)
+  if (issueType === "TIP_CHECK") {
+    const desc = eq.description || "";
+    const subtotalMatch = desc.match(/SUBTOTAL\s*\(\$?([\d.]+)\)/);
+    const tipMatch = desc.match(/TIP\s*\(\$?([\d.]+)\)/);
+    const totalMatch = desc.match(/TOTAL\s*\(\$?([\d.]+)\)/);
+    const addends = [];
+    if (subtotalMatch) addends.push(`$${subtotalMatch[1]}`);
+    if (tipMatch) addends.push(`$${tipMatch[1]}`);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result: totalMatch ? `$${totalMatch[1]}` : formatDollar(eq.actual_value),
+    };
+  }
+
   if (issueType.includes("GRAND_TOTAL")) {
     const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
     const taxes = words.filter((w) => w.current_label === "TAX");
@@ -292,18 +331,25 @@ interface EquationPanelProps {
   equations: FinancialMathEquation[];
   revealedEquationIndices: Set<number>;
   isTransitioning?: boolean;
+  receiptType?: "itemized" | "service" | "terminal";
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
   equations,
   revealedEquationIndices,
   isTransitioning = false,
+  receiptType,
 }) => {
   return (
     <div
       className={styles.equationPanel}
       style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}
     >
+      {receiptType && receiptType !== "itemized" && (
+        <div className={styles.receiptTypeBadge}>
+          {receiptType.toUpperCase()}
+        </div>
+      )}
       {equations.map((eq, idx) => {
         const color = getEquationColor(eq);
         const isRevealed = revealedEquationIndices.has(idx);
@@ -320,6 +366,7 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
         );
         const isValid = !hasInvalid && !hasReview;
         const notation = buildEquationNotation(eq);
+        const isHasTotal = eq.issue_type === "HAS_TOTAL";
 
         return (
           <div
@@ -328,38 +375,52 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             style={{ borderColor: isRevealed ? color : undefined }}
           >
             <div className={styles.summation}>
-              {/* Addends stacked vertically */}
-              <div className={styles.addends}>
-                {notation.addends.map((val, i) => (
-                  <div key={i} className={styles.addendRow}>
-                    <span className={styles.addendOp}>
-                      {i === notation.addends.length - 1 && notation.addends.length > 1
-                        ? "+"
-                        : ""}
-                    </span>
-                    <span className={styles.addendVal}>{val}</span>
-                  </div>
-                ))}
-              </div>
-              {/* Horizontal rule = the "equals" line */}
-              <div className={styles.sumLine} />
-              {/* Result row with validity indicator */}
-              <div className={styles.resultRow}>
-                <span className={styles.resultVal}>{notation.result}</span>
-                <span
-                  className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
-                >
-                  {isValid ? "\u2713" : "\u2717"}
-                </span>
-              </div>
-              {hasDiff && (
-                <div
-                  className={styles.equationDiff}
-                  style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
-                >
-                  {diff > 0 ? "+" : ""}
-                  {diff.toFixed(2)}
+              {isHasTotal ? (
+                /* HAS_TOTAL: simple single-value display */
+                <div className={styles.resultRow}>
+                  <span className={styles.resultVal}>{notation.result}</span>
+                  <span
+                    className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+                  >
+                    {isValid ? "\u2713" : "\u2717"}
+                  </span>
                 </div>
+              ) : (
+                <>
+                  {/* Addends stacked vertically */}
+                  <div className={styles.addends}>
+                    {notation.addends.map((val, i) => (
+                      <div key={i} className={styles.addendRow}>
+                        <span className={styles.addendOp}>
+                          {i === notation.addends.length - 1 && notation.addends.length > 1
+                            ? "+"
+                            : ""}
+                        </span>
+                        <span className={styles.addendVal}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Horizontal rule = the "equals" line */}
+                  <div className={styles.sumLine} />
+                  {/* Result row with validity indicator */}
+                  <div className={styles.resultRow}>
+                    <span className={styles.resultVal}>{notation.result}</span>
+                    <span
+                      className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+                    >
+                      {isValid ? "\u2713" : "\u2717"}
+                    </span>
+                  </div>
+                  {hasDiff && (
+                    <div
+                      className={styles.equationDiff}
+                      style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
+                    >
+                      {diff > 0 ? "+" : ""}
+                      {diff.toFixed(2)}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -500,6 +561,14 @@ export default function FinancialMathOverlay() {
       const revealed = new Set<number>();
       const scanY = progress / 100;
       receipt.equations.forEach((eq, eqIdx) => {
+        // Text-scanned equations have zero bboxes — reveal immediately
+        const hasRealBbox = eq.involved_words.some(
+          (w) => w.bbox.width > 0 || w.bbox.height > 0
+        );
+        if (!hasRealBbox) {
+          if (progress > 0) revealed.add(eqIdx);
+          return;
+        }
         // An equation is revealed when at least one of its words' top edge is above the scan line
         const anyRevealed = eq.involved_words.some((word) => {
           const wordTopY = 1 - word.bbox.y - word.bbox.height;
@@ -695,6 +764,7 @@ export default function FinancialMathOverlay() {
           equations={currentReceipt.equations}
           revealedEquationIndices={revealedEquationIndices}
           isTransitioning={isTransitioning}
+          receiptType={currentReceipt.receipt_type}
           />
         }
       />
