@@ -13,12 +13,13 @@ Addresses GitHub issue: https://github.com/chroma-core/chroma/issues/5868
 import gc
 import logging
 import os
+import random
 import time
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Dict, Generator, List, Optional, Protocol, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Protocol, Type, TypeVar
 
 import chromadb
 from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
@@ -31,6 +32,55 @@ from receipt_chroma.chroma_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Default retry settings for Chroma Cloud rate limits
+_DEFAULT_MAX_RETRIES = 4
+_DEFAULT_BASE_DELAY = 0.5  # seconds
+_DEFAULT_MAX_DELAY = 8.0  # seconds
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """Return True if the exception indicates a Chroma Cloud rate limit (429)."""
+    msg = str(exc).lower()
+    return "too many requests" in msg or "429" in msg or "rate limit" in msg
+
+
+def _retry_with_backoff(
+    fn: Callable[..., T],
+    *args: Any,
+    max_retries: int = _DEFAULT_MAX_RETRIES,
+    base_delay: float = _DEFAULT_BASE_DELAY,
+    max_delay: float = _DEFAULT_MAX_DELAY,
+    **kwargs: Any,
+) -> T:
+    """Call *fn* with exponential backoff + jitter on rate-limit errors.
+
+    Non-rate-limit exceptions propagate immediately.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            if not _is_rate_limit_error(exc):
+                raise
+            last_exc = exc
+            if attempt == max_retries:
+                break
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            jitter = random.uniform(0, delay * 0.5)  # noqa: S311
+            sleep_time = delay + jitter
+            logger.warning(
+                "Chroma rate limited (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries + 1,
+                sleep_time,
+                exc,
+            )
+            time.sleep(sleep_time)
+    raise last_exc  # type: ignore[misc]
 
 
 class ChromaCollection(Protocol):
@@ -431,10 +481,10 @@ class ChromaClient:
 
         if name not in self._collections:
             try:
-                # Try to get existing collection
+                # Try to get existing collection (with retry for rate limits)
                 if self.mode == "read":
-                    self._collections[name] = self.client.get_collection(
-                        name=name
+                    self._collections[name] = _retry_with_backoff(
+                        self.client.get_collection, name=name
                     )
                 else:
                     get_args: Dict[str, Any] = {"name": name}
@@ -442,8 +492,8 @@ class ChromaClient:
                         get_args["embedding_function"] = (
                             self._embedding_function
                         )
-                    self._collections[name] = self.client.get_collection(
-                        **get_args
+                    self._collections[name] = _retry_with_backoff(
+                        self.client.get_collection, **get_args
                     )
 
                 logger.debug("Retrieved existing collection: %s", name)
@@ -461,8 +511,8 @@ class ChromaClient:
                             self._embedding_function
                         )
 
-                    self._collections[name] = self.client.create_collection(
-                        **create_args
+                    self._collections[name] = _retry_with_backoff(
+                        self.client.create_collection, **create_args
                     )
                     logger.info("Created new collection: %s", name)
                 else:
@@ -513,12 +563,12 @@ class ChromaClient:
             ]
 
         try:
-            collection.upsert(**upsert_args)
+            _retry_with_backoff(collection.upsert, **upsert_args)
         except ValueError as e:
             if "ids already exist" in str(e):
                 # Handle duplicate IDs by deleting and retrying
                 collection.delete(ids=ids)
-                collection.upsert(**upsert_args)
+                _retry_with_backoff(collection.upsert, **upsert_args)
             else:
                 raise
 
@@ -570,7 +620,7 @@ class ChromaClient:
                 "Either query_embeddings or query_texts must be provided"
             )
 
-        result = collection.query(**query_args)
+        result = _retry_with_backoff(collection.query, **query_args)
         return result  # type: ignore[no-any-return]
 
     def get(
@@ -606,7 +656,7 @@ class ChromaClient:
         if where is not None:
             get_args["where"] = where
 
-        result = collection.get(**get_args)
+        result = _retry_with_backoff(collection.get, **get_args)
         return result  # type: ignore[no-any-return]
 
     def delete(

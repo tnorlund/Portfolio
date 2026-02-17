@@ -85,6 +85,275 @@ class MerchantBreakdown(TypedDict):
     labels: dict[str, int]
 
 
+def _has_current_label(issue: dict[str, Any]) -> bool:
+    """Return True if the issue represents a currently labeled word."""
+    raw_label = issue.get("current_label")
+    if raw_label is None:
+        return False
+
+    label_text = str(raw_label).strip().upper()
+    return label_text not in {
+        "",
+        "O",
+        "NONE",
+        "NONE (UNLABELED)",
+        "UNLABELED",
+    }
+
+
+def build_consensus_auto_review(
+    issue: dict[str, Any],
+    target_label: str,
+    consensus: float,
+    positive_count: int,
+    negative_count: int,
+    min_evidence: int,
+    threshold: float,
+) -> dict[str, Any] | None:
+    """Build an auto-review decision when Chroma consensus is decisive.
+
+    Returns a decision dict if consensus is strong enough, else None.
+
+    Logic:
+    - Labeled word + positive consensus → VALID
+    - Labeled word + negative consensus → INVALID
+    - Unlabeled word + positive consensus → INVALID (with suggested label)
+    - Unlabeled word + negative consensus → VALID (remain unlabeled)
+    - Below threshold → returns None (defer to LLM)
+    """
+    evidence_count = positive_count + negative_count
+    if evidence_count < min_evidence or abs(consensus) < threshold:
+        return None
+
+    normalized_target = target_label.strip().upper() if target_label else ""
+    has_label = _has_current_label(issue)
+
+    decision: str
+    suggested_label: str | None
+    reasoning: str
+
+    if has_label:
+        if consensus >= threshold:
+            decision = "VALID"
+            suggested_label = None
+            reasoning = (
+                "Auto-decided from Chroma consensus: current label is strongly "
+                f"supported ({positive_count} supporting, {negative_count} "
+                f"contradicting, score {consensus:+.2f})."
+            )
+        elif consensus <= -threshold:
+            decision = "INVALID"
+            suggested_label = None
+            reasoning = (
+                "Auto-decided from Chroma consensus: current label is strongly "
+                f"contradicted ({positive_count} supporting, {negative_count} "
+                f"contradicting, score {consensus:+.2f})."
+            )
+        else:
+            return None
+    else:
+        if not normalized_target:
+            return None
+
+        if consensus >= threshold:
+            decision = "INVALID"
+            suggested_label = normalized_target
+            reasoning = (
+                "Auto-decided from Chroma consensus: this unlabeled word is "
+                f"strongly supported as {normalized_target} "
+                f"({positive_count} supporting, {negative_count} contradicting, "
+                f"score {consensus:+.2f})."
+            )
+        elif consensus <= -threshold:
+            decision = "VALID"
+            suggested_label = None
+            reasoning = (
+                "Auto-decided from Chroma consensus: this word is strongly "
+                f"contradicted as {normalized_target} and should remain unlabeled "
+                f"({positive_count} supporting, {negative_count} contradicting, "
+                f"score {consensus:+.2f})."
+            )
+        else:
+            return None
+
+    confidence = "high" if abs(consensus) >= min(threshold + 0.15, 0.95) else "medium"
+    return {
+        "decision": decision,
+        "reasoning": reasoning,
+        "suggested_label": suggested_label,
+        "confidence": confidence,
+    }
+
+
+def chroma_resolve_words(
+    chroma_client: Any,
+    words: list[dict],
+    merchant_name: str,
+    threshold: float = 0.75,
+    min_evidence: int = 4,
+) -> tuple[list[tuple[dict, dict]], list[dict]]:
+    """Resolve words using ChromaDB consensus.
+
+    For each word, queries ChromaDB for evidence and computes consensus.
+    Words with strong consensus are auto-resolved; others are returned
+    as unresolved for LLM evaluation.
+
+    Args:
+        chroma_client: ChromaDB client instance
+        words: List of word dicts, each with keys:
+            image_id, receipt_id, line_id, word_id, current_label, word_text
+        merchant_name: Merchant name for same-merchant boosting
+        threshold: Consensus threshold for auto-resolution (default 0.75)
+        min_evidence: Minimum evidence items required (default 4)
+
+    Returns:
+        Tuple of (resolved_pairs, unresolved_words) where each resolved
+        pair is (word_dict, decision_dict).
+    """
+    resolved: list[tuple[dict, dict]] = []
+    unresolved: list[dict] = []
+
+    for word_dict in words:
+        current_label = word_dict.get("current_label", "")
+        # Determine target label for evidence query
+        normalized = current_label.strip().upper() if current_label else ""
+        if normalized in {"", "O", "NONE", "NONE (UNLABELED)", "UNLABELED"}:
+            # Unlabeled word — skip ChromaDB (no target label to query)
+            unresolved.append(word_dict)
+            continue
+
+        target_label = normalized
+
+        try:
+            evidence = query_label_evidence(
+                chroma_client=chroma_client,
+                image_id=word_dict["image_id"],
+                receipt_id=word_dict["receipt_id"],
+                line_id=word_dict["line_id"],
+                word_id=word_dict["word_id"],
+                target_label=target_label,
+                target_merchant=merchant_name,
+            )
+            consensus, pos_count, neg_count = compute_label_consensus(evidence)
+
+            issue = {
+                "current_label": current_label,
+                "word_text": word_dict.get("word_text", ""),
+            }
+            auto_review = build_consensus_auto_review(
+                issue=issue,
+                target_label=target_label,
+                consensus=consensus,
+                positive_count=pos_count,
+                negative_count=neg_count,
+                min_evidence=min_evidence,
+                threshold=threshold,
+            )
+
+            if auto_review is not None:
+                resolved.append((word_dict, auto_review))
+            else:
+                unresolved.append(word_dict)
+        except Exception as exc:
+            logger.warning(
+                "ChromaDB evidence query failed for word '%s' "
+                "(line=%s, word=%s): %s",
+                word_dict.get("word_text", ""),
+                word_dict.get("line_id"),
+                word_dict.get("word_id"),
+                exc,
+            )
+            unresolved.append(word_dict)
+
+    return resolved, unresolved
+
+
+_SYSTEM_FAILURE_INDICATORS = (
+    "Strict structured output failed",
+    "LLM call failed",
+    "No response received",
+    "No decision from LLM",
+)
+
+
+def chroma_fallback_decisions(
+    chroma_client: Any,
+    words: list[dict],
+    decisions: list[dict],
+    merchant_name: str,
+    threshold: float = 0.5,
+    min_evidence: int = 2,
+) -> list[dict]:
+    """Replace system-failure NEEDS_REVIEW decisions with ChromaDB consensus.
+
+    Scans decisions for system failures (structured output failures, LLM crashes).
+    For each, queries ChromaDB with lowered thresholds. If consensus exists,
+    replaces the NEEDS_REVIEW with a real VALID/INVALID decision.
+
+    Returns a new decisions list (same length, same order).
+    """
+    if not chroma_client or not words or not decisions:
+        return decisions
+
+    # Identify indices where decision is a system failure NEEDS_REVIEW
+    failure_indices: list[int] = []
+    for i, dec in enumerate(decisions):
+        if dec.get("decision") != "NEEDS_REVIEW":
+            continue
+        reasoning = dec.get("reasoning", "")
+        if any(indicator in reasoning for indicator in _SYSTEM_FAILURE_INDICATORS):
+            failure_indices.append(i)
+
+    if not failure_indices:
+        return decisions
+
+    # Build word dicts for the failure indices
+    failure_words = [words[i] for i in failure_indices]
+
+    try:
+        resolved_pairs, unresolved_words = chroma_resolve_words(
+            chroma_client=chroma_client,
+            words=failure_words,
+            merchant_name=merchant_name,
+            threshold=threshold,
+            min_evidence=min_evidence,
+        )
+    except Exception as exc:
+        logger.warning("ChromaDB fallback failed: %s", exc)
+        return decisions
+
+    # Build a lookup from (line_id, word_id) -> decision for resolved words
+    resolved_map: dict[tuple[int, int], dict] = {}
+    for word_dict, decision in resolved_pairs:
+        key = (word_dict["line_id"], word_dict["word_id"])
+        resolved_map[key] = decision
+
+    # Build updated decisions list
+    updated = list(decisions)
+    resolved_count = 0
+    for i in failure_indices:
+        word = words[i]
+        key = (word["line_id"], word["word_id"])
+        if key in resolved_map:
+            updated[i] = resolved_map[key]
+            resolved_count += 1
+        else:
+            # Keep NEEDS_REVIEW but annotate that fallback was also inconclusive
+            updated[i] = dict(updated[i])
+            updated[i]["reasoning"] = (
+                updated[i].get("reasoning", "")
+                + " (ChromaDB fallback also inconclusive)"
+            )
+
+    logger.info(
+        "ChromaDB fallback resolved %d/%d system-failure words",
+        resolved_count,
+        len(failure_indices),
+    )
+
+    return updated
+
+
 def load_dual_chroma_from_s3(
     chromadb_bucket: str,
     base_chroma_path: Optional[str] = None,

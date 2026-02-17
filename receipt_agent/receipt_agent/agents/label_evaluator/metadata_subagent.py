@@ -624,6 +624,7 @@ def evaluate_metadata_labels(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
+    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Evaluate metadata labels on a receipt.
@@ -637,6 +638,7 @@ def evaluate_metadata_labels(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
+        chroma_client: Optional ChromaDB client for consensus pre-check
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -688,6 +690,58 @@ def evaluate_metadata_labels(
     # If all words resolved, skip LLM entirely
     if not remaining_words:
         logger.info("All metadata words auto-resolved, skipping LLM call")
+        return auto_results
+
+    # Step 1.7: ChromaDB consensus auto-resolve for remaining words
+    if chroma_client and remaining_words:
+        from receipt_agent.utils.chroma_helpers import chroma_resolve_words
+
+        chroma_word_dicts = [
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": mw.word_context.word.line_id,
+                "word_id": mw.word_context.word.word_id,
+                "current_label": mw.current_label,
+                "word_text": mw.word_context.word.text,
+            }
+            for mw in remaining_words
+        ]
+        chroma_resolved, chroma_unresolved_dicts = chroma_resolve_words(
+            chroma_client=chroma_client,
+            words=chroma_word_dicts,
+            merchant_name=merchant_name,
+        )
+        if chroma_resolved:
+            for word_dict, decision in chroma_resolved:
+                auto_results.append({
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": word_dict["line_id"],
+                        "word_id": word_dict["word_id"],
+                        "current_label": word_dict["current_label"],
+                        "word_text": word_dict["word_text"],
+                    },
+                    "llm_review": decision,
+                })
+            chroma_unresolved_ids = {
+                (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
+            }
+            remaining_words = [
+                mw for mw in remaining_words
+                if (mw.word_context.word.line_id, mw.word_context.word.word_id)
+                in chroma_unresolved_ids
+            ]
+            logger.info(
+                "ChromaDB auto-resolved %d/%d metadata words",
+                len(chroma_resolved),
+                len(chroma_resolved) + len(remaining_words),
+            )
+
+    # If all words resolved after ChromaDB, skip LLM entirely
+    if not remaining_words:
+        logger.info("All metadata words resolved (regex + ChromaDB), skipping LLM call")
         return auto_results
 
     # Step 2: Build prompt and call LLM (only for unresolved words)
@@ -842,6 +896,28 @@ def evaluate_metadata_labels(
             failure_reason="No response received",
         )
 
+    # Step 3: ChromaDB fallback for system failures
+    if chroma_client and remaining_words:
+        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
+
+        failure_word_dicts = [
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": mw.word_context.word.line_id,
+                "word_id": mw.word_context.word.word_id,
+                "current_label": mw.current_label,
+                "word_text": mw.word_context.word.text,
+            }
+            for mw in remaining_words
+        ]
+        decisions = chroma_fallback_decisions(
+            chroma_client=chroma_client,
+            words=failure_word_dicts,
+            decisions=decisions,
+            merchant_name=merchant_name,
+        )
+
     # Step 4: Format output for apply_llm_decisions
     llm_results: list[dict[str, Any]] = []
     for mw, decision in zip(remaining_words, decisions, strict=True):
@@ -889,6 +965,7 @@ async def evaluate_metadata_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
+    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_metadata_labels.
@@ -906,6 +983,7 @@ async def evaluate_metadata_labels_async(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
+        chroma_client: Optional ChromaDB client for consensus pre-check
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -957,6 +1035,59 @@ async def evaluate_metadata_labels_async(
     # If all words resolved, skip LLM entirely
     if not remaining_words:
         logger.info("All metadata words auto-resolved, skipping LLM call")
+        return auto_results
+
+    # Step 1.7: ChromaDB consensus auto-resolve for remaining words
+    if chroma_client and remaining_words:
+        from receipt_agent.utils.chroma_helpers import chroma_resolve_words
+
+        chroma_word_dicts = [
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": mw.word_context.word.line_id,
+                "word_id": mw.word_context.word.word_id,
+                "current_label": mw.current_label,
+                "word_text": mw.word_context.word.text,
+            }
+            for mw in remaining_words
+        ]
+        chroma_resolved, chroma_unresolved_dicts = await asyncio.to_thread(
+            chroma_resolve_words,
+            chroma_client=chroma_client,
+            words=chroma_word_dicts,
+            merchant_name=merchant_name,
+        )
+        if chroma_resolved:
+            for word_dict, decision in chroma_resolved:
+                auto_results.append({
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": word_dict["line_id"],
+                        "word_id": word_dict["word_id"],
+                        "current_label": word_dict["current_label"],
+                        "word_text": word_dict["word_text"],
+                    },
+                    "llm_review": decision,
+                })
+            chroma_unresolved_ids = {
+                (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
+            }
+            remaining_words = [
+                mw for mw in remaining_words
+                if (mw.word_context.word.line_id, mw.word_context.word.word_id)
+                in chroma_unresolved_ids
+            ]
+            logger.info(
+                "ChromaDB auto-resolved %d/%d metadata words",
+                len(chroma_resolved),
+                len(chroma_resolved) + len(remaining_words),
+            )
+
+    # If all words resolved after ChromaDB, skip LLM entirely
+    if not remaining_words:
+        logger.info("All metadata words resolved (regex + ChromaDB), skipping LLM call")
         return auto_results
 
     # Step 2: Build prompt (only for unresolved words)
@@ -1119,6 +1250,28 @@ async def evaluate_metadata_labels_async(
         decisions = build_structured_failure_decisions(
             num_words,
             failure_reason="No response received",
+        )
+
+    # Step 3: ChromaDB fallback for system failures
+    if chroma_client and remaining_words:
+        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
+
+        failure_word_dicts = [
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": mw.word_context.word.line_id,
+                "word_id": mw.word_context.word.word_id,
+                "current_label": mw.current_label,
+                "word_text": mw.word_context.word.text,
+            }
+            for mw in remaining_words
+        ]
+        decisions = chroma_fallback_decisions(
+            chroma_client=chroma_client,
+            words=failure_word_dicts,
+            decisions=decisions,
+            merchant_name=merchant_name,
         )
 
     # Step 4: Format output
