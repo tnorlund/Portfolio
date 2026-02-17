@@ -1154,20 +1154,21 @@ async def unified_receipt_evaluator(
                 )
                 financial_duration = time.time() - financial_start
 
-                # Apply financial corrections
+                # Apply financial corrections and confirmations
                 if financial_result:
                     from receipt_agent.agents.label_evaluator.llm_review import (
                         apply_llm_decisions,
                     )
 
-                    invalid_financial = [
+                    actionable_financial = [
                         d
                         for d in financial_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
+                        if d.get("llm_review", {}).get("decision")
+                        in ("VALID", "INVALID")
                     ]
-                    if invalid_financial:
+                    if actionable_financial:
                         apply_llm_decisions(
-                            reviewed_issues=invalid_financial,
+                            reviewed_issues=actionable_financial,
                             dynamo_client=dynamo_client,
                             execution_id=f"financial-{execution_id}",
                         )

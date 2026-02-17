@@ -578,19 +578,167 @@ def extract_financial_values_enhanced(
 # =============================================================================
 
 
-def _build_receipt_text(words: list) -> str:
-    """Build readable receipt text from ReceiptWord list, grouped by line."""
-    lines: dict[int, list] = defaultdict(list)
-    for w in words:
-        lines[w.line_id].append(w)
-    for lid in lines:
-        lines[lid].sort(key=lambda w: w.word_id)
+def _get_y_center(word: Any) -> float:
+    """Get y-center from a ReceiptWord's bounding box."""
+    bb = getattr(word, "bounding_box", None) or {}
+    y = bb.get("y", 0)
+    h = bb.get("height", 0)
+    return y + h / 2
 
+
+def _group_into_visual_lines(words: list) -> list[list]:
+    """Group ReceiptWord objects into visual lines by y-coordinate proximity.
+
+    Same algorithm as ``assemble_visual_lines`` in word_context.py but works
+    directly on ReceiptWord objects (no WordContext wrapper needed).
+
+    Returns list of visual lines (each a list of ReceiptWord sorted
+    left-to-right), ordered top-to-bottom on the receipt.
+    """
+    if not words:
+        return []
+
+    # Tolerance from median word height
+    heights = [
+        w.bounding_box.get("height", 0.02)
+        for w in words
+        if getattr(w, "bounding_box", None) and w.bounding_box.get("height")
+    ]
+    tol = max(0.01, median(heights) * 0.75) if heights else 0.015
+
+    # Sort by y descending (top of receipt first, since y=1 is top)
+    sorted_words = sorted(words, key=lambda w: -_get_y_center(w))
+
+    visual_lines: list[list] = []
+    current: list = [sorted_words[0]]
+    current_y = _get_y_center(sorted_words[0])
+
+    for w in sorted_words[1:]:
+        yc = _get_y_center(w)
+        if abs(yc - current_y) <= tol:
+            current.append(w)
+            current_y = sum(_get_y_center(cw) for cw in current) / len(current)
+        else:
+            current.sort(
+                key=lambda cw: (getattr(cw, "bounding_box", None) or {}).get(
+                    "x", 0
+                )
+            )
+            visual_lines.append(current)
+            current = [w]
+            current_y = yc
+
+    current.sort(
+        key=lambda cw: (getattr(cw, "bounding_box", None) or {}).get("x", 0)
+    )
+    visual_lines.append(current)
+    return visual_lines
+
+
+def _build_receipt_text(words: list) -> str:
+    """Build readable receipt text grouped by visual lines (y-position).
+
+    Uses y-coordinate proximity to group words that appear on the same
+    visual row, even if OCR assigned them different ``line_id`` values.
+    The visual line index becomes the ``Line N:`` prefix that the LLM sees.
+    """
+    visual_lines = _group_into_visual_lines(words)
     result = []
-    for lid, lwords in sorted(lines.items()):
-        text = " ".join(w.text for w in lwords)
-        result.append(f"Line {lid}: {text}")
+    for i, vl_words in enumerate(visual_lines):
+        text = " ".join(w.text for w in vl_words)
+        result.append(f"Line {i}: {text}")
     return "\n".join(result)
+
+
+def _match_llm_items_to_words(
+    llm_items: list[dict],
+    words: list,
+    label_type: str,
+) -> list[FinancialValue]:
+    """Match LLM-returned line items/discounts back to real ReceiptWord objects.
+
+    The LLM returns items with ``line`` (visual line index), ``text``, and
+    ``amount``.  We rebuild the same visual lines the LLM saw, find the
+    referenced visual line, and search for a word whose numeric value matches
+    the amount.  This gives us the real ``(line_id, word_id)`` coordinates
+    needed to write VALID labels to DynamoDB.
+
+    Items that can't be matched (e.g. OCR truncation) are returned with a
+    dummy WordContext so the math still balances — they just won't produce
+    VALID label writes.
+    """
+    from .state import WordContext as WC
+
+    visual_lines = _group_into_visual_lines(words)
+    dummy_word = words[0] if words else None
+    if dummy_word is None:
+        return []
+
+    matched: list[FinancialValue] = []
+
+    for item in llm_items:
+        llm_line = item.get("line", -1)
+        llm_amount = item.get("amount", 0)
+        sign = -1 if label_type == "DISCOUNT" else 1
+
+        # Find words on the visual line the LLM referenced (with ±2 fallback)
+        found_word = None
+        for offset in (0, -1, 1, -2, 2):
+            idx = llm_line + offset
+            if 0 <= idx < len(visual_lines):
+                line_words = visual_lines[idx]
+
+                # Strategy 1: exact amount text
+                amount_str = f"{llm_amount:.2f}"
+                amount_str_dollar = f"${llm_amount:.2f}"
+                for w in line_words:
+                    if w.text in (amount_str, amount_str_dollar):
+                        found_word = w
+                        break
+
+                # Strategy 2: numeric value match
+                if found_word is None:
+                    for w in line_words:
+                        num = _extract_number(w.text)
+                        if num is not None and abs(abs(num) - llm_amount) < 0.01:
+                            found_word = w
+                            break
+
+            if found_word is not None:
+                break
+
+        if found_word is not None:
+            wc = WC(word=found_word)
+            matched.append(
+                FinancialValue(
+                    word_context=wc,
+                    label=label_type,
+                    numeric_value=sign * llm_amount,
+                    line_index=found_word.line_id,
+                    word_text=found_word.text,
+                )
+            )
+        else:
+            # Unmatched — use dummy WordContext so math still balances
+            wc = WC(word=dummy_word)
+            matched.append(
+                FinancialValue(
+                    word_context=wc,
+                    label=label_type,
+                    numeric_value=sign * llm_amount,
+                    line_index=item.get("line", 0),
+                    word_text=item.get("text", str(llm_amount)),
+                )
+            )
+            logger.info(
+                "LLM item unmatched: %s $%.2f line=%d text=%r",
+                label_type,
+                llm_amount,
+                llm_line,
+                item.get("text", ""),
+            )
+
+    return matched
 
 
 async def _llm_identify_line_items_async(
@@ -714,39 +862,13 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
             )
             return None
 
-        # Build a minimal WordContext for LLM-sourced values
-        # We need a ReceiptWord to wrap; use first available word
-        dummy_word = words[0] if words else None
-        if dummy_word is None:
-            return None
-
-        from .state import WordContext as WC
-
-        result_lt: list[FinancialValue] = []
-        for item in llm_line_items:
-            wc = WC(word=dummy_word)
-            result_lt.append(
-                FinancialValue(
-                    word_context=wc,
-                    label="LINE_TOTAL",
-                    numeric_value=item["amount"],
-                    line_index=item.get("line", 0),
-                    word_text=item.get("text", str(item["amount"])),
-                )
-            )
-
-        result_disc: list[FinancialValue] = []
-        for item in llm_discounts:
-            wc = WC(word=dummy_word)
-            result_disc.append(
-                FinancialValue(
-                    word_context=wc,
-                    label="DISCOUNT",
-                    numeric_value=-item["amount"],
-                    line_index=item.get("line", 0),
-                    word_text=item.get("text", str(item["amount"])),
-                )
-            )
+        # Match LLM items back to real ReceiptWord objects via visual lines
+        result_lt = _match_llm_items_to_words(
+            llm_line_items, words, "LINE_TOTAL"
+        )
+        result_disc = _match_llm_items_to_words(
+            llm_discounts, words, "DISCOUNT"
+        )
 
         return {"LINE_TOTAL": result_lt, "DISCOUNT": result_disc}
 
@@ -780,6 +902,74 @@ def detect_math_issues_from_values(
     issues.extend(line_issues)
 
     return issues
+
+
+def _build_valid_decisions(
+    values: dict[str, list[FinancialValue]],
+    image_id: str,
+    receipt_id: int,
+    source: str,
+) -> list[dict[str, Any]]:
+    """Build VALID decision dicts from math-confirmed financial values.
+
+    When the financial math balances, every label that participated in
+    the equation is confirmed correct.  This builds decision dicts
+    compatible with ``apply_llm_decisions`` so those labels get written
+    as VALID in DynamoDB.
+
+    Only values with a real WordContext (not dummy) produce decisions.
+    A FinancialValue is considered "real" when its ``word_context.word``
+    has ``line_id`` matching ``line_index`` (dummy uses first word in
+    receipt which almost never matches).
+    """
+    decisions: list[dict[str, Any]] = []
+    seen: set[tuple[int, int, str]] = set()
+
+    for label_name, fvs in values.items():
+        for fv in fvs:
+            wc = fv.word_context
+            if wc is None:
+                continue
+
+            w = wc.word
+            lid = getattr(w, "line_id", None)
+            wid = getattr(w, "word_id", None)
+            if lid is None or wid is None:
+                continue
+
+            # Skip dummy WordContext: real matches have line_id == line_index
+            if lid != fv.line_index:
+                continue
+
+            # Deduplicate (same word can appear under LINE_TOTAL and UNIT_PRICE)
+            key = (lid, wid, fv.label)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            decisions.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": lid,
+                        "word_id": wid,
+                        "current_label": fv.label,
+                        "word_text": fv.word_text,
+                    },
+                    "llm_review": {
+                        "decision": "VALID",
+                        "reasoning": (
+                            f"Financial math balanced ({source}): "
+                            f"{fv.label}={fv.numeric_value:.2f}"
+                        ),
+                        "suggested_label": None,
+                        "confidence": "high",
+                    },
+                }
+            )
+
+    return decisions
 
 
 # =============================================================================
@@ -1730,15 +1920,16 @@ def evaluate_financial_math(
         )
 
     # Itemized path: try enhanced extraction if labels + chroma available
+    enhanced_values: dict[str, list[FinancialValue]] | None = None
     if labels and chroma_client and words:
-        values = extract_financial_values_enhanced(
+        enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
         )
-        math_issues = detect_math_issues_from_values(values)
+        math_issues = detect_math_issues_from_values(enhanced_values)
         logger.info(
             "Enhanced extraction: %d math issues from %d label types",
             len(math_issues),
-            len(values),
+            len(enhanced_values),
         )
     else:
         math_issues = detect_math_issues(visual_lines)
@@ -1746,6 +1937,19 @@ def evaluate_financial_math(
     logger.info("Detected %d math issues", len(math_issues))
 
     if not math_issues:
+        if enhanced_values:
+            valid_decisions = _build_valid_decisions(
+                enhanced_values,
+                image_id,
+                receipt_id,
+                "enhanced_extraction_math_balanced",
+            )
+            if valid_decisions:
+                logger.info(
+                    "Math balanced: emitting %d VALID decisions",
+                    len(valid_decisions),
+                )
+                return valid_decisions
         logger.info("No math issues found, skipping financial validation")
         return []
 
@@ -1994,6 +2198,7 @@ async def evaluate_financial_math_async(
 
     # Itemized path: try enhanced extraction if labels + chroma available
     enhanced_values: dict[str, list[FinancialValue]] | None = None
+    used_llm_fallback = False
     if labels and chroma_client and words:
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
@@ -2040,12 +2245,30 @@ async def evaluate_financial_math_async(
                     math_issues = detect_math_issues_from_values(
                         enhanced_values
                     )
+                    used_llm_fallback = True
                     logger.info(
                         "LLM fallback applied: %d math issues remaining",
                         len(math_issues),
                     )
 
     if not math_issues:
+        # Math balances — emit VALID decisions for confirmed values
+        if enhanced_values:
+            source = (
+                "llm_fallback_math_balanced"
+                if used_llm_fallback
+                else "enhanced_extraction_math_balanced"
+            )
+            valid_decisions = _build_valid_decisions(
+                enhanced_values, image_id, receipt_id, source
+            )
+            if valid_decisions:
+                logger.info(
+                    "Math balanced (%s): emitting %d VALID decisions",
+                    source,
+                    len(valid_decisions),
+                )
+                return valid_decisions
         logger.info("No math issues found, skipping financial validation")
         return []
 
