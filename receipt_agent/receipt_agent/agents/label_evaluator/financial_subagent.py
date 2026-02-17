@@ -574,8 +574,32 @@ def extract_financial_values_enhanced(
 
 
 # =============================================================================
-# LLM Line-Item Fallback
+# Visual Line Grouping
 # =============================================================================
+
+
+@dataclass
+class ReceiptVisualLine:
+    """A visual row on a receipt — words grouped by y-position.
+
+    OCR can assign different ``line_id`` values to words that appear on
+    the same visual row (e.g. product name on line 35, price on line 41).
+    This groups words by their actual y-coordinate so that each instance
+    represents one physical row of the receipt.
+
+    The ``index`` is the visual line number shown to the LLM as
+    ``Line N:`` — using this same object for both text building and word
+    matching guarantees the mapping is consistent.
+    """
+
+    index: int  # Visual line number (what the LLM sees as "Line N:")
+    words: list  # ReceiptWord objects, sorted left-to-right
+    y_center: float  # Average y-coordinate of the row
+
+    @property
+    def text(self) -> str:
+        """Concatenated text of all words on this line."""
+        return " ".join(w.text for w in self.words)
 
 
 def _get_y_center(word: Any) -> float:
@@ -586,14 +610,13 @@ def _get_y_center(word: Any) -> float:
     return y + h / 2
 
 
-def _group_into_visual_lines(words: list) -> list[list]:
+def _group_into_visual_lines(words: list) -> list[ReceiptVisualLine]:
     """Group ReceiptWord objects into visual lines by y-coordinate proximity.
 
     Same algorithm as ``assemble_visual_lines`` in word_context.py but works
     directly on ReceiptWord objects (no WordContext wrapper needed).
 
-    Returns list of visual lines (each a list of ReceiptWord sorted
-    left-to-right), ordered top-to-bottom on the receipt.
+    Returns list of :class:`ReceiptVisualLine` ordered top-to-bottom.
     """
     if not words:
         return []
@@ -609,7 +632,7 @@ def _group_into_visual_lines(words: list) -> list[list]:
     # Sort by y descending (top of receipt first, since y=1 is top)
     sorted_words = sorted(words, key=lambda w: -_get_y_center(w))
 
-    visual_lines: list[list] = []
+    raw_groups: list[list] = []
     current: list = [sorted_words[0]]
     current_y = _get_y_center(sorted_words[0])
 
@@ -624,55 +647,57 @@ def _group_into_visual_lines(words: list) -> list[list]:
                     "x", 0
                 )
             )
-            visual_lines.append(current)
+            raw_groups.append(current)
             current = [w]
             current_y = yc
 
     current.sort(
         key=lambda cw: (getattr(cw, "bounding_box", None) or {}).get("x", 0)
     )
-    visual_lines.append(current)
-    return visual_lines
+    raw_groups.append(current)
+
+    return [
+        ReceiptVisualLine(
+            index=i,
+            words=grp,
+            y_center=sum(_get_y_center(w) for w in grp) / len(grp),
+        )
+        for i, grp in enumerate(raw_groups)
+    ]
 
 
-def _build_receipt_text(words: list) -> str:
-    """Build readable receipt text grouped by visual lines (y-position).
+# =============================================================================
+# LLM Line-Item Fallback
+# =============================================================================
 
-    Uses y-coordinate proximity to group words that appear on the same
-    visual row, even if OCR assigned them different ``line_id`` values.
-    The visual line index becomes the ``Line N:`` prefix that the LLM sees.
+
+def _build_receipt_text(visual_lines: list[ReceiptVisualLine]) -> str:
+    """Build readable receipt text from pre-computed visual lines.
+
+    Each visual line becomes a ``Line N: <text>`` row that the LLM sees.
+    Because the same :class:`ReceiptVisualLine` list is reused for matching,
+    the line numbers are guaranteed to be consistent.
     """
-    visual_lines = _group_into_visual_lines(words)
-    result = []
-    for i, vl_words in enumerate(visual_lines):
-        text = " ".join(w.text for w in vl_words)
-        result.append(f"Line {i}: {text}")
-    return "\n".join(result)
+    return "\n".join(f"Line {vl.index}: {vl.text}" for vl in visual_lines)
 
 
 def _match_llm_items_to_words(
     llm_items: list[dict],
-    words: list,
+    visual_lines: list[ReceiptVisualLine],
     label_type: str,
+    dummy_word: Any,
 ) -> list[FinancialValue]:
-    """Match LLM-returned line items/discounts back to real ReceiptWord objects.
+    """Match LLM-returned line items back to real ReceiptWord objects.
 
     The LLM returns items with ``line`` (visual line index), ``text``, and
-    ``amount``.  We rebuild the same visual lines the LLM saw, find the
-    referenced visual line, and search for a word whose numeric value matches
-    the amount.  This gives us the real ``(line_id, word_id)`` coordinates
-    needed to write VALID labels to DynamoDB.
+    ``amount``.  We look up the referenced :class:`ReceiptVisualLine` and
+    search for a word whose numeric value matches the amount.  This gives
+    us the real ``(line_id, word_id)`` coordinates for DynamoDB.
 
-    Items that can't be matched (e.g. OCR truncation) are returned with a
-    dummy WordContext so the math still balances — they just won't produce
-    VALID label writes.
+    Items that can't be matched (e.g. OCR truncation) get a *dummy_word*
+    so the math still balances — they just won't produce VALID label writes.
     """
     from .state import WordContext as WC
-
-    visual_lines = _group_into_visual_lines(words)
-    dummy_word = words[0] if words else None
-    if dummy_word is None:
-        return []
 
     matched: list[FinancialValue] = []
 
@@ -686,19 +711,19 @@ def _match_llm_items_to_words(
         for offset in (0, -1, 1, -2, 2):
             idx = llm_line + offset
             if 0 <= idx < len(visual_lines):
-                line_words = visual_lines[idx]
+                vl = visual_lines[idx]
 
                 # Strategy 1: exact amount text
                 amount_str = f"{llm_amount:.2f}"
                 amount_str_dollar = f"${llm_amount:.2f}"
-                for w in line_words:
+                for w in vl.words:
                     if w.text in (amount_str, amount_str_dollar):
                         found_word = w
                         break
 
                 # Strategy 2: numeric value match
                 if found_word is None:
-                    for w in line_words:
+                    for w in vl.words:
                         num = extract_number(w.text)
                         if num is not None and abs(abs(num) - llm_amount) < 0.01:
                             found_word = w
@@ -743,18 +768,23 @@ def _match_llm_items_to_words(
 
 async def _llm_identify_line_items_async(
     llm: Any,
-    words: list,
+    visual_lines: list[ReceiptVisualLine],
     subtotal: float,
     line_totals: list[FinancialValue],
     discounts: list[FinancialValue],
     merchant_name: str,
+    dummy_word: Any,
 ) -> dict[str, list[FinancialValue]] | None:
     """Ask LLM to identify all line items and discounts on the receipt.
+
+    *visual_lines* is the single pre-computed grouping used for both the
+    prompt text and the subsequent word matching — guaranteeing the LLM's
+    ``line`` references map to the exact same rows we search.
 
     Returns dict with 'LINE_TOTAL' and 'DISCOUNT' keys containing
     FinancialValue lists, or None if the LLM couldn't balance the math.
     """
-    receipt_text = _build_receipt_text(words)
+    receipt_text = _build_receipt_text(visual_lines)
 
     algo_lt_sum = sum(fv.numeric_value for fv in line_totals)
     algo_disc_sum = sum(abs(fv.numeric_value) for fv in discounts)
@@ -862,12 +892,13 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
             )
             return None
 
-        # Match LLM items back to real ReceiptWord objects via visual lines
+        # Match LLM items back to real ReceiptWord objects — uses the
+        # same visual_lines that built the prompt text.
         result_lt = _match_llm_items_to_words(
-            llm_line_items, words, "LINE_TOTAL"
+            llm_line_items, visual_lines, "LINE_TOTAL", dummy_word
         )
         result_disc = _match_llm_items_to_words(
-            llm_discounts, words, "DISCOUNT"
+            llm_discounts, visual_lines, "DISCOUNT", dummy_word
         )
 
         return {"LINE_TOTAL": result_lt, "DISCOUNT": result_disc}
@@ -2254,13 +2285,17 @@ async def evaluate_financial_math_async(
                     "LLM fallback: SUBTOTAL_MISMATCH detected, "
                     "asking LLM to identify line items"
                 )
+                # Compute visual lines once — used for both the LLM
+                # prompt text and matching results back to words.
+                receipt_visual_lines = _group_into_visual_lines(words)
                 llm_result = await _llm_identify_line_items_async(
                     llm=llm,
-                    words=words,
+                    visual_lines=receipt_visual_lines,
                     subtotal=subtotal_val,
                     line_totals=enhanced_values.get("LINE_TOTAL", []),
                     discounts=enhanced_values.get("DISCOUNT", []),
                     merchant_name=merchant_name,
+                    dummy_word=words[0],
                 )
                 if llm_result is not None:
                     # Replace LINE_TOTAL and DISCOUNT with LLM values
