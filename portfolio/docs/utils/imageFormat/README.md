@@ -20,3 +20,4 @@
 - [detectImageFormatSupport](functions/detectImageFormatSupport.md)
 - [getBestImageUrl](functions/getBestImageUrl.md)
 - [getJpegFallbackUrl](functions/getJpegFallbackUrl.md)
+- [usePreloadReceiptImages](functions/usePreloadReceiptImages.md)
