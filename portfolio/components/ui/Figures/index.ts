@@ -2,8 +2,38 @@ import dynamic from "next/dynamic";
 import React from "react";
 import { ReceiptFlowLoadingShell } from "./ReceiptFlow/ReceiptFlowLoadingShell";
 
-function loadingShell(variant: React.ComponentProps<typeof ReceiptFlowLoadingShell>["variant"]) {
-  return React.createElement(ReceiptFlowLoadingShell, { variant });
+type LoadingVariant = React.ComponentProps<typeof ReceiptFlowLoadingShell>["variant"];
+
+const RECEIPT_FLOW_CONTAINER_STYLE: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "1024px",
+  margin: "2rem auto",
+  padding: "2rem",
+  background: "var(--background-color)",
+  borderRadius: "12px",
+};
+
+const LAYOUTLM_CONTAINER_STYLE: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "1000px",
+  margin: "2rem auto",
+  padding: "1.5rem",
+  background: "var(--background-color)",
+  borderRadius: "12px",
+};
+
+function loadingShell(variant: LoadingVariant) {
+  const containerStyle =
+    variant === "layoutlm" ? LAYOUTLM_CONTAINER_STYLE : RECEIPT_FLOW_CONTAINER_STYLE;
+  const layoutVars = variant === "layoutlm"
+    ? ({ "--rf-align-items": "center" } as React.CSSProperties)
+    : undefined;
+
+  return React.createElement(
+    "div",
+    { style: containerStyle },
+    React.createElement(ReceiptFlowLoadingShell, { variant, layoutVars })
+  );
 }
 
 // Make MerchantCount and LabelValidationCount client-side only to prevent SSR issues during static export
@@ -68,7 +98,6 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
-export const LayoutLMBatchVisualization = DynamicLayoutLMInferenceVisualization;
 export const LabelValidationTimeline = dynamic(
   () => import("./LabelValidationTimeline"),
   { ssr: false }

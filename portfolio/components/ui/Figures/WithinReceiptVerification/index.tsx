@@ -7,7 +7,10 @@ import {
 } from "../../../../types/api";
 import { getBestImageUrl, getJpegFallbackUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
-import { ReceiptFlowLoadingShell } from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import {
+  DEFAULT_LAYOUT_VARS,
+  ReceiptFlowLoadingShell,
+} from "../ReceiptFlow/ReceiptFlowLoadingShell";
 import {
   getQueuePosition,
   getVisibleQueueIndices,
@@ -62,16 +65,7 @@ const FORMAT_DURATION = 1500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
-const LAYOUT_VARS = {
-  "--rf-queue-width": "120px",
-  "--rf-queue-height": "400px",
-  "--rf-center-max-width": "350px",
-  "--rf-center-height": "500px",
-  "--rf-mobile-center-height": "400px",
-  "--rf-mobile-center-height-sm": "320px",
-  "--rf-gap": "1.5rem",
-  "--rf-align-items": "flex-start",
-} as React.CSSProperties;
+const LAYOUT_VARS = DEFAULT_LAYOUT_VARS;
 
 
 // ---------------------------------------------------------------------------
