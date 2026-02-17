@@ -62,6 +62,17 @@ const FORMAT_DURATION = 1500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
+const LAYOUT_VARS = {
+  "--rf-queue-width": "120px",
+  "--rf-queue-height": "400px",
+  "--rf-center-max-width": "350px",
+  "--rf-center-height": "500px",
+  "--rf-mobile-center-height": "400px",
+  "--rf-mobile-center-height-sm": "320px",
+  "--rf-gap": "1.5rem",
+  "--rf-align-items": "flex-start",
+} as React.CSSProperties;
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -673,17 +684,6 @@ const WithinReceiptVerification: React.FC = () => {
       />
     );
   }, [showFlyingReceipt, flyingReceipt, formatSupport]);
-
-  const LAYOUT_VARS = {
-    "--rf-queue-width": "120px",
-    "--rf-queue-height": "400px",
-    "--rf-center-max-width": "350px",
-    "--rf-center-height": "500px",
-    "--rf-mobile-center-height": "400px",
-    "--rf-mobile-center-height-sm": "320px",
-    "--rf-gap": "1.5rem",
-    "--rf-align-items": "flex-start",
-  } as React.CSSProperties;
 
   if (loading) {
     return (

@@ -8,7 +8,7 @@ export type ReceiptFlowLoadingVariant =
   | "between"
   | "layoutlm";
 
-const DEFAULT_LAYOUT_VARS: React.CSSProperties = {
+const DEFAULT_LAYOUT_VARS = {
   "--rf-queue-width": "120px",
   "--rf-queue-height": "400px",
   "--rf-center-max-width": "350px",

@@ -58,6 +58,17 @@ const SCAN_DURATION = 3000;
 const HOLD_DURATION = 1500;
 const TRANSITION_DURATION = 600;
 
+const LAYOUT_VARS = {
+  "--rf-queue-width": "120px",
+  "--rf-queue-height": "400px",
+  "--rf-center-max-width": "350px",
+  "--rf-center-height": "500px",
+  "--rf-mobile-center-height": "400px",
+  "--rf-mobile-center-height-sm": "320px",
+  "--rf-gap": "1.5rem",
+  "--rf-align-items": "flex-start",
+} as React.CSSProperties;
+
 // Revealed card for tracking which review decisions are visible
 interface RevealedCard {
   key: string;
@@ -561,17 +572,6 @@ const BetweenReceiptVisualization: React.FC = () => {
       isAnimatingRef.current = false;
     };
   }, [inView, receipts.length, currentIndex]);
-
-  const LAYOUT_VARS = {
-    "--rf-queue-width": "120px",
-    "--rf-queue-height": "400px",
-    "--rf-center-max-width": "350px",
-    "--rf-center-height": "500px",
-    "--rf-mobile-center-height": "400px",
-    "--rf-mobile-center-height-sm": "320px",
-    "--rf-gap": "1.5rem",
-    "--rf-align-items": "flex-start",
-  } as React.CSSProperties;
 
   if (loading) {
     return (

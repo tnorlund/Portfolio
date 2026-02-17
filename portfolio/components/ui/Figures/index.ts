@@ -52,13 +52,14 @@ export { default as CICDLoop } from "./CICDLoop";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";
 export { default as ImageStack } from "./ImageStack";
-export const LayoutLMInferenceVisualization = dynamic(
+const DynamicLayoutLMInferenceVisualization = dynamic(
   () => import("./LayoutLMBatchVisualization"),
   {
     ssr: false,
     loading: () => loadingShell("layoutlm"),
   }
 );
+export const LayoutLMInferenceVisualization = DynamicLayoutLMInferenceVisualization;
 export { default as PageCurlLetter } from "./PageCurlLetter";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
@@ -67,13 +68,7 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
-export const LayoutLMBatchVisualization = dynamic(
-  () => import("./LayoutLMBatchVisualization"),
-  {
-    ssr: false,
-    loading: () => loadingShell("layoutlm"),
-  }
-);
+export const LayoutLMBatchVisualization = DynamicLayoutLMInferenceVisualization;
 export const LabelValidationTimeline = dynamic(
   () => import("./LabelValidationTimeline"),
   { ssr: false }

@@ -34,6 +34,17 @@ const SCAN_DURATION = 3500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
+const LAYOUT_VARS = {
+  "--rf-queue-width": "120px",
+  "--rf-queue-height": "400px",
+  "--rf-center-max-width": "350px",
+  "--rf-center-height": "500px",
+  "--rf-mobile-center-height": "400px",
+  "--rf-mobile-center-height-sm": "320px",
+  "--rf-gap": "1.5rem",
+  "--rf-align-items": "flex-start",
+} as React.CSSProperties;
+
 // Queue management
 const QUEUE_REFETCH_THRESHOLD = 7;
 const MAX_EMPTY_FETCHES = 3;
@@ -616,17 +627,6 @@ export default function FinancialMathOverlay() {
   }, [showFlying, flyingItem, formatSupport]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
-
-  const LAYOUT_VARS = {
-    "--rf-queue-width": "120px",
-    "--rf-queue-height": "400px",
-    "--rf-center-max-width": "350px",
-    "--rf-center-height": "500px",
-    "--rf-mobile-center-height": "400px",
-    "--rf-mobile-center-height-sm": "320px",
-    "--rf-gap": "1.5rem",
-    "--rf-align-items": "flex-start",
-  } as React.CSSProperties;
 
   if (initialLoading) {
     return (

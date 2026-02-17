@@ -71,6 +71,16 @@ const MOBILE_LEGEND_GROUPS = [
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
+const LAYOUT_VARS = {
+  "--rf-queue-width": "120px",
+  "--rf-queue-height": "400px",
+  "--rf-center-max-width": "350px",
+  "--rf-center-height": "500px",
+  "--rf-mobile-center-height": "400px",
+  "--rf-mobile-center-height-sm": "320px",
+  "--rf-gap": "1.5rem",
+} as React.CSSProperties;
+
 interface ReceiptQueueProps {
   receipts: LayoutLMReceiptInference[];
   currentIndex: number;
@@ -625,17 +635,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
   return (
     <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
-        layoutVars={
-          {
-            "--rf-queue-width": "120px",
-            "--rf-queue-height": "400px",
-            "--rf-center-max-width": "350px",
-            "--rf-center-height": "500px",
-            "--rf-mobile-center-height": "400px",
-            "--rf-mobile-center-height-sm": "320px",
-            "--rf-gap": "1.5rem",
-          } as React.CSSProperties
-        }
+        layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}
         queue={
           <ReceiptQueue
@@ -779,16 +779,6 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
     initialFetch();
   }, []);
-
-  const LAYOUT_VARS = {
-    "--rf-queue-width": "120px",
-    "--rf-queue-height": "400px",
-    "--rf-center-max-width": "350px",
-    "--rf-center-height": "500px",
-    "--rf-mobile-center-height": "400px",
-    "--rf-mobile-center-height-sm": "320px",
-    "--rf-gap": "1.5rem",
-  } as React.CSSProperties;
 
   if (initialLoading) {
     return (
