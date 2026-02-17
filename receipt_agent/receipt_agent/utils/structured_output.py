@@ -290,6 +290,35 @@ def invoke_structured_with_retry(
             if attempt < retries:
                 time.sleep(_retry_backoff_seconds(attempt))
 
+    # All structured attempts failed — try one raw LLM call + manual repair
+    try:
+        logger.info("Attempting raw LLM fallback for %s", schema.__name__)
+        if config is None:
+            raw_result = llm.invoke(input_payload)
+        else:
+            raw_result = llm.invoke(input_payload, config=config)
+        raw_text = getattr(raw_result, "content", "")
+        if raw_text:
+            repaired = _try_repair_and_parse(raw_text, schema)
+            if repaired is not None:
+                logger.info(
+                    "Raw LLM fallback repaired response for %s",
+                    schema.__name__,
+                )
+                return StructuredOutputResult(
+                    success=True,
+                    response=repaired,
+                    attempts=retries + 1,
+                )
+    except LLMRateLimitError:
+        raise
+    except Exception as fallback_error:
+        logger.warning(
+            "Raw LLM fallback also failed for %s: %s",
+            schema.__name__,
+            fallback_error,
+        )
+
     return StructuredOutputResult(
         success=False,
         response=None,
@@ -386,6 +415,49 @@ async def ainvoke_structured_with_retry(
             last_error = error
             if attempt < retries:
                 await asyncio.sleep(_retry_backoff_seconds(attempt))
+
+    # All structured attempts failed — try one raw LLM call + manual repair
+    try:
+        logger.info(
+            "Attempting async raw LLM fallback for %s", schema.__name__
+        )
+        if hasattr(llm, "ainvoke"):
+            if config is None:
+                raw_result = await llm.ainvoke(input_payload)
+            else:
+                raw_result = await llm.ainvoke(
+                    input_payload, config=config
+                )
+        else:
+            if config is None:
+                raw_result = await asyncio.to_thread(
+                    llm.invoke, input_payload
+                )
+            else:
+                raw_result = await asyncio.to_thread(
+                    llm.invoke, input_payload, config=config
+                )
+        raw_text = getattr(raw_result, "content", "")
+        if raw_text:
+            repaired = _try_repair_and_parse(raw_text, schema)
+            if repaired is not None:
+                logger.info(
+                    "Async raw LLM fallback repaired response for %s",
+                    schema.__name__,
+                )
+                return StructuredOutputResult(
+                    success=True,
+                    response=repaired,
+                    attempts=retries + 1,
+                )
+    except LLMRateLimitError:
+        raise
+    except Exception as fallback_error:
+        logger.warning(
+            "Async raw LLM fallback also failed for %s: %s",
+            schema.__name__,
+            fallback_error,
+        )
 
     return StructuredOutputResult(
         success=False,
