@@ -314,22 +314,6 @@ decide if the current label is VALID, INVALID, or NEEDS_REVIEW.
 ## Words to Evaluate
 {words_text}
 
-## Your Task
-For each word above, evaluate the label and respond with a JSON array:
-
-```json
-[
-  {{
-    "index": 0,
-    "decision": "VALID" | "INVALID" | "NEEDS_REVIEW",
-    "reasoning": "Brief explanation",
-    "suggested_label": "LINE_TOTAL" | null,
-    "confidence": "high" | "medium" | "low"
-  }},
-  ...
-]
-```
-
 ## Label Types
 - PRODUCT_NAME: The name/description of the product (e.g., "MILK 2% GAL", "CHICKEN BREAST")
 - QUANTITY: Number of units (e.g., "2", "1.5", "3 @")
@@ -338,7 +322,9 @@ For each word above, evaluate the label and respond with a JSON array:
 - SUBTOTAL, TAX, GRAND_TOTAL: Summary amounts
 - DISCOUNT: Discount amount (usually negative or with minus sign)
 
-## Rules
+## Your Task
+For each word above, evaluate whether its current label is correct.
+
 - VALID: The current label is correct for this word
 - INVALID: The label is wrong OR an unlabeled word needs a label
 - NEEDS_REVIEW: You're unsure and a human should check
@@ -349,9 +335,7 @@ Common issues to catch:
 - Prices on the left side labeled as LINE_TOTAL (usually UNIT_PRICE)
 - Unlabeled currency values on line item rows
 
-For INVALID words, suggest the correct label.
-
-Respond ONLY with the JSON array, no other text.
+For INVALID words, suggest the correct label from the types above.
 """
     return prompt
 

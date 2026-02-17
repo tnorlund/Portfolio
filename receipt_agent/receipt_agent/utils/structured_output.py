@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -45,6 +47,89 @@ def _retry_backoff_seconds(attempt: int) -> float:
             _INITIAL_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)),
         )
     )
+
+
+def _try_repair_and_parse(
+    raw_text: str,
+    schema: type[T],
+) -> T | None:
+    """Try to repair malformed LLM JSON and parse with the Pydantic schema.
+
+    Handles three common failure modes:
+    1. Markdown wrapping: ```json ... ``` or leading prose before JSON
+    2. Double opening braces: {\\n{ → {
+    3. Array-to-object wrapping: [...] → {"evaluations": [...]} or {"reviews": [...]}
+
+    Returns the parsed model on success, None on failure.
+    """
+    # Step 1: Strip markdown code fences and leading prose
+    cleaned = raw_text.strip()
+    if "```" in cleaned:
+        match = re.search(
+            r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", cleaned, re.DOTALL
+        )
+        if match:
+            cleaned = match.group(1).strip()
+
+    # Strip leading non-JSON characters (periods, prose, whitespace)
+    first_brace = -1
+    first_bracket = -1
+    for i, ch in enumerate(cleaned):
+        if ch == "{" and first_brace == -1:
+            first_brace = i
+        if ch == "[" and first_bracket == -1:
+            first_bracket = i
+        if first_brace != -1 and first_bracket != -1:
+            break
+
+    json_start = -1
+    if first_brace != -1 and first_bracket != -1:
+        json_start = min(first_brace, first_bracket)
+    elif first_brace != -1:
+        json_start = first_brace
+    elif first_bracket != -1:
+        json_start = first_bracket
+
+    if json_start > 0:
+        cleaned = cleaned[json_start:]
+
+    # Step 2: Fix double opening braces: "{\n{" → "{"
+    cleaned = re.sub(r"^\{\s*\{", "{", cleaned)
+
+    # Step 3: Try parsing as-is first
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Try stripping trailing junk after last } or ]
+        last_brace = cleaned.rfind("}")
+        last_bracket = cleaned.rfind("]")
+        last_close = max(last_brace, last_bracket)
+        if last_close > 0:
+            try:
+                obj = json.loads(cleaned[: last_close + 1])
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    # Step 4: If parsed as array, wrap in object for Pydantic model
+    if isinstance(obj, list):
+        # Detect which key the schema expects
+        list_field = None
+        for field_name, field_info in schema.model_fields.items():
+            annotation = field_info.annotation
+            origin = getattr(annotation, "__origin__", None)
+            if origin is list:
+                list_field = field_name
+                break
+        if list_field:
+            obj = {list_field: obj}
+
+    # Step 5: Validate with Pydantic
+    try:
+        return schema.model_validate(obj)
+    except Exception:
+        return None
 
 
 def build_structured_failure_decisions(
@@ -167,6 +252,24 @@ def invoke_structured_with_retry(
             else:
                 result = structured_llm.invoke(input_payload, config=config)
             if result.get("parsing_error") is not None:
+                # Try to repair the raw response before giving up
+                raw_msg = result.get("raw")
+                raw_text = (
+                    getattr(raw_msg, "content", "") if raw_msg else ""
+                )
+                if raw_text:
+                    repaired = _try_repair_and_parse(raw_text, schema)
+                    if repaired is not None:
+                        logger.info(
+                            "Structured output repaired on attempt %d/%d",
+                            attempt,
+                            retries,
+                        )
+                        return StructuredOutputResult(
+                            success=True,
+                            response=repaired,
+                            attempts=attempt,
+                        )
                 raise result["parsing_error"]
             response: T = result["parsed"]
             return StructuredOutputResult(
@@ -246,6 +349,24 @@ async def ainvoke_structured_with_retry(
                     )
 
             if result.get("parsing_error") is not None:
+                # Try to repair the raw response before giving up
+                raw_msg = result.get("raw")
+                raw_text = (
+                    getattr(raw_msg, "content", "") if raw_msg else ""
+                )
+                if raw_text:
+                    repaired = _try_repair_and_parse(raw_text, schema)
+                    if repaired is not None:
+                        logger.info(
+                            "Async structured output repaired on attempt %d/%d",
+                            attempt,
+                            retries,
+                        )
+                        return StructuredOutputResult(
+                            success=True,
+                            response=repaired,
+                            attempts=attempt,
+                        )
                 raise result["parsing_error"]
             response: T = result["parsed"]
             return StructuredOutputResult(

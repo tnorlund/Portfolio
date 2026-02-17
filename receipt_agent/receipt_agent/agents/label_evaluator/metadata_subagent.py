@@ -484,22 +484,6 @@ decide if the current label is VALID, INVALID, or NEEDS_REVIEW.
 ## Words to Evaluate
 {words_text}
 
-## Your Task
-For each word above, evaluate the label and respond with a JSON array:
-
-```json
-[
-  {{
-    "index": 0,
-    "decision": "VALID" | "INVALID" | "NEEDS_REVIEW",
-    "reasoning": "Brief explanation",
-    "suggested_label": "MERCHANT_NAME" | null,
-    "confidence": "high" | "medium" | "low"
-  }},
-  ...
-]
-```
-
 ## Label Types
 - MERCHANT_NAME: Store name/brand (compare against Google Places merchant_name)
 - ADDRESS_LINE: Street address, city, state, zip (compare against formatted_address)
@@ -512,18 +496,19 @@ For each word above, evaluate the label and respond with a JSON array:
 - COUPON: Coupon code or description
 - LOYALTY_ID: Customer loyalty/rewards ID
 
-## Validation Rules
-1. For MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER, WEBSITE: Compare against Google Places data
-2. For DATE, TIME, PAYMENT_METHOD: Validate format patterns
-3. For COUPON, LOYALTY_ID: Use context clues
+## Your Task
+For each word above, evaluate whether its current label is correct.
 
 - VALID: The label correctly describes this word
 - INVALID: The label is wrong OR unlabeled word should have a metadata label
 - NEEDS_REVIEW: You're unsure
 
-For INVALID words, suggest the correct label.
+## Validation Rules
+1. For MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER, WEBSITE: Compare against Google Places data
+2. For DATE, TIME, PAYMENT_METHOD: Validate format patterns
+3. For COUPON, LOYALTY_ID: Use context clues
 
-Respond ONLY with the JSON array, no other text.
+For INVALID words, suggest the correct label from the types above.
 """
     return prompt
 

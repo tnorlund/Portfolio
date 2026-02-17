@@ -429,16 +429,6 @@ Based on all evidence above, determine:
 **IMPORTANT**:
 - Correctly unlabeled words: use VALID with null suggested_label.
 - Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
-
-Respond with ONLY a JSON object:
-```json
-{{
-  "decision": "VALID | INVALID | NEEDS_REVIEW",
-  "reasoning": "Your detailed reasoning citing evidence...",
-  "suggested_label": "LABEL_NAME or null",
-  "confidence": "low | medium | high"
-}}
-```
 """
     return prompt
 
@@ -560,30 +550,7 @@ For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
 **IMPORTANT**:
 - Correctly unlabeled words: use VALID with null suggested_label.
 - Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
-
-Respond with ONLY a JSON object containing a "reviews" array:
-```json
-{{
-  "reviews": [
-    {{
-      "issue_index": 0,
-      "decision": "VALID | INVALID | NEEDS_REVIEW",
-      "reasoning": "Brief reasoning...",
-      "suggested_label": "LABEL_NAME or null",
-      "confidence": "low | medium | high"
-    }},
-    {{
-      "issue_index": 1,
-      "decision": "...",
-      "reasoning": "...",
-      "suggested_label": "...",
-      "confidence": "..."
-    }}
-  ]
-}}
-```
-
-IMPORTANT: You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
+- You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
 """
     return prompt
 
@@ -715,23 +682,7 @@ Consider:
 - Use ONLY labels listed in CORE_LABELS above.
 - Correctly unlabeled words: use VALID with null suggested_label.
 - Incorrectly labeled words that should have no label: use INVALID with null suggested_label.
-
-Respond with ONLY a JSON object:
-```json
-{{
-  "reviews": [
-    {{
-      "issue_index": 0,
-      "decision": "VALID | INVALID | NEEDS_REVIEW",
-      "reasoning": "Brief reasoning...",
-      "suggested_label": "CORE_LABEL or null",
-      "confidence": "low | medium | high"
-    }}
-  ]
-}}
-```
-
-You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
+- You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
 """
     return prompt
 
