@@ -11,6 +11,7 @@ import {
   usePreloadReceiptImages,
 } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import { ReceiptFlowLoadingShell } from "../ReceiptFlow/ReceiptFlowLoadingShell";
 import {
   getQueuePosition,
   getVisibleQueueIndices,
@@ -616,26 +617,49 @@ export default function FinancialMathOverlay() {
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
+  const LAYOUT_VARS = {
+    "--rf-queue-width": "120px",
+    "--rf-queue-height": "400px",
+    "--rf-center-max-width": "350px",
+    "--rf-center-height": "500px",
+    "--rf-mobile-center-height": "400px",
+    "--rf-mobile-center-height-sm": "320px",
+    "--rf-gap": "1.5rem",
+    "--rf-align-items": "flex-start",
+  } as React.CSSProperties;
+
   if (initialLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading financial math data...
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="financial"
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="financial"
+          message={`Error: ${error}`}
+          isError
+        />
       </div>
     );
   }
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No financial math data available
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="financial"
+          message="No financial math data available"
+        />
       </div>
     );
   }
@@ -649,18 +673,7 @@ export default function FinancialMathOverlay() {
   return (
     <div ref={ref} className={styles.container}>
       <ReceiptFlowShell
-        layoutVars={
-          {
-            "--rf-queue-width": "120px",
-            "--rf-queue-height": "400px",
-            "--rf-center-max-width": "350px",
-            "--rf-center-height": "500px",
-            "--rf-mobile-center-height": "400px",
-            "--rf-mobile-center-height-sm": "320px",
-            "--rf-gap": "1.5rem",
-            "--rf-align-items": "flex-start",
-          } as React.CSSProperties
-        }
+        layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}
         queue={
           <ReceiptQueue

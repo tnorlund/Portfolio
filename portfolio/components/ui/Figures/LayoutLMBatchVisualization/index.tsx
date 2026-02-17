@@ -9,6 +9,7 @@ import {
 } from "../../../../types/api";
 import { getBestImageUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import { ReceiptFlowLoadingShell } from "../ReceiptFlow/ReceiptFlowLoadingShell";
 import {
   getQueuePosition,
   getVisibleQueueIndices,
@@ -779,26 +780,48 @@ const LayoutLMBatchVisualization: React.FC = () => {
     initialFetch();
   }, []);
 
+  const LAYOUT_VARS = {
+    "--rf-queue-width": "120px",
+    "--rf-queue-height": "400px",
+    "--rf-center-max-width": "350px",
+    "--rf-center-height": "500px",
+    "--rf-mobile-center-height": "400px",
+    "--rf-mobile-center-height-sm": "320px",
+    "--rf-gap": "1.5rem",
+  } as React.CSSProperties;
+
   if (initialLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading inference data...
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+          message={`Error: ${error}`}
+          isError
+        />
       </div>
     );
   }
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No inference data available
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+          message="No inference data available"
+        />
       </div>
     );
   }
