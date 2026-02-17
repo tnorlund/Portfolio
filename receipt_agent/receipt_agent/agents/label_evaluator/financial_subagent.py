@@ -922,9 +922,29 @@ def _build_valid_decisions(
     comparing the ReceiptWord's text with the FinancialValue's
     word_text — a dummy wraps words[0] whose text won't match the
     financial value.
+
+    Each word produces at most ONE decision to avoid conflicting writes.
+    A word may appear under multiple labels (e.g. LINE_TOTAL and
+    UNIT_PRICE). We pick the label from the dict key it appears under,
+    prioritising the label that directly participated in a cross-label
+    equation (summary labels and LINE_TOTAL/DISCOUNT over UNIT_PRICE
+    and QUANTITY).
     """
+    # Priority: summary labels and line-item labels that appear in the
+    # SUBTOTAL equation first, then secondary per-line labels.
+    _LABEL_PRIORITY = {
+        "GRAND_TOTAL": 0,
+        "SUBTOTAL": 1,
+        "TAX": 2,
+        "LINE_TOTAL": 3,
+        "DISCOUNT": 4,
+        "UNIT_PRICE": 5,
+        "QUANTITY": 6,
+    }
+
     decisions: list[dict[str, Any]] = []
-    seen: set[tuple[int, int, str]] = set()
+    # One decision per word — (line_id, word_id) → (priority, decision_dict)
+    best: dict[tuple[int, int], tuple[int, dict[str, Any]]] = {}
 
     for label_name, fvs in values.items():
         for fv in fvs:
@@ -945,35 +965,35 @@ def _build_valid_decisions(
             if word_num is None or abs(word_num - fv.numeric_value) > 0.01:
                 continue
 
-            # Deduplicate (same word can appear under LINE_TOTAL and UNIT_PRICE)
-            key = (lid, wid, fv.label)
-            if key in seen:
+            prio = _LABEL_PRIORITY.get(fv.label, 99)
+            key = (lid, wid)
+
+            # Keep only the highest-priority label per word
+            if key in best and best[key][0] <= prio:
                 continue
-            seen.add(key)
 
-            decisions.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": lid,
-                        "word_id": wid,
-                        "current_label": fv.label,
-                        "word_text": fv.word_text,
-                    },
-                    "llm_review": {
-                        "decision": "VALID",
-                        "reasoning": (
-                            f"Financial math balanced ({source}): "
-                            f"{fv.label}={fv.numeric_value:.2f}"
-                        ),
-                        "suggested_label": None,
-                        "confidence": "high",
-                    },
-                }
-            )
+            decision = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": lid,
+                    "word_id": wid,
+                    "current_label": fv.label,
+                    "word_text": fv.word_text,
+                },
+                "llm_review": {
+                    "decision": "VALID",
+                    "reasoning": (
+                        f"Financial math balanced ({source}): "
+                        f"{fv.label}={fv.numeric_value:.2f}"
+                    ),
+                    "suggested_label": None,
+                    "confidence": "high",
+                },
+            }
+            best[key] = (prio, decision)
 
-    return decisions
+    return [d for _, d in best.values()]
 
 
 # =============================================================================
