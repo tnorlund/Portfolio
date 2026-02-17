@@ -49,6 +49,36 @@ def _retry_backoff_seconds(attempt: int) -> float:
     )
 
 
+def _build_json_schema_hint(schema: type[T]) -> str:
+    """Build a short instruction telling the LLM to respond in JSON matching the schema."""
+    try:
+        json_schema = json.dumps(schema.model_json_schema(), indent=2)
+    except Exception:
+        json_schema = schema.__name__
+    return (
+        f"Respond ONLY with valid JSON matching this schema (no markdown, "
+        f"no prose, no code fences):\n{json_schema}"
+    )
+
+
+def _append_json_hint(input_payload: Any, schema: type[T]) -> Any:
+    """Append a JSON schema hint to the input payload for raw fallback calls."""
+    hint = _build_json_schema_hint(schema)
+    # Handle list-of-messages format (most common)
+    if isinstance(input_payload, list):
+        from copy import copy
+
+        payload = copy(input_payload)
+        # Append as a HumanMessage-style tuple or dict
+        payload.append(("human", hint))
+        return payload
+    # Handle string prompt
+    if isinstance(input_payload, str):
+        return input_payload + "\n\n" + hint
+    # Unknown format — return as-is and hope for the best
+    return input_payload
+
+
 def _try_repair_and_parse(
     raw_text: str,
     schema: type[T],
@@ -293,10 +323,11 @@ def invoke_structured_with_retry(
     # All structured attempts failed — try one raw LLM call + manual repair
     try:
         logger.info("Attempting raw LLM fallback for %s", schema.__name__)
+        hinted_payload = _append_json_hint(input_payload, schema)
         if config is None:
-            raw_result = llm.invoke(input_payload)
+            raw_result = llm.invoke(hinted_payload)
         else:
-            raw_result = llm.invoke(input_payload, config=config)
+            raw_result = llm.invoke(hinted_payload, config=config)
         raw_text = getattr(raw_result, "content", "")
         if raw_text:
             repaired = _try_repair_and_parse(raw_text, schema)
@@ -310,6 +341,17 @@ def invoke_structured_with_retry(
                     response=repaired,
                     attempts=retries + 1,
                 )
+            else:
+                logger.warning(
+                    "Raw LLM fallback returned unparseable text for %s: %.200s",
+                    schema.__name__,
+                    raw_text,
+                )
+        else:
+            logger.warning(
+                "Raw LLM fallback returned empty content for %s",
+                schema.__name__,
+            )
     except LLMRateLimitError:
         raise
     except Exception as fallback_error:
@@ -421,21 +463,22 @@ async def ainvoke_structured_with_retry(
         logger.info(
             "Attempting async raw LLM fallback for %s", schema.__name__
         )
+        hinted_payload = _append_json_hint(input_payload, schema)
         if hasattr(llm, "ainvoke"):
             if config is None:
-                raw_result = await llm.ainvoke(input_payload)
+                raw_result = await llm.ainvoke(hinted_payload)
             else:
                 raw_result = await llm.ainvoke(
-                    input_payload, config=config
+                    hinted_payload, config=config
                 )
         else:
             if config is None:
                 raw_result = await asyncio.to_thread(
-                    llm.invoke, input_payload
+                    llm.invoke, hinted_payload
                 )
             else:
                 raw_result = await asyncio.to_thread(
-                    llm.invoke, input_payload, config=config
+                    llm.invoke, hinted_payload, config=config
                 )
         raw_text = getattr(raw_result, "content", "")
         if raw_text:
@@ -450,6 +493,17 @@ async def ainvoke_structured_with_retry(
                     response=repaired,
                     attempts=retries + 1,
                 )
+            else:
+                logger.warning(
+                    "Async raw LLM fallback returned unparseable text for %s: %.200s",
+                    schema.__name__,
+                    raw_text,
+                )
+        else:
+            logger.warning(
+                "Async raw LLM fallback returned empty content for %s",
+                schema.__name__,
+            )
     except LLMRateLimitError:
         raise
     except Exception as fallback_error:
