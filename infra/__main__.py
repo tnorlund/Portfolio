@@ -524,20 +524,18 @@ if layoutlm_training_bucket_name is not None:
         create_batch_cache_generator,
     )
 
-    # Get optional model S3 URI from config, otherwise auto-detect latest
-    # Default to the 8-label hybrid model that matches the featured job metrics
-    layoutlm_model_run = (
-        config.get("layoutlm-model-run")
-        or "layoutlm-hybrid-8-labels-orig-label-fix"
-    )
-    layoutlm_model_checkpoint = (
-        config.get("layoutlm-model-checkpoint") or "checkpoint-13605"
-    )
+    # Model S3 URI: optional override via Pulumi config.
+    # When not set, the Lambda auto-detects the latest run's best/
+    # checkpoint from the training bucket (see LayoutLMInference._resolve_latest_s3_uri).
+    # Training jobs now copy the best checkpoint to runs/<job>/best/ automatically.
+    layoutlm_model_run = config.get("layoutlm-model-run")
+    layoutlm_model_checkpoint = config.get("layoutlm-model-checkpoint")
 
-    # Build model S3 URI from training bucket and run/checkpoint names
-    layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
-        lambda bucket: f"s3://{bucket}/runs/{layoutlm_model_run}/{layoutlm_model_checkpoint}/"
-    )
+    layoutlm_model_s3_uri = None
+    if layoutlm_model_run and layoutlm_model_checkpoint:
+        layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
+            lambda bucket: f"s3://{bucket}/runs/{layoutlm_model_run}/{layoutlm_model_checkpoint}/"
+        )
 
     # Create cache generator (which creates the cache bucket)
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(

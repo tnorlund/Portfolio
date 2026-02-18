@@ -151,6 +151,49 @@ def copy_model_to_sagemaker_dir(job_name: str):
     print(f"Copied model artifacts to {model_dir}")
 
 
+def copy_best_checkpoint_to_s3(job_name: str, output_s3_bucket: str):
+    """Copy the best checkpoint to s3://<bucket>/runs/<job>/best/.
+
+    The LayoutLMInference auto-detection prefers a best/ subdirectory
+    when resolving the latest model. This eliminates the need to
+    hardcode model paths in Pulumi config.
+    """
+    import boto3
+
+    training_dir = Path(f"/tmp/receipt_layoutlm/{job_name}")
+    trainer_state = training_dir / "trainer_state.json"
+
+    if not trainer_state.exists():
+        print("Warning: No trainer_state.json found, skipping best/ copy")
+        return
+
+    with open(trainer_state) as f:
+        state = json.load(f)
+
+    best_path = state.get("best_model_checkpoint")
+    if not best_path:
+        print("Warning: No best_model_checkpoint in trainer state")
+        return
+
+    best_dir = Path(best_path)
+    if not best_dir.exists():
+        print(f"Warning: Best checkpoint dir {best_dir} not found")
+        return
+
+    s3 = boto3.client("s3")
+    dest_prefix = f"runs/{job_name}/best/"
+
+    print(f"Copying best checkpoint to s3://{output_s3_bucket}/{dest_prefix}")
+
+    for file_path in best_dir.iterdir():
+        if file_path.is_file():
+            key = dest_prefix + file_path.name
+            print(f"  Uploading {file_path.name}...")
+            s3.upload_file(str(file_path), output_s3_bucket, key)
+
+    print(f"Best checkpoint copied to s3://{output_s3_bucket}/{dest_prefix}")
+
+
 def main():
     """Main training entrypoint."""
     print("=" * 60)
@@ -182,6 +225,13 @@ def main():
         "job_name", os.environ.get("TRAINING_JOB_NAME", "sagemaker-job")
     )
     copy_model_to_sagemaker_dir(job_name)
+
+    # Copy best checkpoint to s3://<bucket>/runs/<job>/best/
+    # so LayoutLMInference auto-detection can find it without
+    # hardcoded Pulumi config
+    output_s3_bucket = hps.get("output_s3_path")
+    if output_s3_bucket:
+        copy_best_checkpoint_to_s3(job_name, output_s3_bucket)
 
     print("=" * 60)
     print("Training complete!")
