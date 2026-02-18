@@ -1431,7 +1431,8 @@ class ReceiptLayoutLMTrainer:
                 )
                 if not os.path.exists(trainer_state_path):
                     checkpoint_states = sorted(
-                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                        key=_checkpoint_step,
                     )
                     if checkpoint_states:
                         trainer_state_path = checkpoint_states[-1]
@@ -1504,7 +1505,8 @@ class ReceiptLayoutLMTrainer:
                 )
                 if not os.path.exists(trainer_state_path):
                     checkpoint_states = sorted(
-                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                        key=_checkpoint_step,
                     )
                     if checkpoint_states:
                         trainer_state_path = checkpoint_states[-1]
