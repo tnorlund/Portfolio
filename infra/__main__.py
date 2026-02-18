@@ -524,25 +524,11 @@ if layoutlm_training_bucket_name is not None:
         create_batch_cache_generator,
     )
 
-    # Get optional model S3 URI from config, otherwise auto-detect latest
-    # Default to the 8-label hybrid model that matches the featured job metrics
-    layoutlm_model_run = (
-        config.get("layoutlm-model-run")
-        or "layoutlm-hybrid-8-labels-orig-label-fix"
-    )
-    layoutlm_model_checkpoint = (
-        config.get("layoutlm-model-checkpoint") or "checkpoint-13605"
-    )
-
-    # Build model S3 URI from training bucket and run/checkpoint names
-    layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
-        lambda bucket: f"s3://{bucket}/runs/{layoutlm_model_run}/{layoutlm_model_checkpoint}/"
-    )
-
-    # Create cache generator (which creates the cache bucket)
+    # The cache generator Lambda resolves the active model from DynamoDB
+    # at runtime (Job tagged with active_model=true). Falls back to
+    # auto-detecting the latest model from the training bucket.
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
-        model_s3_uri=layoutlm_model_s3_uri,
     )
 
     # Create Step Function for batch cache generation (weekly)

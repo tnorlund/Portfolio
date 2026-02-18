@@ -265,6 +265,7 @@ class CoreMLExportComponent(ComponentResource):
                                 {
                                     "Effect": "Allow",
                                     "Action": [
+                                        "dynamodb:DescribeTable",
                                         "dynamodb:GetItem",
                                         "dynamodb:Query",
                                         "dynamodb:PutItem",

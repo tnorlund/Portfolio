@@ -25,7 +25,6 @@ logger.setLevel(logging.INFO)
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 S3_CACHE_BUCKET = os.environ["S3_CACHE_BUCKET"]
 LAYOUTLM_TRAINING_BUCKET = os.environ.get("LAYOUTLM_TRAINING_BUCKET")
-MODEL_S3_URI = os.environ.get("MODEL_S3_URI")  # Optional override
 CACHE_KEY = "layoutlm-inference-cache/latest.json"
 CACHE_PREFIX = "layoutlm-inference-cache/receipts/"  # For batch mode
 MODEL_DIR = "/tmp/layoutlm-model"  # Persists across warm invocations
@@ -38,16 +37,43 @@ _model_instance: Optional[LayoutLMInference] = None
 
 
 def _get_model() -> LayoutLMInference:
-    """Get or create LayoutLM model instance (cached for warm starts)."""
+    """Get or create LayoutLM model instance (cached for warm starts).
+
+    Model resolution order:
+    1. DynamoDB active model job (tags.active_model == "true")
+    2. LAYOUTLM_TRAINING_BUCKET auto-detection (fallback)
+    """
     global _model_instance
     if _model_instance is None:
+        # Try to resolve model path from the active model job in DynamoDB
+        model_s3_uri = None
+        try:
+            dynamo = DynamoClient(DYNAMODB_TABLE_NAME)
+            active_job = dynamo.get_active_model_job()
+            if active_job:
+                model_s3_uri = (active_job.results or {}).get(
+                    "best_checkpoint_s3_path"
+                )
+                if not model_s3_uri:
+                    model_s3_uri = active_job.best_dir_uri()
+                if model_s3_uri:
+                    logger.info(
+                        "Using active model from DynamoDB: %s (job: %s)",
+                        model_s3_uri,
+                        active_job.name,
+                    )
+        except Exception as e:
+            logger.warning(
+                "Failed to query active model from DynamoDB: %s", e
+            )
+
         logger.info("Loading LayoutLM model from S3")
         _model_instance = LayoutLMInference(
             model_dir=MODEL_DIR,
-            model_s3_uri=MODEL_S3_URI,
+            model_s3_uri=model_s3_uri,
             auto_from_bucket_env=(
                 "LAYOUTLM_TRAINING_BUCKET"
-                if LAYOUTLM_TRAINING_BUCKET
+                if not model_s3_uri and LAYOUTLM_TRAINING_BUCKET
                 else None
             ),
         )

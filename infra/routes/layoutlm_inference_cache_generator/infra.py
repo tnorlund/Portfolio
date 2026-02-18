@@ -32,7 +32,6 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         name: str,
         *,
         layoutlm_training_bucket: Input[str],
-        model_s3_uri: Optional[Input[str]] = None,
         cache_bucket_name: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -96,11 +95,6 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         # Convert Input[str] to Output[str] for proper resolution
         layoutlm_training_bucket_output = Output.from_input(
             layoutlm_training_bucket
-        )
-
-        # Convert model_s3_uri to Output if provided
-        model_s3_uri_output = (
-            Output.from_input(model_s3_uri) if model_s3_uri else None
         )
 
         # DynamoDB access policy
@@ -213,12 +207,6 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                     "LAYOUTLM_TRAINING_BUCKET": layoutlm_training_bucket_output,
-                    # MODEL_S3_URI overrides auto-detection of latest model
-                    **(
-                        {"MODEL_S3_URI": model_s3_uri_output}
-                        if model_s3_uri_output
-                        else {}
-                    ),
                 },
             },
             platform="linux/arm64",
@@ -278,21 +266,20 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
 
 def create_layoutlm_inference_cache_generator(
     layoutlm_training_bucket: Input[str],
-    model_s3_uri: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> LayoutLMInferenceCacheGenerator:
     """Factory function to create LayoutLM inference cache generator.
 
     Args:
-        layoutlm_training_bucket: S3 bucket containing trained models
-        model_s3_uri: Optional S3 URI to a specific model. If not provided,
-                      the lambda will auto-select the most recently modified model.
+        layoutlm_training_bucket: S3 bucket containing trained models.
+            The Lambda resolves the active model from DynamoDB at runtime
+            (Job tagged with active_model=true). Falls back to auto-detecting
+            the latest model from this bucket if no job is tagged.
         opts: Pulumi resource options
     """
     return LayoutLMInferenceCacheGenerator(
         f"layoutlm-inference-cache-generator-{pulumi.get_stack()}",
         layoutlm_training_bucket=layoutlm_training_bucket,
-        model_s3_uri=model_s3_uri,
         opts=opts,
     )
 
