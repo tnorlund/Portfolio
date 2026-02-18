@@ -1135,6 +1135,15 @@ class ReceiptLayoutLMTrainer:
 
             # Extract checkpoint and training time information from trainer_state.json
             trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+            if not os.path.exists(trainer_state_path):
+                # HuggingFace Trainer saves trainer_state.json inside
+                # checkpoint subdirectories, not at the root output_dir.
+                # Find the latest checkpoint's copy.
+                checkpoint_states = sorted(
+                    glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                )
+                if checkpoint_states:
+                    trainer_state_path = checkpoint_states[-1]
             if os.path.exists(trainer_state_path):
                 try:
                     with open(trainer_state_path, "r", encoding="utf-8") as f:
@@ -1406,6 +1415,12 @@ class ReceiptLayoutLMTrainer:
                 trainer_state_path = os.path.join(
                     output_dir, "trainer_state.json"
                 )
+                if not os.path.exists(trainer_state_path):
+                    checkpoint_states = sorted(
+                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                    )
+                    if checkpoint_states:
+                        trainer_state_path = checkpoint_states[-1]
                 if os.path.exists(trainer_state_path):
                     with open(trainer_state_path, "r") as f:
                         trainer_state = json.load(f)
@@ -1473,6 +1488,12 @@ class ReceiptLayoutLMTrainer:
                 trainer_state_path = os.path.join(
                     output_dir, "trainer_state.json"
                 )
+                if not os.path.exists(trainer_state_path):
+                    checkpoint_states = sorted(
+                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                    )
+                    if checkpoint_states:
+                        trainer_state_path = checkpoint_states[-1]
                 if os.path.exists(trainer_state_path):
                     with open(trainer_state_path, "r") as f:
                         trainer_state = json.load(f)

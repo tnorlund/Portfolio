@@ -524,23 +524,11 @@ if layoutlm_training_bucket_name is not None:
         create_batch_cache_generator,
     )
 
-    # Model S3 URI: optional override via Pulumi config.
-    # When not set, the Lambda auto-detects the latest run's best/
-    # checkpoint from the training bucket (see LayoutLMInference._resolve_latest_s3_uri).
-    # Training jobs now copy the best checkpoint to runs/<job>/best/ automatically.
-    layoutlm_model_run = config.get("layoutlm-model-run")
-    layoutlm_model_checkpoint = config.get("layoutlm-model-checkpoint")
-
-    layoutlm_model_s3_uri = None
-    if layoutlm_model_run and layoutlm_model_checkpoint:
-        layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
-            lambda bucket: f"s3://{bucket}/runs/{layoutlm_model_run}/{layoutlm_model_checkpoint}/"
-        )
-
-    # Create cache generator (which creates the cache bucket)
+    # The cache generator Lambda resolves the active model from DynamoDB
+    # at runtime (Job tagged with active_model=true). Falls back to
+    # auto-detecting the latest model from the training bucket.
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
-        model_s3_uri=layoutlm_model_s3_uri,
     )
 
     # Create Step Function for batch cache generation (weekly)

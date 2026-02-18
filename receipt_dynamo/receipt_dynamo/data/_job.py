@@ -52,6 +52,8 @@ class _Job(FlattenedStandardMixin):
         Gets a job from the database.
     get_job_by_name(name: str, ...) -> tuple[list[Job], dict | None]
         Gets jobs by name using GSI2.
+    get_active_model_job() -> Job | None
+        Returns the Job tagged as the active model, or None.
     get_job_with_status(job_id: str) -> tuple[Job, list[JobStatus]]
         Gets a job with all its status updates.
     list_jobs(
@@ -335,6 +337,38 @@ class _Job(FlattenedStandardMixin):
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
+
+    @handle_dynamodb_errors("get_active_model_job")
+    def get_active_model_job(self) -> Job | None:
+        """
+        Returns the Job tagged as the active model.
+
+        Queries succeeded jobs and filters for ``tags.active_model == "true"``.
+        If no job is tagged, returns ``None``.  If multiple jobs are tagged
+        (should not happen in practice), returns the most recently created one.
+
+        Returns:
+            Job | None: The active model job, or None if none is tagged.
+        """
+        jobs, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :status",
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
+                ":status": {"S": "STATUS#succeeded"},
+                ":job_type": {"S": "JOB"},
+            },
+            converter_func=item_to_job,
+            limit=None,
+            last_evaluated_key=None,
+            filter_expression="#type = :job_type",
+            scan_index_forward=False,  # Newest first
+        )
+        # Filter client-side for the active_model tag
+        for job in jobs:
+            if job.tags and job.tags.get("active_model") == "true":
+                return job
+        return None
 
     @handle_dynamodb_errors("list_jobs_by_status")
     def list_jobs_by_status(

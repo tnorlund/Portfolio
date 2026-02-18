@@ -984,3 +984,81 @@ def test_getLatestJobStatus_raises_client_error_resource_not_found(
 
     with pytest.raises(DynamoDBError, match="Could not get latest job status"):
         job_dynamo.get_latest_job_status(str(uuid.uuid4()))
+
+
+@pytest.mark.integration
+class TestGetActiveModelJob:
+    """Tests for get_active_model_job()."""
+
+    def test_returns_none_when_no_jobs(self, job_dynamo):
+        """Returns None when there are no jobs at all."""
+        result = job_dynamo.get_active_model_job()
+        assert result is None
+
+    def test_returns_none_when_no_tagged_jobs(self, job_dynamo, sample_job):
+        """Returns None when jobs exist but none are tagged active."""
+        sample_job.status = "succeeded"
+        job_dynamo.add_job(sample_job)
+        result = job_dynamo.get_active_model_job()
+        assert result is None
+
+    def test_returns_tagged_job(self, job_dynamo, sample_job):
+        """Returns the job that has active_model tag set to 'true'."""
+        sample_job.status = "succeeded"
+        sample_job.tags = {"active_model": "true"}
+        job_dynamo.add_job(sample_job)
+
+        result = job_dynamo.get_active_model_job()
+        assert result is not None
+        assert result.job_id == sample_job.job_id
+        assert result.tags["active_model"] == "true"
+
+    def test_ignores_non_succeeded_tagged_jobs(self, job_dynamo):
+        """Only considers succeeded jobs, not pending/running/failed."""
+        pending_job = Job(
+            job_id=str(uuid.uuid4()),
+            name="Pending Job",
+            description="tagged but pending",
+            created_at=datetime.now(),
+            created_by="test",
+            status="pending",
+            priority="medium",
+            job_config={"type": "training"},
+            tags={"active_model": "true"},
+        )
+        job_dynamo.add_job(pending_job)
+
+        result = job_dynamo.get_active_model_job()
+        assert result is None
+
+    def test_returns_first_match_when_multiple_tagged(self, job_dynamo):
+        """If multiple jobs are tagged, returns the most recently created."""
+        job1 = Job(
+            job_id=str(uuid.uuid4()),
+            name="Older Job",
+            description="first tagged",
+            created_at="2024-01-01T00:00:00",
+            created_by="test",
+            status="succeeded",
+            priority="medium",
+            job_config={"type": "training"},
+            tags={"active_model": "true"},
+        )
+        job2 = Job(
+            job_id=str(uuid.uuid4()),
+            name="Newer Job",
+            description="second tagged",
+            created_at="2025-06-01T00:00:00",
+            created_by="test",
+            status="succeeded",
+            priority="medium",
+            job_config={"type": "training"},
+            tags={"active_model": "true"},
+        )
+        job_dynamo.add_job(job1)
+        job_dynamo.add_job(job2)
+
+        result = job_dynamo.get_active_model_job()
+        assert result is not None
+        # GSI1 sorted descending by created_at, so newest first
+        assert result.job_id == job2.job_id
