@@ -1015,7 +1015,7 @@ class ReceiptLayoutLMTrainer:
             args=training_args,
             train_dataset=datasets.get("train"),
             eval_dataset=datasets.get("validation"),
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
             data_collator=collator,
             compute_metrics=compute_metrics,
             callbacks=callbacks or None,

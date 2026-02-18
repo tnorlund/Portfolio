@@ -1,0 +1,173 @@
+/* Queue pane: stacked receipt placeholders */
+.queueSkeleton {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.queuedPlaceholder {
+  position: absolute;
+  width: 100px;
+  height: 140px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.06);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.queuedPlaceholder:nth-child(1) { top: 0; left: 10px; transform: rotate(-2deg); }
+.queuedPlaceholder:nth-child(2) { top: 20px; left: 8px; transform: rotate(1deg); }
+.queuedPlaceholder:nth-child(3) { top: 40px; left: 12px; transform: rotate(-1deg); }
+.queuedPlaceholder:nth-child(4) { top: 60px; left: 6px; transform: rotate(2deg); }
+.queuedPlaceholder:nth-child(5) { top: 80px; left: 10px; transform: rotate(-1deg); }
+
+/* Center: receipt-shaped block */
+.centerSkeleton {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptPlaceholder {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  height: 100%;
+  max-height: 500px;
+  min-height: 320px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.05);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Right panel skeletons by variant */
+.legendSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  flex-shrink: 0;
+}
+
+/* Within: pass indicator + card block */
+.legendWithin {
+  width: 280px;
+  min-height: 200px;
+}
+
+.passDotsSkeleton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.passDotSkeleton {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+}
+
+.cardBlockSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cardLineSkeleton {
+  height: 12px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+  border-radius: 4px;
+}
+
+.cardLineSkeleton.short { width: 60%; }
+.cardLineSkeleton.medium { width: 85%; }
+.cardLineSkeleton.long { width: 100%; }
+
+/* Financial: equation cards */
+.legendFinancial {
+  width: 200px;
+  max-height: 500px;
+}
+
+.equationCardSkeleton {
+  height: 56px;
+  border-radius: 6px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.06);
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+}
+
+/* Between: evidence cards */
+.legendBetween {
+  width: 280px;
+  max-height: 500px;
+}
+
+.evidenceCardSkeleton {
+  height: 72px;
+  border-radius: 4px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.05);
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+}
+
+/* LayoutLM: legend rows + inference time */
+.legendLayoutLM {
+  width: 180px;
+}
+
+.legendRowSkeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 24px;
+}
+
+.legendDotSkeleton {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+  flex-shrink: 0;
+}
+
+.legendLabelSkeleton {
+  height: 14px;
+  width: 70px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+  border-radius: 4px;
+}
+
+.inferenceTimeSkeleton {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+}
+
+.inferenceTimeSkeleton .cardLineSkeleton {
+  margin-top: 0.25rem;
+  height: 20px;
+  width: 60px;
+}
+
+/* Message overlay (error/empty) - fills center, keeps dimensions */
+.centerMessage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.centerMessage.error {
+  color: var(--color-red);
+  opacity: 1;
+}

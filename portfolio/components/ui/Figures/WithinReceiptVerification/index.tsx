@@ -8,6 +8,10 @@ import {
 import { getBestImageUrl, getJpegFallbackUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
+  DEFAULT_LAYOUT_VARS,
+  ReceiptFlowLoadingShell,
+} from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import {
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
@@ -60,6 +64,8 @@ const PLACE_DURATION = 2000;
 const FORMAT_DURATION = 1500;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
+
+const LAYOUT_VARS = DEFAULT_LAYOUT_VARS;
 
 
 // ---------------------------------------------------------------------------
@@ -675,24 +681,36 @@ const WithinReceiptVerification: React.FC = () => {
 
   if (loading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading within-receipt verification data...
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="within"
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="within"
+          message={`Error: ${error}`}
+          isError
+        />
       </div>
     );
   }
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No within-receipt verification data available
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="within"
+          message="No within-receipt verification data available"
+        />
       </div>
     );
   }
@@ -703,18 +721,7 @@ const WithinReceiptVerification: React.FC = () => {
   return (
     <div ref={ref} className={styles.container}>
       <ReceiptFlowShell
-        layoutVars={
-          {
-            "--rf-queue-width": "120px",
-            "--rf-queue-height": "400px",
-            "--rf-center-max-width": "350px",
-            "--rf-center-height": "500px",
-            "--rf-mobile-center-height": "400px",
-            "--rf-mobile-center-height-sm": "320px",
-            "--rf-gap": "1.5rem",
-            "--rf-align-items": "flex-start",
-          } as React.CSSProperties
-        }
+        layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}
         queue={
           <ReceiptQueue
