@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import boto3
-import botocore.exceptions
+from botocore.exceptions import ClientError
 
 from .export_coreml import export_coreml
 
@@ -177,7 +177,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                     f"Uploaded canonical bundle to "
                     f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}"
                 )
-            except (OSError, botocore.exceptions.ClientError) as e:
+            except (OSError, ClientError) as e:
                 print(
                     f"Warning: Failed to upload canonical bundle zip: {e}"
                 )
