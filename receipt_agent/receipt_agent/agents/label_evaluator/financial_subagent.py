@@ -215,6 +215,9 @@ SUMMARY_LABELS = {"GRAND_TOTAL", "SUBTOTAL", "TAX"}
 # Line-item labels that should be scoped above the summary section
 LINE_ITEM_LABELS = {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY", "DISCOUNT"}
 
+# Currency labels that should be column-filtered (summary + line-item prices)
+_COLUMN_FILTERED_LABELS = {"GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL"}
+
 # Validation status ranking for picking the best label when duplicates exist
 _STATUS_RANK = {
     "VALID": 4,
@@ -443,15 +446,33 @@ def extract_financial_values_enhanced(
         wc = wc_info[0] if wc_info else None
         line_index = wc_info[1] if wc_info else w.line_id
 
-        # Trust VALID labels unconditionally
+        # VALID currency labels: local column sanity check.
+        # Catches SKU fragments / MAX REFUND VALUE amounts that were
+        # incorrectly validated (e.g., Home Depot code fragments on the
+        # left edge labeled as LINE_TOTAL).  Uses only the cheap local
+        # column x — no Chroma call needed for VALID words.
         if status == "VALID":
+            if label in _COLUMN_FILTERED_LABELS and local_col_x is not None:
+                word_right = _get_right_edge(w)
+                diff = abs(word_right - local_col_x)
+                if diff > x_tolerance:
+                    logger.info(
+                        "Column sanity check: VALID '%s' as %s "
+                        "rejected (right=%.3f, col=%.3f, diff=%.3f)",
+                        w.text,
+                        label,
+                        word_right,
+                        local_col_x,
+                        diff,
+                    )
+                    continue
             candidates.append(
                 (w.line_id, label, num, w.text, wc, line_index)
             )
             continue
 
-        # For non-VALID summary labels: column filter
-        if label in SUMMARY_LABELS:
+        # Non-VALID currency labels: column filter via Chroma + local
+        if label in _COLUMN_FILTERED_LABELS:
             chroma_col_x, _consensus, pos_count, _neg_count = (
                 _chroma_get_label_column_x(
                     chroma_client=chroma_client,
