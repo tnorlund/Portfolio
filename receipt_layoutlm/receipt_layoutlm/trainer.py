@@ -2,6 +2,7 @@ import importlib
 import inspect
 import json
 import os
+import re
 import subprocess
 import uuid
 from dataclasses import asdict
@@ -29,8 +30,6 @@ def _checkpoint_step(path: str) -> int:
     lexicographically.  This helper pulls the integer so callers can sort
     numerically.
     """
-    import re
-
     m = re.search(r"checkpoint-(\d+)", path)
     return int(m.group(1)) if m else 0
 
@@ -1035,17 +1034,9 @@ class ReceiptLayoutLMTrainer:
         )
 
         # Resume only if a checkpoint exists in output_dir; otherwise start fresh
-        # Sort checkpoints numerically (not lexicographically) to handle checkpoint-10, checkpoint-100, etc.
-        def _step_from_path(p: str) -> int:
-            name = os.path.basename(os.path.dirname(p.rstrip("/")))
-            try:
-                return int(name.split("-")[-1])
-            except ValueError:
-                return -1
-
         checkpoints = glob(f"{output_dir}/checkpoint-*/")
         if checkpoints:
-            latest = max(checkpoints, key=_step_from_path)
+            latest = max(checkpoints, key=_checkpoint_step)
             trainer.train(resume_from_checkpoint=latest)
         else:
             trainer.train()
