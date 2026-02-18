@@ -22,6 +22,19 @@ from .config import DataConfig, TrainingConfig
 from .data_loader import MergeInfo, load_datasets
 
 
+def _checkpoint_step(path: str) -> int:
+    """Extract the numeric step from a checkpoint path for proper sorting.
+
+    ``checkpoint-950`` and ``checkpoint-24354`` sort incorrectly when compared
+    lexicographically.  This helper pulls the integer so callers can sort
+    numerically.
+    """
+    import re
+
+    m = re.search(r"checkpoint-(\d+)", path)
+    return int(m.group(1)) if m else 0
+
+
 class ReceiptLayoutLMTrainer:
     def __init__(
         self,
@@ -1140,7 +1153,8 @@ class ReceiptLayoutLMTrainer:
                 # checkpoint subdirectories, not at the root output_dir.
                 # Find the latest checkpoint's copy.
                 checkpoint_states = sorted(
-                    glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json"))
+                    glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                    key=_checkpoint_step,
                 )
                 if checkpoint_states:
                     trainer_state_path = checkpoint_states[-1]

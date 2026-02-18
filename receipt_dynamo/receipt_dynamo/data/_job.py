@@ -343,9 +343,15 @@ class _Job(FlattenedStandardMixin):
         """
         Returns the Job tagged as the active model.
 
-        Queries succeeded jobs and filters for ``tags.active_model == "true"``.
-        If no job is tagged, returns ``None``.  If multiple jobs are tagged
-        (should not happen in practice), returns the most recently created one.
+        Queries succeeded jobs (newest first, capped at 50) and filters for
+        ``tags.active_model == "true"``.  If no job is tagged, returns
+        ``None``.  If multiple jobs are tagged (should not happen in practice),
+        returns the most recently created one.
+
+        The limit of 50 bounds DynamoDB read cost and Lambda cold-start
+        latency.  The active model is expected to be among recent succeeded
+        jobs; if you have more than 50 succeeded jobs, increase the limit or
+        paginate.
 
         Returns:
             Job | None: The active model job, or None if none is tagged.
@@ -359,7 +365,7 @@ class _Job(FlattenedStandardMixin):
                 ":job_type": {"S": "JOB"},
             },
             converter_func=item_to_job,
-            limit=None,
+            limit=50,
             last_evaluated_key=None,
             filter_expression="#type = :job_type",
             scan_index_forward=False,  # Newest first
