@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -23,6 +24,8 @@ from urllib.parse import urlparse
 import boto3
 
 from .export_coreml import export_coreml
+
+CANONICAL_BUNDLE_KEY = "coreml/layoutlm-coreml-bundle.zip"
 
 
 def download_from_s3(s3_uri: str, local_dir: str) -> str:
@@ -160,6 +163,23 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             # Upload to S3
             bundle_s3_uri = upload_to_s3(bundle_path, output_s3_prefix)
             mlpackage_s3_uri = f"{bundle_s3_uri}LayoutLM.mlpackage"
+
+            # Zip and upload to canonical path for the Swift worker
+            try:
+                parsed = urlparse(output_s3_prefix)
+                bucket = parsed.netloc
+                zip_base = os.path.join(tmpdir, "layoutlm-coreml-bundle")
+                zip_path = shutil.make_archive(zip_base, "zip", bundle_path)
+                s3 = boto3.client("s3")
+                s3.upload_file(zip_path, bucket, CANONICAL_BUNDLE_KEY)
+                print(
+                    f"Uploaded canonical bundle to "
+                    f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}"
+                )
+            except Exception as e:
+                print(
+                    f"Warning: Failed to upload canonical bundle zip: {e}"
+                )
 
             duration = time.time() - start_time
 
