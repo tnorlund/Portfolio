@@ -392,7 +392,27 @@ def build_receipt_processing_states(
                         },
                         "ResultPath": "$.evaluation_result",
                         "Retry": build_llm_retry_config(),
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "ResultPath": "$.evaluation_error",
+                                "Next": "EvaluationFailed",
+                            }
+                        ],
                         "Next": "ReturnResult",
+                    },
+                    "EvaluationFailed": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "status": "failed",
+                            "image_id.$": "$.receipt.image_id",
+                            "receipt_id.$": "$.receipt.receipt_id",
+                            "merchant_name.$": "$.receipt.merchant_name",
+                            "issues_found": 0,
+                            "error.$": "$.evaluation_error.Error",
+                            "cause.$": "$.evaluation_error.Cause",
+                        },
+                        "End": True,
                     },
                     "ReturnResult": {
                         "Type": "Pass",
