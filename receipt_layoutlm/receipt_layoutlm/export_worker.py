@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -21,8 +22,11 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import boto3
+from botocore.exceptions import ClientError
 
 from .export_coreml import export_coreml
+
+CANONICAL_BUNDLE_KEY = "coreml/layoutlm-coreml-bundle.zip"
 
 
 def download_from_s3(s3_uri: str, local_dir: str) -> str:
@@ -161,6 +165,23 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             bundle_s3_uri = upload_to_s3(bundle_path, output_s3_prefix)
             mlpackage_s3_uri = f"{bundle_s3_uri}LayoutLM.mlpackage"
 
+            # Zip and upload to canonical path for the Swift worker
+            try:
+                parsed = urlparse(output_s3_prefix)
+                bucket = parsed.netloc
+                zip_base = os.path.join(tmpdir, "layoutlm-coreml-bundle")
+                zip_path = shutil.make_archive(zip_base, "zip", bundle_path)
+                s3 = boto3.client("s3")
+                s3.upload_file(zip_path, bucket, CANONICAL_BUNDLE_KEY)
+                print(
+                    f"Uploaded canonical bundle to "
+                    f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}"
+                )
+            except (OSError, ClientError) as e:
+                print(
+                    f"Warning: Failed to upload canonical bundle zip: {e}"
+                )
+
             duration = time.time() - start_time
 
             print(f"\nExport completed in {duration:.1f}s")
@@ -172,6 +193,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "SUCCESS",
                 "mlpackage_s3_uri": mlpackage_s3_uri,
                 "bundle_s3_uri": bundle_s3_uri,
+                "canonical_bundle_s3_uri": f"s3://{parsed.netloc}/{CANONICAL_BUNDLE_KEY}",
                 "model_size_bytes": model_size,
                 "export_duration_seconds": duration,
             }
