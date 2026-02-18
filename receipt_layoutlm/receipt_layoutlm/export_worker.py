@@ -22,6 +22,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import boto3
+import botocore.exceptions
 
 from .export_coreml import export_coreml
 
@@ -176,7 +177,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                     f"Uploaded canonical bundle to "
                     f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}"
                 )
-            except Exception as e:
+            except (OSError, botocore.exceptions.ClientError) as e:
                 print(
                     f"Warning: Failed to upload canonical bundle zip: {e}"
                 )
@@ -192,6 +193,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "SUCCESS",
                 "mlpackage_s3_uri": mlpackage_s3_uri,
                 "bundle_s3_uri": bundle_s3_uri,
+                "canonical_bundle_s3_uri": f"s3://{parsed.netloc}/{CANONICAL_BUNDLE_KEY}",
                 "model_size_bytes": model_size,
                 "export_duration_seconds": duration,
             }
