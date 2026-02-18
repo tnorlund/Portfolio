@@ -911,6 +911,140 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
         return None
 
 
+def _llm_identify_line_items(
+    llm: Any,
+    visual_lines: list[ReceiptVisualLine],
+    subtotal: float,
+    line_totals: list[FinancialValue],
+    discounts: list[FinancialValue],
+    merchant_name: str,
+    dummy_word: Any,
+) -> dict[str, list[FinancialValue]] | None:
+    """Sync version of :func:`_llm_identify_line_items_async`."""
+    receipt_text = _build_receipt_text(visual_lines)
+
+    algo_lt_sum = sum(fv.numeric_value for fv in line_totals)
+    algo_disc_sum = sum(abs(fv.numeric_value) for fv in discounts)
+    algo_expected = algo_lt_sum - algo_disc_sum
+    diff = subtotal - algo_expected
+
+    algo_lt_desc = "\n".join(
+        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")'
+        for fv in line_totals
+    )
+    algo_disc_desc = (
+        "\n".join(
+            f'  - ${abs(fv.numeric_value):.2f} ("{fv.word_text}")'
+            for fv in discounts
+        )
+        if discounts
+        else "  (none found)"
+    )
+
+    prompt = f"""You are analyzing a receipt from {merchant_name} to verify financial math.
+
+We know the SUBTOTAL is ${subtotal:.2f}. The equation is:
+  SUBTOTAL = sum(line item prices) - sum(discounts/coupons/voids)
+
+Our algorithm found these line item prices (sum=${algo_lt_sum:.2f}):
+{algo_lt_desc}
+
+And these discounts (sum=${algo_disc_sum:.2f}):
+{algo_disc_desc}
+
+This gives ${algo_lt_sum:.2f} - ${algo_disc_sum:.2f} = ${algo_expected:.2f}, but SUBTOTAL is ${subtotal:.2f}.
+The difference is ${diff:+.2f} — we need to find what's missing.
+
+Here is the full receipt text:
+
+{receipt_text}
+
+Identify ALL line item prices and ALL discounts/coupons/voids on this receipt.
+
+Rules:
+- A "line item price" is the total price charged for a product (qty x unit_price). If a line shows "4 @ 25.09  103.92", the line item price is 103.92, NOT 25.09.
+- Discounts, coupons, voids, and instant savings are negative amounts (often shown with trailing "-" like "3.00-"). These REDUCE the subtotal.
+- Deposits/fees/surcharges (like CA Redemption Value, bottle deposits, lumber fees) are positive charges that ADD to the subtotal — treat them as line items, not discounts.
+- Do NOT include the SUBTOTAL, TAX, GRAND_TOTAL, CHANGE, or payment amounts themselves.
+- Each amount should appear exactly once.
+- Your line_items sum minus discounts sum MUST equal the SUBTOTAL of ${subtotal:.2f}.
+
+Return ONLY valid JSON (no markdown, no explanation) in this format:
+{{
+  "line_items": [
+    {{"line": <line_number>, "text": "<word on receipt>", "amount": <positive_number>}},
+    ...
+  ],
+  "discounts": [
+    {{"line": <line_number>, "text": "<word on receipt>", "amount": <positive_number>, "reason": "<coupon/void/savings>"}},
+    ...
+  ],
+  "line_items_sum": <number>,
+  "discounts_sum": <number>,
+  "computed_subtotal": <number>
+}}"""
+
+    try:
+        response = llm.invoke(prompt)
+
+        raw = _response_to_text(response)
+        raw = raw.strip()
+        if not raw:
+            logger.warning("LLM fallback returned empty response")
+            return None
+
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+
+        parsed = json.loads(raw)
+        llm_line_items = parsed.get("line_items", [])
+        llm_discounts = parsed.get("discounts", [])
+
+        lt_sum = sum(item["amount"] for item in llm_line_items)
+        disc_sum = sum(item["amount"] for item in llm_discounts)
+        computed = lt_sum - disc_sum
+
+        logger.info(
+            "LLM fallback found: %d line items ($%.2f), "
+            "%d discounts ($%.2f), computed=$%.2f vs subtotal=$%.2f",
+            len(llm_line_items),
+            lt_sum,
+            len(llm_discounts),
+            disc_sum,
+            computed,
+            subtotal,
+        )
+
+        # Accept if math balances within $0.05
+        if abs(computed - subtotal) > 0.05:
+            logger.info(
+                "LLM fallback rejected: math doesn't balance "
+                "(diff=$%.2f)",
+                abs(computed - subtotal),
+            )
+            return None
+
+        # Match LLM items back to real ReceiptWord objects — uses the
+        # same visual_lines that built the prompt text.
+        result_lt = _match_llm_items_to_words(
+            llm_line_items, visual_lines, "LINE_TOTAL", dummy_word
+        )
+        result_disc = _match_llm_items_to_words(
+            llm_discounts, visual_lines, "DISCOUNT", dummy_word
+        )
+
+        return {"LINE_TOTAL": result_lt, "DISCOUNT": result_disc}
+
+    except json.JSONDecodeError as e:
+        logger.warning("LLM fallback JSON parse error: %s", e)
+        return None
+    except Exception as e:
+        logger.warning("LLM fallback error: %s: %s", type(e).__name__, e)
+        return None
+
+
 def detect_math_issues_from_values(
     values: dict[str, list[FinancialValue]],
 ) -> list[MathIssue]:
@@ -1976,6 +2110,7 @@ def evaluate_financial_math(
 
     # Itemized path: try enhanced extraction if labels + chroma available
     enhanced_values: dict[str, list[FinancialValue]] | None = None
+    used_llm_fallback = False
     if labels and chroma_client and words:
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
@@ -1991,17 +2126,61 @@ def evaluate_financial_math(
 
     logger.info("Detected %d math issues", len(math_issues))
 
+    # LLM fallback: if SUBTOTAL_MISMATCH and we have enhanced values + words
+    if enhanced_values and words:
+        has_subtotal_mismatch = any(
+            i.issue_type == "SUBTOTAL_MISMATCH" for i in math_issues
+        )
+        if has_subtotal_mismatch:
+            subtotal_val = None
+            for fv in enhanced_values.get("SUBTOTAL", []):
+                subtotal_val = fv.numeric_value
+                break
+
+            if subtotal_val is not None:
+                logger.info(
+                    "LLM fallback: SUBTOTAL_MISMATCH detected, "
+                    "asking LLM to identify line items"
+                )
+                receipt_visual_lines = _group_into_visual_lines(words)
+                llm_result = _llm_identify_line_items(
+                    llm=llm,
+                    visual_lines=receipt_visual_lines,
+                    subtotal=subtotal_val,
+                    line_totals=enhanced_values.get("LINE_TOTAL", []),
+                    discounts=enhanced_values.get("DISCOUNT", []),
+                    merchant_name=merchant_name,
+                    dummy_word=words[0],
+                )
+                if llm_result is not None:
+                    enhanced_values["LINE_TOTAL"] = llm_result["LINE_TOTAL"]
+                    enhanced_values["DISCOUNT"] = llm_result["DISCOUNT"]
+                    math_issues = detect_math_issues_from_values(
+                        enhanced_values
+                    )
+                    used_llm_fallback = True
+                    logger.info(
+                        "LLM fallback applied: %d math issues remaining",
+                        len(math_issues),
+                    )
+
     if not math_issues:
         if enhanced_values:
+            source = (
+                "llm_fallback_math_balanced"
+                if used_llm_fallback
+                else "enhanced_extraction_math_balanced"
+            )
             valid_decisions = _build_valid_decisions(
                 enhanced_values,
                 image_id,
                 receipt_id,
-                "enhanced_extraction_math_balanced",
+                source,
             )
             if valid_decisions:
                 logger.info(
-                    "Math balanced: emitting %d VALID decisions",
+                    "Math balanced (%s): emitting %d VALID decisions",
+                    source,
                     len(valid_decisions),
                 )
                 return valid_decisions
