@@ -719,10 +719,21 @@ export interface FinancialMathWord {
 export interface FinancialMathEquation {
   issue_type: string;
   description: string;
-  expected_value: number | string;
-  actual_value: number | string;
-  difference: number | string;
+  expected_value: number | string | null;
+  actual_value: number | string | null;
+  difference: number | string | null;
   involved_words: FinancialMathWord[];
+}
+
+export interface FinancialMathConfirmedLabel {
+  line_id: number;
+  word_id: number;
+  word_text: string;
+  current_label: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  decision: string;
+  confidence: string;
+  reasoning: string;
 }
 
 export interface FinancialMathReceipt {
@@ -732,8 +743,10 @@ export interface FinancialMathReceipt {
   trace_id: string;
   receipt_type?: "itemized" | "service" | "terminal";
   equations: FinancialMathEquation[];
+  confirmed_labels?: FinancialMathConfirmedLabel[];
   summary: {
     total_equations: number;
+    total_confirmed?: number;
     has_invalid: boolean;
     has_needs_review: boolean;
   };

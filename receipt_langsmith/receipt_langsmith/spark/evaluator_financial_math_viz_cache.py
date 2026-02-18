@@ -125,14 +125,32 @@ def _build_involved_word(
     return entry
 
 
+def _build_confirmed_labels(
+    decisions: list[dict],
+    word_lookup: dict[tuple[int, int], dict],
+) -> list[dict[str, Any]]:
+    """Extract VALID decisions into a confirmed-labels array."""
+    return [
+        _build_involved_word(d, word_lookup)
+        for d in decisions
+        if d.get("llm_review", {}).get("decision") == "VALID"
+    ]
+
+
 def _build_equations(
     decisions: list[dict],
     word_lookup: dict[tuple[int, int], dict],
 ) -> list[dict[str, Any]]:
     """Group decisions by description (equation) and build equation dicts."""
+    # Filter out VALID confirmations — they lack equation metadata
+    equation_decisions = [
+        d for d in decisions
+        if d.get("llm_review", {}).get("decision") != "VALID"
+    ]
+
     # Group by description
     groups: dict[str, list[dict]] = {}
-    for d in decisions:
+    for d in equation_decisions:
         desc = d.get("issue", {}).get("description", "<unknown>")
         groups.setdefault(desc, []).append(d)
 
@@ -155,7 +173,10 @@ def _build_equations(
     return equations
 
 
-def _build_summary(equations: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_summary(
+    equations: list[dict[str, Any]],
+    total_confirmed: int = 0,
+) -> dict[str, Any]:
     """Build summary stats from equation list."""
     has_invalid = False
     has_needs_review = False
@@ -169,6 +190,7 @@ def _build_summary(equations: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "total_equations": len(equations),
+        "total_confirmed": total_confirmed,
         "has_invalid": has_invalid,
         "has_needs_review": has_needs_review,
     }
@@ -265,7 +287,8 @@ def build_financial_math_cache(
 
         # Build equations grouped by description
         equations = _build_equations(output_list, word_lookup)
-        summary = _build_summary(equations)
+        confirmed_labels = _build_confirmed_labels(output_list, word_lookup)
+        summary = _build_summary(equations, total_confirmed=len(confirmed_labels))
 
         # Enrich with CDN keys and dimensions from receipt lookup
         cdn_fields: dict[str, Any] = {"cdn_s3_key": ""}
@@ -298,6 +321,7 @@ def build_financial_math_cache(
                 "trace_id": trace_id,
                 "receipt_type": receipt_type,
                 "equations": equations,
+                "confirmed_labels": confirmed_labels,
                 "summary": summary,
                 "width": width,
                 "height": height,

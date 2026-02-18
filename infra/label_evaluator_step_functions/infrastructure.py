@@ -295,62 +295,46 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy (includes ChromaDB bucket if provided)
+        # S3 access policy (includes ChromaDB and viz-cache buckets if provided)
+        s3_policy_outputs = [self.batch_bucket.arn]
         if chromadb_bucket_arn:
-            RolePolicy(
-                f"{name}-lambda-s3-policy",
-                role=lambda_role.id,
-                policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
-                    lambda args: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject",
-                                        "s3:PutObject",
-                                        "s3:DeleteObject",
-                                        "s3:ListBucket",
-                                    ],
-                                    "Resource": [
-                                        args[0],
-                                        f"{args[0]}/*",
-                                        args[1],
-                                        f"{args[1]}/*",
-                                    ],
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=lambda_role),
+            s3_policy_outputs.append(chromadb_bucket_arn)
+        if self.cache_bucket:
+            # cache_bucket is a pulumi.Input[str] (bucket name), derive ARN
+            s3_policy_outputs.append(
+                Output.from_input(self.cache_bucket).apply(
+                    lambda name: f"arn:aws:s3:::{name}"
+                )
             )
-        else:
-            RolePolicy(
-                f"{name}-lambda-s3-policy",
-                role=lambda_role.id,
-                policy=self.batch_bucket.arn.apply(
-                    lambda arn: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject",
-                                        "s3:PutObject",
-                                        "s3:DeleteObject",
-                                        "s3:ListBucket",
-                                    ],
-                                    "Resource": [arn, f"{arn}/*"],
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=lambda_role),
-            )
+
+        RolePolicy(
+            f"{name}-lambda-s3-policy",
+            role=lambda_role.id,
+            policy=Output.all(*s3_policy_outputs).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:DeleteObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
+                                    resource
+                                    for arn in args
+                                    for resource in (arn, f"{arn}/*")
+                                ],
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
 
         # ============================================================
         # Paths
@@ -548,6 +532,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             environment=FunctionEnvironmentArgs(
                 variables={
                     "BATCH_BUCKET": self.batch_bucket.bucket,
+                    "VIZ_CACHE_BUCKET": (
+                        self.cache_bucket if self.cache_bucket else ""
+                    ),
                     **tracing_env,
                 }
             ),
@@ -908,6 +895,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "ephemeral_storage": 10240,  # 10 GB for ChromaDB
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
+                "VIZ_CACHE_BUCKET": (
+                    self.cache_bucket if self.cache_bucket else ""
+                ),
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
