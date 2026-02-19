@@ -79,6 +79,7 @@ class UploadImages(ComponentResource):
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
+        self.image_bucket = image_bucket
 
         # Dedicated artifacts bucket for NDJSON receipts (do not use site bucket)
         artifacts_bucket = Bucket(
