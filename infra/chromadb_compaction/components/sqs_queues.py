@@ -205,7 +205,7 @@ class ChromaDBQueues(ComponentResource):
         self.summary_queue = aws.sqs.Queue(
             f"{name}-summary-queue",
             message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=900,  # Must match Lambda timeout
+            visibility_timeout_seconds=120,  # 2x summary updater Lambda timeout (60s)
             receive_wait_time_seconds=20,  # Long polling
             delay_seconds=15,  # 15-second delay for batching multiple changes
             redrive_policy=Output.all(self.summary_dlq.arn).apply(
