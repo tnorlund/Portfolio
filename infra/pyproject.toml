@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "black==26.1.0",
-    "isort==7.0.0",
+    "isort==8.0.0",
     "flake8>=7.0.0",  # Added version specification
     "mypy>=1.19.0",
     "pytest>=8.0.0",  # Added version specification
