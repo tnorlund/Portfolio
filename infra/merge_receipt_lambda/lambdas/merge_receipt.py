@@ -85,21 +85,23 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         # Import here to avoid cold start overhead if validation fails
-        from geometry_utils import calculate_min_area_rect, create_warped_receipt_image
-        from metadata_utils import get_best_receipt_place, migrate_receipt_word_labels
         from receipt_agent.lifecycle.receipt_manager import delete_receipt
         from receipt_chroma.embedding.orchestration import (
             EmbeddingConfig,
             create_embeddings_and_compaction_run,
         )
         from receipt_dynamo import DynamoClient
-        from receipt_upload.utils import upload_all_cdn_formats, upload_png_to_s3
-        from records_builder import (
+        from receipt_upload.combine import (
+            calculate_min_area_rect,
             combine_receipt_letters_to_image_coords,
             combine_receipt_words_to_image_coords,
             create_combined_receipt_records,
             create_receipt_letters_from_combined,
+            create_warped_receipt_image,
+            get_best_receipt_place,
+            migrate_receipt_word_labels,
         )
+        from receipt_upload.utils import upload_all_cdn_formats, upload_png_to_s3
 
         # Initialize clients
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")

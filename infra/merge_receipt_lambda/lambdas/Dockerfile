@@ -27,12 +27,8 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
 
-# Copy reusable geometry/records/metadata utilities from combine_receipts
-COPY infra/combine_receipts_step_functions/lambdas/geometry_utils.py ${LAMBDA_TASK_ROOT}/geometry_utils.py
-COPY infra/combine_receipts_step_functions/lambdas/records_builder.py ${LAMBDA_TASK_ROOT}/records_builder.py
-COPY infra/combine_receipts_step_functions/lambdas/metadata_utils.py ${LAMBDA_TASK_ROOT}/metadata_utils.py
-
 # Copy the merge receipt handler
+# Combine utilities (geometry, records, metadata) are now in receipt_upload.combine
 COPY infra/merge_receipt_lambda/lambdas/merge_receipt.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
