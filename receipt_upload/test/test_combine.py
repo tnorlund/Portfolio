@@ -332,11 +332,12 @@ def test_get_receipt_to_image_transform_identity_like():
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket="bucket",
         raw_s3_key="key",
-        # Corners in OCR space (y=0 at bottom, normalised 0-1)
-        top_left={"x": 0.0, "y": 1.0},
-        top_right={"x": 1.0, "y": 1.0},
-        bottom_left={"x": 0.0, "y": 0.0},
-        bottom_right={"x": 1.0, "y": 0.0},
+        # Corners in PIL space (y=0 at top, normalised 0-1).
+        # photo.py stores them this way after flip_y=True in calculate_corners.
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 1.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 1.0},
+        bottom_right={"x": 1.0, "y": 1.0},
     )
 
     coeffs, rw, rh = _get_receipt_to_image_transform(receipt, 100, 200)
@@ -357,10 +358,11 @@ def test_combine_receipt_words_to_image_coords_produces_words():
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket="bucket",
         raw_s3_key="key",
-        top_left={"x": 0.0, "y": 1.0},
-        top_right={"x": 1.0, "y": 1.0},
-        bottom_left={"x": 0.0, "y": 0.0},
-        bottom_right={"x": 1.0, "y": 0.0},
+        # PIL space (y=0 at top)
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 1.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 1.0},
+        bottom_right={"x": 1.0, "y": 1.0},
     )
     word = ReceiptWord(
         receipt_id=1,

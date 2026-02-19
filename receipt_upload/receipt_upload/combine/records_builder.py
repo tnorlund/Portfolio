@@ -26,36 +26,35 @@ def _get_receipt_to_image_transform(
 ) -> tuple:
     """Compute perspective transform coefficients from receipt space to image space.
 
-    The receipt's corner coordinates are in OCR space (y=0 at bottom),
-    normalized 0-1.  This converts them to PIL image-pixel space and
-    computes the 8 perspective coefficients that map receipt pixels →
-    image pixels.
+    Receipt corners are stored in PIL space (y=0 at top), normalized 0-1.
+    photo.py converts OCR corners via calculate_corners(flip_y=True) before
+    normalising, so no additional Y-flip is needed here.
 
     Returns:
         (transform_coeffs, receipt_width, receipt_height)
     """
-    # Convert receipt corners from OCR-normalised to PIL-pixel space.
-    # OCR: y=0 at bottom, 0-1 range.  PIL: y=0 at top, pixel units.
+    # Receipt corners are already in PIL space (y=0 at top), normalised 0-1.
+    # Simply scale to pixel coordinates — no Y-flip required.
     src_points = [
         (
             receipt.top_left["x"] * image_width,
-            (1.0 - receipt.top_left["y"]) * image_height,
+            receipt.top_left["y"] * image_height,
         ),
         (
             receipt.top_right["x"] * image_width,
-            (1.0 - receipt.top_right["y"]) * image_height,
+            receipt.top_right["y"] * image_height,
         ),
         (
             receipt.bottom_right["x"] * image_width,
-            (1.0 - receipt.bottom_right["y"]) * image_height,
+            receipt.bottom_right["y"] * image_height,
         ),
         (
             receipt.bottom_left["x"] * image_width,
-            (1.0 - receipt.bottom_left["y"]) * image_height,
+            receipt.bottom_left["y"] * image_height,
         ),
     ]
 
-    # Destination is the warped-receipt rectangle.
+    # Destination is the warped-receipt rectangle in PIL pixel space.
     dst_points = [
         (0.0, 0.0),
         (float(receipt.width - 1), 0.0),
