@@ -32,16 +32,15 @@ except ImportError as e:
 # Import helper modules
 # Use local embedding_utils instead of package version to ensure we use upload_bundled_delta_to_s3
 from embedding_utils import create_embeddings_and_compaction_run
-from geometry_utils import calculate_min_area_rect, create_warped_receipt_image
-from metadata_utils import (
-    get_best_receipt_place,
-    migrate_receipt_word_labels,
-)
-from records_builder import (
+from receipt_upload.combine import (
+    calculate_min_area_rect,
     combine_receipt_letters_to_image_coords,
     combine_receipt_words_to_image_coords,
     create_combined_receipt_records,
     create_receipt_letters_from_combined,
+    create_warped_receipt_image,
+    get_best_receipt_place,
+    migrate_receipt_word_labels,
 )
 from s3_io import export_receipt_ndjson_and_queue, save_records_json_to_s3
 
