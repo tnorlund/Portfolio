@@ -155,45 +155,53 @@ class ReceiptGraphClient:
             Dict with count, total_spending, total_tax, total_tip,
             average_receipt, filters, and summaries list.
         """
-        # Build query dynamically based on which filters are set
-        match_parts = ["MATCH (r:Receipt)-[:SOLD_BY]->(m:Merchant)"]
-        where_parts: list[str] = []
+        # Build query dynamically based on which filters are set.
+        # We separate "main" WHERE (applied to the MATCH) from the
+        # date MATCH so the OPTIONAL MATCH for dates in the detail
+        # query doesn't swallow the WHERE clause.
+        main_match = "MATCH (r:Receipt)-[:SOLD_BY]->(m:Merchant)"
+        main_where_parts: list[str] = []
+        date_match = ""
         params: dict[str, Any] = {"limit": limit}
 
         if merchant_filter:
-            where_parts.append(
+            main_where_parts.append(
                 "toLower(m.name) CONTAINS toLower($merchant)"
             )
             params["merchant"] = merchant_filter
 
         if category_filter:
-            match_parts.append(
-                "MATCH (m)-[:IN_CATEGORY]->(c:Category)"
+            main_where_parts.append(
+                "EXISTS { (m)-[:IN_CATEGORY]->"
+                "(:Category {name: $category}) }"
             )
-            where_parts.append("c.name = $category")
             params["category"] = category_filter
 
         if start_date or end_date:
-            match_parts.append(
-                "MATCH (r)-[:ON_DATE]->(d:Date)"
-            )
+            date_match = "MATCH (r)-[:ON_DATE]->(d:Date)"
             if start_date:
-                where_parts.append("d.date >= date($start)")
+                main_where_parts.append(
+                    "d.date >= date($start)"
+                )
                 params["start"] = start_date
             if end_date:
-                where_parts.append("d.date <= date($end)")
+                main_where_parts.append(
+                    "d.date <= date($end)"
+                )
                 params["end"] = end_date
 
-        where_clause = ""
-        if where_parts:
-            where_clause = "WHERE " + " AND ".join(where_parts)
+        main_where = ""
+        if main_where_parts:
+            main_where = (
+                "WHERE " + " AND ".join(main_where_parts)
+            )
 
-        # Two-pass: first get aggregates, then individual summaries
-        agg_cypher = "\n".join(
-            match_parts
-            + [
-                where_clause,
-                """
+        # Aggregate query: main match + date match + WHERE + agg
+        agg_parts = [main_match]
+        if date_match:
+            agg_parts.append(date_match)
+        agg_parts.append(main_where)
+        agg_parts.append("""
         RETURN count(r) AS count,
                sum(r.grand_total) AS total_spending,
                sum(r.tax) AS total_tax,
@@ -201,18 +209,23 @@ class ReceiptGraphClient:
                avg(r.grand_total) AS average_receipt,
                sum(CASE WHEN r.grand_total IS NOT NULL
                    THEN 1 ELSE 0 END) AS receipts_with_totals
-        """,
-            ]
-        )
+        """)
+        agg_cypher = "\n".join(agg_parts)
 
-        detail_cypher = "\n".join(
-            match_parts
-            + [
+        # Detail query: main match + WHERE first, then OPTIONAL
+        # date match (only when not already filtering by date)
+        detail_parts = [main_match]
+        if date_match:
+            # Date is part of the required match for filtering
+            detail_parts.append(date_match)
+            detail_parts.append(main_where)
+        else:
+            # Apply WHERE before the OPTIONAL MATCH
+            detail_parts.append(main_where)
+            detail_parts.append(
                 "OPTIONAL MATCH (r)-[:ON_DATE]->(d:Date)"
-                if not (start_date or end_date)
-                else "",
-                where_clause,
-                """
+            )
+        detail_parts.append("""
         RETURN r.image_id AS image_id,
                r.receipt_id AS receipt_id,
                m.name AS merchant_name,
@@ -225,9 +238,8 @@ class ReceiptGraphClient:
                m.primary_category AS merchant_category
         ORDER BY r.date DESC
         LIMIT $limit
-        """,
-            ]
-        )
+        """)
+        detail_cypher = "\n".join(detail_parts)
 
         with self._driver.session(
             database=self._database
@@ -289,7 +301,7 @@ class ReceiptGraphClient:
         """
         cypher = """
         CALL db.index.fulltext.queryNodes(
-            'product_search', $query
+            'product_search', $search_text
         ) YIELD node AS li, score
         MATCH (r:Receipt)-[:HAS_ITEM]->(li)
         RETURN DISTINCT
@@ -306,7 +318,7 @@ class ReceiptGraphClient:
             database=self._database
         ) as session:
             result = session.run(
-                cypher, query=query, limit=limit
+                cypher, search_text=query, limit=limit
             )
             return [dict(record) for record in result]
 
@@ -400,7 +412,7 @@ class ReceiptGraphClient:
         """
         cypher = """
         CALL db.index.fulltext.queryNodes(
-            'product_search', $query
+            'product_search', $search_text
         ) YIELD node AS li, score
         MATCH (r:Receipt)-[:HAS_ITEM]->(li)
         RETURN li.product_name AS text,
@@ -416,7 +428,7 @@ class ReceiptGraphClient:
             database=self._database
         ) as session:
             result = session.run(
-                cypher, query=query, limit=limit
+                cypher, search_text=query, limit=limit
             )
             return [dict(record) for record in result]
 
@@ -465,10 +477,11 @@ class ReceiptGraphClient:
         MATCH (r:Receipt)-[:ON_DATE]->(d:Date)
         WHERE r.grand_total IS NOT NULL
         RETURN d.day_name AS day_name,
+               d.day_of_week AS day_of_week,
                avg(r.grand_total) AS avg_spending,
                sum(r.grand_total) AS total,
                count(r) AS count
-        ORDER BY d.day_of_week
+        ORDER BY day_of_week
         """
         with self._driver.session(
             database=self._database
