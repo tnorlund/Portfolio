@@ -101,7 +101,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             get_best_receipt_place,
             migrate_receipt_word_labels,
         )
-        from receipt_upload.utils import upload_all_cdn_formats, upload_png_to_s3
+        from receipt_upload.utils import (
+            calculate_sha256_from_bytes,
+            upload_all_cdn_formats,
+            upload_png_to_s3,
+        )
 
         # Initialize clients
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
@@ -305,16 +309,34 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return result
 
         # ============================================================
-        # Step 9: Upload warped image to S3
+        # Step 9: Upload warped image to S3 and set CDN metadata
         # ============================================================
         raw_s3_key = f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png"
         logger.info("Uploading raw image to s3://%s/%s", raw_bucket, raw_s3_key)
         upload_png_to_s3(warped_image, raw_bucket, raw_s3_key)
+        receipt.raw_s3_key = raw_s3_key
 
-        # Upload CDN variants
+        # Upload CDN variants and persist keys on the Receipt entity
         cdn_base_key = f"assets/{image_id}_RECEIPT_{new_receipt_id:05d}"
         logger.info("Uploading CDN formats to s3://%s/%s.*", site_bucket, cdn_base_key)
-        upload_all_cdn_formats(warped_image, site_bucket, cdn_base_key)
+        cdn_keys = upload_all_cdn_formats(
+            warped_image, site_bucket, cdn_base_key, generate_thumbnails=True
+        )
+        receipt.cdn_s3_key = cdn_keys.get("jpeg")
+        receipt.cdn_webp_s3_key = cdn_keys.get("webp")
+        receipt.cdn_avif_s3_key = cdn_keys.get("avif")
+        receipt.cdn_thumbnail_s3_key = cdn_keys.get("jpeg_thumbnail")
+        receipt.cdn_thumbnail_webp_s3_key = cdn_keys.get("webp_thumbnail")
+        receipt.cdn_thumbnail_avif_s3_key = cdn_keys.get("avif_thumbnail")
+        receipt.cdn_small_s3_key = cdn_keys.get("jpeg_small")
+        receipt.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
+        receipt.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
+        receipt.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
+        receipt.cdn_medium_webp_s3_key = cdn_keys.get("webp_medium")
+        receipt.cdn_medium_avif_s3_key = cdn_keys.get("avif_medium")
+
+        # Compute SHA256 for deduplication
+        receipt.sha256 = calculate_sha256_from_bytes(warped_image.tobytes())
 
         # ============================================================
         # Step 10: Write to DynamoDB
