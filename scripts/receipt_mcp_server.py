@@ -564,6 +564,52 @@ image_id/receipt_id/line_id/word_id/label already exists.""",
             },
         ),
         Tool(
+            name="merge_receipts",
+            description="""Merge two receipt fragments into a single new receipt.
+
+Invokes the merge-receipt Lambda to combine two over-segmented receipt
+fragments on the same image into one receipt with proper perspective warping,
+new embeddings, and cleanup of the originals.
+
+Steps performed by the Lambda:
+1. Read receipt details via GSI4
+2. Transform all words to image space and calculate new bounding rect
+3. Download original image and create warped receipt image
+4. Upload warped image to S3 (raw + CDN variants)
+5. Create new Receipt/Line/Word/Letter entities in warped space
+6. Migrate labels and place data
+7. Write to DynamoDB
+8. Create embeddings and wait for compaction
+9. Delete original receipts
+
+Use dry_run=true first to preview what will happen without making changes.
+
+WARNING: With dry_run=false, this WRITES to DynamoDB and S3, creates embeddings,
+and DELETES the original receipts. Only proceed after verifying with dry_run.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID containing the receipt fragments",
+                    },
+                    "receipt_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Exactly 2 distinct receipt IDs to merge",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview the merge without making changes",
+                    },
+                },
+                "required": ["image_id", "receipt_ids"],
+            },
+        ),
+        Tool(
             name="get_receipt_words",
             description="""Get all words for a receipt with their DynamoDB coordinates and labels.
 
@@ -677,6 +723,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 new_status=arguments["new_status"],
                 reasoning=arguments.get("reasoning"),
+            )
+        elif name == "merge_receipts":
+            result = await merge_receipts_impl(
+                image_id=arguments["image_id"],
+                receipt_ids=arguments["receipt_ids"],
+                dry_run=arguments.get("dry_run", True),
             )
         elif name == "get_receipt_words":
             result = await get_receipt_words_impl(
@@ -1874,6 +1926,62 @@ async def create_word_label_impl(
 
     except Exception as e:
         logger.exception("Error creating word label")
+        return {"error": str(e)}
+
+
+async def merge_receipts_impl(
+    image_id: str,
+    receipt_ids: list[int],
+    dry_run: bool = True,
+) -> dict:
+    """Invoke the merge-receipt Lambda to combine two receipt fragments."""
+    try:
+        import asyncio
+
+        import boto3
+
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        function_name = f"merge-receipt-{env}-merge-receipt"
+
+        payload = {
+            "image_id": image_id,
+            "receipt_ids": receipt_ids,
+            "dry_run": dry_run,
+        }
+
+        logger.info(
+            "Invoking %s with payload: %s",
+            function_name,
+            json.dumps(payload),
+        )
+
+        def _invoke():
+            lambda_client = boto3.client("lambda", region_name="us-east-1")
+            return lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType="RequestResponse",
+                Payload=json.dumps(payload),
+            )
+
+        # Run in a thread to avoid blocking the async event loop —
+        # the Lambda can take 30+ seconds for image processing,
+        # embedding creation, and compaction waits.
+        response = await asyncio.to_thread(_invoke)
+
+        response_payload = json.loads(response["Payload"].read())
+
+        # Check for Lambda-level errors
+        if "FunctionError" in response:
+            return {
+                "error": "Lambda execution failed",
+                "function_error": response["FunctionError"],
+                "details": response_payload,
+            }
+
+        return response_payload
+
+    except Exception as e:
+        logger.exception("Error invoking merge-receipt Lambda")
         return {"error": str(e)}
 
 
