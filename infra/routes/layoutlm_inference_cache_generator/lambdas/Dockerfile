@@ -10,21 +10,14 @@ FROM public.ecr.aws/lambda/python:3.12 AS dependencies
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_layoutlm/ /tmp/receipt_layoutlm/
 
-# Install dependencies
-# Note: PyTorch is large - using CPU-only version for Lambda
-# torch==2.5.1+cpu doesn't exist, using 2.6.0+cpu (next available CPU version)
+# Install CPU-only PyTorch first (Lambda has no GPU, saves ~1.5GB)
 RUN pip install --no-cache-dir \
     torch==2.6.0+cpu \
-    --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir \
-    transformers>=4.40.0 \
-    datasets>=2.19.0 \
-    boto3>=1.34.0 \
-    pillow tqdm filelock 'pydantic>=2.10.6' \
-    'accelerate>=0.21.0' \
-    seqeval \
-    'protobuf>=3.20.0,<6.0.0' && \
-    pip install --no-cache-dir /tmp/receipt_dynamo && \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install packages — receipt_layoutlm/pyproject.toml is the single source
+# of truth for all dependencies. pip sees torch is already satisfied.
+RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_layoutlm && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_layoutlm
 
