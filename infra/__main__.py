@@ -45,6 +45,7 @@ from dynamo_db import (
 from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
+from merge_receipt_lambda import create_merge_receipt_lambda
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
@@ -1271,6 +1272,19 @@ fix_place_lambda = create_fix_place_lambda(
 pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
+
+# Merge Receipt Lambda (for merging receipt fragments into a single receipt)
+# Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
+merge_receipt_lambda = create_merge_receipt_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+)
+pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
+pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
