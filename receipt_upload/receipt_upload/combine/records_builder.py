@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from receipt_upload.combine.geometry_utils import transform_point_to_warped_space
+from receipt_upload.geometry.transformations import find_perspective_coeffs, invert_warp
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,
@@ -18,6 +19,54 @@ from receipt_dynamo.entities import (
     ReceiptLine,
     ReceiptWord,
 )
+
+
+def _get_receipt_to_image_transform(
+    receipt: Receipt, image_width: int, image_height: int
+) -> tuple:
+    """Compute perspective transform coefficients from receipt space to image space.
+
+    The receipt's corner coordinates are in OCR space (y=0 at bottom),
+    normalized 0-1.  This converts them to PIL image-pixel space and
+    computes the 8 perspective coefficients that map receipt pixels →
+    image pixels.
+
+    Returns:
+        (transform_coeffs, receipt_width, receipt_height)
+    """
+    # Convert receipt corners from OCR-normalised to PIL-pixel space.
+    # OCR: y=0 at bottom, 0-1 range.  PIL: y=0 at top, pixel units.
+    src_points = [
+        (
+            receipt.top_left["x"] * image_width,
+            (1.0 - receipt.top_left["y"]) * image_height,
+        ),
+        (
+            receipt.top_right["x"] * image_width,
+            (1.0 - receipt.top_right["y"]) * image_height,
+        ),
+        (
+            receipt.bottom_right["x"] * image_width,
+            (1.0 - receipt.bottom_right["y"]) * image_height,
+        ),
+        (
+            receipt.bottom_left["x"] * image_width,
+            (1.0 - receipt.bottom_left["y"]) * image_height,
+        ),
+    ]
+
+    # Destination is the warped-receipt rectangle.
+    dst_points = [
+        (0.0, 0.0),
+        (float(receipt.width - 1), 0.0),
+        (float(receipt.width - 1), float(receipt.height - 1)),
+        (0.0, float(receipt.height - 1)),
+    ]
+
+    # find_perspective_coeffs returns coefficients where:
+    #   x_src = f(x_dst)   i.e.  receipt → image
+    transform_coeffs = find_perspective_coeffs(src_points, dst_points)
+    return transform_coeffs, receipt.width, receipt.height
 
 
 def combine_receipt_words_to_image_coords(
@@ -49,17 +98,12 @@ def combine_receipt_words_to_image_coords(
             )
             for word in receipt_words:
                 try:
-                    # Use the new Receipt entity method
                     transform_coeffs, receipt_width, receipt_height = (
-                        receipt.get_transform_to_image(
-                            image_width, image_height
+                        _get_receipt_to_image_transform(
+                            receipt, image_width, image_height
                         )
                     )
                     word_copy = copy.deepcopy(word)
-                    from receipt_upload.geometry.transformations import (
-                        invert_warp,
-                    )
-
                     forward_coeffs = invert_warp(*transform_coeffs)
                     # ReceiptWord coordinates are in OCR space (y=0 at bottom),
                     # normalized 0-1. The transform destination is in PIL space
@@ -200,17 +244,12 @@ def combine_receipt_letters_to_image_coords(
                     )
                     for letter in receipt_letters:
                         try:
-                            # Use the new Receipt entity method
                             transform_coeffs, receipt_width, receipt_height = (
-                                receipt.get_transform_to_image(
-                                    image_width, image_height
+                                _get_receipt_to_image_transform(
+                                    receipt, image_width, image_height
                                 )
                             )
                             letter_copy = copy.deepcopy(letter)
-                            from receipt_upload.geometry.transformations import (
-                                invert_warp,
-                            )
-
                             forward_coeffs = invert_warp(*transform_coeffs)
                             # ReceiptLetter coordinates are in OCR space
                             # (y=0 at bottom), normalized 0-1. The transform
