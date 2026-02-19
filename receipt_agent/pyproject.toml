@@ -45,6 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+neo4j = [
+    "receipt-neo4j",                # Neo4j graph queries (optional)
+]
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

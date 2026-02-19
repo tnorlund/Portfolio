@@ -66,7 +66,9 @@ from receipt_agent.agents.question_answering.state import (
 
 # Tools
 from receipt_agent.agents.question_answering.tools import (
+    NEO4J_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
+    create_neo4j_qa_tools,
     create_qa_tools,
 )
 
@@ -98,7 +100,9 @@ __all__ = [
     "RetrievedContext",
     # Tools
     "create_qa_tools",
+    "create_neo4j_qa_tools",
     "SYSTEM_PROMPT",
+    "NEO4J_SYSTEM_PROMPT",
     # Evaluation
     "create_qa_evaluator",
     "retrieval_evaluator",

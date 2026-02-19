@@ -34,7 +34,9 @@ from receipt_agent.agents.question_answering.state import (
     RetrievedContext,
 )
 from receipt_agent.agents.question_answering.tools import (
+    NEO4J_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
+    create_neo4j_qa_tools,
     create_qa_tools,
 )
 from receipt_agent.config.settings import Settings, get_settings
@@ -722,17 +724,24 @@ def create_qa_graph(
     chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
     settings: Optional[Settings] = None,
+    neo4j_client: Optional[Any] = None,
 ) -> tuple[Any, dict]:
     """
     Create the 5-node question-answering workflow.
 
     Flow: START -> plan -> agent <-> tools -> shape -> synthesize -> END
 
+    When neo4j_client is provided and receipt-neo4j is installed,
+    7 of 9 tools route through Neo4j Cypher queries instead of
+    DynamoDB scans + ChromaDB. get_receipt stays in DynamoDB and
+    semantic_search stays in ChromaDB.
+
     Args:
         dynamo_client: DynamoDB client
         chroma_client: ChromaDB client
         embed_fn: Function to generate embeddings
         settings: Optional settings
+        neo4j_client: Optional ReceiptGraphClient for Neo4j-backed tools
 
     Returns:
         (compiled_graph, state_holder) - The graph and state dict
@@ -740,12 +749,22 @@ def create_qa_graph(
     if settings is None:
         settings = get_settings()
 
-    # Create tools with injected dependencies
-    tools, state_holder = create_qa_tools(
-        dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
-    )
+    # Create tools — prefer Neo4j when available
+    if neo4j_client is not None and create_neo4j_qa_tools is not None:
+        logger.info("Using Neo4j-backed QA tools")
+        tools, state_holder = create_neo4j_qa_tools(
+            neo4j_client=neo4j_client,
+            dynamo_client=dynamo_client,
+            chroma_client=chroma_client,
+            embed_fn=embed_fn,
+        )
+    else:
+        logger.info("Using DynamoDB/ChromaDB QA tools (no Neo4j)")
+        tools, state_holder = create_qa_tools(
+            dynamo_client=dynamo_client,
+            chroma_client=chroma_client,
+            embed_fn=embed_fn,
+        )
 
     # Create LLM (uses OpenRouter)
     llm = create_llm(
