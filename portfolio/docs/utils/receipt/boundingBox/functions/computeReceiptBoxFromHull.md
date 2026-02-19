@@ -8,7 +8,7 @@
 
 > **computeReceiptBoxFromHull**(`hull`, `centroid`, `avgAngle`): [`Point`](../../../../types/api/interfaces/Point.md)[]
 
-Defined in: [utils/receipt/boundingBox.ts:83](https://github.com/tnorlund/Portfolio/blob/c2ba2ec3af9668e08b65256fd533d03c53d09659/portfolio/utils/receipt/boundingBox.ts#L83)
+Defined in: [utils/receipt/boundingBox.ts:83](https://github.com/tnorlund/Portfolio/blob/79922c4fb7363b258438cf3e77f091d19f0bd1b8/portfolio/utils/receipt/boundingBox.ts#L83)
 
 Compute a bounding box that best fits a skewed receipt hull.
 

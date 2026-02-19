@@ -2,15 +2,17 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
-from receipt_dynamo.entities import ReceiptPlace, ReceiptWordLabel
+from receipt_dynamo.entities import Receipt, ReceiptPlace, ReceiptWord, ReceiptWordLabel
 
 from receipt_upload.combine import (
     calculate_min_area_rect,
+    combine_receipt_words_to_image_coords,
     create_combined_receipt_records,
     get_best_receipt_place,
     migrate_receipt_word_labels,
     transform_point_to_warped_space,
 )
+from receipt_upload.combine.records_builder import _get_receipt_to_image_transform
 
 
 TEST_IMAGE_ID = "123e4567-e89b-42d3-a456-426614174000"
@@ -317,3 +319,81 @@ def test_create_combined_receipt_records_keeps_noise_and_mappings():
     assert [w.is_noise for w in records["receipt_words"]] == [False, True]
     assert records["line_id_map"] == {(1, 2): 1}
     assert records["word_id_map"] == {(7, 1, 2): 1, (8, 1, 2): 2}
+
+
+@pytest.mark.unit
+def test_get_receipt_to_image_transform_identity_like():
+    """Receipt covering the full image should produce near-identity transform."""
+    receipt = Receipt(
+        image_id=TEST_IMAGE_ID,
+        receipt_id=1,
+        width=100,
+        height=200,
+        timestamp_added=datetime.now(timezone.utc),
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        # Corners in PIL space (y=0 at top, normalised 0-1).
+        # photo.py stores them this way after flip_y=True in calculate_corners.
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 1.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 1.0},
+        bottom_right={"x": 1.0, "y": 1.0},
+    )
+
+    coeffs, rw, rh = _get_receipt_to_image_transform(receipt, 100, 200)
+
+    assert rw == 100
+    assert rh == 200
+    assert len(coeffs) == 8
+
+
+@pytest.mark.unit
+def test_combine_receipt_words_to_image_coords_produces_words():
+    """End-to-end: words should be returned (not silently dropped)."""
+    receipt = Receipt(
+        image_id=TEST_IMAGE_ID,
+        receipt_id=1,
+        width=100,
+        height=200,
+        timestamp_added=datetime.now(timezone.utc),
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        # PIL space (y=0 at top)
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 1.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 1.0},
+        bottom_right={"x": 1.0, "y": 1.0},
+    )
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id=TEST_IMAGE_ID,
+        line_id=1,
+        word_id=1,
+        text="HELLO",
+        bounding_box={"x": 0.1, "y": 0.4, "width": 0.2, "height": 0.1},
+        top_left={"x": 0.1, "y": 0.5},
+        top_right={"x": 0.3, "y": 0.5},
+        bottom_left={"x": 0.1, "y": 0.4},
+        bottom_right={"x": 0.3, "y": 0.4},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.99,
+    )
+
+    class _WordClient:
+        def get_receipt(self, image_id, receipt_id):
+            return receipt
+
+        def list_receipt_words_from_receipt(self, image_id, receipt_id):
+            return [word]
+
+    result = combine_receipt_words_to_image_coords(
+        client=_WordClient(),
+        image_id=TEST_IMAGE_ID,
+        receipt_ids=[1],
+        image_width=100,
+        image_height=200,
+    )
+
+    assert len(result) == 1
+    assert result[0]["text"] == "HELLO"
