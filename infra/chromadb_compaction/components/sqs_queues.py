@@ -153,7 +153,7 @@ class ChromaDBQueues(ComponentResource):
             receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 10}
                 )
             ),
             tags={
@@ -173,7 +173,7 @@ class ChromaDBQueues(ComponentResource):
             receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 10}
                 )
             ),
             tags={
