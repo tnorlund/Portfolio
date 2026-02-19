@@ -685,13 +685,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
-                # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
-                "CHROMA_CLOUD_API_KEY": (
-                    config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-                ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
+                # rate-limit contention when 40 Lambdas run concurrently.
+                "CHROMA_CLOUD_ENABLED": "false",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "8",
                 "CIRCUIT_BREAKER_THRESHOLD": "5",
@@ -907,13 +903,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
-                # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
-                "CHROMA_CLOUD_API_KEY": (
-                    config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-                ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
+                # rate-limit contention when 40 Lambdas run concurrently.
+                "CHROMA_CLOUD_ENABLED": "false",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "LLM_MAX_JITTER_SECONDS": "0.25",

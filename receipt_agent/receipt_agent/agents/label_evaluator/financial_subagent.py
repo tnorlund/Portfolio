@@ -1122,6 +1122,7 @@ def _build_valid_decisions(
         "GRAND_TOTAL": 0,
         "SUBTOTAL": 1,
         "TAX": 2,
+        "TIP": 2,
         "LINE_TOTAL": 3,
         "DISCOUNT": 4,
         "UNIT_PRICE": 5,
@@ -1285,15 +1286,120 @@ def scan_receipt_text(words: list) -> list[ScannedValue]:
     return found
 
 
+# Mapping from text-scan keywords to real financial label names.
+_SCAN_KEYWORD_TO_LABEL: dict[str, str] = {
+    "TOTAL": "GRAND_TOTAL",
+    "AMOUNT": "GRAND_TOTAL",
+    "BALANCE": "GRAND_TOTAL",
+    "AUTHORIZED": "GRAND_TOTAL",
+    "SUBTOTAL": "SUBTOTAL",
+    "TAX": "TAX",
+    "TIP": "TIP",
+}
+
+
+def _text_scan_to_financial_values(
+    scanned: list[ScannedValue],
+    words: list,
+    visual_lines: list[VisualLine],
+) -> dict[str, list[FinancialValue]]:
+    """Convert text-scan results to FinancialValue dict for math checking.
+
+    Used as fallback when label-based enhanced extraction produces no
+    financial values.  Maps scan keywords to real label names (GRAND_TOTAL,
+    SUBTOTAL, TAX, TIP) and locates the actual ReceiptWord for each
+    scanned dollar amount so that downstream ``_build_valid_decisions``
+    can emit decisions with real word coordinates.
+    """
+    # Build wc_lookup from visual_lines
+    wc_lookup: dict[tuple[int, int], tuple[WordContext, int]] = {}
+    for vl in visual_lines:
+        for wc in vl.words:
+            wc_lookup[(wc.word.line_id, wc.word.word_id)] = (
+                wc,
+                vl.line_index,
+            )
+
+    # Index words by text for fast matching
+    words_by_text: dict[str, list] = defaultdict(list)
+    for w in words:
+        words_by_text[w.text].append(w)
+
+    values_by_label: dict[str, list[FinancialValue]] = {}
+    used_words: set[tuple[int, int]] = set()
+
+    for sv in scanned:
+        label = _SCAN_KEYWORD_TO_LABEL.get(sv.keyword)
+        if label is None:
+            continue
+
+        # Find the actual ReceiptWord whose text matches the scanned source.
+        # Prefer exact text match, fall back to numeric match.
+        matching_words = words_by_text.get(sv.source, [])
+        if not matching_words:
+            for w in words:
+                num = extract_number(w.text)
+                if num is not None and abs(num - sv.value) < 0.01:
+                    matching_words.append(w)
+
+        # Pick the first unused match
+        word = None
+        for mw in matching_words:
+            key = (mw.line_id, mw.word_id)
+            if key not in used_words:
+                word = mw
+                used_words.add(key)
+                break
+
+        if word is None:
+            continue
+
+        # Build WordContext (use existing from visual_lines if available)
+        wc_info = wc_lookup.get((word.line_id, word.word_id))
+        if wc_info is not None:
+            wc, line_index = wc_info
+        else:
+            centroid = (
+                word.calculate_centroid()
+                if hasattr(word, "calculate_centroid")
+                else (0.0, 0.0)
+            )
+            wc = WordContext(
+                word=word,
+                current_label=None,
+                label_history=[],
+                normalized_x=centroid[0],
+                normalized_y=centroid[1],
+            )
+            line_index = word.line_id
+
+        fv = FinancialValue(
+            word_context=wc,
+            label=label,
+            numeric_value=sv.value,
+            line_index=line_index,
+            word_text=word.text,
+        )
+
+        if label not in values_by_label:
+            values_by_label[label] = []
+        values_by_label[label].append(fv)
+
+    return values_by_label
+
+
 def classify_receipt_type(
     words: list | None,
     line_item_patterns: dict | None,
+    labels: list | None = None,
 ) -> str:
     """Classify receipt type for financial math equation selection.
 
     Args:
         words: List of ReceiptWord objects (for text-scan fallback).
         line_item_patterns: Pattern discovery result dict (may have receipt_type).
+        labels: ReceiptWordLabel list — if LINE_TOTAL labels exist, the
+            receipt is itemized regardless of text-scan heuristics.
 
     Returns:
         "itemized", "service", or "terminal"
@@ -1305,6 +1411,21 @@ def classify_receipt_type(
             logger.info("Receipt type from line_item_patterns: %s", rt)
             return rt
 
+    # If labels include LINE_TOTAL, this is an itemized receipt —
+    # the text-scan fallback below misclassifies grocery receipts as
+    # "service" because they contain SUBTOTAL/TAX keywords.
+    if labels:
+        line_total_count = sum(
+            1 for lbl in labels
+            if getattr(lbl, "label", None) == "LINE_TOTAL"
+        )
+        if line_total_count >= 2:
+            logger.info(
+                "Label-based classification: itemized (%d LINE_TOTAL labels)",
+                line_total_count,
+            )
+            return "itemized"
+
     # Text-scan fallback
     if not words:
         return "itemized"
@@ -1312,11 +1433,23 @@ def classify_receipt_type(
     scanned = scan_receipt_text(words)
     keywords_found = {sv.keyword for sv in scanned}
 
+    has_total = any(
+        kw in keywords_found
+        for kw in ("TOTAL", "AMOUNT", "BALANCE", "AUTHORIZED")
+    )
+    has_tip_blank = "TIP_BLANK" in keywords_found
+    if has_tip_blank:
+        logger.info("Text-scan classification: terminal")
+        return "terminal"
+
     has_subtotal = "SUBTOTAL" in keywords_found
     has_tax = "TAX" in keywords_found
     has_tip = "TIP" in keywords_found
 
-    if has_subtotal or has_tax or has_tip:
+    # SUBTOTAL/TAX alone do NOT imply service — every grocery receipt has
+    # them.  Only classify as service when there is no total-like keyword
+    # (suggesting a simple single-charge receipt).
+    if (has_subtotal or has_tax or has_tip) and not has_total:
         logger.info(
             "Text-scan classification: service (subtotal=%s, tax=%s, tip=%s)",
             has_subtotal,
@@ -1325,14 +1458,10 @@ def classify_receipt_type(
         )
         return "service"
 
-    has_total = any(
-        kw in keywords_found
-        for kw in ("TOTAL", "AMOUNT", "BALANCE", "AUTHORIZED")
-    )
-    has_tip_blank = "TIP_BLANK" in keywords_found
-    if has_total or has_tip_blank:
-        logger.info("Text-scan classification: terminal")
-        return "terminal"
+    if has_total:
+        # Has a total plus subtotal/tax — likely itemized
+        logger.info("Text-scan classification: itemized (has total)")
+        return "itemized"
 
     return "itemized"
 
@@ -1523,14 +1652,18 @@ def check_grand_total_math(
     values: dict[str, list[FinancialValue]],
 ) -> MathIssue | None:
     """
-    Check: GRAND_TOTAL = sum(SUBTOTAL) + sum(TAX)
+    Check: GRAND_TOTAL = sum(SUBTOTAL) + sum(TAX) + sum(TIP)
 
-    Sums all subtotals and taxes to handle receipts with multiple entries.
+    Sums all subtotals, taxes, and tips to handle all receipt types:
+    - Grocery: GRAND_TOTAL = SUBTOTAL + TAX (TIP is 0)
+    - Barbershop: GRAND_TOTAL = SUBTOTAL + TIP (TAX is 0)
+    - Restaurant: GRAND_TOTAL = SUBTOTAL + TAX + TIP
     Returns MathIssue if math doesn't match, None otherwise.
     """
     grand_totals = values.get("GRAND_TOTAL", [])
     subtotals = values.get("SUBTOTAL", [])
     taxes = values.get("TAX", [])
+    tips = values.get("TIP", [])
 
     if not grand_totals or not subtotals:
         return None
@@ -1538,8 +1671,9 @@ def check_grand_total_math(
     grand_total = grand_totals[0]
     subtotal_sum = sum(s.numeric_value for s in subtotals)
     tax_sum = sum(t.numeric_value for t in taxes)
+    tip_sum = sum(t.numeric_value for t in tips)
 
-    expected = subtotal_sum + tax_sum
+    expected = subtotal_sum + tax_sum + tip_sum
     actual = grand_total.numeric_value
     difference = actual - expected
 
@@ -1548,13 +1682,18 @@ def check_grand_total_math(
     if abs(difference) <= FLOAT_EPSILON:
         return None
 
-    involved = [grand_total] + subtotals + taxes
+    involved = [grand_total] + subtotals + taxes + tips
 
     # Build description showing all components
     subtotal_desc = " + ".join(f"{s.numeric_value:.2f}" for s in subtotals)
     tax_desc = (
         " + ".join(f"{t.numeric_value:.2f}" for t in taxes)
         if taxes
+        else "0.00"
+    )
+    tip_desc = (
+        " + ".join(f"{t.numeric_value:.2f}" for t in tips)
+        if tips
         else "0.00"
     )
 
@@ -1566,7 +1705,8 @@ def check_grand_total_math(
         involved_values=involved,
         description=(
             f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal_desc}) "
-            f"+ TAX ({tax_desc}) = {expected:.2f}. Difference: {difference:.2f}"
+            f"+ TAX ({tax_desc}) + TIP ({tip_desc}) = {expected:.2f}. "
+            f"Difference: {difference:.2f}"
         ),
     )
 
@@ -2118,20 +2258,14 @@ def evaluate_financial_math(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Step 0: Classify receipt type
-    receipt_type = classify_receipt_type(words, line_item_patterns)
+    # Step 0: Classify receipt type (metadata only — all receipts use the
+    # same label-based extraction and math-check path).
+    receipt_type = classify_receipt_type(words, line_item_patterns, labels)
 
-    if receipt_type in ("service", "terminal"):
-        # Text-scan based: no LLM needed
-        scanned = scan_receipt_text(words) if words else []
-        issues = check_service_equations(scanned)
-        return _format_text_scan_results(
-            issues, scanned, image_id, receipt_id, receipt_type
-        )
-
-    # Itemized path: try enhanced extraction if labels + chroma available
+    # Unified path: try enhanced extraction if labels + chroma available
     enhanced_values: dict[str, list[FinancialValue]] | None = None
     used_llm_fallback = False
+    used_text_scan_fallback = False
     if labels and chroma_client and words:
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
@@ -2144,6 +2278,30 @@ def evaluate_financial_math(
         )
     else:
         math_issues = detect_math_issues(visual_lines)
+
+    # Text-scan fallback: if label-based extraction found no financial
+    # values, try keyword-based text scanning on raw OCR words.
+    if (
+        enhanced_values is None or not any(enhanced_values.values())
+    ) and words:
+        scanned = scan_receipt_text(words)
+        if scanned:
+            text_scan_values = _text_scan_to_financial_values(
+                scanned, words, visual_lines
+            )
+            if any(text_scan_values.values()):
+                enhanced_values = text_scan_values
+                math_issues = detect_math_issues_from_values(
+                    enhanced_values
+                )
+                used_text_scan_fallback = True
+                logger.info(
+                    "Text-scan fallback: %d values from %d label types, "
+                    "%d math issues",
+                    sum(len(v) for v in enhanced_values.values()),
+                    len(enhanced_values),
+                    len(math_issues),
+                )
 
     logger.info("Detected %d math issues", len(math_issues))
 
@@ -2187,11 +2345,12 @@ def evaluate_financial_math(
 
     if not math_issues:
         if enhanced_values:
-            source = (
-                "llm_fallback_math_balanced"
-                if used_llm_fallback
-                else "enhanced_extraction_math_balanced"
-            )
+            if used_text_scan_fallback:
+                source = "text_scan_fallback_math_balanced"
+            elif used_llm_fallback:
+                source = "llm_fallback_math_balanced"
+            else:
+                source = "enhanced_extraction_math_balanced"
             valid_decisions = _build_valid_decisions(
                 enhanced_values,
                 image_id,
@@ -2199,6 +2358,8 @@ def evaluate_financial_math(
                 source,
             )
             if valid_decisions:
+                for d in valid_decisions:
+                    d["receipt_type"] = receipt_type
                 logger.info(
                     "Math balanced (%s): emitting %d VALID decisions",
                     source,
@@ -2356,9 +2517,12 @@ def evaluate_financial_math(
         decisions = _pad_decisions(decisions, num_values)
 
         # Step 4: Format output - one result per involved value with matching decision
-        return _format_financial_results(
+        results = _format_financial_results(
             math_issues, decisions, image_id, receipt_id
         )
+        for d in results:
+            d["receipt_type"] = receipt_type
+        return results
 
     except LLMRateLimitError as e:
         logger.error(
@@ -2377,6 +2541,7 @@ def evaluate_financial_math(
                     {
                         "image_id": image_id,
                         "receipt_id": receipt_id,
+                        "receipt_type": receipt_type,
                         "issue": {
                             "line_id": wc.word.line_id,
                             "word_id": wc.word.word_id,
@@ -2440,20 +2605,14 @@ async def evaluate_financial_math_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Step 0: Classify receipt type
-    receipt_type = classify_receipt_type(words, line_item_patterns)
+    # Step 0: Classify receipt type (metadata only — all receipts use the
+    # same label-based extraction and math-check path).
+    receipt_type = classify_receipt_type(words, line_item_patterns, labels)
 
-    if receipt_type in ("service", "terminal"):
-        # Text-scan based: no LLM needed
-        scanned = scan_receipt_text(words) if words else []
-        issues = check_service_equations(scanned)
-        return _format_text_scan_results(
-            issues, scanned, image_id, receipt_id, receipt_type
-        )
-
-    # Itemized path: try enhanced extraction if labels + chroma available
+    # Unified path: try enhanced extraction if labels + chroma available
     enhanced_values: dict[str, list[FinancialValue]] | None = None
     used_llm_fallback = False
+    used_text_scan_fallback = False
     if labels and chroma_client and words:
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
@@ -2466,6 +2625,30 @@ async def evaluate_financial_math_async(
         )
     else:
         math_issues = detect_math_issues(visual_lines)
+
+    # Text-scan fallback: if label-based extraction found no financial
+    # values, try keyword-based text scanning on raw OCR words.
+    if (
+        enhanced_values is None or not any(enhanced_values.values())
+    ) and words:
+        scanned = scan_receipt_text(words)
+        if scanned:
+            text_scan_values = _text_scan_to_financial_values(
+                scanned, words, visual_lines
+            )
+            if any(text_scan_values.values()):
+                enhanced_values = text_scan_values
+                math_issues = detect_math_issues_from_values(
+                    enhanced_values
+                )
+                used_text_scan_fallback = True
+                logger.info(
+                    "Text-scan fallback: %d values from %d label types, "
+                    "%d math issues",
+                    sum(len(v) for v in enhanced_values.values()),
+                    len(enhanced_values),
+                    len(math_issues),
+                )
 
     logger.info("Detected %d math issues", len(math_issues))
 
@@ -2513,15 +2696,18 @@ async def evaluate_financial_math_async(
     if not math_issues:
         # Math balances — emit VALID decisions for confirmed values
         if enhanced_values:
-            source = (
-                "llm_fallback_math_balanced"
-                if used_llm_fallback
-                else "enhanced_extraction_math_balanced"
-            )
+            if used_text_scan_fallback:
+                source = "text_scan_fallback_math_balanced"
+            elif used_llm_fallback:
+                source = "llm_fallback_math_balanced"
+            else:
+                source = "enhanced_extraction_math_balanced"
             valid_decisions = _build_valid_decisions(
                 enhanced_values, image_id, receipt_id, source
             )
             if valid_decisions:
+                for d in valid_decisions:
+                    d["receipt_type"] = receipt_type
                 logger.info(
                     "Math balanced (%s): emitting %d VALID decisions",
                     source,
@@ -2689,9 +2875,12 @@ async def evaluate_financial_math_async(
 
         # Step 4: Format output
         decisions = _pad_decisions(decisions, num_values)
-        return _format_financial_results(
+        results = _format_financial_results(
             math_issues, decisions, image_id, receipt_id
         )
+        for d in results:
+            d["receipt_type"] = receipt_type
+        return results
 
     except LLMRateLimitError as e:
         logger.error(
@@ -2709,6 +2898,7 @@ async def evaluate_financial_math_async(
                     {
                         "image_id": image_id,
                         "receipt_id": receipt_id,
+                        "receipt_type": receipt_type,
                         "issue": {
                             "line_id": wc.word.line_id,
                             "word_id": wc.word.word_id,

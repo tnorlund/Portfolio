@@ -725,17 +725,6 @@ export interface FinancialMathEquation {
   involved_words: FinancialMathWord[];
 }
 
-export interface FinancialMathConfirmedLabel {
-  line_id: number;
-  word_id: number;
-  word_text: string;
-  current_label: string;
-  bbox: { x: number; y: number; width: number; height: number };
-  decision: string;
-  confidence: string;
-  reasoning: string;
-}
-
 export interface FinancialMathReceipt {
   image_id: string;
   receipt_id: number;
@@ -743,7 +732,6 @@ export interface FinancialMathReceipt {
   trace_id: string;
   receipt_type?: "itemized" | "service" | "terminal";
   equations: FinancialMathEquation[];
-  confirmed_labels?: FinancialMathConfirmedLabel[];
   summary: {
     total_equations: number;
     total_confirmed?: number;

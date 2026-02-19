@@ -4,7 +4,6 @@ import { api } from "../../../../services/api";
 import {
   FinancialMathReceipt,
   FinancialMathEquation,
-  FinancialMathConfirmedLabel,
 } from "../../../../types/api";
 import {
   getBestImageUrl,
@@ -141,7 +140,6 @@ interface ActiveReceiptViewerProps {
   receipt: FinancialMathReceipt;
   scanProgress: number;
   revealedEquationIndices: Set<number>;
-  revealedConfirmedIndices?: Set<number>;
   formatSupport: ImageFormatSupport | null;
 }
 
@@ -149,7 +147,6 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   receipt,
   scanProgress,
   revealedEquationIndices,
-  revealedConfirmedIndices,
   formatSupport,
 }) => {
   const [imgDim, setImgDim] = useState<{ w: number; h: number } | null>(null);
@@ -234,29 +231,6 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
               });
             })}
 
-            {/* Confirmed label bounding boxes (green dashed) */}
-            {receipt.confirmed_labels?.map((cl, clIdx) => {
-              if (!revealedConfirmedIndices?.has(clIdx)) return null;
-              if (cl.bbox.width === 0 && cl.bbox.height === 0) return null;
-              const bx = cl.bbox.x * w;
-              const by = (1 - cl.bbox.y - cl.bbox.height) * h;
-              const bw = cl.bbox.width * w;
-              const bh = cl.bbox.height * h;
-              return (
-                <rect
-                  key={`confirmed-${cl.line_id}-${cl.word_id}`}
-                  x={bx}
-                  y={by}
-                  width={bw}
-                  height={bh}
-                  fill="var(--color-green)"
-                  fillOpacity={0.1}
-                  stroke="var(--color-green)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                />
-              );
-            })}
           </svg>
         </div>
       </div>
@@ -323,13 +297,51 @@ function buildEquationNotation(eq: FinancialMathEquation): EquationNotation {
     };
   }
 
+  if (issueType === "LINE_ITEM_BALANCED") {
+    const qty = words.filter((w) => w.current_label === "QUANTITY");
+    const up = words.filter((w) => w.current_label === "UNIT_PRICE");
+    const lt = words.filter((w) => w.current_label === "LINE_TOTAL");
+    return {
+      addends: [
+        ...qty.map((w) => w.word_text),
+        ...up.map((w) => `× ${w.word_text}`),
+      ],
+      result:
+        lt.map((w) => w.word_text).join("") || formatDollar(eq.actual_value),
+    };
+  }
+
+  // GRAND_TOTAL_DIRECT: LINE_TOTALs + TAX + TIP = GRAND_TOTAL (no subtotal)
+  if (issueType.includes("GRAND_TOTAL_DIRECT")) {
+    const lineItems = words.filter((w) => w.current_label === "LINE_TOTAL");
+    const discounts = words.filter((w) => w.current_label === "DISCOUNT");
+    const taxes = words.filter((w) => w.current_label === "TAX");
+    const tips = words.filter((w) => w.current_label === "TIP");
+    const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
+    const addends = [
+      ...lineItems.map((w) => w.word_text),
+      ...discounts.map((w) => w.word_text),
+      ...taxes.map((w) => w.word_text),
+      ...tips.map((w) => w.word_text),
+    ];
+    const result =
+      grandTotals.map((w) => w.word_text).join("") ||
+      formatDollar(eq.actual_value);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result,
+    };
+  }
+
   if (issueType.includes("GRAND_TOTAL")) {
     const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
     const taxes = words.filter((w) => w.current_label === "TAX");
+    const tips = words.filter((w) => w.current_label === "TIP");
     const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
     const addends = [
       ...subtotals.map((w) => w.word_text),
       ...taxes.map((w) => w.word_text),
+      ...tips.map((w) => w.word_text),
     ];
     const result =
       grandTotals.map((w) => w.word_text).join("") ||
@@ -366,7 +378,6 @@ interface EquationPanelProps {
   revealedEquationIndices: Set<number>;
   isTransitioning?: boolean;
   receiptType?: "itemized" | "service" | "terminal";
-  confirmedCount?: number;
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
@@ -374,7 +385,6 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
   revealedEquationIndices,
   isTransitioning = false,
   receiptType,
-  confirmedCount = 0,
 }) => {
   return (
     <div
@@ -462,23 +472,6 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
           </div>
         );
       })}
-      {confirmedCount > 0 && (
-        <div
-          className={`${styles.equationCard} ${styles.revealed}`}
-          style={{ borderColor: "var(--color-green)" }}
-        >
-          <div className={styles.summation}>
-            <div className={styles.resultRow}>
-              <span className={styles.resultVal}>
-                {confirmedCount} confirmed
-              </span>
-              <span className={`${styles.resultIcon} ${styles.resultValid}`}>
-                {"\u2713"}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -497,9 +490,6 @@ export default function FinancialMathOverlay() {
   const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [revealedEquationIndices, setRevealedEquationIndices] = useState<
-    Set<number>
-  >(new Set());
-  const [revealedConfirmedIndices, setRevealedConfirmedIndices] = useState<
     Set<number>
   >(new Set());
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -613,12 +603,8 @@ export default function FinancialMathOverlay() {
 
   // Compute which equations and confirmed labels are revealed based on scan progress
   const computeRevealed = useCallback(
-    (
-      receipt: FinancialMathReceipt,
-      progress: number,
-    ): { equations: Set<number>; confirmed: Set<number> } => {
-      const equations = new Set<number>();
-      const confirmed = new Set<number>();
+    (receipt: FinancialMathReceipt, progress: number): Set<number> => {
+      const revealed = new Set<number>();
       const scanY = progress / 100;
 
       receipt.equations.forEach((eq, eqIdx) => {
@@ -627,26 +613,17 @@ export default function FinancialMathOverlay() {
           (w) => w.bbox.width > 0 || w.bbox.height > 0
         );
         if (!hasRealBbox) {
-          if (progress > 0) equations.add(eqIdx);
+          if (progress > 0) revealed.add(eqIdx);
           return;
         }
         const anyRevealed = eq.involved_words.some((word) => {
           const wordTopY = 1 - word.bbox.y - word.bbox.height;
           return wordTopY <= scanY;
         });
-        if (anyRevealed) equations.add(eqIdx);
+        if (anyRevealed) revealed.add(eqIdx);
       });
 
-      receipt.confirmed_labels?.forEach((cl, clIdx) => {
-        if (cl.bbox.width === 0 && cl.bbox.height === 0) {
-          if (progress > 0) confirmed.add(clIdx);
-          return;
-        }
-        const topY = 1 - cl.bbox.y - cl.bbox.height;
-        if (topY <= scanY) confirmed.add(clIdx);
-      });
-
-      return { equations, confirmed };
+      return revealed;
     },
     [],
   );
@@ -684,16 +661,12 @@ export default function FinancialMathOverlay() {
         const progress = (elapsed / SCAN_DURATION) * 100;
         const clamped = Math.min(progress, 100);
         setScanProgress(clamped);
-        const revealed = computeRevealed(currentReceipt, clamped);
-        setRevealedEquationIndices(revealed.equations);
-        setRevealedConfirmedIndices(revealed.confirmed);
+        setRevealedEquationIndices(computeRevealed(currentReceipt, clamped));
         setIsTransitioning(false);
       } else if (elapsed < SCAN_DURATION + HOLD_DURATION) {
         // HOLD PHASE
         setScanProgress(100);
-        const revealed = computeRevealed(currentReceipt, 100);
-        setRevealedEquationIndices(revealed.equations);
-        setRevealedConfirmedIndices(revealed.confirmed);
+        setRevealedEquationIndices(computeRevealed(currentReceipt, 100));
         setIsTransitioning(false);
       } else if (elapsed < totalDuration) {
         // TRANSITION PHASE
@@ -717,7 +690,6 @@ export default function FinancialMathOverlay() {
         setCurrentReceiptIndex(receiptIndex);
         setScanProgress(0);
         setRevealedEquationIndices(new Set());
-        setRevealedConfirmedIndices(new Set());
         setIsTransitioning(false);
         startTime = currentTime;
       }
@@ -820,7 +792,6 @@ export default function FinancialMathOverlay() {
             receipt={currentReceipt}
             scanProgress={scanProgress}
             revealedEquationIndices={revealedEquationIndices}
-            revealedConfirmedIndices={revealedConfirmedIndices}
             formatSupport={formatSupport}
           />
         }
@@ -837,11 +808,10 @@ export default function FinancialMathOverlay() {
         }
         legend={
           <EquationPanel
-          equations={currentReceipt.equations}
-          revealedEquationIndices={revealedEquationIndices}
-          isTransitioning={isTransitioning}
-          receiptType={currentReceipt.receipt_type}
-          confirmedCount={currentReceipt.confirmed_labels?.length ?? 0}
+            equations={currentReceipt.equations}
+            revealedEquationIndices={revealedEquationIndices}
+            isTransitioning={isTransitioning}
+            receiptType={currentReceipt.receipt_type}
           />
         }
       />

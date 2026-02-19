@@ -1295,6 +1295,7 @@ async def unified_receipt_evaluator(
                         "GRAND_TOTAL",
                         "SUBTOTAL",
                         "TAX",
+                        "TIP",
                         "LINE_TOTAL",
                         "DISCOUNT",
                         "UNIT_PRICE",
