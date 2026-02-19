@@ -76,6 +76,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "status": "error",
                 "error": "receipt_ids must be a list of exactly 2 receipt IDs",
             }
+        if not all(isinstance(rid, int) for rid in receipt_ids):
+            return {"status": "error", "error": "receipt_ids must contain integers"}
+        if receipt_ids[0] == receipt_ids[1]:
+            return {"status": "error", "error": "receipt_ids must be distinct"}
 
         logger.info(
             "Merging receipts: image_id=%s, receipt_ids=%s, dry_run=%s",
