@@ -65,6 +65,7 @@ class MergeReceiptLambda(ComponentResource):
         dynamodb_table_arn: pulumi.Input[str],
         raw_bucket_name: pulumi.Input[str],
         site_bucket_name: pulumi.Input[str],
+        image_bucket_name: pulumi.Input[str],
         chromadb_bucket_name: pulumi.Input[str],
         chromadb_bucket_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
@@ -159,14 +160,16 @@ class MergeReceiptLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy (raw, site, chromadb buckets)
-        # Construct ARNs from bucket names for raw/site (same pattern as combine_receipts)
+        # S3 access policy (raw, site, image, chromadb buckets)
+        # The image bucket holds the original uploaded photos; the Lambda needs
+        # s3:GetObject on it to download the source image for warping.
         s3_policy = RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
             policy=Output.all(
                 Output.from_input(raw_bucket_name),
                 Output.from_input(site_bucket_name),
+                Output.from_input(image_bucket_name),
                 Output.from_input(chromadb_bucket_arn),
             ).apply(
                 lambda args: json.dumps(
@@ -185,8 +188,10 @@ class MergeReceiptLambda(ComponentResource):
                                     f"arn:aws:s3:::{args[0]}/*",
                                     f"arn:aws:s3:::{args[1]}",
                                     f"arn:aws:s3:::{args[1]}/*",
-                                    args[2],
-                                    f"{args[2]}/*",
+                                    f"arn:aws:s3:::{args[2]}",
+                                    f"arn:aws:s3:::{args[2]}/*",
+                                    args[3],
+                                    f"{args[3]}/*",
                                 ],
                             }
                         ],
@@ -252,6 +257,7 @@ def create_merge_receipt_lambda(
     dynamodb_table_arn: pulumi.Input[str],
     raw_bucket_name: pulumi.Input[str],
     site_bucket_name: pulumi.Input[str],
+    image_bucket_name: pulumi.Input[str],
     chromadb_bucket_name: pulumi.Input[str],
     chromadb_bucket_arn: pulumi.Input[str],
 ) -> MergeReceiptLambda:
@@ -263,6 +269,7 @@ def create_merge_receipt_lambda(
         dynamodb_table_arn: ARN of the DynamoDB table
         raw_bucket_name: Name of the raw images S3 bucket
         site_bucket_name: Name of the CDN site S3 bucket
+        image_bucket_name: Name of the upload-images bucket (original photos)
         chromadb_bucket_name: Name of the ChromaDB S3 bucket
         chromadb_bucket_arn: ARN of the ChromaDB S3 bucket
 
@@ -275,6 +282,7 @@ def create_merge_receipt_lambda(
         dynamodb_table_arn=dynamodb_table_arn,
         raw_bucket_name=raw_bucket_name,
         site_bucket_name=site_bucket_name,
+        image_bucket_name=image_bucket_name,
         chromadb_bucket_name=chromadb_bucket_name,
         chromadb_bucket_arn=chromadb_bucket_arn,
     )
