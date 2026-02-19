@@ -260,52 +260,10 @@ def upload_snapshot_atomic(
                 "version_id": version_id,
             }
 
-        # Step 2: Validate uploaded snapshot before updating pointer
-        validation_result, validation_duration = (
-            _validate_snapshot_after_upload(
-                bucket=bucket,
-                versioned_key=versioned_key,
-                collection_name=collection,
-                s3_client=s3_client,
-            )
-        )
-
-        if not validation_result:
-            # Clean up versioned upload on validation failure
-            logger.error(
-                "Step 2 failed - snapshot validation failed, cleaning up "
-                "versioned upload: %s (duration: %.2fs)",
-                versioned_key,
-                validation_duration,
-            )
-            try:
-                _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-            except (
-                Exception
-            ) as cleanup_error:  # pylint: disable=broad-exception-caught
-                # Cleanup failures are non-critical
-                logger.warning(
-                    "Failed to cleanup versioned upload: %s", cleanup_error
-                )
-
-            return {
-                "status": "error",
-                "error": "Snapshot validation failed after upload",
-                "collection": collection,
-                "version_id": version_id,
-                "validation_duration": validation_duration,
-            }
-
-        logger.info(
-            "Step 2 completed - snapshot validation successful "
-            "(duration: %.2fs)",
-            validation_duration,
-        )
-
-        # Step 3: Final lock validation before atomic promotion
+        # Step 2: Final lock validation before atomic promotion
         if lock_manager and not lock_manager.validate_ownership():
             logger.error(
-                "Step 3 failed - lock validation failed, "
+                "Step 2 failed - lock validation failed, "
                 "cleaning up versioned upload"
             )
             # Clean up versioned upload
@@ -326,9 +284,9 @@ def upload_snapshot_atomic(
                 "version_id": version_id,
             }
 
-        # Step 4: Atomic promotion - single S3 write operation
+        # Step 3: Atomic promotion - single S3 write operation
         logger.info(
-            "Step 4 - atomic promotion, writing pointer file: %s -> %s",
+            "Step 3 - atomic promotion, writing pointer file: %s -> %s",
             pointer_key,
             version_id,
         )
@@ -340,7 +298,7 @@ def upload_snapshot_atomic(
             Metadata={k: str(v) for k, v in (metadata or {}).items()},
         )
 
-        # Step 5: Background cleanup of old versions
+        # Step 4: Background cleanup of old versions
         try:
             _cleanup_old_snapshot_versions(
                 s3_client, bucket, collection, keep_versions
@@ -364,7 +322,6 @@ def upload_snapshot_atomic(
             "versioned_key": versioned_key,
             "pointer_key": pointer_key,
             "hash": upload_result.get("hash", "not_calculated"),
-            "validation_duration": validation_duration,
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught

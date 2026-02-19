@@ -577,7 +577,7 @@ def process_sqs_messages(
 
 
 @trace_function(operation_name="enhanced_compaction_handler")
-@with_compaction_timeout_protection(max_duration=840)  # 14 minutes
+@with_compaction_timeout_protection(max_duration=720)  # 80% of 900s timeout
 def lambda_handler(
     event: SQSEvent, context: LambdaContext
 ) -> SQSBatchResponse:

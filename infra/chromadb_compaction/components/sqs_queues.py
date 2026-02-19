@@ -149,7 +149,7 @@ class ChromaDBQueues(ComponentResource):
             f"{name}-lines-queue",
             message_retention_seconds=345600,  # 4 days
             # Visibility timeout must be >= Lambda timeout per AWS requirements.
-            visibility_timeout_seconds=120,
+            visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
@@ -169,7 +169,7 @@ class ChromaDBQueues(ComponentResource):
         self.words_queue = aws.sqs.Queue(
             f"{name}-words-queue",
             message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=120,
+            visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
@@ -205,7 +205,7 @@ class ChromaDBQueues(ComponentResource):
         self.summary_queue = aws.sqs.Queue(
             f"{name}-summary-queue",
             message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=120,  # 2x Lambda timeout for safety margin
+            visibility_timeout_seconds=900,  # Must match Lambda timeout
             receive_wait_time_seconds=20,  # Long polling
             delay_seconds=15,  # 15-second delay for batching multiple changes
             redrive_policy=Output.all(self.summary_dlq.arn).apply(

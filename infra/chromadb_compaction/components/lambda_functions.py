@@ -156,8 +156,9 @@ class HybridLambdaDeployment(ComponentResource):
             lambda_config={
                 "role_arn": self.lambda_role.arn,
                 # Lambda processes up to 1000 messages per batch (Standard queue).
-                # Set to 120s for headroom. Must match SQS visibility timeout.
-                "timeout": 120,  # 2 minutes - must match visibility timeout
+                # 15 min allows draining large backlogs in one invocation.
+                # Must match SQS visibility timeout.
+                "timeout": 900,  # 15 minutes - must match visibility timeout
                 # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
                 # - ChromaDB collection with ~70K embeddings uses ~8GB
                 # - Snapshot validation downloads and loads full collection
