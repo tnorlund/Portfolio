@@ -1280,6 +1280,7 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     dynamodb_table_arn=dynamodb_table.arn,
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
+    image_bucket_name=upload_images.image_bucket.bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
