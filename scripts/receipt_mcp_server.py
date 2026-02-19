@@ -1936,6 +1936,8 @@ async def merge_receipts_impl(
 ) -> dict:
     """Invoke the merge-receipt Lambda to combine two receipt fragments."""
     try:
+        import asyncio
+
         import boto3
 
         env = os.environ.get("PORTFOLIO_ENV", "dev")
@@ -1953,12 +1955,18 @@ async def merge_receipts_impl(
             json.dumps(payload),
         )
 
-        lambda_client = boto3.client("lambda", region_name="us-east-1")
-        response = lambda_client.invoke(
-            FunctionName=function_name,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(payload),
-        )
+        def _invoke():
+            lambda_client = boto3.client("lambda", region_name="us-east-1")
+            return lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType="RequestResponse",
+                Payload=json.dumps(payload),
+            )
+
+        # Run in a thread to avoid blocking the async event loop —
+        # the Lambda can take 30+ seconds for image processing,
+        # embedding creation, and compaction waits.
+        response = await asyncio.to_thread(_invoke)
 
         response_payload = json.loads(response["Payload"].read())
 
