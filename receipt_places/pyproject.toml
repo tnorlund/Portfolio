@@ -48,7 +48,7 @@ test = [
 ]
 lint = [
     "black==26.1.0",
-    "isort==7.0.0",
+    "isort==8.0.0",
 ]
 dev = [
     "ruff>=0.5.0",
