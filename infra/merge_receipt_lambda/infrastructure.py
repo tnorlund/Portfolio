@@ -203,6 +203,7 @@ class MergeReceiptLambda(ComponentResource):
             "role_arn": lambda_role.arn,
             "timeout": 600,  # 10 minutes - image processing + embeddings + compaction wait
             "memory_size": 2048,  # Image processing needs more memory
+            "ephemeral_storage": 10240,  # 10 GB /tmp for ChromaDB snapshots + deltas
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
