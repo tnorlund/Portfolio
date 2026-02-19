@@ -29,7 +29,7 @@ dependencies = [
   "Pillow>=10.0.0,<13.0.0",
   "sentencepiece>=0.1.99,<1.0.0",
   "seqeval>=1.2.2,<2.0.0",
-  "scikit-learn>=1.3.0,<=1.5.1",
+  "scikit-learn>=1.3.0,<=1.7.2",
   "accelerate>=0.21.0,<2.0.0",
 ]
 
