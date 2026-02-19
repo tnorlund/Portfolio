@@ -6,14 +6,14 @@ FROM public.ecr.aws/lambda/python:3.12 AS dependencies
 
 # Note: awscli is pre-installed in the Lambda base image, no need to install it
 
+# Install CPU-only PyTorch first (Lambda has no GPU, saves ~1.5GB)
+RUN pip install --no-cache-dir \
+    torch==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
 # Copy dependency packages
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_layoutlm/ /tmp/receipt_layoutlm/
-
-# Install CPU-only PyTorch first (Lambda has no GPU, saves ~1.5GB)
-RUN pip install --no-cache-dir \
-    torch==2.6.0+cpu \
-    --index-url https://download.pytorch.org/whl/cpu
 
 # Install packages — receipt_layoutlm/pyproject.toml is the single source
 # of truth for all dependencies. pip sees torch is already satisfied.
@@ -29,4 +29,3 @@ COPY infra/routes/layoutlm_inference_cache_generator/lambdas/index.py ${LAMBDA_T
 
 # Set the handler
 CMD ["index.handler"]
-
