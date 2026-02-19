@@ -8,7 +8,7 @@
 
 > **runPerformanceTest**(`test`): `Promise`\<[`PerformanceTestResult`](../interfaces/PerformanceTestResult.md)\>
 
-Defined in: [utils/performance/testing.ts:30](https://github.com/tnorlund/Portfolio/blob/68470ab14d7892f651958eb8bfd37db29adc92a6/portfolio/utils/performance/testing.ts#L30)
+Defined in: [utils/performance/testing.ts:30](https://github.com/tnorlund/Portfolio/blob/f2a9046d88b0fa8c1f3329c68a30c2d1f15d42d5/portfolio/utils/performance/testing.ts#L30)
 
 Run a performance test and collect metrics
 
