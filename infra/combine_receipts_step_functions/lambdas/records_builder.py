@@ -6,6 +6,7 @@ receipts and creating DynamoDB entities for the combined receipt.
 """
 
 import copy
+import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
@@ -13,6 +14,8 @@ from typing import Any, Dict, List, Tuple
 from geometry_utils import transform_point_to_warped_space
 from receipt_upload.geometry.transformations import find_perspective_coeffs, invert_warp
 from receipt_dynamo import DynamoClient
+
+logger = logging.getLogger(__name__)
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
@@ -87,38 +90,27 @@ def combine_receipt_words_to_image_coords(
     for receipt_id in receipt_ids:
         try:
             receipt = client.get_receipt(image_id, receipt_id)
+            transform_coeffs, receipt_width, receipt_height = (
+                _get_receipt_to_image_transform(
+                    receipt, image_width, image_height
+                )
+            )
+            forward_coeffs = invert_warp(*transform_coeffs)
             receipt_words = client.list_receipt_words_from_receipt(
                 image_id, receipt_id
             )
             for word in receipt_words:
                 try:
-                    transform_coeffs, receipt_width, receipt_height = (
-                        _get_receipt_to_image_transform(
-                            receipt, image_width, image_height
-                        )
-                    )
                     word_copy = copy.deepcopy(word)
-                    forward_coeffs = invert_warp(*transform_coeffs)
-                    # ReceiptWord coordinates are in OCR space (y=0 at bottom),
-                    # normalized 0-1. The transform destination is in PIL space
-                    # (y=0 at top). So we need flip_y=True to convert from OCR
-                    # space to PIL space during transform
                     word_copy.warp_transform(
                         *forward_coeffs,
                         src_width=image_width,
                         src_height=image_height,
                         dst_width=receipt_width,
                         dst_height=receipt_height,
-                        flip_y=True,  # Receipt coords are in OCR space
+                        flip_y=True,
                     )
                     centroid = word_copy.calculate_centroid()
-                    # After warp_transform, word_copy coordinates are always
-                    # normalized (0-1) in image space. We always need to
-                    # multiply by image_width/height to get pixel coordinates.
-                    # The centroid check tells us if the word is within bounds
-                    # (centroid <= 1.0) or outside (centroid > 1.0). But
-                    # regardless, we need to convert normalized coords to pixel
-                    # coords
                     centroid_x = centroid[0] * image_width
                     centroid_y = centroid[1] * image_height
                     bounding_box = {
@@ -163,10 +155,21 @@ def combine_receipt_words_to_image_coords(
                             "is_noise": getattr(word, "is_noise", False),
                         }
                     )
-                except Exception:  # pylint: disable=broad-except
-                    continue
-        except Exception:  # pylint: disable=broad-except
-            continue
+                except Exception:
+                    logger.warning(
+                        "Failed to transform word %d (line %d) for receipt %d",
+                        word.word_id,
+                        word.line_id,
+                        receipt_id,
+                        exc_info=True,
+                    )
+        except Exception:
+            logger.warning(
+                "Failed to load/transform receipt %d for image %s",
+                receipt_id,
+                image_id,
+                exc_info=True,
+            )
 
     all_words.sort(key=lambda w: (-w["centroid_y"], w["centroid_x"]))
 
@@ -228,6 +231,12 @@ def combine_receipt_letters_to_image_coords(
     for receipt_id in receipt_ids:
         try:
             receipt = client.get_receipt(image_id, receipt_id)
+            transform_coeffs, receipt_width, receipt_height = (
+                _get_receipt_to_image_transform(
+                    receipt, image_width, image_height
+                )
+            )
+            forward_coeffs = invert_warp(*transform_coeffs)
             receipt_words = client.list_receipt_words_from_receipt(
                 image_id, receipt_id
             )
@@ -238,25 +247,14 @@ def combine_receipt_letters_to_image_coords(
                     )
                     for letter in receipt_letters:
                         try:
-                            transform_coeffs, receipt_width, receipt_height = (
-                                _get_receipt_to_image_transform(
-                                    receipt, image_width, image_height
-                                )
-                            )
                             letter_copy = copy.deepcopy(letter)
-                            forward_coeffs = invert_warp(*transform_coeffs)
-                            # ReceiptLetter coordinates are in OCR space
-                            # (y=0 at bottom), normalized 0-1. The transform
-                            # destination is in PIL space (y=0 at top). So we
-                            # need flip_y=True to convert from OCR space to
-                            # PIL space during transform
                             letter_copy.warp_transform(
                                 *forward_coeffs,
                                 src_width=image_width,
                                 src_height=image_height,
                                 dst_width=receipt_width,
                                 dst_height=receipt_height,
-                                flip_y=True,  # Receipt coords are in OCR space
+                                flip_y=True,
                             )
                             original_key = (
                                 word.word_id,
@@ -271,13 +269,6 @@ def combine_receipt_letters_to_image_coords(
                                 continue
 
                             centroid = letter_copy.calculate_centroid()
-                            # After warp_transform, letter_copy coordinates are
-                            # always normalized (0-1) in image space. We always
-                            # need to multiply by image_width/height to get pixel
-                            # coordinates. The centroid check tells us if the
-                            # letter is within bounds (centroid <= 1.0) or outside
-                            # (centroid > 1.0). But regardless, we need to convert
-                            # normalized coords to pixel coords
                             centroid_x = centroid[0] * image_width
                             centroid_y = centroid[1] * image_height
                             bounding_box = {
@@ -331,12 +322,31 @@ def combine_receipt_letters_to_image_coords(
                                     "confidence": letter_copy.confidence,
                                 }
                             )
-                        except Exception:  # pylint: disable=broad-except
-                            continue
-                except Exception:  # pylint: disable=broad-except
-                    continue
-        except Exception:  # pylint: disable=broad-except
-            continue
+                        except Exception:
+                            logger.warning(
+                                "Failed to transform letter %d (word %d) "
+                                "for receipt %d",
+                                letter.letter_id,
+                                word.word_id,
+                                receipt_id,
+                                exc_info=True,
+                            )
+                except Exception:
+                    logger.warning(
+                        "Failed to load letters for word %d (line %d) "
+                        "of receipt %d",
+                        word.word_id,
+                        word.line_id,
+                        receipt_id,
+                        exc_info=True,
+                    )
+        except Exception:
+            logger.warning(
+                "Failed to load/transform receipt %d for image %s",
+                receipt_id,
+                image_id,
+                exc_info=True,
+            )
 
     return all_letters
 
