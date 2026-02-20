@@ -251,7 +251,7 @@ def combine_receipt_letters_to_image_coords(
             for word in receipt_words:
                 try:
                     receipt_letters = client.list_receipt_letters_from_word(
-                        receipt_id, image_id, word.line_id, word.word_id
+                        image_id, receipt_id, word.line_id, word.word_id
                     )
                     for letter in receipt_letters:
                         try:
