@@ -389,8 +389,7 @@ def create_receipt_place_finder_graph(
                     )
             if len(state.messages) > 20:
                 logger.error(
-                    "Agent exceeded 20 steps without submitting"
-                    " - forcing end"
+                    "Agent exceeded 20 steps without submitting" " - forcing end"
                 )
                 return "end"
             return "agent"
@@ -441,6 +440,7 @@ async def run_receipt_place_finder(
     word_embeddings: Optional[dict[str, list[float]]] = None,
     receipt_lines: Optional[list] = None,
     receipt_words: Optional[list] = None,
+    reason: Optional[str] = None,
 ) -> dict:
     """
     Run the receipt place finder workflow for a receipt.
@@ -456,6 +456,8 @@ async def run_receipt_place_finder(
             read)
         receipt_words: Pre-loaded receipt words (optional, avoids DynamoDB
             read)
+        reason: Why the current place data is wrong (optional hint for
+            the agent)
 
     Returns:
         Place result dict
@@ -502,20 +504,25 @@ async def run_receipt_place_finder(
     )
     state_holder["place_result"] = None
 
+    # Build the human message, including the reason if provided
+    human_content = (
+        f"Please find ALL missing place data "
+        f"for receipt {image_id}#{receipt_id}. "
+        "Start by examining the receipt content, "
+        "then find any missing fields."
+    )
+    if reason:
+        human_content += (
+            f"\n\nContext: The current place data is wrong. " f"Reason: {reason}"
+        )
+
     # Create initial state
     initial_state = ReceiptPlaceFinderState(
         image_id=image_id,
         receipt_id=receipt_id,
         messages=[
             SystemMessage(content=RECEIPT_PLACE_FINDER_PROMPT),
-            HumanMessage(
-                content=(
-                    f"Please find ALL missing place data "
-                    f"for receipt {image_id}#{receipt_id}. "
-                    "Start by examining the receipt content, "
-                    "then find any missing fields."
-                ),
-            ),
+            HumanMessage(content=human_content),
         ],
     )
 
