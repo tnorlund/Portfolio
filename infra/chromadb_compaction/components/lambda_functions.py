@@ -169,6 +169,17 @@ class HybridLambdaDeployment(ComponentResource):
                 # Allow 2 concurrent invocations so lines and words queues
                 # can be processed in parallel.  Per-collection locks in the
                 # handler prevent concurrent writes to the same snapshot.
+                #
+                # Why 2, not 4 (sum of ESM maximum_concurrency)?
+                # Each handler invocation acquires a per-collection lock before
+                # downloading + mutating the snapshot.  A second invocation for
+                # the *same* collection would block on that lock until the first
+                # finishes, wasting Lambda billing time without adding throughput.
+                # reserved=2 gives us 1 lines + 1 words in parallel — the only
+                # combination that does useful work.  Bumping to 4 just adds two
+                # invocations that spin on the lock.  AWS ESM throttling here is
+                # intentional: messages stay in the queue until a slot opens,
+                # which is the correct back-pressure behaviour.
                 "reserved_concurrent_executions": 2,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
