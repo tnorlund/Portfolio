@@ -355,8 +355,9 @@ def create_receipt_place_finder_graph(
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
-    # Create LLM with tools bound
-    llm = create_llm_from_settings(temperature=0.0)
+    # Create LLM with tools bound (reasoning disabled to avoid
+    # hidden cost/latency on every tool-calling step)
+    llm = create_llm_from_settings(temperature=0.0, reasoning=False)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility
