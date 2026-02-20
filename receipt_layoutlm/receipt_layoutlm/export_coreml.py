@@ -20,6 +20,10 @@ class MissingDependencyError(CoreMLExportError):
     """Raised when required dependencies are not installed."""
 
 
+class NaNWeightsError(CoreMLExportError):
+    """Raised when exported CoreML model contains NaN weight values."""
+
+
 class LayoutLMWrapper(nn.Module):
     """Wrapper to trace LayoutLM with explicit input order."""
 
@@ -225,6 +229,25 @@ def export_coreml(
     mlpackage_path = output_path / f"{model_name}.mlpackage"
     print(f"Saving CoreML model to {mlpackage_path}...")
     mlmodel.save(str(mlpackage_path))
+
+    # Validate that the weight file contains no NaN values.
+    # Float16 conversion can overflow certain weights (FP16 max is 65504),
+    # producing NaN that propagates through the entire forward pass.
+    weight_path = (
+        mlpackage_path / "Data" / "com.apple.CoreML" / "weights" / "weight.bin"
+    )
+    if weight_path.exists():
+        raw = weight_path.read_bytes()
+        fp16_arr = np.frombuffer(raw, dtype=np.float16)
+        nan_count = int(np.isnan(fp16_arr).sum())
+        if nan_count > 0:
+            raise NaNWeightsError(
+                f"Exported CoreML model contains {nan_count} NaN values in "
+                f"weight.bin ({weight_path}). This is typically caused by "
+                f"float16 quantization overflowing large weight values. "
+                f"Re-export without --quantize float16."
+            )
+        print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN")
 
     # Copy vocab.txt for tokenizer
     vocab_src = checkpoint_path / "vocab.txt"
