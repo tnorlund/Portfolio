@@ -190,7 +190,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "export_id": export_id,
                 "job_id": job_id,
-                "status": "SUCCESS",
+                "status": "SUCCEEDED",
                 "mlpackage_s3_uri": mlpackage_s3_uri,
                 "bundle_s3_uri": bundle_s3_uri,
                 "canonical_bundle_s3_uri": f"s3://{parsed.netloc}/{CANONICAL_BUNDLE_KEY}",
