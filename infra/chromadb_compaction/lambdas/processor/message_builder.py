@@ -45,17 +45,14 @@ def build_messages_from_records(
             messages.extend(compaction_messages)
         # Handle MODIFY and REMOVE events
         elif record.get("eventName") in ["MODIFY", "REMOVE"]:
-            # Check for COMPACTION_RUN completion (embeddings finished)
-            completion_messages = build_compaction_run_completion_messages(
-                record, metrics
-            )
-            if completion_messages:
-                messages.extend(completion_messages)
-            else:
-                # Handle regular entity changes (METADATA, LABEL)
-                message = build_entity_change_message(record, metrics)
-                if message:
-                    messages.append(message)
+            # Note: CompactionRun MODIFY events (embeddings completed) are
+            # intentionally ignored.  The merge Lambda polls DynamoDB
+            # directly, so forwarding completion messages to the compaction
+            # handler only triggers wasteful snapshot download/upload
+            # cycles with no delta to apply.
+            message = build_entity_change_message(record, metrics)
+            if message:
+                messages.append(message)
 
     return messages
 
@@ -134,91 +131,6 @@ def build_compaction_run_messages(
         logger.exception("Failed to build compaction run message")
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
-
-    return messages
-
-
-def build_compaction_run_completion_messages(
-    record: Dict[str, Any], metrics=None
-) -> List[StreamMessage]:
-    """
-    Build messages for COMPACTION_RUN MODIFY on embedding completion.
-
-    Detects when both lines_state and words_state are COMPLETED and creates
-    messages to trigger compaction for both collections.
-
-    Args:
-        record: DynamoDB stream record
-        metrics: Optional metrics client
-
-    Returns:
-        List of StreamMessage objects (lines, words) or empty
-    """
-    # pylint: disable-next=import-outside-toplevel
-    from .compaction_run import (  # lazy load
-        is_compaction_run,
-        is_embeddings_completed,
-    )
-
-    messages = []
-
-    try:
-        dynamodb = record.get("dynamodb", {})
-        new_image = dynamodb.get("NewImage")
-        keys = dynamodb.get("Keys", {})
-
-        if not new_image or not keys:
-            return messages
-
-        pk = keys.get("PK", {}).get("S", "")
-        sk = keys.get("SK", {}).get("S", "")
-
-        # Only process COMPACTION_RUN records
-        if not is_compaction_run(pk, sk):
-            return messages
-
-        # Check if embeddings are completed
-        if not is_embeddings_completed(new_image):
-            return messages
-
-        # Parse the compaction run entity
-        # pylint: disable-next=import-outside-toplevel
-        from .compaction_run import parse_compaction_run  # lazy
-
-        compaction_run = parse_compaction_run(new_image, pk, sk)
-
-        # Create messages for both collections
-        for collection in [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]:
-            message = StreamMessage(
-                entity_type="COMPACTION_RUN",
-                entity_data={
-                    "run_id": compaction_run.get("run_id"),
-                    "image_id": compaction_run.get("image_id"),
-                    "receipt_id": compaction_run.get("receipt_id"),
-                },
-                changes={},
-                event_name=record.get("eventName", "MODIFY"),
-                collections=[collection],
-                source="dynamodb_stream",
-            )
-            messages.append(message)
-
-        if metrics:
-            metrics.count("CompactionRunCompletionDetected", 1)
-
-        logger.info(
-            "Detected COMPACTION_RUN completion, queuing compaction",
-            extra={
-                "run_id": compaction_run.get("run_id"),
-                "image_id": compaction_run.get("image_id"),
-                "receipt_id": compaction_run.get("receipt_id"),
-            },
-        )
-
-    except Exception:
-        logger.exception("Failed to build compaction run completion message")
-        if metrics:
-            metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
     return messages
 

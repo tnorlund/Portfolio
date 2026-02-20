@@ -30,7 +30,6 @@ from receipt_dynamo_stream.models import (
 )
 from receipt_dynamo_stream.parsing import (
     is_compaction_run,
-    is_embeddings_completed,
     parse_compaction_run,
     parse_stream_record,
 )
@@ -56,15 +55,14 @@ def build_messages_from_records(
         if event_name == "INSERT":
             messages.extend(build_compaction_run_messages(record, metrics))
         elif event_name in {"MODIFY", "REMOVE"}:
-            completion_messages = build_compaction_run_completion_messages(
-                record, metrics
-            )
-            if completion_messages:
-                messages.extend(completion_messages)
-            else:
-                entity_message = build_entity_change_message(record, metrics)
-                if entity_message:
-                    messages.append(entity_message)
+            # Note: CompactionRun MODIFY events (embeddings completed) are
+            # intentionally ignored.  The merge Lambda polls DynamoDB
+            # directly, so forwarding completion messages to the compaction
+            # handler only triggers wasteful snapshot download/upload
+            # cycles with no delta to apply.
+            entity_message = build_entity_change_message(record, metrics)
+            if entity_message:
+                messages.append(entity_message)
 
     return messages
 
@@ -131,70 +129,6 @@ def build_compaction_run_messages(
         logger.exception("Failed to build compaction run message: %s", exc)
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
-
-    return messages
-
-
-def build_compaction_run_completion_messages(
-    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
-) -> list[StreamMessage]:
-    """
-    Build messages for COMPACTION_RUN MODIFY events when embeddings complete.
-    """
-    messages: list[StreamMessage] = []
-
-    try:
-        dynamodb = record["dynamodb"]
-        new_image = dynamodb.get("NewImage")
-        keys = dynamodb["Keys"]
-        pk = keys["PK"]["S"]
-        sk = keys["SK"]["S"]
-
-        if not new_image:
-            return messages
-        if not is_compaction_run(pk, sk):
-            return messages
-        if not is_embeddings_completed(new_image):
-            return messages
-
-        compaction_run = parse_compaction_run(new_image, pk, sk)
-        for collection in (ChromaDBCollection.LINES, ChromaDBCollection.WORDS):
-            messages.append(
-                StreamMessage(
-                    entity_type="COMPACTION_RUN",
-                    entity_data={
-                        "run_id": compaction_run.get("run_id"),
-                        "image_id": compaction_run.get("image_id"),
-                        "receipt_id": compaction_run.get("receipt_id"),
-                    },
-                    changes={},
-                    event_name=str(record.get("eventName", "MODIFY")),
-                    collections=(collection,),
-                    context=StreamRecordContext(
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                        record_id=str(record.get("eventID", "unknown")),
-                        aws_region=str(record.get("awsRegion", "unknown")),
-                    ),
-                    record_snapshot=new_image,
-                )
-            )
-
-        if metrics:
-            metrics.count("CompactionRunCompletionDetected", 1)
-
-        logger.info(
-            "Detected COMPACTION_RUN completion, queuing compaction",
-            extra={
-                "run_id": compaction_run.get("run_id"),
-                "image_id": compaction_run.get("image_id"),
-                "receipt_id": compaction_run.get("receipt_id"),
-            },
-        )
-
-    except (KeyError, TypeError, ValueError, AttributeError):
-        logger.exception("Failed to build compaction run completion message")
-        if metrics:
-            metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
     return messages
 
