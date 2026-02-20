@@ -1263,24 +1263,24 @@ async def unified_receipt_evaluator(
                 fresh_word_contexts = build_word_contexts(words, fresh_labels)
                 fresh_visual_lines = assemble_visual_lines(fresh_word_contexts)
 
-                # Run financial validation
-                from receipt_agent.agents.label_evaluator.financial_subagent import (
-                    evaluate_financial_math_async,
+                # Run financial validation (two-tier structured approach)
+                from receipt_agent.agents.label_evaluator.financial_structured import (
+                    run_two_tier_financial_validation_async,
                 )
 
                 financial_start = time.time()
-                financial_result = await evaluate_financial_math_async(
-                    visual_lines=fresh_visual_lines,
+                two_tier_result = await run_two_tier_financial_validation_async(
                     llm=llm_invoker,
+                    words=words,
+                    labels=fresh_labels,
+                    visual_lines=fresh_visual_lines,
+                    chroma_client=chroma_client,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
-                    words=words,
-                    line_item_patterns=line_item_patterns,
-                    labels=fresh_labels,
-                    chroma_client=chroma_client,
                 )
-                financial_duration = time.time() - financial_start
+                financial_result = two_tier_result.decisions
+                financial_duration = two_tier_result.duration_seconds
 
                 # Apply financial corrections and confirmations
                 if financial_result:

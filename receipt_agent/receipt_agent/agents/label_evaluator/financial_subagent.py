@@ -446,26 +446,14 @@ def extract_financial_values_enhanced(
         wc = wc_info[0] if wc_info else None
         line_index = wc_info[1] if wc_info else w.line_id
 
-        # VALID currency labels: local column sanity check.
-        # Catches SKU fragments / MAX REFUND VALUE amounts that were
-        # incorrectly validated (e.g., Home Depot code fragments on the
-        # left edge labeled as LINE_TOTAL).  Uses only the cheap local
-        # column x — no Chroma call needed for VALID words.
+        # VALID labels: trust unconditionally.
+        # The junk-value filter (filter_junk_values) handles barcode
+        # fragments after extraction.  Skipping the column check for
+        # VALID words fixes two-section receipts (e.g. Sprouts terminal
+        # slip + itemized section) where financial values sit at
+        # different x-positions and the single-median column rejects one
+        # group.
         if status == "VALID":
-            if label in _COLUMN_FILTERED_LABELS and local_col_x is not None:
-                word_right = _get_right_edge(w)
-                diff = abs(word_right - local_col_x)
-                if diff > x_tolerance:
-                    logger.info(
-                        "Column sanity check: VALID '%s' as %s "
-                        "rejected (right=%.3f, col=%.3f, diff=%.3f)",
-                        w.text,
-                        label,
-                        word_right,
-                        local_col_x,
-                        diff,
-                    )
-                    continue
             candidates.append(
                 (w.line_id, label, num, w.text, wc, line_index)
             )
@@ -525,12 +513,13 @@ def extract_financial_values_enhanced(
         len(candidates),
     )
 
-    # Step 6: Detect summary section (first SUBTOTAL or GRAND_TOTAL line)
+    # Step 6: Detect summary section (LAST SUBTOTAL or GRAND_TOTAL line)
+    # Using the last occurrence handles two-section receipts (e.g. Sprouts)
+    # where a terminal slip total appears above the itemized section.
     summary_start_line = None
     for line_id, label, _val, _txt, _wc, _li in candidates:
         if label in ("SUBTOTAL", "GRAND_TOTAL"):
             summary_start_line = line_id
-            break
 
     # Step 7: Deduplicate summary labels
     # For each summary label, prefer in-block occurrence over pre-block
@@ -1080,6 +1069,11 @@ def detect_math_issues_from_values(
     if grand_total_issue:
         issues.append(grand_total_issue)
 
+    # GT = sum(LT) + TAX when no SUBTOTAL exists
+    gt_direct_issue = check_grand_total_direct_math(values)
+    if gt_direct_issue:
+        issues.append(gt_direct_issue)
+
     subtotal_issue = check_subtotal_math(values)
     if subtotal_issue:
         issues.append(subtotal_issue)
@@ -1181,6 +1175,68 @@ def _build_valid_decisions(
             best[key] = (prio, decision)
 
     return [d for _, d in best.values()]
+
+
+# =============================================================================
+# Junk Value Filter
+# =============================================================================
+
+# Thresholds — values beyond these are almost certainly barcode fragments
+# or OCR garbage, not real receipt amounts.
+MAX_REASONABLE_QUANTITY = 100
+MAX_REASONABLE_UNIT_PRICE = 50_000
+MAX_REASONABLE_LINE_TOTAL = 100_000
+MAX_REASONABLE_SUBTOTAL = 100_000
+MAX_REASONABLE_GRAND_TOTAL = 100_000
+MAX_REASONABLE_TAX = 50_000
+MAX_REASONABLE_DISCOUNT = 50_000
+
+_JUNK_THRESHOLDS = {
+    "QUANTITY": MAX_REASONABLE_QUANTITY,
+    "UNIT_PRICE": MAX_REASONABLE_UNIT_PRICE,
+    "LINE_TOTAL": MAX_REASONABLE_LINE_TOTAL,
+    "SUBTOTAL": MAX_REASONABLE_SUBTOTAL,
+    "GRAND_TOTAL": MAX_REASONABLE_GRAND_TOTAL,
+    "TAX": MAX_REASONABLE_TAX,
+    "DISCOUNT": MAX_REASONABLE_DISCOUNT,
+}
+
+
+def filter_junk_values(
+    values: dict[str, list[FinancialValue]],
+) -> dict[str, list[FinancialValue]]:
+    """Remove obviously bad financial values (barcode fragments, etc).
+
+    Applies two filters:
+    1. Threshold filter — removes values above unreasonable limits
+       (e.g. QUANTITY > 100, UNIT_PRICE > $50k).
+    2. Zero-SUBTOTAL filter — drops SUBTOTAL=0.00 when GRAND_TOTAL > 0,
+       which usually indicates a mislabeled CHANGE line.
+
+    Returns the filtered values dict.
+    """
+    filtered: dict[str, list[FinancialValue]] = {}
+
+    for label, fvs in values.items():
+        threshold = _JUNK_THRESHOLDS.get(label)
+        clean: list[FinancialValue] = []
+        for fv in fvs:
+            if threshold is not None and abs(fv.numeric_value) > threshold:
+                continue
+            clean.append(fv)
+        filtered[label] = clean
+
+    # Drop SUBTOTAL=0.00 when GRAND_TOTAL > 0 (likely a CHANGE/SAVINGS line)
+    gt_list = filtered.get("GRAND_TOTAL", [])
+    st_list = filtered.get("SUBTOTAL", [])
+    if gt_list and st_list:
+        gt_val = gt_list[0].numeric_value
+        if gt_val > 0:
+            filtered["SUBTOTAL"] = [
+                fv for fv in st_list if fv.numeric_value != 0.0
+            ]
+
+    return filtered
 
 
 # =============================================================================
@@ -1707,6 +1763,59 @@ def check_grand_total_math(
             f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal_desc}) "
             f"+ TAX ({tax_desc}) + TIP ({tip_desc}) = {expected:.2f}. "
             f"Difference: {difference:.2f}"
+        ),
+    )
+
+
+def check_grand_total_direct_math(
+    values: dict[str, list[FinancialValue]],
+) -> MathIssue | None:
+    """Check: GRAND_TOTAL = sum(LINE_TOTAL) + TAX when no SUBTOTAL exists.
+
+    Many receipts (especially small ones) omit the SUBTOTAL line entirely.
+    ``check_grand_total_math`` bails out when SUBTOTAL is missing, leaving
+    these receipts unchecked. This function fills that gap by verifying the
+    grand total directly against line totals + tax.
+
+    Only fires when SUBTOTAL is absent/empty.
+    Returns MathIssue on mismatch, None when balanced or inapplicable.
+    """
+    grand_totals = values.get("GRAND_TOTAL", [])
+    subtotals = values.get("SUBTOTAL", [])
+    line_totals = values.get("LINE_TOTAL", [])
+    taxes = values.get("TAX", [])
+
+    # Only applies when we have GT + LTs but no SUBTOTAL
+    if not grand_totals or subtotals or not line_totals:
+        return None
+
+    gt_val = grand_totals[0].numeric_value
+    lt_sum = sum(fv.numeric_value for fv in line_totals)
+    tax_sum = sum(fv.numeric_value for fv in taxes)
+
+    expected = lt_sum + tax_sum
+    difference = gt_val - expected
+
+    if abs(difference) <= FLOAT_EPSILON:
+        return None
+
+    involved = [grand_totals[0]] + line_totals + taxes
+    lt_desc = " + ".join(f"{fv.numeric_value:.2f}" for fv in line_totals)
+    tax_desc = (
+        " + ".join(f"{fv.numeric_value:.2f}" for fv in taxes)
+        if taxes
+        else "0.00"
+    )
+
+    return MathIssue(
+        issue_type="GRAND_TOTAL_DIRECT_MISMATCH",
+        expected_value=expected,
+        actual_value=gt_val,
+        difference=difference,
+        involved_values=involved,
+        description=(
+            f"GRAND_TOTAL ({gt_val:.2f}) != sum(LINE_TOTAL) ({lt_desc} = {lt_sum:.2f}) "
+            f"+ TAX ({tax_desc}) = {expected:.2f}. Difference: {difference:.2f}"
         ),
     )
 
