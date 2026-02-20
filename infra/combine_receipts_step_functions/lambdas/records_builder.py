@@ -29,29 +29,30 @@ def _get_receipt_to_image_transform(
 ) -> tuple:
     """Compute perspective transform coefficients from receipt space to image space.
 
-    Receipt corners are stored in PIL space (y=0 at top), normalized 0-1.
-    photo.py converts OCR corners via calculate_corners(flip_y=True) before
-    normalising, so no additional Y-flip is needed here.
+    Receipt corners are stored in OCR space (y=0 at bottom), normalized 0-1.
+    We flip Y to convert to PIL space (y=0 at top) for the perspective transform.
 
     Returns:
         (transform_coeffs, receipt_width, receipt_height)
     """
+    # Receipt corners are in OCR space (y=0 at bottom), normalised 0-1.
+    # Convert to PIL pixel coordinates: y_pil = (1 - y_ocr) * image_height.
     src_points = [
         (
             receipt.top_left["x"] * image_width,
-            receipt.top_left["y"] * image_height,
+            (1.0 - receipt.top_left["y"]) * image_height,
         ),
         (
             receipt.top_right["x"] * image_width,
-            receipt.top_right["y"] * image_height,
+            (1.0 - receipt.top_right["y"]) * image_height,
         ),
         (
             receipt.bottom_right["x"] * image_width,
-            receipt.bottom_right["y"] * image_height,
+            (1.0 - receipt.bottom_right["y"]) * image_height,
         ),
         (
             receipt.bottom_left["x"] * image_width,
-            receipt.bottom_left["y"] * image_height,
+            (1.0 - receipt.bottom_left["y"]) * image_height,
         ),
     ]
 
