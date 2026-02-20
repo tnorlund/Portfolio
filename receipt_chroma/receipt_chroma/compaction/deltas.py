@@ -3,6 +3,7 @@
 import os
 import tarfile
 import tempfile
+import time
 from typing import Any, Dict, List, Tuple
 
 import boto3
@@ -10,6 +11,16 @@ from botocore.exceptions import ClientError
 
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_dynamo.constants import ChromaDBCollection
+
+# Chroma Cloud enforces a 300-record per-request limit for all operations.
+# Use 250 to stay safely under the limit (matching sync_collection_to_cloud).
+_UPSERT_BATCH_SIZE = 250
+
+# Number of retry attempts when post-upsert verification finds missing records.
+_VERIFY_MAX_RETRIES = 2
+
+# Seconds to wait before re-verifying (Chroma Cloud eventual consistency).
+_VERIFY_RETRY_DELAY = 1.0
 
 
 def merge_compaction_deltas(
@@ -122,30 +133,41 @@ def merge_compaction_deltas(
                                 f"Upserting vectors from delta: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, vector_count={len(ids)}, sample_id={ids[0] if ids else None}"
                             )
 
-                            chroma_client.upsert(
+                            embeddings = data.get("embeddings")
+                            documents = data.get("documents")
+                            metadatas = data.get("metadatas")
+
+                            # Batch upserts to stay within Chroma Cloud
+                            # 300-record per-request limit.
+                            for start in range(0, len(ids), _UPSERT_BATCH_SIZE):
+                                end = min(start + _UPSERT_BATCH_SIZE, len(ids))
+                                chroma_client.upsert(
+                                    collection_name=collection_name,
+                                    ids=ids[start:end],
+                                    embeddings=embeddings[start:end] if embeddings is not None else None,
+                                    documents=documents[start:end] if documents is not None else None,
+                                    metadatas=metadatas[start:end] if metadatas is not None else None,
+                                )
+
+                            # Verify ALL records, batching gets to
+                            # respect the 300-record Cloud limit.
+                            missing_ids = _verify_upsert(
+                                chroma_client=chroma_client,
                                 collection_name=collection_name,
                                 ids=ids,
-                                embeddings=data.get("embeddings"),
-                                documents=data.get("documents"),
-                                metadatas=data.get("metadatas"),
+                                logger=logger,
+                                run_id=run_id,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
                             )
 
-                            # Verify upsert succeeded by querying back
-                            verify_collection = chroma_client.get_collection(
-                                collection_name
-                            )
-                            verify_result = verify_collection.get(
-                                ids=ids[:10], include=["metadatas"]
-                            )
-                            verified_count = len(verify_result.get("ids", []))
-
-                            if verified_count < len(ids[:10]):
+                            if missing_ids:
                                 logger.warning(
-                                    f"Upsert verification failed: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, expected={len(ids[:10])}, verified={verified_count}"
+                                    f"Upsert verification found missing records: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, total={len(ids)}, missing={len(missing_ids)}"
                                 )
                             else:
                                 logger.info(
-                                    f"Upsert verified successfully: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, verified_count={verified_count}"
+                                    f"Upsert verified successfully: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, verified_count={len(ids)}"
                                 )
 
                             merged_count = len(ids)
@@ -188,6 +210,72 @@ def merge_compaction_deltas(
                 continue
 
     return total_merged, per_run_results
+
+
+def _verify_upsert(
+    chroma_client: ChromaClient,
+    collection_name: str,
+    ids: List[str],
+    logger: Any,
+    run_id: Any = None,
+    image_id: Any = None,
+    receipt_id: Any = None,
+) -> List[str]:
+    """Verify all IDs exist in the collection after upsert.
+
+    Queries in batches of ``_UPSERT_BATCH_SIZE`` to stay within Chroma Cloud's
+    300-record per-request limit.  Retries up to ``_VERIFY_MAX_RETRIES`` times
+    with a delay, re-upserting any missing records is **not** attempted here
+    (the caller already upserted; this just reports gaps).
+
+    Returns:
+        List of IDs that are still missing after all retry attempts.
+    """
+    pending = list(ids)
+
+    for attempt in range(1 + _VERIFY_MAX_RETRIES):
+        missing: List[str] = []
+
+        for start in range(0, len(pending), _UPSERT_BATCH_SIZE):
+            batch = pending[start : start + _UPSERT_BATCH_SIZE]
+            try:
+                result = chroma_client.get(
+                    collection_name=collection_name,
+                    ids=batch,
+                    include=[],  # Only need IDs, skip heavy payload
+                )
+                found = set(result.get("ids", []) or [])
+                missing.extend(vid for vid in batch if vid not in found)
+            except Exception:
+                logger.exception(
+                    "Verification GET failed: run_id=%s, image_id=%s, "
+                    "receipt_id=%s, batch_size=%d, attempt=%d",
+                    run_id,
+                    image_id,
+                    receipt_id,
+                    len(batch),
+                    attempt,
+                )
+                # Treat entire batch as missing so we retry
+                missing.extend(batch)
+
+        if not missing:
+            return []
+
+        if attempt < _VERIFY_MAX_RETRIES:
+            logger.info(
+                "Verification retry: run_id=%s, attempt=%d/%d, "
+                "missing=%d/%d",
+                run_id,
+                attempt + 1,
+                _VERIFY_MAX_RETRIES,
+                len(missing),
+                len(ids),
+            )
+            time.sleep(_VERIFY_RETRY_DELAY)
+            pending = missing  # Only re-check the missing ones
+
+    return missing
 
 
 def _download_delta_to_dir(
