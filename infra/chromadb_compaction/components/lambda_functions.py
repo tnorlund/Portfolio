@@ -140,8 +140,7 @@ class HybridLambdaDeployment(ComponentResource):
 
         # Decide whether to mount EFS based on access point and mode
         use_efs_mount = (
-            efs_access_point_arn is not None
-            and normalized_storage_mode != "s3"
+            efs_access_point_arn is not None and normalized_storage_mode != "s3"
         )
 
         # Validate storage_mode='efs' requires EFS access point
@@ -156,8 +155,9 @@ class HybridLambdaDeployment(ComponentResource):
             lambda_config={
                 "role_arn": self.lambda_role.arn,
                 # Lambda processes up to 1000 messages per batch (Standard queue).
-                # Set to 120s for headroom. Must match SQS visibility timeout.
-                "timeout": 120,  # 2 minutes - must match visibility timeout
+                # 15 min allows draining large backlogs in one invocation.
+                # Must match SQS visibility timeout.
+                "timeout": 900,  # 15 minutes - must match visibility timeout
                 # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
                 # - ChromaDB collection with ~70K embeddings uses ~8GB
                 # - Snapshot validation downloads and loads full collection
@@ -165,11 +165,21 @@ class HybridLambdaDeployment(ComponentResource):
                 "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
-                # Phase 1 optimization: Single concurrent execution eliminates
-                # race conditions where Lambda B could read stale snapshot
-                # before Lambda A writes the pointer. Also eliminates wasted
-                # invocations from lock contention.
-                "reserved_concurrent_executions": 1,
+                # Allow 2 concurrent invocations so lines and words queues
+                # can be processed in parallel.  Per-collection locks in the
+                # handler prevent concurrent writes to the same snapshot.
+                #
+                # Why 2, not 4 (sum of ESM maximum_concurrency)?
+                # Each handler invocation acquires a per-collection lock before
+                # downloading + mutating the snapshot.  A second invocation for
+                # the *same* collection would block on that lock until the first
+                # finishes, wasting Lambda billing time without adding throughput.
+                # reserved=2 gives us 1 lines + 1 words in parallel — the only
+                # combination that does useful work.  Bumping to 4 just adds two
+                # invocations that spin on the lock.  AWS ESM throttling here is
+                # intentional: messages stay in the queue until a slot opens,
+                # which is the correct back-pressure behaviour.
+                "reserved_concurrent_executions": 2,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
                     "delta message processing"
@@ -181,9 +191,9 @@ class HybridLambdaDeployment(ComponentResource):
                     "ManagedBy": "Pulumi",
                 },
                 "environment": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
+                        lambda args: args[0].split("/")[-1]
+                    ),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
@@ -192,9 +202,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": (
-                        "/mnt/chroma"
-                        if use_efs_mount
-                        else "/tmp/chroma"  # noqa: S108
+                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
                     ),
                     # Storage mode configuration: "auto", "s3", or "efs"
                     # - "auto": Use EFS if available, fallback to S3
@@ -426,9 +434,7 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # Create event source mappings
-        self._create_event_source_mappings(
-            name, dynamodb_stream_arn, chromadb_queues
-        )
+        self._create_event_source_mappings(name, dynamodb_stream_arn, chromadb_queues)
 
         # Diagnostic EFS listing Lambda (zip-based, same role/VPC/EFS)
         diag_code = pulumi.AssetArchive(
@@ -456,9 +462,7 @@ class HybridLambdaDeployment(ComponentResource):
             environment={
                 "variables": {
                     "CHROMA_ROOT": (
-                        "/mnt/chroma"
-                        if use_efs_mount
-                        else "/tmp/chroma"  # noqa: S108
+                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
                     ),
                 }
             },
@@ -521,7 +525,7 @@ class HybridLambdaDeployment(ComponentResource):
             code=summary_updater_code,
             handler="handler.lambda_handler",
             role=self.lambda_role.arn,
-            timeout=60,  # 60 seconds - matches SQS visibility timeout
+            timeout=60,  # 60s; SQS visibility is 2x (120s) for retry headroom
             memory_size=256,  # Lightweight processing
             environment={
                 "variables": {
@@ -788,6 +792,12 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
+            # Minimum for standard queues is 2.  Combined with the
+            # Lambda's reserved_concurrent_executions=2, each queue
+            # effectively gets one slot while both run in parallel.
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=2,
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -798,6 +808,9 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=2,
+            ),
             opts=ResourceOptions(parent=self),
         )
 
