@@ -59,6 +59,12 @@ logger.setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# Module-level event loop – reused across warm Lambda invocations.
+# asyncio.run() closes the loop after each call, which breaks cached
+# async clients (httpx, LangSmith) on subsequent warm invocations.
+_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_loop)
+
 
 def _propagate_env_vars() -> None:
     """Ensure receipt_agent settings find our Lambda env vars."""
@@ -189,8 +195,8 @@ def handler(  # pylint: disable=unused-argument
 
         _propagate_env_vars()
 
-        # Run the LangGraph agent
-        agent_result, details = asyncio.run(
+        # Run the LangGraph agent on the persistent event loop
+        agent_result, details = _loop.run_until_complete(
             _run_place_finder(image_id, receipt_id, reason)
         )
 
@@ -207,6 +213,20 @@ def handler(  # pylint: disable=unused-argument
                 "reasoning": (
                     agent_result.get("reasoning", "") if agent_result else ""
                 ),
+            }
+
+        # Guard: merchant_name is required by ReceiptPlace
+        if not agent_result.get("merchant_name"):
+            return {
+                "success": False,
+                "error": (
+                    "Agent found a place but merchant_name " "is missing"
+                ),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "old_merchant": old_merchant,
+                "reasoning": agent_result.get("reasoning", ""),
+                "fields_found": agent_result.get("fields_found", []),
             }
 
         # Update ReceiptPlace with agent results
@@ -279,7 +299,7 @@ def _update_receipt_place(
 
         current_place.confidence = confidence
         current_place.reasoning = reasoning
-        current_place.validated_by = "place_finder_agent"
+        current_place.validated_by = "INFERENCE"
         current_place.validation_status = (
             "MATCHED" if confidence >= 0.8 else "UNSURE"
         )
@@ -299,7 +319,7 @@ def _update_receipt_place(
         merchant_types=[],
         confidence=confidence,
         reasoning=reasoning,
-        validated_by="place_finder_agent",
+        validated_by="INFERENCE",
         validation_status=("MATCHED" if confidence >= 0.8 else "UNSURE"),
         timestamp=now,
     )
