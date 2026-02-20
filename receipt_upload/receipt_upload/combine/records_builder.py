@@ -558,51 +558,40 @@ def create_combined_receipt_records(
         # Create line text
         line_text = " ".join(w["text"] for w in line_words_sorted)
 
-        # Create ReceiptLine with coordinates in warped OCR space,
-        # normalized (0-1)
+        # Build normalized (0-1) corners, then derive bounding_box from them
+        line_top_left = {
+            "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
+            "y": line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0,
+        }
+        line_top_right = {
+            "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
+            "y": line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0,
+        }
+        line_bottom_left = {
+            "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
+            "y": line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0,
+        }
+        line_bottom_right = {
+            "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
+            "y": line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0,
+        }
+        line_corners_norm = [line_top_left, line_top_right, line_bottom_left, line_bottom_right]
+
         receipt_line = ReceiptLine(
             receipt_id=new_receipt_id,
             image_id=image_id,
             line_id=new_line_id,
             text=line_text,
             bounding_box={
-                "x": line_min_x,  # Already in warped space, absolute pixels
-                "y": line_min_y_ocr,
-                "width": line_max_x - line_min_x,
-                "height": line_max_y_ocr - line_min_y_ocr,
+                "x": min(c["x"] for c in line_corners_norm),
+                "y": min(c["y"] for c in line_corners_norm),
+                "width": max(c["x"] for c in line_corners_norm) - min(c["x"] for c in line_corners_norm),
+                "height": max(c["y"] for c in line_corners_norm) - min(c["y"] for c in line_corners_norm),
             },
-            top_left={
-                "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
-                "y": (
-                    line_max_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),  # Normalize relative to bottom (OCR space)
-            },
-            top_right={
-                "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-                "y": (
-                    line_max_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),
-            },
-            bottom_left={
-                "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
-                "y": (
-                    line_min_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
-            bottom_right={
-                "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-                "y": (
-                    line_min_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
+            top_left=line_top_left,
+            top_right=line_top_right,
+            bottom_left=line_bottom_left,
+            bottom_right=line_bottom_right,
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
@@ -647,22 +636,28 @@ def create_combined_receipt_records(
             y_ocr_warped = warped_height - y_warped
             word_corners_ocr_warped[corner_name] = (x_warped, y_ocr_warped)
 
-        # Calculate bounding box in warped space
-        word_min_x = min(c[0] for c in word_corners_ocr_warped.values())
-        word_max_x = max(c[0] for c in word_corners_ocr_warped.values())
-        word_min_y_ocr = min(c[1] for c in word_corners_ocr_warped.values())
-        word_max_y_ocr = max(c[1] for c in word_corners_ocr_warped.values())
-
         # Check if word is noise (preserve from original word)
         is_noise = word.get("is_noise", False)
 
-        # Create ReceiptWord with coordinates in warped OCR space,
-        # normalized (0-1)
-        # NOTE: We include ALL words (including noise) in DynamoDB to maintain
-        # proper structure (words belong to lines, letters belong to words).
-        # Noise words will be filtered out during embedding, so they won't appear
-        # in ChromaDB, but they must exist in DynamoDB for structural integrity.
-        # Word IDs are assigned sequentially to ALL words to ensure consistency.
+        # Build normalized (0-1) corners, then derive bounding_box from them
+        word_top_left = {
+            "x": word_corners_ocr_warped["top_left"][0] / receipt_width if receipt_width > 0 else 0.0,
+            "y": word_corners_ocr_warped["top_left"][1] / receipt_height if receipt_height > 0 else 0.0,
+        }
+        word_top_right = {
+            "x": word_corners_ocr_warped["top_right"][0] / receipt_width if receipt_width > 0 else 1.0,
+            "y": word_corners_ocr_warped["top_right"][1] / receipt_height if receipt_height > 0 else 0.0,
+        }
+        word_bottom_left = {
+            "x": word_corners_ocr_warped["bottom_left"][0] / receipt_width if receipt_width > 0 else 0.0,
+            "y": word_corners_ocr_warped["bottom_left"][1] / receipt_height if receipt_height > 0 else 1.0,
+        }
+        word_bottom_right = {
+            "x": word_corners_ocr_warped["bottom_right"][0] / receipt_width if receipt_width > 0 else 1.0,
+            "y": word_corners_ocr_warped["bottom_right"][1] / receipt_height if receipt_height > 0 else 1.0,
+        }
+        word_corners_norm = [word_top_left, word_top_right, word_bottom_left, word_bottom_right]
+
         receipt_word = ReceiptWord(
             receipt_id=new_receipt_id,
             image_id=image_id,
@@ -670,59 +665,15 @@ def create_combined_receipt_records(
             word_id=new_word_id,
             text=word["text"],
             bounding_box={
-                "x": word_min_x,  # Already in warped space, absolute pixels
-                "y": word_min_y_ocr,
-                "width": word_max_x - word_min_x,
-                "height": word_max_y_ocr - word_min_y_ocr,
+                "x": min(c["x"] for c in word_corners_norm),
+                "y": min(c["y"] for c in word_corners_norm),
+                "width": max(c["x"] for c in word_corners_norm) - min(c["x"] for c in word_corners_norm),
+                "height": max(c["y"] for c in word_corners_norm) - min(c["y"] for c in word_corners_norm),
             },
-            top_left={
-                "x": (
-                    word_corners_ocr_warped["top_left"][0] / receipt_width
-                    if receipt_width > 0
-                    else 0.0
-                ),
-                "y": (
-                    word_corners_ocr_warped["top_left"][1] / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),  # Normalize relative to bottom (OCR space)
-            },
-            top_right={
-                "x": (
-                    word_corners_ocr_warped["top_right"][0] / receipt_width
-                    if receipt_width > 0
-                    else 1.0
-                ),
-                "y": (
-                    word_corners_ocr_warped["top_right"][1] / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),
-            },
-            bottom_left={
-                "x": (
-                    word_corners_ocr_warped["bottom_left"][0] / receipt_width
-                    if receipt_width > 0
-                    else 0.0
-                ),
-                "y": (
-                    word_corners_ocr_warped["bottom_left"][1] / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
-            bottom_right={
-                "x": (
-                    word_corners_ocr_warped["bottom_right"][0] / receipt_width
-                    if receipt_width > 0
-                    else 1.0
-                ),
-                "y": (
-                    word_corners_ocr_warped["bottom_right"][1] / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
+            top_left=word_top_left,
+            top_right=word_top_right,
+            bottom_left=word_bottom_left,
+            bottom_right=word_bottom_right,
             angle_degrees=word.get("angle_degrees", 0.0),
             angle_radians=word.get("angle_degrees", 0.0)
             * 3.141592653589793
@@ -803,18 +754,25 @@ def create_receipt_letters_from_combined(
                 y_ocr_warped,
             )
 
-        # Calculate bounding box in warped space
-        letter_min_x = min(c[0] for c in letter_corners_ocr_warped.values())
-        letter_max_x = max(c[0] for c in letter_corners_ocr_warped.values())
-        letter_min_y_ocr = min(
-            c[1] for c in letter_corners_ocr_warped.values()
-        )
-        letter_max_y_ocr = max(
-            c[1] for c in letter_corners_ocr_warped.values()
-        )
+        # Build normalized (0-1) corners, then derive bounding_box from them
+        letter_top_left = {
+            "x": letter_corners_ocr_warped["top_left"][0] / receipt_width if receipt_width > 0 else 0.0,
+            "y": letter_corners_ocr_warped["top_left"][1] / receipt_height if receipt_height > 0 else 0.0,
+        }
+        letter_top_right = {
+            "x": letter_corners_ocr_warped["top_right"][0] / receipt_width if receipt_width > 0 else 1.0,
+            "y": letter_corners_ocr_warped["top_right"][1] / receipt_height if receipt_height > 0 else 0.0,
+        }
+        letter_bottom_left = {
+            "x": letter_corners_ocr_warped["bottom_left"][0] / receipt_width if receipt_width > 0 else 0.0,
+            "y": letter_corners_ocr_warped["bottom_left"][1] / receipt_height if receipt_height > 0 else 1.0,
+        }
+        letter_bottom_right = {
+            "x": letter_corners_ocr_warped["bottom_right"][0] / receipt_width if receipt_width > 0 else 1.0,
+            "y": letter_corners_ocr_warped["bottom_right"][1] / receipt_height if receipt_height > 0 else 1.0,
+        }
+        letter_corners_norm = [letter_top_left, letter_top_right, letter_bottom_left, letter_bottom_right]
 
-        # Create ReceiptLetter with coordinates in warped OCR space,
-        # normalized (0-1)
         receipt_letter = ReceiptLetter(
             receipt_id=new_receipt_id,
             image_id=image_id,
@@ -823,62 +781,15 @@ def create_receipt_letters_from_combined(
             letter_id=new_letter_id,
             text=letter_data["text"],
             bounding_box={
-                "x": letter_min_x,  # Already in warped space, absolute pixels
-                "y": letter_min_y_ocr,
-                "width": letter_max_x - letter_min_x,
-                "height": letter_max_y_ocr - letter_min_y_ocr,
+                "x": min(c["x"] for c in letter_corners_norm),
+                "y": min(c["y"] for c in letter_corners_norm),
+                "width": max(c["x"] for c in letter_corners_norm) - min(c["x"] for c in letter_corners_norm),
+                "height": max(c["y"] for c in letter_corners_norm) - min(c["y"] for c in letter_corners_norm),
             },
-            top_left={
-                "x": (
-                    letter_corners_ocr_warped["top_left"][0] / receipt_width
-                    if receipt_width > 0
-                    else 0.0
-                ),
-                "y": (
-                    letter_corners_ocr_warped["top_left"][1] / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),  # Normalize relative to bottom (OCR space)
-            },
-            top_right={
-                "x": (
-                    letter_corners_ocr_warped["top_right"][0] / receipt_width
-                    if receipt_width > 0
-                    else 1.0
-                ),
-                "y": (
-                    letter_corners_ocr_warped["top_right"][1] / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),
-            },
-            bottom_left={
-                "x": (
-                    letter_corners_ocr_warped["bottom_left"][0] / receipt_width
-                    if receipt_width > 0
-                    else 0.0
-                ),
-                "y": (
-                    letter_corners_ocr_warped["bottom_left"][1]
-                    / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
-            bottom_right={
-                "x": (
-                    letter_corners_ocr_warped["bottom_right"][0]
-                    / receipt_width
-                    if receipt_width > 0
-                    else 1.0
-                ),
-                "y": (
-                    letter_corners_ocr_warped["bottom_right"][1]
-                    / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
-            },
+            top_left=letter_top_left,
+            top_right=letter_top_right,
+            bottom_left=letter_bottom_left,
+            bottom_right=letter_bottom_right,
             angle_degrees=letter_data.get("angle_degrees", 0.0),
             angle_radians=letter_data.get("angle_degrees", 0.0)
             * 3.141592653589793
