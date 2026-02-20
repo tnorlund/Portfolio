@@ -5,7 +5,7 @@ enum ISO8601Python {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
         df.timeZone = TimeZone(secondsFromGMT: 0)
-        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX" // +00:00 offset
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxx" // +00:00 offset (xxx not XXXXX to avoid Z)
         return df
     }()
 
@@ -13,7 +13,7 @@ enum ISO8601Python {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
         df.timeZone = TimeZone(secondsFromGMT: 0)
-        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX" // +00:00 offset
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ssxxx" // +00:00 offset (xxx not XXXXX to avoid Z)
         return df
     }()
 
