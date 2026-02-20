@@ -105,9 +105,7 @@ def upload_snapshot_atomic(
             logger.error("Step 1 failed - upload_result=%s", upload_result)
             return {
                 "status": "error",
-                "error": (
-                    f"Failed to upload to versioned location: {upload_result}"
-                ),
+                "error": (f"Failed to upload to versioned location: {upload_result}"),
                 "collection": collection,
                 "version_id": version_id,
             }
@@ -121,13 +119,9 @@ def upload_snapshot_atomic(
             # Clean up versioned upload
             try:
                 _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-            except (
-                Exception
-            ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
                 # Cleanup failures are non-critical
-                logger.warning(
-                    "Failed to cleanup versioned upload: %s", cleanup_error
-                )
+                logger.warning("Failed to cleanup versioned upload: %s", cleanup_error)
 
             return {
                 "status": "error",
@@ -152,12 +146,8 @@ def upload_snapshot_atomic(
 
         # Step 4: Background cleanup of old versions
         try:
-            _cleanup_old_snapshot_versions(
-                s3_client, bucket, collection, keep_versions
-            )
-        except (
-            Exception
-        ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            _cleanup_old_snapshot_versions(s3_client, bucket, collection, keep_versions)
+        except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
             # Cleanup failures are non-critical
             logger.warning("Failed to cleanup old versions: %s", cleanup_error)
 

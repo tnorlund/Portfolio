@@ -122,9 +122,7 @@ def _process_single_run(
                 logger=logger,
             )
         except Exception:
-            logger.exception(
-                "Failed to download or extract delta: %s", delta_prefix
-            )
+            logger.exception("Failed to download or extract delta: %s", delta_prefix)
             return None
 
         # Merge delta vectors into snapshot
@@ -203,21 +201,9 @@ def _merge_delta_into_snapshot(
             chroma_client.upsert(
                 collection_name=collection_name,
                 ids=ids[start:end],
-                embeddings=(
-                    embeddings[start:end]
-                    if embeddings is not None
-                    else None
-                ),
-                documents=(
-                    documents[start:end]
-                    if documents is not None
-                    else None
-                ),
-                metadatas=(
-                    metadatas[start:end]
-                    if metadatas is not None
-                    else None
-                ),
+                embeddings=(embeddings[start:end] if embeddings is not None else None),
+                documents=(documents[start:end] if documents is not None else None),
+                metadatas=(metadatas[start:end] if metadatas is not None else None),
             )
 
         # Verify ALL records (batched to respect Cloud limit).
@@ -324,8 +310,7 @@ def _verify_upsert(
 
         if attempt < _VERIFY_MAX_RETRIES:
             logger.info(
-                "Verification retry: run_id=%s, attempt=%d/%d, "
-                "missing=%d/%d",
+                "Verification retry: run_id=%s, attempt=%d/%d, " "missing=%d/%d",
                 run_id,
                 attempt + 1,
                 _VERIFY_MAX_RETRIES,
@@ -380,10 +365,7 @@ def _download_delta_to_dir(
                 member_path_abs = os.path.abspath(
                     os.path.join(dest_dir_abs, member.name)
                 )
-                if (
-                    os.path.commonpath([dest_dir_abs, member_path_abs])
-                    != dest_dir_abs
-                ):
+                if os.path.commonpath([dest_dir_abs, member_path_abs]) != dest_dir_abs:
                     raise ValueError(f"Unsafe path in tarball: {member.name}")
             tar.extractall(dest_dir_abs)
 
@@ -396,8 +378,7 @@ def _download_delta_to_dir(
             raise
         # Tarball not found; fall back to directory layout
         logger.info(
-            "Tarball not found, falling back to directory layout: "
-            "prefix=%s",
+            "Tarball not found, falling back to directory layout: " "prefix=%s",
             prefix,
         )
 
@@ -415,17 +396,11 @@ def _download_delta_to_dir(
 
             found_any = True
             relative_path = key[len(prefix) :].lstrip("/")
-            target_path_abs = os.path.abspath(
-                os.path.join(dest_dir_abs, relative_path)
-            )
+            target_path_abs = os.path.abspath(os.path.join(dest_dir_abs, relative_path))
 
-            if (
-                os.path.commonpath([dest_dir_abs, target_path_abs])
-                != dest_dir_abs
-            ):
+            if os.path.commonpath([dest_dir_abs, target_path_abs]) != dest_dir_abs:
                 logger.warning(
-                    "Skipping unsafe delta object path: key=%s, "
-                    "dest_dir=%s",
+                    "Skipping unsafe delta object path: key=%s, " "dest_dir=%s",
                     key,
                     dest_dir,
                 )
@@ -435,6 +410,4 @@ def _download_delta_to_dir(
             s3_client.download_file(bucket, key, target_path_abs)
 
     if not found_any:
-        raise FileNotFoundError(
-            f"No delta files found at s3://{bucket}/{prefix}"
-        )
+        raise FileNotFoundError(f"No delta files found at s3://{bucket}/{prefix}")
