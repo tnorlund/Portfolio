@@ -641,6 +641,42 @@ Optionally filter to a single line_id to reduce output.""",
                 "required": ["image_id", "receipt_id"],
             },
         ),
+        Tool(
+            name="fix_place",
+            description="""Fix an incorrect merchant/place assignment on a receipt.
+
+Invokes the fix-place Lambda which uses an LLM agent to:
+1. Read the receipt content (lines, words, labels)
+2. Extract merchant hints (name, address, phone) from the receipt text
+3. Search Google Places for the correct match
+4. Update the ReceiptPlace record in DynamoDB
+
+Use this when a receipt's merchant name is wrong (e.g., "Mouthful Eatery"
+when the receipt clearly says "WHOLE FOODS MARKET").
+
+Returns the old and new merchant names, the new place_id, and confidence.
+
+WARNING: This WRITES to DynamoDB. Verify the receipt is misidentified first
+using get_receipt to read its content.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt to fix",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID to fix",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Why the current merchant is wrong (e.g., 'Receipt says WHOLE FOODS but merchant is Mouthful Eatery')",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "reason"],
+            },
+        ),
     ]
 
 
@@ -736,6 +772,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments.get("line_id"),
+            )
+        elif name == "fix_place":
+            result = await fix_place_impl(
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                reason=arguments["reason"],
             )
         elif name == "create_word_label":
             result = await create_word_label_impl(
@@ -1929,6 +1971,54 @@ async def create_word_label_impl(
         return {"error": str(e)}
 
 
+async def _invoke_lambda(function_name: str, payload: dict) -> dict:
+    """Invoke a Lambda function and return the parsed response payload."""
+    import boto3
+
+    logger.info(
+        "Invoking %s with payload: %s",
+        function_name,
+        json.dumps(payload),
+    )
+
+    def _invoke():
+        client = boto3.client("lambda", region_name="us-east-1")
+        return client.invoke(
+            FunctionName=function_name,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),
+        )
+
+    response = await asyncio.to_thread(_invoke)
+    response_payload = json.loads(response["Payload"].read())
+
+    if "FunctionError" in response:
+        return {
+            "error": "Lambda execution failed",
+            "function_error": response["FunctionError"],
+            "details": response_payload,
+        }
+
+    return response_payload
+
+
+async def fix_place_impl(
+    image_id: str,
+    receipt_id: int,
+    reason: str,
+) -> dict:
+    """Invoke the fix-place Lambda to correct a receipt's merchant/place."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"fix-place-{env}-fix-place",
+            {"image_id": image_id, "receipt_id": receipt_id, "reason": reason},
+        )
+    except Exception as e:
+        logger.exception("Error invoking fix-place Lambda")
+        return {"error": str(e)}
+
+
 async def merge_receipts_impl(
     image_id: str,
     receipt_ids: list[int],
@@ -1936,50 +2026,11 @@ async def merge_receipts_impl(
 ) -> dict:
     """Invoke the merge-receipt Lambda to combine two receipt fragments."""
     try:
-        import asyncio
-
-        import boto3
-
         env = os.environ.get("PORTFOLIO_ENV", "dev")
-        function_name = f"merge-receipt-{env}-merge-receipt"
-
-        payload = {
-            "image_id": image_id,
-            "receipt_ids": receipt_ids,
-            "dry_run": dry_run,
-        }
-
-        logger.info(
-            "Invoking %s with payload: %s",
-            function_name,
-            json.dumps(payload),
+        return await _invoke_lambda(
+            f"merge-receipt-{env}-merge-receipt",
+            {"image_id": image_id, "receipt_ids": receipt_ids, "dry_run": dry_run},
         )
-
-        def _invoke():
-            lambda_client = boto3.client("lambda", region_name="us-east-1")
-            return lambda_client.invoke(
-                FunctionName=function_name,
-                InvocationType="RequestResponse",
-                Payload=json.dumps(payload),
-            )
-
-        # Run in a thread to avoid blocking the async event loop —
-        # the Lambda can take 30+ seconds for image processing,
-        # embedding creation, and compaction waits.
-        response = await asyncio.to_thread(_invoke)
-
-        response_payload = json.loads(response["Payload"].read())
-
-        # Check for Lambda-level errors
-        if "FunctionError" in response:
-            return {
-                "error": "Lambda execution failed",
-                "function_error": response["FunctionError"],
-                "details": response_payload,
-            }
-
-        return response_payload
-
     except Exception as e:
         logger.exception("Error invoking merge-receipt Lambda")
         return {"error": str(e)}
