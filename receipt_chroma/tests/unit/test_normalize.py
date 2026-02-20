@@ -26,16 +26,16 @@ class TestNormalizePhone:
         assert normalize_phone("11234567890") == "1234567890"
         assert normalize_phone("+1 123-456-7890") == "1234567890"
 
-    def test_phone_extra_digits(self):
-        """Test phone number with extra digits."""
-        assert normalize_phone("1234567890123") == "4567890123"  # Last 10
-        assert normalize_phone("12345678901234") == "5678901234"  # Last 10
+    def test_phone_extra_digits_rejected(self):
+        """Test phone number with extra digits is rejected (not silently truncated)."""
+        assert normalize_phone("1234567890123") == ""  # 13 digits, reject
+        assert normalize_phone("12345678901234") == ""  # 14 digits, reject
+        assert normalize_phone("8057774730740") == ""  # Bug case: phone + adjacent text
 
     def test_invalid_phone(self):
         """Test invalid phone numbers."""
         assert normalize_phone("123") == ""  # Too short
-        # 11 digits that don't start with 1: takes last 10 digits
-        assert normalize_phone("12345678901") == "2345678901"
+        assert normalize_phone("22345678901") == ""  # 11 digits not starting with 1
         assert normalize_phone("") == ""
         assert normalize_phone(None) == ""
 
