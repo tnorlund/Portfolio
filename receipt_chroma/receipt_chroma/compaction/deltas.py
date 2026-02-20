@@ -138,7 +138,11 @@ def _process_single_run(
             receipt_id=receipt_id,
         )
 
-        if run_id and image_id is not None and receipt_id is not None:
+        if (
+            run_id is not None
+            and image_id is not None
+            and receipt_id is not None
+        ):
             return {
                 "run_id": run_id,
                 "image_id": image_id,
@@ -252,17 +256,15 @@ def _merge_delta_into_snapshot(
 
         return len(ids)
 
-    except Exception as exc:
-        logger.info(
-            "Delta has no collection or failed to read: collection=%s, "
-            "run_id=%s, image_id=%s, receipt_id=%s, error=%s",
+    except Exception:
+        logger.exception(
+            "Delta has no collection or failed to read: "
+            "collection=%s, run_id=%s, image_id=%s, receipt_id=%s",
             collection_name,
             run_id,
             image_id,
             receipt_id,
-            str(exc),
         )
-        logger.exception("Exception details for delta collection read")
         return 0
     finally:
         delta_client.close()
@@ -381,7 +383,7 @@ def _download_delta_to_dir(
                     != dest_dir_abs
                 ):
                     raise ValueError(f"Unsafe path in tarball: {member.name}")
-            tar.extractall(dest_dir_abs)
+            tar.extractall(dest_dir_abs, filter="data")
 
         logger.info("Successfully extracted tarball delta")
         return

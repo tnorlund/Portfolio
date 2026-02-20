@@ -525,7 +525,7 @@ class HybridLambdaDeployment(ComponentResource):
             code=summary_updater_code,
             handler="handler.lambda_handler",
             role=self.lambda_role.arn,
-            timeout=60,  # 60 seconds - matches SQS visibility timeout
+            timeout=60,  # 60s; SQS visibility is 2x (120s) for retry headroom
             memory_size=256,  # Lightweight processing
             environment={
                 "variables": {
