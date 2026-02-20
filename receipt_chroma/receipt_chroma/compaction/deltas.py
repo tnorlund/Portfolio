@@ -226,10 +226,11 @@ def _merge_delta_into_snapshot(
         )
 
         if missing_ids:
-            logger.warning(
-                "Upsert verification found missing records: run_id=%s, "
-                "image_id=%s, receipt_id=%s, collection=%s, "
-                "total=%d, missing=%d",
+            logger.error(
+                "Upsert verification failed — returning 0 so the run "
+                "is not marked as merged and can be retried: "
+                "run_id=%s, image_id=%s, receipt_id=%s, "
+                "collection=%s, total=%d, missing=%d",
                 run_id,
                 image_id,
                 receipt_id,
@@ -237,16 +238,17 @@ def _merge_delta_into_snapshot(
                 len(ids),
                 len(missing_ids),
             )
-        else:
-            logger.info(
-                "Upsert verified successfully: run_id=%s, image_id=%s, "
-                "receipt_id=%s, collection=%s, verified_count=%d",
-                run_id,
-                image_id,
-                receipt_id,
-                collection_name,
-                len(ids),
-            )
+            return 0
+
+        logger.info(
+            "Upsert verified successfully: run_id=%s, image_id=%s, "
+            "receipt_id=%s, collection=%s, verified_count=%d",
+            run_id,
+            image_id,
+            receipt_id,
+            collection_name,
+            len(ids),
+        )
 
         return len(ids)
 
