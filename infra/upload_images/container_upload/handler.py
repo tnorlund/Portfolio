@@ -48,7 +48,8 @@ def _handle_upload(event):
     content_type = body.get("content_type", "image/jpeg")
     filename = urllib.parse.unquote(filename_raw)
 
-    key = f"raw-receipts/{filename}"
+    image_id = str(uuid.uuid4())
+    key = f"raw-receipts/{image_id}/{filename}"
 
     # 1. presign PUT
     url = s3.generate_presigned_url(
@@ -63,7 +64,7 @@ def _handle_upload(event):
 
     # 2. create OCR job record *now*
     job = OCRJob(
-        image_id=str(uuid.uuid4()),
+        image_id=image_id,
         job_id=str(uuid.uuid4()),
         s3_bucket=BUCKET_NAME,
         s3_key=key,
