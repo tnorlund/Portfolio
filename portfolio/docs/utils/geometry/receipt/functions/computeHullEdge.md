@@ -8,7 +8,7 @@
 
 > **computeHullEdge**(`hull`, `bins?`, `pick`): \{ `bottom`: [`Point`](../../basic/interfaces/Point.md); `top`: [`Point`](../../basic/interfaces/Point.md); \} \| `null`
 
-Defined in: [utils/geometry/receipt.ts:96](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/utils/geometry/receipt.ts#L96)
+Defined in: [utils/geometry/receipt.ts:96](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/utils/geometry/receipt.ts#L96)
 
 Sample points from a convex hull to estimate the left or right edge
 as a straight line.
