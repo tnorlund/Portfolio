@@ -406,7 +406,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                     let range = NSRange(location: currentLocation, length: nsWord.length)
                     wordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
                     aggregatedText.append(word.text)
-                    aggregatedText.append(" ")
+                    let separator = (wordIndex == line.words.count - 1) ? "\n" : " "
+                    aggregatedText.append(separator)
                     currentLocation += nsWord.length + 1
                 }
             }
@@ -478,7 +479,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                                         let range = NSRange(location: receiptCurrentLocation, length: nsWord.length)
                                         receiptWordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
                                         receiptAggregatedText.append(word.text)
-                                        receiptAggregatedText.append(" ")
+                                        let separator = (wordIndex == line.words.count - 1) ? "\n" : " "
+                                        receiptAggregatedText.append(separator)
                                         receiptCurrentLocation += nsWord.length + 1
                                     }
                                 }
@@ -629,7 +631,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                 let range = NSRange(location: currentLocation, length: nsWord.length)
                 wordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
                 aggregatedText.append(word.text)
-                aggregatedText.append(" ")
+                let separator = (wordIndex == line.words.count - 1) ? "\n" : " "
+                aggregatedText.append(separator)
                 currentLocation += nsWord.length + 1
             }
         }
@@ -690,7 +693,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                                     let range = NSRange(location: receiptCurrentLocation, length: nsWord.length)
                                     receiptWordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
                                     receiptAggregatedText.append(word.text)
-                                    receiptAggregatedText.append(" ")
+                                    let separator = (wordIndex == line.words.count - 1) ? "\n" : " "
+                                    receiptAggregatedText.append(separator)
                                     receiptCurrentLocation += nsWord.length + 1
                                 }
                             }

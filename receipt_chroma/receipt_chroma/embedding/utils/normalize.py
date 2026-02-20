@@ -12,18 +12,15 @@ def normalize_phone(text: Optional[str]) -> str:
     """
     Normalize to a canonical 10-digit US phone number.
     - Remove non-digits
-    - If starts with '1' and length > 10, drop the leading 1
-    - If length > 10, keep the last 10 digits
-    - If result length != 10, return empty string
+    - If starts with '1' and length == 11, drop the leading country code
+    - Reject if length != 10 (don't guess by taking last 10)
     - Reject trivial sequences (all identical digits)
     """
     if not text:
         return ""
     digits = re.sub(r"\D+", "", str(text))
-    if digits.startswith("1") and len(digits) > 10:
+    if digits.startswith("1") and len(digits) == 11:
         digits = digits[1:]
-    if len(digits) > 10:
-        digits = digits[-10:]
     if len(digits) != 10:
         return ""
     if len(set(digits)) == 1:  # reject 0000000000, 1111111111, etc.
