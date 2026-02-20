@@ -6,7 +6,7 @@
 
 # Interface: LabelEvaluatorAggregateStats
 
-Defined in: [types/api.ts:595](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L595)
+Defined in: [types/api.ts:595](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L595)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:595](https://github.com/tnorlund/Portfolio/blob/74e113
 
 > **avg\_issues**: `number`
 
-Defined in: [types/api.ts:598](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L598)
+Defined in: [types/api.ts:598](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L598)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:598](https://github.com/tnorlund/Portfolio/blob/74e113
 
 > **batch\_size**: `number`
 
-Defined in: [types/api.ts:597](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L597)
+Defined in: [types/api.ts:597](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L597)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:597](https://github.com/tnorlund/Portfolio/blob/74e113
 
 > **max\_issues**: `number`
 
-Defined in: [types/api.ts:599](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L599)
+Defined in: [types/api.ts:599](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L599)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:599](https://github.com/tnorlund/Portfolio/blob/74e113
 
 > **receipts\_with\_issues**: `number`
 
-Defined in: [types/api.ts:600](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L600)
+Defined in: [types/api.ts:600](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L600)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:600](https://github.com/tnorlund/Portfolio/blob/74e113
 
 > **total\_receipts\_in\_pool**: `number`
 
-Defined in: [types/api.ts:596](https://github.com/tnorlund/Portfolio/blob/74e113da5b8c211adc8297cd39f89d5558ebd798/portfolio/types/api.ts#L596)
+Defined in: [types/api.ts:596](https://github.com/tnorlund/Portfolio/blob/e208a997c9879bf7e24bf025e89df322b28a59fc/portfolio/types/api.ts#L596)
