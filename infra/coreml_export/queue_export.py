@@ -105,7 +105,7 @@ def handler(event, context):
         output_bucket = model_s3_uri.split("/")[2]
 
     output_s3_prefix = f"s3://{output_bucket}/coreml/{job_name}/"
-    quantize = os.environ.get("DEFAULT_QUANTIZE", "float16")
+    quantize = os.environ.get("DEFAULT_QUANTIZE", "") or None
     queue_url = os.environ["COREML_EXPORT_JOB_QUEUE_URL"]
 
     # Create CoreMLExportJob entity using proper class
