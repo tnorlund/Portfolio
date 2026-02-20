@@ -21,7 +21,19 @@ class MissingDependencyError(CoreMLExportError):
 
 
 class NaNWeightsError(CoreMLExportError):
-    """Raised when exported CoreML model contains NaN weight values."""
+    """Raised when exported CoreML model contains NaN weight values.
+
+    Typically caused by float16 quantization overflowing large weight
+    values (FP16 max is 65504). Re-export without ``--quantize float16``.
+    """
+
+    def __init__(self, nan_count: int, weight_path):
+        self.nan_count = nan_count
+        self.weight_path = weight_path
+        super().__init__(
+            f"Exported CoreML model contains {nan_count} NaN values "
+            f"in weight.bin ({weight_path})."
+        )
 
 
 class LayoutLMWrapper(nn.Module):
@@ -233,20 +245,18 @@ def export_coreml(
     # Validate that the weight file contains no NaN values.
     # Float16 conversion can overflow certain weights (FP16 max is 65504),
     # producing NaN that propagates through the entire forward pass.
+    # After int8/int4 post-conversion quantization the weight layout changes
+    # to integer-packed data; interpreting those bytes as float16 would
+    # produce spurious NaN hits, so skip the check for those modes.
     weight_path = (
         mlpackage_path / "Data" / "com.apple.CoreML" / "weights" / "weight.bin"
     )
-    if weight_path.exists():
+    if weight_path.exists() and quantize not in ("int8", "int4"):
         raw = weight_path.read_bytes()
         fp16_arr = np.frombuffer(raw, dtype=np.float16)
         nan_count = int(np.isnan(fp16_arr).sum())
         if nan_count > 0:
-            raise NaNWeightsError(
-                f"Exported CoreML model contains {nan_count} NaN values in "
-                f"weight.bin ({weight_path}). This is typically caused by "
-                f"float16 quantization overflowing large weight values. "
-                f"Re-export without --quantize float16."
-            )
+            raise NaNWeightsError(nan_count, weight_path)
         print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN")
 
     # Copy vocab.txt for tokenizer
