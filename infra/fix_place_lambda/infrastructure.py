@@ -103,7 +103,8 @@ class FixPlaceLambda(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -189,7 +190,9 @@ class FixPlaceLambda(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": ("https://api.smith.langchain.com"),
-                "LANGCHAIN_PROJECT": (config.get("langchain_project") or "fix-place"),
+                "LANGCHAIN_PROJECT": (
+                    config.get("langchain_project") or "fix-place"
+                ),
             },
         }
 

@@ -9,7 +9,8 @@ Input:
     {
         "image_id": "uuid-string",
         "receipt_id": 1,
-        "reason": "Merchant shows 'Hyatt Regency Westlake' but receipt is from VONS"
+        "reason": "Merchant shows 'Hyatt Regency Westlake' "
+                  "but receipt is from VONS"
     }
 
 Output:
@@ -59,7 +60,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-def _propagate_env_vars():
+def _propagate_env_vars() -> None:
     """Ensure receipt_agent settings find our Lambda env vars."""
     aliases = [
         ("OPENAI_API_KEY", "RECEIPT_AGENT_OPENAI_API_KEY"),
@@ -74,14 +75,14 @@ def _propagate_env_vars():
             os.environ[dest] = os.environ[src]
 
 
-def flush_langsmith_traces():
+def flush_langsmith_traces() -> None:
     """Flush all pending LangSmith traces to the API."""
-    if HAS_LANGSMITH and get_langsmith_client:
+    if HAS_LANGSMITH and get_langsmith_client is not None:
         try:
             client = get_langsmith_client()
             client.flush()
             logger.info("LangSmith traces flushed successfully")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             error_str = str(e)
             if "multipart" in error_str.lower():
                 logger.debug(
@@ -101,6 +102,7 @@ async def _run_place_finder(
     reason: str,
 ) -> tuple[dict[str, Any], Any]:
     """Run the LangGraph place finder agent for a single receipt."""
+    # pylint: disable=import-outside-toplevel
     from receipt_agent.clients.factory import (
         create_embed_fn,
         create_places_client,
@@ -153,7 +155,9 @@ async def _run_place_finder(
     return result, details
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(  # pylint: disable=unused-argument
+    event: dict[str, Any], context: Any
+) -> dict[str, Any]:
     """
     Lambda handler to fix an incorrect ReceiptPlace record.
 
@@ -200,7 +204,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
-                "reasoning": agent_result.get("reasoning", "") if agent_result else "",
+                "reasoning": (
+                    agent_result.get("reasoning", "") if agent_result else ""
+                ),
             }
 
         # Update ReceiptPlace with agent results
@@ -228,7 +234,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Successfully fixed place: %s", response)
         return response
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.exception("Error fixing place")
         return {
             "success": False,
@@ -249,6 +255,7 @@ def _update_receipt_place(
     reason: str,
 ) -> Any:
     """Update or create ReceiptPlace with agent results."""
+    # pylint: disable=import-outside-toplevel
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import ReceiptPlace
 
@@ -273,27 +280,29 @@ def _update_receipt_place(
         current_place.confidence = confidence
         current_place.reasoning = reasoning
         current_place.validated_by = "place_finder_agent"
-        current_place.validation_status = "MATCHED" if confidence >= 0.8 else "UNSURE"
+        current_place.validation_status = (
+            "MATCHED" if confidence >= 0.8 else "UNSURE"
+        )
         current_place.timestamp = now
 
         dynamo_client.update_receipt_place(current_place)
         return current_place
-    else:
-        # Create new place
-        new_place = ReceiptPlace(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            place_id=agent_result.get("place_id", ""),
-            merchant_name=agent_result.get("merchant_name", ""),
-            formatted_address=agent_result.get("address", ""),
-            phone_number=agent_result.get("phone_number", ""),
-            merchant_types=[],
-            confidence=confidence,
-            reasoning=reasoning,
-            validated_by="place_finder_agent",
-            validation_status=("MATCHED" if confidence >= 0.8 else "UNSURE"),
-            timestamp=now,
-        )
 
-        dynamo_client.add_receipt_place(new_place)
-        return new_place
+    # Create new place
+    new_place = ReceiptPlace(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        place_id=agent_result.get("place_id", ""),
+        merchant_name=agent_result.get("merchant_name", ""),
+        formatted_address=agent_result.get("address", ""),
+        phone_number=agent_result.get("phone_number", ""),
+        merchant_types=[],
+        confidence=confidence,
+        reasoning=reasoning,
+        validated_by="place_finder_agent",
+        validation_status=("MATCHED" if confidence >= 0.8 else "UNSURE"),
+        timestamp=now,
+    )
+
+    dynamo_client.add_receipt_place(new_place)
+    return new_place

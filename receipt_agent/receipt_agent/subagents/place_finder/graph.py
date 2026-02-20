@@ -389,7 +389,8 @@ def create_receipt_place_finder_graph(
                     )
             if len(state.messages) > 20:
                 logger.error(
-                    "Agent exceeded 20 steps without submitting" " - forcing end"
+                    "Agent exceeded 20 steps without submitting"
+                    " - forcing end"
                 )
                 return "end"
             return "agent"
@@ -513,7 +514,8 @@ async def run_receipt_place_finder(
     )
     if reason:
         human_content += (
-            f"\n\nContext: The current place data is wrong. " f"Reason: {reason}"
+            "\n\nContext: The current place data is wrong. "
+            f"Reason: {reason}"
         )
 
     # Create initial state
