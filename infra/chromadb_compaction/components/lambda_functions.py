@@ -166,11 +166,10 @@ class HybridLambdaDeployment(ComponentResource):
                 "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
-                # Phase 1 optimization: Single concurrent execution eliminates
-                # race conditions where Lambda B could read stale snapshot
-                # before Lambda A writes the pointer. Also eliminates wasted
-                # invocations from lock contention.
-                "reserved_concurrent_executions": 1,
+                # Allow 2 concurrent invocations so lines and words queues
+                # can be processed in parallel.  Per-collection locks in the
+                # handler prevent concurrent writes to the same snapshot.
+                "reserved_concurrent_executions": 2,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
                     "delta message processing"
@@ -789,6 +788,12 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
+            # Minimum for standard queues is 2.  Combined with the
+            # Lambda's reserved_concurrent_executions=2, each queue
+            # effectively gets one slot while both run in parallel.
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=2,
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -799,6 +804,9 @@ class HybridLambdaDeployment(ComponentResource):
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=2,
+            ),
             opts=ResourceOptions(parent=self),
         )
 
