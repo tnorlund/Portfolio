@@ -30,12 +30,16 @@ class TestNormalizePhone:
         """Test phone number with extra digits is rejected (not silently truncated)."""
         assert normalize_phone("1234567890123") == ""  # 13 digits, reject
         assert normalize_phone("12345678901234") == ""  # 14 digits, reject
-        assert normalize_phone("8057774730740") == ""  # Bug case: phone + adjacent text
+        assert (
+            normalize_phone("8057774730740") == ""
+        )  # Bug case: phone + adjacent text
 
     def test_invalid_phone(self):
         """Test invalid phone numbers."""
         assert normalize_phone("123") == ""  # Too short
-        assert normalize_phone("22345678901") == ""  # 11 digits not starting with 1
+        assert (
+            normalize_phone("22345678901") == ""
+        )  # 11 digits not starting with 1
         assert normalize_phone("") == ""
         assert normalize_phone(None) == ""
 
