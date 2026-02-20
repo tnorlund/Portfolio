@@ -10,10 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image as PIL_Image
 from receipt_upload.cluster import reorder_box_points
 from receipt_upload.geometry.hull_operations import box_points, min_area_rect
-from receipt_upload.geometry.transformations import (
-    find_perspective_coeffs,
-    invert_warp,
-)
+from receipt_upload.geometry.transformations import find_perspective_coeffs
 
 IMAGE_PROCESSING_AVAILABLE = True
 
@@ -168,8 +165,8 @@ def transform_point_to_warped_space(
     Transform a point from original image space to warped/rectified space.
 
     Uses the perspective transform defined by src_corners -> dst_corners.
-    Since PIL uses backward mapping (dst -> src), we need to solve for
-    the forward mapping.
+    find_perspective_coeffs(src_points=dst, dst_points=src) returns
+    coefficients that map src (image) -> dst (warped) directly.
 
     Args:
         x, y: Point in original image space (PIL space, y=0 at top)
@@ -187,22 +184,17 @@ def transform_point_to_warped_space(
         (0.0, float(warped_height - 1)),
     ]
 
-    # Get backward transform coefficients (dst -> src)
-    backward_coeffs = find_perspective_coeffs(
-        src_points=dst_corners,  # Note: swapped for backward mapping
+    # find_perspective_coeffs(src_points, dst_points) returns coefficients
+    # that map dst -> src.  By passing dst_corners as src_points and
+    # src_corners as dst_points, we get coefficients that map
+    # src_corners (image) -> dst_corners (warped).
+    coeffs = find_perspective_coeffs(
+        src_points=dst_corners,
         dst_points=src_corners,
     )
-    if len(backward_coeffs) != 8:
-        raise ValueError(
-            f"Expected 8 warp coefficients, got {len(backward_coeffs)}"
-        )
-    a, b, c, d, e, f, g, h = backward_coeffs
+    a, b, c, d, e, f, g, h = coeffs
 
-    # Invert to get forward transform (src -> dst)
-    forward_coeffs = invert_warp(a, b, c, d, e, f, g, h)
-
-    # Apply forward transform: x_dst = (a*x_src + b*y_src + c) / (1 + g*x_src + h*y_src)
-    a, b, c, d, e, f, g, h = forward_coeffs
+    # Apply: x_warped = (a*x + b*y + c) / (1 + g*x + h*y)
     denom = 1.0 + g * x + h * y
     if abs(denom) < 1e-10:
         # Degenerate case, return original coordinates

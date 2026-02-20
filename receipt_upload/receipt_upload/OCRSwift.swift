@@ -376,8 +376,9 @@ if CommandLine.arguments.count > 2 {
                     let wordRange = NSRange(location: currentLocation, length: nsWord.length)
                     wordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: wordRange))
                     aggregatedText.append(word.text)
-                    aggregatedText.append(" ") // Use a space as a separator.
-                    currentLocation += nsWord.length + 1  // Account for the space.
+                    let separator = (wordIndex == line.words.count - 1) ? "\n" : " "
+                    aggregatedText.append(separator) // Use newline at end-of-line to preserve line boundaries for NSDataDetector.
+                    currentLocation += nsWord.length + 1  // Account for the separator.
                 }
             }
 

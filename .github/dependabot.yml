@@ -26,6 +26,19 @@ updates:
       prefix: "chore"
       include: "scope"
 
+  # Enable version updates for pip (Python) - receipt_layoutlm
+  - package-ecosystem: "pip"
+    directory: "/receipt_layoutlm"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   # Enable version updates for pip (Python) - receipt_dynamo
   - package-ecosystem: "pip"
     directory: "/receipt_dynamo"
