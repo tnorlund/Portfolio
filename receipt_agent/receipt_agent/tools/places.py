@@ -242,10 +242,11 @@ def find_businesses_at_address(
             }
 
         # Extract location from geocode result
+        # Pydantic models use "latitude"/"longitude"; raw dicts use "lat"/"lng"
         geometry = geocode_result.get("geometry", {})
         location = geometry.get("location", {})
-        lat = location.get("lat")
-        lng = location.get("lng")
+        lat = location.get("lat") or location.get("latitude")
+        lng = location.get("lng") or location.get("longitude")
 
         if not lat or not lng:
             return {
