@@ -29,6 +29,7 @@ from receipt_agent.utils.label_metadata import (
     combine_where_clauses,
     metadata_matches_label_state,
 )
+from receipt_agent.tools.places import _place_to_dict
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -1183,7 +1184,9 @@ def create_agentic_tools(
                     "message": "No matching business found in Google Places",
                 }
 
-            top = result
+            # PlacesClient returns Pydantic Place models; convert to dict
+            # so downstream .get() calls work.
+            top = _place_to_dict(result)
             return {
                 "found": True,
                 "place_id": top.get("place_id"),
