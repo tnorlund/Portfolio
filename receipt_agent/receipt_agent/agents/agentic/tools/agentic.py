@@ -1281,8 +1281,8 @@ def create_agentic_tools(
                         "count": 0,
                     }
 
-                geometry = geocode_result.get("geometry", {})
-                location = geometry.get("location", {})
+                geometry = geocode_result.get("geometry") or {}
+                location = geometry.get("location") or {}
                 lat = location["lat"] if "lat" in location else location.get("latitude")
                 lng = location["lng"] if "lng" in location else location.get("longitude")
 
