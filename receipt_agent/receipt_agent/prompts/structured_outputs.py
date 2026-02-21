@@ -84,6 +84,7 @@ class ReceiptTypeEnum(str, Enum):
 
     ITEMIZED = "itemized"
     SERVICE = "service"
+    TERMINAL = "terminal"
 
 
 class ItemStructureEnum(str, Enum):

@@ -37,7 +37,8 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -65,6 +66,30 @@ logger = logging.getLogger(__name__)
 # We only filter out differences that are essentially zero due to floating point math
 # The LLM decides if a real discrepancy is acceptable based on receipt context
 FLOAT_EPSILON = 0.001
+
+
+@dataclass
+class ScannedValue:
+    """A keyword-value pair found by text scanning."""
+
+    keyword: str  # TOTAL, SUBTOTAL, TAX, TIP, AMOUNT, BALANCE, AUTHORIZED
+    value: float
+    source: str  # raw text of the number
+    line_id: int
+    line_text: str
+
+
+@dataclass
+class TextScanMathIssue:
+    """A math check result from text-scanned values."""
+
+    issue_type: str  # HAS_TOTAL, TOTAL_CHECK, TIP_CHECK
+    match: bool
+    description: str
+    expected_value: float | None = None
+    actual_value: float | None = None
+    difference: float = 0.0
+    involved_scanned: list[ScannedValue] = field(default_factory=list)
 
 
 @dataclass
@@ -176,6 +201,338 @@ def extract_financial_values(
             values_by_label[label].append(fv)
 
     return values_by_label
+
+
+# =============================================================================
+# Text Scanning for Service/Terminal Receipts
+# =============================================================================
+
+
+def _build_lines_from_words(
+    words: list,
+) -> list[tuple[int, str, list]]:
+    """Group ReceiptWord objects into sorted lines: [(line_id, line_text, words)]."""
+    by_line: dict[int, list] = defaultdict(list)
+    for w in words:
+        by_line[w.line_id].append(w)
+    for lid in by_line:
+        by_line[lid].sort(key=lambda w: w.word_id)
+
+    return [
+        (lid, " ".join(w.text for w in by_line[lid]), by_line[lid])
+        for lid in sorted(by_line.keys())
+    ]
+
+
+def _rightmost_dollar(lwords: list) -> tuple[float | None, str]:
+    """Find the rightmost number with $ or . on a line."""
+    for w in reversed(lwords):
+        num = extract_number(w.text)
+        if num is not None and ("." in w.text or "$" in w.text):
+            return num, w.text
+    return None, ""
+
+
+def scan_receipt_text(words: list) -> list[ScannedValue]:
+    """Scan raw receipt text for financial keyword-value pairs.
+
+    Uses a pending-keyword queue to handle OCR's split-line layout where
+    left-aligned keywords (Subtotal, Tip, Total) and right-aligned dollar
+    values ($50.00, $10.00, $60.00) end up on different line_ids.
+
+    Args:
+        words: List of ReceiptWord objects from DynamoDB.
+
+    Returns:
+        List of ScannedValue pairs found.
+    """
+    if not words:
+        return []
+
+    lines = _build_lines_from_words(words)
+    found: list[ScannedValue] = []
+    pending: list[tuple[str, int, str]] = []  # (keyword, line_id, line_text)
+
+    for lid, text, lwords in lines:
+        lt = text.lower()
+
+        # Skip long prose lines
+        if len(lwords) > 8:
+            continue
+
+        # --- Detect keywords on this line ---
+        keywords: list[str] = []
+
+        # Primary keywords (mutually exclusive)
+        if re.search(r"\bsub[-\s]?total\b", lt):
+            keywords.append("SUBTOTAL")
+        elif re.search(r"\bamount\b", lt):
+            keywords.append("AMOUNT")
+        elif re.search(r"\bbalance\b", lt):
+            keywords.append("BALANCE")
+        elif re.search(r"\bauthorized?\b", lt):
+            keywords.append("AUTHORIZED")
+        elif re.search(r"\btotal\b", lt):
+            keywords.append("TOTAL")
+
+        # Secondary keywords (independent)
+        if re.search(r"\b(tip|gratuity)\b", lt) and "receipt" not in lt:
+            keywords.append("TIP")
+        if re.search(r"\btax\b", lt) and "pre-tax" not in lt:
+            keywords.append("TAX")
+
+        # --- Find dollar value on this line ---
+        num, num_text = _rightmost_dollar(lwords)
+
+        # --- Pair keywords with values ---
+        if keywords and num is not None:
+            found.append(ScannedValue(keywords[0], num, num_text, lid, text))
+            for kw in keywords[1:]:
+                pending.append((kw, lid, text))
+        elif keywords:
+            for kw in keywords:
+                pending.append((kw, lid, text))
+        elif num is not None and pending:
+            kw, kw_lid, kw_text = pending.pop(0)
+            found.append(ScannedValue(kw, num, num_text, kw_lid, kw_text))
+
+    # Remaining pending keywords with ":" → mark as blank
+    for kw, lid, text in pending:
+        if ":" in text:
+            found.append(
+                ScannedValue(f"{kw}_BLANK", 0.0, "(blank)", lid, text)
+            )
+
+    return found
+
+
+def classify_receipt_type(
+    words: list | None,
+    line_item_patterns: dict | None,
+) -> str:
+    """Classify receipt type for financial math equation selection.
+
+    Args:
+        words: List of ReceiptWord objects (for text-scan fallback).
+        line_item_patterns: Pattern discovery result dict (may have receipt_type).
+
+    Returns:
+        "itemized", "service", or "terminal"
+    """
+    # Prefer line_item_patterns classification if available
+    if line_item_patterns and isinstance(line_item_patterns, dict):
+        rt = line_item_patterns.get("receipt_type")
+        if rt in ("itemized", "service", "terminal"):
+            logger.info("Receipt type from line_item_patterns: %s", rt)
+            return rt
+
+    # Text-scan fallback
+    if not words:
+        return "itemized"
+
+    scanned = scan_receipt_text(words)
+    keywords_found = {sv.keyword for sv in scanned}
+
+    has_subtotal = "SUBTOTAL" in keywords_found
+    has_tax = "TAX" in keywords_found
+    has_tip = "TIP" in keywords_found
+
+    if has_subtotal or has_tax or has_tip:
+        logger.info(
+            "Text-scan classification: service (subtotal=%s, tax=%s, tip=%s)",
+            has_subtotal,
+            has_tax,
+            has_tip,
+        )
+        return "service"
+
+    has_total = any(
+        kw in keywords_found
+        for kw in ("TOTAL", "AMOUNT", "BALANCE", "AUTHORIZED")
+    )
+    has_tip_blank = "TIP_BLANK" in keywords_found
+    if has_total or has_tip_blank:
+        logger.info("Text-scan classification: terminal")
+        return "terminal"
+
+    return "itemized"
+
+
+def check_service_equations(
+    scanned_values: list[ScannedValue],
+) -> list[TextScanMathIssue]:
+    """Check financial equations for service/terminal receipts.
+
+    Args:
+        scanned_values: Values found by scan_receipt_text().
+
+    Returns:
+        List of equation check results.
+    """
+    # Extract values by keyword priority
+    gt_val = None
+    gt_sv = None
+    for keyword in ("TOTAL", "AMOUNT", "BALANCE", "AUTHORIZED"):
+        for sv in scanned_values:
+            if sv.keyword == keyword:
+                gt_val = sv.value
+                gt_sv = sv
+                break
+        if gt_val is not None:
+            break
+
+    st_val = None
+    st_sv = None
+    for sv in scanned_values:
+        if sv.keyword == "SUBTOTAL":
+            st_val = sv.value
+            st_sv = sv
+            break
+
+    tax_val = None
+    tax_sv = None
+    for sv in scanned_values:
+        if sv.keyword == "TAX":
+            tax_val = sv.value
+            tax_sv = sv
+            break
+
+    tip_val = None
+    tip_sv = None
+    for sv in scanned_values:
+        if sv.keyword == "TIP":
+            tip_val = sv.value
+            tip_sv = sv
+            break
+
+    issues: list[TextScanMathIssue] = []
+
+    # HAS_TOTAL: does a total exist?
+    involved = [gt_sv] if gt_sv else []
+    issues.append(
+        TextScanMathIssue(
+            issue_type="HAS_TOTAL",
+            match=gt_val is not None,
+            description=(
+                f"Total found: ${gt_val:.2f}" if gt_val else "Total NOT FOUND"
+            ),
+            expected_value=gt_val,
+            actual_value=gt_val,
+            involved_scanned=[sv for sv in involved if sv],
+        )
+    )
+
+    # TOTAL_CHECK: TOTAL = SUBTOTAL + TAX (when all present)
+    if gt_val is not None and st_val is not None and tax_val is not None:
+        expected = st_val + tax_val
+        diff = gt_val - expected
+        match = abs(diff) <= 0.02
+        involved = [sv for sv in (gt_sv, st_sv, tax_sv) if sv]
+        issues.append(
+            TextScanMathIssue(
+                issue_type="TOTAL_CHECK",
+                match=match,
+                description=(
+                    f"TOTAL (${gt_val:.2f}) {'=' if match else '!='} "
+                    f"SUBTOTAL (${st_val:.2f}) + TAX (${tax_val:.2f}) "
+                    f"= ${expected:.2f}"
+                    + (f" [diff=${abs(diff):.2f}]" if not match else "")
+                ),
+                expected_value=expected,
+                actual_value=gt_val,
+                difference=diff,
+                involved_scanned=involved,
+            )
+        )
+
+    # TIP_CHECK: TOTAL = SUBTOTAL + TIP (when all present)
+    if gt_val is not None and st_val is not None and tip_val is not None:
+        expected = st_val + tip_val
+        diff = gt_val - expected
+        match = abs(diff) <= 0.02
+        involved = [sv for sv in (gt_sv, st_sv, tip_sv) if sv]
+        issues.append(
+            TextScanMathIssue(
+                issue_type="TIP_CHECK",
+                match=match,
+                description=(
+                    f"TOTAL (${gt_val:.2f}) {'=' if match else '!='} "
+                    f"SUBTOTAL (${st_val:.2f}) + TIP (${tip_val:.2f}) "
+                    f"= ${expected:.2f}"
+                    + (f" [diff=${abs(diff):.2f}]" if not match else "")
+                ),
+                expected_value=expected,
+                actual_value=gt_val,
+                difference=diff,
+                involved_scanned=involved,
+            )
+        )
+
+    return issues
+
+
+def _format_text_scan_results(
+    issues: list[TextScanMathIssue],
+    scanned_values: list[ScannedValue],
+    image_id: str,
+    receipt_id: int,
+    receipt_type: str,
+) -> list[dict]:
+    """Format text-scan equation results into the standard output format.
+
+    Produces the same list[dict] structure as _format_financial_results
+    but with deterministic decisions (no LLM needed).
+    """
+    results: list[dict[str, Any]] = []
+
+    for issue in issues:
+        # One result per issue (text-scan issues are self-contained)
+        decision = "VALID" if issue.match else "NEEDS_REVIEW"
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "receipt_type": receipt_type,
+                "issue": {
+                    "line_id": (
+                        issue.involved_scanned[0].line_id
+                        if issue.involved_scanned
+                        else 0
+                    ),
+                    "word_id": 0,
+                    "current_label": issue.issue_type,
+                    "word_text": (
+                        issue.involved_scanned[0].source
+                        if issue.involved_scanned
+                        else ""
+                    ),
+                    "issue_type": issue.issue_type,
+                    "expected_value": issue.expected_value,
+                    "actual_value": issue.actual_value,
+                    "difference": issue.difference,
+                    "description": issue.description,
+                },
+                "llm_review": {
+                    "decision": decision,
+                    "reasoning": (
+                        f"Text-scan {issue.issue_type}: {issue.description}"
+                    ),
+                    "suggested_label": None,
+                    "confidence": "high",
+                },
+            }
+        )
+
+    # Log summary
+    matched = sum(1 for i in issues if i.match)
+    logger.info(
+        "Text-scan financial results: %d issues, %d matched, receipt_type=%s",
+        len(issues),
+        matched,
+        receipt_type,
+    )
+
+    return results
 
 
 # =============================================================================
@@ -758,6 +1115,8 @@ def evaluate_financial_math(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
+    words: list | None = None,
+    line_item_patterns: dict | None = None,
 ) -> list[dict]:
     """
     Validate financial math on a receipt.
@@ -770,10 +1129,24 @@ def evaluate_financial_math(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
+        words: Raw ReceiptWord list for text scanning (service/terminal)
+        line_item_patterns: Pattern discovery result with receipt_type
 
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
+    # Step 0: Classify receipt type
+    receipt_type = classify_receipt_type(words, line_item_patterns)
+
+    if receipt_type in ("service", "terminal"):
+        # Text-scan based: no LLM needed
+        scanned = scan_receipt_text(words) if words else []
+        issues = check_service_equations(scanned)
+        return _format_text_scan_results(
+            issues, scanned, image_id, receipt_id, receipt_type
+        )
+
+    # Itemized: existing label-based approach
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
     logger.info("Detected %d math issues", len(math_issues))
@@ -986,6 +1359,8 @@ async def evaluate_financial_math_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
+    words: list | None = None,
+    line_item_patterns: dict | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_financial_math.
@@ -1002,11 +1377,24 @@ async def evaluate_financial_math_async(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
+        words: Raw ReceiptWord list for text scanning (service/terminal)
+        line_item_patterns: Pattern discovery result with receipt_type
 
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
+    # Step 0: Classify receipt type
+    receipt_type = classify_receipt_type(words, line_item_patterns)
 
+    if receipt_type in ("service", "terminal"):
+        # Text-scan based: no LLM needed
+        scanned = scan_receipt_text(words) if words else []
+        issues = check_service_equations(scanned)
+        return _format_text_scan_results(
+            issues, scanned, image_id, receipt_id, receipt_type
+        )
+
+    # Itemized: existing label-based approach
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
     logger.info("Detected %d math issues", len(math_issues))
