@@ -32,10 +32,11 @@ def _label(
 
 
 def test_compute_reocr_region_defaults_when_missing_inputs():
+    # Default: rightmost 30% plus 5% horizontal padding each side.
     assert _compute_reocr_region([], []) == {
-        "x": 0.70,
+        "x": 0.65,
         "y": 0.0,
-        "width": 0.30,
+        "width": 0.35,
         "height": 1.0,
     }
 
@@ -61,10 +62,11 @@ def test_compute_reocr_region_uses_only_valid_line_totals():
 
     region = _compute_reocr_region(words, labels)
 
+    # median x = 0.50, raw_x = 0.45, then padded: x -= 0.05, right += 0.05
     assert region == {
-        "x": 0.45,
+        "x": 0.40,
         "y": 0.0,
-        "width": 0.30,
+        "width": 0.40,
         "height": 1.0,
     }
 
@@ -78,8 +80,9 @@ def test_compute_reocr_region_clamps_to_right_boundary():
 
     region = _compute_reocr_region(words, labels)
 
-    assert region["x"] == 0.70
-    assert region["width"] == 0.30
+    # Clamped: raw_x = 0.70, then padded: x=0.65, right=1.0, width=0.35
+    assert region["x"] == pytest.approx(0.65)
+    assert region["width"] == pytest.approx(0.35)
     assert region["y"] == 0.0
     assert region["height"] == 1.0
 

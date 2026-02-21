@@ -314,6 +314,11 @@ def _enqueue_regional_reocr_job(
             getattr(job, "receipt_id", None) == receipt_id
             and getattr(job, "job_type", "")
             == OCRJobType.REGIONAL_REOCR.value
+            # Allow retry of stranded PENDING jobs (e.g. SQS send
+            # failed after DynamoDB write).  Only block when the job
+            # is actively running or already completed.
+            and getattr(job, "status", "")
+            != OCRStatus.PENDING.value
         ):
             return {
                 "triggered": False,

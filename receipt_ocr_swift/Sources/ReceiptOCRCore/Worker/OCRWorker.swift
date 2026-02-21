@@ -200,34 +200,24 @@ public final class OCRWorker {
         return worker
     }
 
-    private func normalizedRegionWithPadding(_ region: ReOCRRegion) -> ReOCRRegion {
-        // Region values are expected in Vision normalized coordinates
-        // (origin at bottom-left).
-        let horizontalPadding = 0.05
-        let left = max(0.0, region.x - horizontalPadding)
-        let right = min(1.0, region.x + region.width + horizontalPadding)
-        let width = max(0.01, right - left)
-        let clampedY = max(0.0, min(region.y, 1.0))
-        let clampedHeight = max(0.01, min(region.height, 1.0 - clampedY))
-        return ReOCRRegion(x: left, y: clampedY, width: width, height: clampedHeight)
-    }
-
     #if os(macOS)
     private func cropImageData(_ imageData: Data, region: ReOCRRegion) throws -> Data {
+        // The region already includes horizontal padding (applied in
+        // _compute_reocr_region on the Python side). Use it directly so
+        // crop and overlay coordinate mapping are identical.
         guard let nsImage = NSImage(data: imageData),
               let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw DynamoMapError.invalid("regional_reocr_image_decode")
         }
-        let padded = normalizedRegionWithPadding(region)
         let imageWidth = CGFloat(cgImage.width)
         let imageHeight = CGFloat(cgImage.height)
 
-        let cropX = max(0, min(imageWidth - 1, CGFloat(padded.x) * imageWidth))
-        let cropWidth = max(1, min(imageWidth - cropX, CGFloat(padded.width) * imageWidth))
+        let cropX = max(0, min(imageWidth - 1, CGFloat(region.x) * imageWidth))
+        let cropWidth = max(1, min(imageWidth - cropX, CGFloat(region.width) * imageWidth))
         // Vision/OCR coordinates are normalized with bottom-left origin; convert to CGImage's top-left origin.
-        let cropYFromTop = (1.0 - CGFloat(padded.y + padded.height)) * imageHeight
+        let cropYFromTop = (1.0 - CGFloat(region.y + region.height)) * imageHeight
         let cropY = max(0, min(imageHeight - 1, cropYFromTop))
-        let cropHeight = max(1, min(imageHeight - cropY, CGFloat(padded.height) * imageHeight))
+        let cropHeight = max(1, min(imageHeight - cropY, CGFloat(region.height) * imageHeight))
         let cropRect = CGRect(x: cropX, y: cropY, width: cropWidth, height: cropHeight).integral
 
         guard let croppedCG = cgImage.cropping(to: cropRect) else {

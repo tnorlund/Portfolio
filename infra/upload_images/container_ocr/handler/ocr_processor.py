@@ -40,6 +40,7 @@ from receipt_upload.utils import (
     get_ocr_job,
     get_ocr_routing_decision,
     image_ocr_to_receipt_ocr,
+    is_noise_text,
     upload_all_cdn_formats,
 )
 
@@ -437,6 +438,7 @@ class OCRProcessor:
             existing_word.angle_radians = new_word.angle_radians
             existing_word.confidence = new_word.confidence
             existing_word.extracted_data = new_word.extracted_data
+            existing_word.is_noise = is_noise_text(new_word.text)
             words_to_update.append(existing_word)
 
             old_letters = self.dynamo.list_receipt_letters_from_word(

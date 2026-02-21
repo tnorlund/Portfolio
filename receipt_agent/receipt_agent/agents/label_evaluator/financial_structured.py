@@ -583,7 +583,8 @@ def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
     (origin at bottom-left). We currently keep full-height crops
     (y=0, height=1) and only tune x/width for totals columns.
     """
-    default_region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
+    # Default: rightmost 30% plus 5% horizontal padding on each side.
+    default_region = {"x": 0.65, "y": 0.0, "width": 0.35, "height": 1.0}
 
     if not words or not labels:
         return default_region
@@ -610,11 +611,17 @@ def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
     if not valid_line_total_x:
         return default_region
 
-    # Anchor the crop slightly left of the median LINE_TOTAL x-position.
+    # Anchor the crop slightly left of the median LINE_TOTAL x-position,
+    # then add 5% horizontal padding so both the Swift crop and Python
+    # overlay use identical geometry (see PR #820 review).
     x_anchor = median(valid_line_total_x)
-    width = 0.30
-    x_start = max(0.0, min(x_anchor - 0.05, 1.0 - width))
-    return {"x": x_start, "y": 0.0, "width": width, "height": 1.0}
+    raw_width = 0.30
+    raw_x = max(0.0, min(x_anchor - 0.05, 1.0 - raw_width))
+    padding = 0.05
+    padded_x = max(0.0, raw_x - padding)
+    padded_right = min(1.0, raw_x + raw_width + padding)
+    padded_width = max(0.01, padded_right - padded_x)
+    return {"x": padded_x, "y": 0.0, "width": padded_width, "height": 1.0}
 
 
 def _subtotal_mismatch_gap(math_issues: list) -> float:
