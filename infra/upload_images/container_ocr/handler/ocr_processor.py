@@ -92,6 +92,10 @@ class OCRProcessor:
                 return self._process_refinement_job(
                     ocr_job, ocr_routing_decision
                 )
+            if ocr_job.job_type == OCRJobType.REGIONAL_REOCR.value:
+                return self._process_regional_reocr_job(
+                    ocr_job, ocr_routing_decision
+                )
 
             # Download and parse OCR JSON
             ocr_json_path = download_file_from_s3(
@@ -197,6 +201,295 @@ class OCRProcessor:
             "image_type": "REFINEMENT",
             "line_count": len(receipt_lines),
             "word_count": len(receipt_words),
+        }
+
+    @staticmethod
+    def _clamp01(value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    def _map_point_to_region(
+        self, point: dict[str, float], region: dict[str, float]
+    ) -> dict[str, float]:
+        return {
+            "x": self._clamp01(
+                region["x"] + float(point.get("x", 0.0)) * region["width"]
+            ),
+            "y": self._clamp01(
+                region["y"] + float(point.get("y", 0.0)) * region["height"]
+            ),
+        }
+
+    def _map_bbox_to_region(
+        self, bbox: dict[str, float], region: dict[str, float]
+    ) -> dict[str, float]:
+        return {
+            "x": self._clamp01(
+                region["x"] + float(bbox.get("x", 0.0)) * region["width"]
+            ),
+            "y": self._clamp01(
+                region["y"] + float(bbox.get("y", 0.0)) * region["height"]
+            ),
+            "width": max(
+                0.0, min(1.0, float(bbox.get("width", 0.0)) * region["width"])
+            ),
+            "height": max(
+                0.0,
+                min(1.0, float(bbox.get("height", 0.0)) * region["height"]),
+            ),
+        }
+
+    def _apply_region_mapping(
+        self,
+        receipt_lines: list[ReceiptLine],
+        receipt_words: list[ReceiptWord],
+        receipt_letters: list[ReceiptLetter],
+        region: dict[str, float],
+    ) -> None:
+        """Map crop-space OCR geometry back to full receipt normalized space."""
+
+        for entity in receipt_lines + receipt_words + receipt_letters:
+            entity.bounding_box = self._map_bbox_to_region(
+                entity.bounding_box, region
+            )
+            entity.top_left = self._map_point_to_region(entity.top_left, region)
+            entity.top_right = self._map_point_to_region(entity.top_right, region)
+            entity.bottom_left = self._map_point_to_region(
+                entity.bottom_left, region
+            )
+            entity.bottom_right = self._map_point_to_region(
+                entity.bottom_right, region
+            )
+
+    @staticmethod
+    def _bbox_center_x(bbox: dict[str, float]) -> float:
+        return float(bbox.get("x", 0.0)) + (float(bbox.get("width", 0.0)) / 2.0)
+
+    @staticmethod
+    def _y_overlap_ratio(
+        a_bbox: dict[str, float], b_bbox: dict[str, float]
+    ) -> float:
+        a_y1 = float(a_bbox.get("y", 0.0))
+        a_y2 = a_y1 + float(a_bbox.get("height", 0.0))
+        b_y1 = float(b_bbox.get("y", 0.0))
+        b_y2 = b_y1 + float(b_bbox.get("height", 0.0))
+        overlap = max(0.0, min(a_y2, b_y2) - max(a_y1, b_y1))
+        denom = max(
+            min(
+                float(a_bbox.get("height", 0.0)),
+                float(b_bbox.get("height", 0.0)),
+            ),
+            1e-6,
+        )
+        return overlap / denom
+
+    def _match_regional_words(
+        self,
+        new_words: list[ReceiptWord],
+        candidate_words: list[ReceiptWord],
+    ) -> list[tuple[ReceiptWord, ReceiptWord]]:
+        """Greedy y-overlap matching between re-OCR words and existing words."""
+        remaining = list(candidate_words)
+        matches: list[tuple[ReceiptWord, ReceiptWord]] = []
+
+        for new_word in sorted(
+            new_words,
+            key=lambda w: (
+                float(w.bounding_box.get("y", 0.0)),
+                float(w.bounding_box.get("x", 0.0)),
+            ),
+        ):
+            best_idx: int | None = None
+            best_score = -1.0
+            for idx, old_word in enumerate(remaining):
+                overlap = self._y_overlap_ratio(
+                    new_word.bounding_box, old_word.bounding_box
+                )
+                if overlap < 0.15:
+                    continue
+                x_distance = abs(
+                    self._bbox_center_x(new_word.bounding_box)
+                    - self._bbox_center_x(old_word.bounding_box)
+                )
+                score = overlap - (0.5 * x_distance)
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
+
+            if best_idx is None:
+                continue
+
+            old_word = remaining.pop(best_idx)
+            matches.append((new_word, old_word))
+
+        return matches
+
+    def _process_regional_reocr_job(
+        self, ocr_job: Any, ocr_routing_decision: Any
+    ) -> Dict[str, Any]:
+        """Overlay regional re-OCR words onto existing receipt words."""
+        logger.info("Regional re-OCR overlay for receipt %s", ocr_job.image_id)
+
+        if ocr_job.receipt_id is None:
+            return {"success": False, "error": "Receipt ID is None"}
+        if not ocr_job.reocr_region:
+            return {"success": False, "error": "reocr_region is missing"}
+
+        region = {
+            "x": float(ocr_job.reocr_region.get("x", 0.70)),
+            "y": float(ocr_job.reocr_region.get("y", 0.0)),
+            "width": float(ocr_job.reocr_region.get("width", 0.30)),
+            "height": float(ocr_job.reocr_region.get("height", 1.0)),
+        }
+
+        ocr_json_path = download_file_from_s3(
+            ocr_routing_decision.s3_bucket,
+            ocr_routing_decision.s3_key,
+            Path("/tmp"),
+        )
+        with open(ocr_json_path, "r", encoding="utf-8") as f:
+            ocr_json = json.load(f)
+
+        lines_data = ocr_json.get("lines", [])
+        if not lines_data and ocr_json.get("receipts"):
+            first_receipt = ocr_json["receipts"][0]
+            lines_data = first_receipt.get("lines", [])
+
+        ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
+            {"lines": lines_data}, ocr_job.image_id
+        )
+        receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
+            lines=ocr_lines,
+            words=ocr_words,
+            letters=ocr_letters,
+            receipt_id=ocr_job.receipt_id,
+        )
+        self._apply_region_mapping(
+            receipt_lines, receipt_words, receipt_letters, region
+        )
+
+        existing_words = self.dynamo.list_receipt_words_from_receipt(
+            ocr_job.image_id, ocr_job.receipt_id
+        )
+        if not existing_words:
+            return {
+                "success": False,
+                "error": "No existing receipt words found for overlay",
+            }
+
+        labels: list[Any] = []
+        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
+        )
+        labels.extend(page or [])
+        while lek:
+            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                last_evaluated_key=lek,
+            )
+            labels.extend(page or [])
+        labeled_keys = {(lbl.line_id, lbl.word_id) for lbl in labels}
+
+        region_x1 = region["x"]
+        region_x2 = region["x"] + region["width"]
+        candidate_words = [
+            word
+            for word in existing_words
+            if region_x1
+            <= self._bbox_center_x(word.bounding_box)
+            <= region_x2
+        ]
+        if labeled_keys:
+            labeled_candidates = [
+                word
+                for word in candidate_words
+                if (word.line_id, word.word_id) in labeled_keys
+            ]
+            if labeled_candidates:
+                candidate_words = labeled_candidates
+
+        matches = self._match_regional_words(receipt_words, candidate_words)
+        if not matches:
+            logger.warning(
+                "Regional re-OCR produced no overlay matches for %s#%s",
+                ocr_job.image_id,
+                ocr_job.receipt_id,
+            )
+
+        new_letters_by_new_key: dict[tuple[int, int], list[ReceiptLetter]] = {}
+        for letter in receipt_letters:
+            new_letters_by_new_key.setdefault(
+                (letter.line_id, letter.word_id), []
+            ).append(letter)
+
+        words_to_update: list[ReceiptWord] = []
+        letters_to_delete: list[ReceiptLetter] = []
+        letters_to_add: list[ReceiptLetter] = []
+
+        for new_word, existing_word in matches:
+            existing_word.text = new_word.text
+            existing_word.bounding_box = new_word.bounding_box
+            existing_word.top_left = new_word.top_left
+            existing_word.top_right = new_word.top_right
+            existing_word.bottom_left = new_word.bottom_left
+            existing_word.bottom_right = new_word.bottom_right
+            existing_word.angle_degrees = new_word.angle_degrees
+            existing_word.angle_radians = new_word.angle_radians
+            existing_word.confidence = new_word.confidence
+            existing_word.extracted_data = new_word.extracted_data
+            words_to_update.append(existing_word)
+
+            old_letters = self.dynamo.list_receipt_letters_from_word(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                line_id=existing_word.line_id,
+                word_id=existing_word.word_id,
+            )
+            letters_to_delete.extend(old_letters)
+
+            replacement_letters = new_letters_by_new_key.get(
+                (new_word.line_id, new_word.word_id), []
+            )
+            for letter_idx, letter in enumerate(replacement_letters, start=1):
+                letters_to_add.append(
+                    ReceiptLetter(
+                        image_id=ocr_job.image_id,
+                        receipt_id=ocr_job.receipt_id,
+                        line_id=existing_word.line_id,
+                        word_id=existing_word.word_id,
+                        letter_id=letter_idx,
+                        text=letter.text,
+                        bounding_box=letter.bounding_box,
+                        top_left=letter.top_left,
+                        top_right=letter.top_right,
+                        bottom_left=letter.bottom_left,
+                        bottom_right=letter.bottom_right,
+                        angle_degrees=letter.angle_degrees,
+                        angle_radians=letter.angle_radians,
+                        confidence=letter.confidence,
+                    )
+                )
+
+        if words_to_update:
+            self.dynamo.update_receipt_words(words_to_update)
+        if letters_to_delete:
+            self.dynamo.delete_receipt_letters(letters_to_delete)
+        if letters_to_add:
+            self.dynamo.add_receipt_letters(letters_to_add)
+
+        ocr_routing_decision.status = OCRStatus.COMPLETED.value
+        ocr_routing_decision.receipt_count = 1
+        ocr_routing_decision.updated_at = datetime.now(timezone.utc)
+        self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
+
+        return {
+            "success": True,
+            "image_id": ocr_job.image_id,
+            "receipt_id": ocr_job.receipt_id,
+            "image_type": "REGIONAL_REOCR",
+            "line_count": len(receipt_lines),
+            "word_count": len(words_to_update),
+            "words_replaced": len(words_to_update),
         }
 
     def _process_swift_single_pass(

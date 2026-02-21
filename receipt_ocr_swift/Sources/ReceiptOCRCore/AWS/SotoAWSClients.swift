@@ -253,6 +253,36 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             guard case .s(let v)? = attrs[key] else { throw DynamoMapError.missing(key) }
             return v
         }
+        func getOptionalS(_ key: String) -> String? {
+            guard case .s(let v)? = attrs[key] else { return nil }
+            return v
+        }
+        func getOptionalInt(_ key: String) -> Int? {
+            guard case .n(let n)? = attrs[key] else { return nil }
+            return Int(n)
+        }
+        func getOptionalRegion(_ key: String) throws -> ReOCRRegion? {
+            guard let raw = attrs[key] else { return nil }
+            switch raw {
+            case .null(let isNull):
+                return isNull ? nil : nil
+            case .m(let map):
+                func readDouble(_ field: String) throws -> Double {
+                    guard case .n(let n)? = map[field], let value = Double(n) else {
+                        throw DynamoMapError.invalid("\(key).\(field)")
+                    }
+                    return value
+                }
+                return try ReOCRRegion(
+                    x: readDouble("x"),
+                    y: readDouble("y"),
+                    width: readDouble("width"),
+                    height: readDouble("height")
+                )
+            default:
+                throw DynamoMapError.invalid(key)
+            }
+        }
         let pk = try getS("PK")
         let sk = try getS("SK")
         guard let imageId = pk.split(separator: "#").last.map(String.init) else { throw DynamoMapError.invalid("PK") }
@@ -262,9 +292,11 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         let createdAtStr = try getS("created_at")
         let updatedAtStr = try getS("updated_at")
         let statusStr = try getS("status")
+        let jobTypeStr = getOptionalS("job_type") ?? OCRJobType.firstPass.rawValue
         guard let createdAt = ISO8601Python.parse(createdAtStr) else { throw DynamoMapError.invalid("created_at") }
         guard let updatedAt = ISO8601Python.parse(updatedAtStr) ?? ISO8601Python.parse(createdAtStr) else { throw DynamoMapError.invalid("updated_at") }
         guard let status = OCRStatus(rawValue: statusStr) else { throw DynamoMapError.invalid("status") }
+        let jobType = OCRJobType(rawValue: jobTypeStr) ?? .firstPass
         return OCRJob(
             imageId: imageId,
             jobId: jobId,
@@ -272,9 +304,12 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             s3Key: s3Key,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            status: status
+            status: status,
+            jobType: jobType,
+            receiptId: getOptionalInt("receipt_id"),
+            reocrRegion: try getOptionalRegion("reocr_region"),
+            reocrReason: getOptionalS("reocr_reason")
         )
     }
 }
-
 

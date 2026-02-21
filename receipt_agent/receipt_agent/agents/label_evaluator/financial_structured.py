@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from statistics import median
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
@@ -63,6 +64,9 @@ class TwoTierFinancialResult:
     duration_seconds: float
     text_scan_used: bool
     label_type_count: int
+    subtotal_mismatch_gap: float = 0.0
+    phantom_values_filtered: bool = False
+    reocr_region: dict[str, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +569,59 @@ async def run_structured_financial_validation_async(
 # ---------------------------------------------------------------------------
 
 
+def _status_value(status: Any) -> str:
+    """Normalize enum-or-string validation statuses to string values."""
+    if hasattr(status, "value"):
+        return str(status.value)
+    return str(status or "NONE")
+
+
+def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
+    """Compute a right-side crop region for targeted price re-OCR."""
+    default_region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
+
+    if not words or not labels:
+        return default_region
+
+    word_lookup = {
+        (getattr(w, "line_id", 0), getattr(w, "word_id", 0)): w
+        for w in words
+    }
+    valid_line_total_x: list[float] = []
+    for lbl in labels:
+        if getattr(lbl, "label", "") != "LINE_TOTAL":
+            continue
+        if _status_value(getattr(lbl, "validation_status", "NONE")) != "VALID":
+            continue
+        key = (getattr(lbl, "line_id", 0), getattr(lbl, "word_id", 0))
+        word = word_lookup.get(key)
+        if word is None:
+            continue
+        bbox = getattr(word, "bounding_box", {}) or {}
+        x_val = bbox.get("x")
+        if isinstance(x_val, int | float):
+            valid_line_total_x.append(float(x_val))
+
+    if not valid_line_total_x:
+        return default_region
+
+    # Anchor the crop slightly left of the median LINE_TOTAL x-position.
+    x_anchor = median(valid_line_total_x)
+    width = 0.30
+    x_start = max(0.0, min(x_anchor - 0.05, 1.0 - width))
+    return {"x": x_start, "y": 0.0, "width": width, "height": 1.0}
+
+
+def _subtotal_mismatch_gap(math_issues: list) -> float:
+    """Return absolute subtotal mismatch gap if present."""
+    for issue in math_issues:
+        if getattr(issue, "issue_type", "") == "SUBTOTAL_MISMATCH":
+            expected = float(getattr(issue, "expected_value", 0.0))
+            actual = float(getattr(issue, "actual_value", 0.0))
+            return abs(expected - actual)
+    return 0.0
+
+
 def _run_two_tier_core(
     words,
     labels,
@@ -575,24 +632,39 @@ def _run_two_tier_core(
     merchant_name: str,
     *,
     skip_fast_path: bool,
-) -> tuple[str, str, list[dict], bool, int, str]:
+) -> tuple[
+    str,
+    str,
+    list[dict],
+    bool,
+    int,
+    str,
+    float,
+    bool,
+    dict[str, float] | None,
+]:
     """Shared Tier-1 logic for sync and async.
 
-    Returns (tier, status, decisions, text_scan_used, label_type_count, fast_summary).
+    Returns:
+    (tier, status, decisions, text_scan_used, label_type_count, fast_summary,
+    subtotal_mismatch_gap, phantom_values_filtered, reocr_region).
     When tier == "__need_llm__" the caller must run the Tier-2 LLM call.
     """
     if not words or not labels:
-        return ("no_data", "no_data", [], False, 0, "")
+        return ("no_data", "no_data", [], False, 0, "", 0.0, False, None)
 
     has_fin = any(lbl.label in FINANCIAL_LABELS for lbl in labels)
     if not has_fin:
-        return ("no_data", "no_data", [], False, 0, "")
+        return ("no_data", "no_data", [], False, 0, "", 0.0, False, None)
 
     # Tier 1: fast path (deterministic)
-    enhanced_values = extract_financial_values_enhanced(
+    raw_enhanced_values = extract_financial_values_enhanced(
         visual_lines, words, labels, chroma_client, merchant_name,
     )
-    enhanced_values = filter_junk_values(enhanced_values)
+    enhanced_values = filter_junk_values(raw_enhanced_values)
+    phantom_values_filtered = len(raw_enhanced_values.get("LINE_TOTAL", [])) > len(
+        enhanced_values.get("LINE_TOTAL", [])
+    )
 
     # Text-scan supplement: when label-based extraction finds <2 label
     # types, merge keyword-based text-scan findings.
@@ -610,6 +682,8 @@ def _run_two_tier_core(
         label_types_with_values = [k for k, v in enhanced_values.items() if v]
 
     math_issues = detect_math_issues_from_values(enhanced_values)
+    subtotal_gap = _subtotal_mismatch_gap(math_issues)
+    reocr_region = _compute_reocr_region(words, labels) if subtotal_gap > 0 else None
     has_values = any(bool(v) for v in enhanced_values.values())
     label_type_count = len(label_types_with_values)
 
@@ -619,9 +693,29 @@ def _run_two_tier_core(
                 enhanced_values, image_id, receipt_id,
                 "structured_fast_path_balanced",
             )
-            return ("fast_path", "balanced", decisions, text_scan_used, label_type_count, "")
+            return (
+                "fast_path",
+                "balanced",
+                decisions,
+                text_scan_used,
+                label_type_count,
+                "",
+                subtotal_gap,
+                phantom_values_filtered,
+                reocr_region,
+            )
         else:
-            return ("fast_path", "single_label", [], text_scan_used, label_type_count, "")
+            return (
+                "fast_path",
+                "single_label",
+                [],
+                text_scan_used,
+                label_type_count,
+                "",
+                subtotal_gap,
+                phantom_values_filtered,
+                reocr_region,
+            )
 
     # Need Tier 2
     fast_summary = (
@@ -629,7 +723,17 @@ def _run_two_tier_core(
         if math_issues
         else "No financial values found"
     )
-    return ("__need_llm__", "", [], text_scan_used, label_type_count, fast_summary)
+    return (
+        "__need_llm__",
+        "",
+        [],
+        text_scan_used,
+        label_type_count,
+        fast_summary,
+        subtotal_gap,
+        phantom_values_filtered,
+        reocr_region,
+    )
 
 
 def _classify_llm_result(llm_decisions: list[dict]) -> tuple[str, str]:
@@ -664,12 +768,20 @@ def run_two_tier_financial_validation(
     """
     start = time.time()
 
-    tier, status, decisions, text_scan_used, label_type_count, fast_summary = (
-        _run_two_tier_core(
-            words, labels, visual_lines, chroma_client,
-            image_id, receipt_id, merchant_name,
-            skip_fast_path=skip_fast_path,
-        )
+    (
+        tier,
+        status,
+        decisions,
+        text_scan_used,
+        label_type_count,
+        fast_summary,
+        subtotal_gap,
+        phantom_values_filtered,
+        reocr_region,
+    ) = _run_two_tier_core(
+        words, labels, visual_lines, chroma_client,
+        image_id, receipt_id, merchant_name,
+        skip_fast_path=skip_fast_path,
     )
 
     if tier != "__need_llm__":
@@ -680,6 +792,9 @@ def run_two_tier_financial_validation(
             duration_seconds=time.time() - start,
             text_scan_used=text_scan_used,
             label_type_count=label_type_count,
+            subtotal_mismatch_gap=subtotal_gap,
+            phantom_values_filtered=phantom_values_filtered,
+            reocr_region=reocr_region,
         )
 
     # Tier 2: Structured LLM fallback
@@ -702,6 +817,9 @@ def run_two_tier_financial_validation(
         duration_seconds=time.time() - start,
         text_scan_used=text_scan_used,
         label_type_count=label_type_count,
+        subtotal_mismatch_gap=subtotal_gap,
+        phantom_values_filtered=phantom_values_filtered,
+        reocr_region=reocr_region,
     )
 
 
@@ -724,12 +842,20 @@ async def run_two_tier_financial_validation_async(
     """
     start = time.time()
 
-    tier, status, decisions, text_scan_used, label_type_count, fast_summary = (
-        _run_two_tier_core(
-            words, labels, visual_lines, chroma_client,
-            image_id, receipt_id, merchant_name,
-            skip_fast_path=skip_fast_path,
-        )
+    (
+        tier,
+        status,
+        decisions,
+        text_scan_used,
+        label_type_count,
+        fast_summary,
+        subtotal_gap,
+        phantom_values_filtered,
+        reocr_region,
+    ) = _run_two_tier_core(
+        words, labels, visual_lines, chroma_client,
+        image_id, receipt_id, merchant_name,
+        skip_fast_path=skip_fast_path,
     )
 
     if tier != "__need_llm__":
@@ -740,6 +866,9 @@ async def run_two_tier_financial_validation_async(
             duration_seconds=time.time() - start,
             text_scan_used=text_scan_used,
             label_type_count=label_type_count,
+            subtotal_mismatch_gap=subtotal_gap,
+            phantom_values_filtered=phantom_values_filtered,
+            reocr_region=reocr_region,
         )
 
     # Tier 2: Structured LLM fallback
@@ -762,4 +891,7 @@ async def run_two_tier_financial_validation_async(
         duration_seconds=time.time() - start,
         text_scan_used=text_scan_used,
         label_type_count=label_type_count,
+        subtotal_mismatch_gap=subtotal_gap,
+        phantom_values_filtered=phantom_values_filtered,
+        reocr_region=reocr_region,
     )

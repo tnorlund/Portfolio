@@ -95,6 +95,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         dynamodb_table_arn: pulumi.Input[str],
         chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
         chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
+        ocr_job_queue_url: Optional[pulumi.Input[str]] = None,
+        ocr_job_queue_arn: Optional[pulumi.Input[str]] = None,
         # EMR Serverless Analytics integration (optional)
         emr_application_id: Optional[pulumi.Input[str]] = None,
         emr_job_execution_role_arn: Optional[pulumi.Input[str]] = None,
@@ -335,6 +337,27 @@ class LabelEvaluatorStepFunction(ComponentResource):
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
+
+        if ocr_job_queue_arn is not None:
+            RolePolicy(
+                f"{name}-lambda-sqs-send-policy",
+                role=lambda_role.id,
+                policy=Output.from_input(ocr_job_queue_arn).apply(
+                    lambda queue_arn: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["sqs:SendMessage"],
+                                    "Resource": [queue_arn],
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=lambda_role),
+            )
 
         # ============================================================
         # Paths
@@ -883,6 +906,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # Consolidates currency, metadata, financial, and LLM review
         # Uses asyncio for concurrent LLM calls
         # ============================================================
+        resolved_ocr_job_queue_url: pulumi.Input[str] = (
+            Output.from_input(ocr_job_queue_url)
+            if ocr_job_queue_url is not None
+            else ""
+        )
+
         unified_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 minutes (covers all evaluations)
@@ -895,6 +924,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     self.cache_bucket if self.cache_bucket else ""
                 ),
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
+                "OCR_JOB_QUEUE_URL": resolved_ocr_job_queue_url,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
