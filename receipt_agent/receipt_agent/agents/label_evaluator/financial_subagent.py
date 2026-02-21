@@ -1236,7 +1236,111 @@ def filter_junk_values(
                 fv for fv in st_list if fv.numeric_value != 0.0
             ]
 
+    # Filter 3 — LINE_TOTAL > SUBTOTAL guard
+    # On dense multi-column receipts (e.g. Home Depot), OCR merges UPC
+    # fragments with prices across columns, producing phantom LINE_TOTALs
+    # far larger than the real SUBTOTAL.  Drop any LINE_TOTAL that strictly
+    # exceeds a known positive SUBTOTAL.
+    st_for_guard = filtered.get("SUBTOTAL", [])
+    lt_for_guard = filtered.get("LINE_TOTAL", [])
+    if st_for_guard and lt_for_guard:
+        subtotal_val = st_for_guard[0].numeric_value
+        if subtotal_val > 0:
+            kept: list[FinancialValue] = []
+            for fv in lt_for_guard:
+                if fv.numeric_value > subtotal_val:
+                    logger.info(
+                        "filter_junk_values: dropping phantom LINE_TOTAL "
+                        "%.2f > SUBTOTAL %.2f (word=%r)",
+                        fv.numeric_value,
+                        subtotal_val,
+                        fv.word_text,
+                    )
+                else:
+                    kept.append(fv)
+            filtered["LINE_TOTAL"] = kept
+
+    # Filter 4 — N@price UNIT_PRICE correction
+    # OCR sometimes merges "2@19.51" into "2019.51" and labels it
+    # UNIT_PRICE.  Detect and correct these.
+    up_list = filtered.get("UNIT_PRICE", [])
+    if up_list:
+        corrected_ups: list[FinancialValue] = []
+        existing_qty_lines = {
+            fv.line_index for fv in filtered.get("QUANTITY", [])
+        }
+        new_quantities: list[FinancialValue] = list(
+            filtered.get("QUANTITY", [])
+        )
+        for fv in up_list:
+            split = _split_at_price_pattern(fv.word_text)
+            if split is not None:
+                qty, unit_price = split
+                logger.info(
+                    "filter_junk_values: correcting N@price UNIT_PRICE "
+                    "%r → qty=%d, price=%.2f",
+                    fv.word_text,
+                    qty,
+                    unit_price,
+                )
+                corrected_ups.append(
+                    FinancialValue(
+                        word_context=fv.word_context,
+                        label="UNIT_PRICE",
+                        numeric_value=unit_price,
+                        line_index=fv.line_index,
+                        word_text=fv.word_text,
+                    )
+                )
+                if fv.line_index not in existing_qty_lines:
+                    new_quantities.append(
+                        FinancialValue(
+                            word_context=fv.word_context,
+                            label="QUANTITY",
+                            numeric_value=float(qty),
+                            line_index=fv.line_index,
+                            word_text=str(qty),
+                        )
+                    )
+                    existing_qty_lines.add(fv.line_index)
+            else:
+                corrected_ups.append(fv)
+        filtered["UNIT_PRICE"] = corrected_ups
+        filtered["QUANTITY"] = new_quantities
+
     return filtered
+
+
+def _split_at_price_pattern(text: str) -> tuple[int, float] | None:
+    """Detect N@price merges like ``2019.51`` → (qty=2, price=19.51).
+
+    Only triggers when the raw value exceeds $500 (to avoid false positives).
+    Tries 1-digit then 2-digit qty prefixes.  The remainder must look like
+    a decimal price (``\\d+\\.\\d{2}``), and qty must be ≥ 2.
+
+    Returns ``(qty, unit_price)`` on match, else ``None``.
+    """
+    clean = re.sub(r"[$€£¥,]", "", text.strip())
+    if not re.fullmatch(r"\d+\.\d{2}", clean):
+        return None
+    raw_val = float(clean)
+    if raw_val < 500.0:
+        return None
+    # Try 1-digit qty, then 2-digit qty
+    for n_digits in (1, 2):
+        if len(clean) <= n_digits:
+            continue
+        qty_str = clean[:n_digits]
+        price_str = clean[n_digits:]
+        if not re.fullmatch(r"\d+\.\d{2}", price_str):
+            continue
+        qty = int(qty_str)
+        if qty < 2:
+            continue
+        price = float(price_str)
+        if price > 0:
+            return qty, price
+    return None
 
 
 # =============================================================================
@@ -2379,6 +2483,7 @@ def evaluate_financial_math(
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
         )
+        enhanced_values = filter_junk_values(enhanced_values)
         math_issues = detect_math_issues_from_values(enhanced_values)
         logger.info(
             "Enhanced extraction: %d math issues from %d label types",
@@ -2726,6 +2831,7 @@ async def evaluate_financial_math_async(
         enhanced_values = extract_financial_values_enhanced(
             visual_lines, words, labels, chroma_client, merchant_name
         )
+        enhanced_values = filter_junk_values(enhanced_values)
         math_issues = detect_math_issues_from_values(enhanced_values)
         logger.info(
             "Enhanced extraction: %d math issues from %d label types",
