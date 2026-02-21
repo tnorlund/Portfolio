@@ -1283,10 +1283,10 @@ def create_agentic_tools(
 
                 geometry = geocode_result.get("geometry", {})
                 location = geometry.get("location", {})
-                lat = location.get("lat") if location.get("lat") is not None else location.get("latitude")
-                lng = location.get("lng") if location.get("lng") is not None else location.get("longitude")
+                lat = location["lat"] if "lat" in location else location.get("latitude")
+                lng = location["lng"] if "lng" in location else location.get("longitude")
 
-                if not lat or not lng:
+                if lat is None or lng is None:
                     return {
                         "error": f"Could not get coordinates for address: {address}",
                         "address": address,
@@ -1309,11 +1309,7 @@ def create_agentic_tools(
                     "coordinates": {"lat": lat, "lng": lng},
                     "count": len(formatted),
                     "businesses": formatted,
-                    "place_ids": [
-                        b.get("place_id")
-                        for b in formatted
-                        if isinstance(b, dict)
-                    ],
+                    "place_ids": [b.get("place_id") for b in formatted],
                     "message": f"Found {len(formatted)} business(es) at address",
                 }
 
