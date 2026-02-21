@@ -303,28 +303,36 @@ class MerchantResolver:
             (address[:30] + "...") if address else "none",
         )
 
-        # Tier 1: ChromaDB search with metadata comparison
+        # Tier 1: ChromaDB similarity search with metadata comparison
         # Uses cached embeddings from orchestration to avoid redundant API calls
-        # Try phone first (exact metadata lookup — most reliable identifier)
+        # Try phone line first (most reliable identifier)
         if phone:
-            _log("Tier 1: Exact phone metadata search for %s", phone)
-            result = self._phone_metadata_search(
-                lines_client=lines_client,
-                phone=phone,
-                current_image_id=image_id,
-                current_receipt_id=receipt_id,
-            )
-            if (
-                result.place_id
-                and result.confidence >= MIN_SIMILARITY_THRESHOLD
-            ):
+            phone_line = self._get_line_for_phone(words, lines, phone)
+            if phone_line:
                 _log(
-                    "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
-                    result.merchant_name,
-                    result.place_id,
-                    result.confidence,
+                    "Tier 1: Similarity search for phone line: %s",
+                    phone_line.text,
                 )
-                return result
+                result = self._similarity_search(
+                    lines_client=lines_client,
+                    query_line=phone_line,
+                    current_image_id=image_id,
+                    current_receipt_id=receipt_id,
+                    expected_phone=phone,
+                    expected_address=address,
+                    resolution_tier="chroma_phone",
+                )
+                if (
+                    result.place_id
+                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                ):
+                    _log(
+                        "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
+                        result.merchant_name,
+                        result.place_id,
+                        result.confidence,
+                    )
+                    return result
 
         # Try address line
         if address:
@@ -666,119 +674,6 @@ class MerchantResolver:
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error in similarity search: %s", exc)
             logger.exception("Similarity search failed")
-
-        return MerchantResult()
-
-    def _phone_metadata_search(
-        self,
-        lines_client: ChromaClient,
-        phone: str,
-        current_image_id: str,
-        current_receipt_id: int,
-    ) -> MerchantResult:
-        """
-        Search ChromaDB for receipts with an exact phone metadata match.
-
-        Unlike ``_similarity_search`` (which embeds the phone line text and
-        queries by cosine similarity), this method uses an exact ``where``
-        filter on the ``normalized_phone_10`` metadata field.  This avoids
-        the problem where all phone-number embeddings look similar and the
-        most-represented merchant wins regardless of actual phone match.
-
-        Args:
-            lines_client: ChromaClient with merged snapshot+delta
-            phone: 10-digit normalized phone number
-            current_image_id: Current receipt's image_id (to exclude)
-            current_receipt_id: Current receipt's receipt_id (to exclude)
-
-        Returns:
-            MerchantResult with best match or empty result
-        """
-        try:
-            results = lines_client.get(
-                collection_name="lines",
-                where={"normalized_phone_10": phone},
-                include=["metadatas"],
-            )
-
-            if not results or not results.get("metadatas"):
-                return MerchantResult()
-
-            metadatas = results["metadatas"]
-
-            # Group results by (image_id, receipt_id) and pick the receipt
-            # with the most matching lines (proxy for confidence).
-            from collections import Counter
-
-            receipt_counter: Counter = Counter()
-            receipt_meta: Dict[Tuple[str, int], Dict[str, Any]] = {}
-
-            for meta in metadatas:
-                img = meta.get("image_id")
-                rid = meta.get("receipt_id")
-                if not img or rid is None:
-                    continue
-                rid = int(rid)
-                # Skip current receipt
-                if img == current_image_id and rid == current_receipt_id:
-                    continue
-                key = (img, rid)
-                receipt_counter[key] += 1
-                if key not in receipt_meta:
-                    receipt_meta[key] = meta
-
-            if not receipt_counter:
-                return MerchantResult()
-
-            # Try receipts in order of line count (most lines = highest confidence)
-            for (img, rid), count in receipt_counter.most_common():
-                place_id, dynamo_merchant_name = self._get_place_from_dynamo(
-                    img, rid
-                )
-                if not place_id:
-                    continue
-
-                merchant_name = (
-                    dynamo_merchant_name
-                    or receipt_meta[(img, rid)].get("merchant_name")
-                )
-
-                # Cross-validate merchant name against receipt OCR text
-                receipt_lines = getattr(self, "_receipt_lines", [])
-                if not merchant_name_matches_receipt(
-                    merchant_name, receipt_lines
-                ):
-                    _log(
-                        "Phone metadata: rejected %s — no token overlap "
-                        "with receipt text",
-                        merchant_name,
-                    )
-                    continue
-
-                _log(
-                    "Phone metadata: exact match on %s → %s "
-                    "(place_id=%s, lines=%d)",
-                    phone,
-                    merchant_name,
-                    place_id,
-                    count,
-                )
-                return MerchantResult(
-                    place_id=place_id,
-                    merchant_name=merchant_name,
-                    phone=phone,
-                    address=receipt_meta[(img, rid)].get(
-                        "normalized_full_address"
-                    ),
-                    confidence=min(1.0, 0.85 + PHONE_MATCH_BOOST),
-                    resolution_tier="chroma_phone",
-                    source_image_id=img,
-                    source_receipt_id=rid,
-                )
-
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            _log("Error in phone metadata search: %s", exc)
-            logger.exception("Phone metadata search failed")
 
         return MerchantResult()
 
