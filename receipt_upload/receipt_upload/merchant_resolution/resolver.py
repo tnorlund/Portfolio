@@ -18,8 +18,9 @@ Tracing:
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
@@ -65,6 +66,9 @@ MIN_SIMILARITY_THRESHOLD = 0.70  # Minimum to consider a match
 HIGH_CONFIDENCE_THRESHOLD = 0.85  # High confidence match
 PHONE_MATCH_BOOST = 0.20  # Boost when normalized phone matches
 ADDRESS_MATCH_BOOST = 0.15  # Boost when normalized address matches
+
+# Minimum token length for merchant name cross-validation
+_MIN_TOKEN_LEN = 3  # Ignore tokens shorter than this (e.g., "A", "of", "&")
 
 
 def _log(msg: str, *args: object) -> None:
@@ -240,6 +244,8 @@ class MerchantResolver:
         """Implementation of resolve() - called within trace context."""
         # Store embeddings cache for use in _similarity_search
         self._line_embeddings = line_embeddings or {}
+        # Store receipt lines for merchant name cross-validation
+        self._receipt_lines = lines
         # Extract contact info from receipt
         phone = self._extract_phone(words)
         address = self._extract_address(words)
@@ -563,27 +569,39 @@ class MerchantResolver:
                 best.total_confidence,
             )
 
-            # Get place_id from DynamoDB for the best match
-            place_id = self._get_place_id_from_dynamo(
-                best.image_id, best.receipt_id
-            )
+            # Cross-validate: reject matches whose merchant name has
+            # zero token overlap with the receipt's OCR text.  This
+            # catches metadata-poisoning and over-representation bugs
+            # (e.g. Sprouts dominating ChromaDB, wrong phone metadata).
+            receipt_lines = getattr(self, "_receipt_lines", [])
+            validated_matches: List[SimilarityMatch] = []
+            for match in matches:
+                if self._merchant_name_matches_receipt(
+                    match.merchant_name, receipt_lines
+                ):
+                    validated_matches.append(match)
+                else:
+                    _log(
+                        "Rejected match: %s — no token overlap with "
+                        "receipt text (sim=%.2f, tier=%s)",
+                        match.merchant_name,
+                        match.total_confidence,
+                        resolution_tier,
+                    )
 
-            if place_id:
-                best.place_id = place_id
-                return MerchantResult(
-                    place_id=place_id,
-                    merchant_name=best.merchant_name,
-                    phone=best.normalized_phone,
-                    address=best.normalized_address,
-                    confidence=best.total_confidence,
-                    resolution_tier=resolution_tier,
-                    source_image_id=best.image_id,
-                    source_receipt_id=best.receipt_id,
-                    similarity_matches=matches[:5],  # Keep top 5 for debugging
+            if not validated_matches:
+                _log(
+                    "All %d matches rejected by OCR cross-validation",
+                    len(matches),
                 )
+                return MerchantResult()
 
-            # No place_id found for best match, try others
-            for match in matches[1:5]:
+            # Use the best validated match
+            best = validated_matches[0]
+
+            # Try validated matches in order until we find one with
+            # a place_id in DynamoDB
+            for match in validated_matches[:5]:
                 place_id = self._get_place_id_from_dynamo(
                     match.image_id, match.receipt_id
                 )
@@ -598,7 +616,7 @@ class MerchantResolver:
                         resolution_tier=resolution_tier,
                         source_image_id=match.image_id,
                         source_receipt_id=match.receipt_id,
-                        similarity_matches=matches[:5],
+                        similarity_matches=validated_matches[:5],
                     )
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -639,6 +657,51 @@ class MerchantResolver:
         ratio = matches / shorter
 
         return ratio >= 0.85  # 85% character match
+
+    @staticmethod
+    def _tokenize(text: str) -> Set[str]:
+        """Extract lowercase alphanumeric tokens from text."""
+        return {
+            t
+            for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
+            if len(t) >= _MIN_TOKEN_LEN
+        }
+
+    def _merchant_name_matches_receipt(
+        self,
+        merchant_name: Optional[str],
+        lines: List[ReceiptLine],
+        n_lines: int = 10,
+    ) -> bool:
+        """
+        Check whether *merchant_name* has meaningful token overlap with the
+        receipt's OCR text (top *n_lines* lines, where the merchant name
+        usually appears).
+
+        Returns ``True`` (pass) when:
+        - *merchant_name* is empty / None (nothing to validate)
+        - The merchant name has fewer than 2 significant tokens (too short
+          to validate reliably — e.g. "JOi")
+        - At least one significant token from the merchant name appears
+          somewhere in the receipt text
+        """
+        if not merchant_name:
+            return True  # Nothing to validate against
+
+        merchant_tokens = self._tokenize(merchant_name)
+        if len(merchant_tokens) < 2:
+            return True  # Too short to validate reliably
+
+        # Build a token set from the top N receipt lines (by y-coordinate)
+        sorted_lines = sorted(
+            lines, key=lambda l: l.calculate_centroid()[1]
+        )
+        receipt_text = " ".join(
+            l.text for l in sorted_lines[:n_lines] if l.text
+        )
+        receipt_tokens = self._tokenize(receipt_text)
+
+        return bool(merchant_tokens & receipt_tokens)
 
     def _extract_phone(self, words: List[ReceiptWord]) -> Optional[str]:
         """
