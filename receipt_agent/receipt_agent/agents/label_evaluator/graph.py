@@ -492,6 +492,14 @@ def create_label_evaluator_graph(
         if state.place:
             merchant_name = state.place.merchant_name or "Unknown"
 
+        # Build line_item_patterns from merchant_patterns if available
+        line_item_patterns = None
+        if state.merchant_patterns:
+            line_item_patterns = {
+                "merchant": state.merchant_patterns.merchant_name,
+                "receipt_count": state.merchant_patterns.receipt_count,
+            }
+
         try:
             financial_results = evaluate_financial_math_sync(
                 visual_lines=state.visual_lines,
@@ -499,6 +507,10 @@ def create_label_evaluator_graph(
                 image_id=state.image_id,
                 receipt_id=state.receipt_id,
                 merchant_name=merchant_name,
+                words=state.words,
+                labels=state.labels,
+                chroma_client=_chroma_client,
+                line_item_patterns=line_item_patterns,
             )
 
             if financial_results:
