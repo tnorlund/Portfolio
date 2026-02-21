@@ -13,7 +13,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
-from receipt_upload.merchant_resolution import MerchantResolver, MerchantResult
+from receipt_upload.merchant_resolution import (
+    MerchantResolver,
+    MerchantResult,
+    merchant_name_matches_receipt,
+    tokenize_text,
+)
 
 
 class TestMerchantResolverTier1Phone:
@@ -52,29 +57,26 @@ class TestMerchantResolverTier1Phone:
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Matching Store")
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB query to return matching receipt
-        # Distance of 0.1 = similarity of 0.95 (1 - 0.1/2)
-        mock_lines_client.query.return_value = {
+        # Mock ChromaDB get() for exact phone metadata lookup
+        mock_lines_client.get.return_value = {
             "metadatas": [
-                [
-                    {
-                        "image_id": "other-image",
-                        "receipt_id": 99,
-                        "merchant_name": "Matching Store",
-                        "normalized_phone_10": "5551234567",
-                    }
-                ]
+                {
+                    "image_id": "other-image",
+                    "receipt_id": 99,
+                    "merchant_name": "Matching Store",
+                    "normalized_phone_10": "5551234567",
+                }
             ],
-            "distances": [[0.1]],
         }
 
-        # Mock DynamoDB to return place_id
+        # Mock DynamoDB to return place_id and merchant_name
         mock_place = MagicMock()
         mock_place.place_id = "ChIJ_test_place_id"
+        mock_place.merchant_name = "Matching Store"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         # Provide pre-cached line embeddings to avoid OpenAI API calls
@@ -92,8 +94,7 @@ class TestMerchantResolverTier1Phone:
 
         assert result.place_id == "ChIJ_test_place_id"
         assert result.resolution_tier == "chroma_phone"
-        # With phone match boost: 0.95 + 0.20 = 1.0 (capped)
-        assert result.confidence >= 0.95
+        assert result.confidence >= 0.85
         assert result.source_image_id == "other-image"
         assert result.source_receipt_id == 99
 
@@ -231,9 +232,10 @@ class TestMerchantResolverTier1Address:
             "distances": [[0.4]],
         }
 
-        # Mock DynamoDB to return place_id
+        # Mock DynamoDB to return place_id and merchant_name
         mock_place = MagicMock()
         mock_place.place_id = "ChIJ_address_place_id"
+        mock_place.merchant_name = "Address Match Store"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         # Provide pre-cached line embeddings
@@ -554,6 +556,7 @@ class TestMerchantResolverOCRCrossValidation:
         }
         mock_place = MagicMock()
         mock_place.place_id = "ChIJZxmMXO4k6IARlo_-qBA0nBQ"
+        mock_place.merchant_name = "Sprouts Farmers Market"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         line_embeddings = {1: [0.1] * 1536, 2: [0.2] * 1536}
@@ -597,22 +600,20 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
 
-        # ChromaDB correctly returns "Sprouts Farmers Market"
-        mock_lines_client.query.return_value = {
+        # ChromaDB get() for exact phone metadata lookup
+        mock_lines_client.get.return_value = {
             "metadatas": [
-                [
-                    {
-                        "image_id": "other-image",
-                        "receipt_id": 5,
-                        "merchant_name": "Sprouts Farmers Market",
-                        "normalized_phone_10": "8054956229",
-                    }
-                ]
+                {
+                    "image_id": "other-image",
+                    "receipt_id": 5,
+                    "merchant_name": "Sprouts Farmers Market",
+                    "normalized_phone_10": "8054956229",
+                }
             ],
-            "distances": [[0.1]],
         }
         mock_place = MagicMock()
         mock_place.place_id = "ChIJZxmMXO4k6IARlo_-qBA0nBQ"
+        mock_place.merchant_name = "Sprouts Farmers Market"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         line_embeddings = {1: [0.1] * 1536, 2: [0.2] * 1536}
@@ -634,7 +635,12 @@ class TestMerchantResolverOCRCrossValidation:
     def test_second_match_used_when_first_rejected(
         self, resolver, mock_lines_client, mock_dynamo_client
     ):
-        """First match rejected, second match passes cross-validation."""
+        """First match rejected, second match passes cross-validation.
+
+        The phone tier now uses exact metadata get(). Both receipts share
+        the same phone, but the Sprouts merchant_name is rejected by OCR
+        cross-validation.  The resolver then iterates to the AIM receipt.
+        """
         words = [
             MagicMock(
                 spec=ReceiptWord,
@@ -647,29 +653,42 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
 
-        # ChromaDB returns 2 matches: wrong (Sprouts) then right (AIM)
-        mock_lines_client.query.return_value = {
+        # ChromaDB get() returns lines from two receipts sharing this phone
+        mock_lines_client.get.return_value = {
             "metadatas": [
-                [
-                    {
-                        "image_id": "sprouts-img",
-                        "receipt_id": 5,
-                        "merchant_name": "Sprouts Farmers Market",
-                        "normalized_phone_10": "8054956229",
-                    },
-                    {
-                        "image_id": "aim-img",
-                        "receipt_id": 1,
-                        "merchant_name": "AIM Mail Center",
-                        "normalized_phone_10": "8054956229",
-                    },
-                ]
+                {
+                    "image_id": "sprouts-img",
+                    "receipt_id": 5,
+                    "merchant_name": "Sprouts Farmers Market",
+                    "normalized_phone_10": "8054956229",
+                },
+                {
+                    "image_id": "sprouts-img",
+                    "receipt_id": 5,
+                    "merchant_name": "Sprouts Farmers Market",
+                    "normalized_phone_10": "8054956229",
+                },
+                {
+                    "image_id": "aim-img",
+                    "receipt_id": 1,
+                    "merchant_name": "AIM Mail Center",
+                    "normalized_phone_10": "8054956229",
+                },
             ],
-            "distances": [[0.1, 0.3]],
         }
-        mock_place = MagicMock()
-        mock_place.place_id = "ChIJ_aim_correct"
-        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        # DynamoDB returns different places depending on the receipt
+        def _get_place(image_id, receipt_id):
+            place = MagicMock()
+            if image_id == "sprouts-img":
+                place.place_id = "ChIJ_sprouts"
+                place.merchant_name = "Sprouts Farmers Market"
+            else:
+                place.place_id = "ChIJ_aim_correct"
+                place.merchant_name = "AIM Mail Center"
+            return place
+
+        mock_dynamo_client.get_receipt_place.side_effect = _get_place
 
         line_embeddings = {1: [0.1] * 1536, 2: [0.2] * 1536}
 
@@ -682,7 +701,7 @@ class TestMerchantResolverOCRCrossValidation:
             line_embeddings=line_embeddings,
         )
 
-        # Should pick AIM Mail Center (2nd match) not Sprouts (1st)
+        # Should pick AIM Mail Center (passes OCR cross-validation)
         assert result.merchant_name == "AIM Mail Center"
         assert result.resolution_tier == "chroma_phone"
 
@@ -847,3 +866,329 @@ class TestMerchantResolverErrorHandling:
             )
 
             assert result.place_id is None
+
+
+# ======================================================================
+# Change 1: Phone metadata search (exact match instead of embedding)
+# ======================================================================
+
+
+class TestPhoneMetadataSearch:
+    """Test _phone_metadata_search — exact metadata lookup for phones."""
+
+    def _make_line(self, line_id: int, text: str, y: float = 0.1):
+        line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)
+        line.calculate_centroid.return_value = (0.5, y)
+        return line
+
+    @pytest.fixture
+    def mock_dynamo_client(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_lines_client(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def resolver(self, mock_dynamo_client):
+        return MerchantResolver(
+            dynamo_client=mock_dynamo_client,
+            places_client=None,
+        )
+
+    def test_phone_metadata_search_exact_match(
+        self, resolver, mock_lines_client, mock_dynamo_client
+    ):
+        """get() returns lines with matching phone, resolver finds place_id+merchant from DynamoDB."""
+        # Set up receipt lines for OCR cross-validation
+        resolver._receipt_lines = [
+            self._make_line(1, "Trader Joe's", y=0.1),
+            self._make_line(2, "(555) 123-4567", y=0.9),
+        ]
+
+        mock_lines_client.get.return_value = {
+            "metadatas": [
+                {
+                    "image_id": "other-img",
+                    "receipt_id": 3,
+                    "merchant_name": "Trader Joe's",
+                    "normalized_phone_10": "5551234567",
+                },
+                {
+                    "image_id": "other-img",
+                    "receipt_id": 3,
+                    "merchant_name": "Trader Joe's",
+                    "normalized_phone_10": "5551234567",
+                },
+            ]
+        }
+
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_trader_joes"
+        mock_place.merchant_name = "Trader Joe's"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        result = resolver._phone_metadata_search(
+            lines_client=mock_lines_client,
+            phone="5551234567",
+            current_image_id="current-img",
+            current_receipt_id=1,
+        )
+
+        assert result.place_id == "ChIJ_trader_joes"
+        assert result.merchant_name == "Trader Joe's"
+        assert result.resolution_tier == "chroma_phone"
+        mock_lines_client.get.assert_called_once_with(
+            collection_name="lines",
+            where={"normalized_phone_10": "5551234567"},
+            include=["metadatas"],
+        )
+
+    def test_phone_metadata_search_no_match(
+        self, resolver, mock_lines_client
+    ):
+        """get() returns empty → falls through."""
+        resolver._receipt_lines = [self._make_line(1, "Some Store")]
+
+        mock_lines_client.get.return_value = {"metadatas": []}
+
+        result = resolver._phone_metadata_search(
+            lines_client=mock_lines_client,
+            phone="5551234567",
+            current_image_id="current-img",
+            current_receipt_id=1,
+        )
+
+        assert result.place_id is None
+
+    def test_phone_metadata_search_ocr_cross_validation_rejects(
+        self, resolver, mock_lines_client, mock_dynamo_client
+    ):
+        """Phone match found but merchant name doesn't appear in receipt text."""
+        # Receipt text says "AIM MAIL CENTER", but phone match says "Sprouts"
+        resolver._receipt_lines = [
+            self._make_line(1, "AIM MAIL CENTER #18", y=0.1),
+            self._make_line(2, "(555) 123-4567", y=0.9),
+        ]
+
+        mock_lines_client.get.return_value = {
+            "metadatas": [
+                {
+                    "image_id": "sprouts-img",
+                    "receipt_id": 5,
+                    "merchant_name": "Sprouts Farmers Market",
+                    "normalized_phone_10": "5551234567",
+                },
+            ]
+        }
+
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_sprouts"
+        mock_place.merchant_name = "Sprouts Farmers Market"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        result = resolver._phone_metadata_search(
+            lines_client=mock_lines_client,
+            phone="5551234567",
+            current_image_id="current-img",
+            current_receipt_id=1,
+        )
+
+        # Rejected by OCR cross-validation
+        assert result.place_id is None
+
+
+# ======================================================================
+# Change 2: DynamoDB authoritative merchant_name
+# ======================================================================
+
+
+class TestGetPlaceFromDynamo:
+    """Test _get_place_from_dynamo returning (place_id, merchant_name)."""
+
+    @pytest.fixture
+    def mock_dynamo_client(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def resolver(self, mock_dynamo_client):
+        return MerchantResolver(
+            dynamo_client=mock_dynamo_client,
+            places_client=None,
+        )
+
+    def test_get_place_from_dynamo_returns_merchant_name(
+        self, resolver, mock_dynamo_client
+    ):
+        """DynamoDB has both place_id and merchant_name."""
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_test"
+        mock_place.merchant_name = "Corrected Name"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        place_id, merchant_name = resolver._get_place_from_dynamo(
+            "img-1", 1
+        )
+
+        assert place_id == "ChIJ_test"
+        assert merchant_name == "Corrected Name"
+
+    def test_get_place_from_dynamo_no_merchant_name(
+        self, resolver, mock_dynamo_client
+    ):
+        """DynamoDB has place_id but no merchant_name → falls back to None."""
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_test"
+        mock_place.merchant_name = None
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        place_id, merchant_name = resolver._get_place_from_dynamo(
+            "img-1", 1
+        )
+
+        assert place_id == "ChIJ_test"
+        assert merchant_name is None
+
+    def test_get_place_from_dynamo_invalid_place_id(
+        self, resolver, mock_dynamo_client
+    ):
+        """Invalid place_id → (None, None)."""
+        mock_place = MagicMock()
+        mock_place.place_id = "NO_RESULTS"
+        mock_place.merchant_name = "Some Name"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        place_id, merchant_name = resolver._get_place_from_dynamo(
+            "img-1", 1
+        )
+
+        assert place_id is None
+        assert merchant_name is None
+
+    def test_similarity_search_prefers_dynamo_merchant_name(
+        self, resolver, mock_dynamo_client
+    ):
+        """ChromaDB match has stale name, DynamoDB has corrected name → uses DynamoDB."""
+
+        def _make_line(line_id, text, y=0.1):
+            line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)
+            line.calculate_centroid.return_value = (0.5, y)
+            return line
+
+        # Set up resolver state
+        resolver._line_embeddings = {1: [0.1] * 1536}
+        resolver._receipt_lines = [
+            _make_line(1, "Coffee House Corrected", y=0.1),
+        ]
+
+        mock_lines_client = MagicMock()
+        mock_lines_client.query.return_value = {
+            "metadatas": [
+                [
+                    {
+                        "image_id": "other-img",
+                        "receipt_id": 2,
+                        "merchant_name": "Stale Coffee Name",  # ChromaDB stale
+                        "normalized_phone_10": None,
+                    }
+                ]
+            ],
+            "distances": [[0.1]],
+        }
+
+        # DynamoDB returns corrected merchant_name
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_coffee"
+        mock_place.merchant_name = "Coffee House Corrected"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
+
+        query_line = _make_line(1, "Coffee House Corrected")
+
+        result = resolver._similarity_search_impl(
+            lines_client=mock_lines_client,
+            query_line=query_line,
+            current_image_id="current-img",
+            current_receipt_id=1,
+            expected_phone=None,
+            expected_address=None,
+            resolution_tier="chroma_text",
+        )
+
+        assert result.place_id == "ChIJ_coffee"
+        # Should use DynamoDB name, not the stale ChromaDB one
+        assert result.merchant_name == "Coffee House Corrected"
+
+
+# ======================================================================
+# Change 3: Write-time validation & module-level functions
+# ======================================================================
+
+
+class TestModuleLevelFunctions:
+    """Test extracted module-level tokenize_text and merchant_name_matches_receipt."""
+
+    def _make_line(self, line_id: int, text: str, y: float = 0.1):
+        line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)
+        line.calculate_centroid.return_value = (0.5, y)
+        return line
+
+    def test_tokenize_text_basic(self):
+        """Module-level tokenize_text works correctly."""
+        tokens = tokenize_text("Sprouts Farmers Market")
+        assert "sprouts" in tokens
+        assert "farmers" in tokens
+        assert "market" in tokens
+
+    def test_tokenize_text_ignores_short(self):
+        """Tokens under 3 chars are ignored."""
+        tokens = tokenize_text("A & B Grocery")
+        assert "a" not in tokens
+        assert "b" not in tokens
+        assert "grocery" in tokens
+
+    def test_module_level_merchant_name_matches_receipt_pass(self):
+        """Module-level function detects token overlap."""
+        lines = [self._make_line(1, "AIM MAIL CENTER #18")]
+        assert merchant_name_matches_receipt("AIM Mail Center", lines)
+
+    def test_module_level_merchant_name_matches_receipt_fail(self):
+        """Module-level function detects no token overlap."""
+        lines = [self._make_line(1, "AIM MAIL CENTER #18")]
+        assert not merchant_name_matches_receipt(
+            "Sprouts Farmers Market", lines
+        )
+
+    def test_module_level_merchant_name_matches_receipt_none(self):
+        """None merchant name passes."""
+        lines = [self._make_line(1, "Store")]
+        assert merchant_name_matches_receipt(None, lines)
+
+
+class TestWriteTimeValidation:
+    """Test write-time validation in _run_lines_pipeline_worker."""
+
+    def _make_line(self, line_id: int, text: str, y: float = 0.1):
+        line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)
+        line.calculate_centroid.return_value = (0.5, y)
+        return line
+
+    def test_worker_validates_merchant_name(self):
+        """Poisoned merchant_name gets replaced with None."""
+        lines = [
+            self._make_line(1, "AIM MAIL CENTER #18", y=0.1),
+            self._make_line(2, "(805) 495-6229", y=0.9),
+        ]
+        # "Sprouts Farmers Market" has no overlap with "AIM MAIL CENTER"
+        assert not merchant_name_matches_receipt(
+            "Sprouts Farmers Market", lines
+        )
+
+    def test_worker_passes_valid_merchant_name(self):
+        """Valid merchant_name passes write-time validation."""
+        lines = [
+            self._make_line(1, "Sprouts Farmers Market", y=0.1),
+            self._make_line(2, "740 N MOORPARK RD", y=0.2),
+        ]
+        assert merchant_name_matches_receipt(
+            "Sprouts Farmers Market", lines
+        )

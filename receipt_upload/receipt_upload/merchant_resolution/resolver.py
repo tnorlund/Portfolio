@@ -78,6 +78,51 @@ def _log(msg: str, *args: object) -> None:
     logger.info(msg, *args)
 
 
+def tokenize_text(text: str) -> Set[str]:
+    """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
+    return {
+        t
+        for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
+        if len(t) >= _MIN_TOKEN_LEN
+    }
+
+
+def merchant_name_matches_receipt(
+    merchant_name: Optional[str],
+    lines: List[ReceiptLine],
+    n_lines: int = 10,
+) -> bool:
+    """
+    Check whether *merchant_name* has meaningful token overlap with the
+    receipt's OCR text (top *n_lines* lines, where the merchant name
+    usually appears).
+
+    Returns ``True`` (pass) when:
+    - *merchant_name* is empty / None (nothing to validate)
+    - The merchant name has fewer than 2 significant tokens (too short
+      to validate reliably — e.g. "JOi")
+    - At least one significant token from the merchant name appears
+      somewhere in the receipt text
+    """
+    if not merchant_name:
+        return True  # Nothing to validate against
+
+    merchant_tokens = tokenize_text(merchant_name)
+    if len(merchant_tokens) < 2:
+        return True  # Too short to validate reliably
+
+    # Build a token set from the top N receipt lines (by y-coordinate)
+    sorted_lines = sorted(
+        lines, key=lambda l: l.calculate_centroid()[1]
+    )
+    receipt_text = " ".join(
+        l.text for l in sorted_lines[:n_lines] if l.text
+    )
+    receipt_tokens = tokenize_text(receipt_text)
+
+    return bool(merchant_tokens & receipt_tokens)
+
+
 @dataclass
 class SimilarityMatch:
     """A candidate match from ChromaDB similarity search."""
@@ -258,36 +303,28 @@ class MerchantResolver:
             (address[:30] + "...") if address else "none",
         )
 
-        # Tier 1: ChromaDB similarity search with metadata comparison
+        # Tier 1: ChromaDB search with metadata comparison
         # Uses cached embeddings from orchestration to avoid redundant API calls
-        # Try phone line first (most reliable identifier)
+        # Try phone first (exact metadata lookup — most reliable identifier)
         if phone:
-            phone_line = self._get_line_for_phone(words, lines, phone)
-            if phone_line:
+            _log("Tier 1: Exact phone metadata search for %s", phone)
+            result = self._phone_metadata_search(
+                lines_client=lines_client,
+                phone=phone,
+                current_image_id=image_id,
+                current_receipt_id=receipt_id,
+            )
+            if (
+                result.place_id
+                and result.confidence >= MIN_SIMILARITY_THRESHOLD
+            ):
                 _log(
-                    "Tier 1: Similarity search for phone line: %s",
-                    phone_line.text,
+                    "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
+                    result.merchant_name,
+                    result.place_id,
+                    result.confidence,
                 )
-                result = self._similarity_search(
-                    lines_client=lines_client,
-                    query_line=phone_line,
-                    current_image_id=image_id,
-                    current_receipt_id=receipt_id,
-                    expected_phone=phone,
-                    expected_address=address,
-                    resolution_tier="chroma_phone",
-                )
-                if (
-                    result.place_id
-                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
-                ):
-                    _log(
-                        "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
-                        result.merchant_name,
-                        result.place_id,
-                        result.confidence,
-                    )
-                    return result
+                return result
 
         # Try address line
         if address:
@@ -602,14 +639,21 @@ class MerchantResolver:
             # Try validated matches in order until we find one with
             # a place_id in DynamoDB
             for match in validated_matches[:5]:
-                place_id = self._get_place_id_from_dynamo(
+                place_id, dynamo_merchant_name = self._get_place_from_dynamo(
                     match.image_id, match.receipt_id
                 )
                 if place_id:
                     match.place_id = place_id
+                    # Prefer DynamoDB merchant_name (authoritative, may be
+                    # corrected via fix-place) over ChromaDB metadata which
+                    # can be stale/poisoned.
+                    merchant_name = (
+                        dynamo_merchant_name
+                        or match.merchant_name
+                    )
                     return MerchantResult(
                         place_id=place_id,
-                        merchant_name=match.merchant_name,
+                        merchant_name=merchant_name,
                         phone=match.normalized_phone,
                         address=match.normalized_address,
                         confidence=match.total_confidence,
@@ -622,6 +666,119 @@ class MerchantResolver:
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error in similarity search: %s", exc)
             logger.exception("Similarity search failed")
+
+        return MerchantResult()
+
+    def _phone_metadata_search(
+        self,
+        lines_client: ChromaClient,
+        phone: str,
+        current_image_id: str,
+        current_receipt_id: int,
+    ) -> MerchantResult:
+        """
+        Search ChromaDB for receipts with an exact phone metadata match.
+
+        Unlike ``_similarity_search`` (which embeds the phone line text and
+        queries by cosine similarity), this method uses an exact ``where``
+        filter on the ``normalized_phone_10`` metadata field.  This avoids
+        the problem where all phone-number embeddings look similar and the
+        most-represented merchant wins regardless of actual phone match.
+
+        Args:
+            lines_client: ChromaClient with merged snapshot+delta
+            phone: 10-digit normalized phone number
+            current_image_id: Current receipt's image_id (to exclude)
+            current_receipt_id: Current receipt's receipt_id (to exclude)
+
+        Returns:
+            MerchantResult with best match or empty result
+        """
+        try:
+            results = lines_client.get(
+                collection_name="lines",
+                where={"normalized_phone_10": phone},
+                include=["metadatas"],
+            )
+
+            if not results or not results.get("metadatas"):
+                return MerchantResult()
+
+            metadatas = results["metadatas"]
+
+            # Group results by (image_id, receipt_id) and pick the receipt
+            # with the most matching lines (proxy for confidence).
+            from collections import Counter
+
+            receipt_counter: Counter = Counter()
+            receipt_meta: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+            for meta in metadatas:
+                img = meta.get("image_id")
+                rid = meta.get("receipt_id")
+                if not img or rid is None:
+                    continue
+                rid = int(rid)
+                # Skip current receipt
+                if img == current_image_id and rid == current_receipt_id:
+                    continue
+                key = (img, rid)
+                receipt_counter[key] += 1
+                if key not in receipt_meta:
+                    receipt_meta[key] = meta
+
+            if not receipt_counter:
+                return MerchantResult()
+
+            # Try receipts in order of line count (most lines = highest confidence)
+            for (img, rid), count in receipt_counter.most_common():
+                place_id, dynamo_merchant_name = self._get_place_from_dynamo(
+                    img, rid
+                )
+                if not place_id:
+                    continue
+
+                merchant_name = (
+                    dynamo_merchant_name
+                    or receipt_meta[(img, rid)].get("merchant_name")
+                )
+
+                # Cross-validate merchant name against receipt OCR text
+                receipt_lines = getattr(self, "_receipt_lines", [])
+                if not merchant_name_matches_receipt(
+                    merchant_name, receipt_lines
+                ):
+                    _log(
+                        "Phone metadata: rejected %s — no token overlap "
+                        "with receipt text",
+                        merchant_name,
+                    )
+                    continue
+
+                _log(
+                    "Phone metadata: exact match on %s → %s "
+                    "(place_id=%s, lines=%d)",
+                    phone,
+                    merchant_name,
+                    place_id,
+                    count,
+                )
+                return MerchantResult(
+                    place_id=place_id,
+                    merchant_name=merchant_name,
+                    phone=phone,
+                    address=receipt_meta[(img, rid)].get(
+                        "normalized_full_address"
+                    ),
+                    confidence=min(1.0, 0.85 + PHONE_MATCH_BOOST),
+                    resolution_tier="chroma_phone",
+                    source_image_id=img,
+                    source_receipt_id=rid,
+                )
+
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error in phone metadata search: %s", exc)
+            logger.exception("Phone metadata search failed")
 
         return MerchantResult()
 
@@ -661,11 +818,7 @@ class MerchantResolver:
     @staticmethod
     def _tokenize(text: str) -> Set[str]:
         """Extract lowercase alphanumeric tokens from text."""
-        return {
-            t
-            for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
-            if len(t) >= _MIN_TOKEN_LEN
-        }
+        return tokenize_text(text)
 
     def _merchant_name_matches_receipt(
         self,
@@ -673,35 +826,8 @@ class MerchantResolver:
         lines: List[ReceiptLine],
         n_lines: int = 10,
     ) -> bool:
-        """
-        Check whether *merchant_name* has meaningful token overlap with the
-        receipt's OCR text (top *n_lines* lines, where the merchant name
-        usually appears).
-
-        Returns ``True`` (pass) when:
-        - *merchant_name* is empty / None (nothing to validate)
-        - The merchant name has fewer than 2 significant tokens (too short
-          to validate reliably — e.g. "JOi")
-        - At least one significant token from the merchant name appears
-          somewhere in the receipt text
-        """
-        if not merchant_name:
-            return True  # Nothing to validate against
-
-        merchant_tokens = self._tokenize(merchant_name)
-        if len(merchant_tokens) < 2:
-            return True  # Too short to validate reliably
-
-        # Build a token set from the top N receipt lines (by y-coordinate)
-        sorted_lines = sorted(
-            lines, key=lambda l: l.calculate_centroid()[1]
-        )
-        receipt_text = " ".join(
-            l.text for l in sorted_lines[:n_lines] if l.text
-        )
-        receipt_tokens = self._tokenize(receipt_text)
-
-        return bool(merchant_tokens & receipt_tokens)
+        """Thin wrapper around module-level :func:`merchant_name_matches_receipt`."""
+        return merchant_name_matches_receipt(merchant_name, lines, n_lines)
 
     def _extract_phone(self, words: List[ReceiptWord]) -> Optional[str]:
         """
@@ -763,31 +889,31 @@ class MerchantResolver:
 
         return None
 
-    def _get_place_id_from_dynamo(
+    def _get_place_from_dynamo(
         self,
         image_id: str,
         receipt_id: int,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Get place_id from DynamoDB for a receipt.
+        Get place_id and merchant_name from DynamoDB for a receipt.
 
         Args:
             image_id: Receipt's image_id
             receipt_id: Receipt's receipt_id
 
         Returns:
-            place_id if found and valid, None otherwise
+            (place_id, merchant_name) tuple. Both may be None.
         """
         try:
             place = self.dynamo.get_receipt_place(image_id, receipt_id)
             if place and place.place_id:
                 if place.place_id not in INVALID_PLACE_IDS:
-                    return place.place_id
+                    return place.place_id, getattr(place, "merchant_name", None)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            _log("Error getting place_id from receipt_place: %s", exc)
+            _log("Error getting place from receipt_place: %s", exc)
             logger.exception("DynamoDB lookup failed")
 
-        return None
+        return None, None
 
     def _extract_merchant_name(
         self, lines: List[ReceiptLine]
