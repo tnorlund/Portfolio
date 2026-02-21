@@ -29,7 +29,7 @@ from receipt_agent.utils.label_metadata import (
     combine_where_clauses,
     metadata_matches_label_state,
 )
-from receipt_agent.tools.places import _place_to_dict
+from receipt_agent.tools.places import _format_place_result, _place_to_dict
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -1300,8 +1300,19 @@ def create_agentic_tools(
                     radius=50,
                 )
 
+                if not businesses:
+                    return {
+                        "address": address,
+                        "coordinates": {"lat": lat, "lng": lng},
+                        "count": 0,
+                        "businesses": [],
+                        "place_ids": [],
+                        "message": f"No businesses found within 50m of {address}",
+                    }
+
                 formatted = [
-                    _place_to_dict(b) for b in businesses
+                    _format_place_result(_place_to_dict(b))
+                    for b in businesses[:10]
                 ]
 
                 return {
@@ -1310,7 +1321,7 @@ def create_agentic_tools(
                     "count": len(formatted),
                     "businesses": formatted,
                     "place_ids": [b.get("place_id") for b in formatted],
-                    "message": f"Found {len(formatted)} business(es) at address",
+                    "message": f"Found {len(formatted)} business(es) at {address}",
                 }
 
             except Exception as e:
