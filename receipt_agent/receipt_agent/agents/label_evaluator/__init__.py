@@ -161,6 +161,11 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_issues_with_receipt_context,
     review_single_issue,
 )
+from receipt_agent.agents.label_evaluator.financial_structured import (
+    TwoTierFinancialResult,
+    run_two_tier_financial_validation,
+    run_two_tier_financial_validation_async,
+)
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     FORMAT_VALIDATED_LABELS,
     MAX_RECEIPT_LINES_FOR_PROMPT,
@@ -301,6 +306,10 @@ __all__ = [
     "collect_metadata_words",
     "evaluate_metadata_labels",
     "parse_metadata_evaluation_response",
+    # Two-tier financial validation pipeline
+    "TwoTierFinancialResult",
+    "run_two_tier_financial_validation",
+    "run_two_tier_financial_validation_async",
     # Financial subagent (for financial math validation)
     "FinancialValue",
     "MathIssue",
