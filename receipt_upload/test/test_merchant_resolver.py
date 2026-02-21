@@ -1034,8 +1034,13 @@ class TestModuleLevelFunctions:
         assert merchant_name_matches_receipt(None, lines)
 
 
-class TestWriteTimeValidation:
-    """Test write-time validation in _run_lines_pipeline_worker."""
+class TestWriteTimeValidationLogic:
+    """Test the merchant_name_matches_receipt helper used by write-time validation.
+
+    These tests verify the validation *logic* in isolation.  The actual
+    write-time guard lives in ``_run_lines_pipeline_worker`` inside
+    ``embedding_processor.py`` (lines 226-242) and calls the same function.
+    """
 
     def _make_line(self, line_id: int, text: str, y: float = 0.1):
         line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)

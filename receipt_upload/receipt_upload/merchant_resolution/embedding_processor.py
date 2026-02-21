@@ -167,6 +167,7 @@ def _run_lines_pipeline_worker(
     )
 
     def _do_lines_work() -> Dict[str, Any]:
+        """Run the lines pipeline: merchant resolution, build payload, upsert, upload."""
         # Reconstruct entities from dicts using **unpacking
         lines = [ReceiptLine(**d) for d in lines_data]
         words = [ReceiptWord(**d) for d in words_data]
@@ -230,9 +231,7 @@ def _run_lines_pipeline_worker(
             if validated_merchant_name and not merchant_name_matches_receipt(
                 validated_merchant_name, lines
             ):
-                import logging as _logging
-
-                _logging.getLogger(__name__).warning(
+                logging.getLogger(__name__).warning(
                     "Write-time validation: merchant_name %r rejected "
                     "— no token overlap with receipt OCR text for %s#%d",
                     validated_merchant_name,
@@ -266,7 +265,7 @@ def _run_lines_pipeline_worker(
             return {
                 "success": True,
                 "lines_prefix": prefix,
-                "merchant_name": merchant_result.merchant_name,
+                "merchant_name": validated_merchant_name,
                 "place_id": merchant_result.place_id,
                 "resolution_tier": merchant_result.resolution_tier,
                 "confidence": merchant_result.confidence,
