@@ -1033,6 +1033,10 @@ class TestModuleLevelFunctions:
         lines = [self._make_line(1, "Store")]
         assert merchant_name_matches_receipt(None, lines)
 
+    def test_module_level_merchant_name_matches_receipt_empty_lines(self):
+        """Empty lines list passes (no receipt text to validate against)."""
+        assert merchant_name_matches_receipt("Sprouts Farmers Market", [])
+
 
 class TestWriteTimeValidationLogic:
     """Test the merchant_name_matches_receipt helper used by write-time validation.

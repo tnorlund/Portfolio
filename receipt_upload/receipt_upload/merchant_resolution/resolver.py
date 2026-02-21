@@ -111,6 +111,9 @@ def merchant_name_matches_receipt(
     if len(merchant_tokens) < 2:
         return True  # Too short to validate reliably
 
+    if not lines:
+        return True  # No receipt text to validate against
+
     # Build a token set from the top N receipt lines (by y-coordinate)
     sorted_lines = sorted(
         lines, key=lambda l: l.calculate_centroid()[1]
