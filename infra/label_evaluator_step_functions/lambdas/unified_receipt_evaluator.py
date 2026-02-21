@@ -29,7 +29,9 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import boto3
 from langsmith import tracing_context
@@ -253,6 +255,110 @@ def _build_consensus_auto_review(
         min_evidence=min_evidence,
         threshold=threshold,
     )
+
+
+def _enqueue_regional_reocr_job(
+    *,
+    dynamo_client: Any,
+    image_id: str,
+    receipt_id: int,
+    receipt_info: Any,
+    two_tier_result: Any,
+) -> dict[str, Any]:
+    """Fire-and-forget enqueue of REGIONAL_REOCR job when guards pass."""
+    queue_url = os.environ.get("OCR_JOB_QUEUE_URL", "").strip()
+    if not queue_url:
+        return {"triggered": False, "reason": "queue_not_configured"}
+
+    subtotal_gap = float(
+        getattr(two_tier_result, "subtotal_mismatch_gap", 0.0) or 0.0
+    )
+    if subtotal_gap < 1.0:
+        return {
+            "triggered": False,
+            "reason": "gap_below_threshold",
+            "subtotal_gap": subtotal_gap,
+        }
+
+    if not bool(getattr(two_tier_result, "phantom_values_filtered", False)):
+        return {"triggered": False, "reason": "no_phantom_values_filtered"}
+
+    region = getattr(two_tier_result, "reocr_region", None)
+    if not isinstance(region, dict):
+        return {"triggered": False, "reason": "missing_reocr_region"}
+
+    raw_bucket = getattr(receipt_info, "raw_s3_bucket", None)
+    raw_key = getattr(receipt_info, "raw_s3_key", None)
+    if not raw_bucket or not raw_key:
+        return {"triggered": False, "reason": "missing_receipt_raw_s3"}
+
+    from receipt_dynamo.constants import OCRJobType, OCRStatus
+    from receipt_dynamo.entities import OCRJob
+
+    # Prevent re-OCR loops: skip if this receipt already has a regional job.
+    existing_jobs: list[Any] = []
+    page, lek = dynamo_client.list_ocr_jobs_for_image(
+        image_id=image_id, limit=100
+    )
+    existing_jobs.extend(page or [])
+    while lek:
+        page, lek = dynamo_client.list_ocr_jobs_for_image(
+            image_id=image_id,
+            limit=100,
+            last_evaluated_key=lek,
+        )
+        existing_jobs.extend(page or [])
+
+    for job in existing_jobs:
+        if (
+            getattr(job, "receipt_id", None) == receipt_id
+            and getattr(job, "job_type", "")
+            == OCRJobType.REGIONAL_REOCR.value
+            # Allow retry of stranded PENDING jobs (e.g. SQS send
+            # failed after DynamoDB write).  Only block when the job
+            # is actively running or already completed.
+            and getattr(job, "status", "")
+            != OCRStatus.PENDING.value
+        ):
+            return {
+                "triggered": False,
+                "reason": "already_attempted",
+                "existing_job_id": getattr(job, "job_id", None),
+            }
+
+    now = datetime.now(timezone.utc)
+    reocr_job = OCRJob(
+        image_id=image_id,
+        job_id=str(uuid4()),
+        s3_bucket=raw_bucket,
+        s3_key=raw_key,
+        created_at=now,
+        updated_at=now,
+        status=OCRStatus.PENDING.value,
+        job_type=OCRJobType.REGIONAL_REOCR.value,
+        receipt_id=receipt_id,
+        reocr_region={
+            "x": float(region.get("x", 0.70)),
+            "y": float(region.get("y", 0.0)),
+            "width": float(region.get("width", 0.30)),
+            "height": float(region.get("height", 1.0)),
+        },
+        reocr_reason="subtotal_mismatch_phantom_values",
+    )
+    dynamo_client.add_ocr_job(reocr_job)
+    boto3.client("sqs").send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(
+            {"job_id": reocr_job.job_id, "image_id": image_id}
+        ),
+    )
+    return {
+        "triggered": True,
+        "job_id": reocr_job.job_id,
+        "subtotal_gap": subtotal_gap,
+        "region": reocr_job.reocr_region,
+        "reason": reocr_job.reocr_reason,
+    }
 
 
 async def unified_receipt_evaluator(
@@ -1233,6 +1339,7 @@ async def unified_receipt_evaluator(
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
         financial_result = None
         financial_duration = 0.0
+        regional_reocr: dict[str, Any] = {"triggered": False}
         if dynamo_table:
             with child_trace("phase2_financial_validation", trace_ctx):
                 # Re-fetch labels from DynamoDB to get corrections
@@ -1281,6 +1388,43 @@ async def unified_receipt_evaluator(
                 )
                 financial_result = two_tier_result.decisions
                 financial_duration = two_tier_result.duration_seconds
+
+                # Fire-and-forget: enqueue targeted regional re-OCR when
+                # subtotal mismatch remains and phantom values were filtered.
+                if receipt_info is not None:
+                    try:
+                        regional_reocr = _enqueue_regional_reocr_job(
+                            dynamo_client=dynamo_client,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            receipt_info=receipt_info,
+                            two_tier_result=two_tier_result,
+                        )
+                        if regional_reocr.get("triggered"):
+                            logger.info(
+                                "Enqueued REGIONAL_REOCR image=%s receipt=%s job_id=%s gap=%.2f",
+                                image_id,
+                                receipt_id,
+                                regional_reocr.get("job_id"),
+                                float(regional_reocr.get("subtotal_gap", 0.0)),
+                            )
+                        else:
+                            logger.info(
+                                "Skipped REGIONAL_REOCR image=%s receipt=%s reason=%s",
+                                image_id,
+                                receipt_id,
+                                regional_reocr.get("reason"),
+                            )
+                    except Exception:
+                        logger.exception(
+                            "REGIONAL_REOCR enqueue failed for %s#%s",
+                            image_id,
+                            receipt_id,
+                        )
+                        regional_reocr = {
+                            "triggered": False,
+                            "reason": "enqueue_exception",
+                        }
 
                 # Apply financial corrections and confirmations
                 if financial_result:
@@ -1786,6 +1930,7 @@ async def unified_receipt_evaluator(
                 "review_decisions": review_counts,
                 "review_all_decisions": llm_review_result or [],
                 "review_duration_seconds": review_duration,
+                "regional_reocr": regional_reocr,
                 "applied_stats": {
                     "phase1": applied_stats_phase1,
                 },
@@ -1877,6 +2022,7 @@ async def unified_receipt_evaluator(
             "financial_decisions": decision_counts["financial"],
             "geometric_issues_found": geometric_issues_found,
             "review_decisions": review_counts,
+            "regional_reocr": regional_reocr,
             "results_s3_key": results_s3_key,
         }
 

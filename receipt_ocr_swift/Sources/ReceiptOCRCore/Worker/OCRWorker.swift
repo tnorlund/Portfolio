@@ -1,5 +1,9 @@
 import Foundation
 import Logging
+#if os(macOS)
+import AppKit
+import CoreGraphics
+#endif
 
 public protocol OCREngineProtocol {
     func process(images: [URL], outputDirectory: URL) throws -> [URL]
@@ -196,6 +200,37 @@ public final class OCRWorker {
         return worker
     }
 
+    #if os(macOS)
+    private func cropImageData(_ imageData: Data, region: ReOCRRegion) throws -> Data {
+        // The region already includes horizontal padding (applied in
+        // _compute_reocr_region on the Python side). Use it directly so
+        // crop and overlay coordinate mapping are identical.
+        guard let nsImage = NSImage(data: imageData),
+              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw DynamoMapError.invalid("regional_reocr_image_decode")
+        }
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+
+        let cropX = max(0, min(imageWidth - 1, CGFloat(region.x) * imageWidth))
+        let cropWidth = max(1, min(imageWidth - cropX, CGFloat(region.width) * imageWidth))
+        // Vision/OCR coordinates are normalized with bottom-left origin; convert to CGImage's top-left origin.
+        let cropYFromTop = (1.0 - CGFloat(region.y + region.height)) * imageHeight
+        let cropY = max(0, min(imageHeight - 1, cropYFromTop))
+        let cropHeight = max(1, min(imageHeight - cropY, CGFloat(region.height) * imageHeight))
+        let cropRect = CGRect(x: cropX, y: cropY, width: cropWidth, height: cropHeight).integral
+
+        guard let croppedCG = cgImage.cropping(to: cropRect) else {
+            throw DynamoMapError.invalid("regional_reocr_crop_failed")
+        }
+        let bitmapRep = NSBitmapImageRep(cgImage: croppedCG)
+        guard let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
+            throw DynamoMapError.invalid("regional_reocr_png_encode_failed")
+        }
+        return pngData
+    }
+    #endif
+
     public func processBatch() async throws -> Bool {
         logger.info("sqs_receive_start max=10 visibility=60 queue=\(config.ocrJobQueueURL)")
         let messages = try await Retry.withBackoff {
@@ -212,7 +247,13 @@ public final class OCRWorker {
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-        struct Context { let message: SQSMessage; let imageId: String; let jobId: String; let s3Bucket: String }
+        struct Context {
+            let message: SQSMessage
+            let imageId: String
+            let jobId: String
+            let s3Bucket: String
+            let jobType: OCRJobType
+        }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
 
@@ -236,12 +277,48 @@ public final class OCRWorker {
             let baseName = (job.s3Key as NSString).lastPathComponent
             let name = baseName.isEmpty ? "\(imageId)" : (baseName as NSString).deletingPathExtension
             let ext = (baseName as NSString).pathExtension
-            let localName = ext.isEmpty ? "\(name)-\(jobId)" : "\(name)-\(jobId).\(ext)"
+            var localName = ext.isEmpty ? "\(name)-\(jobId)" : "\(name)-\(jobId).\(ext)"
             let localURL = tempDir.appendingPathComponent(localName)
+            if job.jobType == .regionalReocr, let region = job.reocrRegion {
+                #if os(macOS)
+                do {
+                    let cropped = try cropImageData(imageData, region: region)
+                    localName = "\(name)-\(jobId)-reocr.png"
+                    let croppedURL = tempDir.appendingPathComponent(localName)
+                    try cropped.write(to: croppedURL)
+                    imageURLs.append(croppedURL)
+                    contexts.append(
+                        Context(
+                            message: msg,
+                            imageId: imageId,
+                            jobId: jobId,
+                            s3Bucket: job.s3Bucket,
+                            jobType: job.jobType
+                        )
+                    )
+                    logger.info(
+                        "regional_reocr_crop_complete image_id=\(imageId) job_id=\(jobId) x=\(region.x) y=\(region.y) width=\(region.width) height=\(region.height)"
+                    )
+                    continue
+                } catch {
+                    logger.warning("regional_reocr_crop_failed image_id=\(imageId) job_id=\(jobId) error=\(error)")
+                }
+                #else
+                logger.warning("regional_reocr_crop_skipped_non_macos image_id=\(imageId) job_id=\(jobId)")
+                #endif
+            }
             try imageData.write(to: localURL)
 
             imageURLs.append(localURL)
-            contexts.append(Context(message: msg, imageId: imageId, jobId: jobId, s3Bucket: job.s3Bucket))
+            contexts.append(
+                Context(
+                    message: msg,
+                    imageId: imageId,
+                    jobId: jobId,
+                    s3Bucket: job.s3Bucket,
+                    jobType: job.jobType
+                )
+            )
         }
 
         // Update all jobs to OCR_RUNNING stage
@@ -268,9 +345,16 @@ public final class OCRWorker {
                 logger.debug("stage_update_failed image_id=\(ctx.imageId) stage=UPLOADING_RESULTS error=\(error)")
             }
 
-            // Parse the OCR result JSON to get receipt info
+            // Parse the OCR result JSON to get receipt info.
+            // Regional re-OCR jobs should not upload warped receipt images.
             let jsonData = try Data(contentsOf: resultURL)
-            let receipts = parseReceiptsFromJSON(jsonData)
+            let receipts: [ParsedReceiptInfo]
+            if ctx.jobType == .regionalReocr {
+                receipts = []
+                logger.debug("regional_reocr_skip_receipt_upload image_id=\(ctx.imageId) job_id=\(ctx.jobId)")
+            } else {
+                receipts = parseReceiptsFromJSON(jsonData)
+            }
 
             // Upload receipt images to S3 concurrently
             let uploadedReceiptKeys = await withTaskGroup(of: String?.self) { group in
@@ -305,6 +389,9 @@ public final class OCRWorker {
             // Upload LayoutLM predicted labels to DynamoDB as PENDING (concurrently)
             #if os(macOS)
             await withTaskGroup(of: Void.self) { group in
+                guard ctx.jobType != .regionalReocr else {
+                    return
+                }
                 for receipt in receipts {
                     guard let predictions = receipt.layoutLMPredictions, !predictions.isEmpty else { continue }
                     let receiptId = receipt.clusterId
@@ -386,5 +473,3 @@ public final class OCRWorker {
         return true
     }
 }
-
-
