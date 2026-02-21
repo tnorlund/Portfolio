@@ -577,7 +577,12 @@ def _status_value(status: Any) -> str:
 
 
 def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
-    """Compute a right-side crop region for targeted price re-OCR."""
+    """Compute a right-side crop region for targeted price re-OCR.
+
+    Region coordinates use Vision-style normalized image space
+    (origin at bottom-left). We currently keep full-height crops
+    (y=0, height=1) and only tune x/width for totals columns.
+    """
     default_region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
 
     if not words or not labels:
@@ -599,7 +604,7 @@ def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
             continue
         bbox = getattr(word, "bounding_box", {}) or {}
         x_val = bbox.get("x")
-        if isinstance(x_val, int | float):
+        if isinstance(x_val, (int, float)):
             valid_line_total_x.append(float(x_val))
 
     if not valid_line_total_x:

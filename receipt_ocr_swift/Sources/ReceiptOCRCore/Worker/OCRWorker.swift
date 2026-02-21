@@ -201,6 +201,8 @@ public final class OCRWorker {
     }
 
     private func normalizedRegionWithPadding(_ region: ReOCRRegion) -> ReOCRRegion {
+        // Region values are expected in Vision normalized coordinates
+        // (origin at bottom-left).
         let horizontalPadding = 0.05
         let left = max(0.0, region.x - horizontalPadding)
         let right = min(1.0, region.x + region.width + horizontalPadding)
@@ -353,9 +355,16 @@ public final class OCRWorker {
                 logger.debug("stage_update_failed image_id=\(ctx.imageId) stage=UPLOADING_RESULTS error=\(error)")
             }
 
-            // Parse the OCR result JSON to get receipt info
+            // Parse the OCR result JSON to get receipt info.
+            // Regional re-OCR jobs should not upload warped receipt images.
             let jsonData = try Data(contentsOf: resultURL)
-            let receipts = parseReceiptsFromJSON(jsonData)
+            let receipts: [ParsedReceiptInfo]
+            if ctx.jobType == .regionalReocr {
+                receipts = []
+                logger.debug("regional_reocr_skip_receipt_upload image_id=\(ctx.imageId) job_id=\(ctx.jobId)")
+            } else {
+                receipts = parseReceiptsFromJSON(jsonData)
+            }
 
             // Upload receipt images to S3 concurrently
             let uploadedReceiptKeys = await withTaskGroup(of: String?.self) { group in
@@ -474,4 +483,3 @@ public final class OCRWorker {
         return true
     }
 }
-
