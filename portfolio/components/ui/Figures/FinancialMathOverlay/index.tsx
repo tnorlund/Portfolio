@@ -230,6 +230,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                 );
               });
             })}
+
           </svg>
         </div>
       </div>
@@ -239,7 +240,8 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 
 // ─── Equation Notation Builder ──────────────────────────────────────────────
 
-function formatDollar(val: number | string): string {
+function formatDollar(val: number | string | null | undefined): string {
+  if (val == null) return "N/A";
   const n = typeof val === "number" ? val : parseFloat(String(val));
   if (isNaN(n)) return String(val);
   return `$${Math.abs(n).toFixed(2)}`;
@@ -256,13 +258,90 @@ function buildEquationNotation(eq: FinancialMathEquation): EquationNotation {
   const words = eq.involved_words;
   const issueType = eq.issue_type || "";
 
+  // HAS_TOTAL: simple single-value display (no addends)
+  if (issueType === "HAS_TOTAL") {
+    return {
+      addends: [],
+      result: eq.actual_value != null ? formatDollar(eq.actual_value) : "N/A",
+    };
+  }
+
+  // TOTAL_CHECK: SUBTOTAL + TAX = TOTAL (text-scanned)
+  if (issueType === "TOTAL_CHECK") {
+    // Parse values from description: "TOTAL ($X) = SUBTOTAL ($Y) + TAX ($Z) = $W"
+    const desc = eq.description || "";
+    const subtotalMatch = desc.match(/SUBTOTAL\s*\(\$?([\d.]+)\)/);
+    const taxMatch = desc.match(/TAX\s*\(\$?([\d.]+)\)/);
+    const totalMatch = desc.match(/TOTAL\s*\(\$?([\d.]+)\)/);
+    const addends = [];
+    if (subtotalMatch) addends.push(`$${subtotalMatch[1]}`);
+    if (taxMatch) addends.push(`$${taxMatch[1]}`);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result: totalMatch ? `$${totalMatch[1]}` : formatDollar(eq.actual_value),
+    };
+  }
+
+  // TIP_CHECK: SUBTOTAL + TIP = TOTAL (text-scanned)
+  if (issueType === "TIP_CHECK") {
+    const desc = eq.description || "";
+    const subtotalMatch = desc.match(/SUBTOTAL\s*\(\$?([\d.]+)\)/);
+    const tipMatch = desc.match(/TIP\s*\(\$?([\d.]+)\)/);
+    const totalMatch = desc.match(/TOTAL\s*\(\$?([\d.]+)\)/);
+    const addends = [];
+    if (subtotalMatch) addends.push(`$${subtotalMatch[1]}`);
+    if (tipMatch) addends.push(`$${tipMatch[1]}`);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result: totalMatch ? `$${totalMatch[1]}` : formatDollar(eq.actual_value),
+    };
+  }
+
+  if (issueType === "LINE_ITEM_BALANCED") {
+    const qty = words.filter((w) => w.current_label === "QUANTITY");
+    const up = words.filter((w) => w.current_label === "UNIT_PRICE");
+    const lt = words.filter((w) => w.current_label === "LINE_TOTAL");
+    return {
+      addends: [
+        ...qty.map((w) => w.word_text),
+        ...up.map((w) => `× ${w.word_text}`),
+      ],
+      result:
+        lt.map((w) => w.word_text).join("") || formatDollar(eq.actual_value),
+    };
+  }
+
+  // GRAND_TOTAL_DIRECT: LINE_TOTALs + TAX + TIP = GRAND_TOTAL (no subtotal)
+  if (issueType.includes("GRAND_TOTAL_DIRECT")) {
+    const lineItems = words.filter((w) => w.current_label === "LINE_TOTAL");
+    const discounts = words.filter((w) => w.current_label === "DISCOUNT");
+    const taxes = words.filter((w) => w.current_label === "TAX");
+    const tips = words.filter((w) => w.current_label === "TIP");
+    const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
+    const addends = [
+      ...lineItems.map((w) => w.word_text),
+      ...discounts.map((w) => w.word_text),
+      ...taxes.map((w) => w.word_text),
+      ...tips.map((w) => w.word_text),
+    ];
+    const result =
+      grandTotals.map((w) => w.word_text).join("") ||
+      formatDollar(eq.actual_value);
+    return {
+      addends: addends.length > 0 ? addends : [formatDollar(eq.expected_value)],
+      result,
+    };
+  }
+
   if (issueType.includes("GRAND_TOTAL")) {
     const subtotals = words.filter((w) => w.current_label === "SUBTOTAL");
     const taxes = words.filter((w) => w.current_label === "TAX");
+    const tips = words.filter((w) => w.current_label === "TIP");
     const grandTotals = words.filter((w) => w.current_label === "GRAND_TOTAL");
     const addends = [
       ...subtotals.map((w) => w.word_text),
       ...taxes.map((w) => w.word_text),
+      ...tips.map((w) => w.word_text),
     ];
     const result =
       grandTotals.map((w) => w.word_text).join("") ||
@@ -298,25 +377,32 @@ interface EquationPanelProps {
   equations: FinancialMathEquation[];
   revealedEquationIndices: Set<number>;
   isTransitioning?: boolean;
+  receiptType?: "itemized" | "service" | "terminal";
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
   equations,
   revealedEquationIndices,
   isTransitioning = false,
+  receiptType,
 }) => {
   return (
     <div
       className={styles.equationPanel}
       style={{ opacity: isTransitioning ? 0 : 1, transition: 'opacity 0.3s ease' }}
     >
+      {receiptType && receiptType !== "itemized" && (
+        <div className={styles.receiptTypeBadge}>
+          {receiptType.toUpperCase()}
+        </div>
+      )}
       {equations.map((eq, idx) => {
         const color = getEquationColor(eq);
         const isRevealed = revealedEquationIndices.has(idx);
         const diff =
           typeof eq.difference === "number"
             ? eq.difference
-            : parseFloat(String(eq.difference));
+            : parseFloat(String(eq.difference ?? ""));
         const hasDiff = !isNaN(diff) && Math.abs(diff) > 0.001;
         const hasInvalid = eq.involved_words.some(
           (w) => w.decision === "INVALID"
@@ -326,6 +412,7 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
         );
         const isValid = !hasInvalid && !hasReview;
         const notation = buildEquationNotation(eq);
+        const isHasTotal = eq.issue_type === "HAS_TOTAL";
 
         return (
           <div
@@ -334,38 +421,52 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             style={{ borderColor: isRevealed ? color : undefined }}
           >
             <div className={styles.summation}>
-              {/* Addends stacked vertically */}
-              <div className={styles.addends}>
-                {notation.addends.map((val, i) => (
-                  <div key={i} className={styles.addendRow}>
-                    <span className={styles.addendOp}>
-                      {i === notation.addends.length - 1 && notation.addends.length > 1
-                        ? "+"
-                        : ""}
-                    </span>
-                    <span className={styles.addendVal}>{val}</span>
-                  </div>
-                ))}
-              </div>
-              {/* Horizontal rule = the "equals" line */}
-              <div className={styles.sumLine} />
-              {/* Result row with validity indicator */}
-              <div className={styles.resultRow}>
-                <span className={styles.resultVal}>{notation.result}</span>
-                <span
-                  className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
-                >
-                  {isValid ? "\u2713" : "\u2717"}
-                </span>
-              </div>
-              {hasDiff && (
-                <div
-                  className={styles.equationDiff}
-                  style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
-                >
-                  {diff > 0 ? "+" : ""}
-                  {diff.toFixed(2)}
+              {isHasTotal ? (
+                /* HAS_TOTAL: simple single-value display */
+                <div className={styles.resultRow}>
+                  <span className={styles.resultVal}>{notation.result}</span>
+                  <span
+                    className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+                  >
+                    {isValid ? "\u2713" : "\u2717"}
+                  </span>
                 </div>
+              ) : (
+                <>
+                  {/* Addends stacked vertically */}
+                  <div className={styles.addends}>
+                    {notation.addends.map((val, i) => (
+                      <div key={i} className={styles.addendRow}>
+                        <span className={styles.addendOp}>
+                          {i === notation.addends.length - 1 && notation.addends.length > 1
+                            ? "+"
+                            : ""}
+                        </span>
+                        <span className={styles.addendVal}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Horizontal rule = the "equals" line */}
+                  <div className={styles.sumLine} />
+                  {/* Result row with validity indicator */}
+                  <div className={styles.resultRow}>
+                    <span className={styles.resultVal}>{notation.result}</span>
+                    <span
+                      className={`${styles.resultIcon} ${isValid ? styles.resultValid : styles.resultInvalid}`}
+                    >
+                      {isValid ? "\u2713" : "\u2717"}
+                    </span>
+                  </div>
+                  {hasDiff && (
+                    <div
+                      className={styles.equationDiff}
+                      style={isValid ? { color: "rgba(var(--text-color-rgb), 0.4)" } : undefined}
+                    >
+                      {diff > 0 ? "+" : ""}
+                      {diff.toFixed(2)}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -500,22 +601,31 @@ export default function FinancialMathOverlay() {
     }
   }, [remainingReceipts, fetchMoreReceipts, initialLoading, isPoolExhausted]);
 
-  // Compute which equations are revealed based on scan progress
+  // Compute which equations and confirmed labels are revealed based on scan progress
   const computeRevealed = useCallback(
     (receipt: FinancialMathReceipt, progress: number): Set<number> => {
       const revealed = new Set<number>();
       const scanY = progress / 100;
+
       receipt.equations.forEach((eq, eqIdx) => {
-        // An equation is revealed when at least one of its words' top edge is above the scan line
+        // Text-scanned equations have zero bboxes — reveal immediately
+        const hasRealBbox = eq.involved_words.some(
+          (w) => w.bbox.width > 0 || w.bbox.height > 0
+        );
+        if (!hasRealBbox) {
+          if (progress > 0) revealed.add(eqIdx);
+          return;
+        }
         const anyRevealed = eq.involved_words.some((word) => {
           const wordTopY = 1 - word.bbox.y - word.bbox.height;
           return wordTopY <= scanY;
         });
         if (anyRevealed) revealed.add(eqIdx);
       });
+
       return revealed;
     },
-    []
+    [],
   );
 
 
@@ -549,10 +659,9 @@ export default function FinancialMathOverlay() {
       if (elapsed < SCAN_DURATION) {
         // SCAN PHASE
         const progress = (elapsed / SCAN_DURATION) * 100;
-        setScanProgress(Math.min(progress, 100));
-        setRevealedEquationIndices(
-          computeRevealed(currentReceipt, Math.min(progress, 100))
-        );
+        const clamped = Math.min(progress, 100);
+        setScanProgress(clamped);
+        setRevealedEquationIndices(computeRevealed(currentReceipt, clamped));
         setIsTransitioning(false);
       } else if (elapsed < SCAN_DURATION + HOLD_DURATION) {
         // HOLD PHASE
@@ -699,9 +808,10 @@ export default function FinancialMathOverlay() {
         }
         legend={
           <EquationPanel
-          equations={currentReceipt.equations}
-          revealedEquationIndices={revealedEquationIndices}
-          isTransitioning={isTransitioning}
+            equations={currentReceipt.equations}
+            revealedEquationIndices={revealedEquationIndices}
+            isTransitioning={isTransitioning}
+            receiptType={currentReceipt.receipt_type}
           />
         }
       />
