@@ -35,6 +35,26 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _place_to_dict(place: Any) -> dict[str, Any]:
+    """Convert a Place Pydantic model (or dict) to a plain dict.
+
+    PlacesClient methods return Pydantic ``Place`` objects, but downstream
+    helpers like ``_format_place_result`` expect dicts.  This bridges the gap
+    so that ``.get()`` calls work regardless of the return type.
+    """
+    if place is None:
+        return {}
+    if isinstance(place, dict):
+        return place
+    # Pydantic v2 BaseModel
+    if hasattr(place, "model_dump"):
+        return place.model_dump()
+    # Pydantic v1 fallback
+    if hasattr(place, "dict"):
+        return place.dict()
+    return dict(place)
+
+
 class VerifyWithPlacesInput(BaseModel):
     """Input schema for verify_with_google_places tool."""
 
@@ -104,7 +124,9 @@ def verify_with_google_places(
         if place_id:
             result["search_method"] = "place_id"
             logger.info("🔍 Places lookup by place_id: %s...", place_id[:20])
-            place_data = _places_client.get_place_details(place_id)
+            place_data = _place_to_dict(
+                _places_client.get_place_details(place_id)
+            )
             if place_data and place_data.get("name"):
                 result["found"] = True
                 result["place"] = _format_place_result(place_data)
@@ -114,7 +136,9 @@ def verify_with_google_places(
         if phone_number and not result["found"]:
             result["search_method"] = "phone"
             logger.info("🔍 Places lookup by phone: %s (cached)", phone_number)
-            place_data = _places_client.search_by_phone(phone_number)
+            place_data = _place_to_dict(
+                _places_client.search_by_phone(phone_number)
+            )
             if place_data and place_data.get("name"):
                 result["found"] = True
                 result["place"] = _format_place_result(place_data)
@@ -126,7 +150,9 @@ def verify_with_google_places(
             logger.info(
                 "🔍 Places lookup by address: %s... (cached)", address[:50]
             )
-            place_data = _places_client.search_by_address(address)
+            place_data = _place_to_dict(
+                _places_client.search_by_address(address)
+            )
             if place_data and place_data.get("name"):
                 result["found"] = True
                 result["place"] = _format_place_result(place_data)
@@ -138,7 +164,9 @@ def verify_with_google_places(
             logger.info(
                 "🔍 Places text search: %s (NOT cached)", merchant_name
             )
-            place_data = _places_client.search_by_text(merchant_name)
+            place_data = _place_to_dict(
+                _places_client.search_by_text(merchant_name)
+            )
             if place_data and place_data.get("name"):
                 result["found"] = True
                 result["place"] = _format_place_result(place_data)
@@ -203,7 +231,9 @@ def find_businesses_at_address(
         )
 
         # First, geocode the address to get lat/lng
-        geocode_result = _places_client.search_by_address(address)
+        geocode_result = _place_to_dict(
+            _places_client.search_by_address(address)
+        )
         if not geocode_result:
             return {
                 "found": False,
@@ -243,7 +273,7 @@ def find_businesses_at_address(
         # Format results
         businesses = []
         for business in nearby_businesses[:10]:  # Limit to 10
-            formatted = _format_place_result(business)
+            formatted = _format_place_result(_place_to_dict(business))
             businesses.append(formatted)
 
         return {

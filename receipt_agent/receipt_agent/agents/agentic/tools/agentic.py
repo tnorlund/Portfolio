@@ -1183,7 +1183,13 @@ def create_agentic_tools(
                     "message": "No matching business found in Google Places",
                 }
 
-            top = result
+            # PlacesClient returns Pydantic Place models; convert to dict
+            # so downstream .get() calls work.
+            top = (
+                result.model_dump()
+                if hasattr(result, "model_dump")
+                else result
+            )
             return {
                 "found": True,
                 "place_id": top.get("place_id"),
