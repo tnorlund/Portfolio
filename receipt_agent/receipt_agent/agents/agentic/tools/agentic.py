@@ -1271,7 +1271,9 @@ def create_agentic_tools(
             """
             try:
                 # Geocode address to get coordinates
-                geocode_result = places_api.geocode_address(address)
+                geocode_result = _place_to_dict(
+                    places_api.search_by_address(address)
+                )
                 if not geocode_result:
                     return {
                         "error": f"Could not geocode address: {address}",
@@ -1279,8 +1281,17 @@ def create_agentic_tools(
                         "count": 0,
                     }
 
-                lat = geocode_result["lat"]
-                lng = geocode_result["lng"]
+                geometry = geocode_result.get("geometry", {})
+                location = geometry.get("location", {})
+                lat = location.get("lat") if location.get("lat") is not None else location.get("latitude")
+                lng = location.get("lng") if location.get("lng") is not None else location.get("longitude")
+
+                if not lat or not lng:
+                    return {
+                        "error": f"Could not get coordinates for address: {address}",
+                        "address": address,
+                        "count": 0,
+                    }
 
                 # Search for businesses near those coordinates
                 businesses = places_api.search_nearby(
@@ -1289,17 +1300,21 @@ def create_agentic_tools(
                     radius=50,
                 )
 
+                formatted = [
+                    _place_to_dict(b) for b in businesses
+                ]
+
                 return {
                     "address": address,
                     "coordinates": {"lat": lat, "lng": lng},
-                    "count": len(businesses),
-                    "businesses": businesses,
+                    "count": len(formatted),
+                    "businesses": formatted,
                     "place_ids": [
                         b.get("place_id")
-                        for b in businesses
+                        for b in formatted
                         if isinstance(b, dict)
                     ],
-                    "message": f"Found {len(businesses)} business(es) at address",
+                    "message": f"Found {len(formatted)} business(es) at address",
                 }
 
             except Exception as e:
