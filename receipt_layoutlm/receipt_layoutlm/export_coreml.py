@@ -20,6 +20,22 @@ class MissingDependencyError(CoreMLExportError):
     """Raised when required dependencies are not installed."""
 
 
+class NaNWeightsError(CoreMLExportError):
+    """Raised when exported CoreML model contains NaN or Inf weight values.
+
+    Typically caused by float16 quantization overflowing large weight
+    values (FP16 max is 65504). Re-export without ``--quantize float16``.
+    """
+
+    def __init__(self, bad_count: int, weight_path: Path):
+        self.bad_count = bad_count
+        self.weight_path = weight_path
+        super().__init__(
+            f"Exported CoreML model contains {bad_count} NaN/Inf values "
+            f"in weight.bin ({weight_path})."
+        )
+
+
 class LayoutLMWrapper(nn.Module):
     """Wrapper to trace LayoutLM with explicit input order."""
 
@@ -225,6 +241,22 @@ def export_coreml(
     mlpackage_path = output_path / f"{model_name}.mlpackage"
     print(f"Saving CoreML model to {mlpackage_path}...")
     mlmodel.save(str(mlpackage_path))
+
+    # Validate that the weight file contains no NaN/Inf values.
+    # Float16 conversion can overflow certain weights (FP16 max is 65504),
+    # producing -Inf that causes NaN at inference via 0 * (-Inf).
+    # Only check for float16 exports where weight.bin actually stores fp16
+    # data. FP32 and int8/int4 exports use different binary layouts.
+    weight_path = (
+        mlpackage_path / "Data" / "com.apple.CoreML" / "weights" / "weight.bin"
+    )
+    if weight_path.exists() and quantize == "float16":
+        raw = weight_path.read_bytes()
+        fp16_arr = np.frombuffer(raw, dtype=np.float16)
+        bad_count = int(np.isnan(fp16_arr).sum() + np.isinf(fp16_arr).sum())
+        if bad_count > 0:
+            raise NaNWeightsError(bad_count, weight_path)
+        print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN/Inf")
 
     # Copy vocab.txt for tokenizer
     vocab_src = checkpoint_path / "vocab.txt"

@@ -101,6 +101,134 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
+# ---------------------------------------------------------------------------
+# Viz-cache helpers (replicate merged_job.py logic for receipts/ prefix)
+# ---------------------------------------------------------------------------
+
+
+def _build_words_with_labels(
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build word list with labels for viz-cache JSON."""
+    label_lookup: dict[tuple[int, int], str] = {}
+    for label in labels:
+        lid = label.get("line_id")
+        wid = label.get("word_id")
+        lbl = label.get("label")
+        if lid is not None and wid is not None and lbl is not None:
+            label_lookup[(int(lid), int(wid))] = str(lbl)
+
+    result: list[dict[str, Any]] = []
+    for word in words:
+        lid = word.get("line_id")
+        wid = word.get("word_id")
+        bbox = word.get("bounding_box", {})
+        word_label: str | None = None
+        if lid is not None and wid is not None:
+            word_label = label_lookup.get((int(lid), int(wid)))
+        result.append(
+            {
+                "text": word.get("text", ""),
+                "label": word_label,
+                "line_id": lid,
+                "word_id": wid,
+                "bbox": {
+                    "x": bbox.get("x", 0.0),
+                    "y": bbox.get("y", 0.0),
+                    "width": bbox.get("width", 0.0),
+                    "height": bbox.get("height", 0.0),
+                },
+            }
+        )
+    return result
+
+
+def _build_decisions_block(
+    prefix: str,
+    decisions: dict[str, int],
+    all_decisions: list[dict[str, Any]],
+    duration_seconds: float,
+) -> dict[str, Any]:
+    """Build a decisions block for viz-cache JSON."""
+    return {
+        "decisions": {
+            "VALID": decisions.get("VALID", 0),
+            "INVALID": decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": all_decisions,
+        "duration_seconds": duration_seconds,
+    }
+
+
+def _build_viz_cache_receipt(
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    execution_id: str,
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    cdn_keys: dict[str, Any],
+    width: int,
+    height: int,
+    issues_found: int,
+    currency_decisions: dict[str, int],
+    currency_all: list[dict[str, Any]],
+    currency_duration: float,
+    metadata_decisions: dict[str, int],
+    metadata_all: list[dict[str, Any]],
+    metadata_duration: float,
+    financial_decisions: dict[str, int],
+    financial_all: list[dict[str, Any]],
+    financial_duration: float,
+    geometric_result: dict[str, Any],
+    geometric_duration: float,
+    review_all: list[dict[str, Any]] | None,
+    review_duration: float,
+) -> dict[str, Any]:
+    """Assemble the full viz-cache receipt JSON."""
+    review_block = None
+    if review_all or review_duration > 0:
+        review_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+        for d in (review_all or []):
+            dec = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+            if dec in review_counts:
+                review_counts[dec] += 1
+        review_block = {
+            "decisions": review_counts,
+            "all_decisions": review_all or [],
+            "duration_seconds": review_duration,
+        }
+
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merchant_name": merchant_name or "Unknown",
+        "execution_id": execution_id,
+        "issues_found": issues_found,
+        "words": _build_words_with_labels(words, labels),
+        "geometric": {
+            "issues_found": geometric_result.get("issues_found", 0),
+            "issues": geometric_result.get("issues", []),
+            "duration_seconds": geometric_duration,
+        },
+        "currency": _build_decisions_block(
+            "currency", currency_decisions, currency_all, currency_duration
+        ),
+        "metadata": _build_decisions_block(
+            "metadata", metadata_decisions, metadata_all, metadata_duration
+        ),
+        "financial": _build_decisions_block(
+            "financial", financial_decisions, financial_all, financial_duration
+        ),
+        "review": review_block,
+        **cdn_keys,
+        "width": width,
+        "height": height,
+    }
+
+
 def _build_consensus_auto_review(
     issue: dict[str, Any],
     target_label: str,
@@ -1135,37 +1263,55 @@ async def unified_receipt_evaluator(
                 fresh_word_contexts = build_word_contexts(words, fresh_labels)
                 fresh_visual_lines = assemble_visual_lines(fresh_word_contexts)
 
-                # Run financial validation
-                from receipt_agent.agents.label_evaluator.financial_subagent import (
-                    evaluate_financial_math_async,
+                # Run financial validation (two-tier structured approach)
+                from receipt_agent.agents.label_evaluator.financial_structured import (
+                    run_two_tier_financial_validation_async,
                 )
 
                 financial_start = time.time()
-                financial_result = await evaluate_financial_math_async(
-                    visual_lines=fresh_visual_lines,
+                two_tier_result = await run_two_tier_financial_validation_async(
                     llm=llm_invoker,
+                    words=words,
+                    labels=fresh_labels,
+                    visual_lines=fresh_visual_lines,
+                    chroma_client=chroma_client,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
-                    words=words,
-                    line_item_patterns=line_item_patterns,
                 )
-                financial_duration = time.time() - financial_start
+                financial_result = two_tier_result.decisions
+                financial_duration = two_tier_result.duration_seconds
 
-                # Apply financial corrections
+                # Apply financial corrections and confirmations
                 if financial_result:
                     from receipt_agent.agents.label_evaluator.llm_review import (
                         apply_llm_decisions,
                     )
 
-                    invalid_financial = [
+                    # Only apply decisions that reference real financial
+                    # label names.  Text-scan results use issue-type names
+                    # like "TOTAL_CHECK" and lack real word coordinates.
+                    _FINANCIAL_LABELS = {
+                        "GRAND_TOTAL",
+                        "SUBTOTAL",
+                        "TAX",
+                        "TIP",
+                        "LINE_TOTAL",
+                        "DISCOUNT",
+                        "UNIT_PRICE",
+                        "QUANTITY",
+                    }
+                    actionable_financial = [
                         d
                         for d in financial_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
+                        if d.get("llm_review", {}).get("decision")
+                        in ("VALID", "INVALID")
+                        and d.get("issue", {}).get("current_label")
+                        in _FINANCIAL_LABELS
                     ]
-                    if invalid_financial:
+                    if actionable_financial:
                         apply_llm_decisions(
-                            reviewed_issues=invalid_financial,
+                            reviewed_issues=actionable_financial,
                             dynamo_client=dynamo_client,
                             execution_id=f"financial-{execution_id}",
                         )
@@ -1652,6 +1798,67 @@ async def unified_receipt_evaluator(
                 batch_bucket,
                 results_s3_key,
             )
+
+        # Write viz-cache receipt directly (Option C — evaluator owns receipts/)
+        viz_cache_bucket = os.environ.get("VIZ_CACHE_BUCKET")
+        if viz_cache_bucket:
+            try:
+                # Serialize words/labels for viz-cache
+                words_dicts = [serialize_word(w) for w in words]
+                labels_dicts = [serialize_label(lbl) for lbl in labels]
+
+                viz_cdn_keys = {
+                    "cdn_s3_key": cdn_s3_key,
+                    "cdn_webp_s3_key": cdn_webp_s3_key,
+                    "cdn_avif_s3_key": cdn_avif_s3_key,
+                    "cdn_medium_s3_key": cdn_medium_s3_key,
+                    "cdn_medium_webp_s3_key": cdn_medium_webp_s3_key,
+                    "cdn_medium_avif_s3_key": cdn_medium_avif_s3_key,
+                }
+
+                viz_receipt = _build_viz_cache_receipt(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_name=merchant_name,
+                    execution_id=execution_id,
+                    words=words_dicts,
+                    labels=labels_dicts,
+                    cdn_keys=viz_cdn_keys,
+                    width=width,
+                    height=height,
+                    issues_found=total_issues,
+                    currency_decisions=decision_counts["currency"],
+                    currency_all=currency_result,
+                    currency_duration=currency_duration,
+                    metadata_decisions=decision_counts["metadata"],
+                    metadata_all=metadata_result,
+                    metadata_duration=metadata_duration,
+                    financial_decisions=decision_counts["financial"],
+                    financial_all=financial_result or [],
+                    financial_duration=financial_duration,
+                    geometric_result=geometric_result,
+                    geometric_duration=geometric_duration,
+                    review_all=llm_review_result,
+                    review_duration=review_duration,
+                )
+                viz_key = f"receipts/receipt-{image_id}-{receipt_id}.json"
+                s3.put_object(
+                    Bucket=viz_cache_bucket,
+                    Key=viz_key,
+                    Body=json.dumps(viz_receipt, default=str).encode("utf-8"),
+                    ContentType="application/json",
+                )
+                logger.info(
+                    "Wrote viz-cache receipt to s3://%s/%s",
+                    viz_cache_bucket,
+                    viz_key,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to write viz-cache receipt for %s#%s",
+                    image_id,
+                    receipt_id,
+                )
 
         result = {
             "status": "completed",

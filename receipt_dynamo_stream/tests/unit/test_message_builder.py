@@ -13,7 +13,6 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.message_builder import (
     _extract_entity_data,
-    build_compaction_run_completion_messages,
     build_compaction_run_messages,
     build_entity_change_message,
     build_messages_from_records,
@@ -128,30 +127,6 @@ def _create_compaction_run_insert_record() -> dict[str, Any]:
     }
 
 
-def _create_compaction_run_completion_record() -> dict[str, Any]:
-    """Create a mock DynamoDB stream record for COMPACTION_RUN completion."""
-    return {
-        "eventName": "MODIFY",
-        "eventID": "event-456",
-        "awsRegion": "us-east-1",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-            "NewImage": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-                "run_id": {"S": "run-abc"},
-                "receipt_id": {"N": "1"},
-                "lines_state": {"S": "COMPLETED"},
-                "words_state": {"S": "COMPLETED"},
-                "lines_delta_prefix": {"S": "s3://bucket/lines/"},
-                "words_delta_prefix": {"S": "s3://bucket/words/"},
-            },
-        },
-    }
-
 
 def _create_place_modify_record() -> dict[str, Any]:
     """Create a mock DynamoDB stream record for RECEIPT_PLACE MODIFY."""
@@ -226,14 +201,33 @@ def test_build_messages_from_records_with_remove() -> None:
     )
 
 
-def test_build_messages_from_records_with_completion() -> None:
-    """Test building messages for compaction run completion."""
-    record = _create_compaction_run_completion_record()
-    messages = build_messages_from_records([record])
+def test_build_messages_from_records_ignores_compaction_run_completion() -> None:
+    """CompactionRun MODIFY (completion) events should be ignored.
 
-    assert len(messages) == 2  # One per collection
-    assert all(msg.entity_type == "COMPACTION_RUN" for msg in messages)
-    assert all(msg.event_name == "MODIFY" for msg in messages)
+    The merge Lambda polls DynamoDB directly for completion status, so
+    forwarding these to the compaction handler only wastes resources.
+    """
+    record = {
+        "eventName": "MODIFY",
+        "eventID": "event-456",
+        "awsRegion": "us-east-1",
+        "dynamodb": {
+            "Keys": {
+                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
+            },
+            "NewImage": {
+                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
+                "run_id": {"S": "run-abc"},
+                "receipt_id": {"N": "1"},
+                "lines_state": {"S": "COMPLETED"},
+                "words_state": {"S": "COMPLETED"},
+            },
+        },
+    }
+    messages = build_messages_from_records([record])
+    assert messages == []
 
 
 def test_build_messages_from_records_with_metrics() -> None:
@@ -330,82 +324,6 @@ def test_build_compaction_run_messages_with_metrics() -> None:
     # Should have recorded error metric
     metric_names = [m[0] for m in metrics.counts]
     assert "CompactionRunMessageBuildError" in metric_names
-
-
-# Test build_compaction_run_completion_messages
-
-
-def test_build_compaction_run_completion_messages_success() -> None:
-    """Test successful building of completion messages."""
-    record = _create_compaction_run_completion_record()
-    messages = build_compaction_run_completion_messages(record)
-
-    assert len(messages) == 2
-    assert all(msg.entity_type == "COMPACTION_RUN" for msg in messages)
-    assert ChromaDBCollection.LINES in messages[0].collections
-    assert ChromaDBCollection.WORDS in messages[1].collections
-
-
-def test_build_compaction_run_completion_messages_not_completed() -> None:
-    """Test when embeddings are not completed."""
-    record = {
-        "eventName": "MODIFY",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-            "NewImage": {
-                "run_id": {"S": "run-abc"},
-                "lines_state": {"S": "PROCESSING"},  # Not completed
-                "words_state": {"S": "PROCESSING"},
-            },
-        },
-    }
-    messages = build_compaction_run_completion_messages(record)
-    assert messages == []
-
-
-def test_build_compaction_run_completion_messages_not_compaction_run() -> None:
-    """Test with non-compaction-run SK."""
-    record = {
-        "eventName": "MODIFY",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#PLACE"},
-            },
-            "NewImage": {},
-        },
-    }
-    messages = build_compaction_run_completion_messages(record)
-    assert messages == []
-
-
-def test_build_compaction_run_completion_messages_missing_new_image() -> None:
-    """Test with missing NewImage."""
-    record = {
-        "eventName": "MODIFY",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-        },
-    }
-    messages = build_compaction_run_completion_messages(record)
-    assert messages == []
-
-
-def test_build_compaction_run_completion_messages_with_metrics() -> None:
-    """Test that completion detection metric is recorded."""
-    metrics = MockMetrics()
-    record = _create_compaction_run_completion_record()
-    messages = build_compaction_run_completion_messages(record, metrics)
-
-    assert len(messages) == 2
-    metric_names = [m[0] for m in metrics.counts]
-    assert "CompactionRunCompletionDetected" in metric_names
 
 
 # Test build_entity_change_message

@@ -1071,7 +1071,25 @@ def apply_llm_decisions(
 
                 for label in all_labels:
                     if label.label == current_label:
-                        # This is the confirmed label - already VALID, count it
+                        # Confirm this label — update to VALID if not already
+                        if label.validation_status != "VALID":
+                            updated_label = ReceiptWordLabel(
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                label=label.label,
+                                reasoning=audit_reasoning,
+                                timestamp_added=label.timestamp_added,
+                                validation_status="VALID",
+                                label_proposed_by=label.label_proposed_by,
+                                label_consolidated_from=(
+                                    label.label_consolidated_from
+                                ),
+                            )
+                            dynamo_client.update_receipt_word_label(
+                                updated_label
+                            )
                         stats["labels_confirmed"] += 1
                     elif label.validation_status == "VALID":
                         # Conflicting VALID label - invalidate it

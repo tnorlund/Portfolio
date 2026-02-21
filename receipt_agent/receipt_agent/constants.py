@@ -110,6 +110,7 @@ FINANCIAL_MATH_LABELS = {
     "GRAND_TOTAL",
     "SUBTOTAL",
     "TAX",
+    "TIP",
     "LINE_TOTAL",
     "UNIT_PRICE",
     "QUANTITY",

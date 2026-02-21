@@ -2,7 +2,8 @@
 Pulumi infrastructure for Fix Place Lambda.
 
 This component creates a container-based Lambda that fixes incorrect
-ReceiptPlace records using receipt content analysis and Google Places API.
+ReceiptPlace records using a LangGraph agent with ChromaDB similarity
+search and Google Places API.
 
 The Lambda can be invoked directly with:
 {
@@ -13,7 +14,9 @@ The Lambda can be invoked directly with:
 
 Architecture:
 - Container Lambda with all receipt_* packages
-- Uses Google Places API for place resolution
+- LangGraph agent with receipt context tools + similarity search
+- Chroma Cloud for vector similarity search
+- Google Places API for place resolution
 - Updates ReceiptPlace in DynamoDB
 """
 
@@ -41,18 +44,22 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
+chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
+chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
+chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 
 class FixPlaceLambda(ComponentResource):
     """
     Container Lambda for fixing incorrect ReceiptPlace records.
 
-    This Lambda:
-    1. Receives (image_id, receipt_id, reason)
-    2. Reads receipt content from DynamoDB
-    3. Extracts merchant hints from labeled words
-    4. Searches Google Places for correct match
-    5. Updates ReceiptPlace with corrected data
+    This Lambda uses a LangGraph agent to:
+    1. Receive (image_id, receipt_id, reason)
+    2. Examine receipt content (lines, words, labels)
+    3. Search ChromaDB for similar receipts
+    4. Search Google Places for correct match
+    5. Submit place data with confidence scoring
+    6. Update ReceiptPlace with corrected data
 
     Exports:
     - lambda_function: The Lambda function resource
@@ -162,8 +169,8 @@ class FixPlaceLambda(ComponentResource):
         # ============================================================
         lambda_config = {
             "role_arn": lambda_role.arn,
-            "timeout": 120,  # 2 minutes - usually completes quickly
-            "memory_size": 512,  # Lightweight - no LLM needed
+            "timeout": 900,  # 15 min - LangGraph agent with tools
+            "memory_size": 3072,  # 3 GB for LLM agent + ChromaDB
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
@@ -173,14 +180,20 @@ class FixPlaceLambda(ComponentResource):
                 "RECEIPT_PLACES_AWS_REGION": "us-east-1",
                 # OpenRouter (for LLM calls)
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                # OpenAI (for embeddings if needed)
+                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
+                # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                # Chroma Cloud
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # LangSmith tracing
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
-                "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": config.get("langchain_project")
-                or "fix-place",
+                "LANGCHAIN_ENDPOINT": ("https://api.smith.langchain.com"),
+                "LANGCHAIN_PROJECT": (
+                    config.get("langchain_project") or "fix-place"
+                ),
             },
         }
 

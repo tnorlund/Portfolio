@@ -45,6 +45,7 @@ from dynamo_db import (
 from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
+from merge_receipt_lambda import create_merge_receipt_lambda
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
@@ -524,25 +525,11 @@ if layoutlm_training_bucket_name is not None:
         create_batch_cache_generator,
     )
 
-    # Get optional model S3 URI from config, otherwise auto-detect latest
-    # Default to the 8-label hybrid model that matches the featured job metrics
-    layoutlm_model_run = (
-        config.get("layoutlm-model-run")
-        or "layoutlm-hybrid-8-labels-orig-label-fix"
-    )
-    layoutlm_model_checkpoint = (
-        config.get("layoutlm-model-checkpoint") or "checkpoint-13605"
-    )
-
-    # Build model S3 URI from training bucket and run/checkpoint names
-    layoutlm_model_s3_uri = layoutlm_training_bucket_name.apply(
-        lambda bucket: f"s3://{bucket}/runs/{layoutlm_model_run}/{layoutlm_model_checkpoint}/"
-    )
-
-    # Create cache generator (which creates the cache bucket)
+    # The cache generator Lambda resolves the active model from DynamoDB
+    # at runtime (Job tagged with active_model=true). Falls back to
+    # auto-detecting the latest model from the training bucket.
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
-        model_s3_uri=layoutlm_model_s3_uri,
     )
 
     # Create Step Function for batch cache generation (weekly)
@@ -1285,6 +1272,20 @@ fix_place_lambda = create_fix_place_lambda(
 pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
+
+# Merge Receipt Lambda (for merging receipt fragments into a single receipt)
+# Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
+merge_receipt_lambda = create_merge_receipt_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+    image_bucket_name=upload_images.image_bucket.bucket,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+)
+pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
+pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport

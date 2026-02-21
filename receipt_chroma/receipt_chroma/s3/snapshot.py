@@ -6,8 +6,7 @@ import shutil
 import tempfile
 import time
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -18,158 +17,11 @@ from receipt_chroma.s3.helpers import (
     _cleanup_s3_prefix,
     download_snapshot_from_s3,
     download_snapshot_from_s3_auto,
-    download_snapshot_from_s3_parallel,
     upload_snapshot_compressed,
     upload_snapshot_with_hash,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _validate_snapshot_after_upload(
-    bucket: str,
-    versioned_key: str,
-    collection_name: str,
-    s3_client: Optional[Any] = None,
-) -> Tuple[bool, float]:
-    """
-    Validate that a snapshot uploaded to S3 can be opened and read by ChromaDB.
-
-    This is a fast validation that verifies the snapshot is valid before
-    updating the pointer. If validation fails, the versioned upload should
-    be cleaned up.
-
-    Args:
-        bucket: S3 bucket name
-        versioned_key: S3 key prefix for the versioned snapshot
-        collection_name: Expected ChromaDB collection name
-        s3_client: Optional boto3 S3 client (creates one if not provided)
-
-    Returns:
-        Tuple of (success: bool, duration_seconds: float)
-    """
-    validation_start_time = time.time()
-    temp_dir = None
-
-    if s3_client is None:
-        s3_client = boto3.client("s3")
-
-    try:
-        temp_dir = tempfile.mkdtemp()
-        logger.info(
-            "Validating snapshot by downloading from S3: %s (temp_dir: %s)",
-            versioned_key,
-            temp_dir,
-        )
-
-        # Download snapshot from versioned location (auto-detects compressed format)
-        download_result = download_snapshot_from_s3_auto(
-            bucket=bucket,
-            snapshot_key=versioned_key,
-            local_snapshot_path=temp_dir,
-            verify_integrity=False,  # Skip hash check for speed
-            s3_client=s3_client,
-        )
-
-        if download_result.get("status") != "downloaded":
-            validation_duration = time.time() - validation_start_time
-            logger.error(
-                "Failed to download snapshot for validation: %s "
-                "(duration: %.2fs)",
-                versioned_key,
-                validation_duration,
-            )
-            return False, validation_duration
-
-        # Check for SQLite files
-        temp_path = Path(temp_dir)
-        sqlite_files = list(temp_path.rglob("*.sqlite*"))
-        if not sqlite_files:
-            validation_duration = time.time() - validation_start_time
-            logger.error(
-                "No SQLite files found in snapshot (duration: %.2fs)",
-                validation_duration,
-            )
-            return False, validation_duration
-
-        # Try to open with ChromaDB using our wrapper for proper cleanup
-        try:
-            # Use ChromaClient wrapper for proper close() handling (issue #5868)
-            with ChromaClient(
-                persist_directory=temp_dir, mode="read"
-            ) as test_client:
-                collections = test_client.list_collections()
-
-                if not collections:
-                    validation_duration = time.time() - validation_start_time
-                    logger.error(
-                        "No collections found in snapshot (duration: %.2fs)",
-                        validation_duration,
-                    )
-                    return False, validation_duration
-
-                # Verify expected collection exists
-                if collection_name not in collections:
-                    validation_duration = time.time() - validation_start_time
-                    logger.error(
-                        "Expected collection '%s' not found in snapshot "
-                        "(found: %s, duration: %.2fs)",
-                        collection_name,
-                        collections,
-                        validation_duration,
-                    )
-                    return False, validation_duration
-
-                # Lightweight check: verify collection can be accessed
-                test_collection = test_client.get_collection(collection_name)
-                count = test_collection.count()  # Lightweight operation
-
-            # ChromaClient's close() handles proper cleanup including
-            # _system.stop() and gc.collect() (issue #5868)
-
-            validation_duration = time.time() - validation_start_time
-            logger.info(
-                "Snapshot validation successful: %s "
-                "(collections: %d, count: %d, duration: %.2fs)",
-                versioned_key,
-                len(collections),
-                count,
-                validation_duration,
-            )
-            return True, validation_duration
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            # Catch all exceptions during validation to ensure cleanup
-            validation_duration = time.time() - validation_start_time
-            logger.error(
-                "Failed to open snapshot with ChromaDB during validation: "
-                "%s (type: %s, duration: %.2fs)",
-                versioned_key,
-                type(e).__name__,
-                validation_duration,
-                exc_info=True,
-            )
-            return False, validation_duration
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        # Catch all exceptions during validation to ensure cleanup
-        validation_duration = time.time() - validation_start_time
-        logger.error(
-            "Error during snapshot validation: %s (type: %s, duration: %.2fs)",
-            versioned_key,
-            type(e).__name__,
-            validation_duration,
-            exc_info=True,
-        )
-        return False, validation_duration
-    finally:
-        # Clean up temp directory
-        if temp_dir:
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception:  # pylint: disable=broad-exception-caught
-                # Ignore cleanup errors
-                pass
 
 
 def upload_snapshot_atomic(
@@ -260,52 +112,10 @@ def upload_snapshot_atomic(
                 "version_id": version_id,
             }
 
-        # Step 2: Validate uploaded snapshot before updating pointer
-        validation_result, validation_duration = (
-            _validate_snapshot_after_upload(
-                bucket=bucket,
-                versioned_key=versioned_key,
-                collection_name=collection,
-                s3_client=s3_client,
-            )
-        )
-
-        if not validation_result:
-            # Clean up versioned upload on validation failure
-            logger.error(
-                "Step 2 failed - snapshot validation failed, cleaning up "
-                "versioned upload: %s (duration: %.2fs)",
-                versioned_key,
-                validation_duration,
-            )
-            try:
-                _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-            except (
-                Exception
-            ) as cleanup_error:  # pylint: disable=broad-exception-caught
-                # Cleanup failures are non-critical
-                logger.warning(
-                    "Failed to cleanup versioned upload: %s", cleanup_error
-                )
-
-            return {
-                "status": "error",
-                "error": "Snapshot validation failed after upload",
-                "collection": collection,
-                "version_id": version_id,
-                "validation_duration": validation_duration,
-            }
-
-        logger.info(
-            "Step 2 completed - snapshot validation successful "
-            "(duration: %.2fs)",
-            validation_duration,
-        )
-
-        # Step 3: Final lock validation before atomic promotion
+        # Step 2: Final lock validation before atomic promotion
         if lock_manager and not lock_manager.validate_ownership():
             logger.error(
-                "Step 3 failed - lock validation failed, "
+                "Step 2 failed - lock validation failed, "
                 "cleaning up versioned upload"
             )
             # Clean up versioned upload
@@ -326,9 +136,9 @@ def upload_snapshot_atomic(
                 "version_id": version_id,
             }
 
-        # Step 4: Atomic promotion - single S3 write operation
+        # Step 3: Atomic promotion - single S3 write operation
         logger.info(
-            "Step 4 - atomic promotion, writing pointer file: %s -> %s",
+            "Step 3 - atomic promotion, writing pointer file: %s -> %s",
             pointer_key,
             version_id,
         )
@@ -340,7 +150,7 @@ def upload_snapshot_atomic(
             Metadata={k: str(v) for k, v in (metadata or {}).items()},
         )
 
-        # Step 5: Background cleanup of old versions
+        # Step 4: Background cleanup of old versions
         try:
             _cleanup_old_snapshot_versions(
                 s3_client, bucket, collection, keep_versions
@@ -364,7 +174,6 @@ def upload_snapshot_atomic(
             "versioned_key": versioned_key,
             "pointer_key": pointer_key,
             "hash": upload_result.get("hash", "not_calculated"),
-            "validation_duration": validation_duration,
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught

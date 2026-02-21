@@ -293,9 +293,6 @@ class SageMakerTrainingInfra(ComponentResource):
                 "infra/sagemaker_training/Dockerfile": FileAsset(
                     str(sagemaker_training_dir / "Dockerfile")
                 ),
-                "infra/sagemaker_training/requirements.txt": FileAsset(
-                    str(sagemaker_training_dir / "requirements.txt")
-                ),
                 "infra/sagemaker_training/train.py": FileAsset(
                     str(sagemaker_training_dir / "train.py")
                 ),
@@ -671,7 +668,6 @@ def handler(event, context):
         # Files/directories to include in hash
         paths_to_hash = [
             sagemaker_training_dir / "Dockerfile",
-            sagemaker_training_dir / "requirements.txt",
             sagemaker_training_dir / "train.py",
             REPO_ROOT / "receipt_layoutlm",
             REPO_ROOT / "receipt_dynamo",

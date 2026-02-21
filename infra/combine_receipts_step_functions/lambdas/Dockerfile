@@ -41,11 +41,9 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 FROM dependencies
 
 # Copy the combine receipts handler and shared logic
+# geometry_utils, records_builder, and metadata_utils are now in receipt_upload.combine package
 COPY infra/combine_receipts_step_functions/lambdas/combine_receipts.py ${LAMBDA_TASK_ROOT}/handler.py
 COPY infra/combine_receipts_step_functions/lambdas/combine_receipts_logic.py ${LAMBDA_TASK_ROOT}/combine_receipts_logic.py
-COPY infra/combine_receipts_step_functions/lambdas/geometry_utils.py ${LAMBDA_TASK_ROOT}/geometry_utils.py
-COPY infra/combine_receipts_step_functions/lambdas/records_builder.py ${LAMBDA_TASK_ROOT}/records_builder.py
-COPY infra/combine_receipts_step_functions/lambdas/metadata_utils.py ${LAMBDA_TASK_ROOT}/metadata_utils.py
 COPY infra/combine_receipts_step_functions/lambdas/s3_io.py ${LAMBDA_TASK_ROOT}/s3_io.py
 COPY infra/combine_receipts_step_functions/lambdas/embedding_utils.py ${LAMBDA_TASK_ROOT}/embedding_utils.py
 

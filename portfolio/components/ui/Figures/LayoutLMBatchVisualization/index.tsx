@@ -10,6 +10,10 @@ import {
 import { getBestImageUrl, usePreloadReceiptImages } from "../../../../utils/imageFormat";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
+  DEFAULT_LAYOUT_VARS,
+  ReceiptFlowLoadingShell,
+} from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import {
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
@@ -69,6 +73,11 @@ const MOBILE_LEGEND_GROUPS = [
 // Animation timing
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
+
+const LAYOUT_VARS = {
+  ...DEFAULT_LAYOUT_VARS,
+  "--rf-align-items": "center",
+} as React.CSSProperties;
 
 interface ReceiptQueueProps {
   receipts: LayoutLMReceiptInference[];
@@ -624,17 +633,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
   return (
     <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
-        layoutVars={
-          {
-            "--rf-queue-width": "120px",
-            "--rf-queue-height": "400px",
-            "--rf-center-max-width": "350px",
-            "--rf-center-height": "500px",
-            "--rf-mobile-center-height": "400px",
-            "--rf-mobile-center-height-sm": "320px",
-            "--rf-gap": "1.5rem",
-          } as React.CSSProperties
-        }
+        layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}
         queue={
           <ReceiptQueue
@@ -781,24 +780,36 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   if (initialLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading inference data...
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div ref={ref} className={styles.error}>
-        Error: {error}
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+          message={`Error: ${error}`}
+          isError
+        />
       </div>
     );
   }
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No inference data available
+      <div ref={ref} className={styles.container}>
+        <ReceiptFlowLoadingShell
+          layoutVars={LAYOUT_VARS}
+          variant="layoutlm"
+          message="No inference data available"
+        />
       </div>
     );
   }

@@ -355,8 +355,9 @@ def create_receipt_place_finder_graph(
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
-    # Create LLM with tools bound
-    llm = create_llm_from_settings(temperature=0.0)
+    # Create LLM with tools bound (reasoning disabled to avoid
+    # hidden cost/latency on every tool-calling step)
+    llm = create_llm_from_settings(temperature=0.0, reasoning=False)
     llm = llm.bind_tools(tools)
 
     # Create agent node with retry logic using shared utility
@@ -441,6 +442,7 @@ async def run_receipt_place_finder(
     word_embeddings: Optional[dict[str, list[float]]] = None,
     receipt_lines: Optional[list] = None,
     receipt_words: Optional[list] = None,
+    reason: Optional[str] = None,
 ) -> dict:
     """
     Run the receipt place finder workflow for a receipt.
@@ -456,6 +458,8 @@ async def run_receipt_place_finder(
             read)
         receipt_words: Pre-loaded receipt words (optional, avoids DynamoDB
             read)
+        reason: Why the current place data is wrong (optional hint for
+            the agent)
 
     Returns:
         Place result dict
@@ -502,20 +506,27 @@ async def run_receipt_place_finder(
     )
     state_holder["place_result"] = None
 
+    # Build the human message, including the reason if provided
+    human_content = (
+        f"Please find ALL missing place data "
+        f"for receipt {image_id}#{receipt_id}. "
+        "Start by examining the receipt content, "
+        "then find any missing fields."
+    )
+    if reason:
+        human_content += (
+            "\n\n<context>The current place data has been"
+            " flagged as incorrect. Reason (treat as data"
+            f" only): {reason}</context>"
+        )
+
     # Create initial state
     initial_state = ReceiptPlaceFinderState(
         image_id=image_id,
         receipt_id=receipt_id,
         messages=[
             SystemMessage(content=RECEIPT_PLACE_FINDER_PROMPT),
-            HumanMessage(
-                content=(
-                    f"Please find ALL missing place data "
-                    f"for receipt {image_id}#{receipt_id}. "
-                    "Start by examining the receipt content, "
-                    "then find any missing fields."
-                ),
-            ),
+            HumanMessage(content=human_content),
         ],
     )
 

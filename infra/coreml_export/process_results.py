@@ -88,7 +88,7 @@ def process_export_result(
         return
 
     # Update status
-    if status == "SUCCESS":
+    if status in ("SUCCESS", "SUCCEEDED"):
         export_job.status = CoreMLExportStatus.SUCCEEDED.value
         export_job.mlpackage_s3_uri = message.get("mlpackage_s3_uri")
         export_job.bundle_s3_uri = message.get("bundle_s3_uri")
@@ -107,7 +107,7 @@ def process_export_result(
     print(f"Updated export job {export_id} status to {export_job.status}")
 
     # Also update the training Job record with the CoreML bundle location
-    if status == "SUCCESS" and export_job.bundle_s3_uri:
+    if status in ("SUCCESS", "SUCCEEDED") and export_job.bundle_s3_uri:
         try:
             job = dynamo.get_job(job_id)
             if job.results is None:

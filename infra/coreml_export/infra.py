@@ -265,6 +265,7 @@ class CoreMLExportComponent(ComponentResource):
                                 {
                                     "Effect": "Allow",
                                     "Action": [
+                                        "dynamodb:DescribeTable",
                                         "dynamodb:GetItem",
                                         "dynamodb:Query",
                                         "dynamodb:PutItem",
@@ -324,7 +325,7 @@ class CoreMLExportComponent(ComponentResource):
                             "DYNAMO_TABLE_NAME": args[0],
                             "COREML_EXPORT_JOB_QUEUE_URL": args[1],
                             "OUTPUT_BUCKET": args[2],
-                            "DEFAULT_QUANTIZE": "float16",
+                            "DEFAULT_QUANTIZE": "",
                         }
                     ),
                 ),

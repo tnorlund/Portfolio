@@ -56,6 +56,7 @@ from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import ReceiptDynamoError
 from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
 from receipt_dynamo_stream.stream_types import LambdaContext
 
@@ -443,6 +444,35 @@ def process_collection(  # pylint: disable=too-many-locals
             promoted=upload_result.get("promoted"),
         )
 
+        # Mark CompactionRun records as COMPLETED in DynamoDB.
+        # This was removed in PR #523 (Dec 2025) and must be present so that
+        # callers waiting on CompactionRun status (e.g. merge Lambda) can
+        # detect completion.
+        if result.delta_merge_results:
+            for run_result in result.delta_merge_results:
+                try:
+                    dynamo_client.mark_compaction_run_completed(
+                        image_id=run_result["image_id"],
+                        receipt_id=run_result["receipt_id"],
+                        run_id=run_result["run_id"],
+                        collection=collection.value,
+                        merged_vectors=run_result["merged_count"],
+                    )
+                    op_logger.info(
+                        "Marked CompactionRun completed",
+                        run_id=run_result["run_id"],
+                        collection=collection.value,
+                        merged_vectors=run_result["merged_count"],
+                    )
+                except ReceiptDynamoError:
+                    op_logger.exception(
+                        "Failed to mark CompactionRun completed",
+                        run_id=run_result.get("run_id"),
+                        collection=collection.value,
+                    )
+                    if metrics:
+                        metrics.count("CompactionRunStateUpdateError", 1)
+
         return {
             "status": "success",
             "result": result,
@@ -547,7 +577,7 @@ def process_sqs_messages(
 
 
 @trace_function(operation_name="enhanced_compaction_handler")
-@with_compaction_timeout_protection(max_duration=840)  # 14 minutes
+@with_compaction_timeout_protection(max_duration=720)  # 80% of 900s timeout
 def lambda_handler(
     event: SQSEvent, context: LambdaContext
 ) -> SQSBatchResponse:
