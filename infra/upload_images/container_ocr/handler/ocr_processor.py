@@ -335,6 +335,21 @@ class OCRProcessor:
         if not ocr_job.reocr_region:
             return {"success": False, "error": "reocr_region is missing"}
 
+        # Guard 1: Skip if this routing decision has already been completed
+        if ocr_routing_decision.status == OCRStatus.COMPLETED.value:
+            logger.info(
+                "Regional re-OCR already completed for %s#%s, skipping",
+                ocr_job.image_id,
+                ocr_job.receipt_id,
+            )
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "already_completed",
+                "image_id": ocr_job.image_id,
+                "receipt_id": ocr_job.receipt_id,
+            }
+
         region = {
             "x": float(ocr_job.reocr_region.get("x", 0.70)),
             "y": float(ocr_job.reocr_region.get("y", 0.0)),
@@ -426,8 +441,29 @@ class OCRProcessor:
         words_to_update: list[ReceiptWord] = []
         letters_to_delete: list[ReceiptLetter] = []
         letters_to_add: list[ReceiptLetter] = []
+        words_rejected = 0
 
         for new_word, existing_word in matches:
+            # Guard 3: Confidence-based quality check.
+            # If the text is identical and the new confidence is lower,
+            # reject this overlay to avoid degrading existing data.
+            if (
+                new_word.text == existing_word.text
+                and new_word.confidence < existing_word.confidence
+            ):
+                logger.info(
+                    "Rejecting overlay for word %s#%s line=%d word=%d: "
+                    "text unchanged and confidence dropped %.4f -> %.4f",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                    existing_word.line_id,
+                    existing_word.word_id,
+                    existing_word.confidence,
+                    new_word.confidence,
+                )
+                words_rejected += 1
+                continue
+
             existing_word.text = new_word.text
             existing_word.bounding_box = new_word.bounding_box
             existing_word.top_left = new_word.top_left
@@ -474,12 +510,13 @@ class OCRProcessor:
 
         if words_to_update:
             self.dynamo.update_receipt_words(words_to_update)
-        # Add new letters before deleting old ones so the worst-case
+        # Use idempotent put/remove so retries are safe.
+        # Put new letters before removing old ones so the worst-case
         # partial failure is duplicate (not missing) letters.
         if letters_to_add:
-            self.dynamo.add_receipt_letters(letters_to_add)
+            self.dynamo.put_receipt_letters(letters_to_add)
         if letters_to_delete:
-            self.dynamo.delete_receipt_letters(letters_to_delete)
+            self.dynamo.remove_receipt_letters(letters_to_delete)
 
         # Rebuild ReceiptLine.text for lines with overlaid words so
         # downstream consumers (Chroma embeddings, merchant resolution,
@@ -523,6 +560,7 @@ class OCRProcessor:
             "line_count": len(receipt_lines),
             "word_count": len(words_to_update),
             "words_replaced": len(words_to_update),
+            "words_rejected": words_rejected,
             "lines_rebuilt": len(lines_to_update),
         }
 
