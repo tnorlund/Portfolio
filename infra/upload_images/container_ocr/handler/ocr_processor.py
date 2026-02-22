@@ -474,10 +474,41 @@ class OCRProcessor:
 
         if words_to_update:
             self.dynamo.update_receipt_words(words_to_update)
-        if letters_to_delete:
-            self.dynamo.delete_receipt_letters(letters_to_delete)
+        # Add new letters before deleting old ones so the worst-case
+        # partial failure is duplicate (not missing) letters.
         if letters_to_add:
             self.dynamo.add_receipt_letters(letters_to_add)
+        if letters_to_delete:
+            self.dynamo.delete_receipt_letters(letters_to_delete)
+
+        # Rebuild ReceiptLine.text for lines with overlaid words so
+        # downstream consumers (Chroma embeddings, merchant resolution,
+        # agents, cache generators) see the corrected text.
+        lines_to_update: list[ReceiptLine] = []
+        if words_to_update:
+            affected_line_ids = {w.line_id for w in words_to_update}
+            existing_lines = self.dynamo.list_receipt_lines_from_receipt(
+                ocr_job.image_id, ocr_job.receipt_id
+            )
+            # Build a word lookup with updated words taking precedence.
+            updated_lookup = {
+                (w.line_id, w.word_id): w for w in words_to_update
+            }
+            for line in existing_lines:
+                if line.line_id not in affected_line_ids:
+                    continue
+                line_words = sorted(
+                    [
+                        updated_lookup.get((w.line_id, w.word_id), w)
+                        for w in existing_words
+                        if w.line_id == line.line_id
+                    ],
+                    key=lambda w: w.word_id,
+                )
+                line.text = " ".join(w.text for w in line_words)
+                lines_to_update.append(line)
+            if lines_to_update:
+                self.dynamo.update_receipt_lines(lines_to_update)
 
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
         ocr_routing_decision.receipt_count = 1
@@ -492,6 +523,7 @@ class OCRProcessor:
             "line_count": len(receipt_lines),
             "word_count": len(words_to_update),
             "words_replaced": len(words_to_update),
+            "lines_rebuilt": len(lines_to_update),
         }
 
     def _process_swift_single_pass(

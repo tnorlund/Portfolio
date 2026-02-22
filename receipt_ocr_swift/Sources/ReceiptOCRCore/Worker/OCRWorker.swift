@@ -281,30 +281,26 @@ public final class OCRWorker {
             let localURL = tempDir.appendingPathComponent(localName)
             if job.jobType == .regionalReocr, let region = job.reocrRegion {
                 #if os(macOS)
-                do {
-                    let cropped = try cropImageData(imageData, region: region)
-                    localName = "\(name)-\(jobId)-reocr.png"
-                    let croppedURL = tempDir.appendingPathComponent(localName)
-                    try cropped.write(to: croppedURL)
-                    imageURLs.append(croppedURL)
-                    contexts.append(
-                        Context(
-                            message: msg,
-                            imageId: imageId,
-                            jobId: jobId,
-                            s3Bucket: job.s3Bucket,
-                            jobType: job.jobType
-                        )
+                let cropped = try cropImageData(imageData, region: region)
+                localName = "\(name)-\(jobId)-reocr.png"
+                let croppedURL = tempDir.appendingPathComponent(localName)
+                try cropped.write(to: croppedURL)
+                imageURLs.append(croppedURL)
+                contexts.append(
+                    Context(
+                        message: msg,
+                        imageId: imageId,
+                        jobId: jobId,
+                        s3Bucket: job.s3Bucket,
+                        jobType: job.jobType
                     )
-                    logger.info(
-                        "regional_reocr_crop_complete image_id=\(imageId) job_id=\(jobId) x=\(region.x) y=\(region.y) width=\(region.width) height=\(region.height)"
-                    )
-                    continue
-                } catch {
-                    logger.warning("regional_reocr_crop_failed image_id=\(imageId) job_id=\(jobId) error=\(error)")
-                }
+                )
+                logger.info(
+                    "regional_reocr_crop_complete image_id=\(imageId) job_id=\(jobId) x=\(region.x) y=\(region.y) width=\(region.width) height=\(region.height)"
+                )
+                continue
                 #else
-                logger.warning("regional_reocr_crop_skipped_non_macos image_id=\(imageId) job_id=\(jobId)")
+                throw DynamoMapError.invalid("regional_reocr requires macOS — cannot crop on this platform (image_id=\(imageId) job_id=\(jobId))")
                 #endif
             }
             try imageData.write(to: localURL)
