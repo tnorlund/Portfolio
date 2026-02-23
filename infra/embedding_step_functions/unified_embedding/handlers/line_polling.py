@@ -107,8 +107,14 @@ async def _ensure_receipt_place_async(
     *,
     line_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
-) -> None:
-    """Create receipt_place if missing using receipt_agent + local Chroma."""
+) -> bool:
+    """Create receipt_place if missing using receipt_agent + local Chroma.
+
+    Returns:
+        True if place exists or was created; False if the receipt entity
+        is missing (orphaned receipt that can never have a place created).
+        Raises on transient / unexpected errors.
+    """
     try:
         dynamo_client.get_receipt_place(image_id, receipt_id)
         logger.debug(
@@ -116,7 +122,7 @@ async def _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        return
+        return True
     except EntityNotFoundError:
         logger.info(
             "Receipt place missing; will attempt creation",
@@ -147,7 +153,7 @@ async def _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        return
+        return False
 
     row_records: List[RowEmbeddingRecord] = []
     if line_results:
@@ -323,6 +329,7 @@ async def _ensure_receipt_place_async(
             receipt_id=receipt_id,
             place_id=place_entity.place_id,
         )
+        return True
     finally:
         try:
             chroma_client.close()
@@ -339,11 +346,16 @@ def _ensure_receipt_place(
     *,
     line_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
-) -> None:
-    """Synchronous wrapper for async place creation."""
+) -> bool:
+    """Synchronous wrapper for async place creation.
+
+    Returns:
+        True if place exists or was created; False if the receipt entity
+        is missing (orphaned).  Raises on transient errors.
+    """
     import asyncio
 
-    asyncio.run(
+    return asyncio.run(
         _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -793,16 +805,22 @@ def _handle_internal_core(
         # and embeddings need metadata to work properly
         with operation_with_timeout("ensure_receipt_place", max_duration=120):
             unique_receipts = get_unique_receipt_and_image_ids(results)
+            skipped_orphans: set[tuple[str, int]] = set()
             missing_places = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_place(
+                    created = _ensure_receipt_place(
                         image_id,
                         receipt_id,
                         dynamo_client,
                         line_results=results,
                         batch_id=batch_id,
                     )
+                    if not created:
+                        # Orphaned receipt — no Receipt entity in DynamoDB.
+                        # Permanently unfixable; safe to skip.
+                        skipped_orphans.add((image_id, receipt_id))
+                        continue
                     # Verify place was created (or already existed)
                     try:
                         dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -829,15 +847,22 @@ def _handle_internal_core(
                     )
                     missing_places.append((image_id, receipt_id))
 
-            # Filter out receipts with missing place data instead of failing
-            # the entire batch — orphaned receipts (missing Receipt entity)
-            # will never have a place created successfully.
+            # Transient failures are still fatal — raise so the batch retries
             if missing_places:
-                missing_set = set(missing_places)
+                error_msg = (
+                    f"Receipt place is required but missing for "
+                    f"{len(missing_places)} receipt(s). "
+                    f"Failed to create place for: {missing_places[:5]}"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # Filter out permanently-orphaned receipts only
+            if skipped_orphans:
                 logger.warning(
-                    "Filtering out receipts with missing place data",
-                    missing_count=len(missing_places),
-                    missing_places=missing_places[:5],
+                    "Filtering out orphaned receipts with no Receipt entity",
+                    orphan_count=len(skipped_orphans),
+                    orphans=list(skipped_orphans)[:5],
                 )
                 filtered: list[dict] = []
                 for r in results:
@@ -848,13 +873,13 @@ def _handle_internal_core(
                     if (
                         meta["image_id"],
                         meta["receipt_id"],
-                    ) not in missing_set:
+                    ) not in skipped_orphans:
                         filtered.append(r)
                 results = filtered
 
         if not results:
             logger.warning(
-                "All results filtered out due to missing receipt places; "
+                "All results filtered out due to orphaned receipts; "
                 "marking batch complete with no embeddings saved"
             )
             if not skip_sqs:
@@ -870,7 +895,7 @@ def _handle_internal_core(
                 "openai_batch_id": openai_batch_id,
                 "status": "completed",
                 "skipped_all": True,
-                "skipped_receipt_count": len(missing_places) if missing_places else 0,
+                "skipped_receipt_count": len(skipped_orphans),
                 "result_s3_key": None,
                 "result_s3_bucket": None,
             }
@@ -1187,18 +1212,22 @@ def _handle_internal_core(
             )
 
             # Ensure receipt_place exists for partial results
+            skipped_orphans_partial: set[tuple[str, int]] = set()
             missing_places = []
             for receipt_id, image_id in get_unique_receipt_and_image_ids(
                 partial_results
             ):
                 try:
-                    _ensure_receipt_place(
+                    created = _ensure_receipt_place(
                         image_id,
                         receipt_id,
                         dynamo_client,
                         line_results=partial_results,
                         batch_id=batch_id,
                     )
+                    if not created:
+                        skipped_orphans_partial.add((image_id, receipt_id))
+                        continue
                     dynamo_client.get_receipt_place(image_id, receipt_id)
                 except Exception:
                     logger.exception(
@@ -1208,11 +1237,16 @@ def _handle_internal_core(
                     )
                     missing_places.append((image_id, receipt_id))
             if missing_places:
-                missing_set = set(missing_places)
+                raise ValueError(
+                    "Receipt place is required but missing for "
+                    f"{len(missing_places)} receipt(s) in partial results. "
+                    f"Failed to create place for: {missing_places[:5]}"
+                )
+            if skipped_orphans_partial:
                 logger.warning(
-                    "Filtering out partial results with missing place data",
-                    missing_count=len(missing_places),
-                    missing_places=missing_places[:5],
+                    "Filtering orphaned receipts from partial results",
+                    orphan_count=len(skipped_orphans_partial),
+                    orphans=list(skipped_orphans_partial)[:5],
                 )
                 filtered_partial_place: list[dict] = []
                 for r in partial_results:
@@ -1223,7 +1257,7 @@ def _handle_internal_core(
                     if (
                         meta["image_id"],
                         meta["receipt_id"],
-                    ) not in missing_set:
+                    ) not in skipped_orphans_partial:
                         filtered_partial_place.append(r)
                 partial_results = filtered_partial_place
 
