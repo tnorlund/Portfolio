@@ -482,9 +482,9 @@ class TestProcessor:
             uploaded = s3_client.list_objects_v2(
                 Bucket=bucket_name, Prefix=delta_prefix
             )
-            assert uploaded.get("KeyCount", 0) > 0, (
-                "No delta files uploaded before processing order test"
-            )
+            assert (
+                uploaded.get("KeyCount", 0) > 0
+            ), "No delta files uploaded before processing order test"
 
             # Create empty snapshot
             with ChromaClient(
@@ -492,7 +492,9 @@ class TestProcessor:
             ) as client:
                 client.upsert(
                     collection_name="words",
-                    ids=["IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"],
+                    ids=[
+                        "IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"
+                    ],
                     embeddings=[[0.1] * 1536],
                     metadatas=[{"text": "Placeholder"}],
                 )
@@ -551,6 +553,8 @@ class TestProcessor:
                 # Verify all operations completed.
                 # Include full payload in error to make flakes debuggable.
                 assert result.delta_merge_count == 1, result.to_dict()
+                # Keep this intentionally loose: only rows for `test_image_id`
+                # are targeted, and placeholder matching can vary.
                 assert result.total_metadata_updated >= 1, result.to_dict()
                 assert result.total_labels_updated == 1, result.to_dict()
 
