@@ -48,7 +48,6 @@ from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Image, Line, OCRJob, Receipt, Word
 
-from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_rotated_bounding_box_corners,
     convex_hull,
@@ -216,9 +215,16 @@ def reprocess_photo_receipts(
         logger.error(f"Image is not a PHOTO (type: {img_type})")
         return {"success": False, "error": f"Not a PHOTO image: {img_type}"}
 
-    # Step 2: Get existing receipts and delete them
+    # Step 2: Get existing receipts, capture receipt→line mappings, then delete
     receipts = client.get_receipts_from_image(image_id)
-    logger.info(f"Found {len(receipts)} existing receipts to delete")
+    logger.info(f"Found {len(receipts)} existing receipts")
+
+    # Capture receipt→line mappings BEFORE deletion
+    receipt_line_map: Dict[int, List[int]] = {}
+    for receipt in receipts:
+        receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt.receipt_id)
+        receipt_line_map[receipt.receipt_id] = [rl.line_id for rl in (receipt_lines or [])]
+    logger.info(f"Captured line mappings for {len(receipt_line_map)} receipts")
 
     for receipt in receipts:
         delete_receipt_and_children(
@@ -252,18 +258,19 @@ def reprocess_photo_receipts(
     pil_image = PIL_Image.open(image_path)
     logger.info(f"Image size: {pil_image.width}x{pil_image.height}")
 
-    # Step 5: Cluster lines using DBSCAN
-    avg_diagonal_length = sum(
-        [line.calculate_diagonal_length() for line in lines]
-    ) / len(lines)
-    clusters = dbscan_lines(lines, eps=avg_diagonal_length * 2, min_samples=10)
-    clusters = {k: v for k, v in clusters.items() if k != -1}
+    # Step 5: Group lines by their existing receipt assignment (no DBSCAN re-clustering)
+    line_by_id = {line.line_id: line for line in lines}
+    clusters = {}
+    for receipt_id, line_ids in receipt_line_map.items():
+        cluster_lines = [line_by_id[lid] for lid in line_ids if lid in line_by_id]
+        if cluster_lines:
+            clusters[receipt_id] = cluster_lines
 
     if not clusters:
-        logger.error("No valid clusters found")
-        return {"success": False, "error": "No clusters found"}
+        logger.error("No valid receipt→line mappings found")
+        return {"success": False, "error": "No receipt→line mappings"}
 
-    logger.info(f"Found {len(clusters)} receipt clusters")
+    logger.info(f"Found {len(clusters)} receipt groups from existing mappings")
 
     # Step 6: Process each cluster
     successful_receipts = 0

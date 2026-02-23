@@ -265,6 +265,8 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         guard let createdAt = ISO8601Python.parse(createdAtStr) else { throw DynamoMapError.invalid("created_at") }
         guard let updatedAt = ISO8601Python.parse(updatedAtStr) ?? ISO8601Python.parse(createdAtStr) else { throw DynamoMapError.invalid("updated_at") }
         guard let status = OCRStatus(rawValue: statusStr) else { throw DynamoMapError.invalid("status") }
+        let jobType: String
+        if case .s(let jt)? = attrs["job_type"] { jobType = jt } else { jobType = "FIRST_PASS" }
         return OCRJob(
             imageId: imageId,
             jobId: jobId,
@@ -272,7 +274,8 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             s3Key: s3Key,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            status: status
+            status: status,
+            jobType: jobType
         )
     }
 }
