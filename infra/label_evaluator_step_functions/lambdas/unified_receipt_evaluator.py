@@ -188,6 +188,7 @@ def _build_viz_cache_receipt(
     geometric_duration: float,
     review_all: list[dict[str, Any]] | None,
     review_duration: float,
+    regional_reocr: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the full viz-cache receipt JSON."""
     review_block = None
@@ -225,6 +226,7 @@ def _build_viz_cache_receipt(
             "financial", financial_decisions, financial_all, financial_duration
         ),
         "review": review_block,
+        "regional_reocr": regional_reocr,
         **cdn_keys,
         "width": width,
         "height": height,
@@ -1985,6 +1987,7 @@ async def unified_receipt_evaluator(
                     geometric_duration=geometric_duration,
                     review_all=llm_review_result,
                     review_duration=review_duration,
+                    regional_reocr=regional_reocr,
                 )
                 viz_key = f"receipts/receipt-{image_id}-{receipt_id}.json"
                 s3.put_object(

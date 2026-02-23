@@ -96,6 +96,21 @@
   align-self: center;
 }
 
+/* Re-OCR badge */
+.reocrBadge {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-orange, #f59e0b);
+  text-align: center;
+  align-self: center;
+  margin-top: 0.25rem;
+}
+
 /* Equation Panel - Right Column */
 .equationPanel {
   width: 200px;

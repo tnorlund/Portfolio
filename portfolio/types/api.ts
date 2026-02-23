@@ -747,6 +747,12 @@ export interface FinancialMathReceipt {
   cdn_medium_avif_s3_key?: string;
   width: number;
   height: number;
+  reocr_region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface FinancialMathResponse {

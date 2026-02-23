@@ -313,6 +313,7 @@ def build_financial_math_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    unified_rows: list[dict[str, Any]] | None = None,
     receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Return financial math viz-cache dicts.
@@ -323,6 +324,7 @@ def build_financial_math_cache(
     Args:
         parquet_dir: Path containing LangSmith parquet exports.
         rows: Optional preloaded trace rows.
+        unified_rows: Optional evaluator result rows (for regional_reocr).
         receipt_lookup: Optional (image_id, receipt_id) -> receipt data dict
             containing CDN keys and dimensions.
 
@@ -350,6 +352,16 @@ def build_financial_math_cache(
                 }
 
     logger.info("Found %d ReceiptEvaluation root spans", len(root_meta))
+
+    # Build reocr_region lookup from unified rows
+    reocr_lookup: dict[tuple[str, int], dict[str, float]] = {}
+    for urow in unified_rows or []:
+        rr = urow.get("regional_reocr", {})
+        if rr.get("triggered") and isinstance(rr.get("region"), dict):
+            uid = urow.get("image_id")
+            urid = urow.get("receipt_id")
+            if uid and urid is not None:
+                reocr_lookup[(str(uid), int(urid))] = rr["region"]
 
     # --- Process financial_validation spans ---
     results: list[dict] = []
@@ -447,6 +459,11 @@ def build_financial_math_cache(
                 "summary": summary,
                 "width": width,
                 "height": height,
+                "reocr_region": reocr_lookup.get(
+                    (str(image_id), int(receipt_id))
+                )
+                if receipt_id is not None
+                else None,
                 **cdn_fields,
             }
         )

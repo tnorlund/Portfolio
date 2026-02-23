@@ -231,6 +231,21 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
               });
             })}
 
+            {/* Re-OCR region overlay — dashed rectangle */}
+            {scanProgress >= 100 && receipt.reocr_region && (
+              <rect
+                x={receipt.reocr_region.x * w}
+                y={(1 - receipt.reocr_region.y - receipt.reocr_region.height) * h}
+                width={receipt.reocr_region.width * w}
+                height={receipt.reocr_region.height * h}
+                fill="none"
+                stroke="var(--color-orange, #f59e0b)"
+                strokeWidth={2}
+                strokeDasharray="6,4"
+                opacity={0.7}
+              />
+            )}
+
           </svg>
         </div>
       </div>
@@ -378,6 +393,7 @@ interface EquationPanelProps {
   revealedEquationIndices: Set<number>;
   isTransitioning?: boolean;
   receiptType?: "itemized" | "service" | "terminal";
+  hasReocrRegion?: boolean;
 }
 
 const EquationPanel: React.FC<EquationPanelProps> = ({
@@ -385,6 +401,7 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
   revealedEquationIndices,
   isTransitioning = false,
   receiptType,
+  hasReocrRegion = false,
 }) => {
   return (
     <div
@@ -472,6 +489,9 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
           </div>
         );
       })}
+      {hasReocrRegion && (
+        <div className={styles.reocrBadge}>Re-OCR triggered</div>
+      )}
     </div>
   );
 };
@@ -812,6 +832,7 @@ export default function FinancialMathOverlay() {
             revealedEquationIndices={revealedEquationIndices}
             isTransitioning={isTransitioning}
             receiptType={currentReceipt.receipt_type}
+            hasReocrRegion={!!currentReceipt.reocr_region}
           />
         }
       />

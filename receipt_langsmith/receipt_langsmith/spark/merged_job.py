@@ -1302,7 +1302,14 @@ def run_evaluator_viz_cache(
                     data_rows=data_rows,
                     receipt_lookup=receipt_lookup or None,
                 )
-            elif prefix in ("financial-math", "diff"):
+            elif prefix == "financial-math":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    unified_rows=unified_rows,
+                    receipt_lookup=receipt_lookup or None,
+                )
+            elif prefix == "diff":
                 results = helper_fn(
                     parquet_dir=parquet_dir,
                     rows=trace_rows,
