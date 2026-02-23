@@ -438,6 +438,7 @@ class TestProcessor:
 
         # Generate valid UUID for testing
         test_image_id = str(uuid4())
+        run_id = f"run-order-{uuid4().hex[:8]}"
 
         # Create receipt words in DynamoDB
         create_receipt_words_in_dynamodb(
@@ -451,110 +452,118 @@ class TestProcessor:
         # Set environment variable for S3 bucket
         monkeypatch.setenv("CHROMADB_BUCKET", bucket_name)
 
-        # Create a delta with new word
-        delta_dir = tempfile.mkdtemp()
-        delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
-        delta_client.upsert(
-            collection_name="words",
-            ids=[f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"],
-            embeddings=[[0.9] * 1536],
-            metadatas=[
-                {
-                    "text": "Total",
-                    "label_status": "auto_suggested",
-                    "merchant_name": "Initial",
-                    # No boolean label fields - word is pending validation
-                }
-            ],
-        )
-        delta_client.close()
-
-        # Upload delta to S3
-        delta_prefix = "deltas/run-order"
-        for root, _, files in os.walk(delta_dir):
-            for file in files:
-                local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(local_path, delta_dir)
-                s3_key = f"{delta_prefix}/{relative_path}"
-                s3_client.upload_file(local_path, bucket_name, s3_key)
-
-        # Create empty snapshot
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
-        client.upsert(
-            collection_name="words",
-            ids=["IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"],
-            embeddings=[[0.1] * 1536],
-            metadatas=[{"text": "Placeholder"}],
-        )
-
-        # Create messages in mixed order (intentionally not processing order)
-        from receipt_dynamo_stream.models import FieldChange
-
-        # Label update for the word from delta
-        label_msg = create_label_message(
-            image_id=test_image_id,
-            receipt_id=1,
-            line_id=1,
-            word_id=1,
-            label="TOTAL",
-            event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
-        )
-
-        # Metadata update for the receipt
-        metadata_msg = create_place_message(
-            image_id=test_image_id,
-            receipt_id=1,
-            event_name="MODIFY",
-            changes={
-                "merchant_name": FieldChange(
-                    old="Initial", new="Updated Merchant"
+        # Create and upload a delta using the production helper path.
+        # This is more stable than manual close()+os.walk() uploads.
+        with tempfile.TemporaryDirectory() as delta_dir:
+            with ChromaClient(
+                persist_directory=delta_dir, mode="delta"
+            ) as delta_client:
+                delta_client.upsert(
+                    collection_name="words",
+                    ids=[
+                        f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"
+                    ],
+                    embeddings=[[0.9] * 1536],
+                    metadatas=[
+                        {
+                            "text": "Total",
+                            "label_status": "auto_suggested",
+                            "merchant_name": "Initial",
+                            # No boolean label fields - word is pending validation
+                        }
+                    ],
                 )
-            },
-            collections=(ChromaDBCollection.WORDS,),
-        )
+                delta_prefix = delta_client.persist_and_upload_delta(
+                    bucket=bucket_name,
+                    s3_prefix=f"deltas/{run_id}",
+                    s3_client=s3_client,
+                )
 
-        # Delta message
-        delta_msg = create_compaction_run_message(
-            image_id=test_image_id,
-            receipt_id=1,
-            run_id="run-order",
-            delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
-            event_name="INSERT",
-            collection=ChromaDBCollection.WORDS,
-        )
+            uploaded = s3_client.list_objects_v2(
+                Bucket=bucket_name, Prefix=delta_prefix
+            )
+            assert uploaded.get("KeyCount", 0) > 0, (
+                "No delta files uploaded before processing order test"
+            )
 
-        # Submit messages in wrong order (label, metadata, delta)
-        # Processor should reorder them correctly
-        result = process_collection_updates(
-            stream_messages=[label_msg, metadata_msg, delta_msg],
-            collection=ChromaDBCollection.WORDS,
-            chroma_client=client,
-            logger=mock_logger,
-            dynamo_client=dynamo_client,
-        )
+            # Create empty snapshot
+            with ChromaClient(
+                persist_directory=temp_chromadb_dir, mode="write"
+            ) as client:
+                client.upsert(
+                    collection_name="words",
+                    ids=["IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"],
+                    embeddings=[[0.1] * 1536],
+                    metadatas=[{"text": "Placeholder"}],
+                )
 
-        # Verify all operations completed
-        assert result.delta_merge_count == 1
-        assert result.total_metadata_updated >= 1
-        assert result.total_labels_updated == 1
+                # Create messages in mixed order (intentionally not processing order)
+                from receipt_dynamo_stream.models import FieldChange
 
-        # Verify the delta was merged first, then metadata and labels applied
-        collection = client.get_collection("words")
-        word_data = collection.get(
-            ids=[f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"]
-        )
+                # Label update for the word from delta
+                label_msg = create_label_message(
+                    image_id=test_image_id,
+                    receipt_id=1,
+                    line_id=1,
+                    word_id=1,
+                    label="TOTAL",
+                    event_name="MODIFY",
+                    changes={
+                        "validation_status": FieldChange(
+                            old="PENDING", new="VALID"
+                        )
+                    },
+                )
 
-        # Should have updated merchant name (from metadata)
-        assert word_data["metadatas"][0]["merchant_name"] == "Updated Merchant"
+                # Metadata update for the receipt
+                metadata_msg = create_place_message(
+                    image_id=test_image_id,
+                    receipt_id=1,
+                    event_name="MODIFY",
+                    changes={
+                        "merchant_name": FieldChange(
+                            old="Initial", new="Updated Merchant"
+                        )
+                    },
+                    collections=(ChromaDBCollection.WORDS,),
+                )
 
-        client.close()
+                # Delta message
+                delta_msg = create_compaction_run_message(
+                    image_id=test_image_id,
+                    receipt_id=1,
+                    run_id=run_id,
+                    delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}",
+                    event_name="INSERT",
+                    collection=ChromaDBCollection.WORDS,
+                )
 
-        # Cleanup
-        import shutil
+                # Submit messages in wrong order (label, metadata, delta)
+                # Processor should reorder them correctly.
+                result = process_collection_updates(
+                    stream_messages=[label_msg, metadata_msg, delta_msg],
+                    collection=ChromaDBCollection.WORDS,
+                    chroma_client=client,
+                    logger=mock_logger,
+                    dynamo_client=dynamo_client,
+                )
 
-        shutil.rmtree(delta_dir, ignore_errors=True)
+                # Verify all operations completed.
+                # Include full payload in error to make flakes debuggable.
+                assert result.delta_merge_count == 1, result.to_dict()
+                assert result.total_metadata_updated >= 1, result.to_dict()
+                assert result.total_labels_updated == 1, result.to_dict()
+
+                # Verify the delta was merged first, then metadata and labels applied
+                collection = client.get_collection("words")
+                word_data = collection.get(
+                    ids=[
+                        f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"
+                    ]
+                )
+
+                # Should have updated merchant name (from metadata)
+                assert (
+                    word_data["metadatas"][0]["merchant_name"]
+                    == "Updated Merchant"
+                )
