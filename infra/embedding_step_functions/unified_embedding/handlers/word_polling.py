@@ -222,8 +222,14 @@ async def _ensure_receipt_place_async(
     *,
     word_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
-) -> None:
-    """Create receipt_place if missing using receipt_agent + local Chroma."""
+) -> bool:
+    """Create receipt_place if missing using receipt_agent + local Chroma.
+
+    Returns:
+        True if place exists or was created; False if the receipt entity
+        is missing (orphaned receipt that can never have a place created).
+        Raises on transient / unexpected errors.
+    """
     try:
         dynamo_client.get_receipt_place(image_id, receipt_id)
         logger.debug(
@@ -231,7 +237,7 @@ async def _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        return
+        return True
     except EntityNotFoundError:
         logger.info(
             "Receipt place missing; will attempt creation",
@@ -250,10 +256,19 @@ async def _ensure_receipt_place_async(
     _propagate_agent_env()
     settings = get_settings()
 
-    receipt_details = dynamo_client.get_receipt_details(
-        image_id=image_id,
-        receipt_id=receipt_id,
-    )
+    try:
+        receipt_details = dynamo_client.get_receipt_details(
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+    except EntityNotFoundError:
+        logger.warning(
+            "Receipt entity missing during place creation; "
+            "skipping orphaned receipt",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        return False
 
     word_records: List[WordEmbeddingRecord] = []
     if word_results:
@@ -427,6 +442,7 @@ async def _ensure_receipt_place_async(
             receipt_id=receipt_id,
             place_id=place_entity.place_id,
         )
+        return True
     finally:
         try:
             chroma_client.close()
@@ -443,9 +459,14 @@ def _ensure_receipt_place(
     *,
     word_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
-) -> None:
-    """Synchronous wrapper for async place creation."""
-    asyncio.run(
+) -> bool:
+    """Synchronous wrapper for async place creation.
+
+    Returns:
+        True if place exists or was created; False if the receipt entity
+        is missing (orphaned).  Raises on transient errors.
+    """
+    return asyncio.run(
         _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -654,27 +675,35 @@ def _handle_internal_core(
     # Inline helper functions to avoid receipt_label dependency
     def _get_receipt_descriptions(
         results: List[dict],
-    ) -> dict[str, dict[int, dict]]:
+    ) -> tuple[dict[str, dict[int, dict]], set[tuple[str, int]]]:
         """
         Get the receipt descriptions from the embedding results, grouped by image
         and receipt.
 
         Returns:
-            A dict mapping each image_id (str) to a dict that maps each
-            receipt_id (int) to a dict containing:
-                - receipt
-                - lines
-                - words
-                - letters
-                - labels
-                - place
+            A tuple of:
+            - A dict mapping each image_id (str) to a dict that maps each
+              receipt_id (int) to a dict containing:
+                - receipt, lines, words, letters, labels, place
+            - A set of (image_id, receipt_id) pairs that were skipped due to
+              missing Receipt entities in DynamoDB.
         """
         descriptions: dict[str, dict[int, dict]] = {}
+        skipped: set[tuple[str, int]] = set()
         for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
+            try:
+                receipt_details = dynamo_client.get_receipt_details(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+            except EntityNotFoundError:
+                logger.warning(
+                    "Skipping missing receipt during ingest",
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+                skipped.add((image_id, receipt_id))
+                continue
             receipt_place = dynamo_client.get_receipt_place(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -696,7 +725,13 @@ def _handle_internal_core(
                 "labels": receipt_details.labels,
                 "place": receipt_place,
             }
-        return descriptions
+        if skipped:
+            logger.warning(
+                "Skipped %d missing receipt(s) in batch",
+                len(skipped),
+                skipped_receipts=sorted(skipped)[:10],
+            )
+        return descriptions, skipped
 
     def _mark_batch_complete(batch_id: str) -> None:
         """
@@ -897,16 +932,22 @@ def _handle_internal_core(
         # and embeddings need place data to work properly
         with operation_with_timeout("ensure_receipt_place", max_duration=120):
             unique_receipts = get_unique_receipt_and_image_ids(results)
+            skipped_orphans: set[tuple[str, int]] = set()
             missing_places = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_place(
+                    created = _ensure_receipt_place(
                         image_id,
                         receipt_id,
                         dynamo_client,
                         word_results=results,
                         batch_id=batch_id,
                     )
+                    if not created:
+                        # Orphaned receipt — no Receipt entity in DynamoDB.
+                        # Permanently unfixable; safe to skip.
+                        skipped_orphans.add((image_id, receipt_id))
+                        continue
                     # Verify place was created (or already existed)
                     try:
                         dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -933,7 +974,7 @@ def _handle_internal_core(
                     )
                     missing_places.append((image_id, receipt_id))
 
-            # Fail if any receipts are missing place data - embeddings require it
+            # Transient failures are still fatal — raise so the batch retries
             if missing_places:
                 error_msg = (
                     f"Receipt place is required but missing for "
@@ -943,11 +984,75 @@ def _handle_internal_core(
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
+            # Filter out permanently-orphaned receipts only
+            if skipped_orphans:
+                logger.warning(
+                    "Filtering out orphaned receipts with no Receipt entity",
+                    orphan_count=len(skipped_orphans),
+                    orphans=list(skipped_orphans)[:5],
+                )
+                filtered: list[dict] = []
+                for r in results:
+                    try:
+                        meta = parse_word_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in skipped_orphans:
+                        filtered.append(r)
+                results = filtered
+
+        if not results:
+            logger.warning(
+                "All results filtered out due to orphaned receipts; "
+                "marking batch complete with no embeddings saved"
+            )
+            if not skip_sqs:
+                _mark_batch_complete(batch_id)
+            else:
+                logger.info(
+                    "Skipping batch completion marking "
+                    "(step function mode - will mark after compaction)",
+                    batch_id=batch_id,
+                )
+            return {
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "status": "completed",
+                "skipped_all": True,
+                "skipped_receipt_count": len(skipped_orphans),
+                "result_s3_key": None,
+                "result_s3_bucket": None,
+            }
+
         # Get receipt details with timeout protection
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions = _get_receipt_descriptions(results)
+            descriptions, skipped_receipts = _get_receipt_descriptions(
+                results
+            )
+
+        # Filter out results for skipped (missing) receipts
+        if skipped_receipts:
+            original_count = len(results)
+            filtered: list[dict] = []
+            for r in results:
+                try:
+                    meta = parse_word_custom_id(r["custom_id"])
+                except (ValueError, KeyError):
+                    continue
+                if (meta["image_id"], meta["receipt_id"]) not in skipped_receipts:
+                    filtered.append(r)
+            results = filtered
+            logger.warning(
+                "Filtered results for missing receipts",
+                original_count=original_count,
+                filtered_count=len(results),
+                skipped_receipt_count=len(skipped_receipts),
+            )
 
         description_count = len(descriptions)
         logger.info(
@@ -955,6 +1060,29 @@ def _handle_internal_core(
             description_count=description_count,
         )
         collected_metrics["ProcessedDescriptions"] = description_count
+
+        if not results:
+            logger.warning(
+                "All results filtered out due to missing receipts; "
+                "marking batch complete with no embeddings saved"
+            )
+            if not skip_sqs:
+                _mark_batch_complete(batch_id)
+            else:
+                logger.info(
+                    "Skipping batch completion marking "
+                    "(step function mode - will mark after compaction)",
+                    batch_id=batch_id,
+                )
+            return {
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "status": "completed",
+                "skipped_all": True,
+                "skipped_receipt_count": len(skipped_receipts),
+                "result_s3_key": None,
+                "result_s3_bucket": None,
+            }
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -1169,18 +1297,22 @@ def _handle_internal_core(
             )
 
             # Ensure receipt_place exists for partial results
+            skipped_orphans_partial: set[tuple[str, int]] = set()
             missing_places = []
             for receipt_id, image_id in get_unique_receipt_and_image_ids(
                 partial_results
             ):
                 try:
-                    _ensure_receipt_place(
+                    created = _ensure_receipt_place(
                         image_id,
                         receipt_id,
                         dynamo_client,
                         word_results=partial_results,
                         batch_id=batch_id,
                     )
+                    if not created:
+                        skipped_orphans_partial.add((image_id, receipt_id))
+                        continue
                     dynamo_client.get_receipt_place(image_id, receipt_id)
                 except Exception:
                     logger.exception(
@@ -1195,36 +1327,79 @@ def _handle_internal_core(
                     f"{len(missing_places)} receipt(s) in partial results. "
                     f"Failed to create place for: {missing_places[:5]}"
                 )
+            if skipped_orphans_partial:
+                logger.warning(
+                    "Filtering orphaned receipts from partial results",
+                    orphan_count=len(skipped_orphans_partial),
+                    orphans=list(skipped_orphans_partial)[:5],
+                )
+                filtered_partial_place: list[dict] = []
+                for r in partial_results:
+                    try:
+                        meta = parse_word_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in skipped_orphans_partial:
+                        filtered_partial_place.append(r)
+                partial_results = filtered_partial_place
 
             # Get receipt details for successful results
-            descriptions = _get_receipt_descriptions(partial_results)
+            descriptions, skipped_partial = _get_receipt_descriptions(
+                partial_results
+            )
+            if skipped_partial:
+                filtered_partial: list[dict] = []
+                for r in partial_results:
+                    try:
+                        meta = parse_word_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in skipped_partial:
+                        filtered_partial.append(r)
+                partial_results = filtered_partial
+                if not partial_results:
+                    logger.warning(
+                        "All partial results filtered out due to "
+                        "missing receipts; skipping partial delta save",
+                        batch_id=batch_id,
+                        skipped_count=len(skipped_partial),
+                    )
 
-            # Get bucket name for delta save
-            bucket_name = os.environ.get("CHROMADB_BUCKET")
-            if not bucket_name:
-                raise ValueError(
-                    "CHROMADB_BUCKET environment variable not set"
+            if partial_results:
+                # Get bucket name for delta save
+                bucket_name = os.environ.get("CHROMADB_BUCKET")
+                if not bucket_name:
+                    raise ValueError(
+                        "CHROMADB_BUCKET environment variable not set"
+                    )
+
+                # Determine SQS queue URL based on skip_sqs flag
+                sqs_queue_url = (
+                    None
+                    if skip_sqs
+                    else os.environ.get("COMPACTION_QUEUE_URL")
                 )
 
-            # Determine SQS queue URL based on skip_sqs flag
-            sqs_queue_url = (
-                None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
-            )
+                # Save partial results
+                delta_result = save_word_embeddings_as_delta(
+                    partial_results,
+                    descriptions,
+                    batch_id,
+                    bucket_name,
+                    sqs_queue_url,
+                )
 
-            # Save partial results
-            delta_result = save_word_embeddings_as_delta(
-                partial_results,
-                descriptions,
-                batch_id,
-                bucket_name,
-                sqs_queue_url,
-            )
-
-            # Skip writing to DynamoDB - we only store in ChromaDB now
-            logger.info(
-                "Processed partial embedding results",
-                count=len(partial_results),
-            )
+                # Skip writing to DynamoDB - we only store in ChromaDB now
+                logger.info(
+                    "Processed partial embedding results",
+                    count=len(partial_results),
+                )
 
         # Mark failed items for retry
         if failed_ids:
