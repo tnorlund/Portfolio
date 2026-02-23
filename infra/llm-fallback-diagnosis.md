@@ -274,10 +274,47 @@ learn to label tips, and the financial validator incorrectly flags tipped receip
 6. **Fix comma-vs-period OCR** ("17,98" → "17.98")
 7. **Re-OCR garbled prices** ("15./0" → "15.80")
 
-## Re-OCR Triggered
+## Fixes Applied
 
-Only 1 receipt triggered re-OCR this run:
+### Label corrections (6 receipts — all equations now balance)
+
+| Receipt | Merchant | Fix | Equation |
+|---------|----------|-----|----------|
+| `7381dc76#1` | Sprouts | UNIT_PRICE→LINE_TOTAL on 3.49 (L21W1), 4.99 (L23W1) | 3.49+4.99+3.99+18.99+10.41=**41.87** |
+| `232ae902#1` | Sprouts | LINE_TOTAL→UNIT_PRICE on deal 1.00 (L16W5) | 3.49+1.00=**4.49** |
+| `63999f30#1` | Sprouts | LINE_TOTAL→UNIT_PRICE on deal 3.00 (L37W5) | 7.99+1.50+13.99+6.99=**30.47** |
+| `94e4202b#1` | Sprouts | LINE_TOTAL→UNIT_PRICE on deal 4.00 (L39W5) | 2.99+2.00+2.99+3.99+4.29+5.99=**22.25** |
+| `2050f988#1` | Sprouts | Invalidated voided 9.99 (L60W1), added LINE_TOTAL 4.99 (L61W1) + GRAND_TOTAL 19.97 (L65W1) | 2.49+1.50+10.99+4.99=**19.97** |
+| `3e071997#2` | In-N-Out | LINE_TOTAL→SUBTOTAL on 10.85 (L20W1), MERCHANT_NAME→TAX on .06 (L22W1) | 10.85+1.06=**11.91** |
+
+### Re-OCR triggered (2 receipts — Vision OCR reproduced same errors)
+
+| Receipt | Merchant | Issue | Re-OCR Job | Result |
+|---------|----------|-------|------------|--------|
+| `c2bb8fff#2` | Ralphs | "15./0" should be "15.80" | `61dcf36a` | Vision OCR returned 0 words — crop too small or text too garbled |
+| `a44e5a5e#2` | Sprouts | "17,98" should be "17.98" | `c6f535dd` | Vision OCR returned 0 words — comma is actually printed on receipt |
+
+**Note:** Regional re-OCR with Apple Vision can't fix these. The "15./0" slash is too
+garbled for Vision to interpret, and "17,98" is a genuine comma in the printed receipt.
+These need either manual word text correction or a post-OCR normalization rule
+(e.g., `\d+,\d{2}$` → replace comma with period for European-style prices).
+
+### TIP label cleanup
+
+| Action | Receipt | Word | Details |
+|--------|---------|------|---------|
+| INVALID→VALID | `5492b016#1` | $9.60 | Pasta Sisters tip |
+| INVALID→VALID | `93639979#1` | $3.04 | Tip amount |
+| INVALID→VALID | `e997db06#1` | $2.00 | Tip amount |
+| INVALID→VALID | `523febb6#1` | $3.00 | Local Peasant tip |
+| INVALID→VALID | `a8d7ab9f#4` L24W35 | $2.30 | Neighborly tip |
+| Kept INVALID | `37900099#2` L21W1 | $50.00 | Actually SUBTOTAL, not TIP |
+| Kept INVALID | `4c5ba3ff#1` L22W2 | "Tip:" | Descriptor text, not amount |
+| Kept INVALID | `a8d7ab9f#4` L6W49 | $1.45 | Actually TAX, not TIP |
+| Created NEW | `37900099#2` L22W1 | $10.00 | HandleBar Barbershop tip |
+
+### Remaining (from evaluator run, not from manual fixes)
 
 | Receipt | Gap |
 |---------|-----|
-| `490a4076#2` | $30.96 |
+| `490a4076#2` | $30.96 (re-OCR triggered by evaluator) |
