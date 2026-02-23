@@ -362,6 +362,9 @@ def _sanitize_metadatas(
     dropped_keys: set = set()
 
     for md in metadatas:
+        if not md:
+            sanitized.append(md or {})
+            continue
         clean: Dict[str, Any] = {}
         for key, value in md.items():
             if len(key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:

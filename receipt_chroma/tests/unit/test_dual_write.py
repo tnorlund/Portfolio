@@ -161,6 +161,22 @@ class TestSanitizeMetadatas:
         # 17 bytes, well under 36 — should be kept
         assert key in result[0]
 
+    def test_none_entry_in_list(self):
+        """None metadata entries in the list don't raise AttributeError."""
+        metadatas = [{"text": "a"}, None, {"text": "c"}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] == {"text": "a"}
+        assert result[1] == {}
+        assert result[2] == {"text": "c"}
+
+    def test_empty_dict_entry_in_list(self):
+        """Empty dict entries pass through as empty dicts."""
+        metadatas = [{"text": "a"}, {}, {"text": "c"}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] == {"text": "a"}
+        assert result[1] == {}
+        assert result[2] == {"text": "c"}
+
 
 # =============================================================================
 # _upload_batch_with_retry Tests
