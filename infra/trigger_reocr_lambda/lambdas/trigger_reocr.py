@@ -21,12 +21,15 @@ Environment Variables:
     OCR_JOB_QUEUE_URL: SQS queue URL for OCR jobs
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import boto3
 from receipt_dynamo import DynamoClient
@@ -42,7 +45,7 @@ UUID_PATTERN = re.compile(
 )
 
 
-def _validate_input(event: dict) -> str | None:
+def _validate_input(event: dict[str, Any]) -> str | None:
     """Validate Lambda input. Returns error message or None if valid."""
     # image_id: valid UUID
     image_id = event.get("image_id")
@@ -74,7 +77,7 @@ def _validate_input(event: dict) -> str | None:
     return None
 
 
-def handler(event, context):
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda handler for triggering regional re-OCR."""
     logger.info("trigger_reocr invoked: %s", json.dumps(event))
 
@@ -83,10 +86,11 @@ def handler(event, context):
     if error:
         return {"success": False, "error": error}
 
-    image_id = event["image_id"]
-    receipt_id = event["receipt_id"]
-    reocr_region = event["reocr_region"]
-    reocr_reason = event.get("reocr_reason", "manual_trigger")
+    # After validation, these are guaranteed to be the right types
+    image_id: str = event["image_id"]
+    receipt_id: int = event["receipt_id"]
+    reocr_region: dict[str, float] = event["reocr_region"]
+    reocr_reason: str = event.get("reocr_reason", "manual_trigger")
 
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
     queue_url = os.environ["OCR_JOB_QUEUE_URL"]

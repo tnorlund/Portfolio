@@ -1028,7 +1028,7 @@ class OCRProcessor:
         receipt_words = []
         receipt_letters = []
 
-        def _has_valid_geometry(data: dict) -> bool:
+        def _has_valid_geometry(data: dict[str, Any]) -> bool:
             """Check if geometry fields have required keys."""
             bbox = data.get("bounding_box", {})
             if not all(k in bbox for k in ("x", "y", "width", "height")):
@@ -1172,7 +1172,7 @@ class OCRProcessor:
         words = []
         letters = []
 
-        def _has_valid_geometry(data: dict) -> bool:
+        def _has_valid_geometry(data: dict[str, Any]) -> bool:
             """Check if geometry fields have required keys."""
             bbox = data.get("bounding_box", {})
             if not all(k in bbox for k in ("x", "y", "width", "height")):
@@ -1357,7 +1357,7 @@ class OCRProcessor:
                     "receipt_id": None,  # Multiple receipts
                 }
 
-            logger.error("Unknown image type: %s", image_type)  # type: ignore[unreachable]
+            logger.error("Unknown image type: %s", image_type)
             self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
