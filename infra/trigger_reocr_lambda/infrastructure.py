@@ -131,6 +131,7 @@ class TriggerReOCRLambda(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": [
+                                    "dynamodb:DescribeTable",
                                     "dynamodb:GetItem",
                                     "dynamodb:PutItem",
                                     "dynamodb:Query",
