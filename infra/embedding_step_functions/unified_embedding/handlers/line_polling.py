@@ -829,14 +829,51 @@ def _handle_internal_core(
                     )
                     missing_places.append((image_id, receipt_id))
 
-            # Fail if any receipts are missing place data - embeddings require it
+            # Filter out receipts with missing place data instead of failing
+            # the entire batch — orphaned receipts (missing Receipt entity)
+            # will never have a place created successfully.
             if missing_places:
-                error_msg = (
-                    f"Receipt place is required but missing for {len(missing_places)} receipt(s). "
-                    f"Failed to create place for: {missing_places[:5]}"  # Show first 5
+                missing_set = set(missing_places)
+                logger.warning(
+                    "Filtering out receipts with missing place data",
+                    missing_count=len(missing_places),
+                    missing_places=missing_places[:5],
                 )
-                logger.error(error_msg)
-                raise ValueError(error_msg)
+                filtered: list[dict] = []
+                for r in results:
+                    try:
+                        meta = parse_line_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in missing_set:
+                        filtered.append(r)
+                results = filtered
+
+        if not results:
+            logger.warning(
+                "All results filtered out due to missing receipt places; "
+                "marking batch complete with no embeddings saved"
+            )
+            if not skip_sqs:
+                _mark_batch_complete(batch_id)
+            else:
+                logger.info(
+                    "Skipping batch completion marking "
+                    "(step function mode - will mark after compaction)",
+                    batch_id=batch_id,
+                )
+            return {
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "status": "completed",
+                "skipped_all": True,
+                "skipped_receipt_count": len(missing_places) if missing_places else 0,
+                "result_s3_key": None,
+                "result_s3_bucket": None,
+            }
 
         # Get receipt details with timeout protection
         with operation_with_timeout(
@@ -1171,11 +1208,24 @@ def _handle_internal_core(
                     )
                     missing_places.append((image_id, receipt_id))
             if missing_places:
-                raise ValueError(
-                    "Receipt place is required but missing for "
-                    f"{len(missing_places)} receipt(s) in partial results. "
-                    f"Failed to create place for: {missing_places[:5]}"
+                missing_set = set(missing_places)
+                logger.warning(
+                    "Filtering out partial results with missing place data",
+                    missing_count=len(missing_places),
+                    missing_places=missing_places[:5],
                 )
+                filtered_partial_place: list[dict] = []
+                for r in partial_results:
+                    try:
+                        meta = parse_line_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in missing_set:
+                        filtered_partial_place.append(r)
+                partial_results = filtered_partial_place
 
             # Get receipt details for successful results
             descriptions, skipped_partial = _get_receipt_descriptions(
