@@ -391,7 +391,7 @@ public struct VisionOCREngine: OCREngineProtocol {
         }
     }
 
-    public func process(images: [URL], outputDirectory: URL) throws -> [URL] {
+    public func process(images: [URL], outputDirectory: URL, includeClassification: Bool) throws -> [URL] {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         var outputs: [URL] = []
         for imageURL in images {
@@ -564,7 +564,8 @@ public struct VisionOCREngine: OCREngineProtocol {
     public func processParallel(
         images: [URL],
         outputDirectory: URL,
-        maxConcurrency: Int = ProcessInfo.processInfo.activeProcessorCount
+        maxConcurrency: Int = ProcessInfo.processInfo.activeProcessorCount,
+        includeClassification: Bool
     ) async throws -> [URL] {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
@@ -577,11 +578,12 @@ public struct VisionOCREngine: OCREngineProtocol {
             var nextIndex = 0
 
             // Add initial batch of tasks
+            let classify = includeClassification
             for i in 0..<min(concurrency, images.count) {
                 let imageURL = images[i]
                 let index = i
                 group.addTask {
-                    let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory)
+                    let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory, includeClassification: classify)
                     return (index, outputURL)
                 }
                 nextIndex = i + 1
@@ -596,7 +598,7 @@ public struct VisionOCREngine: OCREngineProtocol {
                     let imageURL = images[nextIndex]
                     let index = nextIndex
                     group.addTask {
-                        let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory)
+                        let outputURL = try await self.processSingleImage(imageURL, outputDirectory: outputDirectory, includeClassification: classify)
                         return (index, outputURL)
                     }
                     nextIndex += 1
@@ -609,16 +611,17 @@ public struct VisionOCREngine: OCREngineProtocol {
     }
 
     /// Process a single image (async wrapper for concurrent use).
-    private func processSingleImage(_ imageURL: URL, outputDirectory: URL) async throws -> URL {
+    private func processSingleImage(_ imageURL: URL, outputDirectory: URL, includeClassification: Bool) async throws -> URL {
         // Vision OCR is thread-safe, but we use Task to allow for suspension points
+        let classify = includeClassification
         return try await Task {
-            try self.processSingleImageSync(imageURL, outputDirectory: outputDirectory)
+            try self.processSingleImageSync(imageURL, outputDirectory: outputDirectory, includeClassification: classify)
         }.value
     }
 
     /// Process a single image synchronously.
     /// Extracted from process() for reuse in both sequential and concurrent paths.
-    private func processSingleImageSync(_ imageURL: URL, outputDirectory: URL) throws -> URL {
+    private func processSingleImageSync(_ imageURL: URL, outputDirectory: URL, includeClassification: Bool) throws -> URL {
         let ocrLines = try performOCRSync(from: imageURL)
         var mutableLines = ocrLines
         var aggregatedText = ""

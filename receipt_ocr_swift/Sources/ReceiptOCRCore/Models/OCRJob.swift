@@ -8,6 +8,7 @@ public struct OCRJob: Equatable {
     public var createdAt: Date
     public var updatedAt: Date
     public var status: OCRStatus
+    public var jobType: String
 
     public init(
         imageId: String,
@@ -16,7 +17,8 @@ public struct OCRJob: Equatable {
         s3Key: String,
         createdAt: Date,
         updatedAt: Date,
-        status: OCRStatus
+        status: OCRStatus,
+        jobType: String = "FIRST_PASS"
     ) {
         self.imageId = imageId
         self.jobId = jobId
@@ -25,6 +27,7 @@ public struct OCRJob: Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.status = status
+        self.jobType = jobType
     }
 }
 
@@ -43,7 +46,8 @@ public extension OCRJob {
             "s3_key": ["S": s3Key],
             "created_at": ["S": ISO8601Python.format(createdAt)],
             "updated_at": ["S": ISO8601Python.format(updatedAt)],
-            "status": ["S": status.rawValue]
+            "status": ["S": status.rawValue],
+            "job_type": ["S": jobType]
         ]
     }
 
@@ -64,6 +68,7 @@ public extension OCRJob {
         guard let createdAt = ISO8601Python.parse(createdAtStr) else { throw DynamoMapError.invalid("created_at") }
         let parsedUpdated = ISO8601Python.parse(updatedAtStr) ?? createdAt
         guard let status = OCRStatus(rawValue: statusStr) else { throw DynamoMapError.invalid("status") }
+        let jobType = (try? str("job_type")) ?? "FIRST_PASS"
         return OCRJob(
             imageId: imageId,
             jobId: jobId,
@@ -71,7 +76,8 @@ public extension OCRJob {
             s3Key: s3Key,
             createdAt: createdAt,
             updatedAt: parsedUpdated,
-            status: status
+            status: status,
+            jobType: jobType
         )
     }
 }

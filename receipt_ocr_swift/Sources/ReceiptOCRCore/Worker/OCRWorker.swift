@@ -2,21 +2,27 @@ import Foundation
 import Logging
 
 public protocol OCREngineProtocol {
-    func process(images: [URL], outputDirectory: URL) throws -> [URL]
-    func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int) async throws -> [URL]
+    func process(images: [URL], outputDirectory: URL, includeClassification: Bool) throws -> [URL]
+    func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int, includeClassification: Bool) async throws -> [URL]
 }
 
-// Default implementation for processParallel that falls back to sequential
+// Default parameter extensions for backward compatibility
 extension OCREngineProtocol {
+    public func process(images: [URL], outputDirectory: URL) throws -> [URL] {
+        try process(images: images, outputDirectory: outputDirectory, includeClassification: true)
+    }
     public func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int) async throws -> [URL] {
-        // Default: fall back to sequential processing
-        return try process(images: images, outputDirectory: outputDirectory)
+        try await processParallel(images: images, outputDirectory: outputDirectory, maxConcurrency: maxConcurrency, includeClassification: true)
+    }
+    // Default processParallel that falls back to sequential
+    public func processParallel(images: [URL], outputDirectory: URL, maxConcurrency: Int, includeClassification: Bool) async throws -> [URL] {
+        return try process(images: images, outputDirectory: outputDirectory, includeClassification: includeClassification)
     }
 }
 
 public struct StubOCREngine: OCREngineProtocol {
     public init() {}
-    public func process(images: [URL], outputDirectory: URL) throws -> [URL] {
+    public func process(images: [URL], outputDirectory: URL, includeClassification: Bool) throws -> [URL] {
         return try images.map { url in
             let out = outputDirectory.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".json")
             try Data("{\"lines\": []}".utf8).write(to: out)
@@ -212,7 +218,7 @@ public final class OCRWorker {
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-        struct Context { let message: SQSMessage; let imageId: String; let jobId: String; let s3Bucket: String }
+        struct Context { let message: SQSMessage; let imageId: String; let jobId: String; let s3Bucket: String; let jobType: String }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
 
@@ -241,7 +247,7 @@ public final class OCRWorker {
             try imageData.write(to: localURL)
 
             imageURLs.append(localURL)
-            contexts.append(Context(message: msg, imageId: imageId, jobId: jobId, s3Bucket: job.s3Bucket))
+            contexts.append(Context(message: msg, imageId: imageId, jobId: jobId, s3Bucket: job.s3Bucket, jobType: job.jobType))
         }
 
         // Update all jobs to OCR_RUNNING stage
@@ -253,10 +259,24 @@ public final class OCRWorker {
             }
         }
 
-        // Run OCR engine with parallel processing (uses CPU count)
+        // Split batch by job type so FIRST_PASS jobs get classification
+        // and REFINEMENT/REGIONAL_REOCR jobs skip it
         let concurrency = ProcessInfo.processInfo.activeProcessorCount
-        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true concurrency=\(concurrency)")
-        let ocrResults = try await ocr.processParallel(images: imageURLs, outputDirectory: tempDir, maxConcurrency: concurrency)
+        let firstPassIndices = contexts.indices.filter { contexts[$0].jobType == "FIRST_PASS" }
+        let reOCRIndices = contexts.indices.filter { contexts[$0].jobType != "FIRST_PASS" }
+        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true concurrency=\(concurrency) first_pass=\(firstPassIndices.count) reocr=\(reOCRIndices.count)")
+
+        var ocrResults = [URL](repeating: tempDir, count: imageURLs.count)
+        if !firstPassIndices.isEmpty {
+            let urls = firstPassIndices.map { imageURLs[$0] }
+            let results = try await ocr.processParallel(images: urls, outputDirectory: tempDir, maxConcurrency: concurrency, includeClassification: true)
+            for (pos, idx) in firstPassIndices.enumerated() { ocrResults[idx] = results[pos] }
+        }
+        if !reOCRIndices.isEmpty {
+            let urls = reOCRIndices.map { imageURLs[$0] }
+            let results = try await ocr.processParallel(images: urls, outputDirectory: tempDir, maxConcurrency: concurrency, includeClassification: false)
+            for (pos, idx) in reOCRIndices.enumerated() { ocrResults[idx] = results[pos] }
+        }
 
         // Upload results, write routing decision, send result message, update job
         let now = Date()
