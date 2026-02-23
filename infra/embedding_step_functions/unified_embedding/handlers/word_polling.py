@@ -250,10 +250,19 @@ async def _ensure_receipt_place_async(
     _propagate_agent_env()
     settings = get_settings()
 
-    receipt_details = dynamo_client.get_receipt_details(
-        image_id=image_id,
-        receipt_id=receipt_id,
-    )
+    try:
+        receipt_details = dynamo_client.get_receipt_details(
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+    except EntityNotFoundError:
+        logger.warning(
+            "Receipt entity missing during place creation; "
+            "skipping orphaned receipt",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        return
 
     word_records: List[WordEmbeddingRecord] = []
     if word_results:
@@ -971,10 +980,8 @@ def _handle_internal_core(
             results = [
                 r
                 for r in results
-                if (
-                    parse_word_custom_id(r["custom_id"])["image_id"],
-                    parse_word_custom_id(r["custom_id"])["receipt_id"],
-                )
+                if (meta := parse_word_custom_id(r["custom_id"]))
+                and (meta["image_id"], meta["receipt_id"])
                 not in skipped_receipts
             ]
             logger.warning(
@@ -996,13 +1003,22 @@ def _handle_internal_core(
                 "All results filtered out due to missing receipts; "
                 "marking batch complete with no embeddings saved"
             )
-            _mark_batch_complete(batch_id)
+            if not skip_sqs:
+                _mark_batch_complete(batch_id)
+            else:
+                logger.info(
+                    "Skipping batch completion marking "
+                    "(step function mode - will mark after compaction)",
+                    batch_id=batch_id,
+                )
             return {
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "status": "completed",
                 "skipped_all": True,
                 "skipped_receipt_count": len(skipped_receipts),
+                "result_s3_key": None,
+                "result_s3_bucket": None,
             }
 
         # Get configuration from environment
@@ -1253,12 +1269,18 @@ def _handle_internal_core(
                 partial_results = [
                     r
                     for r in partial_results
-                    if (
-                        parse_word_custom_id(r["custom_id"])["image_id"],
-                        parse_word_custom_id(r["custom_id"])["receipt_id"],
-                    )
+                    if (meta := parse_word_custom_id(r["custom_id"]))
+                    and (meta["image_id"], meta["receipt_id"])
                     not in skipped_partial
                 ]
+                if not partial_results:
+                    logger.warning(
+                        "All partial results filtered out due to "
+                        "missing receipts; skipping partial delta save",
+                        batch_id=batch_id,
+                        skipped_count=len(skipped_partial),
+                    )
+                    return None
 
             # Get bucket name for delta save
             bucket_name = os.environ.get("CHROMADB_BUCKET")
