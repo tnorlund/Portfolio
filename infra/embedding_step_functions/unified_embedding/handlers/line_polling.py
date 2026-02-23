@@ -621,8 +621,8 @@ def _handle_internal_core(
             }
         if skipped:
             logger.warning(
-                "Skipped %d missing receipt(s) in batch",
-                len(skipped),
+                "Skipped missing receipt(s) in batch",
+                skipped_count=len(skipped),
                 skipped_receipts=sorted(skipped)[:10],
             )
         return descriptions, skipped
