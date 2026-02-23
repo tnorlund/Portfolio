@@ -1,9 +1,11 @@
 # infra/lambda_layer/python/dynamo/data/import_image.py
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.export_image import delete_image_data
 from receipt_dynamo.entities import (
     Image,
     Letter,
@@ -18,6 +20,16 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
     Word,
 )
+
+
+def _parse_datetimes(item: dict, fields: list[str]) -> dict:
+    """Parse ISO datetime strings to datetime objects for specified fields."""
+    item = dict(item)
+    for field in fields:
+        val = item.get(field)
+        if isinstance(val, str):
+            item[field] = datetime.fromisoformat(val)
+    return item
 
 
 def import_image(table_name: str, json_path: str) -> None:
@@ -70,11 +82,19 @@ def import_image(table_name: str, json_path: str) -> None:
             for item in data.get("receipt_word_labels", [])
         ],
         "receipt_places": [
-            ReceiptPlace(**item) for item in data.get("receipt_places", [])
+            ReceiptPlace(
+                **_parse_datetimes(item, ["timestamp"])
+            )
+            for item in data.get("receipt_places", [])
         ],
-        "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
+        "ocr_jobs": [
+            OCRJob(**_parse_datetimes(item, ["created_at", "updated_at"]))
+            for item in data.get("ocr_jobs", [])
+        ],
         "ocr_routing_decisions": [
-            OCRRoutingDecision(**item)
+            OCRRoutingDecision(
+                **_parse_datetimes(item, ["created_at", "updated_at"])
+            )
             for item in data.get("ocr_routing_decisions", [])
         ],
     }
@@ -126,3 +146,10 @@ def import_image(table_name: str, json_path: str) -> None:
         dynamo_client.add_ocr_routing_decisions(
             entities["ocr_routing_decisions"]
         )
+
+
+def restore_image(table_name: str, json_path: str) -> None:
+    """Delete existing records then import from backup (idempotent restore)."""
+    image_id = os.path.splitext(os.path.basename(json_path))[0]
+    delete_image_data(table_name, image_id)
+    import_image(table_name, json_path)

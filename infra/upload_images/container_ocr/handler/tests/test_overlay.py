@@ -3,7 +3,7 @@
 Covers:
 1. Coordinate remapping (_map_bbox_to_region, _map_point_to_region, _apply_region_mapping)
 2. Word matching (_y_overlap_ratio, _bbox_center_x, _match_regional_words)
-3. Candidate selection (region x-filter, labeled-only preference, fallback)
+3. Candidate selection (region x-filter, y-filter)
 4. ReceiptLine.text rebuild
 5. ReceiptLetter replacement (old deleted, new created)
 6. DynamoDB write ordering (add before delete)
@@ -406,32 +406,34 @@ class TestCandidateSelection:
             for w in updated:
                 assert w.text != "OUT"
 
-    def test_labeled_only_preference(self):
-        """When labels exist, only labeled candidates are used."""
+    def test_region_y_filter(self):
+        """Only words whose center-y falls in the region are candidates."""
         proc = _make_processor()
-        labeled_word = _make_word(
-            text="LABELED", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+        # Region y=0.0, height=1.0 — default covers full height.
+        # Use a narrow region to test y-filtering.
+        region = {"x": 0.70, "y": 0.05, "width": 0.30, "height": 0.15}
+        inside = _make_word(
+            text="IN", x=0.80, y=0.08, w=0.1, h=0.05, line_id=1, word_id=1
         )
-        unlabeled_word = _make_word(
-            text="UNLABELED", x=0.82, y=0.1, w=0.1, h=0.05, line_id=2, word_id=1
+        outside = _make_word(
+            text="OUT", x=0.80, y=0.50, w=0.1, h=0.05, line_id=2, word_id=1
         )
-        label = SimpleNamespace(line_id=1, word_id=1)
-        self._run_overlay(proc, [labeled_word, unlabeled_word], labels=[label])
+        self._run_overlay(proc, [inside, outside], labels=[], region=region)
         if proc.dynamo.update_receipt_words.called:
             updated = proc.dynamo.update_receipt_words.call_args[0][0]
             for w in updated:
-                assert w.line_id == 1 and w.word_id == 1
+                assert w.text != "OUT"
 
-    def test_fallback_no_labeled_candidates(self):
-        """If labeled candidates list is empty, fall back to all region words."""
+    def test_unlabeled_words_are_candidates(self):
+        """Both labeled and unlabeled words in the region are candidates."""
         proc = _make_processor()
-        word_in_region = _make_word(
+        unlabeled_word = _make_word(
             text="W", x=0.80, y=0.1, w=0.1, h=0.05, line_id=3, word_id=1
         )
         # Label exists but for a word outside the region
         label = SimpleNamespace(line_id=99, word_id=99)
-        self._run_overlay(proc, [word_in_region], labels=[label])
-        # Should still produce a match because fallback kicks in
+        self._run_overlay(proc, [unlabeled_word], labels=[label])
+        # Unlabeled word should still be a candidate
         assert proc.dynamo.update_receipt_words.called
 
 

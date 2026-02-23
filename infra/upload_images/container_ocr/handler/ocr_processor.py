@@ -266,6 +266,10 @@ class OCRProcessor:
         return float(bbox.get("x", 0.0)) + (float(bbox.get("width", 0.0)) / 2.0)
 
     @staticmethod
+    def _bbox_center_y(bbox: dict[str, float]) -> float:
+        return float(bbox.get("y", 0.0)) + (float(bbox.get("height", 0.0)) / 2.0)
+
+    @staticmethod
     def _y_overlap_ratio(
         a_bbox: dict[str, float], b_bbox: dict[str, float]
     ) -> float:
@@ -408,21 +412,18 @@ class OCRProcessor:
 
         region_x1 = region["x"]
         region_x2 = region["x"] + region["width"]
+        region_y1 = region["y"]
+        region_y2 = region["y"] + region["height"]
         candidate_words = [
             word
             for word in existing_words
             if region_x1
             <= self._bbox_center_x(word.bounding_box)
             <= region_x2
+            and region_y1
+            <= self._bbox_center_y(word.bounding_box)
+            <= region_y2
         ]
-        if labeled_keys:
-            labeled_candidates = [
-                word
-                for word in candidate_words
-                if (word.line_id, word.word_id) in labeled_keys
-            ]
-            if labeled_candidates:
-                candidate_words = labeled_candidates
 
         matches = self._match_regional_words(receipt_words, candidate_words)
         if not matches:
