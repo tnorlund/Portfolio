@@ -363,7 +363,7 @@ def _sanitize_metadatas(
 
     for md in metadatas:
         if not md:
-            sanitized.append(md or {})
+            sanitized.append(None)
             continue
         clean: Dict[str, Any] = {}
         for key, value in md.items():
@@ -371,7 +371,7 @@ def _sanitize_metadatas(
                 dropped_keys.add(key)
             else:
                 clean[key] = value
-        sanitized.append(clean)
+        sanitized.append(clean or None)
 
     if dropped_keys:
         logger.warning(

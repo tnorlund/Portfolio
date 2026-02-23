@@ -164,20 +164,27 @@ class TestSanitizeMetadatas:
         assert key in result[0]
 
     def test_none_entry_in_list(self):
-        """None metadata entries in the list don't raise AttributeError."""
+        """None metadata entries become None (Chroma rejects empty dicts)."""
         metadatas = [{"text": "a"}, None, {"text": "c"}]
         result = _sanitize_metadatas(metadatas)
         assert result[0] == {"text": "a"}
-        assert result[1] == {}
+        assert result[1] is None
         assert result[2] == {"text": "c"}
 
     def test_empty_dict_entry_in_list(self):
-        """Empty dict entries pass through as empty dicts."""
+        """Empty dict entries become None (Chroma rejects empty dicts)."""
         metadatas = [{"text": "a"}, {}, {"text": "c"}]
         result = _sanitize_metadatas(metadatas)
         assert result[0] == {"text": "a"}
-        assert result[1] == {}
+        assert result[1] is None
         assert result[2] == {"text": "c"}
+
+    def test_all_keys_oversized_becomes_none(self):
+        """Entry where all keys exceed limit becomes None, not empty dict."""
+        long_key = "a" * 37
+        metadatas = [{long_key: True}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] is None
 
     def test_oversized_key_logs_warning(self):
         """A warning is emitted when oversized keys are dropped."""
