@@ -34,6 +34,11 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
+# Chroma Cloud enforces a 36-byte limit on metadata key names.
+# Local ChromaDB has no such limit, so historical data may contain
+# oversized keys (e.g. label_SUBTOTAL SHOULD BE 50.63...).
+_MAX_METADATA_KEY_BYTES = 36
+
 
 @dataclass(frozen=True)
 class CloudConfig:
@@ -334,6 +339,47 @@ class BulkSyncResult:
         return self.error is None and self.failed_batches == 0
 
 
+def _sanitize_metadatas(
+    metadatas: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Strip metadata keys that exceed Chroma Cloud's 36-byte key limit.
+
+    Local ChromaDB has no key-size limit, so historical data may contain
+    oversized keys (e.g. ``label_SUBTOTAL SHOULD BE 50.63...``).  Rather
+    than failing the entire batch, we silently drop those keys so the rest
+    of the metadata syncs successfully.
+
+    Args:
+        metadatas: List of metadata dicts (or None).
+
+    Returns:
+        Sanitized copy with oversized keys removed, or None unchanged.
+    """
+    if not metadatas:
+        return metadatas
+
+    sanitized: List[Dict[str, Any]] = []
+    dropped_keys: set = set()
+
+    for md in metadatas:
+        clean: Dict[str, Any] = {}
+        for key, value in md.items():
+            if len(key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+                dropped_keys.add(key)
+            else:
+                clean[key] = value
+        sanitized.append(clean)
+
+    if dropped_keys:
+        logger.warning(
+            "Dropped %d oversized metadata key(s) during cloud sync: %s",
+            len(dropped_keys),
+            ", ".join(sorted(dropped_keys)[:5]),  # Log up to 5 examples
+        )
+
+    return sanitized
+
+
 def _upload_batch_with_retry(
     cloud_coll: Any,
     batch: Dict[str, Any],
@@ -353,13 +399,14 @@ def _upload_batch_with_retry(
         Exception: If all retries fail
     """
     last_error = None
+    sanitized_metadatas = _sanitize_metadatas(batch.get("metadatas"))
 
     for attempt in range(max_retries):
         try:
             cloud_coll.upsert(
                 ids=batch["ids"],
                 embeddings=batch.get("embeddings"),
-                metadatas=batch.get("metadatas"),
+                metadatas=sanitized_metadatas,
                 documents=batch.get("documents"),
             )
             return len(batch["ids"])
