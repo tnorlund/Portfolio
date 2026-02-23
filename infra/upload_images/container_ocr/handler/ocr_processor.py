@@ -621,15 +621,15 @@ class OCRProcessor:
             self.dynamo.update_receipt_words(words_to_update)
         if words_to_add:
             self.dynamo.add_receipt_words(words_to_add)
-        # Use idempotent put/remove so retries are safe.
-        # Put new letters before removing old ones so the worst-case
-        # partial failure is duplicate (not missing) letters.
+        # Delete old letters BEFORE adding replacements. The old letters
+        # and new letters can share the same (line_id, word_id, letter_id)
+        # keys, so adding first then deleting would clobber the new data.
+        if letters_to_delete:
+            self.dynamo.remove_receipt_letters(letters_to_delete)
         if letters_to_add:
             self.dynamo.put_receipt_letters(letters_to_add)
         if letters_to_add_for_new:
             self.dynamo.put_receipt_letters(letters_to_add_for_new)
-        if letters_to_delete:
-            self.dynamo.remove_receipt_letters(letters_to_delete)
 
         # Rebuild ReceiptLine.text for lines with overlaid or added words so
         # downstream consumers (Chroma embeddings, merchant resolution,
