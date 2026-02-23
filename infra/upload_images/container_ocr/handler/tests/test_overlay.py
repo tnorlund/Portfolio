@@ -438,6 +438,106 @@ class TestCandidateSelection:
 
 
 # ===========================================================================
+# 3b. Unmatched new word addition
+# ===========================================================================
+
+
+class TestUnmatchedWordAddition:
+    """When re-OCR finds words that don't match any existing candidate,
+    they should be added as new ReceiptWords on the best-matching line."""
+
+    def _run_overlay(self, proc, existing_words, new_words, new_lines=None,
+                     region=None, labels=None, new_letters=None):
+        """Run the overlay pipeline with explicit new words."""
+        if region is None:
+            region = {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
+        if new_lines is None:
+            new_lines = []
+        if new_letters is None:
+            new_letters = []
+
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region=region, s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = existing_words
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
+            [SimpleNamespace(line_id=l.line_id, word_id=l.word_id) for l in (labels or [])],
+            None,
+        )
+        proc.dynamo.list_receipt_letters_from_word.return_value = []
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            _make_line(line_id=lid, text="placeholder")
+            for lid in {w.line_id for w in existing_words}
+        ]
+
+        ocr_json = {"lines": []}
+        tmp = Path("/tmp/test_overlay_unmatched.json")
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr",
+                   return_value=(new_lines, new_words, new_letters)):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+        return result
+
+    def test_unmatched_word_added(self):
+        """A new OCR word with no remaining candidate gets added."""
+        proc = _make_processor()
+        # One existing word on line 1
+        existing = _make_word(text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05,
+                              line_id=1, word_id=1)
+        # Two new OCR words: first one matches existing, second has no match
+        new_match = _make_word(text="CARLON", x=0.1, y=0.5, w=0.15, h=0.05,
+                               line_id=1, word_id=1)
+        new_extra = _make_word(text="8.68", x=0.85, y=0.5, w=0.1, h=0.05,
+                               line_id=1, word_id=2)
+
+        result = self._run_overlay(proc, [existing], [new_match, new_extra])
+
+        assert result["words_added"] == 1
+        assert proc.dynamo.add_receipt_words.called
+        added = proc.dynamo.add_receipt_words.call_args[0][0]
+        assert len(added) == 1
+        assert added[0].text == "8.68"
+        assert added[0].line_id == 1
+        assert added[0].word_id == 2  # existing max=1, so next=2
+
+    def test_unmatched_word_no_overlap_skipped(self):
+        """A new word with no Y-overlap to any line is skipped."""
+        proc = _make_processor()
+        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
+                              line_id=1, word_id=1)
+        # New word at completely different Y
+        new_word = _make_word(text="X", x=0.1, y=0.9, w=0.1, h=0.05,
+                              line_id=1, word_id=1)
+
+        result = self._run_overlay(proc, [existing], [new_word])
+
+        assert result.get("words_added", 0) == 0
+
+    def test_line_text_includes_added_words(self):
+        """ReceiptLine text is rebuilt to include the added word."""
+        proc = _make_processor()
+        existing = _make_word(text="ADJUSTABLE", x=0.1, y=0.5, w=0.2, h=0.05,
+                              line_id=1, word_id=1)
+        new_word = _make_word(text="8.68", x=0.85, y=0.5, w=0.1, h=0.05,
+                              line_id=1, word_id=1)
+
+        self._run_overlay(proc, [existing], [new_word])
+
+        assert proc.dynamo.update_receipt_lines.called
+        updated_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
+        assert any("8.68" in line.text for line in updated_lines)
+
+
+# ===========================================================================
 # 4. ReceiptLine.text rebuild
 # ===========================================================================
 

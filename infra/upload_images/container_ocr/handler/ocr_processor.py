@@ -433,6 +433,14 @@ class OCRProcessor:
                 ocr_job.receipt_id,
             )
 
+        # Identify new OCR words that didn't match any existing word.
+        matched_new_keys = {(nw.line_id, nw.word_id) for nw, _ in matches}
+        unmatched_new_words = [
+            w
+            for w in receipt_words
+            if (w.line_id, w.word_id) not in matched_new_keys
+        ]
+
         new_letters_by_new_key: dict[tuple[int, int], list[ReceiptLetter]] = {}
         for letter in receipt_letters:
             new_letters_by_new_key.setdefault(
@@ -509,22 +517,128 @@ class OCRProcessor:
                     )
                 )
 
+        # --- Add unmatched new words to the receipt ---
+        words_to_add: list[ReceiptWord] = []
+        letters_to_add_for_new: list[ReceiptLetter] = []
+
+        if unmatched_new_words:
+            # Compute Y-range for each existing receipt line.
+            line_y_ranges: dict[int, tuple[float, float]] = {}
+            for w in existing_words:
+                wy = float(w.bounding_box.get("y", 0))
+                wh = float(w.bounding_box.get("height", 0))
+                cur = line_y_ranges.get(w.line_id)
+                if cur is None:
+                    line_y_ranges[w.line_id] = (wy, wy + wh)
+                else:
+                    line_y_ranges[w.line_id] = (
+                        min(cur[0], wy),
+                        max(cur[1], wy + wh),
+                    )
+
+            # Track max word_id per line so new words get unique IDs.
+            max_word_id: dict[int, int] = {}
+            for w in existing_words:
+                if w.line_id not in max_word_id or w.word_id > max_word_id[w.line_id]:
+                    max_word_id[w.line_id] = w.word_id
+
+            for new_word in unmatched_new_words:
+                nw_y = float(new_word.bounding_box.get("y", 0))
+                nw_h = float(new_word.bounding_box.get("height", 0))
+
+                # Find existing line with best Y-overlap.
+                best_line_id: int | None = None
+                best_overlap = 0.0
+                for lid, (ly_min, ly_max) in line_y_ranges.items():
+                    overlap = max(0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min))
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_line_id = lid
+
+                if best_line_id is None:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — no line overlap",
+                        new_word.text,
+                    )
+                    continue
+
+                next_wid = max_word_id.get(best_line_id, 0) + 1
+                max_word_id[best_line_id] = next_wid
+
+                words_to_add.append(
+                    ReceiptWord(
+                        image_id=ocr_job.image_id,
+                        receipt_id=ocr_job.receipt_id,
+                        line_id=best_line_id,
+                        word_id=next_wid,
+                        text=new_word.text,
+                        bounding_box=new_word.bounding_box,
+                        top_left=new_word.top_left,
+                        top_right=new_word.top_right,
+                        bottom_left=new_word.bottom_left,
+                        bottom_right=new_word.bottom_right,
+                        angle_degrees=new_word.angle_degrees,
+                        angle_radians=new_word.angle_radians,
+                        confidence=new_word.confidence,
+                        extracted_data=new_word.extracted_data,
+                        is_noise=is_noise_text(new_word.text),
+                    )
+                )
+
+                for letter_idx, letter in enumerate(
+                    new_letters_by_new_key.get(
+                        (new_word.line_id, new_word.word_id), []
+                    ),
+                    start=1,
+                ):
+                    letters_to_add_for_new.append(
+                        ReceiptLetter(
+                            image_id=ocr_job.image_id,
+                            receipt_id=ocr_job.receipt_id,
+                            line_id=best_line_id,
+                            word_id=next_wid,
+                            letter_id=letter_idx,
+                            text=letter.text,
+                            bounding_box=letter.bounding_box,
+                            top_left=letter.top_left,
+                            top_right=letter.top_right,
+                            bottom_left=letter.bottom_left,
+                            bottom_right=letter.bottom_right,
+                            angle_degrees=letter.angle_degrees,
+                            angle_radians=letter.angle_radians,
+                            confidence=letter.confidence,
+                        )
+                    )
+
+                logger.info(
+                    "Adding unmatched re-OCR word '%s' to line %d as word %d",
+                    new_word.text,
+                    best_line_id,
+                    next_wid,
+                )
+
         if words_to_update:
             self.dynamo.update_receipt_words(words_to_update)
+        if words_to_add:
+            self.dynamo.add_receipt_words(words_to_add)
         # Use idempotent put/remove so retries are safe.
         # Put new letters before removing old ones so the worst-case
         # partial failure is duplicate (not missing) letters.
         if letters_to_add:
             self.dynamo.put_receipt_letters(letters_to_add)
+        if letters_to_add_for_new:
+            self.dynamo.put_receipt_letters(letters_to_add_for_new)
         if letters_to_delete:
             self.dynamo.remove_receipt_letters(letters_to_delete)
 
-        # Rebuild ReceiptLine.text for lines with overlaid words so
+        # Rebuild ReceiptLine.text for lines with overlaid or added words so
         # downstream consumers (Chroma embeddings, merchant resolution,
         # agents, cache generators) see the corrected text.
         lines_to_update: list[ReceiptLine] = []
-        if words_to_update:
-            affected_line_ids = {w.line_id for w in words_to_update}
+        affected_line_ids = {w.line_id for w in words_to_update} | {
+            w.line_id for w in words_to_add
+        }
+        if affected_line_ids:
             existing_lines = self.dynamo.list_receipt_lines_from_receipt(
                 ocr_job.image_id, ocr_job.receipt_id
             )
@@ -532,17 +646,19 @@ class OCRProcessor:
             updated_lookup = {
                 (w.line_id, w.word_id): w for w in words_to_update
             }
+            added_by_line: dict[int, list[ReceiptWord]] = {}
+            for w in words_to_add:
+                added_by_line.setdefault(w.line_id, []).append(w)
             for line in existing_lines:
                 if line.line_id not in affected_line_ids:
                     continue
-                line_words = sorted(
-                    [
-                        updated_lookup.get((w.line_id, w.word_id), w)
-                        for w in existing_words
-                        if w.line_id == line.line_id
-                    ],
-                    key=lambda w: w.word_id,
-                )
+                line_words = [
+                    updated_lookup.get((w.line_id, w.word_id), w)
+                    for w in existing_words
+                    if w.line_id == line.line_id
+                ]
+                line_words.extend(added_by_line.get(line.line_id, []))
+                line_words.sort(key=lambda w: w.word_id)
                 line.text = " ".join(w.text for w in line_words)
                 lines_to_update.append(line)
             if lines_to_update:
@@ -559,8 +675,9 @@ class OCRProcessor:
             "receipt_id": ocr_job.receipt_id,
             "image_type": "REGIONAL_REOCR",
             "line_count": len(receipt_lines),
-            "word_count": len(words_to_update),
+            "word_count": len(words_to_update) + len(words_to_add),
             "words_replaced": len(words_to_update),
+            "words_added": len(words_to_add),
             "words_rejected": words_rejected,
             "lines_rebuilt": len(lines_to_update),
         }
