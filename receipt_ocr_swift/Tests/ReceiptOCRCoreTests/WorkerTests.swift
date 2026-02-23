@@ -57,7 +57,8 @@ final class WorkerTests: XCTestCase {
             dynamoTableName: "tbl",
             region: "us-west-2",
             localstackEndpoint: nil,
-            logLevel: "debug"
+            logLevel: "debug",
+            rawBucketName: "test-bucket"
         )
 
         var sqs = SQSMock()

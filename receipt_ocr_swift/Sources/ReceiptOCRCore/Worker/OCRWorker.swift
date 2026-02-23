@@ -297,7 +297,7 @@ public final class OCRWorker {
                         message: msg,
                         imageId: imageId,
                         jobId: jobId,
-                        s3Bucket: job.s3Bucket,
+                        s3Bucket: config.rawBucketName,
                         jobType: job.jobType
                     )
                 )
@@ -317,7 +317,7 @@ public final class OCRWorker {
                     message: msg,
                     imageId: imageId,
                     jobId: jobId,
-                    s3Bucket: job.s3Bucket,
+                    s3Bucket: config.rawBucketName,
                     jobType: job.jobType
                 )
             )
