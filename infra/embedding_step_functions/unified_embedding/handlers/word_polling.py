@@ -977,13 +977,15 @@ def _handle_internal_core(
         # Filter out results for skipped (missing) receipts
         if skipped_receipts:
             original_count = len(results)
-            results = [
-                r
-                for r in results
-                if (meta := parse_word_custom_id(r["custom_id"]))
-                and (meta["image_id"], meta["receipt_id"])
-                not in skipped_receipts
-            ]
+            filtered: list[dict] = []
+            for r in results:
+                try:
+                    meta = parse_word_custom_id(r["custom_id"])
+                except (ValueError, KeyError):
+                    continue
+                if (meta["image_id"], meta["receipt_id"]) not in skipped_receipts:
+                    filtered.append(r)
+            results = filtered
             logger.warning(
                 "Filtered results for missing receipts",
                 original_count=original_count,
@@ -1266,13 +1268,18 @@ def _handle_internal_core(
                 partial_results
             )
             if skipped_partial:
-                partial_results = [
-                    r
-                    for r in partial_results
-                    if (meta := parse_word_custom_id(r["custom_id"]))
-                    and (meta["image_id"], meta["receipt_id"])
-                    not in skipped_partial
-                ]
+                filtered_partial: list[dict] = []
+                for r in partial_results:
+                    try:
+                        meta = parse_word_custom_id(r["custom_id"])
+                    except (ValueError, KeyError):
+                        continue
+                    if (
+                        meta["image_id"],
+                        meta["receipt_id"],
+                    ) not in skipped_partial:
+                        filtered_partial.append(r)
+                partial_results = filtered_partial
                 if not partial_results:
                     logger.warning(
                         "All partial results filtered out due to "
@@ -1280,34 +1287,36 @@ def _handle_internal_core(
                         batch_id=batch_id,
                         skipped_count=len(skipped_partial),
                     )
-                    return None
 
-            # Get bucket name for delta save
-            bucket_name = os.environ.get("CHROMADB_BUCKET")
-            if not bucket_name:
-                raise ValueError(
-                    "CHROMADB_BUCKET environment variable not set"
+            if partial_results:
+                # Get bucket name for delta save
+                bucket_name = os.environ.get("CHROMADB_BUCKET")
+                if not bucket_name:
+                    raise ValueError(
+                        "CHROMADB_BUCKET environment variable not set"
+                    )
+
+                # Determine SQS queue URL based on skip_sqs flag
+                sqs_queue_url = (
+                    None
+                    if skip_sqs
+                    else os.environ.get("COMPACTION_QUEUE_URL")
                 )
 
-            # Determine SQS queue URL based on skip_sqs flag
-            sqs_queue_url = (
-                None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
-            )
+                # Save partial results
+                delta_result = save_word_embeddings_as_delta(
+                    partial_results,
+                    descriptions,
+                    batch_id,
+                    bucket_name,
+                    sqs_queue_url,
+                )
 
-            # Save partial results
-            delta_result = save_word_embeddings_as_delta(
-                partial_results,
-                descriptions,
-                batch_id,
-                bucket_name,
-                sqs_queue_url,
-            )
-
-            # Skip writing to DynamoDB - we only store in ChromaDB now
-            logger.info(
-                "Processed partial embedding results",
-                count=len(partial_results),
-            )
+                # Skip writing to DynamoDB - we only store in ChromaDB now
+                logger.info(
+                    "Processed partial embedding results",
+                    count=len(partial_results),
+                )
 
         # Mark failed items for retry
         if failed_ids:
