@@ -226,7 +226,9 @@ class TestUploadBatchWithRetry:
         batch = {
             "ids": ["id1"],
             "embeddings": [[0.1] * 384],
-            "metadatas": [{"text": "50.63", long_key: True, "label_SUBTOTAL": True}],
+            "metadatas": [
+                {"text": "50.63", long_key: True, "label_SUBTOTAL": True}
+            ],
             "documents": ["doc1"],
         }
 
@@ -234,7 +236,9 @@ class TestUploadBatchWithRetry:
 
         # Verify the upsert was called with sanitized metadatas
         call_kwargs = mock_coll.upsert.call_args
-        upserted_metadatas = call_kwargs.kwargs.get("metadatas") or call_kwargs[1].get("metadatas")
+        upserted_metadatas = call_kwargs.kwargs.get(
+            "metadatas"
+        ) or call_kwargs[1].get("metadatas")
         assert len(upserted_metadatas) == 1
         assert long_key not in upserted_metadatas[0]
         assert upserted_metadatas[0]["text"] == "50.63"
