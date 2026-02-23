@@ -449,6 +449,7 @@ async def unified_receipt_evaluator(
     # Initialize for error handling (image_id/receipt_id already set above for direct fetch)
     result = None
     receipt_trace = None  # Will hold the ReceiptTraceInfo
+    chroma_client = None  # Must be set before try so finally can always access it
 
     try:
         # Import utilities
