@@ -399,7 +399,15 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Step 12: Close embedding resources (compaction runs async
         #          via DynamoDB stream — no need to wait)
         # ============================================================
-        embedding_result.close()
+        try:
+            embedding_result.close()
+        except Exception:
+            logger.warning(
+                "Failed to close embedding resources for compaction_run_id=%s; "
+                "proceeding with receipt deletion",
+                compaction_run_id,
+                exc_info=True,
+            )
         logger.info("Compaction will complete asynchronously: %s", compaction_run_id)
 
         # ============================================================
