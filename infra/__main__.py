@@ -46,7 +46,6 @@ from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from merge_receipt_lambda import create_merge_receipt_lambda
-from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1242,25 +1241,6 @@ pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
 pulumi.export(
     "combine_receipts_batch_bucket_name",
     combine_receipts_sf.batch_bucket_name,
-)
-
-# Metadata Harmonizer Step Function (place_id-based harmonization)
-# Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
-# This is where ChromaDB snapshots are stored by the compaction process
-metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
-    f"metadata-harmonizer-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-)
-
-pulumi.export(
-    "metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn
-)
-pulumi.export(
-    "metadata_harmonizer_batch_bucket_name",
-    metadata_harmonizer_sf.batch_bucket_name,
 )
 
 # Fix Place Lambda (for correcting incorrect ReceiptPlace records)
