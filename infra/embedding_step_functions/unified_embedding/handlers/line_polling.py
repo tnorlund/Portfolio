@@ -543,28 +543,35 @@ def _handle_internal_core(
 
     def _get_receipt_descriptions(
         results: List[dict],
-    ) -> dict[str, dict[int, dict]]:
+    ) -> tuple[dict[str, dict[int, dict]], set[tuple[str, int]]]:
         """
         Get the receipt descriptions from the embedding results, grouped by image
         and receipt.
 
         Returns:
-            A dict mapping each image_id (str) to a dict that maps each
-            receipt_id (int) to a dict containing:
-                - receipt
-                - lines
-                - words
-                - letters
-                - labels
-                - place
-                - sections
+            A tuple of:
+            - A dict mapping each image_id (str) to a dict that maps each
+              receipt_id (int) to a dict containing:
+                - receipt, lines, words, letters, labels, place, sections
+            - A set of (image_id, receipt_id) pairs that were skipped due to
+              missing Receipt entities in DynamoDB.
         """
         descriptions: dict[str, dict[int, dict]] = {}
+        skipped: set[tuple[str, int]] = set()
         for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
+            try:
+                receipt_details = dynamo_client.get_receipt_details(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+            except EntityNotFoundError:
+                logger.warning(
+                    "Skipping missing receipt during ingest",
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+                skipped.add((image_id, receipt_id))
+                continue
             receipt_place = dynamo_client.get_receipt_place(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -591,7 +598,13 @@ def _handle_internal_core(
                 "place": receipt_place,
                 "sections": receipt_sections,
             }
-        return descriptions
+        if skipped:
+            logger.warning(
+                "Skipped %d missing receipt(s) in batch",
+                len(skipped),
+                skipped_receipts=sorted(skipped)[:10],
+            )
+        return descriptions, skipped
 
     def _update_line_embedding_status_to_success(
         results: List[dict],
@@ -820,7 +833,28 @@ def _handle_internal_core(
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions = _get_receipt_descriptions(results)
+            descriptions, skipped_receipts = _get_receipt_descriptions(
+                results
+            )
+
+        # Filter out results for skipped (missing) receipts
+        if skipped_receipts:
+            original_count = len(results)
+            results = [
+                r
+                for r in results
+                if (
+                    parse_line_custom_id(r["custom_id"])["image_id"],
+                    parse_line_custom_id(r["custom_id"])["receipt_id"],
+                )
+                not in skipped_receipts
+            ]
+            logger.warning(
+                "Filtered results for missing receipts",
+                original_count=original_count,
+                filtered_count=len(results),
+                skipped_receipt_count=len(skipped_receipts),
+            )
 
         description_count = len(descriptions)
         logger.info(
@@ -828,6 +862,20 @@ def _handle_internal_core(
             description_count=description_count,
         )
         collected_metrics["ProcessedDescriptions"] = description_count
+
+        if not results:
+            logger.warning(
+                "All results filtered out due to missing receipts; "
+                "marking batch complete with no embeddings saved"
+            )
+            _mark_batch_complete(batch_id)
+            return {
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "status": "completed",
+                "skipped_all": True,
+                "skipped_receipt_count": len(skipped_receipts),
+            }
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -1112,7 +1160,19 @@ def _handle_internal_core(
                 )
 
             # Get receipt details for successful results
-            descriptions = _get_receipt_descriptions(partial_results)
+            descriptions, skipped_partial = _get_receipt_descriptions(
+                partial_results
+            )
+            if skipped_partial:
+                partial_results = [
+                    r
+                    for r in partial_results
+                    if (
+                        parse_line_custom_id(r["custom_id"])["image_id"],
+                        parse_line_custom_id(r["custom_id"])["receipt_id"],
+                    )
+                    not in skipped_partial
+                ]
 
             # Get configuration from environment
             bucket_name = os.environ.get("CHROMADB_BUCKET")
