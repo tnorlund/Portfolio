@@ -66,12 +66,14 @@ class OCRProcessor:
         site_bucket: str,
         ocr_job_queue_url: str,
         ocr_results_queue_url: str,
+        chromadb_bucket: str = "",
     ):
         self.table_name = table_name
         self.raw_bucket = raw_bucket
         self.site_bucket = site_bucket
         self.ocr_job_queue_url = ocr_job_queue_url
         self.ocr_results_queue_url = ocr_results_queue_url
+        self.chromadb_bucket = chromadb_bucket
         self.dynamo = DynamoClient(table_name)
 
     def process_ocr_job(self, image_id: str, job_id: str) -> Dict[str, Any]:
@@ -669,6 +671,53 @@ class OCRProcessor:
         ocr_routing_decision.updated_at = datetime.now(timezone.utc)
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
 
+        # Re-embed the full receipt so ChromaDB reflects corrected text.
+        # Same pattern as the merge receipt lambda: generate embeddings,
+        # upload deltas to S3, create CompactionRun (DynamoDB stream
+        # triggers the enhanced compactor asynchronously).
+        compaction_run_id = None
+        if self.chromadb_bucket:
+            try:
+                from receipt_chroma.embedding.orchestration import (
+                    EmbeddingConfig,
+                    create_embeddings_and_compaction_run,
+                )
+
+                all_lines = self.dynamo.list_receipt_lines_from_receipt(
+                    ocr_job.image_id, ocr_job.receipt_id
+                )
+                all_words = self.dynamo.list_receipt_words_from_receipt(
+                    ocr_job.image_id, ocr_job.receipt_id
+                )
+                non_noise_words = [
+                    w for w in all_words if not getattr(w, "is_noise", False)
+                ] or all_words
+
+                embedding_config = EmbeddingConfig(
+                    image_id=ocr_job.image_id,
+                    receipt_id=ocr_job.receipt_id,
+                    chromadb_bucket=self.chromadb_bucket,
+                    dynamo_client=self.dynamo,
+                    receipt_word_labels=labels if labels else None,
+                )
+                embedding_result = create_embeddings_and_compaction_run(
+                    receipt_lines=all_lines,
+                    receipt_words=non_noise_words,
+                    config=embedding_config,
+                )
+                compaction_run_id = embedding_result.compaction_run.run_id
+                embedding_result.close()
+                logger.info(
+                    "Re-OCR embeddings created, compaction_run=%s",
+                    compaction_run_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to create embeddings after re-OCR for %s#%s",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                )
+
         return {
             "success": True,
             "image_id": ocr_job.image_id,
@@ -680,6 +729,7 @@ class OCRProcessor:
             "words_added": len(words_to_add),
             "words_rejected": words_rejected,
             "lines_rebuilt": len(lines_to_update),
+            "compaction_run_id": compaction_run_id,
         }
 
     def _process_swift_single_pass(
