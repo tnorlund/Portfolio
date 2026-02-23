@@ -124,6 +124,7 @@ class OCRJobType(Enum):
 
     REFINEMENT = "REFINEMENT"
     FIRST_PASS = "FIRST_PASS"
+    REGIONAL_REOCR = "REGIONAL_REOCR"
 
 
 class ImageType(Enum):
