@@ -1343,7 +1343,7 @@ async def unified_receipt_evaluator(
         financial_duration = 0.0
         regional_reocr: dict[str, Any] = {"triggered": False}
         if dynamo_table:
-            with child_trace("phase2_financial_validation", trace_ctx):
+            with child_trace("financial_validation", trace_ctx):
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
