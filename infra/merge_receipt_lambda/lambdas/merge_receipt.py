@@ -396,23 +396,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("CompactionRun created: %s", compaction_run_id)
 
         # ============================================================
-        # Step 12: Wait for compaction to complete
+        # Step 12: Close embedding resources (compaction runs async
+        #          via DynamoDB stream — no need to wait)
         # ============================================================
-        logger.info("Waiting for compaction to complete (max 300s)...")
-        compaction_success = embedding_result.wait_for_compaction_to_finish(
-            dynamo_client=client, max_wait_seconds=300, poll_interval_seconds=5
-        )
         embedding_result.close()
-
-        if not compaction_success:
-            logger.warning("Compaction did not complete successfully")
-            result["status"] = "partial"
-            result["compaction_run_id"] = compaction_run_id
-            result["compaction_status"] = "timeout_or_failed"
-            result["deleted_receipts"] = []
-            return result
-
-        logger.info("Compaction completed successfully")
+        logger.info("Compaction will complete asynchronously: %s", compaction_run_id)
 
         # ============================================================
         # Step 13: Delete original receipts (highest ID first)

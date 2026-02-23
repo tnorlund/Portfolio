@@ -259,13 +259,24 @@ public final class OCRWorker {
             }
         }
 
-        // Determine if classification/clustering is needed based on job types
-        let needsClassification = contexts.allSatisfy { $0.jobType == "FIRST_PASS" }
-
-        // Run OCR engine with parallel processing (uses CPU count)
+        // Split batch by job type so FIRST_PASS jobs get classification
+        // and REFINEMENT/REGIONAL_REOCR jobs skip it
         let concurrency = ProcessInfo.processInfo.activeProcessorCount
-        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true concurrency=\(concurrency) classification=\(needsClassification)")
-        let ocrResults = try await ocr.processParallel(images: imageURLs, outputDirectory: tempDir, maxConcurrency: concurrency, includeClassification: needsClassification)
+        let firstPassIndices = contexts.indices.filter { contexts[$0].jobType == "FIRST_PASS" }
+        let reOCRIndices = contexts.indices.filter { contexts[$0].jobType != "FIRST_PASS" }
+        logger.info("ocr_run count=\(imageURLs.count) out_dir=\(tempDir.path) parallel=true concurrency=\(concurrency) first_pass=\(firstPassIndices.count) reocr=\(reOCRIndices.count)")
+
+        var ocrResults = [URL](repeating: tempDir, count: imageURLs.count)
+        if !firstPassIndices.isEmpty {
+            let urls = firstPassIndices.map { imageURLs[$0] }
+            let results = try await ocr.processParallel(images: urls, outputDirectory: tempDir, maxConcurrency: concurrency, includeClassification: true)
+            for (pos, idx) in firstPassIndices.enumerated() { ocrResults[idx] = results[pos] }
+        }
+        if !reOCRIndices.isEmpty {
+            let urls = reOCRIndices.map { imageURLs[$0] }
+            let results = try await ocr.processParallel(images: urls, outputDirectory: tempDir, maxConcurrency: concurrency, includeClassification: false)
+            for (pos, idx) in reOCRIndices.enumerated() { ocrResults[idx] = results[pos] }
+        }
 
         // Upload results, write routing decision, send result message, update job
         let now = Date()
