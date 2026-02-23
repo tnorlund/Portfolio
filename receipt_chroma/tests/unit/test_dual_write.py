@@ -103,8 +103,10 @@ class TestSanitizeMetadatas:
         assert _sanitize_metadatas(None) is None
 
     def test_empty_list_passthrough(self):
-        """Empty list returns empty list."""
-        assert _sanitize_metadatas([]) == []
+        """Empty list returns empty list, not None."""
+        result = _sanitize_metadatas([])
+        assert result == []
+        assert result is not None
 
     def test_all_keys_within_limit(self):
         """All keys under 36 bytes pass through unchanged."""
@@ -176,6 +178,16 @@ class TestSanitizeMetadatas:
         assert result[0] == {"text": "a"}
         assert result[1] == {}
         assert result[2] == {"text": "c"}
+
+    def test_oversized_key_logs_warning(self):
+        """A warning is emitted when oversized keys are dropped."""
+        long_key = "a" * 37
+        metadatas = [{"text": "val", long_key: True}]
+        with patch("receipt_chroma.compaction.dual_write.logger") as mock_log:
+            _sanitize_metadatas(metadatas)
+            mock_log.warning.assert_called_once()
+            args = mock_log.warning.call_args[0]
+            assert args[1] == 1  # one key dropped
 
 
 # =============================================================================
@@ -251,10 +263,7 @@ class TestUploadBatchWithRetry:
         _upload_batch_with_retry(mock_coll, batch, max_retries=3)
 
         # Verify the upsert was called with sanitized metadatas
-        call_kwargs = mock_coll.upsert.call_args
-        upserted_metadatas = call_kwargs.kwargs.get(
-            "metadatas"
-        ) or call_kwargs[1].get("metadatas")
+        upserted_metadatas = mock_coll.upsert.call_args.kwargs["metadatas"]
         assert len(upserted_metadatas) == 1
         assert long_key not in upserted_metadatas[0]
         assert upserted_metadatas[0]["text"] == "50.63"
