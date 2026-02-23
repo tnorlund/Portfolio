@@ -124,7 +124,7 @@ def handler(event, context):
         logger.info("Created OCR job %s for image %s receipt %d", job_id, image_id, receipt_id)
 
         # Send SQS message
-        sqs = boto3.client("sqs", region_name="us-east-1")
+        sqs = boto3.client("sqs")
         sqs.send_message(
             QueueUrl=queue_url,
             MessageBody=json.dumps({

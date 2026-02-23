@@ -14,6 +14,7 @@ Covers:
 import importlib
 import json
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -369,7 +370,7 @@ class TestCandidateSelection:
             ]
         }
 
-        tmp = Path("/tmp/test_overlay_ocr.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch(
@@ -477,7 +478,7 @@ class TestUnmatchedWordAddition:
         ]
 
         ocr_json = {"lines": []}
-        tmp = Path("/tmp/test_overlay_unmatched.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -570,7 +571,7 @@ class TestLineTextRebuild:
         new_receipt_line = _make_line(text="99.99", line_id=1)
 
         ocr_json = {"lines": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_line.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -609,7 +610,7 @@ class TestLineTextRebuild:
         new_receipt_line = _make_line(text="99.99", line_id=1)
 
         ocr_json = {"lines": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "99.99", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_unaffected.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -648,7 +649,7 @@ class TestLineTextRebuild:
         new_line = _make_line(text="NEW", line_id=1)
 
         ocr_json = {"lines": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_order.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -687,7 +688,7 @@ class TestLetterReplacement:
         new_line = _make_line(text="CD", line_id=1)
 
         ocr_json = {"lines": [{"text": "CD", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "CD", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_letters.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -760,7 +761,7 @@ class TestWriteOrdering:
         new_line = _make_line(text="NEW", line_id=1)
 
         ocr_json = {"lines": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": "NEW", "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_ordering.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -808,7 +809,7 @@ class TestIsNoiseRecomputation:
         new_line = _make_line(text=new_text, line_id=1)
 
         ocr_json = {"lines": [{"text": new_text, "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "words": [{"text": new_text, "bounding_box": {"x": 0, "y": 0.1, "width": 1, "height": 0.05}, "top_left": {"x": 0, "y": 0.1}, "top_right": {"x": 1, "y": 0.1}, "bottom_left": {"x": 0, "y": 0.15}, "bottom_right": {"x": 1, "y": 0.15}, "confidence": 0.99, "letters": []}]}]}
-        tmp = Path("/tmp/test_overlay_noise.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -892,7 +893,7 @@ class TestIntegrationEndToEnd:
         new_letter_n = _make_letter(text="N", line_id=1, word_id=1, letter_id=1, x=0.0, y=0.1, w=0.01, h=0.05)
 
         ocr_json = self._build_ocr_json([{"text": "NEW"}])
-        tmp = Path("/tmp/test_overlay_full.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -925,7 +926,7 @@ class TestIntegrationEndToEnd:
         proc.dynamo.list_receipt_words_from_receipt.return_value = []
 
         ocr_json = self._build_ocr_json([{"text": "X"}])
-        tmp = Path("/tmp/test_overlay_nowords.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
@@ -960,7 +961,7 @@ class TestIntegrationEndToEnd:
         new_line = _make_line(text="99.99", line_id=1)
 
         ocr_json = self._build_ocr_json([{"text": "99.99", "h": 0.02}])
-        tmp = Path("/tmp/test_overlay_nomatch.json")
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
         tmp.write_text(json.dumps(ocr_json))
 
         with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \

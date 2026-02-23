@@ -189,6 +189,7 @@ class TriggerReOCRLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
+                "infra/trigger_reocr_lambda/lambdas",
             ],
             lambda_function_name=f"{name}-{stack}-trigger-reocr",
             lambda_config=lambda_config,
