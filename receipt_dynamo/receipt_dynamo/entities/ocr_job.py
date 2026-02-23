@@ -43,6 +43,8 @@ class OCRJob:
     status: str = OCRStatus.PENDING.value
     job_type: str = OCRJobType.FIRST_PASS.value
     receipt_id: int | None = None
+    reocr_region: dict[str, float] | None = None
+    reocr_reason: str | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -70,6 +72,30 @@ class OCRJob:
             self.receipt_id, int
         ):
             raise ValueError("receipt_id must be an integer or None")
+
+        if self.reocr_region is not None:
+            if not isinstance(self.reocr_region, dict):
+                raise ValueError("reocr_region must be a dict or None")
+            required = {"x", "y", "width", "height"}
+            if set(self.reocr_region.keys()) != required:
+                raise ValueError(
+                    "reocr_region must contain exactly: x, y, width, height"
+                )
+            for key in required:
+                value = self.reocr_region[key]
+                if not isinstance(value, int | float):
+                    raise ValueError(
+                        f"reocr_region[{key}] must be numeric, got {type(value)}"
+                    )
+            if self.reocr_region["width"] <= 0 or self.reocr_region["height"] <= 0:
+                raise ValueError(
+                    "reocr_region width and height must be greater than 0"
+                )
+
+        if self.reocr_reason is not None and not isinstance(
+            self.reocr_reason, str
+        ):
+            raise ValueError("reocr_reason must be a string or None")
 
     @property
     def key(self) -> dict[str, Any]:
@@ -111,6 +137,21 @@ class OCRJob:
                 if self.receipt_id is not None
                 else {"NULL": True}
             ),
+            "reocr_region": (
+                {
+                    "M": {
+                        key: {"N": str(float(value))}
+                        for key, value in self.reocr_region.items()
+                    }
+                }
+                if self.reocr_region is not None
+                else {"NULL": True}
+            ),
+            "reocr_reason": (
+                {"S": self.reocr_reason}
+                if self.reocr_reason is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -124,7 +165,9 @@ class OCRJob:
             f"updated_at={self.updated_at}, "
             f"status={_repr_str(self.status)}, "
             f"job_type={_repr_str(self.job_type)}, "
-            f"receipt_id={self.receipt_id}"
+            f"receipt_id={self.receipt_id}, "
+            f"reocr_region={self.reocr_region}, "
+            f"reocr_reason={_repr_str(self.reocr_reason)}"
             ")"
         )
 
@@ -138,6 +181,8 @@ class OCRJob:
         yield "status", self.status
         yield "job_type", self.job_type
         yield "receipt_id", self.receipt_id
+        yield "reocr_region", self.reocr_region
+        yield "reocr_reason", self.reocr_reason
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, OCRJob):
@@ -152,6 +197,8 @@ class OCRJob:
             and self.status == other.status
             and self.job_type == other.job_type
             and self.receipt_id == other.receipt_id
+            and self.reocr_region == other.reocr_region
+            and self.reocr_reason == other.reocr_reason
         )
 
     def __hash__(self) -> int:
@@ -166,6 +213,12 @@ class OCRJob:
                 self.status,
                 self.job_type,
                 self.receipt_id,
+                (
+                    tuple(sorted(self.reocr_region.items()))
+                    if self.reocr_region is not None
+                    else None
+                ),
+                self.reocr_reason,
             )
         )
 
@@ -183,10 +236,40 @@ class OCRJob:
             ValueError: When the item format is invalid.
         """
         # OCRJob-specific extractors (in addition to common OCR extractors)
+        def _extract_reocr_region(item_dict: dict[str, Any]) -> dict[str, float] | None:
+            if "reocr_region" not in item_dict:
+                return None
+            raw_region = item_dict["reocr_region"]
+            if raw_region.get("NULL"):
+                return None
+            region_map = raw_region.get("M")
+            if not isinstance(region_map, dict):
+                raise ValueError("reocr_region must be a map (M) or NULL")
+            required = ("x", "y", "width", "height")
+            parsed: dict[str, float] = {}
+            for key in required:
+                value = region_map.get(key, {}).get("N")
+                if value is None:
+                    raise ValueError(f"reocr_region missing numeric field: {key}")
+                parsed[key] = float(value)
+            return parsed
+
+        def _extract_optional_string(field_name: str):
+            def _extract(item_dict: dict[str, Any]) -> str | None:
+                if field_name not in item_dict:
+                    return None
+                if item_dict[field_name].get("NULL"):
+                    return None
+                return item_dict[field_name].get("S")
+
+            return _extract
+
         custom_extractors = {
             **create_ocr_job_extractors(),
             "job_type": EntityFactory.extract_string_field("job_type"),
             "receipt_id": EntityFactory.extract_int_field("receipt_id"),
+            "reocr_region": _extract_reocr_region,
+            "reocr_reason": _extract_optional_string("reocr_reason"),
         }
 
         return EntityFactory.create_entity(

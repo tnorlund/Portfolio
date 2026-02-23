@@ -183,6 +183,41 @@ class _OCRJob(FlattenedStandardMixin):
             last_evaluated_key=last_evaluated_key,
         )
 
+    @handle_dynamodb_errors("list_ocr_jobs_for_image")
+    def list_ocr_jobs_for_image(
+        self,
+        image_id: str,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[OCRJob], dict | None]:
+        """Lists OCR jobs for a specific image."""
+        self._validate_image_id(image_id)
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "LastEvaluatedKey must be a dictionary"
+            )
+
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#type": "TYPE",
+            },
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": "OCR_JOB#"},
+                ":type": {"S": "OCR_JOB"},
+            },
+            converter_func=item_to_ocr_job,
+            filter_expression="#type = :type",
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
     @handle_dynamodb_errors("get_ocr_jobs_by_status")
     def get_ocr_jobs_by_status(
         self,

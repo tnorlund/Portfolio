@@ -5,6 +5,7 @@ from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.types import WriteRequestTypeDef
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
@@ -245,6 +246,92 @@ class _ReceiptLetter(FlattenedStandardMixin):
                     f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         self._delete_entities(receipt_letters)
+
+    @handle_dynamodb_errors("put_receipt_letters")
+    def put_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
+        """
+        Idempotent upsert of multiple ReceiptLetters using batch writes.
+
+        Unlike ``add_receipt_letters``, this uses PUT semantics without an
+        ``attribute_not_exists`` condition so it is safe to call repeatedly
+        with the same items (idempotent).
+
+        Parameters
+        ----------
+        receipt_letters : list[ReceiptLetter]
+            The ReceiptLetters to upsert.
+
+        Raises
+        ------
+        EntityValidationError
+            If the input is invalid.
+        OperationError
+            If the list is empty.
+        """
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
+                )
+        if not receipt_letters:
+            raise OperationError("Parameter validation failed")
+
+        request_items: list[WriteRequestTypeDef] = [
+            WriteRequestTypeDef(
+                PutRequest={"Item": letter.to_item()}
+            )
+            for letter in receipt_letters
+        ]
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("remove_receipt_letters")
+    def remove_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
+        """
+        Idempotent removal of multiple ReceiptLetters using batch writes.
+
+        Unlike ``delete_receipt_letters``, this uses DELETE semantics without
+        an ``attribute_exists`` condition so it silently ignores items that
+        have already been deleted (idempotent).
+
+        Parameters
+        ----------
+        receipt_letters : list[ReceiptLetter]
+            The ReceiptLetters to remove.
+
+        Raises
+        ------
+        EntityValidationError
+            If the input is invalid.
+        """
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
+                )
+        if not receipt_letters:
+            return
+
+        request_items: list[WriteRequestTypeDef] = [
+            WriteRequestTypeDef(
+                DeleteRequest={"Key": letter.key}
+            )
+            for letter in receipt_letters
+        ]
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("get_receipt_letter")
     def get_receipt_letter(
