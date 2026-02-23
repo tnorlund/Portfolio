@@ -552,6 +552,7 @@ class TestProcessor:
 
                 # Verify all operations completed.
                 # Include full payload in error to make flakes debuggable.
+                assert not result.has_errors, result.to_dict()
                 assert result.delta_merge_count == 1, result.to_dict()
                 # Keep this intentionally loose: only rows for `test_image_id`
                 # are targeted, and placeholder matching can vary.
@@ -570,4 +571,8 @@ class TestProcessor:
                 assert (
                     word_data["metadatas"][0]["merchant_name"]
                     == "Updated Merchant"
+                )
+                assert word_data["metadatas"][0]["label_status"] == "validated"
+                assert "TOTAL" in (
+                    word_data["metadatas"][0].get("valid_labels_array") or []
                 )
