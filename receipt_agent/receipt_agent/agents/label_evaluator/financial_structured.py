@@ -1,8 +1,9 @@
 """
-Structured financial validation: two-tier approach for receipt math checking.
+Structured financial validation for receipt math checking.
 
-Tier 1 (fast path): Deterministic equation balancing via extract_financial_values_enhanced()
-Tier 2 (fallback): Single structured-output LLM call to propose equations
+All receipts are resolved by deterministic equation balancing via
+extract_financial_values_enhanced(). The LLM fallback (Tier 2) has been
+removed — it never changed outcomes and added ~150s latency per call.
 
 This module is consumed by:
   - unified_receipt_evaluator.py (step function Lambda, Phase 2)
@@ -12,7 +13,6 @@ Output format matches evaluate_financial_math_async() so the apply logic
 in the unified evaluator works unchanged.
 """
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -58,8 +58,8 @@ FINANCIAL_LABELS = {
 class TwoTierFinancialResult:
     """Result from the two-tier financial validation pipeline."""
 
-    tier: str  # "fast_path" | "llm" | "no_data"
-    status: str  # "balanced" | "issues" | "no_equation" | "single_label" | "no_data"
+    tier: str  # "fast_path" | "no_data"
+    status: str  # "balanced" | "issues" | "single_label" | "no_data"
     decisions: list[dict]  # evaluator-format decisions
     duration_seconds: float
     text_scan_used: bool
@@ -655,12 +655,11 @@ def _run_two_tier_core(
     bool,
     dict[str, float] | None,
 ]:
-    """Shared Tier-1 logic for sync and async.
+    """Deterministic financial validation logic shared by sync and async.
 
     Returns:
     (tier, status, decisions, text_scan_used, label_type_count, fast_summary,
     subtotal_mismatch_gap, phantom_values_filtered, reocr_region).
-    When tier == "__need_llm__" the caller must run the Tier-2 LLM call.
     """
     if not words or not labels:
         return ("no_data", "no_data", [], False, 0, "", 0.0, False, None)
@@ -699,8 +698,8 @@ def _run_two_tier_core(
     has_values = any(bool(v) for v in enhanced_values.values())
     label_type_count = len(label_types_with_values)
 
-    if not skip_fast_path and not math_issues and has_values:
-        if label_type_count >= 2:
+    if has_values:
+        if not math_issues and label_type_count >= 2:
             decisions = _build_valid_decisions(
                 enhanced_values, image_id, receipt_id,
                 "structured_fast_path_balanced",
@@ -716,7 +715,7 @@ def _run_two_tier_core(
                 phantom_values_filtered,
                 reocr_region,
             )
-        else:
+        elif not math_issues:
             return (
                 "fast_path",
                 "single_label",
@@ -728,37 +727,36 @@ def _run_two_tier_core(
                 phantom_values_filtered,
                 reocr_region,
             )
+        else:
+            # Math issues found — return decisions with issues noted, skip LLM
+            decisions = _build_valid_decisions(
+                enhanced_values, image_id, receipt_id,
+                "structured_fast_path_issues",
+            )
+            return (
+                "fast_path",
+                "issues",
+                decisions,
+                text_scan_used,
+                label_type_count,
+                "",
+                subtotal_gap,
+                phantom_values_filtered,
+                reocr_region,
+            )
 
-    # Need Tier 2
-    fast_summary = (
-        "; ".join(f"{mi.issue_type}: {mi.description}" for mi in math_issues)
-        if math_issues
-        else "No financial values found"
-    )
+    # not has_values
     return (
-        "__need_llm__",
-        "",
+        "fast_path",
+        "no_data",
         [],
         text_scan_used,
         label_type_count,
-        fast_summary,
+        "",
         subtotal_gap,
         phantom_values_filtered,
         reocr_region,
     )
-
-
-def _classify_llm_result(llm_decisions: list[dict]) -> tuple[str, str]:
-    """Classify LLM decisions into (tier, status)."""
-    has_valid = any(
-        d.get("llm_review", {}).get("decision") == "VALID"
-        for d in llm_decisions
-    )
-    if has_valid:
-        return ("llm", "balanced")
-    if not llm_decisions:
-        return ("llm", "no_equation")
-    return ("llm", "issues")
 
 
 def run_two_tier_financial_validation(
@@ -773,10 +771,11 @@ def run_two_tier_financial_validation(
     *,
     skip_fast_path: bool = False,
 ) -> TwoTierFinancialResult:
-    """Run the full two-tier financial validation pipeline (sync).
+    """Run deterministic financial validation (fast path only).
 
-    Tier 1: Deterministic equation balancing with text-scan supplement.
-    Tier 2: Single structured-output LLM call (only when Tier 1 fails).
+    All receipts are resolved by Tier 1 (deterministic equation balancing).
+    The LLM fallback has been removed — it never changed outcomes and added
+    ~150s latency per invocation.
     """
     start = time.time()
 
@@ -786,7 +785,7 @@ def run_two_tier_financial_validation(
         decisions,
         text_scan_used,
         label_type_count,
-        fast_summary,
+        _fast_summary,
         subtotal_gap,
         phantom_values_filtered,
         reocr_region,
@@ -796,36 +795,10 @@ def run_two_tier_financial_validation(
         skip_fast_path=skip_fast_path,
     )
 
-    if tier != "__need_llm__":
-        return TwoTierFinancialResult(
-            tier=tier,
-            status=status,
-            decisions=decisions,
-            duration_seconds=time.time() - start,
-            text_scan_used=text_scan_used,
-            label_type_count=label_type_count,
-            subtotal_mismatch_gap=subtotal_gap,
-            phantom_values_filtered=phantom_values_filtered,
-            reocr_region=reocr_region,
-        )
-
-    # Tier 2: Structured LLM fallback
-    llm_decisions = run_structured_financial_validation(
-        llm=llm,
-        words=words,
-        labels=labels,
-        visual_lines=visual_lines,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        merchant_name=merchant_name,
-        fast_path_summary=fast_summary,
-    )
-    tier, status = _classify_llm_result(llm_decisions)
-
     return TwoTierFinancialResult(
         tier=tier,
         status=status,
-        decisions=llm_decisions,
+        decisions=decisions,
         duration_seconds=time.time() - start,
         text_scan_used=text_scan_used,
         label_type_count=label_type_count,
@@ -847,10 +820,11 @@ async def run_two_tier_financial_validation_async(
     *,
     skip_fast_path: bool = False,
 ) -> TwoTierFinancialResult:
-    """Run the full two-tier financial validation pipeline (async).
+    """Run deterministic financial validation (fast path only, async).
 
-    Tier 1: Deterministic equation balancing with text-scan supplement.
-    Tier 2: Single structured-output LLM call (only when Tier 1 fails).
+    All receipts are resolved by Tier 1 (deterministic equation balancing).
+    The LLM fallback has been removed — it never changed outcomes and added
+    ~150s latency per invocation.
     """
     start = time.time()
 
@@ -860,7 +834,7 @@ async def run_two_tier_financial_validation_async(
         decisions,
         text_scan_used,
         label_type_count,
-        fast_summary,
+        _fast_summary,
         subtotal_gap,
         phantom_values_filtered,
         reocr_region,
@@ -870,36 +844,10 @@ async def run_two_tier_financial_validation_async(
         skip_fast_path=skip_fast_path,
     )
 
-    if tier != "__need_llm__":
-        return TwoTierFinancialResult(
-            tier=tier,
-            status=status,
-            decisions=decisions,
-            duration_seconds=time.time() - start,
-            text_scan_used=text_scan_used,
-            label_type_count=label_type_count,
-            subtotal_mismatch_gap=subtotal_gap,
-            phantom_values_filtered=phantom_values_filtered,
-            reocr_region=reocr_region,
-        )
-
-    # Tier 2: Structured LLM fallback
-    llm_decisions = await run_structured_financial_validation_async(
-        llm=llm,
-        words=words,
-        labels=labels,
-        visual_lines=visual_lines,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        merchant_name=merchant_name,
-        fast_path_summary=fast_summary,
-    )
-    tier, status = _classify_llm_result(llm_decisions)
-
     return TwoTierFinancialResult(
         tier=tier,
         status=status,
-        decisions=llm_decisions,
+        decisions=decisions,
         duration_seconds=time.time() - start,
         text_scan_used=text_scan_used,
         label_type_count=label_type_count,

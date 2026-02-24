@@ -1812,18 +1812,20 @@ def check_grand_total_math(
     values: dict[str, list[FinancialValue]],
 ) -> MathIssue | None:
     """
-    Check: GRAND_TOTAL = sum(SUBTOTAL) + sum(TAX) + sum(TIP)
+    Check: GRAND_TOTAL = sum(SUBTOTAL) + sum(TAX) + sum(TIP) - sum(|DISCOUNT|)
 
-    Sums all subtotals, taxes, and tips to handle all receipt types:
+    Sums all subtotals, taxes, tips, and discounts to handle all receipt types:
     - Grocery: GRAND_TOTAL = SUBTOTAL + TAX (TIP is 0)
     - Barbershop: GRAND_TOTAL = SUBTOTAL + TIP (TAX is 0)
     - Restaurant: GRAND_TOTAL = SUBTOTAL + TAX + TIP
+    - With coupon: GRAND_TOTAL = SUBTOTAL + TAX + TIP - DISCOUNT
     Returns MathIssue if math doesn't match, None otherwise.
     """
     grand_totals = values.get("GRAND_TOTAL", [])
     subtotals = values.get("SUBTOTAL", [])
     taxes = values.get("TAX", [])
     tips = values.get("TIP", [])
+    discounts = values.get("DISCOUNT", [])
 
     if not grand_totals or not subtotals:
         return None
@@ -1832,17 +1834,16 @@ def check_grand_total_math(
     subtotal_sum = sum(s.numeric_value for s in subtotals)
     tax_sum = sum(t.numeric_value for t in taxes)
     tip_sum = sum(t.numeric_value for t in tips)
+    discount_sum = sum(abs(d.numeric_value) for d in discounts)
 
-    expected = subtotal_sum + tax_sum + tip_sum
+    expected = subtotal_sum + tax_sum + tip_sum - discount_sum
     actual = grand_total.numeric_value
     difference = actual - expected
 
-    # Only skip if difference is essentially zero (floating point precision)
-    # Let LLM decide if real discrepancies are acceptable
     if abs(difference) <= FLOAT_EPSILON:
         return None
 
-    involved = [grand_total] + subtotals + taxes + tips
+    involved = [grand_total] + subtotals + taxes + tips + discounts
 
     # Build description showing all components
     subtotal_desc = " + ".join(f"{s.numeric_value:.2f}" for s in subtotals)
@@ -1856,6 +1857,19 @@ def check_grand_total_math(
         if tips
         else "0.00"
     )
+    discount_desc = (
+        " + ".join(f"{abs(d.numeric_value):.2f}" for d in discounts)
+        if discounts
+        else "0.00"
+    )
+
+    desc_parts = (
+        f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal_desc}) "
+        f"+ TAX ({tax_desc}) + TIP ({tip_desc})"
+    )
+    if discounts:
+        desc_parts += f" - DISCOUNT ({discount_desc})"
+    desc_parts += f" = {expected:.2f}. Difference: {difference:.2f}"
 
     return MathIssue(
         issue_type="GRAND_TOTAL_MISMATCH",
@@ -1863,23 +1877,19 @@ def check_grand_total_math(
         actual_value=actual,
         difference=difference,
         involved_values=involved,
-        description=(
-            f"GRAND_TOTAL ({actual:.2f}) != SUBTOTAL ({subtotal_desc}) "
-            f"+ TAX ({tax_desc}) + TIP ({tip_desc}) = {expected:.2f}. "
-            f"Difference: {difference:.2f}"
-        ),
+        description=desc_parts,
     )
 
 
 def check_grand_total_direct_math(
     values: dict[str, list[FinancialValue]],
 ) -> MathIssue | None:
-    """Check: GRAND_TOTAL = sum(LINE_TOTAL) + TAX when no SUBTOTAL exists.
+    """Check: GRAND_TOTAL = sum(LINE_TOTAL) + TAX + TIP - DISCOUNT when no SUBTOTAL exists.
 
     Many receipts (especially small ones) omit the SUBTOTAL line entirely.
     ``check_grand_total_math`` bails out when SUBTOTAL is missing, leaving
     these receipts unchecked. This function fills that gap by verifying the
-    grand total directly against line totals + tax.
+    grand total directly against line totals + tax + tip - discount.
 
     Only fires when SUBTOTAL is absent/empty.
     Returns MathIssue on mismatch, None when balanced or inapplicable.
@@ -1888,6 +1898,8 @@ def check_grand_total_direct_math(
     subtotals = values.get("SUBTOTAL", [])
     line_totals = values.get("LINE_TOTAL", [])
     taxes = values.get("TAX", [])
+    tips = values.get("TIP", [])
+    discounts = values.get("DISCOUNT", [])
 
     # Only applies when we have GT + LTs but no SUBTOTAL
     if not grand_totals or subtotals or not line_totals:
@@ -1896,20 +1908,40 @@ def check_grand_total_direct_math(
     gt_val = grand_totals[0].numeric_value
     lt_sum = sum(fv.numeric_value for fv in line_totals)
     tax_sum = sum(fv.numeric_value for fv in taxes)
+    tip_sum = sum(fv.numeric_value for fv in tips)
+    discount_sum = sum(abs(fv.numeric_value) for fv in discounts)
 
-    expected = lt_sum + tax_sum
+    expected = lt_sum + tax_sum + tip_sum - discount_sum
     difference = gt_val - expected
 
     if abs(difference) <= FLOAT_EPSILON:
         return None
 
-    involved = [grand_totals[0]] + line_totals + taxes
+    involved = [grand_totals[0]] + line_totals + taxes + tips + discounts
     lt_desc = " + ".join(f"{fv.numeric_value:.2f}" for fv in line_totals)
     tax_desc = (
         " + ".join(f"{fv.numeric_value:.2f}" for fv in taxes)
         if taxes
         else "0.00"
     )
+    tip_desc = (
+        " + ".join(f"{fv.numeric_value:.2f}" for fv in tips)
+        if tips
+        else "0.00"
+    )
+    discount_desc = (
+        " + ".join(f"{abs(fv.numeric_value):.2f}" for fv in discounts)
+        if discounts
+        else "0.00"
+    )
+
+    desc_parts = (
+        f"GRAND_TOTAL ({gt_val:.2f}) != sum(LINE_TOTAL) ({lt_desc} = {lt_sum:.2f}) "
+        f"+ TAX ({tax_desc}) + TIP ({tip_desc})"
+    )
+    if discounts:
+        desc_parts += f" - DISCOUNT ({discount_desc})"
+    desc_parts += f" = {expected:.2f}. Difference: {difference:.2f}"
 
     return MathIssue(
         issue_type="GRAND_TOTAL_DIRECT_MISMATCH",
@@ -1917,10 +1949,7 @@ def check_grand_total_direct_math(
         actual_value=gt_val,
         difference=difference,
         involved_values=involved,
-        description=(
-            f"GRAND_TOTAL ({gt_val:.2f}) != sum(LINE_TOTAL) ({lt_desc} = {lt_sum:.2f}) "
-            f"+ TAX ({tax_desc}) = {expected:.2f}. Difference: {difference:.2f}"
-        ),
+        description=desc_parts,
     )
 
 

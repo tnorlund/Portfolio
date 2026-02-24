@@ -335,3 +335,36 @@ learn to label tips, and the financial validator incorrectly flags tipped receip
 ### All diagnosis receipts resolved
 
 All 9 receipts (8 original + 1 remaining) now have balanced equations.
+
+### Code changes: Remove LLM fallback + fix equations
+
+**Files:** `financial_structured.py`, `financial_subagent.py`
+
+#### 1. LLM tier removed (`financial_structured.py`)
+
+`_run_two_tier_core()` now returns `fast_path` for all cases — never `__need_llm__`:
+- `balanced` — no math issues, 2+ label types (unchanged)
+- `single_label` — no math issues, <2 label types (unchanged)
+- `issues` — math issues found (previously fell through to LLM)
+- `no_data` — no financial values
+
+Both `run_two_tier_financial_validation()` and `run_two_tier_financial_validation_async()`
+now return the fast path result directly. The LLM branch and `_classify_llm_result()` helper
+are removed. `run_structured_financial_validation()` and its async variant are kept as
+importable utilities but no longer called from the two-tier pipeline.
+
+#### 2. DISCOUNT added to `check_grand_total_math()` (`financial_subagent.py`)
+
+**Before:** `GRAND_TOTAL = SUBTOTAL + TAX + TIP`
+**After:** `GRAND_TOTAL = SUBTOTAL + TAX + TIP - |DISCOUNT|`
+
+Receipts with coupons/discounts (e.g., loyalty discounts) no longer produce
+false `GRAND_TOTAL_MISMATCH` issues.
+
+#### 3. TIP + DISCOUNT added to `check_grand_total_direct_math()` (`financial_subagent.py`)
+
+**Before:** `GRAND_TOTAL = sum(LINE_TOTAL) + TAX`
+**After:** `GRAND_TOTAL = sum(LINE_TOTAL) + TAX + TIP - |DISCOUNT|`
+
+Tipped receipts without a SUBTOTAL line (e.g., coffee shops, bars) no longer
+produce false `GRAND_TOTAL_DIRECT_MISMATCH` issues.
