@@ -287,17 +287,19 @@ learn to label tips, and the financial validator incorrectly flags tipped receip
 | `2050f988#1` | Sprouts | Invalidated voided 9.99 (L60W1), added LINE_TOTAL 4.99 (L61W1) + GRAND_TOTAL 19.97 (L65W1) | 2.49+1.50+10.99+4.99=**19.97** |
 | `3e071997#2` | In-N-Out | LINE_TOTAL→SUBTOTAL on 10.85 (L20W1), MERCHANT_NAME→TAX on .06 (L22W1) | 10.85+1.06=**11.91** |
 
-### Re-OCR triggered (2 receipts — Vision OCR reproduced same errors)
+### Re-OCR triggered (2 receipts — both now resolved)
 
-| Receipt | Merchant | Issue | Re-OCR Job | Result |
-|---------|----------|-------|------------|--------|
-| `c2bb8fff#2` | Ralphs | "15./0" should be "15.80" | `61dcf36a` | Vision OCR returned 0 words — crop too small or text too garbled |
-| `a44e5a5e#2` | Sprouts | "17,98" should be "17.98" | `c6f535dd` | Vision OCR returned 0 words — comma is actually printed on receipt |
+| Receipt | Merchant | Issue | Fix | Equation |
+|---------|----------|-------|-----|----------|
+| `c2bb8fff#2` | Ralphs | "15./0" garbled OCR | Re-OCR with wider region → overlay wrote "15.70" to DynamoDB (job `0d9f03e3`) | 15.70+0.10+1.15=**16.95** |
+| `a44e5a5e#2` | Sprouts | "17,98" comma on receipt | Re-OCR still returned "17,98" (comma is genuine). Manual text fix → "17.98" | 3.99+6.99+17.98+0.10=**29.06** |
 
-**Note:** Regional re-OCR with Apple Vision can't fix these. The "15./0" slash is too
-garbled for Vision to interpret, and "17,98" is a genuine comma in the printed receipt.
-These need either manual word text correction or a post-OCR normalization rule
-(e.g., `\d+,\d{2}$` → replace comma with period for European-style prices).
+**Notes:**
+- First re-OCR attempt (jobs `61dcf36a`/`c6f535dd`) failed — crop region too small, Vision returned 0 words.
+- Second attempt with wider regions succeeded for Ralphs (overlay matched and replaced word text).
+- Sprouts comma is physically printed on the receipt. Vision OCR faithfully reproduces it.
+  A post-OCR normalization rule (`\d+,\d{2}$` → replace comma with period) would catch this pattern.
+- **Price correction**: Ralphs price is $15.70, not $15.80 as originally estimated.
 
 ### TIP label cleanup
 
