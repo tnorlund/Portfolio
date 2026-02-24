@@ -7,14 +7,11 @@ Flagged by financial equation check: `SUM(LINE_TOTAL) - DISCOUNT = SUBTOTAL` and
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| PASS | 39 | Financial equations hold with valid labels |
-| FIXED (batch 1) | 19 | Label issues corrected |
-| FIXED (batch 2) | 10 | Label issues corrected |
+| PASS | 39 | Financial equations already hold |
+| FIXED | 33 | Label issues corrected across 3 rounds |
 | ALREADY CORRECT | 1 | 0fd6e62e/1 -- zero-tax, no ST needed |
-| RE-OCR PENDING | 3 | Re-OCR triggered, awaiting results |
-| RE-OCR NEEDED | 1 | 93247564/1 -- garbled doubled OCR, skipped |
-| UNRECOVERABLE | 1 | c2c5aadf/1 -- OCR merged two products, price word missing |
-| N/A | 7 | Receipt fragments with no financial data |
+| UNRECOVERABLE | 1 | dbc78ee2/1 -- RAW CREAM price garbled ("1v.J0"), re-OCR failed to fix |
+| N/A | 7 | Receipt fragments or no financial data (includes 93247564/1) |
 
 ## Batch 1 Fixes (39 label operations across 19 receipts)
 
