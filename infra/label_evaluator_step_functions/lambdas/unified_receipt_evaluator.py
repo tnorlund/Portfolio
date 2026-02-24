@@ -745,8 +745,8 @@ async def unified_receipt_evaluator(
                         "tenant=%s, database=%s)",
                         cloud_has_words,
                         cloud_has_lines,
-                        cloud_tenant or "default",
-                        cloud_database or "default",
+                        cloud_tenant,
+                        cloud_database,
                     )
                 else:
                     logger.warning(

@@ -66,10 +66,10 @@ def test_cloud_config_from_env_disabled():
 
 @pytest.mark.integration
 def test_cloud_config_from_env_enabled_no_api_key():
-    """Test CloudConfig.from_env returns None when enabled but no API key."""
+    """Test CloudConfig.from_env raises ValueError when enabled but no API key."""
     env = {"CHROMA_CLOUD_ENABLED": "true"}
-    config = CloudConfig.from_env(env)
-    assert config is None
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_API_KEY"):
+        CloudConfig.from_env(env)
 
 
 @pytest.mark.integration
@@ -91,28 +91,37 @@ def test_cloud_config_from_env_enabled_with_api_key():
 
 
 @pytest.mark.integration
-def test_cloud_config_from_env_defaults():
-    """Test CloudConfig.from_env uses defaults for tenant/database."""
+def test_cloud_config_from_env_missing_tenant():
+    """Test CloudConfig.from_env raises ValueError when tenant is missing."""
     env = {
         "CHROMA_CLOUD_ENABLED": "true",
         "CHROMA_CLOUD_API_KEY": "test-api-key",
     }
-    config = CloudConfig.from_env(env)
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_TENANT"):
+        CloudConfig.from_env(env)
 
-    assert config is not None
-    assert config.tenant is None  # Will default to "default" in CloudClient
-    assert config.database is None  # Will default to "default" in CloudClient
+
+@pytest.mark.integration
+def test_cloud_config_from_env_missing_database():
+    """Test CloudConfig.from_env raises ValueError when database is missing."""
+    env = {
+        "CHROMA_CLOUD_ENABLED": "true",
+        "CHROMA_CLOUD_API_KEY": "test-api-key",
+        "CHROMA_CLOUD_TENANT": "test-tenant",
+    }
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_DATABASE"):
+        CloudConfig.from_env(env)
 
 
 @pytest.mark.integration
 def test_cloud_config_from_env_empty_api_key():
-    """Test CloudConfig.from_env handles empty API key."""
+    """Test CloudConfig.from_env raises ValueError for empty API key."""
     env = {
         "CHROMA_CLOUD_ENABLED": "true",
         "CHROMA_CLOUD_API_KEY": "   ",  # Whitespace only
     }
-    config = CloudConfig.from_env(env)
-    assert config is None
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_API_KEY"):
+        CloudConfig.from_env(env)
 
 
 # =============================================================================
