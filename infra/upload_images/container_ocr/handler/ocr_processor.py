@@ -337,8 +337,10 @@ class OCRProcessor:
         logger.info("Regional re-OCR overlay for receipt %s", ocr_job.image_id)
 
         if ocr_job.receipt_id is None:
+            self._update_routing_decision_with_error(ocr_routing_decision)
             return {"success": False, "error": "Receipt ID is None"}
         if not ocr_job.reocr_region:
+            self._update_routing_decision_with_error(ocr_routing_decision)
             return {"success": False, "error": "reocr_region is missing"}
 
         # Guard 1: Skip if this routing decision has already been completed
@@ -393,24 +395,11 @@ class OCRProcessor:
             ocr_job.image_id, ocr_job.receipt_id
         )
         if not existing_words:
+            self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
                 "error": "No existing receipt words found for overlay",
             }
-
-        labels: list[Any] = []
-        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
-            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
-        )
-        labels.extend(page or [])
-        while lek:
-            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
-                image_id=ocr_job.image_id,
-                receipt_id=ocr_job.receipt_id,
-                last_evaluated_key=lek,
-            )
-            labels.extend(page or [])
-        labeled_keys = {(lbl.line_id, lbl.word_id) for lbl in labels}
 
         region_x1 = region["x"]
         region_x2 = region["x"] + region["width"]

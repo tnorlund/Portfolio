@@ -359,7 +359,7 @@ def test_import_image_does_not_exist(dynamodb_table, export_dir):
 
 
 @pytest.mark.integration
-def test_delete_image_data(dynamodb_table, export_dir):
+def test_delete_image_data(dynamodb_table):
     """Test that delete_image_data removes all records for an image."""
     client = DynamoClient(dynamodb_table)
 

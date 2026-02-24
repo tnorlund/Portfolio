@@ -2260,6 +2260,9 @@ async def compute_reocr_region_impl(
 ) -> dict:
     """Compute axis-aligned bounding box from receipt line IDs."""
     try:
+        if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
+            return {"error": f"padding must be between 0 and 1, got {padding}"}
+
         details = dynamo_client.get_receipt_details(image_id, receipt_id)
 
         # Filter words to only those on the requested lines

@@ -147,7 +147,11 @@ def import_image(table_name: str, json_path: str) -> None:
 
 
 def restore_image(table_name: str, json_path: str) -> None:
-    """Delete existing records then import from backup (idempotent restore)."""
+    """Delete existing records then import from backup.
+
+    Warning: not atomic — if import fails after deletion, data may be lost.
+    Re-run with the same JSON to recover.
+    """
     image_id = os.path.splitext(os.path.basename(json_path))[0]
     delete_image_data(table_name, image_id)
     import_image(table_name, json_path)

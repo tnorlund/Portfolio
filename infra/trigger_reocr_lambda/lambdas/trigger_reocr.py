@@ -74,6 +74,15 @@ def _validate_input(event: dict[str, Any]) -> str | None:
     if region["height"] <= 0:
         return "reocr_region.height must be greater than 0"
 
+    if region["x"] + region["width"] > 1:
+        return "reocr_region.x + width must be <= 1"
+    if region["y"] + region["height"] > 1:
+        return "reocr_region.y + height must be <= 1"
+
+    reason = event.get("reocr_reason")
+    if reason is not None and not isinstance(reason, str):
+        return "reocr_reason must be a string"
+
     return None
 
 
