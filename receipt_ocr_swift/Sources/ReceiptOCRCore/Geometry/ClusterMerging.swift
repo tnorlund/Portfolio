@@ -34,7 +34,13 @@ public func joinOverlappingClusters(
     }
 
     // Compute bounding box for each cluster
-    var clusterBoxes: [Int: [(CGFloat, CGFloat)]] = [:]
+    struct ClusterBBox {
+        let boxPoints: [(CGFloat, CGFloat)]
+        let center: (CGFloat, CGFloat)
+        let size: (CGFloat, CGFloat)
+        let angleDeg: CGFloat
+    }
+    var clusterBoxes: [Int: ClusterBBox] = [:]
 
     for clusterId in validClusterIds {
         guard let lineIndices = clusters[clusterId] else { continue }
@@ -62,7 +68,12 @@ public func joinOverlappingClusters(
         let corners = boxPoints(center: center, size: size, angleDeg: angleDeg)
         let orderedCorners = reorderBoxPoints(corners)
 
-        clusterBoxes[clusterId] = orderedCorners
+        clusterBoxes[clusterId] = ClusterBBox(
+            boxPoints: orderedCorners,
+            center: center,
+            size: size,
+            angleDeg: angleDeg
+        )
     }
 
     // Union-Find structure for cluster merging
@@ -97,17 +108,62 @@ public func joinOverlappingClusters(
         }
     }
 
-    // Compare all pairs of clusters
+    // Step 1: Compare all pairs of clusters by IoU
     for i in 0..<validClusterIds.count {
         for j in (i + 1)..<validClusterIds.count {
             let idA = validClusterIds[i]
             let idB = validClusterIds[j]
 
-            guard let boxA = clusterBoxes[idA],
-                  let boxB = clusterBoxes[idB] else { continue }
+            guard let bboxA = clusterBoxes[idA],
+                  let bboxB = clusterBoxes[idB] else { continue }
 
-            let iou = computeIoU(boxA: boxA, boxB: boxB)
+            let iou = computeIoU(boxA: bboxA.boxPoints, boxB: bboxB.boxPoints)
             if iou > iouThreshold {
+                union(idA, idB)
+            }
+        }
+    }
+
+    // Step 2: Long-axis projection merge
+    // Merge clusters separated along the long axis of the larger cluster.
+    // A receipt is portrait — its long axis runs top-to-bottom.  If the vector
+    // between two cluster centroids aligns with that long axis, the clusters
+    // are stacked vertically on the same receipt, not side-by-side.
+    for i in 0..<validClusterIds.count {
+        for j in (i + 1)..<validClusterIds.count {
+            let idA = validClusterIds[i]
+            let idB = validClusterIds[j]
+            guard find(idA) != find(idB) else { continue }
+            guard let bboxA = clusterBoxes[idA],
+                  let bboxB = clusterBoxes[idB] else { continue }
+
+            let areaA = bboxA.size.0 * bboxA.size.1
+            let areaB = bboxB.size.0 * bboxB.size.1
+            let ref = areaA >= areaB ? bboxA : bboxB
+
+            let angleRad = ref.angleDeg * .pi / 180.0
+            let cosA = cos(angleRad)
+            let sinA = sin(angleRad)
+
+            let longAxis: (CGFloat, CGFloat)
+            if ref.size.1 >= ref.size.0 {
+                longAxis = (-sinA, cosA)   // height direction
+            } else {
+                longAxis = (cosA, sinA)    // width direction
+            }
+
+            let dx = bboxB.center.0 - bboxA.center.0
+            let dy = bboxB.center.1 - bboxA.center.1
+
+            let longProj = abs(dx * longAxis.0 + dy * longAxis.1)
+            let shortProj = abs(dx * (-longAxis.1) + dy * longAxis.0)
+
+            // Only merge when clusters are nearby relative to the
+            // reference cluster's long-axis extent (prevents false
+            // merges of distant receipts that happen to be stacked).
+            let maxDim = max(ref.size.0, ref.size.1)
+            let dist = hypot(dx, dy)
+            if longProj > shortProj && dist < 1.5 * maxDim {
                 union(idA, idB)
             }
         }
