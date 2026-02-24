@@ -241,6 +241,94 @@ class OCRProcessor:
             ),
         }
 
+    @staticmethod
+    def _image_to_receipt(
+        ix: float, iy: float, corners: dict
+    ) -> tuple[float, float]:
+        """Inverse bilinear: full-image Vision (ix, iy) -> receipt-relative.
+
+        Uses Newton's method (converges in 3-5 iterations for typical
+        near-rectangular receipts).
+        """
+        bl = corners["bottom_left"]
+        br = corners["bottom_right"]
+        tl = corners["top_left"]
+        tr = corners["top_right"]
+        u, v = 0.5, 0.5
+        for _ in range(10):
+            fx = (
+                (1 - u) * (1 - v) * bl["x"]
+                + u * (1 - v) * br["x"]
+                + (1 - u) * v * tl["x"]
+                + u * v * tr["x"]
+            )
+            fy = (
+                (1 - u) * (1 - v) * bl["y"]
+                + u * (1 - v) * br["y"]
+                + (1 - u) * v * tl["y"]
+                + u * v * tr["y"]
+            )
+            ex, ey = ix - fx, iy - fy
+            if abs(ex) < 1e-8 and abs(ey) < 1e-8:
+                break
+            dfx_du = -(1 - v) * bl["x"] + (1 - v) * br["x"] - v * tl["x"] + v * tr["x"]
+            dfx_dv = -(1 - u) * bl["x"] - u * br["x"] + (1 - u) * tl["x"] + u * tr["x"]
+            dfy_du = -(1 - v) * bl["y"] + (1 - v) * br["y"] - v * tl["y"] + v * tr["y"]
+            dfy_dv = -(1 - u) * bl["y"] - u * br["y"] + (1 - u) * tl["y"] + u * tr["y"]
+            det = dfx_du * dfy_dv - dfx_dv * dfy_du
+            if abs(det) < 1e-12:
+                break
+            u += (dfy_dv * ex - dfx_dv * ey) / det
+            v += (-dfy_du * ex + dfx_du * ey) / det
+        return max(0.0, min(1.0, u)), max(0.0, min(1.0, v))
+
+    def _image_point_to_receipt(
+        self, point: dict[str, float], corners: dict
+    ) -> dict[str, float]:
+        rx, ry = self._image_to_receipt(
+            float(point.get("x", 0.0)),
+            float(point.get("y", 0.0)),
+            corners,
+        )
+        return {"x": rx, "y": ry}
+
+    def _image_bbox_to_receipt(
+        self, bbox: dict[str, float], corners: dict
+    ) -> dict[str, float]:
+        x = float(bbox.get("x", 0.0))
+        y = float(bbox.get("y", 0.0))
+        w = float(bbox.get("width", 0.0))
+        h = float(bbox.get("height", 0.0))
+        rx, ry = self._image_to_receipt(x, y, corners)
+        rx2, ry2 = self._image_to_receipt(x + w, y + h, corners)
+        return {
+            "x": min(rx, rx2),
+            "y": min(ry, ry2),
+            "width": abs(rx2 - rx),
+            "height": abs(ry2 - ry),
+        }
+
+    def _apply_receipt_inverse_mapping(
+        self,
+        receipt_lines: list[ReceiptLine],
+        receipt_words: list[ReceiptWord],
+        receipt_letters: list[ReceiptLetter],
+        corners: dict,
+    ) -> None:
+        """Map full-image Vision coords back to receipt-relative space."""
+        for entity in receipt_lines + receipt_words + receipt_letters:
+            entity.bounding_box = self._image_bbox_to_receipt(
+                entity.bounding_box, corners
+            )
+            entity.top_left = self._image_point_to_receipt(entity.top_left, corners)
+            entity.top_right = self._image_point_to_receipt(entity.top_right, corners)
+            entity.bottom_left = self._image_point_to_receipt(
+                entity.bottom_left, corners
+            )
+            entity.bottom_right = self._image_point_to_receipt(
+                entity.bottom_right, corners
+            )
+
     def _apply_region_mapping(
         self,
         receipt_lines: list[ReceiptLine],
@@ -248,7 +336,7 @@ class OCRProcessor:
         receipt_letters: list[ReceiptLetter],
         region: dict[str, float],
     ) -> None:
-        """Map crop-space OCR geometry back to full receipt normalized space."""
+        """Map crop-space OCR geometry back to full-image Vision space."""
 
         for entity in receipt_lines + receipt_words + receipt_letters:
             entity.bounding_box = self._map_bbox_to_region(
@@ -387,9 +475,41 @@ class OCRProcessor:
             letters=ocr_letters,
             receipt_id=ocr_job.receipt_id,
         )
+        # Step 1: crop-relative → full-image Vision coords
         self._apply_region_mapping(
             receipt_lines, receipt_words, receipt_letters, region
         )
+
+        # Step 2: full-image Vision → receipt-relative coords.
+        # Existing receipt words are stored in receipt-relative space
+        # (normalised to the warped receipt paper), so the new words
+        # must be in the same space for matching and storage.
+        receipt = self.dynamo.get_receipt(
+            ocr_job.image_id, ocr_job.receipt_id
+        )
+        corners = {
+            "top_left": receipt.top_left,
+            "top_right": receipt.top_right,
+            "bottom_left": receipt.bottom_left,
+            "bottom_right": receipt.bottom_right,
+        }
+        self._apply_receipt_inverse_mapping(
+            receipt_lines, receipt_words, receipt_letters, corners
+        )
+
+        # Compute receipt-relative region bounds for candidate filtering
+        r_bl = self._image_to_receipt(
+            region["x"], region["y"], corners
+        )
+        r_tr = self._image_to_receipt(
+            region["x"] + region["width"],
+            region["y"] + region["height"],
+            corners,
+        )
+        region_x1 = min(r_bl[0], r_tr[0])
+        region_y1 = min(r_bl[1], r_tr[1])
+        region_x2 = max(r_bl[0], r_tr[0])
+        region_y2 = max(r_bl[1], r_tr[1])
 
         existing_words = self.dynamo.list_receipt_words_from_receipt(
             ocr_job.image_id, ocr_job.receipt_id
@@ -401,10 +521,6 @@ class OCRProcessor:
                 "error": "No existing receipt words found for overlay",
             }
 
-        region_x1 = region["x"]
-        region_x2 = region["x"] + region["width"]
-        region_y1 = region["y"]
-        region_y2 = region["y"] + region["height"]
         candidate_words = [
             word
             for word in existing_words

@@ -34,7 +34,7 @@ from typing import Any
 import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities import OCRJob
+from receipt_dynamo.entities import Image, OCRJob
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -105,9 +105,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     queue_url = os.environ["OCR_JOB_QUEUE_URL"]
 
     try:
-        # Look up receipt to get S3 info
+        # Look up the Image entity for the raw (original) image S3 path.
+        # The Receipt entity's raw_s3_bucket/raw_s3_key point to the
+        # warped receipt PNG, not the original uploaded image.  The Swift
+        # crop needs the full raw image to extract the correct region.
         dynamo_client = DynamoClient(table_name)
-        receipt = dynamo_client.get_receipt(image_id, receipt_id)
+        image = dynamo_client.get_image(image_id)
 
         # Create OCR job
         job_id = str(uuid.uuid4())
@@ -116,8 +119,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         ocr_job = OCRJob(
             image_id=image_id,
             job_id=job_id,
-            s3_bucket=receipt.raw_s3_bucket,
-            s3_key=receipt.raw_s3_key,
+            s3_bucket=image.raw_s3_bucket,
+            s3_key=image.raw_s3_key,
             created_at=now,
             updated_at=now,
             status=OCRStatus.PENDING.value,

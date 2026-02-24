@@ -2251,6 +2251,24 @@ async def merge_receipts_impl(
         return {"error": str(e)}
 
 
+def _receipt_to_image(rx: float, ry: float, corners: dict) -> tuple[float, float]:
+    """Bilinear interpolation: receipt-relative (rx, ry) -> full-image coords.
+
+    ``corners`` must have keys ``top_left``, ``top_right``, ``bottom_left``,
+    ``bottom_right``, each a dict with ``x`` and ``y`` in full-image Vision
+    space (normalised 0-1, origin bottom-left).  In receipt space (0,0) is
+    bottom-left and (1,1) is top-right, matching Vision convention.
+    """
+    bl = corners["bottom_left"]
+    br = corners["bottom_right"]
+    tl = corners["top_left"]
+    tr = corners["top_right"]
+    u, v = rx, ry
+    ix = (1 - u) * (1 - v) * bl["x"] + u * (1 - v) * br["x"] + (1 - u) * v * tl["x"] + u * v * tr["x"]
+    iy = (1 - u) * (1 - v) * bl["y"] + u * (1 - v) * br["y"] + (1 - u) * v * tl["y"] + u * v * tr["y"]
+    return ix, iy
+
+
 async def compute_reocr_region_impl(
     dynamo_client,
     image_id: str,
@@ -2258,7 +2276,13 @@ async def compute_reocr_region_impl(
     line_ids: list[int],
     padding: float = 0.05,
 ) -> dict:
-    """Compute axis-aligned bounding box from receipt line IDs."""
+    """Compute axis-aligned bounding box from receipt line IDs.
+
+    Word bounding boxes are in receipt-relative space (normalised to the
+    warped receipt paper).  The Swift crop needs full-image Vision
+    coordinates, so we transform via the Receipt entity's four-corner
+    perspective bounds.
+    """
     try:
         if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
             return {"error": f"padding must be between 0 and 1, got {padding}"}
@@ -2277,8 +2301,7 @@ async def compute_reocr_region_impl(
                 "available_line_ids": sorted({w.line_id for w in details.words}),
             }
 
-        # Compute axis-aligned bounding box from all word bounding boxes
-        # Coordinates are already in normalized Vision-space (0-1)
+        # Compute axis-aligned bounding box in receipt-relative space
         min_x = min(w.bounding_box["x"] for w in words_in_region)
         min_y = min(w.bounding_box["y"] for w in words_in_region)
         max_x = max(
@@ -2290,17 +2313,39 @@ async def compute_reocr_region_impl(
             for w in words_in_region
         )
 
-        # Add padding, clamped to [0, 1]
+        # Add padding in receipt-relative space, clamped to [0, 1]
         padded_x = max(0.0, min_x - padding)
         padded_y = max(0.0, min_y - padding)
         padded_right = min(1.0, max_x + padding)
         padded_top = min(1.0, max_y + padding)
 
+        # Transform the four corners of the padded region from
+        # receipt-relative space to full-image Vision coordinates.
+        receipt = details.receipt
+        corners = {
+            "top_left": receipt.top_left,
+            "top_right": receipt.top_right,
+            "bottom_left": receipt.bottom_left,
+            "bottom_right": receipt.bottom_right,
+        }
+
+        img_corners = [
+            _receipt_to_image(padded_x, padded_y, corners),
+            _receipt_to_image(padded_right, padded_y, corners),
+            _receipt_to_image(padded_x, padded_top, corners),
+            _receipt_to_image(padded_right, padded_top, corners),
+        ]
+
+        img_min_x = max(0.0, min(c[0] for c in img_corners))
+        img_min_y = max(0.0, min(c[1] for c in img_corners))
+        img_max_x = min(1.0, max(c[0] for c in img_corners))
+        img_max_y = min(1.0, max(c[1] for c in img_corners))
+
         region = {
-            "x": round(padded_x, 6),
-            "y": round(padded_y, 6),
-            "width": round(padded_right - padded_x, 6),
-            "height": round(padded_top - padded_y, 6),
+            "x": round(img_min_x, 6),
+            "y": round(img_min_y, 6),
+            "width": round(img_max_x - img_min_x, 6),
+            "height": round(img_max_y - img_min_y, 6),
         }
 
         # Include context: which lines were found, word count
