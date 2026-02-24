@@ -158,7 +158,12 @@ public func joinOverlappingClusters(
             let longProj = abs(dx * longAxis.0 + dy * longAxis.1)
             let shortProj = abs(dx * (-longAxis.1) + dy * longAxis.0)
 
-            if longProj > shortProj {
+            // Only merge when clusters are nearby relative to the
+            // reference cluster's long-axis extent (prevents false
+            // merges of distant receipts that happen to be stacked).
+            let maxDim = max(ref.size.0, ref.size.1)
+            let dist = hypot(dx, dy)
+            if longProj > shortProj && dist < 1.5 * maxDim {
                 union(idA, idB)
             }
         }

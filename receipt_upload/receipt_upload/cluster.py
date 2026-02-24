@@ -377,8 +377,12 @@ def join_overlapping_clusters(
             long_proj = abs(dx * long_axis[0] + dy * long_axis[1])
             short_proj = abs(dx * (-long_axis[1]) + dy * long_axis[0])
 
-            # If separation is primarily along the long axis, merge
-            if long_proj > short_proj:
+            # Only merge when clusters are nearby relative to the
+            # reference cluster's long-axis extent (prevents false
+            # merges of distant receipts that happen to be stacked).
+            max_dim = max(rw, rh)
+            dist = math.hypot(dx, dy)
+            if long_proj > short_proj and dist < 1.5 * max_dim:
                 union(cid_a, cid_b)
 
     # Step 5: Create new merged clusters dictionary
