@@ -199,7 +199,12 @@ def join_overlapping_clusters(
         (cx, cy), (rw, rh), angle_deg = min_area_rect(pts_abs)
         box_4 = box_points((cx, cy), (rw, rh), angle_deg)
         box_4_ordered = reorder_box_points(box_4)
-        cluster_bboxes[cid] = {"box_points": box_4_ordered}
+        cluster_bboxes[cid] = {
+            "box_points": box_4_ordered,
+            "center": (cx, cy),
+            "size": (rw, rh),
+            "angle_deg": angle_deg,
+        }
 
     # Step 3: Union-Find helper functions
     def find(x: int) -> int:
@@ -328,6 +333,52 @@ def join_overlapping_clusters(
             if boxes_overlap(
                 cluster_bboxes[cid_a], cluster_bboxes[cid_b], iou_threshold
             ):
+                union(cid_a, cid_b)
+
+    # Step 4b: Merge clusters separated along the long axis of the larger
+    # cluster.  A receipt is portrait — its long axis runs top-to-bottom.  If
+    # the vector between two cluster centroids aligns with that long axis, the
+    # clusters are stacked vertically on the same receipt, not side-by-side.
+    for i, cid_a in enumerate(all_ids):
+        for j in range(i + 1, len(all_ids)):
+            cid_b = all_ids[j]
+            # Skip if already merged
+            if find(cid_a) == find(cid_b):
+                continue
+
+            bbox_a = cluster_bboxes[cid_a]
+            bbox_b = cluster_bboxes[cid_b]
+
+            # Use the larger cluster's orientation as reference
+            area_a = bbox_a["size"][0] * bbox_a["size"][1]
+            area_b = bbox_b["size"][0] * bbox_b["size"][1]
+            ref = bbox_a if area_a >= area_b else bbox_b
+
+            rw, rh = ref["size"]
+            angle_rad = math.radians(ref["angle_deg"])
+
+            # Compute long axis unit vector (along the larger dimension).
+            # box_points uses: width direction = (cos, sin),
+            #                  height direction = (-sin, cos)
+            cos_a = math.cos(angle_rad)
+            sin_a = math.sin(angle_rad)
+            if rh >= rw:
+                # Height is longer → long axis is height direction
+                long_axis = (-sin_a, cos_a)
+            else:
+                # Width is longer → long axis is width direction
+                long_axis = (cos_a, sin_a)
+
+            # Vector between centroids
+            dx = bbox_b["center"][0] - bbox_a["center"][0]
+            dy = bbox_b["center"][1] - bbox_a["center"][1]
+
+            # Project onto long axis and short axis
+            long_proj = abs(dx * long_axis[0] + dy * long_axis[1])
+            short_proj = abs(dx * (-long_axis[1]) + dy * long_axis[0])
+
+            # If separation is primarily along the long axis, merge
+            if long_proj > short_proj:
                 union(cid_a, cid_b)
 
     # Step 5: Create new merged clusters dictionary

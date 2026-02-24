@@ -337,6 +337,93 @@ class TestJoinOverlappingClusters:
                 assert len(result) == 3
 
 
+class TestJoinClustersLongAxisMerge:
+    """Test cases for the long-axis projection merge pass."""
+
+    def _make_line(self, x_min, y_min, x_max, y_max):
+        """Helper: create a mock Line with corners in normalised coords."""
+        line = Mock(spec=Line)
+        line.top_left = {"x": x_min, "y": y_max}
+        line.top_right = {"x": x_max, "y": y_max}
+        line.bottom_left = {"x": x_min, "y": y_min}
+        line.bottom_right = {"x": x_max, "y": y_min}
+        return line
+
+    def _make_cluster(self, lines_specs):
+        """Build a cluster list from [(x_min, y_min, x_max, y_max), ...]."""
+        return [self._make_line(*spec) for spec in lines_specs]
+
+    @pytest.mark.unit
+    def test_join_clusters_vertical_split_merged(self):
+        """Two clusters stacked along the long axis of a portrait receipt
+        should be merged."""
+        # Main body: x 0.10-0.50, y 0.20-0.80 (portrait)
+        cluster1 = self._make_cluster([
+            (0.10, 0.20, 0.50, 0.50),
+            (0.10, 0.50, 0.50, 0.80),
+        ])
+        # Footer: same x range, below main body
+        cluster2 = self._make_cluster([
+            (0.10, 0.05, 0.50, 0.18),
+            (0.10, 0.01, 0.50, 0.05),
+        ])
+
+        clusters = {1: cluster1, 2: cluster2}
+        result = join_overlapping_clusters(
+            clusters, image_width=1000, image_height=1000, iou_threshold=0.01
+        )
+        # Both clusters should merge into one
+        assert len(result) == 1
+
+    @pytest.mark.unit
+    def test_join_clusters_side_by_side_not_merged(self):
+        """Two clusters separated along the short axis (side by side)
+        should NOT be merged."""
+        # Receipt A: x 0.05-0.45, y 0.10-0.90 (portrait)
+        cluster1 = self._make_cluster([
+            (0.05, 0.10, 0.45, 0.50),
+            (0.05, 0.50, 0.45, 0.90),
+        ])
+        # Receipt B: x 0.55-0.95, y 0.10-0.90 (portrait, side by side)
+        cluster2 = self._make_cluster([
+            (0.55, 0.10, 0.95, 0.50),
+            (0.55, 0.50, 0.95, 0.90),
+        ])
+
+        clusters = {1: cluster1, 2: cluster2}
+        result = join_overlapping_clusters(
+            clusters, image_width=1000, image_height=1000, iou_threshold=0.01
+        )
+        # Should remain as two separate clusters
+        assert len(result) == 2
+
+    @pytest.mark.unit
+    def test_join_clusters_diagonal_split(self):
+        """Cluster offset both along and across the long axis, but primarily
+        along → should merge (the Sprouts case).
+
+        Uses portrait image dimensions (1000x2000) like a real phone photo,
+        so the y-pixel separation dominates the x-pixel offset.
+        """
+        # Main body: x 0.10-0.58, y 0.20-0.80
+        cluster1 = self._make_cluster([
+            (0.10, 0.20, 0.58, 0.50),
+            (0.10, 0.50, 0.58, 0.80),
+        ])
+        # Footer: x 0.74-0.83, y 0.02-0.10  (offset in x AND y)
+        cluster2 = self._make_cluster([
+            (0.74, 0.02, 0.83, 0.06),
+            (0.74, 0.06, 0.83, 0.10),
+        ])
+
+        clusters = {1: cluster1, 2: cluster2}
+        result = join_overlapping_clusters(
+            clusters, image_width=1000, image_height=2000, iou_threshold=0.01
+        )
+        # Should merge because separation is primarily along the long axis
+        assert len(result) == 1
+
+
 class TestReorderBoxPoints:
     """Test cases for reorder_box_points function."""
 
