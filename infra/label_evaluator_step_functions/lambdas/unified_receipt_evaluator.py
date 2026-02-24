@@ -704,8 +704,8 @@ async def unified_receipt_evaluator(
             os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
         )
         cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
-        cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT") or None
-        cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE") or None
+        cloud_tenant = (os.environ.get("CHROMA_CLOUD_TENANT") or "").strip() or None
+        cloud_database = (os.environ.get("CHROMA_CLOUD_DATABASE") or "").strip() or None
 
         from receipt_chroma import ChromaClient
 
