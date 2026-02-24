@@ -11,7 +11,11 @@ final class ModelsMappingTests: XCTestCase {
             s3Key: "raw/key.png",
             createdAt: now,
             updatedAt: now,
-            status: .pending
+            status: .pending,
+            jobType: .regionalReocr,
+            receiptId: 7,
+            reocrRegion: ReOCRRegion(x: 0.7, y: 0.0, width: 0.3, height: 1.0),
+            reocrReason: "subtotal_mismatch_phantom_values"
         )
         let item = job.toItem()
         let decoded = try OCRJob.fromItem(item)
@@ -20,6 +24,10 @@ final class ModelsMappingTests: XCTestCase {
         XCTAssertEqual(decoded.s3Bucket, job.s3Bucket)
         XCTAssertEqual(decoded.s3Key, job.s3Key)
         XCTAssertEqual(decoded.status, job.status)
+        XCTAssertEqual(decoded.jobType, job.jobType)
+        XCTAssertEqual(decoded.receiptId, job.receiptId)
+        XCTAssertEqual(decoded.reocrRegion, job.reocrRegion)
+        XCTAssertEqual(decoded.reocrReason, job.reocrReason)
         XCTAssertEqual(Int(decoded.createdAt.timeIntervalSince1970), Int(now.timeIntervalSince1970))
     }
 
@@ -45,5 +53,4 @@ final class ModelsMappingTests: XCTestCase {
         XCTAssertEqual(decoded.status, .pending)
     }
 }
-
 

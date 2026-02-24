@@ -677,6 +677,89 @@ using get_receipt to read its content.""",
                 "required": ["image_id", "receipt_id", "reason"],
             },
         ),
+        Tool(
+            name="compute_reocr_region",
+            description="""Compute an axis-aligned re-OCR region from receipt line IDs.
+
+Given line_ids, computes the bounding box that covers all words on those lines,
+adds padding, and returns a normalized Vision-space region {x, y, width, height}
+ready to pass to the trigger_reocr Lambda.
+
+Use this after inspecting a receipt with get_receipt to identify lines with
+bad OCR (e.g., garbled prices). Pass those line_ids here to get the crop region.
+
+Example:
+  compute_reocr_region("abc-123", 1, [15, 16, 17])
+  -> {"region": {"x": 0.62, "y": 0.31, "width": 0.38, "height": 0.12}}""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "line_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Line IDs to include in the region",
+                        "minItems": 1,
+                    },
+                    "padding": {
+                        "type": "number",
+                        "description": "Padding (0-1) around the region. Default 0.05",
+                        "default": 0.05,
+                    },
+                },
+                "required": ["image_id", "receipt_id", "line_ids"],
+            },
+        ),
+        Tool(
+            name="trigger_reocr",
+            description="""Trigger regional re-OCR for a receipt.
+
+Creates an OCR job and sends it to the processing queue. The Swift worker
+will crop the specified region, run Vision OCR, and the overlay Lambda
+will update the receipt words with corrected text.
+
+Use compute_reocr_region first to get the region from line IDs.
+
+WARNING: This WRITES to DynamoDB and triggers async processing.
+Back up the receipt with export_image before triggering.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "reocr_region": {
+                        "type": "object",
+                        "description": "Normalized region {x, y, width, height}",
+                        "properties": {
+                            "x": {"type": "number"},
+                            "y": {"type": "number"},
+                            "width": {"type": "number"},
+                            "height": {"type": "number"},
+                        },
+                        "required": ["x", "y", "width", "height"],
+                    },
+                    "reocr_reason": {
+                        "type": "string",
+                        "description": "Reason for re-OCR. Default: manual_trigger",
+                        "default": "manual_trigger",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "reocr_region"],
+            },
+        ),
     ]
 
 
@@ -789,6 +872,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 reasoning=arguments["reasoning"],
                 consolidated_from=arguments.get("consolidated_from"),
+            )
+        elif name == "compute_reocr_region":
+            result = await compute_reocr_region_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_ids=arguments["line_ids"],
+                padding=arguments.get("padding", 0.05),
+            )
+        elif name == "trigger_reocr":
+            result = await trigger_reocr_impl(
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                reocr_region=arguments["reocr_region"],
+                reocr_reason=arguments.get("reocr_reason", "manual_trigger"),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -2033,6 +2131,100 @@ async def merge_receipts_impl(
         )
     except Exception as e:
         logger.exception("Error invoking merge-receipt Lambda")
+        return {"error": str(e)}
+
+
+async def compute_reocr_region_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_ids: list[int],
+    padding: float = 0.05,
+) -> dict:
+    """Compute axis-aligned bounding box from receipt line IDs."""
+    try:
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+
+        # Filter words to only those on the requested lines
+        target_line_ids = set(line_ids)
+        words_in_region = [
+            w for w in details.words if w.line_id in target_line_ids
+        ]
+
+        if not words_in_region:
+            return {
+                "error": f"No words found on line_ids {line_ids}",
+                "available_line_ids": sorted({w.line_id for w in details.words}),
+            }
+
+        # Compute axis-aligned bounding box from all word bounding boxes
+        # Coordinates are already in normalized Vision-space (0-1)
+        min_x = min(w.bounding_box["x"] for w in words_in_region)
+        min_y = min(w.bounding_box["y"] for w in words_in_region)
+        max_x = max(
+            w.bounding_box["x"] + w.bounding_box["width"]
+            for w in words_in_region
+        )
+        max_y = max(
+            w.bounding_box["y"] + w.bounding_box["height"]
+            for w in words_in_region
+        )
+
+        # Add padding, clamped to [0, 1]
+        padded_x = max(0.0, min_x - padding)
+        padded_y = max(0.0, min_y - padding)
+        padded_right = min(1.0, max_x + padding)
+        padded_top = min(1.0, max_y + padding)
+
+        region = {
+            "x": round(padded_x, 6),
+            "y": round(padded_y, 6),
+            "width": round(padded_right - padded_x, 6),
+            "height": round(padded_top - padded_y, 6),
+        }
+
+        # Include context: which lines were found, word count
+        found_line_ids = sorted(
+            target_line_ids & {w.line_id for w in details.words}
+        )
+        missing_line_ids = sorted(
+            target_line_ids - {w.line_id for w in details.words}
+        )
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "region": region,
+            "lines_included": found_line_ids,
+            "lines_missing": missing_line_ids,
+            "word_count": len(words_in_region),
+        }
+
+    except Exception as e:
+        logger.exception("Error computing re-OCR region")
+        return {"error": str(e)}
+
+
+async def trigger_reocr_impl(
+    image_id: str,
+    receipt_id: int,
+    reocr_region: dict,
+    reocr_reason: str = "manual_trigger",
+) -> dict:
+    """Invoke the trigger-reocr Lambda to start regional re-OCR."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"trigger-reocr-{env}-trigger-reocr",
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "reocr_region": reocr_region,
+                "reocr_reason": reocr_reason,
+            },
+        )
+    except Exception as e:
+        logger.exception("Error invoking trigger-reocr Lambda")
         return {"error": str(e)}
 
 
