@@ -13,6 +13,7 @@ from receipt_agent.agents.label_evaluator.metadata_subagent import (
     MetadataWord,
     auto_resolve_metadata_words,
     detect_pattern_type,
+    detect_tier1_label,
     evaluate_metadata_labels,
     should_skip_for_metadata_evaluation,
 )
@@ -181,13 +182,73 @@ class TestAutoResolveMetadataWords:
         assert len(resolved) == 1
         assert resolved[0][1]["decision"] == "VALID"
 
-    def test_unlabeled_word_goes_to_llm(self):
-        """Word with no current label → always unresolved (LLM must suggest)."""
+    def test_unlabeled_word_no_tier1_goes_to_llm(self):
+        """Unlabeled word not matching Tier-1 patterns → unresolved."""
         mw = _make_metadata_word(
             "Sprouts", current_label=None, place_match="MERCHANT_NAME"
         )
         resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(resolved) == 0
+        assert len(unresolved) == 1
+
+    def test_unlabeled_masked_card_auto_assigned(self):
+        """Unlabeled masked card number → auto-INVALID with PAYMENT_METHOD."""
+        mw = _make_metadata_word("****1234", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
+        assert len(resolved) == 1
+        assert len(unresolved) == 0
+        decision = resolved[0][1]
+        assert decision["decision"] == "INVALID"
+        assert decision["suggested_label"] == "PAYMENT_METHOD"
+        assert "Tier-1" in decision["reasoning"]
+
+    def test_unlabeled_brand_name_auto_assigned(self):
+        """Unlabeled VISA → auto-INVALID with PAYMENT_METHOD."""
+        mw = _make_metadata_word("VISA", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
+        assert len(resolved) == 1
+        decision = resolved[0][1]
+        assert decision["decision"] == "INVALID"
+        assert decision["suggested_label"] == "PAYMENT_METHOD"
+
+    def test_unlabeled_day_range_auto_assigned(self):
+        """Unlabeled MON-FRI → auto-INVALID with STORE_HOURS."""
+        mw = _make_metadata_word("MON-FRI", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
+        assert len(resolved) == 1
+        decision = resolved[0][1]
+        assert decision["decision"] == "INVALID"
+        assert decision["suggested_label"] == "STORE_HOURS"
+
+    def test_unlabeled_time_range_auto_assigned(self):
+        """Unlabeled 7AM-10PM → auto-INVALID with STORE_HOURS."""
+        mw = _make_metadata_word("7AM-10PM", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
+        assert len(resolved) == 1
+        decision = resolved[0][1]
+        assert decision["decision"] == "INVALID"
+        assert decision["suggested_label"] == "STORE_HOURS"
+
+    def test_unlabeled_daily_auto_assigned(self):
+        """Unlabeled DAILY → auto-INVALID with STORE_HOURS."""
+        mw = _make_metadata_word("DAILY", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
+        assert len(resolved) == 1
+        decision = resolved[0][1]
+        assert decision["decision"] == "INVALID"
+        assert decision["suggested_label"] == "STORE_HOURS"
+
+    def test_unlabeled_ambiguous_word_not_tier1(self):
+        """Unlabeled CARD/Store/Hours → NOT Tier-1, goes to LLM."""
+        for text in ["CARD", "Store", "Hours", "gift", "CASH", "DEBIT"]:
+            mw = _make_metadata_word(text, current_label=None)
+            resolved, unresolved = auto_resolve_metadata_words([mw])
+            assert len(unresolved) == 1, f"{text} should NOT be Tier-1"
+
+    def test_unlabeled_single_day_not_tier1(self):
+        """Unlabeled single day name (MON without range) → NOT Tier-1."""
+        mw = _make_metadata_word("MON", current_label=None)
+        resolved, unresolved = auto_resolve_metadata_words([mw])
         assert len(unresolved) == 1
 
     def test_no_confirming_signal_goes_to_llm(self):
@@ -387,6 +448,68 @@ class TestDetectPatternType:
         assert detect_pattern_type("Sprouts") is None
         assert detect_pattern_type("MILK") is None
         assert detect_pattern_type("$12.99") is None
+
+
+# =============================================================================
+# Tests for detect_tier1_label
+# =============================================================================
+
+
+class TestDetectTier1Label:
+    """Tests for Tier-1 high-confidence pattern matching for unlabeled words."""
+
+    def test_masked_card_numbers(self):
+        assert detect_tier1_label("****1234") == "PAYMENT_METHOD"
+        assert detect_tier1_label("XXXX5678") == "PAYMENT_METHOD"
+        assert detect_tier1_label("...1234") == "PAYMENT_METHOD"
+
+    def test_card_brands(self):
+        assert detect_tier1_label("VISA") == "PAYMENT_METHOD"
+        assert detect_tier1_label("MASTERCARD") == "PAYMENT_METHOD"
+        assert detect_tier1_label("AMEX") == "PAYMENT_METHOD"
+        assert detect_tier1_label("DISCOVER") == "PAYMENT_METHOD"
+        assert detect_tier1_label("Visa") == "PAYMENT_METHOD"
+
+    def test_compound_payment(self):
+        assert detect_tier1_label("VISADEBIT") == "PAYMENT_METHOD"
+        assert detect_tier1_label("GPAY") == "PAYMENT_METHOD"
+        assert detect_tier1_label("EFT") == "PAYMENT_METHOD"
+
+    def test_day_ranges(self):
+        assert detect_tier1_label("MON-FRI") == "STORE_HOURS"
+        assert detect_tier1_label("MON-SUN") == "STORE_HOURS"
+        assert detect_tier1_label("TUE-SAT") == "STORE_HOURS"
+        assert detect_tier1_label("mon-fri") == "STORE_HOURS"
+
+    def test_time_ranges(self):
+        assert detect_tier1_label("7AM-10PM") == "STORE_HOURS"
+        assert detect_tier1_label("9:00AM-5:00PM") == "STORE_HOURS"
+
+    def test_daily(self):
+        assert detect_tier1_label("DAILY") == "STORE_HOURS"
+        assert detect_tier1_label("daily") == "STORE_HOURS"
+
+    def test_ambiguous_words_not_tier1(self):
+        """Words below Tier-1 precision threshold should return None."""
+        assert detect_tier1_label("CARD") is None
+        assert detect_tier1_label("CASH") is None
+        assert detect_tier1_label("DEBIT") is None
+        assert detect_tier1_label("CREDIT") is None
+        assert detect_tier1_label("gift") is None
+        assert detect_tier1_label("Store") is None
+        assert detect_tier1_label("Hours") is None
+        assert detect_tier1_label("OPEN") is None
+
+    def test_single_day_not_tier1(self):
+        """Single day names without range are ambiguous."""
+        assert detect_tier1_label("MON") is None
+        assert detect_tier1_label("FRI") is None
+        assert detect_tier1_label("SUN") is None
+
+    def test_non_metadata_not_tier1(self):
+        assert detect_tier1_label("Sprouts") is None
+        assert detect_tier1_label("MILK") is None
+        assert detect_tier1_label("$12.99") is None
 
 
 # =============================================================================
