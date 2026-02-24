@@ -8,10 +8,77 @@ Flagged by financial equation check: `SUM(LINE_TOTAL) - DISCOUNT = SUBTOTAL` and
 | Status | Count | Description |
 |--------|-------|-------------|
 | PASS | 39 | Financial equations hold with valid labels |
-| FAIL | 35 | Label issues need fixing |
+| FIXED | 19 | Label issues corrected (batch 1) |
+| NEEDS RE-OCR | 1 | OCR missing word, cannot fix labels alone |
+| REMAINING | 15 | Harder cases for batch 2 |
 | N/A | 7 | Receipt fragments with no financial data |
 
-## FAIL: No Valid Financial Labels (8)
+## Batch 1 Fixes (39 label operations across 19 receipts)
+
+Completed 2026-02-24. Four parallel agents performed invalidations, label flips, and new label creations.
+
+### Agent 1: Payment/Change LINE_TOTAL Invalidations (9 ops, 5 receipts)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| 687da832-1d9b-48c2-a295-1cc122c23ed8 | 2 | 27 | 1 | "$18.27" | LINE_TOTAL | VALID -> INVALID |
+| 687da832-1d9b-48c2-a295-1cc122c23ed8 | 2 | 30 | 1 | "0.00" | LINE_TOTAL | VALID -> INVALID |
+| 291cfd80-5b29-428e-b650-5e4505c4cbd7 | 1 | 25 | 1 | "$27.01" | LINE_TOTAL | VALID -> INVALID |
+| 291cfd80-5b29-428e-b650-5e4505c4cbd7 | 1 | 27 | 1 | "0.00" | LINE_TOTAL | VALID -> INVALID |
+| 4619f1bf-08b8-483b-a597-4b4f9ece48e6 | 1 | 24 | 1 | "8.59" | LINE_TOTAL | VALID -> INVALID |
+| 645a8dcb-ee5e-4207-9b73-567ebd1ccc45 | 1 | 27 | 2 | "42.54" | LINE_TOTAL | VALID -> INVALID |
+| ceb066a5-b621-46b6-9f8f-754d998670a7 | 2 | 26 | 1 | "$33.79" | LINE_TOTAL | VALID -> INVALID |
+| ceb066a5-b621-46b6-9f8f-754d998670a7 | 2 | 32 | 1 | "0.00" | LINE_TOTAL | VALID -> INVALID |
+| ceb066a5-b621-46b6-9f8f-754d998670a7 | 2 | 19 | 1 | "26.39" | SUBTOTAL | VALID -> INVALID |
+
+### Agent 2: Duplicate/CRV Fixes (9 ops, 5 receipts)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| b6e7af49-3802-46f2-822e-bbd49cd55ada | 2 | 39 | 5 | "3.00" | LINE_TOTAL | VALID -> INVALID |
+| ef8c6b37-c8f5-40f1-bd01-36e32a4a0dc7 | 1 | 38 | 5 | "1.00" | LINE_TOTAL | VALID -> INVALID |
+| e62eadbe-9449-4c2f-b5e8-2434d740887c | 1 | 44 | 1 | "1.53" | LINE_TOTAL | VALID -> INVALID |
+| 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 19 | 1 | "0.10" | LINE_TOTAL | INVALID -> VALID |
+| 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 19 | 1 | "0.10" | UNIT_PRICE | VALID -> INVALID |
+| 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 21 | 1 | "0.10" | LINE_TOTAL | INVALID -> VALID |
+| 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 21 | 1 | "0.10" | UNIT_PRICE | VALID -> INVALID |
+| 37900099-30b4-4788-b128-73512a936045 | 1 | 18 | 1 | "0.10" | LINE_TOTAL | INVALID -> VALID |
+| 37900099-30b4-4788-b128-73512a936045 | 1 | 18 | 1 | "0.10" | UNIT_PRICE | VALID -> INVALID |
+
+### Agent 3: Tax Report / Coupon / OCR Fixes (15 ops, 5 receipts)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| e936747a-4231-4ea6-be52-875975929a8a | 2 | 53 | 1 | "13.29" | SUBTOTAL | VALID -> INVALID |
+| e936747a-4231-4ea6-be52-875975929a8a | 2 | 63 | 1 | "0.00" | TAX | VALID -> INVALID |
+| 1d3b61e9-96b5-4cb4-a1a3-d2a35a30e2cd | 1 | 43 | 1 | "13.98" | TAX | VALID -> INVALID |
+| 1d3b61e9-96b5-4cb4-a1a3-d2a35a30e2cd | 1 | 44 | 1 | "1.01" | MERCHANT_NAME | VALID -> INVALID |
+| 1d3b61e9-96b5-4cb4-a1a3-d2a35a30e2cd | 1 | 44 | 1 | "1.01" | TAX | INVALID -> VALID |
+| 93db2c10-ad41-4483-a48a-e6fe2b884e79 | 1 | 28 | 1 | "38.49" | SUBTOTAL | VALID -> INVALID |
+| 44dc1b44-a656-4dc1-bd41-4abf9d832827 | 1 | 46 | 3 | "$30" | SUBTOTAL | VALID -> INVALID |
+| 44dc1b44-a656-4dc1-bd41-4abf9d832827 | 1 | 24 | 1 | "0.10" | TAX | VALID -> INVALID |
+| 44dc1b44-a656-4dc1-bd41-4abf9d832827 | 1 | 24 | 1 | "0.10" | LINE_TOTAL | INVALID -> VALID |
+| 44dc1b44-a656-4dc1-bd41-4abf9d832827 | 1 | 26 | 1 | "1.01" | TAX | INVALID -> VALID |
+| cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 86 | 1 | "64.99" | LINE_TOTAL | VALID -> INVALID |
+| cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 86 | 1 | "64.99" | GRAND_TOTAL | INVALID -> VALID |
+| cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 38 | 5 | "1.00" | LINE_TOTAL | VALID -> INVALID |
+| cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 52 | 5 | "4.00" | LINE_TOTAL | VALID -> INVALID |
+| cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 79 | 1 | "0.10" | TAX | VALID -> INVALID |
+
+### Agent 4: Missing GT/LT Labels (6 ops, 4 receipts + 1 unfixable)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| 54b34a70-fa63-4baa-b4a8-cb5473bc5720 | 1 | 47 | 1 | "6.48" | GRAND_TOTAL | INVALID -> VALID |
+| c985752b-1ef2-41cf-9707-76d84b7e3320 | 1 | 25 | 1 | "15.98" | GRAND_TOTAL | INVALID -> VALID |
+| ff649c4b-5c31-4247-b78c-d9b0c56610ad | 2 | 45 | 1 | "21.43" | GRAND_TOTAL | CREATED |
+| ff649c4b-5c31-4247-b78c-d9b0c56610ad | 2 | 43 | 1 | "1.45" | TAX | CREATED |
+| 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 54 | 1 | "17.96" | GRAND_TOTAL | CREATED |
+| 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 48 | 1 | "4.99" | LINE_TOTAL | CREATED |
+
+**Unfixable:** dbc78ee2-8d3c-4a31-b28a-0293583a2a25/1 -- "13.99" for RAW CREAM does not exist in OCR output. Needs re-OCR.
+
+## REMAINING: No Valid Financial Labels (8)
 
 Receipts with product/total text visible but zero valid financial labels assigned.
 
@@ -26,7 +93,7 @@ Receipts with product/total text visible but zero valid financial labels assigne
 | c6b66d97-1e0a-4be4-9e1f-731a7e4be25c | 1 | YOGURT 5.99 -- no valid labels |
 | 93247564-a489-4970-9992-1a436af35ef5 | 1 | Garbled/doubled OCR text, no usable financial labels |
 
-## FAIL: Missing GRAND_TOTAL Label (4)
+## FIXED: Missing GRAND_TOTAL Label (4)
 
 Receipt has LINE_TOTALs but no valid GRAND_TOTAL.
 
@@ -37,7 +104,7 @@ Receipt has LINE_TOTALs but no valid GRAND_TOTAL.
 | ff649c4b-5c31-4247-b78c-d9b0c56610ad | 2 | 19.98 | 21.43 | GT 21.43 and TAX 1.45 both missing labels |
 | 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 12.97 | 17.96 | Missing GT label; also butter 4.99 missing LT label |
 
-## FAIL: Missing LINE_TOTAL on Items (3)
+## REMAINING: Missing LINE_TOTAL on Items (3)
 
 GRAND_TOTAL exists but item prices lack LINE_TOTAL labels.
 
@@ -47,7 +114,7 @@ GRAND_TOTAL exists but item prices lack LINE_TOTAL labels.
 | 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | ~39.09 | 22.76 | ~16.33 | Most items missing LT; voided item unlabeled; no valid GT |
 | c2c5aadf-58e8-4276-95ae-0f46039946da | 1 | 23.26 | 20.27 | 2.99 | Garbled OCR merged two products, one price missing |
 
-## FAIL: Payment/Change Lines Mislabeled as LINE_TOTAL (4)
+## FIXED: Payment/Change Lines Mislabeled as LINE_TOTAL (4)
 
 CREDIT/BALANCE DUE/CHANGE amounts incorrectly labeled as LINE_TOTAL.
 
@@ -58,7 +125,7 @@ CREDIT/BALANCE DUE/CHANGE amounts incorrectly labeled as LINE_TOTAL.
 | 4619f1bf-08b8-483b-a597-4b4f9ece48e6 | 1 | 8.59 | 8.59 (LT) | BALANCE DUE (duplicate of GT) |
 | ceb066a5-b621-46b6-9f8f-754d998670a7 | 2 | 33.79 | $33.79 (LT), 0.00 (LT) | CREDIT tender, CHANGE; also ST is taxable subtotal not full ST |
 
-## FAIL: Pricing Breakdown Duplicating LINE_TOTAL (2)
+## FIXED: Pricing Breakdown Duplicating LINE_TOTAL (2)
 
 "X @ Y FOR Z" deal lines have Z labeled as LINE_TOTAL, duplicating the actual item total.
 
@@ -67,7 +134,7 @@ CREDIT/BALANCE DUE/CHANGE amounts incorrectly labeled as LINE_TOTAL.
 | b6e7af49-3802-46f2-822e-bbd49cd55ada | 2 | 9.44 | 3.00 | "4 @ 4 FOR 3.00" duplicates LEMONS 3.00 |
 | ef8c6b37-c8f5-40f1-bd01-36e32a4a0dc7 | 1 | 5.98 | 1.00 | "2 @ 2 FOR 1.00" duplicates LIMES 1.00 |
 
-## FAIL: Pre/Post Discount Both as LINE_TOTAL (1)
+## FIXED: Pre/Post Discount Both as LINE_TOTAL (1)
 
 Both original and sale prices labeled as LINE_TOTAL causing double-count.
 
@@ -75,7 +142,7 @@ Both original and sale prices labeled as LINE_TOTAL causing double-count.
 |----------|------------|----|-------|
 | e62eadbe-9449-4c2f-b5e8-2434d740887c | 1 | 27.67 | Banana original 1.53 and sale 1.22 both LT; discount -0.31 present |
 
-## FAIL: Terminal Total / OCR Duplication as LINE_TOTAL (2)
+## FIXED: Terminal Total / OCR Duplication as LINE_TOTAL (2)
 
 Card terminal totals or OCR-duplicated amounts incorrectly labeled.
 
@@ -84,7 +151,7 @@ Card terminal totals or OCR-duplicated amounts incorrectly labeled.
 | 645a8dcb-ee5e-4207-9b73-567ebd1ccc45 | 1 | 42.54 | "42.54" on terminal Total line labeled LT instead of GT |
 | cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912 | 1 | 64.99 | BALANCE DUE "64.99" as LT; massive OCR column merging duplicates |
 
-## FAIL: Tax Report Taxable Amount Mislabeled (3)
+## FIXED: Tax Report Taxable Amount Mislabeled (3)
 
 Sprouts "Tax Report" shows `TAX 1 <taxable_amount> <tax> TT`. The taxable amount is mislabeled as TAX or SUBTOTAL.
 
@@ -94,7 +161,7 @@ Sprouts "Tax Report" shows `TAX 1 <taxable_amount> <tax> TT`. The taxable amount
 | 1d3b61e9-96b5-4cb4-a1a3-d2a35a30e2cd | 1 | 19.98 | 13.98 as TAX | 1.01 | Taxable amount mislabeled as TAX; actual tax 1.01 has wrong label |
 | 93db2c10-ad41-4483-a48a-e6fe2b884e79 | 1 | 52.25 | 38.49 as ST | 2.79 | Taxable amount mislabeled as SUBTOTAL |
 
-## FAIL: CRV / Coupon Labeling Issues (3)
+## FIXED: CRV / Coupon Labeling Issues (3)
 
 California Redemption Value fees or coupon text incorrectly labeled.
 
@@ -104,7 +171,7 @@ California Redemption Value fees or coupon text incorrectly labeled.
 | 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 21.67 | Two CRV 0.10 fees labeled UNIT_PRICE instead of LINE_TOTAL (0.20 short) |
 | 37900099-30b4-4788-b128-73512a936045 | 1 | 18.08 | CRV 0.10 labeled UNIT_PRICE not LINE_TOTAL |
 
-## FAIL: OCR Issues (3)
+## REMAINING: OCR Issues (3)
 
 Garbled OCR, split words, or corrupted values.
 
@@ -114,7 +181,7 @@ Garbled OCR, split words, or corrupted values.
 | d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | OCR split "$18" and ".08"; GT 13.08 does not match SUM(LT) 18.08 |
 | b4b269e9-5213-4e9a-b3df-661bc57dd81a | 2 | "+3.93" OCR error (should be "43.93") labeled as TAX |
 
-## FAIL: Other (2)
+## REMAINING: Other (2)
 
 | Image ID | Receipt ID | GT | Issue |
 |----------|------------|----|-------|
