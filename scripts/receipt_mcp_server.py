@@ -31,6 +31,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
@@ -2251,22 +2252,34 @@ async def merge_receipts_impl(
         return {"error": str(e)}
 
 
-def _receipt_to_image(rx: float, ry: float, corners: dict) -> tuple[float, float]:
-    """Bilinear interpolation: receipt-relative (rx, ry) -> full-image coords.
+def _receipt_point_to_image(
+    rx: float, ry: float,
+    coeffs: list[float],
+    receipt_width: int, receipt_height: int,
+    image_width: int, image_height: int,
+) -> tuple[float, float]:
+    """Projective forward transform: receipt-relative → full-image Vision.
 
-    ``corners`` must have keys ``top_left``, ``top_right``, ``bottom_left``,
-    ``bottom_right``, each a dict with ``x`` and ``y`` in full-image Vision
-    space (normalised 0-1, origin bottom-left).  In receipt space (0,0) is
-    bottom-left and (1,1) is top-right, matching Vision convention.
+    Uses the perspective coefficients (receipt-PIL → image-PIL) computed by
+    ``find_perspective_coeffs``, matching the exact transform that the
+    FIRST_PASS warp used.
     """
-    bl = corners["bottom_left"]
-    br = corners["bottom_right"]
-    tl = corners["top_left"]
-    tr = corners["top_right"]
-    u, v = rx, ry
-    ix = (1 - u) * (1 - v) * bl["x"] + u * (1 - v) * br["x"] + (1 - u) * v * tl["x"] + u * v * tr["x"]
-    iy = (1 - u) * (1 - v) * bl["y"] + u * (1 - v) * br["y"] + (1 - u) * v * tl["y"] + u * v * tr["y"]
-    return ix, iy
+    # Receipt OCR normalised → PIL pixel
+    x_rct = rx * (receipt_width - 1)
+    y_rct = (1.0 - ry) * (receipt_height - 1)
+
+    a, b, c, d, e, f, g, h = coeffs
+    denom = 1.0 + g * x_rct + h * y_rct
+    if abs(denom) < 1e-12:
+        return 0.5, 0.5
+
+    x_img = (a * x_rct + b * y_rct + c) / denom
+    y_img = (d * x_rct + e * y_rct + f) / denom
+
+    # Image PIL pixel → OCR normalised
+    ix = x_img / image_width
+    iy = 1.0 - (y_img / image_height)
+    return max(0.0, min(1.0, ix)), max(0.0, min(1.0, iy))
 
 
 async def compute_reocr_region_impl(
@@ -2320,20 +2333,42 @@ async def compute_reocr_region_impl(
         padded_top = min(1.0, max_y + padding)
 
         # Transform the four corners of the padded region from
-        # receipt-relative space to full-image Vision coordinates.
-        receipt = details.receipt
-        corners = {
-            "top_left": receipt.top_left,
-            "top_right": receipt.top_right,
-            "bottom_left": receipt.bottom_left,
-            "bottom_right": receipt.bottom_right,
-        }
+        # receipt-relative space to full-image Vision coordinates using
+        # the same projective (homography) transform that the FIRST_PASS
+        # warp used.
+        from receipt_upload.geometry.transformations import find_perspective_coeffs
 
+        receipt = details.receipt
+        image = dynamo_client.get_image(image_id)
+
+        src_points = [
+            (receipt.top_left["x"] * image.width,
+             (1.0 - receipt.top_left["y"]) * image.height),
+            (receipt.top_right["x"] * image.width,
+             (1.0 - receipt.top_right["y"]) * image.height),
+            (receipt.bottom_right["x"] * image.width,
+             (1.0 - receipt.bottom_right["y"]) * image.height),
+            (receipt.bottom_left["x"] * image.width,
+             (1.0 - receipt.bottom_left["y"]) * image.height),
+        ]
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        coeffs = find_perspective_coeffs(src_points, dst_points)
+
+        _pt = _receipt_point_to_image
         img_corners = [
-            _receipt_to_image(padded_x, padded_y, corners),
-            _receipt_to_image(padded_right, padded_y, corners),
-            _receipt_to_image(padded_x, padded_top, corners),
-            _receipt_to_image(padded_right, padded_top, corners),
+            _pt(padded_x, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_x, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
         ]
 
         img_min_x = max(0.0, min(c[0] for c in img_corners))

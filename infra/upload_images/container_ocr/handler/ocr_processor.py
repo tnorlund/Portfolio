@@ -29,6 +29,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -242,97 +243,72 @@ class OCRProcessor:
         }
 
     @staticmethod
-    def _image_to_receipt(
-        ix: float, iy: float, corners: dict
-    ) -> tuple[float, float]:
-        """Inverse bilinear: full-image Vision (ix, iy) -> receipt-relative.
+    def _get_perspective_coeffs(
+        receipt: Receipt, image_width: int, image_height: int,
+    ) -> list[float]:
+        """Compute perspective coefficients mapping receipt-PIL → image-PIL.
 
-        Uses Newton's method (converges in 3-5 iterations for typical
-        near-rectangular receipts).
+        Returns 8 coefficients [a,b,c,d,e,f,g,h] such that::
+
+            x_image_pil = (a*x_rct + b*y_rct + c) / (1 + g*x_rct + h*y_rct)
+
+        Uses the same formulation as records_builder._get_receipt_to_image_transform
+        so the coordinate mapping is consistent with the original FIRST_PASS warp.
         """
-        bl = corners["bottom_left"]
-        br = corners["bottom_right"]
-        tl = corners["top_left"]
-        tr = corners["top_right"]
-        u, v = 0.5, 0.5
-        for _ in range(10):
-            fx = (
-                (1 - u) * (1 - v) * bl["x"]
-                + u * (1 - v) * br["x"]
-                + (1 - u) * v * tl["x"]
-                + u * v * tr["x"]
-            )
-            fy = (
-                (1 - u) * (1 - v) * bl["y"]
-                + u * (1 - v) * br["y"]
-                + (1 - u) * v * tl["y"]
-                + u * v * tr["y"]
-            )
-            ex, ey = ix - fx, iy - fy
-            if abs(ex) < 1e-8 and abs(ey) < 1e-8:
-                break
-            dfx_du = -(1 - v) * bl["x"] + (1 - v) * br["x"] - v * tl["x"] + v * tr["x"]
-            dfx_dv = -(1 - u) * bl["x"] - u * br["x"] + (1 - u) * tl["x"] + u * tr["x"]
-            dfy_du = -(1 - v) * bl["y"] + (1 - v) * br["y"] - v * tl["y"] + v * tr["y"]
-            dfy_dv = -(1 - u) * bl["y"] - u * br["y"] + (1 - u) * tl["y"] + u * tr["y"]
-            det = dfx_du * dfy_dv - dfx_dv * dfy_du
-            if abs(det) < 1e-12:
-                break
-            u += (dfy_dv * ex - dfx_dv * ey) / det
-            v += (-dfy_du * ex + dfx_du * ey) / det
-        return max(0.0, min(1.0, u)), max(0.0, min(1.0, v))
-
-    def _image_point_to_receipt(
-        self, point: dict[str, float], corners: dict
-    ) -> dict[str, float]:
-        rx, ry = self._image_to_receipt(
-            float(point.get("x", 0.0)),
-            float(point.get("y", 0.0)),
-            corners,
-        )
-        return {"x": rx, "y": ry}
-
-    def _image_bbox_to_receipt(
-        self, bbox: dict[str, float], corners: dict
-    ) -> dict[str, float]:
-        x = float(bbox.get("x", 0.0))
-        y = float(bbox.get("y", 0.0))
-        w = float(bbox.get("width", 0.0))
-        h = float(bbox.get("height", 0.0))
-        pts = [
-            self._image_to_receipt(x, y, corners),
-            self._image_to_receipt(x + w, y, corners),
-            self._image_to_receipt(x, y + h, corners),
-            self._image_to_receipt(x + w, y + h, corners),
+        src_points = [
+            (receipt.top_left["x"] * image_width,
+             (1.0 - receipt.top_left["y"]) * image_height),
+            (receipt.top_right["x"] * image_width,
+             (1.0 - receipt.top_right["y"]) * image_height),
+            (receipt.bottom_right["x"] * image_width,
+             (1.0 - receipt.bottom_right["y"]) * image_height),
+            (receipt.bottom_left["x"] * image_width,
+             (1.0 - receipt.bottom_left["y"]) * image_height),
         ]
-        xs, ys = zip(*pts)
-        return {
-            "x": min(xs),
-            "y": min(ys),
-            "width": max(xs) - min(xs),
-            "height": max(ys) - min(ys),
-        }
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        return find_perspective_coeffs(src_points, dst_points)
 
-    def _apply_receipt_inverse_mapping(
-        self,
-        receipt_lines: list[ReceiptLine],
-        receipt_words: list[ReceiptWord],
-        receipt_letters: list[ReceiptLetter],
-        corners: dict,
-    ) -> None:
-        """Map full-image Vision coords back to receipt-relative space."""
-        for entity in receipt_lines + receipt_words + receipt_letters:
-            entity.bounding_box = self._image_bbox_to_receipt(
-                entity.bounding_box, corners
-            )
-            entity.top_left = self._image_point_to_receipt(entity.top_left, corners)
-            entity.top_right = self._image_point_to_receipt(entity.top_right, corners)
-            entity.bottom_left = self._image_point_to_receipt(
-                entity.bottom_left, corners
-            )
-            entity.bottom_right = self._image_point_to_receipt(
-                entity.bottom_right, corners
-            )
+    @staticmethod
+    def _image_point_to_receipt_perspective(
+        ix_norm: float, iy_norm: float,
+        coeffs: list[float],
+        image_width: int, image_height: int,
+        receipt_width: int, receipt_height: int,
+    ) -> tuple[float, float]:
+        """Transform a point from image-Vision normalised → receipt-relative.
+
+        Solves the inverse of the perspective equation (same algebra as
+        TextGeometryEntity.inverse_perspective_transform).
+        """
+        # Image OCR normalised → PIL pixel
+        x_img = ix_norm * image_width
+        y_img = (1.0 - iy_norm) * image_height
+
+        a, b, c, d, e, f, g, h = coeffs
+        # x_img = (a*X + b*Y + c) / (1 + g*X + h*Y)  → solve for (X, Y)
+        a11 = g * x_img - a
+        a12 = h * x_img - b
+        b1 = c - x_img
+        a21 = g * y_img - d
+        a22 = h * y_img - e
+        b2 = f - y_img
+
+        det = a11 * a22 - a12 * a21
+        if abs(det) < 1e-12:
+            return 0.5, 0.5
+
+        x_rct = (b1 * a22 - b2 * a12) / det
+        y_rct = (a11 * b2 - a21 * b1) / det
+
+        # Receipt PIL pixel → OCR normalised
+        rx = x_rct / receipt_width
+        ry = 1.0 - (y_rct / receipt_height)
+        return max(0.0, min(1.0, rx)), max(0.0, min(1.0, ry))
 
     def _apply_region_mapping(
         self,
@@ -489,29 +465,41 @@ class OCRProcessor:
         # Existing receipt words are stored in receipt-relative space
         # (normalised to the warped receipt paper), so the new words
         # must be in the same space for matching and storage.
+        # Use the same projective (homography) transform that the
+        # FIRST_PASS warp used, so coordinates are exactly consistent.
         receipt = self.dynamo.get_receipt(
             ocr_job.image_id, ocr_job.receipt_id
         )
-        corners = {
-            "top_left": receipt.top_left,
-            "top_right": receipt.top_right,
-            "bottom_left": receipt.bottom_left,
-            "bottom_right": receipt.bottom_right,
-        }
-        self._apply_receipt_inverse_mapping(
-            receipt_lines, receipt_words, receipt_letters, corners
+        image = self.dynamo.get_image(ocr_job.image_id)
+        coeffs = self._get_perspective_coeffs(
+            receipt, image.width, image.height
         )
+        for entity in receipt_lines + receipt_words + receipt_letters:
+            entity.inverse_perspective_transform(
+                *coeffs,
+                src_width=receipt.width,
+                src_height=receipt.height,
+                dst_width=image.width,
+                dst_height=image.height,
+                flip_y=True,
+            )
 
         # Compute receipt-relative region bounds for candidate filtering
+        _pt = self._image_point_to_receipt_perspective
         r_pts = [
-            self._image_to_receipt(region["x"], region["y"], corners),
-            self._image_to_receipt(region["x"] + region["width"], region["y"], corners),
-            self._image_to_receipt(region["x"], region["y"] + region["height"], corners),
-            self._image_to_receipt(
-                region["x"] + region["width"],
+            _pt(region["x"], region["y"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"] + region["width"], region["y"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"], region["y"] + region["height"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"] + region["width"],
                 region["y"] + region["height"],
-                corners,
-            ),
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
         ]
         r_xs, r_ys = zip(*r_pts)
         region_x1, region_x2 = min(r_xs), max(r_xs)

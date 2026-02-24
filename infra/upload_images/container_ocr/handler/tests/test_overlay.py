@@ -145,11 +145,18 @@ def _make_processor():
     proc.dynamo = MagicMock()
     # Default receipt corners: unit square (identity transform).
     # Receipt-relative coords == full-image Vision coords.
+    # width/height must be set for the perspective coefficient computation.
     proc.dynamo.get_receipt.return_value = SimpleNamespace(
         top_left={"x": 0.0, "y": 1.0},
         top_right={"x": 1.0, "y": 1.0},
         bottom_left={"x": 0.0, "y": 0.0},
         bottom_right={"x": 1.0, "y": 0.0},
+        width=1000,
+        height=2000,
+    )
+    proc.dynamo.get_image.return_value = SimpleNamespace(
+        width=1000,
+        height=2000,
     )
     return proc
 
