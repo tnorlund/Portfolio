@@ -2388,7 +2388,6 @@ async def delete_image_impl(
     dynamo_client, image_id: str, dry_run: bool = True
 ) -> dict:
     """Delete all DynamoDB records under an image partition key."""
-    import time
 
     try:
         table_name = dynamo_client._table_name
@@ -2419,7 +2418,7 @@ async def delete_image_impl(
                 parts = sk.split("#")
                 entity_type = parts[0]
                 if entity_type == "RECEIPT" and len(parts) > 2:
-                    entity_type = "#".join(parts[2::2]) or "RECEIPT"
+                    entity_type = parts[-2]
             else:
                 entity_type = sk
             type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
@@ -2452,12 +2451,20 @@ async def delete_image_impl(
             deleted += len(batch)
 
             unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
-            while unprocessed:
-                time.sleep(0.5)
+            retries = 0
+            max_retries = 5
+            while unprocessed and retries < max_retries:
+                await asyncio.sleep(0.5 * (2**retries))
                 resp = dynamo_client._client.batch_write_item(
                     RequestItems={table_name: unprocessed}
                 )
                 unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
+                retries += 1
+            if unprocessed:
+                raise RuntimeError(
+                    f"batch_write_item: {len(unprocessed)} items remain "
+                    f"unprocessed after {max_retries} retries"
+                )
 
         return {
             "image_id": image_id,
