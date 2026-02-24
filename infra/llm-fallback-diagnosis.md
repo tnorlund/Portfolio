@@ -315,8 +315,23 @@ learn to label tips, and the financial validator incorrectly flags tipped receip
 | Kept INVALID | `a8d7ab9f#4` L6W49 | $1.45 | Actually TAX, not TIP |
 | Created NEW | `37900099#2` L22W1 | $10.00 | HandleBar Barbershop tip |
 
-### Remaining (from evaluator run, not from manual fixes)
+### Additional fix: `490a4076#2` — Wild Fork (GRAND_TOTAL=63.87)
 
-| Receipt | Gap |
-|---------|-----|
-| `490a4076#2` | $30.96 (re-OCR triggered by evaluator) |
+**Labels present:** LINE_TOTAL={7.98, 14.99, 14.98, 4.98, 4.98}, SUBTOTAL=63.87, GRAND_TOTAL=63.87
+**Labels missing:** TAX (0.00), two LINE_TOTALs on wrong words
+
+**Root cause:** OCR over-segmentation on tabular receipt. Two "7.98" values split as
+`"7." + "7.98"` across two words. LayoutLM labeled W1 ("7.") as LINE_TOTAL instead of W2 ("7.98").
+
+**Fix:**
+- L49W1: VALID→INVALID LINE_TOTAL (text "7." is fragment)
+- L49W2: Created LINE_TOTAL VALID (text "7.98" — correct value)
+- L51W1: VALID→INVALID LINE_TOTAL (text "7." is fragment)
+- L51W2: Created LINE_TOTAL VALID (text "7.98" — correct value)
+- L56W1: Created TAX VALID (text "0.00" — no tax on this receipt)
+
+**Proof:** 7.98+7.98+14.99+7.98+14.98+4.98+4.98 = **63.87** = SUBTOTAL = GRAND_TOTAL ✓
+
+### All diagnosis receipts resolved
+
+All 9 receipts (8 original + 1 remaining) now have balanced equations.
