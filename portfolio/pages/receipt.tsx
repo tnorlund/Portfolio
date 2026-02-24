@@ -9,6 +9,7 @@ import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
 import AnimatedInView from "../components/ui/AnimatedInView";
+import LazyMountInView from "../components/ui/LazyMountInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
@@ -315,7 +316,21 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <WithinReceiptVerification />
+        <LazyMountInView
+          minHeight={480}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <WithinReceiptVerification />
+        </LazyMountInView>
       </ClientOnly>
 
       <p>
@@ -325,7 +340,21 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <FinancialMathOverlay />
+        <LazyMountInView
+          minHeight={480}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <FinancialMathOverlay />
+        </LazyMountInView>
       </ClientOnly>
 
       <p>
@@ -335,7 +364,21 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <BetweenReceiptVisualization />
+        <LazyMountInView
+          minHeight={480}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <BetweenReceiptVisualization />
+        </LazyMountInView>
       </ClientOnly>
 
       <p>
@@ -386,11 +429,39 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <TrainingMetricsAnimation />
+        <LazyMountInView
+          minHeight={480}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <TrainingMetricsAnimation />
+        </LazyMountInView>
       </ClientOnly>
 
       <ClientOnly>
-        <LayoutLMInferenceVisualization />
+        <LazyMountInView
+          minHeight={520}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <LayoutLMInferenceVisualization />
+        </LazyMountInView>
       </ClientOnly>
 
       <p>
@@ -437,7 +508,21 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <WordSimilarity />
+        <LazyMountInView
+          minHeight={520}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <WordSimilarity />
+        </LazyMountInView>
       </ClientOnly>
 
       <h1>So Now What?</h1>
@@ -484,7 +569,21 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <CICDLoop />
+        <LazyMountInView
+          minHeight={600}
+          placeholder={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "var(--background-color)",
+                borderRadius: 12,
+              }}
+            />
+          }
+        >
+          <CICDLoop />
+        </LazyMountInView>
       </ClientOnly>
 
       <p>

@@ -466,9 +466,13 @@ const TrainingMetricsAnimation: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
   const hasStartedAnimation = useRef(false);
+  const hasFetchedRef = useRef(false);
 
-  // Fetch data on mount
+  // Fetch data only when in view - defers work until section is visible
   useEffect(() => {
+    if (!inView || hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     api
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
@@ -480,7 +484,7 @@ const TrainingMetricsAnimation: React.FC = () => {
         console.error("Failed to fetch training metrics:", err);
         setIsLoading(false);
       });
-  }, []);
+  }, [inView]);
 
   // Autoplay animation when in view and data is loaded
   useEffect(() => {

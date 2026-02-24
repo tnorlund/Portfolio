@@ -696,6 +696,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
   const isFetchingRef = useRef(false);
   const seenReceiptIds = useRef<Set<string>>(new Set());
   const emptyFetchCountRef = useRef(0);
+  const hasInitialFetchedRef = useRef(false);
 
   // Fetch a batch of receipts and append to queue (with deduplication)
   const fetchMoreReceipts = useCallback(async () => {
@@ -733,8 +734,11 @@ const LayoutLMBatchVisualization: React.FC = () => {
     }
   }, [isPoolExhausted]);
 
-  // Initial fetch - get 2 batches to start with ~10 receipts
+  // Initial fetch only when in view - defers work until section is visible
   useEffect(() => {
+    if (!inView || hasInitialFetchedRef.current) return;
+    hasInitialFetchedRef.current = true;
+
     const initialFetch = async () => {
       try {
         // Fetch 2 batches in parallel
@@ -776,7 +780,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     };
 
     initialFetch();
-  }, []);
+  }, [inView]);
 
   if (initialLoading) {
     return (
