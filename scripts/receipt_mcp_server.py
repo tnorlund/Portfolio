@@ -782,6 +782,36 @@ Use this to find recently uploaded images or check processing status.""",
                 },
             },
         ),
+        Tool(
+            name="delete_image",
+            description="""Delete an image and ALL its child records from DynamoDB.
+
+Queries every item under PK = IMAGE#{image_id} and batch-deletes them.
+This removes the Image entity plus every child: receipts, lines, words,
+letters, labels, places, summaries, OCR jobs, routing decisions, etc.
+
+Returns a breakdown of entity types and counts before deleting.
+
+By default runs in dry-run mode — set dry_run=false to actually delete.
+
+WARNING: This is IRREVERSIBLE. Verify the image is truly unwanted first
+using list_recent_uploads or get_receipt.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID) to delete",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview what would be deleted without making changes",
+                    },
+                },
+                "required": ["image_id"],
+            },
+        ),
     ]
 
 
@@ -914,6 +944,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await list_recent_uploads_impl(
                 dynamo_client,
                 limit=arguments.get("limit", 10),
+            )
+        elif name == "delete_image":
+            result = await delete_image_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                dry_run=arguments.get("dry_run", True),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -2432,6 +2468,74 @@ async def trigger_reocr_impl(
         )
     except Exception as e:
         logger.exception("Error invoking trigger-reocr Lambda")
+        return {"error": str(e)}
+
+
+async def delete_image_impl(
+    dynamo_client, image_id: str, dry_run: bool = True
+) -> dict:
+    """Delete all DynamoDB records under an image partition key."""
+    try:
+        details = dynamo_client.get_image_details(image_id)
+
+        # Build type counts from the structured details
+        type_counts: dict[str, int] = {}
+        for attr in (
+            "images",
+            "lines",
+            "words",
+            "letters",
+            "receipts",
+            "receipt_lines",
+            "receipt_words",
+            "receipt_letters",
+            "receipt_word_labels",
+            "receipt_places",
+            "ocr_jobs",
+            "ocr_routing_decisions",
+        ):
+            items = getattr(details, attr, [])
+            if items:
+                type_counts[attr.upper()] = len(items)
+
+        total = sum(type_counts.values())
+
+        if total == 0:
+            return {"error": f"No items found for image {image_id}"}
+
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+        ]
+
+        if dry_run:
+            return {
+                "image_id": image_id,
+                "dry_run": True,
+                "total_items": total,
+                "breakdown": breakdown,
+                "message": "Re-run with dry_run=false to delete",
+            }
+
+        # Delegate to the DynamoClient method which handles batch delete
+        counts = dynamo_client.delete_image_details(image_id)
+        deleted = sum(counts.values())
+
+        # Use the actual counts from the delete for the breakdown
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(counts.items(), key=lambda x: -x[1])
+        ]
+
+        return {
+            "image_id": image_id,
+            "dry_run": False,
+            "deleted": deleted,
+            "breakdown": breakdown,
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting image")
         return {"error": str(e)}
 
 
