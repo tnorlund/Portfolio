@@ -677,6 +677,25 @@ using get_receipt to read its content.""",
                 "required": ["image_id", "receipt_id", "reason"],
             },
         ),
+        Tool(
+            name="list_recent_uploads",
+            description="""List the most recently uploaded images, sorted newest first.
+
+Shows image ID, upload timestamp, image type (SCAN/PHOTO/NATIVE),
+receipt count, dimensions, and merchant names for each receipt.
+
+Use this to find recently uploaded images or check processing status.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Number of recent uploads to return (max 50)",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -789,6 +808,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 label=arguments["label"],
                 reasoning=arguments["reasoning"],
                 consolidated_from=arguments.get("consolidated_from"),
+            )
+        elif name == "list_recent_uploads":
+            result = await list_recent_uploads_impl(
+                dynamo_client,
+                limit=arguments.get("limit", 10),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -1968,6 +1992,83 @@ async def create_word_label_impl(
 
     except Exception as e:
         logger.exception("Error creating word label")
+        return {"error": str(e)}
+
+
+async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
+    """List the most recently uploaded images, sorted newest first."""
+    try:
+        limit = min(limit, 50)
+
+        # Paginate through all Image entities
+        all_images = []
+        last_key = None
+        while True:
+            images, last_key = dynamo_client.list_images(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+            all_images.extend(images)
+            if last_key is None:
+                break
+
+        # Sort by timestamp_added descending (ISO strings sort lexicographically)
+        all_images.sort(
+            key=lambda img: str(img.timestamp_added),
+            reverse=True,
+        )
+
+        # Slice to limit
+        recent = all_images[:limit]
+
+        # For each recent image, get actual receipt IDs via GSI query
+        all_indices = []
+        receipts_by_image: dict[str, list[int]] = {}
+        for img in recent:
+            receipts = dynamo_client.get_receipts_from_image(img.image_id)
+            receipt_ids = [r.receipt_id for r in receipts]
+            receipts_by_image[img.image_id] = receipt_ids
+            for rid in receipt_ids:
+                all_indices.append((img.image_id, rid))
+
+        # Batch-get all ReceiptPlace records in one call
+        places_by_key: dict[str, str] = {}
+        if all_indices:
+            places = dynamo_client.get_receipt_places_by_indices(all_indices)
+            for place in places:
+                key = f"{place.image_id}_{place.receipt_id}"
+                places_by_key[key] = place.merchant_name
+
+        # Build results
+        results = []
+        for img in recent:
+            receipt_ids = receipts_by_image.get(img.image_id, [])
+            receipts_info = []
+            for rid in receipt_ids:
+                key = f"{img.image_id}_{rid}"
+                receipts_info.append({
+                    "receipt_id": rid,
+                    "merchant_name": places_by_key.get(key),
+                })
+
+            results.append({
+                "image_id": img.image_id,
+                "timestamp_added": str(img.timestamp_added),
+                "image_type": img.image_type,
+                "receipt_count": len(receipts_info),
+                "width": img.width,
+                "height": img.height,
+                "receipts": receipts_info,
+            })
+
+        return {
+            "total_images": len(all_images),
+            "showing": len(results),
+            "uploads": results,
+        }
+
+    except Exception as e:
+        logger.exception("Error listing recent uploads")
         return {"error": str(e)}
 
 
