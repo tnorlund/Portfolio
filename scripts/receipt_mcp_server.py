@@ -691,6 +691,8 @@ Use this to find recently uploaded images or check processing status.""",
                     "limit": {
                         "type": "integer",
                         "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
                         "description": "Number of recent uploads to return (max 50)",
                     },
                 },
@@ -1997,6 +1999,18 @@ async def create_word_label_impl(
 
 async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
     """List the most recently uploaded images, sorted newest first."""
+    from datetime import datetime, timezone
+
+    def _to_utc_dt(ts) -> datetime:
+        """Coerce timestamp to aware UTC datetime."""
+        if isinstance(ts, str):
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        else:
+            dt = ts
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     try:
         limit = min(limit, 50)
 
@@ -2012,9 +2026,9 @@ async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
             if last_key is None:
                 break
 
-        # Sort by timestamp_added descending (ISO strings sort lexicographically)
+        # Sort by timestamp_added descending
         all_images.sort(
-            key=lambda img: str(img.timestamp_added),
+            key=lambda img: _to_utc_dt(img.timestamp_added),
             reverse=True,
         )
 
@@ -2053,7 +2067,9 @@ async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
 
             results.append({
                 "image_id": img.image_id,
-                "timestamp_added": str(img.timestamp_added),
+                "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
+                    timespec="milliseconds"
+                ),
                 "image_type": img.image_type,
                 "receipt_count": len(receipts_info),
                 "width": img.width,
