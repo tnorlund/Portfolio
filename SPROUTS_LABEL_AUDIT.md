@@ -8,9 +8,12 @@ Flagged by financial equation check: `SUM(LINE_TOTAL) - DISCOUNT = SUBTOTAL` and
 | Status | Count | Description |
 |--------|-------|-------------|
 | PASS | 39 | Financial equations hold with valid labels |
-| FIXED | 19 | Label issues corrected (batch 1) |
-| NEEDS RE-OCR | 1 | OCR missing word, cannot fix labels alone |
-| REMAINING | 15 | Harder cases for batch 2 |
+| FIXED (batch 1) | 19 | Label issues corrected |
+| FIXED (batch 2) | 10 | Label issues corrected |
+| ALREADY CORRECT | 1 | 0fd6e62e/1 -- zero-tax, no ST needed |
+| RE-OCR PENDING | 3 | Re-OCR triggered, awaiting results |
+| RE-OCR NEEDED | 1 | 93247564/1 -- garbled doubled OCR, skipped |
+| UNRECOVERABLE | 1 | c2c5aadf/1 -- OCR merged two products, price word missing |
 | N/A | 7 | Receipt fragments with no financial data |
 
 ## Batch 1 Fixes (39 label operations across 19 receipts)
@@ -76,9 +79,90 @@ Completed 2026-02-24. Four parallel agents performed invalidations, label flips,
 | 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 54 | 1 | "17.96" | GRAND_TOTAL | CREATED |
 | 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 48 | 1 | "4.99" | LINE_TOTAL | CREATED |
 
-**Unfixable:** dbc78ee2-8d3c-4a31-b28a-0293583a2a25/1 -- "13.99" for RAW CREAM does not exist in OCR output. Needs re-OCR.
+**Unfixable:** dbc78ee2-8d3c-4a31-b28a-0293583a2a25/1 -- "13.99" for RAW CREAM does not exist in OCR output. Re-OCR triggered in batch 2.
 
-## REMAINING: No Valid Financial Labels (8)
+## Batch 2 Fixes (29 label operations + 3 re-OCR triggers across 16 receipts)
+
+Completed 2026-02-24. Four parallel agents handled no-label receipts, missing LTs, re-OCR, and complex cases.
+
+### Agent 5: Create Labels on 51cdfd0b Receipts (8 creates, 4 receipts)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 2 | 39 | 1 | "8.99" | LINE_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 2 | 41 | 1 | "8.99" | GRAND_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 4 | 55 | 68 | "8.99" | LINE_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 4 | 57 | 70 | "8.99" | GRAND_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 5 | 55 | 68 | "8.99" | LINE_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 5 | 57 | 70 | "8.99" | GRAND_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 6 | 55 | 68 | "8.99" | LINE_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 6 | 57 | 70 | "8.99" | GRAND_TOTAL | CREATED |
+
+### Agent 6: Create Labels on Remaining No-Label Receipts (6 creates, 3 receipts + 1 skipped)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 7 | 55 | 68 | "8.99" | LINE_TOTAL | CREATED |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 7 | 57 | 70 | "8.99" | GRAND_TOTAL | CREATED |
+| bf801942-b2a2-4393-a4a3-4aa2e022a161 | 1 | 15 | 1 | "10.99" | LINE_TOTAL | CREATED |
+| bf801942-b2a2-4393-a4a3-4aa2e022a161 | 1 | 16 | 1 | "10.99" | GRAND_TOTAL | CREATED |
+| c6b66d97-1e0a-4be4-9e1f-731a7e4be25c | 1 | 10 | 1 | "5.99" | LINE_TOTAL | CREATED |
+| c6b66d97-1e0a-4be4-9e1f-731a7e4be25c | 1 | 11 | 1 | "5.99" | GRAND_TOTAL | CREATED |
+
+**Skipped:** 93247564-a489-4970-9992-1a436af35ef5/1 -- garbled doubled OCR, no product lines visible. Needs full re-OCR.
+
+### Agent 7: Missing LT + Simple Cases (4 creates + 1 invalidation, 2 receipts + 2 no-ops)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | 41 | 1 | "8.99" | LINE_TOTAL | CREATED |
+| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | 42 | 1 | "5.99" | LINE_TOTAL | CREATED |
+| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | 53 | 1 | "10.34" | LINE_TOTAL | CREATED |
+| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | 55 | 1 | "39.09" | GRAND_TOTAL | CREATED |
+| b4b269e9-5213-4e9a-b3df-661bc57dd81a | 2 | 33 | 2 | "+3.93" | TAX | VALID -> INVALID |
+
+**No action needed:**
+- c2c5aadf-58e8-4276-95ae-0f46039946da/1 -- missing "2.99" word never captured by OCR. Unrecoverable.
+- 0fd6e62e-a15e-4f89-962f-ae6dc2c4a0c3/1 -- already correct (zero-tax, no SUBTOTAL text on receipt).
+
+### Agent 8: Re-OCR + Complex Cases (10 label ops + 3 re-OCR triggers, 4 receipts)
+
+| Image ID | Receipt ID | Line | Word | Text | Label | Change |
+|----------|------------|------|------|------|-------|--------|
+| d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | 27 | 1 | "13.08" | GRAND_TOTAL | VALID -> INVALID |
+| d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | 28 | 1 | "$18" | GRAND_TOTAL | INVALID -> VALID |
+| d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | 29 | 1 | ".08" | TAX | VALID -> INVALID |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 47 | 2 | "6.20" | GRAND_TOTAL | VALID -> INVALID |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 64 | 1 | "$6.20" | GRAND_TOTAL | VALID -> INVALID |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 63 | 1 | "10.99" | GRAND_TOTAL | CREATED |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 63 | 1 | "10.99" | SUBTOTAL | VALID -> INVALID |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 18 | 1 | "0.00" | SUBTOTAL | VALID -> INVALID |
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 15 | 1 | "4.79" | LINE_TOTAL | VALID -> INVALID |
+
+**Re-OCR triggered:**
+- dbc78ee2-8d3c-4a31-b28a-0293583a2a25/1 -- RAW CREAM price area (job `51d9b324`)
+- 795bc26a-127f-4410-ad26-3e0ede90398f/1 -- full receipt (job `3d210880`, likely unrecoverable if image is upside-down)
+- d28fcc1e-642c-4d1b-89ec-8fd9f456ea78/1 -- BALANCE DUE area (job `427ec993`)
+
+## FIXED: No Valid Financial Labels (7 of 8)
+
+Receipts with product/total text visible but zero valid financial labels assigned.
+
+| Image ID | Receipt ID | Notes |
+|----------|------------|-------|
+| bf801942-b2a2-4393-a4a3-4aa2e022a161 | 1 | FIXED -- LT + GT created on 10.99 |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 2 | FIXED -- LT + GT created on 8.99 |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 4 | FIXED -- LT + GT created on 8.99 |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 5 | FIXED -- LT + GT created on 8.99 |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 6 | FIXED -- LT + GT created on 8.99 |
+| 51cdfd0b-cced-44e8-bd54-6fc5a2051ac2 | 7 | FIXED -- LT + GT created on 8.99 |
+| c6b66d97-1e0a-4be4-9e1f-731a7e4be25c | 1 | FIXED -- LT + GT created on 5.99 |
+
+## RE-OCR NEEDED: No Valid Financial Labels (1)
+
+| Image ID | Receipt ID | Notes |
+|----------|------------|-------|
+| 93247564-a489-4970-9992-1a436af35ef5 | 1 | Garbled/doubled OCR text, no product lines visible. Needs full re-OCR. |
 
 Receipts with product/total text visible but zero valid financial labels assigned.
 
@@ -104,15 +188,13 @@ Receipt has LINE_TOTALs but no valid GRAND_TOTAL.
 | ff649c4b-5c31-4247-b78c-d9b0c56610ad | 2 | 19.98 | 21.43 | GT 21.43 and TAX 1.45 both missing labels |
 | 1f48de98-8ae8-4fb3-bfe7-25558f5964e9 | 1 | 12.97 | 17.96 | Missing GT label; also butter 4.99 missing LT label |
 
-## REMAINING: Missing LINE_TOTAL on Items (3)
+## Missing LINE_TOTAL on Items (3)
 
-GRAND_TOTAL exists but item prices lack LINE_TOTAL labels.
-
-| Image ID | Receipt ID | GT | SUM(LT) | Gap | Missing Item |
-|----------|------------|----|----------|-----|-------------|
-| dbc78ee2-8d3c-4a31-b28a-0293583a2a25 | 1 | 29.97 | 15.98 | 13.99 | RAW CREAM price unlabeled |
-| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | ~39.09 | 22.76 | ~16.33 | Most items missing LT; voided item unlabeled; no valid GT |
-| c2c5aadf-58e8-4276-95ae-0f46039946da | 1 | 23.26 | 20.27 | 2.99 | Garbled OCR merged two products, one price missing |
+| Image ID | Receipt ID | GT | Gap | Status |
+|----------|------------|----|-----|--------|
+| dbc78ee2-8d3c-4a31-b28a-0293583a2a25 | 1 | 29.97 | 13.99 | RE-OCR TRIGGERED -- RAW CREAM price missing from OCR |
+| 87589280-36d1-4495-9ea2-9a4c5d921ba3 | 1 | 39.09 | -- | FIXED -- 3 LT + 1 GT created |
+| c2c5aadf-58e8-4276-95ae-0f46039946da | 1 | 23.26 | 2.99 | UNRECOVERABLE -- OCR merged two products, price word missing |
 
 ## FIXED: Payment/Change Lines Mislabeled as LINE_TOTAL (4)
 
@@ -171,22 +253,20 @@ California Redemption Value fees or coupon text incorrectly labeled.
 | 646f8f0f-2907-4ec7-8196-b5223ceb222e | 2 | 21.67 | Two CRV 0.10 fees labeled UNIT_PRICE instead of LINE_TOTAL (0.20 short) |
 | 37900099-30b4-4788-b128-73512a936045 | 1 | 18.08 | CRV 0.10 labeled UNIT_PRICE not LINE_TOTAL |
 
-## REMAINING: OCR Issues (3)
+## OCR Issues (3)
 
-Garbled OCR, split words, or corrupted values.
+| Image ID | Receipt ID | Status | Issue |
+|----------|------------|--------|-------|
+| 795bc26a-127f-4410-ad26-3e0ede90398f | 1 | RE-OCR TRIGGERED | Entirely garbled (upside-down/mirrored). Likely unrecoverable. |
+| d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | PARTIALLY FIXED + RE-OCR | GT moved from "13.08" to "$18"; ".08" TAX invalidated. Re-OCR on BALANCE DUE area. |
+| b4b269e9-5213-4e9a-b3df-661bc57dd81a | 2 | FIXED | "+3.93" TAX invalidated. Actual GT 43.93 already correct on BALANCE DUE. |
 
-| Image ID | Receipt ID | Issue |
-|----------|------------|-------|
-| 795bc26a-127f-4410-ad26-3e0ede90398f | 1 | Entirely garbled (upside-down/mirrored receipt). Unrecoverable. |
-| d28fcc1e-642c-4d1b-89ec-8fd9f456ea78 | 1 | OCR split "$18" and ".08"; GT 13.08 does not match SUM(LT) 18.08 |
-| b4b269e9-5213-4e9a-b3df-661bc57dd81a | 2 | "+3.93" OCR error (should be "43.93") labeled as TAX |
+## Other (2)
 
-## REMAINING: Other (2)
-
-| Image ID | Receipt ID | GT | Issue |
-|----------|------------|----|-------|
-| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | 6.20 | Multi-tender (credit + gift card); GT is only credit portion |
-| 0fd6e62e-a15e-4f89-962f-ae6dc2c4a0c3 | 1 | 47.44 | SUM(LT) matches GT but missing ST/TAX labels (zero-tax receipt) |
+| Image ID | Receipt ID | Status | Issue |
+|----------|------------|--------|-------|
+| d076611b-e24b-4772-9d01-1fc9a52f85b7 | 1 | FIXED | Multi-tender: $6.20 GT invalidated, 10.99 GT created, gift card labels cleaned up |
+| 0fd6e62e-a15e-4f89-962f-ae6dc2c4a0c3 | 1 | ALREADY CORRECT | Zero-tax receipt, no SUBTOTAL text on receipt. SUM(LT)=GT=47.44 |
 
 ## N/A: Receipt Fragments (7)
 
