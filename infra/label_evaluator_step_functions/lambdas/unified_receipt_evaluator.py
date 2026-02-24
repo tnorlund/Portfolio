@@ -711,15 +711,18 @@ async def unified_receipt_evaluator(
 
         if use_chroma_cloud and cloud_api_key:
             if not cloud_tenant or not cloud_database:
-                missing = (
-                    "CHROMA_CLOUD_TENANT"
-                    if not cloud_tenant
-                    else "CHROMA_CLOUD_DATABASE"
-                )
+                missing_vars = [
+                    name
+                    for name, val in (
+                        ("CHROMA_CLOUD_TENANT", cloud_tenant),
+                        ("CHROMA_CLOUD_DATABASE", cloud_database),
+                    )
+                    if not val
+                ]
                 logger.error(
-                    "CHROMA_CLOUD_ENABLED=true but %s is not set; "
+                    "CHROMA_CLOUD_ENABLED=true but %s not set; "
                     "falling back to S3 snapshot",
-                    missing,
+                    ", ".join(missing_vars),
                 )
             else:
                 try:
