@@ -20,10 +20,14 @@ from receipt_dynamo_stream import (
 
 @pytest.fixture
 def moto_sqs() -> Any:
+    _original_region = os.environ.get("AWS_DEFAULT_REGION")
     os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
     with mock_aws():
         yield boto3.client("sqs", region_name="us-east-1")
-    os.environ.pop("AWS_DEFAULT_REGION", None)
+    if _original_region is None:
+        os.environ.pop("AWS_DEFAULT_REGION", None)
+    else:
+        os.environ["AWS_DEFAULT_REGION"] = _original_region
 
 
 @pytest.fixture
