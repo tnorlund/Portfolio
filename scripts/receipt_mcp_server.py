@@ -2528,7 +2528,7 @@ async def get_receipt_image_url_impl(
         receipt = details.receipt
 
         env = os.environ.get("PORTFOLIO_ENV", "dev")
-        domain = f"dev.tylernorlund.com" if env == "dev" else "tylernorlund.com"
+        domain = "dev.tylernorlund.com" if env == "dev" else "tylernorlund.com"
 
         result: dict[str, Any] = {
             "image_id": image_id,
