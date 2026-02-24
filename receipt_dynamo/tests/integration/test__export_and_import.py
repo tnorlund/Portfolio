@@ -15,8 +15,10 @@ from receipt_dynamo import (
     ReceiptLine,
     ReceiptWord,
     Word,
+    delete_image_data,
     export_image,
     import_image,
+    restore_image,
 )
 
 
@@ -354,3 +356,153 @@ def test_export_image_does_not_exist(dynamodb_table, export_dir):
 def test_import_image_does_not_exist(dynamodb_table, export_dir):
     with pytest.raises(FileNotFoundError, match="JSON file not found"):
         import_image(dynamodb_table, f"{export_dir}/does_not_exist.json")
+
+
+@pytest.mark.integration
+def test_delete_image_data(dynamodb_table):
+    """Test that delete_image_data removes all records for an image."""
+    client = DynamoClient(dynamodb_table)
+
+    image = Image(
+        image_id="d3f52804-2fad-4e00-92c8-b593da3a8ed3",
+        width=100,
+        height=100,
+        timestamp_added=datetime.datetime.now(datetime.timezone.utc),
+        raw_s3_bucket="test_bucket",
+        raw_s3_key="test_key",
+        sha256="test_sha256",
+        cdn_s3_bucket="test_cdn_bucket",
+        cdn_s3_key="test_cdn_key",
+    )
+    lines = [
+        Line(
+            image_id=image.image_id,
+            line_id=1,
+            text="Test",
+            bounding_box={"x": 0, "y": 0, "width": 100, "height": 100},
+            top_right={"x": 100, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 100, "y": 100},
+            bottom_left={"x": 0, "y": 100},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        )
+    ]
+    words = [
+        Word(
+            image_id=image.image_id,
+            line_id=1,
+            word_id=1,
+            text="Test",
+            bounding_box={"x": 0, "y": 0, "width": 100, "height": 100},
+            top_right={"x": 100, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 100, "y": 100},
+            bottom_left={"x": 0, "y": 100},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        )
+    ]
+    letters = [
+        Letter(
+            image_id=image.image_id,
+            line_id=1,
+            word_id=1,
+            letter_id=1,
+            text="T",
+            bounding_box={"x": 0, "y": 0, "width": 100, "height": 100},
+            top_right={"x": 100, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 100, "y": 100},
+            bottom_left={"x": 0, "y": 100},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        )
+    ]
+
+    client.add_image(image)
+    client.add_lines(lines)
+    client.add_words(words)
+    client.add_letters(letters)
+
+    # Act
+    counts = delete_image_data(dynamodb_table, image.image_id)
+
+    # Assert - records deleted
+    assert counts["images"] == 1
+    assert counts["lines"] == 1
+    assert counts["words"] == 1
+    assert counts["letters"] == 1
+    details = client.get_image_details(image.image_id)
+    assert len(details.images) == 0
+    assert len(details.lines) == 0
+    assert len(details.words) == 0
+    assert len(details.letters) == 0
+
+
+@pytest.mark.integration
+def test_delete_image_data_no_records(dynamodb_table):
+    """Test that delete_image_data returns empty dict for non-existent image."""
+    counts = delete_image_data(dynamodb_table, "nonexistent-image-id")
+    assert counts == {}
+
+
+@pytest.mark.integration
+def test_restore_image(dynamodb_table, export_dir):
+    """Test that restore_image deletes existing records and re-imports."""
+    client = DynamoClient(dynamodb_table)
+
+    image = Image(
+        image_id="e4f52804-2fad-4e00-92c8-b593da3a8ed3",
+        width=100,
+        height=100,
+        timestamp_added=datetime.datetime.now(datetime.timezone.utc),
+        raw_s3_bucket="test_bucket",
+        raw_s3_key="test_key",
+        sha256="test_sha256",
+        cdn_s3_bucket="test_cdn_bucket",
+        cdn_s3_key="test_cdn_key",
+    )
+    lines = [
+        Line(
+            image_id=image.image_id,
+            line_id=1,
+            text="Restore test",
+            bounding_box={"x": 0, "y": 0, "width": 100, "height": 100},
+            top_right={"x": 100, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 100, "y": 100},
+            bottom_left={"x": 0, "y": 100},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=1,
+        )
+    ]
+
+    # Create initial data and export it
+    client.add_image(image)
+    client.add_lines(lines)
+    export_image(dynamodb_table, image.image_id, output_dir=export_dir)
+
+    # Verify export exists
+    backup_path = f"{export_dir}/{image.image_id}.json"
+    assert os.path.exists(backup_path)
+
+    # Restore from backup (should delete + re-import without error)
+    restore_image(dynamodb_table, backup_path)
+
+    # Verify data is intact after restore
+    details = client.get_image_details(image.image_id)
+    assert len(details.images) == 1
+    assert details.images[0].image_id == image.image_id
+    assert len(details.lines) == 1
+    assert details.lines[0].text == "Restore test"
+
+    # Restore again to confirm idempotency
+    restore_image(dynamodb_table, backup_path)
+    details = client.get_image_details(image.image_id)
+    assert len(details.images) == 1
+    assert len(details.lines) == 1

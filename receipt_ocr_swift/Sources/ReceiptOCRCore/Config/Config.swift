@@ -9,6 +9,10 @@ public struct Config {
     public let localstackEndpoint: URL?
     public let logLevel: String
 
+    /// The raw S3 bucket for the current environment (dev/prod).
+    /// Uploads and SQS messages use this bucket so the overlay Lambda can read them.
+    public let rawBucketName: String
+
     // LayoutLM model configuration
     public let layoutLMModelS3Bucket: String?
     public let layoutLMModelS3Key: String?
@@ -21,6 +25,7 @@ public struct Config {
         region: String,
         localstackEndpoint: URL?,
         logLevel: String,
+        rawBucketName: String,
         layoutLMModelS3Bucket: String? = nil,
         layoutLMModelS3Key: String? = nil,
         layoutLMLocalCachePath: String = ".models/layoutlm"
@@ -31,6 +36,7 @@ public struct Config {
         self.region = region
         self.localstackEndpoint = localstackEndpoint
         self.logLevel = logLevel
+        self.rawBucketName = rawBucketName
         self.layoutLMModelS3Bucket = layoutLMModelS3Bucket
         self.layoutLMModelS3Key = layoutLMModelS3Key
         self.layoutLMLocalCachePath = layoutLMLocalCachePath
@@ -87,6 +93,7 @@ public extension Config {
         ocrJobQueueURL: String?,
         ocrResultsQueueURL: String?,
         dynamoTableName: String?,
+        rawBucketName: String? = nil,
         region: String,
         localstackEndpoint: String?,
         layoutLMModelS3Bucket: String? = nil,
@@ -125,6 +132,9 @@ public extension Config {
         guard let dynamoTableName = value("dynamodb_table_name", explicit: dynamoTableName, from: outputs) else {
             throw ConfigError.missing("dynamodb_table_name")
         }
+        guard let rawBucketName = value("raw_bucket_name", explicit: rawBucketName, from: outputs) else {
+            throw ConfigError.missing("raw_bucket_name")
+        }
 
         // LayoutLM config - optional, can also come from Pulumi outputs
         let modelBucket = value("layoutlm_model_s3_bucket", explicit: layoutLMModelS3Bucket, from: outputs)
@@ -147,6 +157,7 @@ public extension Config {
             region: region,
             localstackEndpoint: endpointURL,
             logLevel: envLogLevel,
+            rawBucketName: rawBucketName,
             layoutLMModelS3Bucket: modelBucket,
             layoutLMModelS3Key: modelKey,
             layoutLMLocalCachePath: cachePath

@@ -21,11 +21,13 @@ final class LocalstackE2ETests: XCTestCase {
             return
         }
 
+        let rawBucketName = ProcessInfo.processInfo.environment["RAW_BUCKET_NAME"] ?? "test-raw-bucket"
         let cfg = try Config.load(
             env: nil,
             ocrJobQueueURL: ocrJobQueueURL,
             ocrResultsQueueURL: ocrResultsQueueURL,
             dynamoTableName: dynamoTableName,
+            rawBucketName: rawBucketName,
             region: region,
             localstackEndpoint: endpoint
         )

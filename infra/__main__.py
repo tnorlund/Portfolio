@@ -46,6 +46,7 @@ from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from merge_receipt_lambda import create_merge_receipt_lambda
+from trigger_reocr_lambda import create_trigger_reocr_lambda
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
@@ -1286,6 +1287,17 @@ merge_receipt_lambda = create_merge_receipt_lambda(
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
+
+# Trigger Re-OCR Lambda (for manually triggering regional re-OCR)
+# Can be invoked with: {image_id, receipt_id, reocr_region, reocr_reason}
+trigger_reocr_lambda = create_trigger_reocr_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    ocr_job_queue_url=upload_images.ocr_queue.url,
+    ocr_job_queue_arn=upload_images.ocr_queue.arn,
+)
+pulumi.export("trigger_reocr_lambda_arn", trigger_reocr_lambda.lambda_arn)
+pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport

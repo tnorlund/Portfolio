@@ -188,19 +188,28 @@ except ModuleNotFoundError:
 # Data operation imports - requires boto3
 # =============================================================================
 try:
-    from receipt_dynamo.data.export_image import export_image
+    from receipt_dynamo.data.export_image import (
+        delete_image_data,
+        export_image,
+    )
 except ModuleNotFoundError:
 
     def export_image(*_, **__):  # type: ignore
         raise ModuleNotFoundError("boto3 is required for export_image")
 
+    def delete_image_data(*_, **__):  # type: ignore
+        raise ModuleNotFoundError("boto3 is required for delete_image_data")
+
 
 try:
-    from receipt_dynamo.data.import_image import import_image
+    from receipt_dynamo.data.import_image import import_image, restore_image
 except ModuleNotFoundError:
 
     def import_image(*_, **__):  # type: ignore
         raise ModuleNotFoundError("boto3 is required for import_image")
+
+    def restore_image(*_, **__):  # type: ignore
+        raise ModuleNotFoundError("boto3 is required for restore_image")
 
 
 # =============================================================================
@@ -340,6 +349,8 @@ __all__ = [
     "DynamoClient",
     "ResilientDynamoClient",
     # Data operations
+    "delete_image_data",
     "export_image",
     "import_image",
+    "restore_image",
 ]
