@@ -124,6 +124,31 @@ def test_cloud_config_from_env_empty_api_key():
         CloudConfig.from_env(env)
 
 
+@pytest.mark.integration
+def test_cloud_config_from_env_whitespace_tenant():
+    """Test CloudConfig.from_env raises ValueError for whitespace-only tenant."""
+    env = {
+        "CHROMA_CLOUD_ENABLED": "true",
+        "CHROMA_CLOUD_API_KEY": "test-api-key",
+        "CHROMA_CLOUD_TENANT": "   ",  # Whitespace only
+    }
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_TENANT"):
+        CloudConfig.from_env(env)
+
+
+@pytest.mark.integration
+def test_cloud_config_from_env_whitespace_database():
+    """Test CloudConfig.from_env raises ValueError for whitespace-only database."""
+    env = {
+        "CHROMA_CLOUD_ENABLED": "true",
+        "CHROMA_CLOUD_API_KEY": "test-api-key",
+        "CHROMA_CLOUD_TENANT": "test-tenant",
+        "CHROMA_CLOUD_DATABASE": "   ",  # Whitespace only
+    }
+    with pytest.raises(ValueError, match="CHROMA_CLOUD_DATABASE"):
+        CloudConfig.from_env(env)
+
+
 # =============================================================================
 # apply_collection_updates Tests - Local Only
 # =============================================================================
