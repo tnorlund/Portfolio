@@ -2,7 +2,7 @@
 
 This handler consolidates all receipt evaluation steps into a single Lambda:
 - Step 0: Fetch receipt data from DynamoDB and write to S3 (for EMR job)
-- Phase 1 (concurrent): Currency, Metadata, and Geometric evaluations
+- Phase 1 (concurrent): Metadata and Geometric evaluations
 - Phase 2 (sequential): Financial validation (needs corrected labels)
 - Phase 3 (conditional): LLM review of flagged issues
 
@@ -175,9 +175,6 @@ def _build_viz_cache_receipt(
     width: int,
     height: int,
     issues_found: int,
-    currency_decisions: dict[str, int],
-    currency_all: list[dict[str, Any]],
-    currency_duration: float,
     metadata_decisions: dict[str, int],
     metadata_all: list[dict[str, Any]],
     metadata_duration: float,
@@ -216,9 +213,6 @@ def _build_viz_cache_receipt(
             "issues": geometric_result.get("issues", []),
             "duration_seconds": geometric_duration,
         },
-        "currency": _build_decisions_block(
-            "currency", currency_decisions, currency_all, currency_duration
-        ),
         "metadata": _build_decisions_block(
             "metadata", metadata_decisions, metadata_all, metadata_duration
         ),
@@ -395,7 +389,6 @@ async def unified_receipt_evaluator(
         "image_id": "img1",
         "receipt_id": 1,
         "issues_found": 3,
-        "currency_words_evaluated": 12,
         "metadata_words_evaluated": 15,
         "financial_values_evaluated": 8,
         "decisions": {...}
@@ -909,14 +902,11 @@ async def unified_receipt_evaluator(
                     span_err,
                 )
 
-        # 4. Phase 1: Run currency, metadata, and geometric evaluations concurrently
+        # 4. Phase 1: Run metadata and geometric evaluations concurrently
         # Each evaluation gets its own child trace for visibility in LangSmith
         from receipt_agent.agents.label_evaluator import (
             create_compute_only_graph,
             run_compute_only_sync,
-        )
-        from receipt_agent.agents.label_evaluator.currency_subagent import (
-            evaluate_currency_labels_async,
         )
         from receipt_agent.agents.label_evaluator.metadata_subagent import (
             evaluate_metadata_labels_async,
@@ -926,10 +916,8 @@ async def unified_receipt_evaluator(
         )
 
         # Initialize results
-        currency_result: list[dict] = []
         metadata_result: list[dict] = []
         geometric_result: dict = {"issues_found": 0}
-        currency_duration = 0.0
         metadata_duration = 0.0
         geometric_duration = 0.0
 
@@ -1060,20 +1048,8 @@ async def unified_receipt_evaluator(
             result = await coro
             return result, time.time() - start
 
-        # Run currency and metadata concurrently (both use LLM)
+        # Run metadata and geometric concurrently
         # @traceable decorators on subagents auto-nest under receipt root
-        currency_task = timed_eval(
-            evaluate_currency_labels_async(
-                visual_lines=visual_lines,
-                patterns=line_item_patterns,
-                llm=llm_invoker,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                merchant_name=merchant_name,
-                chroma_client=chroma_client,
-            )
-        )
-
         metadata_task = timed_eval(
             evaluate_metadata_labels_async(
                 visual_lines=visual_lines,
@@ -1115,7 +1091,6 @@ async def unified_receipt_evaluator(
         # subagents auto-nest as children of the ReceiptEvaluation root trace
         with tracing_context(parent=receipt_trace.run_tree):
             (
-                (currency_result, currency_duration),
                 (
                     metadata_result,
                     metadata_duration,
@@ -1124,61 +1099,25 @@ async def unified_receipt_evaluator(
                     geometric_result,
                     geometric_duration,
                 ),
-            ) = await asyncio.gather(currency_task, metadata_task, run_geometric())
+            ) = await asyncio.gather(metadata_task, run_geometric())
 
         logger.info(
-            "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
-            len(currency_result),
+            "Phase 1 complete: metadata=%d, geometric issues=%d",
             len(metadata_result),
             geometric_result.get("issues_found", 0),
         )
 
-        # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
+        # 7. Apply Phase 1 corrections to DynamoDB (metadata only)
         applied_stats_phase1 = None
 
         if dynamo_table:
-            # Index both result sets by (line_id, word_id) to detect overlaps
-            currency_by_word: dict[tuple, dict] = {}
-            for d in currency_result:
-                issue = d.get("issue", {})
-                key = (issue.get("line_id"), issue.get("word_id"))
-                currency_by_word[key] = d
-
-            metadata_by_word: dict[tuple, dict] = {}
-            for d in metadata_result:
-                issue = d.get("issue", {})
-                key = (issue.get("line_id"), issue.get("word_id"))
-                metadata_by_word[key] = d
-
-            overlapping_keys = set(currency_by_word) & set(metadata_by_word)
-            conflicting_keys = [
-                k
-                for k in overlapping_keys
-                if currency_by_word[k].get("llm_review", {}).get("decision")
-                != metadata_by_word[k].get("llm_review", {}).get("decision")
-            ]
-
-            invalid_currency = [
-                d
-                for d in currency_result
-                if d.get("llm_review", {}).get("decision") == "INVALID"
-            ]
             invalid_metadata = [
                 d
                 for d in metadata_result
                 if d.get("llm_review", {}).get("decision") == "INVALID"
             ]
 
-            with child_trace(
-                "apply_phase1_corrections",
-                trace_ctx,
-                inputs={
-                    "currency_invalid_count": len(invalid_currency),
-                    "metadata_invalid_count": len(invalid_metadata),
-                    "overlapping_words": len(overlapping_keys),
-                    "conflicting_words": len(conflicting_keys),
-                },
-            ) as correction_ctx:
+            if invalid_metadata:
                 from receipt_dynamo import DynamoClient
 
                 from receipt_agent.agents.label_evaluator.llm_review import (
@@ -1186,157 +1125,10 @@ async def unified_receipt_evaluator(
                 )
 
                 dynamo_client = DynamoClient(table_name=dynamo_table)
-
-                # Deduplicate by (line_id, word_id) — if both evaluators
-                # flag the same word, prefer higher confidence or the
-                # currency evaluator (more accurate for financial labels)
-                CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
-                FINANCIAL_LABELS = {
-                    "GRAND_TOTAL",
-                    "SUBTOTAL",
-                    "TAX",
-                    "LINE_TOTAL",
-                    "UNIT_PRICE",
-                    "QUANTITY",
-                    "DISCOUNT",
-                }
-
-                merged: dict[tuple, dict] = {}
-                resolutions: list[dict] = []
-
-                for d in invalid_currency:
-                    issue = d.get("issue", {})
-                    key = (issue.get("line_id"), issue.get("word_id"))
-                    merged[key] = d
-
-                for d in invalid_metadata:
-                    issue = d.get("issue", {})
-                    key = (issue.get("line_id"), issue.get("word_id"))
-                    if key not in merged:
-                        merged[key] = d
-                    else:
-                        # Resolve conflict: prefer higher confidence
-                        existing = merged[key]
-                        existing_conf = CONFIDENCE_RANK.get(
-                            existing.get("llm_review", {}).get("confidence", "low"),
-                            1,
-                        )
-                        new_conf = CONFIDENCE_RANK.get(
-                            d.get("llm_review", {}).get("confidence", "low"), 1
-                        )
-                        if new_conf > existing_conf:
-                            merged[key] = d
-                            resolutions.append(
-                                {
-                                    "line_id": key[0],
-                                    "word_id": key[1],
-                                    "word_text": issue.get("word_text", ""),
-                                    "current_label": issue.get("current_label", ""),
-                                    "currency_decision": existing.get(
-                                        "llm_review", {}
-                                    ).get("decision"),
-                                    "currency_confidence": existing.get(
-                                        "llm_review", {}
-                                    ).get("confidence"),
-                                    "metadata_decision": d.get("llm_review", {}).get(
-                                        "decision"
-                                    ),
-                                    "metadata_confidence": d.get("llm_review", {}).get(
-                                        "confidence"
-                                    ),
-                                    "winner": "metadata",
-                                    "resolution_reason": "higher_confidence",
-                                    "applied_label": d.get("llm_review", {}).get(
-                                        "suggested_label"
-                                    ),
-                                }
-                            )
-                        elif new_conf == existing_conf:
-                            # Equal confidence: prefer financial label suggestion
-                            existing_label = existing.get("llm_review", {}).get(
-                                "suggested_label"
-                            )
-                            new_label = d.get("llm_review", {}).get("suggested_label")
-                            if (
-                                new_label in FINANCIAL_LABELS
-                                and existing_label not in FINANCIAL_LABELS
-                            ):
-                                merged[key] = d
-                                resolutions.append(
-                                    {
-                                        "line_id": key[0],
-                                        "word_id": key[1],
-                                        "word_text": issue.get("word_text", ""),
-                                        "current_label": issue.get("current_label", ""),
-                                        "currency_decision": existing.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "currency_confidence": existing.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "metadata_decision": d.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "metadata_confidence": d.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "winner": "metadata",
-                                        "resolution_reason": "financial_label_priority",
-                                        "applied_label": new_label,
-                                    }
-                                )
-                            else:
-                                resolutions.append(
-                                    {
-                                        "line_id": key[0],
-                                        "word_id": key[1],
-                                        "word_text": issue.get("word_text", ""),
-                                        "current_label": issue.get("current_label", ""),
-                                        "currency_decision": existing.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "currency_confidence": existing.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "metadata_decision": d.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "metadata_confidence": d.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "winner": "currency",
-                                        "resolution_reason": "currency_priority_default",
-                                        "applied_label": existing_label,
-                                    }
-                                )
-
-                merged_invalid = list(merged.values())
-                dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(
-                    merged_invalid
-                )
-                if dedup_removed > 0:
-                    logger.info(
-                        "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
-                        dedup_removed,
-                        len(invalid_currency),
-                        len(invalid_metadata),
-                        len(merged_invalid),
-                    )
-
-                if merged_invalid:
-                    applied_stats_phase1 = apply_llm_decisions(
-                        reviewed_issues=merged_invalid,
-                        dynamo_client=dynamo_client,
-                        execution_id=f"phase1-{execution_id}",
-                    )
-
-                correction_ctx.set_outputs(
-                    {
-                        "resolutions": resolutions,
-                        "total_corrections_applied": len(merged_invalid),
-                        "dedup_removed": dedup_removed,
-                        "resolution_strategy": "confidence_priority",
-                    }
+                applied_stats_phase1 = apply_llm_decisions(
+                    reviewed_issues=invalid_metadata,
+                    dynamo_client=dynamo_client,
+                    execution_id=f"phase1-{execution_id}",
                 )
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
@@ -1871,15 +1663,9 @@ async def unified_receipt_evaluator(
 
         # 10. Aggregate results
         decision_counts = {
-            "currency": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             "metadata": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             "financial": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
         }
-
-        for d in currency_result:
-            decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
-            if decision in decision_counts["currency"]:
-                decision_counts["currency"][decision] += 1
 
         for d in metadata_result:
             decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
@@ -1900,7 +1686,7 @@ async def unified_receipt_evaluator(
                     review_counts[decision] += 1
 
         total_issues = geometric_issues_found
-        for decision_bucket in ("currency", "metadata", "financial"):
+        for decision_bucket in ("metadata", "financial"):
             total_issues += decision_counts[decision_bucket].get("INVALID", 0)
             total_issues += decision_counts[decision_bucket].get("NEEDS_REVIEW", 0)
 
@@ -1912,19 +1698,15 @@ async def unified_receipt_evaluator(
                 "receipt_id": receipt_id,
                 "merchant_name": merchant_name,
                 "issues_found": total_issues,
-                "currency_words_evaluated": len(currency_result),
                 "metadata_words_evaluated": len(metadata_result),
                 "financial_values_evaluated": (
                     len(financial_result) if financial_result else 0
                 ),
                 "decisions": decision_counts,
-                "currency_decisions": decision_counts["currency"],
                 "metadata_decisions": decision_counts["metadata"],
                 "financial_decisions": decision_counts["financial"],
-                "currency_all_decisions": currency_result,
                 "metadata_all_decisions": metadata_result,
                 "financial_all_decisions": financial_result or [],
-                "currency_duration_seconds": currency_duration,
                 "metadata_duration_seconds": metadata_duration,
                 "financial_duration_seconds": financial_duration,
                 "geometric_issues_found": geometric_issues_found,
@@ -1975,9 +1757,6 @@ async def unified_receipt_evaluator(
                     width=width,
                     height=height,
                     issues_found=total_issues,
-                    currency_decisions=decision_counts["currency"],
-                    currency_all=currency_result,
-                    currency_duration=currency_duration,
                     metadata_decisions=decision_counts["metadata"],
                     metadata_all=metadata_result,
                     metadata_duration=metadata_duration,
@@ -2015,13 +1794,11 @@ async def unified_receipt_evaluator(
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "issues_found": total_issues,
-            "currency_words_evaluated": len(currency_result),
             "metadata_words_evaluated": len(metadata_result),
             "financial_values_evaluated": (
                 len(financial_result) if financial_result else 0
             ),
             "decisions": decision_counts,
-            "currency_decisions": decision_counts["currency"],
             "metadata_decisions": decision_counts["metadata"],
             "financial_decisions": decision_counts["financial"],
             "geometric_issues_found": geometric_issues_found,
@@ -2058,11 +1835,9 @@ async def unified_receipt_evaluator(
             "receipt_id": receipt_id or event.get("receipt_id"),
             "merchant_name": merchant_name,
             "issues_found": 0,  # Default to 0 on error
-            "currency_words_evaluated": 0,
             "metadata_words_evaluated": 0,
             "financial_values_evaluated": 0,
             "decisions": {
-                "currency": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
                 "metadata": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
                 "financial": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             },

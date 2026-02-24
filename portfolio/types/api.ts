@@ -574,7 +574,7 @@ export interface LabelEvaluatorReceipt {
   issues_found: number;
   words: LabelEvaluatorWord[];
   geometric: LabelEvaluatorGeometric;
-  currency: LabelEvaluatorEvaluation;
+  currency?: LabelEvaluatorEvaluation;
   metadata: LabelEvaluatorEvaluation;
   financial: LabelEvaluatorEvaluation;
   // Review runs after Geometric if issues were found - produces V/I/R decisions
