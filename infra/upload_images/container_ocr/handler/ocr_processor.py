@@ -29,6 +29,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -241,6 +242,74 @@ class OCRProcessor:
             ),
         }
 
+    @staticmethod
+    def _get_perspective_coeffs(
+        receipt: Receipt, image_width: int, image_height: int,
+    ) -> list[float]:
+        """Compute perspective coefficients mapping receipt-PIL → image-PIL.
+
+        Returns 8 coefficients [a,b,c,d,e,f,g,h] such that::
+
+            x_image_pil = (a*x_rct + b*y_rct + c) / (1 + g*x_rct + h*y_rct)
+
+        Uses the same formulation as records_builder._get_receipt_to_image_transform
+        so the coordinate mapping is consistent with the original FIRST_PASS warp.
+        """
+        src_points = [
+            (receipt.top_left["x"] * image_width,
+             (1.0 - receipt.top_left["y"]) * image_height),
+            (receipt.top_right["x"] * image_width,
+             (1.0 - receipt.top_right["y"]) * image_height),
+            (receipt.bottom_right["x"] * image_width,
+             (1.0 - receipt.bottom_right["y"]) * image_height),
+            (receipt.bottom_left["x"] * image_width,
+             (1.0 - receipt.bottom_left["y"]) * image_height),
+        ]
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        return find_perspective_coeffs(src_points, dst_points)
+
+    @staticmethod
+    def _image_point_to_receipt_perspective(
+        ix_norm: float, iy_norm: float,
+        coeffs: list[float],
+        image_width: int, image_height: int,
+        receipt_width: int, receipt_height: int,
+    ) -> tuple[float, float]:
+        """Transform a point from image-Vision normalised → receipt-relative.
+
+        Solves the inverse of the perspective equation (same algebra as
+        TextGeometryEntity.inverse_perspective_transform).
+        """
+        # Image OCR normalised → PIL pixel
+        x_img = ix_norm * image_width
+        y_img = (1.0 - iy_norm) * image_height
+
+        a, b, c, d, e, f, g, h = coeffs
+        # x_img = (a*X + b*Y + c) / (1 + g*X + h*Y)  → solve for (X, Y)
+        a11 = g * x_img - a
+        a12 = h * x_img - b
+        b1 = c - x_img
+        a21 = g * y_img - d
+        a22 = h * y_img - e
+        b2 = f - y_img
+
+        det = a11 * a22 - a12 * a21
+        if abs(det) < 1e-12:
+            return 0.5, 0.5
+
+        x_rct = (b1 * a22 - b2 * a12) / det
+        y_rct = (a11 * b2 - a21 * b1) / det
+
+        # Receipt PIL pixel → OCR normalised
+        rx = x_rct / receipt_width
+        ry = 1.0 - (y_rct / receipt_height)
+        return max(0.0, min(1.0, rx)), max(0.0, min(1.0, ry))
+
     def _apply_region_mapping(
         self,
         receipt_lines: list[ReceiptLine],
@@ -248,7 +317,7 @@ class OCRProcessor:
         receipt_letters: list[ReceiptLetter],
         region: dict[str, float],
     ) -> None:
-        """Map crop-space OCR geometry back to full receipt normalized space."""
+        """Map crop-space OCR geometry back to full-image Vision space."""
 
         for entity in receipt_lines + receipt_words + receipt_letters:
             entity.bounding_box = self._map_bbox_to_region(
@@ -387,9 +456,54 @@ class OCRProcessor:
             letters=ocr_letters,
             receipt_id=ocr_job.receipt_id,
         )
+        # Step 1: crop-relative → full-image Vision coords
         self._apply_region_mapping(
             receipt_lines, receipt_words, receipt_letters, region
         )
+
+        # Step 2: full-image Vision → receipt-relative coords.
+        # Existing receipt words are stored in receipt-relative space
+        # (normalised to the warped receipt paper), so the new words
+        # must be in the same space for matching and storage.
+        # Use the same projective (homography) transform that the
+        # FIRST_PASS warp used, so coordinates are exactly consistent.
+        receipt = self.dynamo.get_receipt(
+            ocr_job.image_id, ocr_job.receipt_id
+        )
+        image = self.dynamo.get_image(ocr_job.image_id)
+        coeffs = self._get_perspective_coeffs(
+            receipt, image.width, image.height
+        )
+        for entity in receipt_lines + receipt_words + receipt_letters:
+            entity.inverse_perspective_transform(
+                *coeffs,
+                src_width=receipt.width,
+                src_height=receipt.height,
+                dst_width=image.width,
+                dst_height=image.height,
+                flip_y=True,
+            )
+
+        # Compute receipt-relative region bounds for candidate filtering
+        _pt = self._image_point_to_receipt_perspective
+        r_pts = [
+            _pt(region["x"], region["y"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"] + region["width"], region["y"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"], region["y"] + region["height"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+            _pt(region["x"] + region["width"],
+                region["y"] + region["height"],
+                coeffs, image.width, image.height,
+                receipt.width, receipt.height),
+        ]
+        r_xs, r_ys = zip(*r_pts)
+        region_x1, region_x2 = min(r_xs), max(r_xs)
+        region_y1, region_y2 = min(r_ys), max(r_ys)
 
         existing_words = self.dynamo.list_receipt_words_from_receipt(
             ocr_job.image_id, ocr_job.receipt_id
@@ -401,10 +515,6 @@ class OCRProcessor:
                 "error": "No existing receipt words found for overlay",
             }
 
-        region_x1 = region["x"]
-        region_x2 = region["x"] + region["width"]
-        region_y1 = region["y"]
-        region_y2 = region["y"] + region["height"]
         candidate_words = [
             word
             for word in existing_words

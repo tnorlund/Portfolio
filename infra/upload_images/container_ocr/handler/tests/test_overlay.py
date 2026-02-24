@@ -143,6 +143,21 @@ def _make_processor():
             ocr_results_queue_url="https://sqs/ocr-results",
         )
     proc.dynamo = MagicMock()
+    # Default receipt corners: unit square (identity transform).
+    # Receipt-relative coords == full-image Vision coords.
+    # width/height must be set for the perspective coefficient computation.
+    proc.dynamo.get_receipt.return_value = SimpleNamespace(
+        top_left={"x": 0.0, "y": 1.0},
+        top_right={"x": 1.0, "y": 1.0},
+        bottom_left={"x": 0.0, "y": 0.0},
+        bottom_right={"x": 1.0, "y": 0.0},
+        width=1000,
+        height=2000,
+    )
+    proc.dynamo.get_image.return_value = SimpleNamespace(
+        width=1000,
+        height=2000,
+    )
     return proc
 
 
@@ -735,8 +750,12 @@ class TestLetterReplacement:
 # ===========================================================================
 
 class TestWriteOrdering:
-    def test_add_before_delete(self):
-        """put_receipt_letters must be called before remove_receipt_letters."""
+    def test_delete_before_add(self):
+        """remove_receipt_letters must be called before put_receipt_letters.
+
+        Old and new letters can share the same (line_id, word_id, letter_id)
+        keys, so adding first then deleting would clobber the new data.
+        """
         proc = _make_processor()
         ocr_job = SimpleNamespace(
             image_id="00000000-0000-4000-8000-000000000001", receipt_id=1,
@@ -780,7 +799,7 @@ class TestWriteOrdering:
                 del_idx = i
         assert add_idx is not None, "put_receipt_letters was never called"
         assert del_idx is not None, "remove_receipt_letters was never called"
-        assert add_idx < del_idx, "put_receipt_letters must be called before remove_receipt_letters"
+        assert del_idx < add_idx, "remove_receipt_letters must be called before put_receipt_letters"
 
 
 # ===========================================================================

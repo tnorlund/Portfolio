@@ -31,6 +31,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
@@ -2251,6 +2252,36 @@ async def merge_receipts_impl(
         return {"error": str(e)}
 
 
+def _receipt_point_to_image(
+    rx: float, ry: float,
+    coeffs: list[float],
+    receipt_width: int, receipt_height: int,
+    image_width: int, image_height: int,
+) -> tuple[float, float]:
+    """Projective forward transform: receipt-relative → full-image Vision.
+
+    Uses the perspective coefficients (receipt-PIL → image-PIL) computed by
+    ``find_perspective_coeffs``, matching the exact transform that the
+    FIRST_PASS warp used.
+    """
+    # Receipt OCR normalised → PIL pixel
+    x_rct = rx * (receipt_width - 1)
+    y_rct = (1.0 - ry) * (receipt_height - 1)
+
+    a, b, c, d, e, f, g, h = coeffs
+    denom = 1.0 + g * x_rct + h * y_rct
+    if abs(denom) < 1e-12:
+        return 0.5, 0.5
+
+    x_img = (a * x_rct + b * y_rct + c) / denom
+    y_img = (d * x_rct + e * y_rct + f) / denom
+
+    # Image PIL pixel → OCR normalised
+    ix = x_img / image_width
+    iy = 1.0 - (y_img / image_height)
+    return max(0.0, min(1.0, ix)), max(0.0, min(1.0, iy))
+
+
 async def compute_reocr_region_impl(
     dynamo_client,
     image_id: str,
@@ -2258,7 +2289,13 @@ async def compute_reocr_region_impl(
     line_ids: list[int],
     padding: float = 0.05,
 ) -> dict:
-    """Compute axis-aligned bounding box from receipt line IDs."""
+    """Compute axis-aligned bounding box from receipt line IDs.
+
+    Word bounding boxes are in receipt-relative space (normalised to the
+    warped receipt paper).  The Swift crop needs full-image Vision
+    coordinates, so we transform via the Receipt entity's four-corner
+    perspective bounds.
+    """
     try:
         if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
             return {"error": f"padding must be between 0 and 1, got {padding}"}
@@ -2277,8 +2314,7 @@ async def compute_reocr_region_impl(
                 "available_line_ids": sorted({w.line_id for w in details.words}),
             }
 
-        # Compute axis-aligned bounding box from all word bounding boxes
-        # Coordinates are already in normalized Vision-space (0-1)
+        # Compute axis-aligned bounding box in receipt-relative space
         min_x = min(w.bounding_box["x"] for w in words_in_region)
         min_y = min(w.bounding_box["y"] for w in words_in_region)
         max_x = max(
@@ -2290,17 +2326,68 @@ async def compute_reocr_region_impl(
             for w in words_in_region
         )
 
-        # Add padding, clamped to [0, 1]
+        # Add padding in receipt-relative space, clamped to [0, 1]
         padded_x = max(0.0, min_x - padding)
         padded_y = max(0.0, min_y - padding)
         padded_right = min(1.0, max_x + padding)
         padded_top = min(1.0, max_y + padding)
 
+        # Transform the four corners of the padded region from
+        # receipt-relative space to full-image Vision coordinates using
+        # the same projective (homography) transform that the FIRST_PASS
+        # warp used.
+        from receipt_upload.geometry.transformations import find_perspective_coeffs
+
+        receipt = details.receipt
+        image = dynamo_client.get_image(image_id)
+
+        src_points = [
+            (receipt.top_left["x"] * image.width,
+             (1.0 - receipt.top_left["y"]) * image.height),
+            (receipt.top_right["x"] * image.width,
+             (1.0 - receipt.top_right["y"]) * image.height),
+            (receipt.bottom_right["x"] * image.width,
+             (1.0 - receipt.bottom_right["y"]) * image.height),
+            (receipt.bottom_left["x"] * image.width,
+             (1.0 - receipt.bottom_left["y"]) * image.height),
+        ]
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        coeffs = find_perspective_coeffs(src_points, dst_points)
+
+        _pt = _receipt_point_to_image
+        img_corners = [
+            _pt(padded_x, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_x, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+        ]
+
+        img_min_x = max(0.0, min(c[0] for c in img_corners))
+        img_min_y = max(0.0, min(c[1] for c in img_corners))
+        img_max_x = min(1.0, max(c[0] for c in img_corners))
+        img_max_y = min(1.0, max(c[1] for c in img_corners))
+
+        if img_max_x <= img_min_x or img_max_y <= img_min_y:
+            return {
+                "error": "Computed re-OCR region is empty after transform",
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+
         region = {
-            "x": round(padded_x, 6),
-            "y": round(padded_y, 6),
-            "width": round(padded_right - padded_x, 6),
-            "height": round(padded_top - padded_y, 6),
+            "x": round(img_min_x, 6),
+            "y": round(img_min_y, 6),
+            "width": round(img_max_x - img_min_x, 6),
+            "height": round(img_max_y - img_min_y, 6),
         }
 
         # Include context: which lines were found, word count
