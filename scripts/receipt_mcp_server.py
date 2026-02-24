@@ -152,10 +152,15 @@ Examples:
             description="""Get full receipt details with formatted text showing all words and their labels.
 
 Returns formatted receipt like:
-  Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
-  Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
-  Line 8: TAX 0.84[TAX]
-  Line 9: TOTAL 13.83[GRAND_TOTAL]
+  (line 1): TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
+  (lines 12-13): ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
+  (lines 18-19): TAX 0.84[TAX]
+  (line 20): TOTAL 13.83[GRAND_TOTAL]
+
+Each line shows the DynamoDB line_id range in parentheses. Words on the same
+visual row (similar Y-coordinates) are grouped together, so a single display
+line may span multiple DynamoDB line_ids. Use these line_ids directly with
+get_receipt_words, create_word_label, and update_word_label.
 
 Labels mean:
 - [MERCHANT_NAME]: Store name
@@ -618,9 +623,10 @@ Returns every word on the receipt with its line_id, word_id, text, and any
 existing labels (with validation_status). Words are sorted by line_id then
 word_id.
 
-Use this when you need to find the exact line_id/word_id for a word before
-creating or updating a label. The get_receipt tool shows formatted text but
-hides word coordinates — this tool exposes them.
+The line_id values here are the DynamoDB keys required by create_word_label
+and update_word_label. They match the line_id ranges shown in parentheses by
+get_receipt (e.g., "(lines 12-13)"), so you can use get_receipt to identify
+the line_id range, then filter here with that line_id for the exact word_id.
 
 Optionally filter to a single line_id to reduce output.""",
             inputSchema={
@@ -1148,16 +1154,24 @@ async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dic
         current_line.sort(key=lambda c: c["x"])
         visual_lines.append(current_line)
 
-        # Format as text with inline labels
+        # Format as text with inline labels, showing DynamoDB line_id ranges
         formatted_lines = []
-        for i, line in enumerate(visual_lines):
+        for line in visual_lines:
             line_parts = []
             for w in line:
                 if w["label"]:
                     line_parts.append(f"{w['text']}[{w['label']}]")
                 else:
                     line_parts.append(w["text"])
-            formatted_lines.append(f"Line {i}: {' '.join(line_parts)}")
+            # Show DynamoDB line_id range for this visual line
+            line_ids = sorted({w["word"].line_id for w in line})
+            if len(line_ids) == 1:
+                prefix = f"(line {line_ids[0]})"
+            elif line_ids[-1] - line_ids[0] + 1 == len(line_ids):
+                prefix = f"(lines {line_ids[0]}-{line_ids[-1]})"
+            else:
+                prefix = f"(lines {','.join(str(lid) for lid in line_ids)})"
+            formatted_lines.append(f"{prefix}: {' '.join(line_parts)}")
 
         formatted_receipt = "\n".join(formatted_lines)
 
