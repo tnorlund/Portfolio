@@ -265,6 +265,7 @@ class OCRProcessor:
         all_receipt_words = []
         # Track lines/words per receipt for individual merchant resolution
         per_receipt_data: Dict[int, Dict[str, Any]] = {}
+        successful_receipts = 0
 
         for receipt_idx, receipt_data in enumerate(receipts):
             try:
@@ -407,6 +408,8 @@ class OCRProcessor:
                 len(receipt_letters),
             )
 
+            successful_receipts += 1
+
             # Store per-receipt data for individual merchant resolution
             per_receipt_data[receipt_id] = {
                 "lines": receipt_lines,
@@ -415,7 +418,7 @@ class OCRProcessor:
 
         # Update routing decision
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
-        ocr_routing_decision.receipt_count = receipt_count
+        ocr_routing_decision.receipt_count = successful_receipts
         ocr_routing_decision.updated_at = current_time
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
 
@@ -431,6 +434,7 @@ class OCRProcessor:
                 raw_s3_bucket=ocr_job.s3_bucket,
                 raw_s3_key=ocr_job.s3_key,
                 image_type=image_type,
+                receipt_count=successful_receipts,
             )
 
             # Process original image for CDN (multiple sizes and formats)
@@ -505,17 +509,17 @@ class OCRProcessor:
                 image_id,
             )
 
-        # Return all receipt_ids and per-receipt data for merchant resolution
-        all_receipt_ids = [r["cluster_id"] for r in receipts]
+        # Return only successfully persisted receipt IDs
+        all_receipt_ids = sorted(per_receipt_data.keys())
 
         return {
             "success": True,
             "image_id": image_id,
             "image_type": image_type_str,
             "receipt_id": all_receipt_ids[0] if all_receipt_ids else None,
-            "receipt_ids": all_receipt_ids,  # All receipts for processing
-            "per_receipt_data": per_receipt_data,  # Lines/words per receipt
-            "receipt_count": receipt_count,
+            "receipt_ids": all_receipt_ids,
+            "per_receipt_data": per_receipt_data,
+            "receipt_count": successful_receipts,
             "receipt_lines": all_receipt_lines,
             "receipt_words": all_receipt_words,
             "line_count": len(all_receipt_lines),
