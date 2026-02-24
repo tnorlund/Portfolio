@@ -2388,40 +2388,33 @@ async def delete_image_impl(
     dynamo_client, image_id: str, dry_run: bool = True
 ) -> dict:
     """Delete all DynamoDB records under an image partition key."""
-
     try:
-        table_name = dynamo_client._table_name
+        details = dynamo_client.get_image_details(image_id)
 
-        # Query all items under this partition key
-        items: list[dict] = []
-        params = {
-            "TableName": table_name,
-            "KeyConditionExpression": "PK = :pk",
-            "ExpressionAttributeValues": {":pk": {"S": f"IMAGE#{image_id}"}},
-            "ProjectionExpression": "PK, SK",
-        }
-        while True:
-            resp = dynamo_client._client.query(**params)
-            items.extend(resp.get("Items", []))
-            if "LastEvaluatedKey" not in resp:
-                break
-            params["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
-
-        if not items:
-            return {"error": f"No items found for image {image_id}"}
-
-        # Count by entity type
+        # Build type counts from the structured details
         type_counts: dict[str, int] = {}
-        for item in items:
-            sk = item.get("SK", {}).get("S", "UNKNOWN")
-            if "#" in sk:
-                parts = sk.split("#")
-                entity_type = parts[0]
-                if entity_type == "RECEIPT" and len(parts) > 2:
-                    entity_type = parts[-2]
-            else:
-                entity_type = sk
-            type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
+        for attr in (
+            "images",
+            "lines",
+            "words",
+            "letters",
+            "receipts",
+            "receipt_lines",
+            "receipt_words",
+            "receipt_letters",
+            "receipt_word_labels",
+            "receipt_places",
+            "ocr_jobs",
+            "ocr_routing_decisions",
+        ):
+            items = getattr(details, attr, [])
+            if items:
+                type_counts[attr.upper()] = len(items)
+
+        total = sum(type_counts.values())
+
+        if total == 0:
+            return {"error": f"No items found for image {image_id}"}
 
         breakdown = [
             {"entity_type": t, "count": c}
@@ -2432,39 +2425,20 @@ async def delete_image_impl(
             return {
                 "image_id": image_id,
                 "dry_run": True,
-                "total_items": len(items),
+                "total_items": total,
                 "breakdown": breakdown,
                 "message": "Re-run with dry_run=false to delete",
             }
 
-        # Batch delete in groups of 25
-        deleted = 0
-        for i in range(0, len(items), 25):
-            batch = items[i : i + 25]
-            request_items = {
-                table_name: [
-                    {"DeleteRequest": {"Key": {"PK": item["PK"], "SK": item["SK"]}}}
-                    for item in batch
-                ]
-            }
-            resp = dynamo_client._client.batch_write_item(RequestItems=request_items)
-            deleted += len(batch)
+        # Delegate to the DynamoClient method which handles batch delete
+        counts = dynamo_client.delete_image_details(image_id)
+        deleted = sum(counts.values())
 
-            unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
-            retries = 0
-            max_retries = 5
-            while unprocessed and retries < max_retries:
-                await asyncio.sleep(0.5 * (2**retries))
-                resp = dynamo_client._client.batch_write_item(
-                    RequestItems={table_name: unprocessed}
-                )
-                unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
-                retries += 1
-            if unprocessed:
-                raise RuntimeError(
-                    f"batch_write_item: {len(unprocessed)} items remain "
-                    f"unprocessed after {max_retries} retries"
-                )
+        # Use the actual counts from the delete for the breakdown
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(counts.items(), key=lambda x: -x[1])
+        ]
 
         return {
             "image_id": image_id,
