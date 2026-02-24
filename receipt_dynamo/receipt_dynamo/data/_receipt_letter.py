@@ -284,9 +284,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
             raise OperationError("Parameter validation failed")
 
         request_items: list[WriteRequestTypeDef] = [
-            WriteRequestTypeDef(
-                PutRequest={"Item": letter.to_item()}
-            )
+            WriteRequestTypeDef(PutRequest={"Item": letter.to_item()})
             for letter in receipt_letters
         ]
         self._batch_write_with_retry(request_items)
@@ -326,9 +324,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
             return
 
         request_items: list[WriteRequestTypeDef] = [
-            WriteRequestTypeDef(
-                DeleteRequest={"Key": letter.key}
-            )
+            WriteRequestTypeDef(DeleteRequest={"Key": letter.key})
             for letter in receipt_letters
         ]
         self._batch_write_with_retry(request_items)
