@@ -45,6 +45,12 @@ html {
   --color-orange: #FB8C00;
   --color-orange-rgb: 251, 140, 0;
   /* RGB values for #FB8C00 */
+  --color-teal: #00897B;
+  --color-teal-rgb: 0, 137, 123;
+  /* RGB values for #00897B */
+  --color-pink: #D81B60;
+  --color-pink-rgb: 216, 27, 96;
+  /* RGB values for #D81B60 */
 
   --background-color-rgb: 255, 255, 255;
   /* Add this for light mode */
@@ -245,6 +251,10 @@ li {
     --color-yellow: #FFEE58;
     --color-orange: #FF9800;
     --color-orange-rgb: 255, 152, 0;
+    --color-teal: #26A69A;
+    --color-teal-rgb: 38, 166, 154;
+    --color-pink: #EC407A;
+    --color-pink-rgb: 236, 64, 122;
 
     --background-color-rgb: 18, 18, 18;
     /* Add this for dark mode */

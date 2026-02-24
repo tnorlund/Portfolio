@@ -5,15 +5,15 @@ import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
-// Label color mapping (supports both 8-label merged and 9-label split models)
+// Label color mapping for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
-  ADDRESS_LINE: "var(--color-red)",
-  PHONE_NUMBER: "var(--color-orange)",
+  ADDRESS_LINE: "var(--color-teal)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",

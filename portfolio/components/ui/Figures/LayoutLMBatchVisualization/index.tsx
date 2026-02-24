@@ -23,15 +23,15 @@ import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
-// Label colors for 9-label model (ADDRESS_LINE and PHONE_NUMBER split)
+// Label colors for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
-  ADDRESS_LINE: "var(--color-red)",
-  PHONE_NUMBER: "var(--color-orange)",
+  ADDRESS_LINE: "var(--color-teal)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",
@@ -45,7 +45,7 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amount",
   ADDRESS: "Address",
-  ADDRESS_LINE: "Address",
+  ADDRESS_LINE: "Address Line",
   PHONE_NUMBER: "Phone",
   WEBSITE: "Website",
   STORE_HOURS: "Hours",
@@ -53,13 +53,12 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
 };
 
 // Entity types in order (grouped by color for visual clarity)
-// ADDRESS is kept in LABEL_COLORS for backwards-compatible color lookups
-// but omitted here to avoid a duplicate "Address" legend row.
 const ENTITY_TYPES = [
   "MERCHANT_NAME",
   "DATE",
   "TIME",
   "AMOUNT",
+  "ADDRESS",
   "ADDRESS_LINE",
   "PHONE_NUMBER",
   "WEBSITE",
@@ -72,9 +71,11 @@ const MOBILE_LEGEND_GROUPS = [
   { color: "var(--color-yellow)", label: "Merchant", types: ["MERCHANT_NAME"] },
   { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
   { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
-  { color: "var(--color-red)", label: "Address", types: ["ADDRESS", "ADDRESS_LINE"] },
-  { color: "var(--color-orange)", label: "Phone / Hours / Payment", types: ["PHONE_NUMBER", "STORE_HOURS", "PAYMENT_METHOD"] },
+  { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
+  { color: "var(--color-teal)", label: "Address Line", types: ["ADDRESS_LINE"] },
+  { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
   { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
+  { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
 
 // Animation timing
