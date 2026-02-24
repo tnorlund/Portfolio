@@ -509,17 +509,17 @@ class OCRProcessor:
                 image_id,
             )
 
-        # Return all receipt_ids and per-receipt data for merchant resolution
-        all_receipt_ids = [r["cluster_id"] for r in receipts]
+        # Return only successfully persisted receipt IDs
+        all_receipt_ids = sorted(per_receipt_data.keys())
 
         return {
             "success": True,
             "image_id": image_id,
             "image_type": image_type_str,
             "receipt_id": all_receipt_ids[0] if all_receipt_ids else None,
-            "receipt_ids": all_receipt_ids,  # All receipts for processing
-            "per_receipt_data": per_receipt_data,  # Lines/words per receipt
-            "receipt_count": receipt_count,
+            "receipt_ids": all_receipt_ids,
+            "per_receipt_data": per_receipt_data,
+            "receipt_count": successful_receipts,
             "receipt_lines": all_receipt_lines,
             "receipt_words": all_receipt_words,
             "line_count": len(all_receipt_lines),
