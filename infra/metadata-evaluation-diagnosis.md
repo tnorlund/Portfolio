@@ -333,6 +333,62 @@ When the current label matches ChromaDB consensus or fuzzy-matches Places data, 
 call entirely. Targets: 581 STORE_HOURS (with regex fix), 758 ADDRESS_LINE (with fuzzy
 confirmation), 410 unlabeled words the LLM confirms should stay unlabeled.
 
+## Measured Results (2026-02-24)
+
+**Execution:** `6ae90b47-34dc-4721-af72-70bd2965b1c7`
+**LangSmith project:** `label-eval-topk-consensus-all-stages`
+**Fixes deployed:** Top-K consensus (#1b), STORE_HOURS regex, expanded PAYMENT_METHOD regex (#2/#3)
+
+### Comparison: Feb 22 baseline vs Feb 24 with fixes
+
+| Metric | Baseline (Feb 22) | With Fixes (Feb 24) | Change |
+|--------|-------------------|---------------------|--------|
+| **Total Duration** | **2h 10m** | **~40m** | **-70%** |
+| Receipts | 716 | 714 | ~same |
+| LLM Timeouts | 46 | 24 | **-48%** |
+| Failures | — | 0 | clean |
+
+### Metadata auto-resolution (CloudWatch logs)
+
+| Metric | Baseline | With Fixes | Change |
+|--------|----------|------------|--------|
+| Total metadata words found | 15,023 | 17,036 | +13% (more detected by regex) |
+| Auto-resolved without LLM | 10,598 (70.6%) | 12,102 (71.0%) | +1,504 more resolved |
+| Words sent to metadata LLM | 4,425 | 4,934 | +509 |
+| Receipts fully skipping LLM | 28 | 24 | -4 |
+
+The regex expansion detected ~2,000 more metadata words (STORE_HOURS, PAYMENT_METHOD patterns)
+and auto-resolved 1,500 more. But the LLM still received ~500 more words because the detected
+pool grew. The auto-resolve *rate* is nearly identical (~71%).
+
+### Currency evaluation (removed)
+
+| Metric | Baseline | With Fixes | Change |
+|--------|----------|------------|--------|
+| Currency issues evaluated by LLM | 9,768 | 0 | **-100%** |
+
+Currency LLM removal was the **single biggest time saver** — ~9,800 fewer LLM evaluations.
+
+### Review stage (top-K consensus)
+
+| Metric | Baseline | With Fixes | Change |
+|--------|----------|------------|--------|
+| Receipts entering LLM review | 380 | 367 | **-3.4%** |
+| Total review decisions applied | 4,764 | 6,244 | +31% more decisions |
+| Labels confirmed | 2,956 | 4,796 | **+62%** |
+| Labels invalidated | 996 | 584 | **-41%** |
+
+The top-K consensus fix makes **more decisions** (6,244 vs 4,764) with **fewer LLM calls**
+(367 vs 380). More words get resolved by consensus alone. The +62% confirmed labels means
+the consensus is now actually working — previously all 1,501 review decisions had zero
+ChromaDB evidence.
+
+### Key takeaway
+
+The ~90 minute speedup is dominated by **currency LLM removal** (9,768 fewer evaluations).
+The metadata regex and ChromaDB consensus contributed modest improvements. Reduced LLM
+pressure also cut timeouts in half (46→24), compounding the savings.
+
 ## Bottom Line
 
 73.5% of metadata decisions are already deterministic. Of the remaining 24.1% sent to the

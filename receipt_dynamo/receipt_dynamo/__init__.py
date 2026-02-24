@@ -188,7 +188,10 @@ except ModuleNotFoundError:
 # Data operation imports - requires boto3
 # =============================================================================
 try:
-    from receipt_dynamo.data.export_image import delete_image_data, export_image
+    from receipt_dynamo.data.export_image import (
+        delete_image_data,
+        export_image,
+    )
 except ModuleNotFoundError:
 
     def export_image(*_, **__):  # type: ignore

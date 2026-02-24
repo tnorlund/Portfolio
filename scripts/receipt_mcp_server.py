@@ -31,6 +31,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
@@ -760,6 +761,57 @@ Back up the receipt with export_image before triggering.""",
                 "required": ["image_id", "receipt_id", "reocr_region"],
             },
         ),
+        Tool(
+            name="list_recent_uploads",
+            description="""List the most recently uploaded images, sorted newest first.
+
+Shows image ID, upload timestamp, image type (SCAN/PHOTO/NATIVE),
+receipt count, dimensions, and merchant names for each receipt.
+
+Use this to find recently uploaded images or check processing status.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Number of recent uploads to return (max 50)",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="delete_image",
+            description="""Delete an image and ALL its child records from DynamoDB.
+
+Queries every item under PK = IMAGE#{image_id} and batch-deletes them.
+This removes the Image entity plus every child: receipts, lines, words,
+letters, labels, places, summaries, OCR jobs, routing decisions, etc.
+
+Returns a breakdown of entity types and counts before deleting.
+
+By default runs in dry-run mode — set dry_run=false to actually delete.
+
+WARNING: This is IRREVERSIBLE. Verify the image is truly unwanted first
+using list_recent_uploads or get_receipt.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID) to delete",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview what would be deleted without making changes",
+                    },
+                },
+                "required": ["image_id"],
+            },
+        ),
     ]
 
 
@@ -887,6 +939,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 receipt_id=arguments["receipt_id"],
                 reocr_region=arguments["reocr_region"],
                 reocr_reason=arguments.get("reocr_reason", "manual_trigger"),
+            )
+        elif name == "list_recent_uploads":
+            result = await list_recent_uploads_impl(
+                dynamo_client,
+                limit=arguments.get("limit", 10),
+            )
+        elif name == "delete_image":
+            result = await delete_image_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                dry_run=arguments.get("dry_run", True),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -2069,6 +2132,97 @@ async def create_word_label_impl(
         return {"error": str(e)}
 
 
+async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
+    """List the most recently uploaded images, sorted newest first."""
+    from datetime import datetime, timezone
+
+    def _to_utc_dt(ts) -> datetime:
+        """Coerce timestamp to aware UTC datetime."""
+        if isinstance(ts, str):
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        else:
+            dt = ts
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    try:
+        limit = min(limit, 50)
+
+        # Paginate through all Image entities
+        all_images = []
+        last_key = None
+        while True:
+            images, last_key = dynamo_client.list_images(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+            all_images.extend(images)
+            if last_key is None:
+                break
+
+        # Sort by timestamp_added descending
+        all_images.sort(
+            key=lambda img: _to_utc_dt(img.timestamp_added),
+            reverse=True,
+        )
+
+        # Slice to limit
+        recent = all_images[:limit]
+
+        # For each recent image, get actual receipt IDs via GSI query
+        all_indices = []
+        receipts_by_image: dict[str, list[int]] = {}
+        for img in recent:
+            receipts = dynamo_client.get_receipts_from_image(img.image_id)
+            receipt_ids = [r.receipt_id for r in receipts]
+            receipts_by_image[img.image_id] = receipt_ids
+            for rid in receipt_ids:
+                all_indices.append((img.image_id, rid))
+
+        # Batch-get all ReceiptPlace records in one call
+        places_by_key: dict[str, str] = {}
+        if all_indices:
+            places = dynamo_client.get_receipt_places_by_indices(all_indices)
+            for place in places:
+                key = f"{place.image_id}_{place.receipt_id}"
+                places_by_key[key] = place.merchant_name
+
+        # Build results
+        results = []
+        for img in recent:
+            receipt_ids = receipts_by_image.get(img.image_id, [])
+            receipts_info = []
+            for rid in receipt_ids:
+                key = f"{img.image_id}_{rid}"
+                receipts_info.append({
+                    "receipt_id": rid,
+                    "merchant_name": places_by_key.get(key),
+                })
+
+            results.append({
+                "image_id": img.image_id,
+                "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
+                    timespec="milliseconds"
+                ),
+                "image_type": img.image_type,
+                "receipt_count": len(receipts_info),
+                "width": img.width,
+                "height": img.height,
+                "receipts": receipts_info,
+            })
+
+        return {
+            "total_images": len(all_images),
+            "showing": len(results),
+            "uploads": results,
+        }
+
+    except Exception as e:
+        logger.exception("Error listing recent uploads")
+        return {"error": str(e)}
+
+
 async def _invoke_lambda(function_name: str, payload: dict) -> dict:
     """Invoke a Lambda function and return the parsed response payload."""
     import boto3
@@ -2134,6 +2288,36 @@ async def merge_receipts_impl(
         return {"error": str(e)}
 
 
+def _receipt_point_to_image(
+    rx: float, ry: float,
+    coeffs: list[float],
+    receipt_width: int, receipt_height: int,
+    image_width: int, image_height: int,
+) -> tuple[float, float]:
+    """Projective forward transform: receipt-relative → full-image Vision.
+
+    Uses the perspective coefficients (receipt-PIL → image-PIL) computed by
+    ``find_perspective_coeffs``, matching the exact transform that the
+    FIRST_PASS warp used.
+    """
+    # Receipt OCR normalised → PIL pixel
+    x_rct = rx * (receipt_width - 1)
+    y_rct = (1.0 - ry) * (receipt_height - 1)
+
+    a, b, c, d, e, f, g, h = coeffs
+    denom = 1.0 + g * x_rct + h * y_rct
+    if abs(denom) < 1e-12:
+        return 0.5, 0.5
+
+    x_img = (a * x_rct + b * y_rct + c) / denom
+    y_img = (d * x_rct + e * y_rct + f) / denom
+
+    # Image PIL pixel → OCR normalised
+    ix = x_img / image_width
+    iy = 1.0 - (y_img / image_height)
+    return max(0.0, min(1.0, ix)), max(0.0, min(1.0, iy))
+
+
 async def compute_reocr_region_impl(
     dynamo_client,
     image_id: str,
@@ -2141,8 +2325,17 @@ async def compute_reocr_region_impl(
     line_ids: list[int],
     padding: float = 0.05,
 ) -> dict:
-    """Compute axis-aligned bounding box from receipt line IDs."""
+    """Compute axis-aligned bounding box from receipt line IDs.
+
+    Word bounding boxes are in receipt-relative space (normalised to the
+    warped receipt paper).  The Swift crop needs full-image Vision
+    coordinates, so we transform via the Receipt entity's four-corner
+    perspective bounds.
+    """
     try:
+        if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
+            return {"error": f"padding must be between 0 and 1, got {padding}"}
+
         details = dynamo_client.get_receipt_details(image_id, receipt_id)
 
         # Filter words to only those on the requested lines
@@ -2157,8 +2350,7 @@ async def compute_reocr_region_impl(
                 "available_line_ids": sorted({w.line_id for w in details.words}),
             }
 
-        # Compute axis-aligned bounding box from all word bounding boxes
-        # Coordinates are already in normalized Vision-space (0-1)
+        # Compute axis-aligned bounding box in receipt-relative space
         min_x = min(w.bounding_box["x"] for w in words_in_region)
         min_y = min(w.bounding_box["y"] for w in words_in_region)
         max_x = max(
@@ -2170,17 +2362,68 @@ async def compute_reocr_region_impl(
             for w in words_in_region
         )
 
-        # Add padding, clamped to [0, 1]
+        # Add padding in receipt-relative space, clamped to [0, 1]
         padded_x = max(0.0, min_x - padding)
         padded_y = max(0.0, min_y - padding)
         padded_right = min(1.0, max_x + padding)
         padded_top = min(1.0, max_y + padding)
 
+        # Transform the four corners of the padded region from
+        # receipt-relative space to full-image Vision coordinates using
+        # the same projective (homography) transform that the FIRST_PASS
+        # warp used.
+        from receipt_upload.geometry.transformations import find_perspective_coeffs
+
+        receipt = details.receipt
+        image = dynamo_client.get_image(image_id)
+
+        src_points = [
+            (receipt.top_left["x"] * image.width,
+             (1.0 - receipt.top_left["y"]) * image.height),
+            (receipt.top_right["x"] * image.width,
+             (1.0 - receipt.top_right["y"]) * image.height),
+            (receipt.bottom_right["x"] * image.width,
+             (1.0 - receipt.bottom_right["y"]) * image.height),
+            (receipt.bottom_left["x"] * image.width,
+             (1.0 - receipt.bottom_left["y"]) * image.height),
+        ]
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        coeffs = find_perspective_coeffs(src_points, dst_points)
+
+        _pt = _receipt_point_to_image
+        img_corners = [
+            _pt(padded_x, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_x, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+        ]
+
+        img_min_x = max(0.0, min(c[0] for c in img_corners))
+        img_min_y = max(0.0, min(c[1] for c in img_corners))
+        img_max_x = min(1.0, max(c[0] for c in img_corners))
+        img_max_y = min(1.0, max(c[1] for c in img_corners))
+
+        if img_max_x <= img_min_x or img_max_y <= img_min_y:
+            return {
+                "error": "Computed re-OCR region is empty after transform",
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+
         region = {
-            "x": round(padded_x, 6),
-            "y": round(padded_y, 6),
-            "width": round(padded_right - padded_x, 6),
-            "height": round(padded_top - padded_y, 6),
+            "x": round(img_min_x, 6),
+            "y": round(img_min_y, 6),
+            "width": round(img_max_x - img_min_x, 6),
+            "height": round(img_max_y - img_min_y, 6),
         }
 
         # Include context: which lines were found, word count
@@ -2225,6 +2468,74 @@ async def trigger_reocr_impl(
         )
     except Exception as e:
         logger.exception("Error invoking trigger-reocr Lambda")
+        return {"error": str(e)}
+
+
+async def delete_image_impl(
+    dynamo_client, image_id: str, dry_run: bool = True
+) -> dict:
+    """Delete all DynamoDB records under an image partition key."""
+    try:
+        details = dynamo_client.get_image_details(image_id)
+
+        # Build type counts from the structured details
+        type_counts: dict[str, int] = {}
+        for attr in (
+            "images",
+            "lines",
+            "words",
+            "letters",
+            "receipts",
+            "receipt_lines",
+            "receipt_words",
+            "receipt_letters",
+            "receipt_word_labels",
+            "receipt_places",
+            "ocr_jobs",
+            "ocr_routing_decisions",
+        ):
+            items = getattr(details, attr, [])
+            if items:
+                type_counts[attr.upper()] = len(items)
+
+        total = sum(type_counts.values())
+
+        if total == 0:
+            return {"error": f"No items found for image {image_id}"}
+
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+        ]
+
+        if dry_run:
+            return {
+                "image_id": image_id,
+                "dry_run": True,
+                "total_items": total,
+                "breakdown": breakdown,
+                "message": "Re-run with dry_run=false to delete",
+            }
+
+        # Delegate to the DynamoClient method which handles batch delete
+        counts = dynamo_client.delete_image_details(image_id)
+        deleted = sum(counts.values())
+
+        # Use the actual counts from the delete for the breakdown
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(counts.items(), key=lambda x: -x[1])
+        ]
+
+        return {
+            "image_id": image_id,
+            "dry_run": False,
+            "deleted": deleted,
+            "breakdown": breakdown,
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting image")
         return {"error": str(e)}
 
 

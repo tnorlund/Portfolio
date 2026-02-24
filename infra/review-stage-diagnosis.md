@@ -171,10 +171,41 @@ Only send issues to the LLM when the geometric detector has high confidence.
 - **2,450 NEEDS_REVIEW decisions from currency/metadata remain unresolved regardless**
   (review never processed these)
 
+## Fix Applied: Top-K Label-Aware Consensus (2026-02-24)
+
+**Commit:** `4ac9f2e7b`
+**Execution:** `6ae90b47-34dc-4721-af72-70bd2965b1c7`
+
+### What changed
+
+Replaced `query_label_evidence()` + `compute_label_consensus()` (two-query approach that
+always returned balanced results) with `query_top_k_word_evidence()` (single unfiltered
+query + post-hoc label-aware vote). Default thresholds lowered from 0.75/4 to 0.60/2.
+
+### Measured results
+
+| Metric | Before Fix (Feb 22) | After Fix (Feb 24) | Change |
+|--------|---------------------|---------------------|--------|
+| Receipts entering LLM review | 380 | 367 | **-3.4%** |
+| Total review decisions applied | 4,764 | 6,244 | **+31%** |
+| Labels confirmed | 2,956 | 4,796 | **+62%** |
+| Labels invalidated | 996 | 584 | **-41%** |
+| Labels created | 812 | 864 | +6% |
+
+The consensus fix means:
+- **More decisions made** (6,244 vs 4,764) — consensus now actually resolves words
+- **Fewer LLM calls** (367 vs 380) — some receipts skip LLM entirely
+- **+62% confirmed labels** — consensus validates labels without needing LLM
+- **-41% invalidations** — fewer false positives reach the LLM
+
+Previously, all 1,501 review decisions had zero ChromaDB evidence. Now the consensus is
+working and resolving words that previously all fell through to the LLM.
+
 ## Bottom Line
 
 The review stage spends 24.8% of pipeline time to make 280 non-financial label corrections.
-57.7% of reviewed receipts get zero changes. ChromaDB evidence being absent forces all 1,501
-issues through the LLM when many could be auto-resolved. The most impactful fix is restoring
-ChromaDB evidence + tightening geometric thresholds, which could cut review LLM calls by 70%+
-while preserving the label corrections that matter.
+57.7% of reviewed receipts get zero changes. ~~ChromaDB evidence being absent forces all 1,501
+issues through the LLM when many could be auto-resolved.~~ **Fixed:** Top-K consensus now
+resolves a significant portion of review decisions without LLM. Remaining improvements:
+tighten geometric detection thresholds to reduce false positive rates, and consider running
+review in parallel with financial validation.

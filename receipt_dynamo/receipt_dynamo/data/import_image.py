@@ -82,9 +82,7 @@ def import_image(table_name: str, json_path: str) -> None:
             for item in data.get("receipt_word_labels", [])
         ],
         "receipt_places": [
-            ReceiptPlace(
-                **_parse_datetimes(item, ["timestamp"])
-            )
+            ReceiptPlace(**_parse_datetimes(item, ["timestamp"]))
             for item in data.get("receipt_places", [])
         ],
         "ocr_jobs": [
@@ -149,7 +147,11 @@ def import_image(table_name: str, json_path: str) -> None:
 
 
 def restore_image(table_name: str, json_path: str) -> None:
-    """Delete existing records then import from backup (idempotent restore)."""
+    """Delete existing records then import from backup.
+
+    Warning: not atomic — if import fails after deletion, data may be lost.
+    Re-run with the same JSON to recover.
+    """
     image_id = os.path.splitext(os.path.basename(json_path))[0]
     delete_image_data(table_name, image_id)
     import_image(table_name, json_path)

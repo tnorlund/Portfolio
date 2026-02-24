@@ -87,7 +87,10 @@ class OCRJob:
                     raise ValueError(
                         f"reocr_region[{key}] must be numeric, got {type(value)}"
                     )
-            if self.reocr_region["width"] <= 0 or self.reocr_region["height"] <= 0:
+            if (
+                self.reocr_region["width"] <= 0
+                or self.reocr_region["height"] <= 0
+            ):
                 raise ValueError(
                     "reocr_region width and height must be greater than 0"
                 )
@@ -235,8 +238,11 @@ class OCRJob:
         Raises:
             ValueError: When the item format is invalid.
         """
+
         # OCRJob-specific extractors (in addition to common OCR extractors)
-        def _extract_reocr_region(item_dict: dict[str, Any]) -> dict[str, float] | None:
+        def _extract_reocr_region(
+            item_dict: dict[str, Any],
+        ) -> dict[str, float] | None:
             if "reocr_region" not in item_dict:
                 return None
             raw_region = item_dict["reocr_region"]
@@ -250,7 +256,9 @@ class OCRJob:
             for key in required:
                 value = region_map.get(key, {}).get("N")
                 if value is None:
-                    raise ValueError(f"reocr_region missing numeric field: {key}")
+                    raise ValueError(
+                        f"reocr_region missing numeric field: {key}"
+                    )
                 parsed[key] = float(value)
             return parsed
 
