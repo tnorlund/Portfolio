@@ -83,19 +83,27 @@ def download_chromadb_snapshot(
     collection: str,
     cache_path: str,
 ) -> str:
-    """
-    Download ChromaDB snapshot from S3 using atomic pointer pattern.
+    """Download ChromaDB snapshot from S3 using ``receipt_chroma``.
+
+    Delegates to :func:`receipt_chroma.s3.download_snapshot_atomic` which
+    handles atomic pointer resolution, compressed (tar.gz) and legacy
+    uncompressed formats, parallel downloads, and integrity verification.
+
+    A completion marker (``.download_complete``) is checked first so that
+    warm Lambda invocations skip re-downloading.
 
     Args:
-        s3_client: Boto3 S3 client
+        s3_client: Boto3 S3 client (passed through to receipt_chroma)
         bucket: S3 bucket containing ChromaDB snapshots
-        collection: Collection name (e.g., "words")
+        collection: Collection name (``"words"`` or ``"lines"``)
         cache_path: Local path to cache the downloaded files
 
     Returns:
         Path to the cached ChromaDB directory
     """
-    # Use completion marker to detect interrupted downloads
+    from receipt_chroma.s3 import download_snapshot_atomic
+
+    # Use completion marker to skip re-download on warm Lambda starts.
     completion_marker = os.path.join(cache_path, ".download_complete")
     if os.path.exists(completion_marker):
         logger.info("ChromaDB already cached at %s", cache_path)
@@ -103,37 +111,30 @@ def download_chromadb_snapshot(
 
     logger.info("Downloading ChromaDB from s3://%s/%s/", bucket, collection)
 
-    pointer_key = f"{collection}/snapshot/latest-pointer.txt"
-    try:
-        response = s3_client.get_object(Bucket=bucket, Key=pointer_key)
-        timestamp = response["Body"].read().decode().strip()
-        logger.info("Latest snapshot: %s", timestamp)
-    except Exception:
-        logger.exception("Failed to get pointer")
-        raise
+    result = download_snapshot_atomic(
+        bucket=bucket,
+        collection=collection,
+        local_path=cache_path,
+        verify_integrity=False,
+        s3_client=s3_client,
+    )
 
-    prefix = f"{collection}/snapshot/timestamped/{timestamp}/"
-    paginator = s3_client.get_paginator("list_objects_v2")
+    status = result.get("status", "error")
+    version = result.get("version_id", "unknown")
+    logger.info(
+        "Snapshot download result: status=%s, collection=%s, version=%s",
+        status,
+        collection,
+        version,
+    )
 
-    os.makedirs(cache_path, exist_ok=True)
-    downloaded = 0
+    if status != "downloaded" and not result.get("initialized"):
+        raise RuntimeError(
+            f"Failed to download {collection} snapshot: {result}"
+        )
 
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            relative_path = key[len(prefix) :]
-            if not relative_path or key.endswith(".snapshot_hash"):
-                continue
-
-            local_path = os.path.join(cache_path, relative_path)
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            s3_client.download_file(bucket, key, local_path)
-            downloaded += 1
-
-    logger.info("Downloaded %d files to %s", downloaded, cache_path)
-
-    # Create completion marker after successful download
+    # Create completion marker after successful download.
     with open(completion_marker, "w") as f:
-        f.write(timestamp)
+        f.write(version)
 
     return cache_path
