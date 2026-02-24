@@ -233,6 +233,106 @@ threshold:
 2. Extended PAYMENT_METHOD keywords (~100 saved)
 3. Fix suggested_label hallucination (234 incorrect suggestions)
 
+## Potential Improvements
+
+### 1. Fix ChromaDB consensus where-clause for words collection — DONE
+
+**Impact:** Unlocks consensus resolution for STORE_HOURS and all other labels on the words collection.
+
+**Status:** Fixed in `receipt_agent/utils/chroma_helpers.py`. New helper
+`_build_label_where_clause()` selects the correct filter per collection: `$contains` on
+`valid_labels_array` / `invalid_labels_array` for words, boolean `label_STORE_HOURS: True`
+for lines. Uses existing `build_label_membership_clause()` from `label_metadata.py`.
+
+**Investigation findings** (`scripts/test_chroma_store_hours.py`):
+
+The words collection has **both** boolean flags and array fields, but coverage differs:
+
+| Query style | STORE_HOURS matches |
+|-------------|---------------------|
+| `label_STORE_HOURS: True` (boolean) | 168 |
+| `valid_labels_array $contains` | 200+ (hit limit) |
+| `invalid_labels_array $contains` | 200+ (hit limit) |
+
+The `$contains` approach finds substantially more words. More importantly, consensus works
+**cross-merchant**: STORE_HOURS words from Amazon Fresh, CVS, Trader Joe's, and Wild Fork
+all find high-similarity evidence (0.80-1.00) from other merchants' validated STORE_HOURS
+words. Example cross-merchant matches:
+
+| Query word | Merchant | Top cross-merchant match | Similarity |
+|-----------|----------|--------------------------|------------|
+| "24" | CVS | "24" / CVS Pharmacy | 1.000 |
+| "HOURS" | CVS | "HOURS" / CVS Pharmacy | 1.000 |
+| "Open" | Amazon Fresh | "Hours" / Sprouts | 0.827 |
+| "8" | Amazon Fresh | "TO" / Trader Joe's | 0.827 |
+| "daily" | Amazon Fresh | "DAILY" / Trader Joe's | 0.893 |
+
+This confirms ChromaDB consensus can resolve STORE_HOURS labels across merchants once the
+where-clause is fixed — complementing regex patterns for edge cases regex cannot catch.
+
+### 1b. Fix consensus algorithm: top-K label-aware vote — DONE
+
+**Impact:** Makes ChromaDB consensus effective — resolves ~55-60% of regex-missed words with 97-100% precision.
+
+**Problem discovered:** Even with the correct `$contains` where-clause (fix #1), the original
+two-query consensus approach is fundamentally broken. It queries for N valid neighbors and N
+invalid neighbors separately, which **always returns balanced results** regardless of the true
+valid/invalid ratio. For example, "MOM-SUN" (OCR variant of MON-SUN) gets 15 valid and 15
+invalid neighbors, producing a near-zero consensus — even though the true ratio in the top-30
+unfiltered neighbors is 28 valid vs 5 invalid.
+
+**Solution:** Single unfiltered nearest-neighbor query + post-hoc label classification. For
+each neighbor, check whether the target label appears in `valid_labels_array` or
+`invalid_labels_array`. Ignore neighbors with neither (they have no opinion on this label).
+Take the top-K most similar label-aware neighbors and vote.
+
+**Threshold sweep results** (tested 9 strategies × 9 thresholds × 2 min-evidence values):
+
+| Strategy | MinEv | Thresh | STORE_HOURS TP/FP | PAYMENT_METHOD TP/FP | Precision |
+|----------|-------|--------|-------------------|----------------------|-----------|
+| Weighted consensus | 2 | 0.60 | 18/1 | 29/2 | 94% |
+| Simple ratio | 2 | 0.60 | 18/1 | 29/2 | 94% |
+| **Top-5 vote (label-aware)** | **2** | **0.60** | **17/0** | **28/1** | **98%** |
+| Top-10 vote (label-aware) | 2 | 0.60 | 18/1 | 29/2 | 94% |
+| Ratio, label-aware, cross-merchant | 2 | 0.60 | 14/0 | 27/1 | 98% |
+
+**Winner: Top-5 vote, label-aware** — at threshold=0.60, min_evidence=2:
+- STORE_HOURS: 17/31 TP, 0 FP (55% recall, 100% precision)
+- PAYMENT_METHOD: 28/50 TP, 1 FP (56% recall, 97% precision)
+- Combined F1: 0.72
+
+At lower threshold=0.30: recall improves to 61% (19/31 + 30/50) with same precision. The
+threshold=0.60 default is conservative — requires 4/5 or 5/5 agreement among label-aware
+neighbors.
+
+**Status:** Implemented in `receipt_agent/utils/chroma_helpers.py`. New function
+`_compute_top_k_word_consensus()` does a single unfiltered query, filters to label-aware
+neighbors, takes top 5, and votes. `chroma_resolve_words()` updated to use this approach
+with defaults threshold=0.60, min_evidence=2 (previously 0.75, 4).
+
+### 2. STORE_HOURS regex expansion (~581 LLM calls saved)
+
+Add day/time patterns to `detect_pattern_type()` to auto-resolve STORE_HOURS words. Common
+patterns like "MON-SUN", "9AM-10PM", "Hours:" appear 233+ times and are deterministic.
+
+### 3. Extended PAYMENT_METHOD keywords (~100 LLM calls saved)
+
+Add additional payment method keywords ("Credit", "VISA", "Mastercard", "Debit", "Cash") to
+the auto-resolve layer.
+
+### 4. Fix suggested_label hallucination (234 incorrect suggestions)
+
+Post-processing rule: if reasoning contains "should be unlabeled" / "no appropriate label" /
+"does not match", override `suggested_label` to `None`. Currently 33% of INVALID decisions
+have a hallucinated `suggested_label` (typically defaulting to MERCHANT_NAME).
+
+### 5. Pre-filter LLM VALID confirmations (skip already-correct labels)
+
+Of 2,793 LLM-evaluated VALID words, many are simply confirming labels that are already correct.
+When the current label matches ChromaDB consensus or fuzzy-matches Places data, skip the LLM
+call entirely. Targets: 581 STORE_HOURS (with regex fix), 758 ADDRESS_LINE (with fuzzy
+confirmation), 410 unlabeled words the LLM confirms should stay unlabeled.
+
 ## Bottom Line
 
 73.5% of metadata decisions are already deterministic. Of the remaining 24.1% sent to the
