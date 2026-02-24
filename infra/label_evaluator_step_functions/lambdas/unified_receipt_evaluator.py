@@ -1283,27 +1283,25 @@ async def unified_receipt_evaluator(
                         BatchedReviewResponse,
                     )
                     from receipt_agent.utils.chroma_helpers import (
-                        compute_label_consensus,
                         format_label_evidence_for_prompt,
-                        query_label_evidence,
+                        query_top_k_word_evidence,
                     )
                     from receipt_agent.utils.structured_output import (
                         ainvoke_structured_with_retry,
                         get_structured_output_settings,
                     )
 
-                    # Gather context for issues using targeted boolean queries.
-                    # Then short-circuit high-consensus cases without an LLM
-                    # call to reduce latency/cost and make decision provenance
-                    # explicit in outputs.
+                    # Gather context for issues using unfiltered top-K
+                    # label-aware consensus.  Short-circuit high-consensus
+                    # cases without an LLM call to reduce latency/cost.
                     consensus_threshold = float(
-                        os.environ.get("LLM_REVIEW_CONSENSUS_THRESHOLD", "0.75")
+                        os.environ.get("LLM_REVIEW_CONSENSUS_THRESHOLD", "0.60")
                     )
                     consensus_threshold = min(max(consensus_threshold, 0.0), 1.0)
                     consensus_min_evidence = max(
                         1,
                         int(
-                            os.environ.get("LLM_REVIEW_CONSENSUS_MIN_EVIDENCE", "4")
+                            os.environ.get("LLM_REVIEW_CONSENSUS_MIN_EVIDENCE", "2")
                         ),
                     )
 
@@ -1329,17 +1327,16 @@ async def unified_receipt_evaluator(
 
                         try:
                             if target_label and target_label != "O":
-                                label_evidence = query_label_evidence(
-                                    chroma_client=chroma_client,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    line_id=line_id,
-                                    word_id=word_id,
-                                    target_label=target_label,
-                                    target_merchant=merchant_name,
-                                    n_results_per_query=15,
-                                    min_similarity=0.70,
-                                    include_collections=("words", "lines"),
+                                label_evidence, consensus, pos_count, neg_count = (
+                                    query_top_k_word_evidence(
+                                        chroma_client=chroma_client,
+                                        image_id=image_id,
+                                        receipt_id=receipt_id,
+                                        line_id=line_id,
+                                        word_id=word_id,
+                                        target_label=target_label,
+                                        target_merchant=merchant_name,
+                                    )
                                 )
 
                                 # Format evidence for prompt
@@ -1348,11 +1345,6 @@ async def unified_receipt_evaluator(
                                     target_label=target_label,
                                     max_positive=5,
                                     max_negative=3,
-                                )
-
-                                # Compute consensus for decision support
-                                consensus, pos_count, neg_count = (
-                                    compute_label_consensus(label_evidence)
                                 )
                             else:
                                 label_evidence = []
