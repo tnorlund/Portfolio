@@ -40,7 +40,7 @@ const LABEL_ABBREV: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amt",
   ADDRESS: "Addr",
-  ADDRESS_LINE: "Addr",
+  ADDRESS_LINE: "AddrL",
   PHONE_NUMBER: "Phone",
   WEBSITE: "Web",
   STORE_HOURS: "Hours",

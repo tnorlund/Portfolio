@@ -53,12 +53,13 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
 };
 
 // Entity types in order (grouped by color for visual clarity)
+// ADDRESS is kept in LABEL_COLORS for backwards-compatible color lookups
+// but omitted here to avoid a duplicate "Address" legend row.
 const ENTITY_TYPES = [
   "MERCHANT_NAME",
   "DATE",
   "TIME",
   "AMOUNT",
-  "ADDRESS",
   "ADDRESS_LINE",
   "PHONE_NUMBER",
   "WEBSITE",
