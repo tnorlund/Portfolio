@@ -215,10 +215,10 @@ class ChromaClient:
             http_url: Optional HTTP URL for remote ChromaDB server
             cloud_api_key: Optional Chroma Cloud API key for cloud-hosted
                           multi-tenant database
-            cloud_tenant: Optional Chroma Cloud tenant ID (defaults to
-                         "default")
-            cloud_database: Optional Chroma Cloud database name (defaults
-                           to "default")
+            cloud_tenant: Chroma Cloud tenant UUID (required when
+                         cloud_api_key is set)
+            cloud_database: Chroma Cloud database name (required when
+                           cloud_api_key is set, e.g. 'receipt_dev')
         """
         self.persist_directory = persist_directory
         self.mode = mode.lower()
@@ -232,8 +232,12 @@ class ChromaClient:
         self._cloud_api_key: Optional[str] = (
             cloud_api_key or ""
         ).strip() or None
-        self._cloud_tenant: Optional[str] = cloud_tenant
-        self._cloud_database: Optional[str] = cloud_database
+        self._cloud_tenant: Optional[str] = (
+            cloud_tenant or ""
+        ).strip() or None
+        self._cloud_database: Optional[str] = (
+            cloud_database or ""
+        ).strip() or None
 
         # Configure embedding function
         if embedding_function:
@@ -287,15 +291,26 @@ class ChromaClient:
             # Chroma Cloud takes precedence over other client types
             if self._cloud_api_key:
                 # Create Chroma Cloud client for multi-tenant cloud database
+                if not self._cloud_tenant:
+                    raise ValueError(
+                        "cloud_api_key is set but cloud_tenant is missing. "
+                        "Pass cloud_tenant explicitly (the tenant UUID from "
+                        "Chroma Cloud, e.g. 'cf5b7019-...')."
+                    )
+                if not self._cloud_database:
+                    raise ValueError(
+                        "cloud_api_key is set but cloud_database is missing. "
+                        "Pass cloud_database explicitly (e.g. 'receipt_dev')."
+                    )
                 self._client = chromadb.CloudClient(
                     api_key=self._cloud_api_key,
-                    tenant=self._cloud_tenant or "default",
-                    database=self._cloud_database or "default",
+                    tenant=self._cloud_tenant,
+                    database=self._cloud_database,
                 )
                 logger.debug(
                     "Created Chroma Cloud client (tenant=%s, database=%s)",
-                    self._cloud_tenant or "default",
-                    self._cloud_database or "default",
+                    self._cloud_tenant,
+                    self._cloud_database,
                 )
 
             elif self._http_url:

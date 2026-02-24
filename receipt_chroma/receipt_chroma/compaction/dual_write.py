@@ -46,8 +46,8 @@ class CloudConfig:
 
     Attributes:
         api_key: Chroma Cloud API key
-        tenant: Chroma Cloud tenant ID (defaults to "default")
-        database: Chroma Cloud database name (defaults to "default")
+        tenant: Chroma Cloud tenant UUID (required when enabled)
+        database: Chroma Cloud database name (required when enabled)
         enabled: Whether dual-write is enabled
     """
 
@@ -78,15 +78,32 @@ class CloudConfig:
 
         api_key = env.get("CHROMA_CLOUD_API_KEY", "").strip()
         if not api_key:
-            logger.warning(
-                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_API_KEY not set"
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_API_KEY is not set. "
+                "Set the CHROMA_CLOUD_API_KEY environment variable."
             )
-            return None
+
+        tenant = (env.get("CHROMA_CLOUD_TENANT") or "").strip() or None
+        database = (env.get("CHROMA_CLOUD_DATABASE") or "").strip() or None
+
+        if not tenant:
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_TENANT is not set. "
+                "Set the CHROMA_CLOUD_TENANT environment variable to the "
+                "tenant UUID from Chroma Cloud (e.g. 'cf5b7019-...')."
+            )
+
+        if not database:
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_DATABASE is not set. "
+                "Set the CHROMA_CLOUD_DATABASE environment variable to the "
+                "database name (e.g. 'receipt_dev' or 'receipt_prod')."
+            )
 
         return cls(
             api_key=api_key,
-            tenant=env.get("CHROMA_CLOUD_TENANT") or None,
-            database=env.get("CHROMA_CLOUD_DATABASE") or None,
+            tenant=tenant,
+            database=database,
             enabled=True,
         )
 
@@ -156,8 +173,8 @@ def _create_cloud_client(
         "Creating Chroma Cloud client",
         extra={
             "collection": collection.value,
-            "tenant": cloud_config.tenant or "default",
-            "database": cloud_config.database or "default",
+            "tenant": cloud_config.tenant,
+            "database": cloud_config.database,
         },
     )
 
@@ -439,8 +456,8 @@ def _create_cloud_client_for_sync(
         "Creating Chroma Cloud client for sync",
         extra={
             "collection": collection_name,
-            "tenant": cloud_config.tenant or "default",
-            "database": cloud_config.database or "default",
+            "tenant": cloud_config.tenant,
+            "database": cloud_config.database,
         },
     )
 
