@@ -1089,13 +1089,14 @@ def _build_valid_decisions(
     image_id: str,
     receipt_id: int,
     source: str,
+    math_balanced: bool = True,
 ) -> list[dict[str, Any]]:
-    """Build VALID decision dicts from math-confirmed financial values.
+    """Build decision dicts from financial values.
 
-    When the financial math balances, every label that participated in
-    the equation is confirmed correct.  This builds decision dicts
-    compatible with ``apply_llm_decisions`` so those labels get written
-    as VALID in DynamoDB.
+    When ``math_balanced`` is True (default), every label that
+    participated in the equation is confirmed correct and marked VALID.
+    When False (equations don't balance), decisions are marked INVALID
+    so the frontend can surface the discrepancy.
 
     Only values with a real WordContext produce decisions.  Dummy
     WordContext (from unmatched LLM fallback items) is detected by
@@ -1163,13 +1164,13 @@ def _build_valid_decisions(
                     "word_text": fv.word_text,
                 },
                 "llm_review": {
-                    "decision": "VALID",
+                    "decision": "VALID" if math_balanced else "INVALID",
                     "reasoning": (
-                        f"Financial math balanced ({source}): "
-                        f"{fv.label}={fv.numeric_value:.2f}"
+                        f"Financial math {'balanced' if math_balanced else 'issues detected'}"
+                        f" ({source}): {fv.label}={fv.numeric_value:.2f}"
                     ),
                     "suggested_label": None,
-                    "confidence": "high",
+                    "confidence": "high" if math_balanced else "medium",
                 },
             }
             best[key] = (prio, decision)

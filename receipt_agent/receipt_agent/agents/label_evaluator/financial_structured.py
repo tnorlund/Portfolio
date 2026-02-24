@@ -728,10 +728,11 @@ def _run_two_tier_core(
                 reocr_region,
             )
         else:
-            # Math issues found — return decisions with issues noted, skip LLM
+            # Math issues found — mark as INVALID so frontend surfaces them
             decisions = _build_valid_decisions(
                 enhanced_values, image_id, receipt_id,
                 "structured_fast_path_issues",
+                math_balanced=False,
             )
             return (
                 "fast_path",
