@@ -781,6 +781,36 @@ Use this to find recently uploaded images or check processing status.""",
                 },
             },
         ),
+        Tool(
+            name="delete_image",
+            description="""Delete an image and ALL its child records from DynamoDB.
+
+Queries every item under PK = IMAGE#{image_id} and batch-deletes them.
+This removes the Image entity plus every child: receipts, lines, words,
+letters, labels, places, summaries, OCR jobs, routing decisions, etc.
+
+Returns a breakdown of entity types and counts before deleting.
+
+By default runs in dry-run mode — set dry_run=false to actually delete.
+
+WARNING: This is IRREVERSIBLE. Verify the image is truly unwanted first
+using list_recent_uploads or get_receipt.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID) to delete",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview what would be deleted without making changes",
+                    },
+                },
+                "required": ["image_id"],
+            },
+        ),
     ]
 
 
@@ -913,6 +943,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await list_recent_uploads_impl(
                 dynamo_client,
                 limit=arguments.get("limit", 10),
+            )
+        elif name == "delete_image":
+            result = await delete_image_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                dry_run=arguments.get("dry_run", True),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -2345,6 +2381,93 @@ async def trigger_reocr_impl(
         )
     except Exception as e:
         logger.exception("Error invoking trigger-reocr Lambda")
+        return {"error": str(e)}
+
+
+async def delete_image_impl(
+    dynamo_client, image_id: str, dry_run: bool = True
+) -> dict:
+    """Delete all DynamoDB records under an image partition key."""
+    import time
+
+    try:
+        table_name = dynamo_client._table_name
+
+        # Query all items under this partition key
+        items: list[dict] = []
+        params = {
+            "TableName": table_name,
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {":pk": {"S": f"IMAGE#{image_id}"}},
+            "ProjectionExpression": "PK, SK",
+        }
+        while True:
+            resp = dynamo_client._client.query(**params)
+            items.extend(resp.get("Items", []))
+            if "LastEvaluatedKey" not in resp:
+                break
+            params["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+
+        if not items:
+            return {"error": f"No items found for image {image_id}"}
+
+        # Count by entity type
+        type_counts: dict[str, int] = {}
+        for item in items:
+            sk = item.get("SK", {}).get("S", "UNKNOWN")
+            if "#" in sk:
+                parts = sk.split("#")
+                entity_type = parts[0]
+                if entity_type == "RECEIPT" and len(parts) > 2:
+                    entity_type = "#".join(parts[2::2]) or "RECEIPT"
+            else:
+                entity_type = sk
+            type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
+
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+        ]
+
+        if dry_run:
+            return {
+                "image_id": image_id,
+                "dry_run": True,
+                "total_items": len(items),
+                "breakdown": breakdown,
+                "message": "Re-run with dry_run=false to delete",
+            }
+
+        # Batch delete in groups of 25
+        deleted = 0
+        for i in range(0, len(items), 25):
+            batch = items[i : i + 25]
+            request_items = {
+                table_name: [
+                    {"DeleteRequest": {"Key": {"PK": item["PK"], "SK": item["SK"]}}}
+                    for item in batch
+                ]
+            }
+            resp = dynamo_client._client.batch_write_item(RequestItems=request_items)
+            deleted += len(batch)
+
+            unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
+            while unprocessed:
+                time.sleep(0.5)
+                resp = dynamo_client._client.batch_write_item(
+                    RequestItems={table_name: unprocessed}
+                )
+                unprocessed = resp.get("UnprocessedItems", {}).get(table_name, [])
+
+        return {
+            "image_id": image_id,
+            "dry_run": False,
+            "deleted": deleted,
+            "breakdown": breakdown,
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting image")
         return {"error": str(e)}
 
 
