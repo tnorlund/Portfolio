@@ -1,0 +1,82 @@
+.container {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-color) 88%, var(--text-color) 12%);
+  overflow: hidden;
+}
+
+.grid {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.line {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--color-blue-rgb), 0.18) 0%,
+    rgba(var(--color-blue-rgb), 0.38) 45%,
+    rgba(var(--color-blue-rgb), 0.18) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.lineShort {
+  width: 32%;
+}
+
+.lineMed {
+  width: 58%;
+}
+
+.lineLong {
+  width: 82%;
+}
+
+.panelRow {
+  display: grid;
+  grid-template-columns: 120px 1fr 220px;
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.panel {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background-color) 72%, var(--color-blue) 28%);
+  min-height: 120px;
+}
+
+.panelTall {
+  min-height: 180px;
+}
+
+.pillRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pill {
+  width: 78px;
+  height: 20px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-blue) 28%, var(--background-color) 72%);
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    background-position: -200% 0;
+    opacity: 0.85;
+  }
+}

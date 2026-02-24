@@ -9,6 +9,7 @@ import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
 import AnimatedInView from "../components/ui/AnimatedInView";
+import FigurePlaceholder from "../components/ui/FigurePlaceholder";
 import LazyMountInView from "../components/ui/LazyMountInView";
 import {
   AddressSimilaritySideBySide,
@@ -318,16 +319,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={480}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="receiptFlow" />}
         >
           <WithinReceiptVerification />
         </LazyMountInView>
@@ -342,16 +334,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={480}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="receiptFlow" />}
         >
           <FinancialMathOverlay />
         </LazyMountInView>
@@ -366,16 +349,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={480}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="receiptFlow" />}
         >
           <BetweenReceiptVisualization />
         </LazyMountInView>
@@ -431,16 +405,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={480}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="metrics" />}
         >
           <TrainingMetricsAnimation />
         </LazyMountInView>
@@ -449,16 +414,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={520}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="layoutlm" />}
         >
           <LayoutLMInferenceVisualization />
         </LazyMountInView>
@@ -510,16 +466,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={520}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="wordSimilarity" />}
         >
           <WordSimilarity />
         </LazyMountInView>
@@ -571,16 +518,7 @@ M1LK 2%           1    $4.4g`}</code>
       <ClientOnly>
         <LazyMountInView
           minHeight={600}
-          placeholder={
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--background-color)",
-                borderRadius: 12,
-              }}
-            />
-          }
+          placeholder={<FigurePlaceholder variant="pipeline" />}
         >
           <CICDLoop />
         </LazyMountInView>
