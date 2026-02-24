@@ -8,7 +8,7 @@
 
 > **usePreloadReceiptImages**(`images`, `formatSupport`): `void`
 
-Defined in: [utils/imageFormat.ts:206](https://github.com/tnorlund/Portfolio/blob/278dc2ae8a8dc975ce0900e4cbd499b040b4b035/portfolio/utils/imageFormat.ts#L206)
+Defined in: [utils/imageFormat.ts:206](https://github.com/tnorlund/Portfolio/blob/be683d8f5dd6cd230ff11ed4cabf49d99b5f03db/portfolio/utils/imageFormat.ts#L206)
 
 Preload full-size and thumbnail images for all receipts so they're
 browser-cached before flying-receipt animations need them.
