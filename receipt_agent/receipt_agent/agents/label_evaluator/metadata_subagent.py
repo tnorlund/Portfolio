@@ -93,9 +93,30 @@ WEBSITE_PATTERN = re.compile(
     re.I,
 )
 PAYMENT_PATTERNS = [
-    re.compile(r"^(VISA|MASTERCARD|AMEX|DISCOVER|DEBIT|CREDIT)\b", re.I),
-    re.compile(r"^(CASH|CHECK|EBT|SNAP)\b", re.I),
-    re.compile(r"^[*•]+\d{4}$"),  # ••••1234
+    re.compile(
+        r"^(VISA|MASTERCARD|MAESTRO|AMEX|DISCOVER|DEBIT|CREDIT|"
+        r"CARD|CASH|CHECK|EBT|SNAP|MC|M/C|GIFT|TAP|CONTACTLESS|SWIPE|CHIP)\b",
+        re.I,
+    ),
+    re.compile(r"^(EFT|VISADEBIT|GPAY|EPAY)\b", re.I),
+    re.compile(r"^[#]?[Xx*•.\[\]]{2,}\d{3,}$"),  # ****1234, XXXX1234, ...1234
+]
+STORE_HOURS_PATTERNS = [
+    # Day names and ranges: MON, MON-FRI, TUE-SAT, DAILY, OPEN
+    re.compile(
+        r"^(MON|TUE|WED|THU|FRI|SAT|SUN|DAILY|OPEN)"
+        r"(-?(MON|TUE|WED|THU|FRI|SAT|SUN))?:?$",
+        re.I,
+    ),
+    # Short time without colon (not caught by TIME_PATTERN): 7AM, 10PM
+    re.compile(r"^\d{1,2}\s*[AP]M$", re.I),
+    # Time ranges (always store hours): 7AM-10PM, 9:00AM-5:00PM
+    re.compile(
+        r"^\d{1,2}(:\d{2})?\s*[AP]M\s*-\s*\d{1,2}(:\d{2})?\s*[AP]M$",
+        re.I,
+    ),
+    # Keywords
+    re.compile(r"^(Store|Hours)$", re.I),
 ]
 
 # Common stop words that are never metadata
@@ -262,6 +283,9 @@ def detect_pattern_type(text: str) -> str | None:
     for pattern in PAYMENT_PATTERNS:
         if pattern.match(text):
             return "PAYMENT_METHOD"
+    for pattern in STORE_HOURS_PATTERNS:
+        if pattern.match(text):
+            return "STORE_HOURS"
     return None
 
 
@@ -354,7 +378,7 @@ def auto_resolve_metadata_words(
     - place_match (Google Places data confirms the label)
     - detected_type (regex pattern confirms the label)
 
-    All other words (no label, no confirming signal, conflicts, STORE_HOURS,
+    All other words (no label, no confirming signal, conflicts,
     COUPON, LOYALTY_ID) are returned as unresolved for LLM evaluation.
 
     Returns:
