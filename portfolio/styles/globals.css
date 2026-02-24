@@ -253,8 +253,10 @@ li {
     --color-orange-rgb: 255, 152, 0;
     --color-teal: #26A69A;
     --color-teal-rgb: 38, 166, 154;
+    /* RGB values for #26A69A */
     --color-pink: #EC407A;
     --color-pink-rgb: 236, 64, 122;
+    /* RGB values for #EC407A */
 
     --background-color-rgb: 18, 18, 18;
     /* Add this for dark mode */

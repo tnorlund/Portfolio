@@ -44,7 +44,11 @@ jobs:
         run: |
           # Create fresh virtual environment (prefer python3.12 over system python3)
           PYTHON=$(command -v python3.12 || command -v python3)
-          $PYTHON -m venv .venv-${{ matrix.package }}
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          "$PYTHON" -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
