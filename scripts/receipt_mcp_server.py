@@ -2341,6 +2341,13 @@ async def compute_reocr_region_impl(
         img_max_x = min(1.0, max(c[0] for c in img_corners))
         img_max_y = min(1.0, max(c[1] for c in img_corners))
 
+        if img_max_x <= img_min_x or img_max_y <= img_min_y:
+            return {
+                "error": "Computed re-OCR region is empty after transform",
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+
         region = {
             "x": round(img_min_x, 6),
             "y": round(img_min_y, 6),

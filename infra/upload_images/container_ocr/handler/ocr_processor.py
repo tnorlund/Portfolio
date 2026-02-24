@@ -299,13 +299,18 @@ class OCRProcessor:
         y = float(bbox.get("y", 0.0))
         w = float(bbox.get("width", 0.0))
         h = float(bbox.get("height", 0.0))
-        rx, ry = self._image_to_receipt(x, y, corners)
-        rx2, ry2 = self._image_to_receipt(x + w, y + h, corners)
+        pts = [
+            self._image_to_receipt(x, y, corners),
+            self._image_to_receipt(x + w, y, corners),
+            self._image_to_receipt(x, y + h, corners),
+            self._image_to_receipt(x + w, y + h, corners),
+        ]
+        xs, ys = zip(*pts)
         return {
-            "x": min(rx, rx2),
-            "y": min(ry, ry2),
-            "width": abs(rx2 - rx),
-            "height": abs(ry2 - ry),
+            "x": min(xs),
+            "y": min(ys),
+            "width": max(xs) - min(xs),
+            "height": max(ys) - min(ys),
         }
 
     def _apply_receipt_inverse_mapping(
@@ -498,18 +503,19 @@ class OCRProcessor:
         )
 
         # Compute receipt-relative region bounds for candidate filtering
-        r_bl = self._image_to_receipt(
-            region["x"], region["y"], corners
-        )
-        r_tr = self._image_to_receipt(
-            region["x"] + region["width"],
-            region["y"] + region["height"],
-            corners,
-        )
-        region_x1 = min(r_bl[0], r_tr[0])
-        region_y1 = min(r_bl[1], r_tr[1])
-        region_x2 = max(r_bl[0], r_tr[0])
-        region_y2 = max(r_bl[1], r_tr[1])
+        r_pts = [
+            self._image_to_receipt(region["x"], region["y"], corners),
+            self._image_to_receipt(region["x"] + region["width"], region["y"], corners),
+            self._image_to_receipt(region["x"], region["y"] + region["height"], corners),
+            self._image_to_receipt(
+                region["x"] + region["width"],
+                region["y"] + region["height"],
+                corners,
+            ),
+        ]
+        r_xs, r_ys = zip(*r_pts)
+        region_x1, region_x2 = min(r_xs), max(r_xs)
+        region_y1, region_y2 = min(r_ys), max(r_ys)
 
         existing_words = self.dynamo.list_receipt_words_from_receipt(
             ocr_job.image_id, ocr_job.receipt_id
