@@ -102,6 +102,7 @@ def process_native(
         cdn_medium_avif_s3_key=cdn_keys.get("avif_medium"),
         sha256=image_hash,
         image_type=ImageType.NATIVE,
+        receipt_count=1,
     )
     dynamo_client.add_image(image_record)
     dynamo_client.add_lines(lines)

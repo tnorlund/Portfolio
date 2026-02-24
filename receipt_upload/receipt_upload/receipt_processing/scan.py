@@ -306,3 +306,7 @@ def process_scan(
     ocr_routing_decision.receipt_count = len(cluster_dict)
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
     dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
+
+    # Update Image entity with final receipt count
+    ocr_image.receipt_count = len(cluster_dict)
+    dynamo_client.update_image(ocr_image)

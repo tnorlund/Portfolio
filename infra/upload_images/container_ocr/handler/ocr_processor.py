@@ -431,6 +431,7 @@ class OCRProcessor:
                 raw_s3_bucket=ocr_job.s3_bucket,
                 raw_s3_key=ocr_job.s3_key,
                 image_type=image_type,
+                receipt_count=receipt_count,
             )
 
             # Process original image for CDN (multiple sizes and formats)

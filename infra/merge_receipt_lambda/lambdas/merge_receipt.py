@@ -427,6 +427,16 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     deletion_result.error,
                 )
 
+        # ============================================================
+        # Step 14: Update Image entity receipt count
+        # ============================================================
+        remaining_receipts = client.get_receipts_from_image(image_id)
+        image_entity.receipt_count = len(remaining_receipts)
+        client.update_image(image_entity)
+        logger.info(
+            "Updated image receipt_count=%d", len(remaining_receipts)
+        )
+
         result["status"] = "success"
         result["compaction_run_id"] = compaction_run_id
         result["deleted_receipts"] = deleted_receipts
