@@ -34,9 +34,7 @@
   position: relative;
   width: 100%;
   max-width: 280px;
-  height: 100%;
-  max-height: 500px;
-  min-height: 320px;
+  aspect-ratio: 3 / 5;
   border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
   background: rgba(var(--text-color-rgb, 0, 0, 0), 0.05);
   border-radius: 2px;
@@ -170,4 +168,26 @@
 .centerMessage.error {
   color: var(--color-red);
   opacity: 1;
+}
+
+/* Mobile: center the legend content when stacked vertically */
+@media (max-width: 768px) {
+  .legendSkeleton {
+    align-items: center;
+    width: 100%;
+  }
+
+  .legendWithin {
+    width: 100%;
+    max-width: 280px;
+    min-height: auto;
+  }
+
+  .passDotsSkeleton {
+    justify-content: center;
+  }
+
+  .cardBlockSkeleton {
+    width: 100%;
+  }
 }
