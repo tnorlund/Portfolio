@@ -902,17 +902,9 @@ async def unified_receipt_evaluator(
                     span_err,
                 )
 
-        # 4. Phase 1: Run metadata and geometric evaluations concurrently
-        # Each evaluation gets its own child trace for visibility in LangSmith
-        from receipt_agent.agents.label_evaluator import (
-            create_compute_only_graph,
-            run_compute_only_sync,
-        )
+        # 4. Phase 1: Run metadata evaluation
         from receipt_agent.agents.label_evaluator.metadata_subagent import (
             evaluate_metadata_labels_async,
-        )
-        from receipt_agent.agents.label_evaluator.state import (
-            EvaluatorState,
         )
 
         # Initialize results
@@ -1062,49 +1054,14 @@ async def unified_receipt_evaluator(
             )
         )
 
-        # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
-        geometric_state = EvaluatorState(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            words=words,
-            labels=labels,
-            place=place,
-            other_receipt_data=[],
-            merchant_patterns=patterns,
-            skip_llm_review=True,
-        )
-
-        geometric_graph = create_compute_only_graph()
-
-        async def run_geometric() -> tuple[dict, float]:
-            start = time.time()
-            result = await asyncio.to_thread(
-                run_compute_only_sync,
-                geometric_graph,
-                geometric_state,
-                None,
-            )
-            return result, time.time() - start
-
-        # Wait for all evaluations concurrently
-        # tracing_context propagates through asyncio.gather so @traceable
-        # subagents auto-nest as children of the ReceiptEvaluation root trace
+        # Run metadata evaluation (geometric review removed — ChromaDB
+        # semantic search handles label consensus without LLM calls)
         with tracing_context(parent=receipt_trace.run_tree):
-            (
-                (
-                    metadata_result,
-                    metadata_duration,
-                ),
-                (
-                    geometric_result,
-                    geometric_duration,
-                ),
-            ) = await asyncio.gather(metadata_task, run_geometric())
+            metadata_result, metadata_duration = await metadata_task
 
         logger.info(
-            "Phase 1 complete: metadata=%d, geometric issues=%d",
+            "Phase 1 complete: metadata=%d",
             len(metadata_result),
-            geometric_result.get("issues_found", 0),
         )
 
         # 7. Apply Phase 1 corrections to DynamoDB (metadata only)
@@ -1255,12 +1212,12 @@ async def unified_receipt_evaluator(
                             execution_id=f"financial-{execution_id}",
                         )
 
-        # 9. Phase 3: LLM review of flagged geometric issues (if any)
+        # 9. Phase 3: Geometric review removed — semantic search is sufficient
         llm_review_result = None
         review_duration = 0.0
-        geometric_issues_found = geometric_result.get("issues_found", 0)
+        geometric_issues_found = 0
 
-        if geometric_issues_found > 0:
+        if False:  # Geometric review disabled
             with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
                 review_start = time.time()
                 # ChromaDB client was initialized before Phase 1 and is
@@ -1671,13 +1628,8 @@ async def unified_receipt_evaluator(
                     decision_counts["financial"][decision] += 1
 
         review_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        if llm_review_result:
-            for d in llm_review_result:
-                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
-                if decision in review_counts:
-                    review_counts[decision] += 1
 
-        total_issues = geometric_issues_found
+        total_issues = 0
         for decision_bucket in ("metadata", "financial"):
             total_issues += decision_counts[decision_bucket].get("INVALID", 0)
             total_issues += decision_counts[decision_bucket].get("NEEDS_REVIEW", 0)
