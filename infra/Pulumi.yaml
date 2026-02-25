@@ -1,6 +1,9 @@
 name: portfolio
 runtime:
   name: python
+  options:
+    toolchain: pip
+    virtualenv: venv
 description: a dynamodb instance
 config:
   pulumi:tags:

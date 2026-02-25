@@ -476,7 +476,7 @@ def build_analytics_decision_states(
     else:
         run_next = "SkipAnalytics"
 
-    return {
+    states: dict[str, Any] = {
         "CheckRunAnalytics": {
             "Type": "Choice",
             "Choices": [
@@ -487,17 +487,6 @@ def build_analytics_decision_states(
                 }
             ],
             "Default": emr_next,
-        },
-        "CheckEMREnabled": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.summary_result.status",
-                    "StringEquals": "completed",
-                    "Next": run_next,
-                }
-            ],
-            "Default": "SkipAnalytics",
         },
         "SkipAnalytics": {
             "Type": "Pass",
@@ -513,6 +502,21 @@ def build_analytics_decision_states(
             "End": True,
         },
     }
+
+    if emr_enabled:
+        states["CheckEMREnabled"] = {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.summary_result.status",
+                    "StringEquals": "completed",
+                    "Next": run_next,
+                }
+            ],
+            "Default": "SkipAnalytics",
+        }
+
+    return states
 
 
 def build_langsmith_export_states(emr: EmrConfig) -> dict[str, Any]:

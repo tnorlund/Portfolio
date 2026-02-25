@@ -121,19 +121,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.chromadb_bucket_name = chromadb_bucket_name
         self.chromadb_bucket_arn = chromadb_bucket_arn
 
-        # EMR Analytics config
-        self.emr_enabled = emr_application_id is not None
+        # EMR Analytics config (disabled — no LangSmith traces to analyze)
+        self.emr_enabled = False
         self.emr_application_id = emr_application_id
         self.emr_job_execution_role_arn = emr_job_execution_role_arn
         self.langsmith_export_bucket = langsmith_export_bucket
         self.analytics_output_bucket = analytics_output_bucket
 
-        # Viz-cache config (enables merged EMR job)
-        self.viz_cache_enabled = (
-            cache_bucket is not None
-            and langsmith_api_key is not None
-            and setup_lambda_arn is not None
-        )
+        # Viz-cache config (disabled — LangSmith export polling removed)
+        self.viz_cache_enabled = False
         self.cache_bucket = cache_bucket
         self.langsmith_api_key = langsmith_api_key
         self.langsmith_tenant_id = langsmith_tenant_id
