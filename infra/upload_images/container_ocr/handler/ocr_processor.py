@@ -341,6 +341,38 @@ class OCRProcessor:
         return float(bbox.get("y", 0.0)) + (float(bbox.get("height", 0.0)) / 2.0)
 
     @staticmethod
+    def _bbox_containment_ratio(
+        bbox: dict[str, float],
+        region_x1: float,
+        region_y1: float,
+        region_x2: float,
+        region_y2: float,
+    ) -> float:
+        """Fraction of *bbox* area that falls inside the region rectangle.
+
+        Returns 0.0 when no overlap or zero-area bbox, up to 1.0 when fully
+        contained.
+        """
+        wx1 = float(bbox.get("x", 0.0))
+        wy1 = float(bbox.get("y", 0.0))
+        wx2 = wx1 + float(bbox.get("width", 0.0))
+        wy2 = wy1 + float(bbox.get("height", 0.0))
+
+        ix1 = max(wx1, region_x1)
+        iy1 = max(wy1, region_y1)
+        ix2 = min(wx2, region_x2)
+        iy2 = min(wy2, region_y2)
+
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+
+        word_area = (wx2 - wx1) * (wy2 - wy1)
+        if word_area <= 0:
+            return 0.0
+
+        return (ix2 - ix1) * (iy2 - iy1) / word_area
+
+    @staticmethod
     def _y_overlap_ratio(
         a_bbox: dict[str, float], b_bbox: dict[str, float]
     ) -> float:
@@ -546,6 +578,12 @@ class OCRProcessor:
         # new re-OCR word.  These are orphans that the re-OCR region no
         # longer contains — they must be deleted so they don't
         # contaminate the rebuilt ReceiptLine.text.
+        #
+        # Guard: Only delete words whose bounding box is substantially
+        # inside the re-OCR region (>= 80% containment).  Words that
+        # straddle the region boundary may not have been fully visible
+        # to Vision, so we leave them alone to avoid data loss.
+        _ORPHAN_CONTAINMENT_THRESHOLD = 0.80
         matched_old_ids = {
             (ew.line_id, ew.word_id) for _, ew in matches
         }
@@ -553,6 +591,11 @@ class OCRProcessor:
             w
             for w in candidate_words
             if (w.line_id, w.word_id) not in matched_old_ids
+            and self._bbox_containment_ratio(
+                w.bounding_box,
+                region_x1, region_y1, region_x2, region_y2,
+            )
+            >= _ORPHAN_CONTAINMENT_THRESHOLD
         ]
 
         new_letters_by_new_key: dict[tuple[int, int], list[ReceiptLetter]] = {}

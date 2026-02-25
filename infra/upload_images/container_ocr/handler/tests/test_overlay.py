@@ -244,6 +244,46 @@ class TestApplyRegionMapping:
 
 
 # ===========================================================================
+# 1b. Bbox containment ratio (pure)
+# ===========================================================================
+
+class TestBboxContainmentRatio:
+    def test_fully_contained(self):
+        proc = _make_processor()
+        bbox = {"x": 0.3, "y": 0.3, "width": 0.1, "height": 0.1}
+        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(1.0)
+
+    def test_half_contained_x(self):
+        """Word straddles the right edge — only 50% inside."""
+        proc = _make_processor()
+        bbox = {"x": 0.9, "y": 0.1, "width": 0.2, "height": 0.1}
+        # region covers x=[0.7, 1.0]. Word x=[0.9, 1.1]. Overlap x=[0.9, 1.0]=0.1
+        # word area = 0.2*0.1 = 0.02, overlap area = 0.1*0.1 = 0.01
+        assert proc._bbox_containment_ratio(bbox, 0.7, 0.0, 1.0, 1.0) == pytest.approx(0.5)
+
+    def test_no_overlap(self):
+        proc = _make_processor()
+        bbox = {"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1}
+        assert proc._bbox_containment_ratio(bbox, 0.5, 0.5, 1.0, 1.0) == pytest.approx(0.0)
+
+    def test_zero_area_bbox(self):
+        proc = _make_processor()
+        bbox = {"x": 0.5, "y": 0.5, "width": 0.0, "height": 0.0}
+        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(0.0)
+
+    def test_barely_inside(self):
+        """Word mostly outside the region — only ~25% contained."""
+        proc = _make_processor()
+        # Word x=[0.68, 0.78], region x=[0.70, 1.0]
+        # Overlap x=[0.70, 0.78]=0.08.  Word width=0.10
+        # y fully inside: overlap_y = 0.05 = word height
+        # containment = (0.08*0.05) / (0.10*0.05) = 0.8
+        bbox = {"x": 0.68, "y": 0.1, "width": 0.10, "height": 0.05}
+        ratio = proc._bbox_containment_ratio(bbox, 0.70, 0.0, 1.0, 1.0)
+        assert ratio == pytest.approx(0.8)
+
+
+# ===========================================================================
 # 2. Word matching (pure)
 # ===========================================================================
 
@@ -1253,3 +1293,88 @@ class TestOrphanDeletion:
         assert result["success"] is True
         assert result["words_deleted"] == 0
         proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_boundary_word_spared_by_containment(self):
+        """A word straddling the region edge (<80% contained) must NOT be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            # Region covers x=[0.70, 1.0], y=[0.0, 1.0]
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # "GOOD" is fully inside the region (center at x=0.85) — will match.
+        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        # "EDGE" straddles the left boundary: x=[0.65, 0.85], center=0.75
+        # (inside region), but containment ~75% < 80% threshold.
+        existing_edge = _make_word(text="EDGE", x=0.65, y=0.1, w=0.20, h=0.05, line_id=1, word_id=2)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_edge]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.return_value = []
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        # Re-OCR produces one word at crop-space x=0.5 → receipt-relative x~0.85,
+        # which is closer to GOOD (center=0.85) than EDGE (center=0.75).
+        # The greedy matcher will pair it with GOOD, leaving EDGE unmatched.
+        new_word = _make_word(text="BETTER", x=0.5, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="BETTER", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.5, "w": 0.5}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        # "EDGE" should NOT be deleted because containment < 80%.
+        assert result["words_deleted"] == 0
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_fully_contained_orphan_still_deleted(self):
+        """A word fully inside the region (100% contained) that isn't matched SHOULD be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # "GOOD" matches, "JUNK" is fully inside (x=[0.90, 0.95]) — 100% contained.
+        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_junk = _make_word(text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_junk]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], []]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        new_word = _make_word(text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="BETTER", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.0, "w": 0.5}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        assert result["words_deleted"] == 1
+        proc.dynamo.delete_receipt_words.assert_called_once()
+        deleted = proc.dynamo.delete_receipt_words.call_args[0][0]
+        assert deleted[0].text == "JUNK"
