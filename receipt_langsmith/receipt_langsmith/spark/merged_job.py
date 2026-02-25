@@ -897,18 +897,12 @@ def run_viz_cache(spark: SparkSession, args: argparse.Namespace) -> None:
 
     receipts_with_issues = int(counts_row["receipts_with_issues"] or 0)
 
-    _clean_cache_prefix(s3_client, args.cache_bucket, "receipts")
-
-    logger.info("Writing %d viz-cache receipts...", total_receipts)
-    write_viz_cache_parallel(joined, args.cache_bucket, args.execution_id)
-
-    write_viz_cache_metadata(
-        s3_client,
-        args.cache_bucket,
-        args.execution_id,
-        total_receipts,
-        receipts_with_issues,
-    )
+    # NOTE: receipts/ viz-cache is now written directly by the unified
+    # receipt evaluator Lambda (Option C).  Spark no longer writes
+    # receipts/ files — only financial-math/, journey/, patterns/ etc.
+    # The evaluator writes receipt-{image_id}-{receipt_id}.json per
+    # receipt, and final_aggregate writes receipts/metadata.json +
+    # latest.json.
     _write_baseline_summary(
         s3_client,
         bucket=args.cache_bucket,
@@ -1308,7 +1302,14 @@ def run_evaluator_viz_cache(
                     data_rows=data_rows,
                     receipt_lookup=receipt_lookup or None,
                 )
-            elif prefix in ("financial-math", "diff"):
+            elif prefix == "financial-math":
+                results = helper_fn(
+                    parquet_dir=parquet_dir,
+                    rows=trace_rows,
+                    unified_rows=unified_rows,
+                    receipt_lookup=receipt_lookup or None,
+                )
+            elif prefix == "diff":
                 results = helper_fn(
                     parquet_dir=parquet_dir,
                     rows=trace_rows,

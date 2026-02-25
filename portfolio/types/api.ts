@@ -574,7 +574,7 @@ export interface LabelEvaluatorReceipt {
   issues_found: number;
   words: LabelEvaluatorWord[];
   geometric: LabelEvaluatorGeometric;
-  currency: LabelEvaluatorEvaluation;
+  currency?: LabelEvaluatorEvaluation;
   metadata: LabelEvaluatorEvaluation;
   financial: LabelEvaluatorEvaluation;
   // Review runs after Geometric if issues were found - produces V/I/R decisions
@@ -719,9 +719,9 @@ export interface FinancialMathWord {
 export interface FinancialMathEquation {
   issue_type: string;
   description: string;
-  expected_value: number | string;
-  actual_value: number | string;
-  difference: number | string;
+  expected_value: number | string | null;
+  actual_value: number | string | null;
+  difference: number | string | null;
   involved_words: FinancialMathWord[];
 }
 
@@ -730,9 +730,11 @@ export interface FinancialMathReceipt {
   receipt_id: number;
   merchant_name: string | null;
   trace_id: string;
+  receipt_type?: "itemized" | "service" | "terminal";
   equations: FinancialMathEquation[];
   summary: {
     total_equations: number;
+    total_confirmed?: number;
     has_invalid: boolean;
     has_needs_review: boolean;
   };
@@ -745,6 +747,12 @@ export interface FinancialMathReceipt {
   cdn_medium_avif_s3_key?: string;
   width: number;
   height: number;
+  reocr_region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface FinancialMathResponse {

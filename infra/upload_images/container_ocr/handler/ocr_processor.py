@@ -515,6 +515,19 @@ class OCRProcessor:
                 "error": "No existing receipt words found for overlay",
             }
 
+        labels: list[Any] = []
+        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
+        )
+        labels.extend(page or [])
+        while lek:
+            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                last_evaluated_key=lek,
+            )
+            labels.extend(page or [])
+
         candidate_words = [
             word
             for word in existing_words

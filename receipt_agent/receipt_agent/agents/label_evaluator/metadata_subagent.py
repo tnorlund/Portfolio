@@ -93,9 +93,60 @@ WEBSITE_PATTERN = re.compile(
     re.I,
 )
 PAYMENT_PATTERNS = [
-    re.compile(r"^(VISA|MASTERCARD|AMEX|DISCOVER|DEBIT|CREDIT)\b", re.I),
-    re.compile(r"^(CASH|CHECK|EBT|SNAP)\b", re.I),
-    re.compile(r"^[*•]+\d{4}$"),  # ••••1234
+    re.compile(
+        r"^(VISA|MASTERCARD|MAESTRO|AMEX|DISCOVER|DEBIT|CREDIT|"
+        r"CARD|CASH|CHECK|EBT|SNAP|MC|M/C|GIFT|TAP|CONTACTLESS|SWIPE|CHIP)\b",
+        re.I,
+    ),
+    re.compile(r"^(EFT|VISADEBIT|GPAY|EPAY)\b", re.I),
+    re.compile(r"^[#]?[Xx*•.\[\]]{2,}\d{3,}$"),  # ****1234, XXXX1234, ...1234
+]
+STORE_HOURS_PATTERNS = [
+    # Day names and ranges: MON, MON-FRI, TUE-SAT, DAILY, OPEN
+    re.compile(
+        r"^(MON|TUE|WED|THU|FRI|SAT|SUN|DAILY|OPEN)"
+        r"(-?(MON|TUE|WED|THU|FRI|SAT|SUN))?:?$",
+        re.I,
+    ),
+    # Short time without colon (not caught by TIME_PATTERN): 7AM, 10PM
+    re.compile(r"^\d{1,2}\s*[AP]M$", re.I),
+    # Time ranges (always store hours): 7AM-10PM, 9:00AM-5:00PM
+    re.compile(
+        r"^\d{1,2}(:\d{2})?\s*[AP]M\s*-\s*\d{1,2}(:\d{2})?\s*[AP]M$",
+        re.I,
+    ),
+    # Keywords
+    re.compile(r"^(Store|Hours)$", re.I),
+]
+
+# ---------------------------------------------------------------------------
+# Tier-1 patterns for AUTO-ASSIGNING labels to unlabeled words.
+# These patterns have >=90% precision when tested against LLM ground truth.
+# They are ONLY used for unlabeled words — labeled words use the broader
+# patterns above for confirmation.
+# ---------------------------------------------------------------------------
+TIER1_PAYMENT_PATTERNS = [
+    # Masked card numbers: ****1234, XXXX1234, ...1234, ••••1234
+    re.compile(r"^[#]?[Xx*•.\[\]]{2,}\d{3,}$"),
+    # Card brand names (unambiguous payment indicators)
+    re.compile(r"^(VISA|MASTERCARD|MAESTRO|AMEX|DISCOVER|DINERS)\b", re.I),
+    # Compound payment terms
+    re.compile(r"^(EFT|VISADEBIT|GPAY|EPAY)\b", re.I),
+]
+TIER1_STORE_HOURS_PATTERNS = [
+    # Day RANGES (hyphen required — single day names are ambiguous)
+    re.compile(
+        r"^(MON|TUE|WED|THU|FRI|SAT|SUN)"
+        r"-(MON|TUE|WED|THU|FRI|SAT|SUN):?$",
+        re.I,
+    ),
+    # Time ranges: 7AM-10PM, 9:00AM-5:00PM
+    re.compile(
+        r"^\d{1,2}(:\d{2})?\s*[AP]M\s*-\s*\d{1,2}(:\d{2})?\s*[AP]M$",
+        re.I,
+    ),
+    # DAILY is unambiguous
+    re.compile(r"^DAILY$", re.I),
 ]
 
 # Common stop words that are never metadata
@@ -248,6 +299,21 @@ def check_website_match(word_text: str, website: str) -> bool:
     )
 
 
+def detect_tier1_label(text: str) -> str | None:
+    """Return a label if *text* matches a Tier-1 high-confidence pattern.
+
+    Tier-1 patterns have >=90% precision for assigning labels to previously
+    unlabeled words (validated against LLM ground truth on 721 receipts).
+    """
+    for pattern in TIER1_PAYMENT_PATTERNS:
+        if pattern.match(text):
+            return "PAYMENT_METHOD"
+    for pattern in TIER1_STORE_HOURS_PATTERNS:
+        if pattern.match(text):
+            return "STORE_HOURS"
+    return None
+
+
 def detect_pattern_type(text: str) -> str | None:
     """Detect what type of metadata pattern a text matches."""
     if PHONE_PATTERN.match(text):
@@ -262,6 +328,9 @@ def detect_pattern_type(text: str) -> str | None:
     for pattern in PAYMENT_PATTERNS:
         if pattern.match(text):
             return "PAYMENT_METHOD"
+    for pattern in STORE_HOURS_PATTERNS:
+        if pattern.match(text):
+            return "STORE_HOURS"
     return None
 
 
@@ -354,8 +423,13 @@ def auto_resolve_metadata_words(
     - place_match (Google Places data confirms the label)
     - detected_type (regex pattern confirms the label)
 
-    All other words (no label, no confirming signal, conflicts, STORE_HOURS,
-    COUPON, LOYALTY_ID) are returned as unresolved for LLM evaluation.
+    Unlabeled words are auto-INVALID (assigned a label) when they match a
+    Tier-1 high-confidence pattern (>=90% precision vs LLM ground truth):
+    - Masked card numbers, brand names → PAYMENT_METHOD
+    - Day ranges, time ranges, DAILY → STORE_HOURS
+
+    All other words (no confirming signal, conflicts, COUPON, LOYALTY_ID)
+    are returned as unresolved for LLM evaluation.
 
     Returns:
         (resolved_pairs, unresolved_words) where resolved_pairs is a list of
@@ -367,7 +441,25 @@ def auto_resolve_metadata_words(
     for mw in metadata_words:
         label = mw.current_label
         if not label:
-            unresolved.append(mw)
+            # Try Tier-1 high-confidence auto-assignment for unlabeled words
+            tier1_label = detect_tier1_label(mw.word_context.word.text)
+            if tier1_label:
+                resolved.append(
+                    (
+                        mw,
+                        {
+                            "decision": "INVALID",
+                            "reasoning": (
+                                f"Unlabeled word auto-assigned {tier1_label} "
+                                "by Tier-1 pattern match"
+                            ),
+                            "suggested_label": tier1_label,
+                            "confidence": "high",
+                        },
+                    )
+                )
+            else:
+                unresolved.append(mw)
             continue
 
         confirmed_by = None

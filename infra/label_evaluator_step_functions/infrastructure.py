@@ -95,6 +95,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         dynamodb_table_arn: pulumi.Input[str],
         chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
         chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
+        ocr_job_queue_url: Optional[pulumi.Input[str]] = None,
+        ocr_job_queue_arn: Optional[pulumi.Input[str]] = None,
         # EMR Serverless Analytics integration (optional)
         emr_application_id: Optional[pulumi.Input[str]] = None,
         emr_job_execution_role_arn: Optional[pulumi.Input[str]] = None,
@@ -119,19 +121,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.chromadb_bucket_name = chromadb_bucket_name
         self.chromadb_bucket_arn = chromadb_bucket_arn
 
-        # EMR Analytics config
-        self.emr_enabled = emr_application_id is not None
+        # EMR Analytics config (disabled — no LangSmith traces to analyze)
+        self.emr_enabled = False
         self.emr_application_id = emr_application_id
         self.emr_job_execution_role_arn = emr_job_execution_role_arn
         self.langsmith_export_bucket = langsmith_export_bucket
         self.analytics_output_bucket = analytics_output_bucket
 
-        # Viz-cache config (enables merged EMR job)
-        self.viz_cache_enabled = (
-            cache_bucket is not None
-            and langsmith_api_key is not None
-            and setup_lambda_arn is not None
-        )
+        # Viz-cache config (disabled — LangSmith export polling removed)
+        self.viz_cache_enabled = False
         self.cache_bucket = cache_bucket
         self.langsmith_api_key = langsmith_api_key
         self.langsmith_tenant_id = langsmith_tenant_id
@@ -295,55 +293,60 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy (includes ChromaDB bucket if provided)
+        # S3 access policy (includes ChromaDB and viz-cache buckets if provided)
+        s3_policy_outputs = [self.batch_bucket.arn]
         if chromadb_bucket_arn:
-            RolePolicy(
-                f"{name}-lambda-s3-policy",
-                role=lambda_role.id,
-                policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
-                    lambda args: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject",
-                                        "s3:PutObject",
-                                        "s3:DeleteObject",
-                                        "s3:ListBucket",
-                                    ],
-                                    "Resource": [
-                                        args[0],
-                                        f"{args[0]}/*",
-                                        args[1],
-                                        f"{args[1]}/*",
-                                    ],
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=lambda_role),
+            s3_policy_outputs.append(chromadb_bucket_arn)
+        if self.cache_bucket:
+            # cache_bucket is a pulumi.Input[str] (bucket name), derive ARN
+            s3_policy_outputs.append(
+                Output.from_input(self.cache_bucket).apply(
+                    lambda name: f"arn:aws:s3:::{name}"
+                )
             )
-        else:
+
+        RolePolicy(
+            f"{name}-lambda-s3-policy",
+            role=lambda_role.id,
+            policy=Output.all(*s3_policy_outputs).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:DeleteObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
+                                    resource
+                                    for arn in args
+                                    for resource in (arn, f"{arn}/*")
+                                ],
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        if ocr_job_queue_arn is not None:
             RolePolicy(
-                f"{name}-lambda-s3-policy",
+                f"{name}-lambda-sqs-send-policy",
                 role=lambda_role.id,
-                policy=self.batch_bucket.arn.apply(
-                    lambda arn: json.dumps(
+                policy=Output.from_input(ocr_job_queue_arn).apply(
+                    lambda queue_arn: json.dumps(
                         {
                             "Version": "2012-10-17",
                             "Statement": [
                                 {
                                     "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject",
-                                        "s3:PutObject",
-                                        "s3:DeleteObject",
-                                        "s3:ListBucket",
-                                    ],
-                                    "Resource": [arn, f"{arn}/*"],
+                                    "Action": ["sqs:SendMessage"],
+                                    "Resource": [queue_arn],
                                 }
                             ],
                         }
@@ -548,6 +551,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             environment=FunctionEnvironmentArgs(
                 variables={
                     "BATCH_BUCKET": self.batch_bucket.bucket,
+                    "VIZ_CACHE_BUCKET": (
+                        self.cache_bucket if self.cache_bucket else ""
+                    ),
                     **tracing_env,
                 }
             ),
@@ -698,13 +704,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
-                # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
-                "CHROMA_CLOUD_API_KEY": (
-                    config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-                ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
+                # rate-limit contention when 40 Lambdas run concurrently.
+                "CHROMA_CLOUD_ENABLED": "false",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "8",
                 "CIRCUIT_BREAKER_THRESHOLD": "5",
@@ -900,6 +902,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # Consolidates currency, metadata, financial, and LLM review
         # Uses asyncio for concurrent LLM calls
         # ============================================================
+        resolved_ocr_job_queue_url: pulumi.Input[str] = (
+            Output.from_input(ocr_job_queue_url)
+            if ocr_job_queue_url is not None
+            else ""
+        )
+
         unified_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 minutes (covers all evaluations)
@@ -908,7 +916,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "ephemeral_storage": 10240,  # 10 GB for ChromaDB
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
+                "VIZ_CACHE_BUCKET": (
+                    self.cache_bucket if self.cache_bucket else ""
+                ),
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
+                "OCR_JOB_QUEUE_URL": resolved_ocr_job_queue_url,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
@@ -917,13 +929,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
-                # Chroma Cloud read configuration (falls back to S3 snapshots)
-                "CHROMA_CLOUD_ENABLED": (config.get("CHROMA_CLOUD_ENABLED") or "false"),
-                "CHROMA_CLOUD_API_KEY": (
-                    config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-                ),
-                "CHROMA_CLOUD_TENANT": (config.get("CHROMA_CLOUD_TENANT") or ""),
-                "CHROMA_CLOUD_DATABASE": (config.get("CHROMA_CLOUD_DATABASE") or ""),
+                # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
+                # rate-limit contention when 40 Lambdas run concurrently.
+                "CHROMA_CLOUD_ENABLED": "false",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "LLM_MAX_JITTER_SECONDS": "0.25",

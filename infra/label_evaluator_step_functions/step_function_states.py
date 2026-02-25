@@ -392,7 +392,27 @@ def build_receipt_processing_states(
                         },
                         "ResultPath": "$.evaluation_result",
                         "Retry": build_llm_retry_config(),
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "ResultPath": "$.evaluation_error",
+                                "Next": "EvaluationFailed",
+                            }
+                        ],
                         "Next": "ReturnResult",
+                    },
+                    "EvaluationFailed": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "status": "failed",
+                            "image_id.$": "$.receipt.image_id",
+                            "receipt_id.$": "$.receipt.receipt_id",
+                            "merchant_name.$": "$.receipt.merchant_name",
+                            "issues_found": 0,
+                            "error.$": "$.evaluation_error.Error",
+                            "cause.$": "$.evaluation_error.Cause",
+                        },
+                        "End": True,
                     },
                     "ReturnResult": {
                         "Type": "Pass",
@@ -456,7 +476,7 @@ def build_analytics_decision_states(
     else:
         run_next = "SkipAnalytics"
 
-    return {
+    states: dict[str, Any] = {
         "CheckRunAnalytics": {
             "Type": "Choice",
             "Choices": [
@@ -467,17 +487,6 @@ def build_analytics_decision_states(
                 }
             ],
             "Default": emr_next,
-        },
-        "CheckEMREnabled": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.summary_result.status",
-                    "StringEquals": "completed",
-                    "Next": run_next,
-                }
-            ],
-            "Default": "SkipAnalytics",
         },
         "SkipAnalytics": {
             "Type": "Pass",
@@ -493,6 +502,21 @@ def build_analytics_decision_states(
             "End": True,
         },
     }
+
+    if emr_enabled:
+        states["CheckEMREnabled"] = {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.summary_result.status",
+                    "StringEquals": "completed",
+                    "Next": run_next,
+                }
+            ],
+            "Default": "SkipAnalytics",
+        }
+
+    return states
 
 
 def build_langsmith_export_states(emr: EmrConfig) -> dict[str, Any]:
