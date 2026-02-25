@@ -1108,7 +1108,7 @@ class TestOrphanDeletion:
         # Verify orphan's letter was included in remove_receipt_letters.
         proc.dynamo.remove_receipt_letters.assert_called_once()
         deleted_letters = proc.dynamo.remove_receipt_letters.call_args[0][0]
-        assert any(l.text == "J" for l in deleted_letters)
+        assert any(letter.text == "J" for letter in deleted_letters)
 
     def test_orphan_excluded_from_line_text_rebuild(self):
         """Rebuilt ReceiptLine.text must not contain orphaned words."""
