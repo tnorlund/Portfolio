@@ -19,6 +19,7 @@ import { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
+import PassIndicator from "./PassIndicator";
 import styles from "./WithinReceiptVerification.module.css";
 
 // ---------------------------------------------------------------------------
@@ -381,34 +382,7 @@ const FormatPatternsCard: React.FC<{ receipt: WithinReceiptVerificationReceipt }
 // Pass Indicator (two connected dots)
 // ---------------------------------------------------------------------------
 
-const PassIndicator: React.FC<{
-  passState: PassState;
-  activePass: PassName | null;
-}> = ({ passState, activePass }) => {
-  const passes: PassName[] = ["place", "format"];
-
-  return (
-    <div className={styles.passIndicator}>
-      {passes.map((pass, i) => {
-        const isActive = activePass === pass;
-        const isComplete = passState[pass] >= 100;
-
-        return (
-          <React.Fragment key={pass}>
-            {i > 0 && (
-              <div className={`${styles.passConnector} ${passState[passes[i - 1]] >= 100 ? styles.active : ''}`} />
-            )}
-            <div
-              className={`${styles.passDot} ${isActive ? styles.active : ''} ${isComplete ? styles.complete : ''}`}
-            >
-              {i + 1}
-            </div>
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-};
+// PassIndicator is imported from ./PassIndicator.tsx
 
 // ---------------------------------------------------------------------------
 // Right Panel - switches cards based on active pass

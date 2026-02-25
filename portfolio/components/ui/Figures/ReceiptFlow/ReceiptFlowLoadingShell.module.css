@@ -50,40 +50,8 @@
   flex-shrink: 0;
 }
 
-/* Within: pass indicator + card block */
-.legendWithin {
-  width: 280px;
-  min-height: 200px;
-}
-
-.passDotsSkeleton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  margin-bottom: 0.5rem;
-}
-
-.passDotSkeleton {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background-color: var(--text-color);
-  opacity: 0.2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.5rem;
-  font-weight: 700;
-  color: var(--background-color);
-}
-
-.passConnectorSkeleton {
-  width: 16px;
-  height: 1px;
-  background: var(--text-color);
-  opacity: 0.2;
-}
+/* Within variant now uses the real PassIndicator + rightPanel from
+   WithinReceiptVerification so the skeleton matches the loaded state exactly. */
 
 .cardBlockSkeleton {
   display: flex;
@@ -190,16 +158,6 @@
   .legendSkeleton {
     align-items: center;
     width: 100%;
-  }
-
-  .legendWithin {
-    width: 100%;
-    max-width: 280px;
-    min-height: auto;
-  }
-
-  .passDotsSkeleton {
-    justify-content: center;
   }
 
   .cardBlockSkeleton {

@@ -1,4 +1,6 @@
 import React from "react";
+import PassIndicator from "../WithinReceiptVerification/PassIndicator";
+import withinStyles from "../WithinReceiptVerification/WithinReceiptVerification.module.css";
 import { ReceiptFlowShell } from "./ReceiptFlowShell";
 import styles from "./ReceiptFlowLoadingShell.module.css";
 
@@ -60,12 +62,8 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
   switch (variant) {
     case "within":
       return (
-        <div className={`${styles.legendSkeleton} ${styles.legendWithin}`}>
-          <div className={styles.passDotsSkeleton}>
-            <div className={styles.passDotSkeleton}>1</div>
-            <div className={styles.passConnectorSkeleton} />
-            <div className={styles.passDotSkeleton}>2</div>
-          </div>
+        <div className={withinStyles.rightPanel}>
+          <PassIndicator />
           <div className={styles.cardBlockSkeleton}>
             <div className={`${styles.cardLineSkeleton} ${styles.short}`} />
             <div className={`${styles.cardLineSkeleton} ${styles.medium}`} />
