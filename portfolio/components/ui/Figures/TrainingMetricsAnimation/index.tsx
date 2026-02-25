@@ -5,13 +5,15 @@ import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
-// Label color mapping for 8-label hybrid model
+// Label color mapping for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
+  ADDRESS_LINE: "var(--color-teal)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",
@@ -38,6 +40,8 @@ const LABEL_ABBREV: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amt",
   ADDRESS: "Addr",
+  ADDRESS_LINE: "AddrL",
+  PHONE_NUMBER: "Phone",
   WEBSITE: "Web",
   STORE_HOURS: "Hours",
   PAYMENT_METHOD: "Pay",

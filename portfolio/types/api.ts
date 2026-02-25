@@ -410,6 +410,8 @@ export interface LayoutLMEntitiesSummary {
   merchant_name: string | null;
   date: string | null;
   address: string | null;
+  address_line?: string | null;
+  phone_number?: string | null;
   amount: string | null;
 }
 

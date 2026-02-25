@@ -23,13 +23,15 @@ import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
-// Label colors for 8-label hybrid model
+// Label colors for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
+  ADDRESS_LINE: "var(--color-teal)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",
@@ -43,6 +45,8 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amount",
   ADDRESS: "Address",
+  ADDRESS_LINE: "Address Line",
+  PHONE_NUMBER: "Phone",
   WEBSITE: "Website",
   STORE_HOURS: "Hours",
   PAYMENT_METHOD: "Payment",
@@ -55,6 +59,8 @@ const ENTITY_TYPES = [
   "TIME",
   "AMOUNT",
   "ADDRESS",
+  "ADDRESS_LINE",
+  "PHONE_NUMBER",
   "WEBSITE",
   "STORE_HOURS",
   "PAYMENT_METHOD",
@@ -66,6 +72,8 @@ const MOBILE_LEGEND_GROUPS = [
   { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
   { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
   { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
+  { color: "var(--color-teal)", label: "Address Line", types: ["ADDRESS_LINE"] },
+  { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
   { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
   { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
