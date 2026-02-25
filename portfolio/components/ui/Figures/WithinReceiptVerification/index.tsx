@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
@@ -419,10 +419,26 @@ const RightPanel: React.FC<{
 // ---------------------------------------------------------------------------
 
 const WithinReceiptVerification: React.FC = () => {
-  const { ref, inView } = useInView({
+  // Lazy-load observer: triggers data fetch when near the viewport.
+  // triggerOnce so we only fetch once; rootMargin prefetches 200px early.
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+
+  // Animation observer: controls animation playback while visible.
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: false,
   });
+
+  // Merge both refs onto the container div
+  const ref = useRef<HTMLDivElement | null>(null);
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    ref.current = node;
+    lazyRef(node);
+    animRef(node);
+  }, [lazyRef, animRef]);
 
   const [receipts, setReceipts] = useState<WithinReceiptVerificationReceipt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -452,8 +468,9 @@ const WithinReceiptVerification: React.FC = () => {
   receiptsRef.current = receipts;
   const currentIndexRef = useRef(0);
 
-  // Fetch data
+  // Fetch data only once the component is near the viewport
   useEffect(() => {
+    if (!nearViewport) return;
     const fetchData = async () => {
       try {
         const response = await api.fetchWithinReceiptVerification();
@@ -468,7 +485,7 @@ const WithinReceiptVerification: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [nearViewport]);
 
   const currentReceipt = receipts[currentIndex];
 
@@ -653,9 +670,9 @@ const WithinReceiptVerification: React.FC = () => {
     );
   }, [showFlyingReceipt, flyingReceipt, formatSupport]);
 
-  if (loading) {
+  if (!nearViewport || loading) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="within"
@@ -666,7 +683,7 @@ const WithinReceiptVerification: React.FC = () => {
 
   if (error) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="within"
@@ -679,7 +696,7 @@ const WithinReceiptVerification: React.FC = () => {
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="within"
@@ -693,7 +710,7 @@ const WithinReceiptVerification: React.FC = () => {
   const nextReceipt = receipts[nextIndex];
 
   return (
-    <div ref={ref} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <ReceiptFlowShell
         layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}

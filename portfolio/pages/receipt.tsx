@@ -317,12 +317,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={480}
-          placeholder={<FigurePlaceholder variant="receiptFlow" />}
-        >
-          <WithinReceiptVerification />
-        </LazyMountInView>
+        <WithinReceiptVerification />
       </ClientOnly>
 
       <p>
