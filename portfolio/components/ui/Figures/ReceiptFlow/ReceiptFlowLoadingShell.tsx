@@ -62,8 +62,9 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
       return (
         <div className={`${styles.legendSkeleton} ${styles.legendWithin}`}>
           <div className={styles.passDotsSkeleton}>
-            <div className={styles.passDotSkeleton} />
-            <div className={styles.passDotSkeleton} />
+            <div className={styles.passDotSkeleton}>1</div>
+            <div className={styles.passConnectorSkeleton} />
+            <div className={styles.passDotSkeleton}>2</div>
           </div>
           <div className={styles.cardBlockSkeleton}>
             <div className={`${styles.cardLineSkeleton} ${styles.short}`} />
