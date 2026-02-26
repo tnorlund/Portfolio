@@ -679,10 +679,21 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
 
 // Outer component - handles data fetching and loading guards
 const LayoutLMBatchVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: false,
   });
+  const setRefs = useCallback(
+    (node?: Element | null) => {
+      lazyRef(node);
+      animRef(node);
+    },
+    [lazyRef, animRef],
+  );
 
   const [receipts, setReceipts] = useState<LayoutLMReceiptInference[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -734,9 +745,9 @@ const LayoutLMBatchVisualization: React.FC = () => {
     }
   }, [isPoolExhausted]);
 
-  // Initial fetch only when in view - defers work until section is visible
+  // Initial fetch only when near viewport - defers work until section is close
   useEffect(() => {
-    if (!inView || hasInitialFetchedRef.current) return;
+    if (!nearViewport || hasInitialFetchedRef.current) return;
     hasInitialFetchedRef.current = true;
 
     const initialFetch = async () => {
@@ -780,11 +791,11 @@ const LayoutLMBatchVisualization: React.FC = () => {
     };
 
     initialFetch();
-  }, [inView]);
+  }, [nearViewport]);
 
-  if (initialLoading) {
+  if (!nearViewport || initialLoading) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="layoutlm"
@@ -795,7 +806,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   if (error) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="layoutlm"
@@ -808,7 +819,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="layoutlm"
@@ -820,7 +831,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   return (
     <LayoutLMBatchInner
-      observerRef={ref}
+      observerRef={setRefs}
       inView={inView}
       receipts={receipts}
       formatSupport={formatSupport}

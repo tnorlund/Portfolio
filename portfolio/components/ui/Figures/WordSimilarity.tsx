@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useInView } from "react-intersection-observer";
 import { api } from "../../../services/api";
 import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData, MilkSimilarityTiming } from "../../../types/api";
-import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -130,8 +130,13 @@ const WordSimilarity: React.FC = () => {
   // Track card elements for ResizeObserver
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+  // Lazy loading: fetch data when near viewport
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
   // Animation state - similar to ReceiptStack
-  const [stackRef, inView] = useOptimizedInView({
+  const { ref: stackRef, inView } = useInView({
     threshold: 0.1,
     triggerOnce: true,
   });
@@ -208,6 +213,7 @@ const WordSimilarity: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!nearViewport) return;
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -223,7 +229,7 @@ const WordSimilarity: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, [nearViewport]);
 
   // Start animation when in view and data is loaded
   useEffect(() => {
@@ -248,10 +254,12 @@ const WordSimilarity: React.FC = () => {
     }
   }, []);
 
-  if (loading) {
+  if (!nearViewport || loading) {
     const reservedHeight = windowWidth <= 768 ? 600 : 900;
     return (
       <div
+        ref={lazyRef}
+        data-testid="word-similarity"
         style={{
           padding: "2rem",
           textAlign: "center",
@@ -415,6 +423,7 @@ const WordSimilarity: React.FC = () => {
   return (
     <>
     <div
+      data-testid="word-similarity"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -428,10 +437,9 @@ const WordSimilarity: React.FC = () => {
       {/* Receipt images stack */}
       <div
         ref={(el) => {
-          // Combine refs: stackRef for inView detection, containerRef for measurements
-          if (typeof stackRef === 'function') {
-            stackRef(el);
-          }
+          // Combine refs: lazyRef for lazy loading, stackRef for animation, containerRef for measurements
+          lazyRef(el);
+          stackRef(el);
           (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         style={{

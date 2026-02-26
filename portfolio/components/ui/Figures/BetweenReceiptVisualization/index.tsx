@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
@@ -388,10 +388,22 @@ const EvidencePanel: React.FC<EvidencePanelProps> = ({ revealedCards, isTransiti
 // ─── Main Component ──────────────────────────────────────────────────
 
 const BetweenReceiptVisualization: React.FC = () => {
-  const { ref, inView } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: false,
   });
+
+  const ref = useRef<HTMLDivElement | null>(null);
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    ref.current = node;
+    lazyRef(node);
+    animRef(node);
+  }, [lazyRef, animRef]);
 
   const [receipts, setReceipts] = useState<LabelEvaluatorReceipt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -415,8 +427,9 @@ const BetweenReceiptVisualization: React.FC = () => {
     currentIndex,
   );
 
-  // Fetch data — filter to receipts with review decisions
+  // Fetch data only when near the viewport
   useEffect(() => {
+    if (!nearViewport) return;
     const fetchData = async () => {
       try {
         const response = await api.fetchLabelEvaluatorVisualization();
@@ -434,7 +447,7 @@ const BetweenReceiptVisualization: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [nearViewport]);
 
   const currentReceipt = receipts[currentIndex];
 
@@ -567,9 +580,9 @@ const BetweenReceiptVisualization: React.FC = () => {
     };
   }, [inView, receipts.length, currentIndex]);
 
-  if (loading) {
+  if (!nearViewport || loading) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="between"
@@ -580,7 +593,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
   if (error) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="between"
@@ -593,7 +606,7 @@ const BetweenReceiptVisualization: React.FC = () => {
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="between"
@@ -607,7 +620,7 @@ const BetweenReceiptVisualization: React.FC = () => {
   const nextReceipt = receipts[nextIndex];
 
   return (
-    <div ref={ref} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <ReceiptFlowShell
         layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}

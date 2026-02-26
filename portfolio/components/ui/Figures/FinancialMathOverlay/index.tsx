@@ -378,10 +378,25 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function FinancialMathOverlay() {
-  const { ref, inView } = useInView({
+  // Lazy-load observer: triggers data fetch when near the viewport.
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+
+  // Animation observer: controls animation playback while visible.
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: false,
   });
+
+  // Merge both refs onto the container div
+  const ref = useRef<HTMLDivElement | null>(null);
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    ref.current = node;
+    lazyRef(node);
+    animRef(node);
+  }, [lazyRef, animRef]);
 
   const [receipts, setReceipts] = useState<FinancialMathReceipt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -456,8 +471,9 @@ export default function FinancialMathOverlay() {
     }
   }, [isPoolExhausted]);
 
-  // Initial fetch
+  // Initial fetch — only when near the viewport
   useEffect(() => {
+    if (!nearViewport) return;
     const initialFetch = async () => {
       try {
         const [r1, r2] = await Promise.all([
@@ -485,7 +501,7 @@ export default function FinancialMathOverlay() {
       }
     };
     initialFetch();
-  }, []);
+  }, [nearViewport]);
 
   // Refetch when queue is getting low
   const remainingReceipts = receipts.length - currentReceiptIndex;
@@ -622,9 +638,9 @@ export default function FinancialMathOverlay() {
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
-  if (initialLoading) {
+  if (!nearViewport || initialLoading) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="financial"
@@ -635,7 +651,7 @@ export default function FinancialMathOverlay() {
 
   if (error) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="financial"
@@ -648,7 +664,7 @@ export default function FinancialMathOverlay() {
 
   if (receipts.length === 0) {
     return (
-      <div ref={ref} className={styles.container}>
+      <div ref={setRefs} className={styles.container}>
         <ReceiptFlowLoadingShell
           layoutVars={LAYOUT_VARS}
           variant="financial"
@@ -665,7 +681,7 @@ export default function FinancialMathOverlay() {
     : receipts[nextIndex];
 
   return (
-    <div ref={ref} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <ReceiptFlowShell
         layoutVars={LAYOUT_VARS}
         isTransitioning={isTransitioning}

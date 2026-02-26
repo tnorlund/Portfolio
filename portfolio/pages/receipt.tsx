@@ -9,8 +9,6 @@ import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
 import AnimatedInView from "../components/ui/AnimatedInView";
-import FigurePlaceholder from "../components/ui/FigurePlaceholder";
-import LazyMountInView from "../components/ui/LazyMountInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
@@ -327,12 +325,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={480}
-          placeholder={<FigurePlaceholder variant="receiptFlow" />}
-        >
-          <FinancialMathOverlay />
-        </LazyMountInView>
+        <FinancialMathOverlay />
       </ClientOnly>
 
       <p>
@@ -342,12 +335,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={480}
-          placeholder={<FigurePlaceholder variant="receiptFlow" />}
-        >
-          <BetweenReceiptVisualization />
-        </LazyMountInView>
+        <BetweenReceiptVisualization />
       </ClientOnly>
 
       <p>
@@ -398,21 +386,11 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={480}
-          placeholder={<FigurePlaceholder variant="metrics" />}
-        >
-          <TrainingMetricsAnimation />
-        </LazyMountInView>
+        <TrainingMetricsAnimation />
       </ClientOnly>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={520}
-          placeholder={<FigurePlaceholder variant="layoutlm" />}
-        >
-          <LayoutLMInferenceVisualization />
-        </LazyMountInView>
+        <LayoutLMInferenceVisualization />
       </ClientOnly>
 
       <p>
@@ -459,12 +437,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={520}
-          placeholder={<FigurePlaceholder variant="wordSimilarity" />}
-        >
-          <WordSimilarity />
-        </LazyMountInView>
+        <WordSimilarity />
       </ClientOnly>
 
       <h1>So Now What?</h1>
@@ -511,12 +484,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LazyMountInView
-          minHeight={600}
-          placeholder={<FigurePlaceholder variant="pipeline" />}
-        >
-          <CICDLoop />
-        </LazyMountInView>
+        <CICDLoop />
       </ClientOnly>
 
       <p>
