@@ -855,7 +855,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       const centerOffset = -(bbox.y + bbox.height / 2);
       setTextDy(centerOffset);
     }
-  }, [fontSize]);
+  }, [fontSize, nearViewport]);
 
   // Detect overlap between Plan ribbon and other segments' text
   // Wait for all segments to animate in before checking
