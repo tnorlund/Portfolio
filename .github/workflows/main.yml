@@ -89,7 +89,7 @@ jobs:
             --cov --cov-report=xml
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
@@ -114,7 +114,7 @@ jobs:
           npm run test:ci
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-portfolio
           path: portfolio/coverage
@@ -141,7 +141,7 @@ jobs:
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
