@@ -100,6 +100,21 @@
   width: 180px;
 }
 
+/* Desktop: vertical column (shown by default, hidden on mobile) */
+.legendLayoutLMDesktop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Mobile: 3-col grid matching MOBILE_LEGEND_GROUPS (hidden by default) */
+.legendLayoutLMMobile {
+  display: none;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+}
+
 .legendRowSkeleton {
   display: flex;
   align-items: center;
@@ -162,5 +177,14 @@
 
   .cardBlockSkeleton {
     width: 100%;
+  }
+
+  /* Swap desktop column → mobile grid for LayoutLM skeleton */
+  .legendLayoutLMDesktop {
+    display: none;
+  }
+
+  .legendLayoutLMMobile {
+    display: grid;
   }
 }
