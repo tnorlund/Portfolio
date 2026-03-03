@@ -810,7 +810,6 @@ def run_two_tier_financial_validation(
 
 
 async def run_two_tier_financial_validation_async(
-    llm,
     words,
     labels,
     visual_lines,

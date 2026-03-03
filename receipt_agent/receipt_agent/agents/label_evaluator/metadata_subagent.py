@@ -2,7 +2,7 @@
 Metadata validation subagent for receipt label evaluation.
 
 This evaluates metadata labels (MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER, etc.)
-using ReceiptPlace data from Google Places API and LLM pattern validation.
+using ReceiptPlace data from Google Places API and deterministic pattern validation.
 
 Input:
     - visual_lines: Words grouped by y-coordinate with current labels
@@ -28,36 +28,19 @@ Output:
 """
 
 import asyncio
-import json
 import logging
 import re
 import string
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.language_models import BaseChatModel
 from langsmith import traceable
-from pydantic import ValidationError
 
 from receipt_agent.constants import METADATA_EVALUATION_LABELS
-from receipt_agent.prompts.structured_outputs import (
-    MetadataEvaluationResponse,
-    extract_json_from_response,
-)
-from receipt_agent.utils import (
-    LLMRateLimitError,
-    ainvoke_structured_with_retry,
-    build_structured_failure_decisions,
-    get_structured_output_settings,
-    invoke_structured_with_retry,
-)
 
 from .state import VisualLine, WordContext
 
 logger = logging.getLogger(__name__)
-
-# Maximum receipt lines to include in LLM prompt for context
-MAX_RECEIPT_LINES_FOR_PROMPT = 30
 
 # Labels validated against ReceiptPlace data
 PLACE_VALIDATED_LABELS = {
@@ -489,207 +472,6 @@ def auto_resolve_metadata_words(
 
 
 # =============================================================================
-# LLM Prompt Building
-# =============================================================================
-
-
-def build_metadata_evaluation_prompt(
-    visual_lines: list[VisualLine],
-    metadata_words: list[MetadataWord],
-    place: Any | None = None,
-    merchant_name: str = "Unknown",
-) -> str:
-    """
-    Build the LLM prompt for metadata label evaluation.
-
-    Shows the receipt structure, ReceiptPlace data, and asks the LLM to evaluate.
-    """
-    # Build receipt text representation (first N lines for context)
-    receipt_lines = []
-    for line in visual_lines[:MAX_RECEIPT_LINES_FOR_PROMPT]:
-        line_text = []
-        for wc in line.words:
-            label = wc.current_label.label if wc.current_label else "unlabeled"
-            line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(
-            f"  Line {line.line_index}: " + " | ".join(line_text)
-        )
-
-    receipt_text = "\n".join(receipt_lines)
-    if len(visual_lines) > MAX_RECEIPT_LINES_FOR_PROMPT:
-        receipt_text += (
-            f"\n  ... ({len(visual_lines) - MAX_RECEIPT_LINES_FOR_PROMPT} "
-            "more lines)"
-        )
-
-    # Build ReceiptPlace context
-    place_context = ""
-    if place:
-        place_data = {
-            "merchant_name": getattr(place, "merchant_name", ""),
-            "formatted_address": getattr(place, "formatted_address", ""),
-            "phone_number": getattr(place, "phone_number", ""),
-            "website": getattr(place, "website", ""),
-            "hours_summary": getattr(place, "hours_summary", []),
-        }
-        place_context = f"""
-## Google Places Data (Ground Truth)
-```json
-{json.dumps(place_data, indent=2)}
-```
-"""
-    else:
-        place_context = """
-## Google Places Data
-No Google Places data is available for this merchant. Evaluate labels based on
-format patterns and receipt context only. Be more conservative — prefer
-NEEDS_REVIEW over INVALID when uncertain about metadata labels.
-"""
-
-    # Build metadata words table
-    words_table = []
-    for i, mw in enumerate(metadata_words):
-        wc = mw.word_context
-        notes = []
-        if mw.detected_type:
-            notes.append(f"Pattern: {mw.detected_type}")
-        if mw.place_match:
-            notes.append(f"Matches: {mw.place_match}")
-        notes_str = f" ({', '.join(notes)})" if notes else ""
-
-        words_table.append(
-            f"  [{i}] Line {mw.line_index}\n"
-            f'      Text: "{wc.word.text}"\n'
-            f"      Current Label: {mw.current_label or 'unlabeled'}{notes_str}"
-        )
-
-    words_text = "\n".join(words_table)
-
-    prompt = f"""# Metadata Label Evaluation for {merchant_name}
-
-You are evaluating metadata labels on a receipt. For each word below,
-decide if the current label is VALID, INVALID, or NEEDS_REVIEW.
-
-## Receipt Structure
-{receipt_text}
-{place_context}
-## Words to Evaluate
-{words_text}
-
-## Label Types
-- MERCHANT_NAME: Store name/brand (compare against Google Places merchant_name)
-- ADDRESS_LINE: Street address, city, state, zip (compare against formatted_address)
-- PHONE_NUMBER: Store phone (compare against phone_number from Places)
-- WEBSITE: Store website/email (compare against website from Places)
-- STORE_HOURS: Business hours (e.g., "Mon-Fri 9-5", "Open 24 Hours")
-- DATE: Transaction date (e.g., "12/25/2024", "Dec 25, 2024")
-- TIME: Transaction time (e.g., "14:30", "2:30 PM")
-- PAYMENT_METHOD: Payment type (e.g., "VISA ••••1234", "CASH", "DEBIT")
-- COUPON: Coupon code or description
-- LOYALTY_ID: Customer loyalty/rewards ID
-
-## Your Task
-For each word above, evaluate whether its current label is correct.
-
-- VALID: The label correctly describes this word
-- INVALID: The label is wrong OR unlabeled word should have a metadata label
-- NEEDS_REVIEW: You're unsure
-
-## Validation Rules
-1. For MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER, WEBSITE: Compare against Google Places data
-2. For DATE, TIME, PAYMENT_METHOD: Validate format patterns
-3. For COUPON, LOYALTY_ID: Use context clues
-
-For INVALID words, suggest the correct label from the types above.
-"""
-    return prompt
-
-
-def parse_metadata_evaluation_response(
-    response_text: str,
-    num_words: int,
-) -> list[dict]:
-    """Parse the LLM response into a list of decisions.
-
-    First attempts to parse using the MetadataEvaluationResponse Pydantic model,
-    which validates the schema and constrains suggested_label to valid metadata labels.
-    Falls back to manual JSON parsing if structured parsing fails.
-    """
-    response_text = extract_json_from_response(response_text)
-
-    # Default fallback
-    fallback = {
-        "decision": "NEEDS_REVIEW",
-        "reasoning": "Failed to parse LLM response",
-        "suggested_label": None,
-        "confidence": "low",
-    }
-
-    # Try structured parsing first (validates schema and label values)
-    try:
-        parsed = json.loads(response_text)
-        # Handle both array format and object with evaluations key
-        if isinstance(parsed, list):
-            parsed = {"evaluations": parsed}
-        structured_response = MetadataEvaluationResponse.model_validate(parsed)
-        return structured_response.to_ordered_list(num_words)
-    except (json.JSONDecodeError, ValidationError) as e:
-        logger.debug(
-            "Structured parsing failed, falling back to manual parsing: %s", e
-        )
-
-    # Fallback to manual parsing for backwards compatibility
-    try:
-        decisions = json.loads(response_text)
-        if isinstance(decisions, dict):
-            decisions = decisions.get("evaluations", [])
-
-        # Ensure decisions is a list before iterating
-        if not isinstance(decisions, list):
-            logger.warning(
-                "Decisions is not a list: %s", type(decisions).__name__
-            )
-            return [fallback.copy() for _ in range(num_words)]
-
-        # Validate and normalize
-        result = []
-        for i in range(num_words):
-            decision = next(
-                (d for d in decisions if d.get("index") == i), None
-            )
-            if decision:
-                result.append(
-                    {
-                        "decision": decision.get("decision", "NEEDS_REVIEW"),
-                        "reasoning": decision.get("reasoning", ""),
-                        "suggested_label": decision.get("suggested_label"),
-                        "confidence": decision.get("confidence", "medium"),
-                    }
-                )
-            else:
-                result.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": "No decision from LLM",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-
-        return result
-
-    except (json.JSONDecodeError, TypeError) as e:
-        logger.warning("Failed to parse LLM response: %s", e)
-        return [fallback.copy() for _ in range(num_words)]
-
-
-def _response_to_text(response: Any) -> str:
-    """Convert chat-model response content to a plain string."""
-    content = response.content if hasattr(response, "content") else response
-    return content if isinstance(content, str) else str(content)
-
-
-# =============================================================================
 # Main Evaluation Function
 # =============================================================================
 
@@ -697,7 +479,6 @@ def _response_to_text(response: Any) -> str:
 def evaluate_metadata_labels(
     visual_lines: list[VisualLine],
     place: Any | None,
-    llm: BaseChatModel,
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
@@ -706,12 +487,16 @@ def evaluate_metadata_labels(
     """
     Evaluate metadata labels on a receipt.
 
-    This is the main entry point for the metadata evaluation step.
+    Uses a two-tier deterministic pipeline:
+    - Tier 1: Regex patterns and Google Places matching (auto-resolve)
+    - Tier 2: ChromaDB consensus (for remaining words)
+
+    Unresolved words after both tiers are not included in results
+    (they retain their current labels unchanged).
 
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
         place: ReceiptPlace record from DynamoDB (Google Places data)
-        llm: Language model for evaluation
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
@@ -741,7 +526,7 @@ def evaluate_metadata_labels(
     )
     if resolved_pairs:
         logger.info(
-            "Auto-resolved %d/%d metadata words without LLM",
+            "Auto-resolved %d/%d metadata words (Tier 1)",
             len(resolved_pairs),
             len(metadata_words),
         )
@@ -764,9 +549,9 @@ def evaluate_metadata_labels(
             }
         )
 
-    # If all words resolved, skip LLM entirely
+    # If all words resolved, done
     if not remaining_words:
-        logger.info("All metadata words auto-resolved, skipping LLM call")
+        logger.info("All metadata words auto-resolved (Tier 1)")
         return auto_results
 
     # Step 1.7: ChromaDB consensus auto-resolve for remaining words
@@ -811,222 +596,26 @@ def evaluate_metadata_labels(
                 in chroma_unresolved_ids
             ]
             logger.info(
-                "ChromaDB auto-resolved %d/%d metadata words",
+                "ChromaDB auto-resolved %d/%d metadata words (Tier 2)",
                 len(chroma_resolved),
                 len(chroma_resolved) + len(remaining_words),
             )
 
-    # If all words resolved after ChromaDB, skip LLM entirely
-    if not remaining_words:
-        logger.info("All metadata words resolved (regex + ChromaDB), skipping LLM call")
-        return auto_results
-
-    # Step 2: Build prompt and call LLM (only for unresolved words)
-    prompt = build_metadata_evaluation_prompt(
-        visual_lines=visual_lines,
-        metadata_words=remaining_words,
-        place=place,
-        merchant_name=merchant_name,
-    )
-
-    strict_structured_output, structured_retries = (
-        get_structured_output_settings(logger_instance=logger)
-    )
-    num_words = len(remaining_words)
-    decisions: list[dict[str, Any]] | None = None
-
-    if strict_structured_output:
-        structured_result = invoke_structured_with_retry(
-            llm=llm,
-            schema=MetadataEvaluationResponse,
-            input_payload=prompt,
-            retries=structured_retries,
-        )
-        if (
-            structured_result.success
-            and structured_result.response is not None
-        ):
-            decisions = structured_result.response.to_ordered_list(num_words)
-            logger.debug(
-                "Structured output succeeded with %d evaluations",
-                len(decisions),
-            )
-        else:
-            failure_reason = (
-                "Strict structured output failed for metadata evaluation "
-                f"(attempts={structured_result.attempts}, "
-                f"error={structured_result.error_type or 'unknown'})."
-            )
-            logger.warning("%s", failure_reason)
-            decisions = build_structured_failure_decisions(
-                num_words,
-                failure_reason=failure_reason,
-            )
-    else:
+    if remaining_words:
         logger.info(
-            "Strict structured output disabled for metadata evaluation; "
-            "using legacy text parsing fallback."
+            "%d metadata words unresolved after Tier 1+2 (kept as-is)",
+            len(remaining_words),
         )
-        max_retries = structured_retries
-        last_decisions: list[dict[str, Any]] | None = None
-        use_structured = hasattr(llm, "with_structured_output")
-
-        for attempt in range(max_retries):
-            try:
-                if use_structured:
-                    try:
-                        structured_llm = llm.with_structured_output(
-                            MetadataEvaluationResponse
-                        )
-                        structured_response = structured_llm.invoke(prompt)
-                        if not isinstance(
-                            structured_response, MetadataEvaluationResponse
-                        ):
-                            raise TypeError(
-                                "Expected MetadataEvaluationResponse from "
-                                "with_structured_output"
-                            )
-                        current_decisions = (
-                            structured_response.to_ordered_list(num_words)
-                        )
-                    except LLMRateLimitError:
-                        raise
-                    except Exception as struct_err:
-                        logger.warning(
-                            "Structured output failed (attempt %d/%d), "
-                            "falling back to text: %s",
-                            attempt + 1,
-                            max_retries,
-                            struct_err,
-                        )
-                        text_response = llm.invoke(prompt)
-                        response_text = _response_to_text(text_response)
-                        current_decisions = parse_metadata_evaluation_response(
-                            response_text, num_words
-                        )
-                else:
-                    text_response = llm.invoke(prompt)
-                    response_text = _response_to_text(text_response)
-                    current_decisions = parse_metadata_evaluation_response(
-                        response_text, num_words
-                    )
-
-                last_decisions = current_decisions
-                parse_failures = sum(
-                    1
-                    for decision in current_decisions
-                    if "Failed to parse" in decision.get("reasoning", "")
-                )
-                if parse_failures == 0:
-                    logger.debug(
-                        "Non-strict metadata parsing succeeded on attempt %d/%d",
-                        attempt + 1,
-                        max_retries,
-                    )
-                    break
-                if parse_failures < len(current_decisions):
-                    logger.info(
-                        "Partial parse success: %d/%d parsed on attempt %d/%d",
-                        len(current_decisions) - parse_failures,
-                        len(current_decisions),
-                        attempt + 1,
-                        max_retries,
-                    )
-                    break
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        "All %d decisions failed to parse on attempt %d/%d, "
-                        "retrying...",
-                        len(current_decisions),
-                        attempt + 1,
-                        max_retries,
-                    )
-                else:
-                    logger.warning(
-                        "All %d decisions failed to parse after %d attempts",
-                        len(current_decisions),
-                        max_retries,
-                    )
-            except LLMRateLimitError:
-                raise
-            except Exception as error:
-                logger.error(
-                    "Metadata LLM call failed on attempt %d/%d: %s",
-                    attempt + 1,
-                    max_retries,
-                    error,
-                )
-                if attempt == max_retries - 1:
-                    last_decisions = build_structured_failure_decisions(
-                        num_words,
-                        failure_reason=(
-                            "LLM call failed after "
-                            f"{max_retries} attempts: {error}"
-                        ),
-                    )
-
-        decisions = last_decisions
-
-    if decisions is None:
-        decisions = build_structured_failure_decisions(
-            num_words,
-            failure_reason="No response received",
-        )
-
-    # Step 3: ChromaDB fallback for system failures
-    if chroma_client and remaining_words:
-        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
-
-        failure_word_dicts = [
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "line_id": mw.word_context.word.line_id,
-                "word_id": mw.word_context.word.word_id,
-                "current_label": mw.current_label,
-                "word_text": mw.word_context.word.text,
-            }
-            for mw in remaining_words
-        ]
-        decisions = chroma_fallback_decisions(
-            chroma_client=chroma_client,
-            words=failure_word_dicts,
-            decisions=decisions,
-            merchant_name=merchant_name,
-        )
-
-    # Step 4: Format output for apply_llm_decisions
-    llm_results: list[dict[str, Any]] = []
-    for mw, decision in zip(remaining_words, decisions, strict=True):
-        wc = mw.word_context
-        llm_results.append(
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": mw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": decision,
-            }
-        )
-
-    # Combine auto-resolved + LLM results
-    all_results = auto_results + llm_results
 
     # Log summary
-    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-    for r in all_results:
-        decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+    decision_counts = {"VALID": 0, "INVALID": 0}
+    for r in auto_results:
+        decision = r.get("llm_review", {}).get("decision", "VALID")
         if decision in decision_counts:
             decision_counts[decision] += 1
-        else:
-            decision_counts["NEEDS_REVIEW"] += 1
     logger.info("Metadata evaluation results: %s", decision_counts)
 
-    return all_results
+    return auto_results
 
 
 # =============================================================================
@@ -1038,7 +627,6 @@ def evaluate_metadata_labels(
 async def evaluate_metadata_labels_async(
     visual_lines: list[VisualLine],
     place: Any | None,
-    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
@@ -1047,16 +635,19 @@ async def evaluate_metadata_labels_async(
     """
     Async version of evaluate_metadata_labels.
 
-    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
-    or any LLM that supports ainvoke().
+    Uses a two-tier deterministic pipeline:
+    - Tier 1: Regex patterns and Google Places matching (auto-resolve)
+    - Tier 2: ChromaDB consensus (for remaining words)
 
-    Decorated with @traceable so LLM calls auto-nest under this span in
+    Unresolved words after both tiers are not included in results
+    (they retain their current labels unchanged).
+
+    Decorated with @traceable so calls auto-nest under this span in
     LangSmith when called inside a tracing_context(parent=root).
 
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
         place: ReceiptPlace record from DynamoDB (Google Places data)
-        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
@@ -1086,7 +677,7 @@ async def evaluate_metadata_labels_async(
     )
     if resolved_pairs:
         logger.info(
-            "Auto-resolved %d/%d metadata words without LLM",
+            "Auto-resolved %d/%d metadata words (Tier 1)",
             len(resolved_pairs),
             len(metadata_words),
         )
@@ -1109,9 +700,9 @@ async def evaluate_metadata_labels_async(
             }
         )
 
-    # If all words resolved, skip LLM entirely
+    # If all words resolved, done
     if not remaining_words:
-        logger.info("All metadata words auto-resolved, skipping LLM call")
+        logger.info("All metadata words auto-resolved (Tier 1)")
         return auto_results
 
     # Step 1.7: ChromaDB consensus auto-resolve for remaining words
@@ -1157,229 +748,23 @@ async def evaluate_metadata_labels_async(
                 in chroma_unresolved_ids
             ]
             logger.info(
-                "ChromaDB auto-resolved %d/%d metadata words",
+                "ChromaDB auto-resolved %d/%d metadata words (Tier 2)",
                 len(chroma_resolved),
                 len(chroma_resolved) + len(remaining_words),
             )
 
-    # If all words resolved after ChromaDB, skip LLM entirely
-    if not remaining_words:
-        logger.info("All metadata words resolved (regex + ChromaDB), skipping LLM call")
-        return auto_results
-
-    # Step 2: Build prompt (only for unresolved words)
-    prompt = build_metadata_evaluation_prompt(
-        visual_lines=visual_lines,
-        metadata_words=remaining_words,
-        place=place,
-        merchant_name=merchant_name,
-    )
-
-    strict_structured_output, structured_retries = (
-        get_structured_output_settings(logger_instance=logger)
-    )
-    num_words = len(remaining_words)
-    decisions: list[dict[str, Any]] | None = None
-
-    if strict_structured_output:
-        structured_result = await ainvoke_structured_with_retry(
-            llm=llm,
-            schema=MetadataEvaluationResponse,
-            input_payload=prompt,
-            retries=structured_retries,
-        )
-        if (
-            structured_result.success
-            and structured_result.response is not None
-        ):
-            decisions = structured_result.response.to_ordered_list(num_words)
-            logger.debug(
-                "Structured output succeeded with %d evaluations",
-                len(decisions),
-            )
-        else:
-            failure_reason = (
-                "Strict structured output failed for metadata evaluation "
-                f"(attempts={structured_result.attempts}, "
-                f"error={structured_result.error_type or 'unknown'})."
-            )
-            logger.warning("%s", failure_reason)
-            decisions = build_structured_failure_decisions(
-                num_words,
-                failure_reason=failure_reason,
-            )
-    else:
+    if remaining_words:
         logger.info(
-            "Strict structured output disabled for metadata evaluation; "
-            "using legacy text parsing fallback."
-        )
-        max_retries = structured_retries
-        last_decisions: list[dict[str, Any]] | None = None
-        use_structured = hasattr(llm, "with_structured_output")
-
-        for attempt in range(max_retries):
-            try:
-                if use_structured:
-                    try:
-                        structured_llm = llm.with_structured_output(
-                            MetadataEvaluationResponse
-                        )
-                        if hasattr(structured_llm, "ainvoke"):
-                            structured_response = await structured_llm.ainvoke(
-                                prompt
-                            )
-                        else:
-                            structured_response = await asyncio.to_thread(
-                                structured_llm.invoke,
-                                prompt,
-                            )
-                        if not isinstance(
-                            structured_response, MetadataEvaluationResponse
-                        ):
-                            raise TypeError(
-                                "Expected MetadataEvaluationResponse from "
-                                "with_structured_output"
-                            )
-                        current_decisions = (
-                            structured_response.to_ordered_list(num_words)
-                        )
-                    except LLMRateLimitError:
-                        raise
-                    except Exception as struct_err:
-                        logger.warning(
-                            "Structured output failed (attempt %d/%d), "
-                            "falling back to text: %s",
-                            attempt + 1,
-                            max_retries,
-                            struct_err,
-                        )
-                        if hasattr(llm, "ainvoke"):
-                            text_response = await llm.ainvoke(prompt)
-                        else:
-                            text_response = await asyncio.to_thread(
-                                llm.invoke, prompt
-                            )
-                        response_text = _response_to_text(text_response)
-                        current_decisions = parse_metadata_evaluation_response(
-                            response_text, num_words
-                        )
-                else:
-                    if hasattr(llm, "ainvoke"):
-                        text_response = await llm.ainvoke(prompt)
-                    else:
-                        text_response = await asyncio.to_thread(
-                            llm.invoke, prompt
-                        )
-                    response_text = _response_to_text(text_response)
-                    current_decisions = parse_metadata_evaluation_response(
-                        response_text, num_words
-                    )
-
-                last_decisions = current_decisions
-                parse_failures = sum(
-                    1
-                    for decision in current_decisions
-                    if "Failed to parse" in decision.get("reasoning", "")
-                )
-                if parse_failures == 0:
-                    break
-                if parse_failures < len(current_decisions):
-                    logger.info(
-                        "Partial parse success: %d/%d parsed on attempt %d",
-                        len(current_decisions) - parse_failures,
-                        len(current_decisions),
-                        attempt + 1,
-                    )
-                    break
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        "All %d decisions failed to parse on attempt %d, "
-                        "retrying...",
-                        len(current_decisions),
-                        attempt + 1,
-                    )
-                else:
-                    logger.warning(
-                        "All %d decisions failed to parse after %d attempts",
-                        len(current_decisions),
-                        max_retries,
-                    )
-            except LLMRateLimitError:
-                raise
-            except Exception as error:
-                logger.error(
-                    "Metadata LLM call failed on attempt %d: %s",
-                    attempt + 1,
-                    error,
-                )
-                if attempt == max_retries - 1:
-                    last_decisions = build_structured_failure_decisions(
-                        num_words,
-                        failure_reason=(
-                            "LLM call failed after "
-                            f"{max_retries} attempts: {error}"
-                        ),
-                    )
-
-        decisions = last_decisions
-
-    if decisions is None:
-        decisions = build_structured_failure_decisions(
-            num_words,
-            failure_reason="No response received",
+            "%d metadata words unresolved after Tier 1+2 (kept as-is)",
+            len(remaining_words),
         )
 
-    # Step 3: ChromaDB fallback for system failures
-    if chroma_client and remaining_words:
-        from receipt_agent.utils.chroma_helpers import chroma_fallback_decisions
-
-        failure_word_dicts = [
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "line_id": mw.word_context.word.line_id,
-                "word_id": mw.word_context.word.word_id,
-                "current_label": mw.current_label,
-                "word_text": mw.word_context.word.text,
-            }
-            for mw in remaining_words
-        ]
-        decisions = await asyncio.to_thread(
-            chroma_fallback_decisions,
-            chroma_client=chroma_client,
-            words=failure_word_dicts,
-            decisions=decisions,
-            merchant_name=merchant_name,
-        )
-
-    # Step 4: Format output
-    llm_results: list[dict[str, Any]] = []
-    for mw, decision in zip(remaining_words, decisions, strict=True):
-        wc = mw.word_context
-        llm_results.append(
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": mw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": decision,
-            }
-        )
-
-    # Combine auto-resolved + LLM results
-    all_results = auto_results + llm_results
-
-    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-    for r in all_results:
-        decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0}
+    for r in auto_results:
+        decision = r.get("llm_review", {}).get("decision", "VALID")
         if decision in decision_counts:
             decision_counts[decision] += 1
-        else:
-            decision_counts["NEEDS_REVIEW"] += 1
     logger.info("Metadata evaluation results: %s", decision_counts)
 
-    return all_results
+    return auto_results

@@ -237,19 +237,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "has_place": place is not None,
                 },
             ):
-                from receipt_agent.utils import create_production_invoker
-
-                # create_production_invoker() creates an LLM invoker with:
-                # - OpenRouter as the LLM provider
-                # - Jitter and retry logic for rate limits
-                # Environment variables: OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
-                llm_invoker = create_production_invoker(
-                    temperature=0.0,
-                    timeout=120,
-                    circuit_breaker_threshold=5,
-                    max_jitter_seconds=0.25,
-                )
-
                 # Run metadata evaluation
                 from receipt_agent.agents.label_evaluator.metadata_subagent import (
                     evaluate_metadata_labels,
@@ -258,7 +245,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 decisions = evaluate_metadata_labels(
                     visual_lines=visual_lines,
                     place=place,
-                    llm=llm_invoker,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,

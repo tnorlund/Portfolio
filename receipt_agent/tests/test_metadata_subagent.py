@@ -5,16 +5,12 @@ Tests the auto-resolve logic, pattern detection, and skip logic.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
 
-import pytest
-from receipt_agent.agents.label_evaluator import metadata_subagent
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     MetadataWord,
     auto_resolve_metadata_words,
     detect_pattern_type,
     detect_tier1_label,
-    evaluate_metadata_labels,
     should_skip_for_metadata_evaluation,
 )
 from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
@@ -543,41 +539,3 @@ class TestShouldSkipForMetadataEvaluation:
         assert should_skip_for_metadata_evaluation("12/25/2024") is False
 
 
-class TestStrictStructuredOutput:
-    """Strict structured output behavior for metadata evaluation."""
-
-    def test_strict_mode_skips_text_parsing_fallback(self, monkeypatch):
-        """When strict is enabled, failed structured output should not text-parse."""
-        monkeypatch.setenv("LLM_STRICT_STRUCTURED_OUTPUT", "true")
-        monkeypatch.setenv("LLM_STRUCTURED_OUTPUT_RETRIES", "1")
-
-        def _no_text_fallback(*args, **kwargs):
-            raise AssertionError("text parsing fallback should not be called")
-
-        monkeypatch.setattr(
-            metadata_subagent,
-            "parse_metadata_evaluation_response",
-            _no_text_fallback,
-        )
-
-        mock_llm = MagicMock()
-        mock_structured = MagicMock()
-        mock_structured.invoke.side_effect = RuntimeError("schema failure")
-        mock_llm.with_structured_output.return_value = mock_structured
-
-        wc = _make_word_context("Mon-Fri", "STORE_HOURS", word_id=1, x=0.1)
-        line = VisualLine(line_index=0, words=[wc], y_center=wc.normalized_y)
-
-        results = evaluate_metadata_labels(
-            visual_lines=[line],
-            place=None,
-            llm=mock_llm,
-            image_id=TEST_IMAGE_ID,
-            receipt_id=1,
-            merchant_name="Test Merchant",
-        )
-
-        assert len(results) == 1
-        decision = results[0]["llm_review"]
-        assert decision["decision"] == "NEEDS_REVIEW"
-        assert "Strict structured output failed" in decision["reasoning"]

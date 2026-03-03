@@ -395,7 +395,6 @@ def create_label_evaluator_graph(
             metadata_decisions = evaluate_metadata_labels_fn(
                 visual_lines=state.visual_lines,
                 place=state.place,
-                llm=_llm,
                 image_id=state.image_id,
                 receipt_id=state.receipt_id,
                 merchant_name=merchant_name,
