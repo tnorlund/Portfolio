@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
+import React, { useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
 import { animated, useSprings } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
