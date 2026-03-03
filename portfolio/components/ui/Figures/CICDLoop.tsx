@@ -670,7 +670,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
-    if ((!inView && !hasEntered) || !mounted) {
+    if (!inView || !mounted) {
       clearPulseAnimation();
       return;
     }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
-import { animated, useSpring, config } from "@react-spring/web";
+import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
@@ -297,43 +297,35 @@ interface LabelBarProps {
 }
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }) => {
-  const spring = useSpring({
-    to: {
-      width: value * 100,
-      displayValue: value,
-      distWidth: (support / maxSupport) * 100,
-    },
-    config: SPRING_CONFIG,
-  });
+  const widthPct = value * 100;
+  const distWidthPct = (support / maxSupport) * 100;
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
       <div className={styles.labelBarStack}>
         <div className={styles.labelBarSegmented}>
-          <animated.div
+          <div
             className={styles.labelBarFilled}
-            style={{ width: spring.width.to((w) => `${w}%`) }}
+            style={{ width: `${widthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarEmpty}
-            style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - widthPct}%` }}
           />
         </div>
         <div className={styles.labelBarDistribution}>
-          <animated.div
+          <div
             className={styles.labelBarDistFilled}
-            style={{ width: spring.distWidth.to((w) => `${w}%`) }}
+            style={{ width: `${distWidthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarDistEmpty}
-            style={{ width: spring.distWidth.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - distWidthPct}%` }}
           />
         </div>
       </div>
-      <animated.span className={styles.labelBarValue}>
-        {spring.displayValue.to((v) => v.toFixed(2))}
-      </animated.span>
+      <span className={styles.labelBarValue}>{value.toFixed(2)}</span>
     </div>
   );
 };
@@ -431,30 +423,18 @@ const MatrixCell: React.FC<MatrixCellProps> = ({ value, rowSum, isDiagonal }) =>
   // Row-normalized intensity: what % of this row's predictions went to this cell
   const intensity = rowSum > 0 ? value / rowSum : 0;
 
-  const spring = useSpring({
-    to: { intensity, displayValue: value },
-    config: SPRING_CONFIG,
-  });
-
   // Use green for diagonal (correct predictions), red for off-diagonal (errors)
   // Empty cells (value = 0) use transparent background
   const colorVar = isDiagonal ? "--color-green-rgb" : "--color-red-rgb";
+  const bg = intensity < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + intensity * 0.8})`;
 
   return (
-    <animated.div
+    <div
       className={styles.matrixCell}
-      style={{
-        backgroundColor: spring.intensity.to((i) =>
-          i < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + i * 0.8})`
-        ),
-      }}
+      style={{ backgroundColor: bg }}
     >
-      <animated.span>
-        {spring.displayValue.to((v) =>
-          v > 0.5 ? Math.round(v).toLocaleString() : ""
-        )}
-      </animated.span>
-    </animated.div>
+      <span>{value > 0 ? Math.round(value).toLocaleString() : ""}</span>
+    </div>
   );
 };
 
@@ -682,7 +662,7 @@ const TrainingMetricsAnimation: React.FC = () => {
   };
 
   return (
-    <animated.div ref={setRefs} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
       <EpochTimeline
         epochs={epochs}
@@ -705,7 +685,7 @@ const TrainingMetricsAnimation: React.FC = () => {
           />
         )}
       </div>
-    </animated.div>
+    </div>
   );
 };
 

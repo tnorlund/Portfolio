@@ -2,7 +2,7 @@ import { animated, useSprings } from "@react-spring/web";
 import React from "react";
 import {
   useViewportAnimation,
-  pointAtCached,
+  getCachedPathLength,
   fadeLUT,
   OPTIMIZED_SPRING_CONFIG,
 } from "./useDiagramOptimizations";
@@ -94,6 +94,36 @@ function BitStream({
         [pathRefs.length]
     );
 
+    // Precompute 101 points per path to eliminate per-frame getPointAtLength DOM calls
+    const precomputedRef = React.useRef<Map<number, Array<{ x: number; y: number }>>>(new Map());
+
+    const getPoint = React.useCallback(
+        (pathIdx: number, pct: number): { x: number; y: number } => {
+            let points = precomputedRef.current.get(pathIdx);
+            if (!points) {
+                const el = pathRefs[pathIdx].current;
+                if (!el) return { x: 0, y: 0 };
+                const len = getCachedPathLength(el);
+                points = new Array(101);
+                for (let i = 0; i <= 100; i++) {
+                    const pt = el.getPointAtLength((i / 100) * len);
+                    points[i] = { x: pt.x, y: pt.y };
+                }
+                precomputedRef.current.set(pathIdx, points);
+            }
+            const clamped = Math.max(0, Math.min(100, pct));
+            const lower = Math.floor(clamped);
+            const upper = Math.ceil(clamped);
+            if (lower === upper || upper > 100) return points[lower];
+            const t = clamped - lower;
+            return {
+                x: points[lower].x + (points[upper].x - points[lower].x) * t,
+                y: points[lower].y + (points[upper].y - points[lower].y) * t,
+            };
+        },
+        [pathRefs]
+    );
+
     const [springs] = useSprings(
         bits.length,
         (i) => ({
@@ -112,11 +142,10 @@ function BitStream({
                 <animated.g
                     key={i}
                     transform={spring.pct.to((p) => {
-                        // Use cached path length for better performance
-                        const { x, y } = pointAtCached(pathRefs[bits[i].pathIdx], p);
+                        const { x, y } = getPoint(bits[i].pathIdx, p);
                         return `translate(${x},${y}) rotate(${bits[i].rot})`;
                     })}
-                    opacity={spring.pct.to(fadeLUT)} // Use lookup table for fade
+                    opacity={spring.pct.to(fadeLUT)}
                 >
                     <rect
                         x="-0.45em"

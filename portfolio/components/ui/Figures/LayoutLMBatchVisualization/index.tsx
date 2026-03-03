@@ -23,6 +23,8 @@ import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
+const EMPTY_STRING_SET = new Set<string>();
+
 // Label colors for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
@@ -327,24 +329,27 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                 <stop offset="80%" stopColor="var(--color-red)" />
                 <stop offset="100%" stopColor="transparent" />
               </linearGradient>
-              <filter id={`scanLineGlow-${receipt.receipt_id}`} x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
             </defs>
             {/* Only show scan line when scanProgress > 0 to avoid flash at top during transitions */}
             {scanProgress > 0 && (
-              <rect
-                x="0"
-                y={(scanProgress / 100) * receiptData.height}
-                width={receiptData.width}
-                height={Math.max(receiptData.height * 0.005, 3)}
-                fill={`url(#scanLineGradient-${receipt.receipt_id})`}
-                filter={`url(#scanLineGlow-${receipt.receipt_id})`}
-              />
+              <>
+                {/* Soft glow behind scan line (no GPU-expensive blur filter) */}
+                <rect
+                  x="0"
+                  y={(scanProgress / 100) * receiptData.height - receiptData.height * 0.008}
+                  width={receiptData.width}
+                  height={Math.max(receiptData.height * 0.02, 8)}
+                  fill={`url(#scanLineGradient-${receipt.receipt_id})`}
+                  opacity={0.3}
+                />
+                <rect
+                  x="0"
+                  y={(scanProgress / 100) * receiptData.height}
+                  width={receiptData.width}
+                  height={Math.max(receiptData.height * 0.005, 3)}
+                  fill={`url(#scanLineGradient-${receipt.receipt_id})`}
+                />
+              </>
             )}
 
             {/* Bounding boxes */}
@@ -407,7 +412,6 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
 }) => {
   const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
-  const [revealedEntityTypes, setRevealedEntityTypes] = useState<Set<string>>(new Set());
   const [showInferenceTime, setShowInferenceTime] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [startQueueAnimation, setStartQueueAnimation] = useState(false);
@@ -437,68 +441,43 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     }
   }, [remainingReceipts, onFetchMore, isPoolExhausted]);
 
-  // Calculate revealed word IDs based on scan progress
-  const revealedWordIds = useMemo(() => {
+  // Build prediction lookup once per receipt (avoids rebuilding on every scanProgress change)
+  const predMap = useMemo(() => {
+    const receipt = receipts[currentReceiptIndex];
+    if (!receipt) return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (const pred of receipt.original.predictions) {
+      if (pred.predicted_label_base !== "O") {
+        map.set(`${pred.line_id}_${pred.word_id}`, pred.predicted_label_base);
+      }
+    }
+    return map;
+  }, [receipts, currentReceiptIndex]);
+
+  // Calculate revealed word IDs and entity types in a single pass
+  const { revealedWordIds, revealedEntityTypes } = useMemo(() => {
     const receipt = receipts[currentReceiptIndex];
     if (!receipt) {
-      return new Set<string>();
+      return { revealedWordIds: EMPTY_STRING_SET, revealedEntityTypes: EMPTY_STRING_SET };
     }
 
     const { words } = receipt.original;
-    const revealed = new Set<string>();
-
-    // Scan progress is 0-100, representing vertical position
     const scanY = scanProgress / 100;
+    const wordIds = new Set<string>();
+    const entityTypes = new Set<string>();
 
     for (const word of words) {
-      // Word is revealed when scan line passes its top edge
-      // bounding_box.y is normalized from bottom, so we need to invert
       const wordTopY = 1 - word.bounding_box.y - word.bounding_box.height;
       if (wordTopY <= scanY) {
-        revealed.add(`${word.line_id}_${word.word_id}`);
+        const key = `${word.line_id}_${word.word_id}`;
+        wordIds.add(key);
+        const label = predMap.get(key);
+        if (label) entityTypes.add(label);
       }
     }
 
-    return revealed;
-  }, [receipts, currentReceiptIndex, scanProgress]);
-
-  // Update revealed entity types based on scan progress
-  const updateRevealedEntityTypes = useCallback(() => {
-    const receipt = receipts[currentReceiptIndex];
-    if (!receipt) return;
-
-    const { words, predictions } = receipt.original;
-    const scanY = scanProgress / 100;
-
-    // Build word lookup for efficient access
-    const wordMap = new Map<string, (typeof words)[0]>();
-    for (const w of words) {
-      wordMap.set(`${w.line_id}_${w.word_id}`, w);
-    }
-
-    const newRevealed = new Set<string>();
-
-    for (const pred of predictions) {
-      if (pred.predicted_label_base === "O") continue;
-
-      // Find the corresponding word using Map lookup
-      const word = wordMap.get(`${pred.line_id}_${pred.word_id}`);
-      if (!word) continue;
-
-      // Check if word is revealed by scan
-      const wordTopY = 1 - word.bounding_box.y - word.bounding_box.height;
-      if (wordTopY <= scanY) {
-        newRevealed.add(pred.predicted_label_base);
-      }
-    }
-
-    setRevealedEntityTypes(newRevealed);
-  }, [receipts, currentReceiptIndex, scanProgress]);
-
-  // Update revealed entities when scan progress changes
-  useEffect(() => {
-    updateRevealedEntityTypes();
-  }, [scanProgress, updateRevealedEntityTypes]);
+    return { revealedWordIds: wordIds, revealedEntityTypes: entityTypes };
+  }, [receipts, currentReceiptIndex, scanProgress, predMap]);
 
   // Animation loop - uses actual inference time per receipt
   // Uses a ref to track receipts length to avoid restarting animation
@@ -577,7 +556,6 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
         isInTransition = false;
         setCurrentReceiptIndex(receiptIndex);
         setScanProgress(0);
-        setRevealedEntityTypes(new Set());
         setShowInferenceTime(false);
         setIsTransitioning(false);
         startTime = currentTime;
