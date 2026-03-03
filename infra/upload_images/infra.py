@@ -324,6 +324,7 @@ class UploadImages(ComponentResource):
                                         "dynamodb:Query",
                                         "dynamodb:PutItem",
                                         "dynamodb:UpdateItem",
+                                        "dynamodb:DeleteItem",
                                         "dynamodb:BatchWriteItem",
                                     ],
                                     "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
