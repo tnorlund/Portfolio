@@ -18,6 +18,7 @@ from receipt_dynamo import (
     ReceiptWordLabel,
     Word,
 )
+
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 BB = {"x": 0, "y": 0, "width": 100, "height": 100}
 POINT_TL = {"x": 0, "y": 0}
@@ -194,7 +195,9 @@ def _make_receipt_word_label(
         word_id=word_id,
         label="PRODUCT_NAME",
         reasoning="test label",
-        timestamp_added=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        timestamp_added=datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat(),
         validation_status="VALID",
     )
 

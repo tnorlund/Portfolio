@@ -1,17 +1,24 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
-import { animated, useSpring, config } from "@react-spring/web";
+import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
-// Label color mapping for 8-label hybrid model
+// Normalize ADDRESS_LINE to ADDRESS for display purposes
+const normalizeLabel = (label: string): string => {
+  if (label === "ADDRESS_LINE") return "ADDRESS";
+  return label;
+};
+
+// Label color mapping for hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",
@@ -19,13 +26,14 @@ const LABEL_COLORS: Record<string, string> = {
 };
 
 const getLabelColor = (label: string): string => {
-  return LABEL_COLORS[label] || "var(--color-gray, #888)";
+  return LABEL_COLORS[normalizeLabel(label)] || "var(--color-gray, #888)";
 };
 
 // Format label: "MERCHANT_NAME" -> "Merchant Name", "O" -> "None"
 const formatLabel = (label: string): string => {
-  if (label === "O") return "None";
-  return label
+  const normalized = normalizeLabel(label);
+  if (normalized === "O") return "None";
+  return normalized
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
@@ -38,6 +46,7 @@ const LABEL_ABBREV: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amt",
   ADDRESS: "Addr",
+  PHONE_NUMBER: "Phone",
   WEBSITE: "Web",
   STORE_HOURS: "Hours",
   PAYMENT_METHOD: "Pay",
@@ -45,7 +54,8 @@ const LABEL_ABBREV: Record<string, string> = {
 };
 
 const formatLabelAbbrev = (label: string): string => {
-  return LABEL_ABBREV[label] || label.slice(0, 4);
+  const normalized = normalizeLabel(label);
+  return LABEL_ABBREV[normalized] || normalized.slice(0, 4);
 };
 
 // Spring config for smooth animations
@@ -293,43 +303,35 @@ interface LabelBarProps {
 }
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }) => {
-  const spring = useSpring({
-    to: {
-      width: value * 100,
-      displayValue: value,
-      distWidth: (support / maxSupport) * 100,
-    },
-    config: SPRING_CONFIG,
-  });
+  const widthPct = Math.max(0, Math.min(100, value * 100));
+  const distWidthPct = maxSupport > 0 ? Math.max(0, Math.min(100, (support / maxSupport) * 100)) : 0;
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
       <div className={styles.labelBarStack}>
         <div className={styles.labelBarSegmented}>
-          <animated.div
+          <div
             className={styles.labelBarFilled}
-            style={{ width: spring.width.to((w) => `${w}%`) }}
+            style={{ width: `${widthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarEmpty}
-            style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - widthPct}%` }}
           />
         </div>
         <div className={styles.labelBarDistribution}>
-          <animated.div
+          <div
             className={styles.labelBarDistFilled}
-            style={{ width: spring.distWidth.to((w) => `${w}%`) }}
+            style={{ width: `${distWidthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarDistEmpty}
-            style={{ width: spring.distWidth.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - distWidthPct}%` }}
           />
         </div>
       </div>
-      <animated.span className={styles.labelBarValue}>
-        {spring.displayValue.to((v) => v.toFixed(2))}
-      </animated.span>
+      <span className={styles.labelBarValue}>{value.toFixed(2)}</span>
     </div>
   );
 };
@@ -427,48 +429,172 @@ const MatrixCell: React.FC<MatrixCellProps> = ({ value, rowSum, isDiagonal }) =>
   // Row-normalized intensity: what % of this row's predictions went to this cell
   const intensity = rowSum > 0 ? value / rowSum : 0;
 
-  const spring = useSpring({
-    to: { intensity, displayValue: value },
-    config: SPRING_CONFIG,
-  });
-
   // Use green for diagonal (correct predictions), red for off-diagonal (errors)
   // Empty cells (value = 0) use transparent background
   const colorVar = isDiagonal ? "--color-green-rgb" : "--color-red-rgb";
+  const bg = intensity < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + intensity * 0.8})`;
 
   return (
-    <animated.div
+    <div
       className={styles.matrixCell}
-      style={{
-        backgroundColor: spring.intensity.to((i) =>
-          i < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + i * 0.8})`
-        ),
-      }}
+      style={{ backgroundColor: bg }}
     >
-      <animated.span>
-        {spring.displayValue.to((v) =>
-          v > 0.5 ? Math.round(v).toLocaleString() : ""
-        )}
-      </animated.span>
-    </animated.div>
+      <span>{value > 0 ? Math.round(value).toLocaleString() : ""}</span>
+    </div>
+  );
+};
+
+// Skeleton placeholder labels (match the 8 entity labels in the loaded state)
+const SKELETON_LABELS = [
+  "Address", "Amount", "Date", "Merchant Name",
+  "Payment Method", "Store Hours", "Time", "Website",
+];
+
+// 9 labels for the confusion matrix (8 entity + O)
+const SKELETON_MATRIX_LABELS = ["Addr", "Amt", "Date", "Merch", "Pay", "Hours", "Time", "Web", "O"];
+
+const SKELETON_BG = "rgba(var(--text-color-rgb, 0, 0, 0), 0.08)";
+
+// Skeleton that mirrors the loaded layout exactly
+const TrainingMetricsSkeleton: React.FC = () => {
+  const N = SKELETON_MATRIX_LABELS.length;
+  const gridTemplateColumns = `var(--matrix-label-col) repeat(${N}, var(--matrix-cell-size))`;
+  const gridTemplateRows = `var(--matrix-header-row) repeat(${N}, var(--matrix-cell-size))`;
+
+  return (
+    <>
+      {/* DatasetStats skeleton */}
+      <div className={styles.datasetStats}>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Train/Val</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "90%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "10%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 70, height: 10 }} />
+        </div>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Labeled</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "33%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "67%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 30, height: 10 }} />
+        </div>
+      </div>
+
+      {/* Desktop timeline skeleton */}
+      <div className={styles.timeline}>
+        <div className={styles.timelineNodes}>
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className={styles.timelineNode}>
+              <span className={styles.timelineNodeDot} style={{ opacity: 0.3 }} />
+              <span className={styles.timelineNodeLabel} style={{ opacity: 0.3 }}>{i + 1}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile timeline skeleton */}
+      <div className={styles.timelineMobile}>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>‹</div>
+        <div className={styles.timelineMobileCenter}>
+          <span className={styles.timelineMobileText} style={{ opacity: 0.3 }}>— / —</span>
+        </div>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>›</div>
+      </div>
+
+      {/* Left panel skeleton */}
+      <div className={styles.leftPanel}>
+        {/* F1 Gauge */}
+        <div className={styles.gaugeContainer}>
+          <div style={{ width: 80, height: 32, background: SKELETON_BG, borderRadius: 4 }} />
+          <div className={styles.gaugeBar} />
+        </div>
+
+        {/* Per-label bars */}
+        <div className={styles.perLabelContainer}>
+          {SKELETON_LABELS.map((label) => (
+            <div key={label} className={styles.labelRow}>
+              <span className={styles.labelName} style={{ opacity: 0.3 }}>{label}</span>
+              <div className={styles.labelBarStack}>
+                <div className={styles.labelBarSegmented}>
+                  <div className={styles.labelBarEmpty} style={{ width: "100%" }} />
+                </div>
+                <div className={styles.labelBarDistribution}>
+                  <div className={styles.labelBarDistEmpty} style={{ width: "100%" }} />
+                </div>
+              </div>
+              <span className={styles.labelBarValue} style={{ opacity: 0 }}>0.00</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Bar legend */}
+        <BarLegend />
+      </div>
+
+      {/* Right panel — confusion matrix skeleton */}
+      <div className={styles.rightPanel}>
+        <div className={styles.matrixContainer}>
+          <div className={styles.matrixGrid} style={{ gridTemplateColumns, gridTemplateRows }}>
+            <div className={styles.matrixCorner} />
+            {SKELETON_MATRIX_LABELS.map((label) => (
+              <div key={`x-${label}`} className={styles.matrixAxisLabel} style={{ opacity: 0.3 }}>
+                {label}
+              </div>
+            ))}
+            {SKELETON_MATRIX_LABELS.map((rowLabel, i) => (
+              <React.Fragment key={`row-${i}`}>
+                <div className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`} style={{ opacity: 0.3 }}>
+                  {rowLabel}
+                </div>
+                {SKELETON_MATRIX_LABELS.map((_, j) => (
+                  <div
+                    key={`${i}-${j}`}
+                    className={styles.matrixCell}
+                    style={{ backgroundColor: i === j ? SKELETON_BG : "transparent" }}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
 // Main Component
 const TrainingMetricsAnimation: React.FC = () => {
-  const { ref, inView } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: true,
   });
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      lazyRef(node);
+      animRef(node);
+    },
+    [lazyRef, animRef],
+  );
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
   const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
   const hasStartedAnimation = useRef(false);
+  const hasFetchedRef = useRef(false);
 
-  // Fetch data on mount
+  // Fetch data only when near viewport - defers work until section is close
   useEffect(() => {
+    if (!nearViewport || hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     api
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
@@ -480,7 +606,7 @@ const TrainingMetricsAnimation: React.FC = () => {
         console.error("Failed to fetch training metrics:", err);
         setIsLoading(false);
       });
-  }, []);
+  }, [nearViewport]);
 
   // Autoplay animation when in view and data is loaded
   useEffect(() => {
@@ -521,18 +647,18 @@ const TrainingMetricsAnimation: React.FC = () => {
 
   const currentEpoch = epochs[currentEpochIndex];
 
-  if (isLoading) {
+  if (!nearViewport || isLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading training metrics...
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
 
   if (!currentEpoch) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No training data available
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
@@ -542,7 +668,7 @@ const TrainingMetricsAnimation: React.FC = () => {
   };
 
   return (
-    <animated.div ref={ref} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
       <EpochTimeline
         epochs={epochs}
@@ -565,7 +691,7 @@ const TrainingMetricsAnimation: React.FC = () => {
           />
         )}
       </div>
-    </animated.div>
+    </div>
   );
 };
 

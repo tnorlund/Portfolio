@@ -879,62 +879,77 @@ async def unified_receipt_evaluator(
             os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
         )
         cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip()
-        cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT") or None
-        cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE") or None
+        cloud_tenant = (os.environ.get("CHROMA_CLOUD_TENANT") or "").strip() or None
+        cloud_database = (os.environ.get("CHROMA_CLOUD_DATABASE") or "").strip() or None
 
         from receipt_chroma import ChromaClient
 
         if use_chroma_cloud and cloud_api_key:
-            try:
-                chroma_client = (
-                    ChromaClient(  # pylint: disable=unexpected-keyword-arg
-                        cloud_api_key=cloud_api_key,
-                        cloud_tenant=cloud_tenant,
-                        cloud_database=cloud_database,
-                        mode="read",
-                        metadata_only=True,
+            if not cloud_tenant or not cloud_database:
+                missing_vars = [
+                    name
+                    for name, val in (
+                        ("CHROMA_CLOUD_TENANT", cloud_tenant),
+                        ("CHROMA_CLOUD_DATABASE", cloud_database),
                     )
+                    if not val
+                ]
+                logger.error(
+                    "CHROMA_CLOUD_ENABLED=true but %s not set; "
+                    "falling back to S3 snapshot",
+                    ", ".join(missing_vars),
                 )
-                cloud_has_words = False
+            else:
                 try:
-                    chroma_client.get_collection("words")
-                    cloud_has_words = True
+                    chroma_client = (
+                        ChromaClient(  # pylint: disable=unexpected-keyword-arg
+                            cloud_api_key=cloud_api_key,
+                            cloud_tenant=cloud_tenant,
+                            cloud_database=cloud_database,
+                            mode="read",
+                            metadata_only=True,
+                        )
+                    )
+                    cloud_has_words = False
+                    try:
+                        chroma_client.get_collection("words")
+                        cloud_has_words = True
+                    except Exception as e:
+                        logger.warning(
+                            "Chroma Cloud words collection not available: %s",
+                            e,
+                        )
+                    cloud_has_lines = False
+                    try:
+                        chroma_client.get_collection("lines")
+                        cloud_has_lines = True
+                    except Exception as e:
+                        logger.warning(
+                            "Chroma Cloud lines collection not available: %s",
+                            e,
+                        )
+                    if cloud_has_words or cloud_has_lines:
+                        logger.info(
+                            "Using Chroma Cloud for evidence "
+                            "lookup (words=%s, lines=%s, "
+                            "tenant=%s, database=%s)",
+                            cloud_has_words,
+                            cloud_has_lines,
+                            cloud_tenant,
+                            cloud_database,
+                        )
+                    else:
+                        logger.warning(
+                            "Chroma Cloud has no collections;"
+                            " falling back to S3 snapshot"
+                        )
+                        chroma_client = None
                 except Exception as e:
                     logger.warning(
-                        "Chroma Cloud words collection not available: %s",
+                        "Could not initialize Chroma Cloud client: %s",
                         e,
-                    )
-                cloud_has_lines = False
-                try:
-                    chroma_client.get_collection("lines")
-                    cloud_has_lines = True
-                except Exception as e:
-                    logger.warning(
-                        "Chroma Cloud lines collection not available: %s",
-                        e,
-                    )
-                if cloud_has_words or cloud_has_lines:
-                    logger.info(
-                        "Using Chroma Cloud for evidence "
-                        "lookup (words=%s, lines=%s, "
-                        "tenant=%s, database=%s)",
-                        cloud_has_words,
-                        cloud_has_lines,
-                        cloud_tenant,
-                        cloud_database,
-                    )
-                else:
-                    logger.warning(
-                        "Chroma Cloud has no collections;"
-                        " falling back to S3 snapshot"
                     )
                     chroma_client = None
-            except Exception as e:
-                logger.warning(
-                    "Could not initialize Chroma Cloud client: %s",
-                    e,
-                )
-                chroma_client = None
         elif use_chroma_cloud:
             logger.warning(
                 "CHROMA_CLOUD_ENABLED=true but "

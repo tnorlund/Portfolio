@@ -1,5 +1,6 @@
 import React, { useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
 import { animated, useSprings } from "@react-spring/web";
+import { useInView } from "react-intersection-observer";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 interface CICDLoopProps {
@@ -571,13 +572,18 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   staggerDelay = 150,
   flowDuration = 4000,
 }) => {
+  // Lazy loading: mount when near viewport
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+
   // Unique ID for this component instance (for SVG path IDs)
   const instanceId = useId();
 
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
-    triggerOnce: true,
   });
   const [mounted, setMounted] = useState(false);
   const [hasEntered, setHasEntered] = useState(false);
@@ -663,7 +669,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
-    if ((!inView && !hasEntered) || !mounted) {
+    if (!inView || !mounted) {
       clearPulseAnimation();
       return;
     }
@@ -725,7 +731,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
     };
-  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N, segments]);
+  }, [inView, mounted, staggerDelay, flowDuration, api, N, segments]);
 
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
@@ -848,7 +854,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       const centerOffset = -(bbox.y + bbox.height / 2);
       setTextDy(centerOffset);
     }
-  }, [fontSize]);
+  }, [fontSize, nearViewport]);
 
   // Detect overlap between Plan ribbon and other segments' text
   // Wait for all segments to animate in before checking
@@ -910,8 +916,14 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     return () => clearTimeout(timeoutId);
   }, [mounted, inView, planIndex, segments, staggerDelay, segmentGeoms, textDy]);
 
+  if (!nearViewport) {
+    return (
+      <div ref={lazyRef} style={{ display: "flex", justifyContent: "center", minHeight: `${height}px` }} />
+    );
+  }
+
   return (
-    <div ref={containerRef} style={{ display: "flex", justifyContent: "center" }}>
+    <div ref={(el) => { lazyRef(el); if (typeof containerRef === 'function') containerRef(el); }} style={{ display: "flex", justifyContent: "center" }}>
       <svg
         ref={svgRef}
         width={width}

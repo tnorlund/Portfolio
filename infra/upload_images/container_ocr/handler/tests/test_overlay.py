@@ -244,6 +244,46 @@ class TestApplyRegionMapping:
 
 
 # ===========================================================================
+# 1b. Bbox containment ratio (pure)
+# ===========================================================================
+
+class TestBboxContainmentRatio:
+    def test_fully_contained(self):
+        proc = _make_processor()
+        bbox = {"x": 0.3, "y": 0.3, "width": 0.1, "height": 0.1}
+        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(1.0)
+
+    def test_half_contained_x(self):
+        """Word straddles the right edge — only 50% inside."""
+        proc = _make_processor()
+        bbox = {"x": 0.9, "y": 0.1, "width": 0.2, "height": 0.1}
+        # region covers x=[0.7, 1.0]. Word x=[0.9, 1.1]. Overlap x=[0.9, 1.0]=0.1
+        # word area = 0.2*0.1 = 0.02, overlap area = 0.1*0.1 = 0.01
+        assert proc._bbox_containment_ratio(bbox, 0.7, 0.0, 1.0, 1.0) == pytest.approx(0.5)
+
+    def test_no_overlap(self):
+        proc = _make_processor()
+        bbox = {"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1}
+        assert proc._bbox_containment_ratio(bbox, 0.5, 0.5, 1.0, 1.0) == pytest.approx(0.0)
+
+    def test_zero_area_bbox(self):
+        proc = _make_processor()
+        bbox = {"x": 0.5, "y": 0.5, "width": 0.0, "height": 0.0}
+        assert proc._bbox_containment_ratio(bbox, 0.0, 0.0, 1.0, 1.0) == pytest.approx(0.0)
+
+    def test_barely_inside(self):
+        """Word mostly outside the region — only ~25% contained."""
+        proc = _make_processor()
+        # Word x=[0.68, 0.78], region x=[0.70, 1.0]
+        # Overlap x=[0.70, 0.78]=0.08.  Word width=0.10
+        # y fully inside: overlap_y = 0.05 = word height
+        # containment = (0.08*0.05) / (0.10*0.05) = 0.8
+        bbox = {"x": 0.68, "y": 0.1, "width": 0.10, "height": 0.05}
+        ratio = proc._bbox_containment_ratio(bbox, 0.70, 0.0, 1.0, 1.0)
+        assert ratio == pytest.approx(0.8)
+
+
+# ===========================================================================
 # 2. Word matching (pure)
 # ===========================================================================
 
@@ -1014,3 +1054,327 @@ class TestIntegrationEndToEnd:
         result = proc._process_regional_reocr_job(ocr_job, routing)
         assert result["success"] is False
         assert "reocr_region is missing" in result["error"]
+
+
+# ===========================================================================
+# 9. Orphan deletion
+# ===========================================================================
+
+class TestOrphanDeletion:
+    """Tests for deleting candidate words that aren't matched by new re-OCR words."""
+
+    def _build_ocr_json(self, words_data):
+        """Build a minimal OCR JSON with the given words."""
+        words = []
+        for wd in words_data:
+            words.append({
+                "text": wd["text"],
+                "bounding_box": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1), "width": wd.get("w", 1.0), "height": wd.get("h", 0.05)},
+                "top_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1)},
+                "top_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1)},
+                "bottom_left": {"x": wd.get("x", 0.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
+                "bottom_right": {"x": wd.get("x", 0.0) + wd.get("w", 1.0), "y": wd.get("y", 0.1) + wd.get("h", 0.05)},
+                "confidence": 0.99,
+                "letters": [],
+            })
+        line_text = " ".join(wd["text"] for wd in words_data)
+        return {
+            "lines": [{
+                "text": line_text,
+                "bounding_box": {"x": 0.0, "y": 0.1, "width": 1.0, "height": 0.05},
+                "top_left": {"x": 0.0, "y": 0.1},
+                "top_right": {"x": 1.0, "y": 0.1},
+                "bottom_left": {"x": 0.0, "y": 0.15},
+                "bottom_right": {"x": 1.0, "y": 0.15},
+                "confidence": 0.99,
+                "words": words,
+            }]
+        }
+
+    def test_orphaned_word_deleted(self):
+        """An existing word in the re-OCR region that no new word matches should be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # Two existing words in the region: "GOOD" at x=0.75, "JUNK" at x=0.90.
+        # Re-OCR produces only one word ("GOOD") matching the first.
+        # "JUNK" becomes an orphan and should be deleted.
+        existing_good = _make_word(text="GOOD", x=0.75, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_junk = _make_word(text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
+        junk_letter = _make_letter(text="J", line_id=1, word_id=2, letter_id=1, x=0.90, y=0.1, w=0.01, h=0.05)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_junk]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+
+        # list_receipt_letters_from_word is called for matched words AND orphans.
+        # First call: matched word (existing_good) — returns empty.
+        # Second call: orphan (existing_junk) — returns its letter.
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], [junk_letter]]
+
+        existing_line = _make_line(text="GOOD JUNK", line_id=1)
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+
+        # Re-OCR produces one word "BETTER" that matches "GOOD" by position.
+        new_word = _make_word(text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="BETTER", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.0, "w": 0.5}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        assert result["words_deleted"] == 1
+        assert result["words_replaced"] == 1
+
+        # Verify delete_receipt_words was called with the orphan.
+        proc.dynamo.delete_receipt_words.assert_called_once()
+        deleted_words = proc.dynamo.delete_receipt_words.call_args[0][0]
+        assert len(deleted_words) == 1
+        assert deleted_words[0].text == "JUNK"
+
+        # Verify orphan's letter was included in remove_receipt_letters.
+        proc.dynamo.remove_receipt_letters.assert_called_once()
+        deleted_letters = proc.dynamo.remove_receipt_letters.call_args[0][0]
+        assert any(letter.text == "J" for letter in deleted_letters)
+
+    def test_orphan_excluded_from_line_text_rebuild(self):
+        """Rebuilt ReceiptLine.text must not contain orphaned words."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # Three existing words on line 1, all inside the region.
+        # Re-OCR matches word 1 ("AAA") and word 3 ("CCC") but NOT word 2 ("GARBLED").
+        existing_a = _make_word(text="AAA", x=0.72, y=0.1, w=0.05, h=0.05, line_id=1, word_id=1)
+        existing_garble = _make_word(text="GARBLED", x=0.80, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
+        existing_c = _make_word(text="CCC", x=0.88, y=0.1, w=0.05, h=0.05, line_id=1, word_id=3)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_a, existing_garble, existing_c]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+
+        # Letters: matched words return empty, orphan returns its letters.
+        garble_letters = [
+            _make_letter(text="G", line_id=1, word_id=2, letter_id=1, x=0.80, y=0.1),
+            _make_letter(text="A", line_id=1, word_id=2, letter_id=2, x=0.81, y=0.1),
+        ]
+        # Calls: word_id=1 match, word_id=3 match, then orphan word_id=2.
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], [], garble_letters]
+
+        existing_line = _make_line(text="AAA GARBLED CCC", line_id=1)
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [existing_line]
+
+        # Re-OCR produces 2 words at the same Y, matching word 1 and word 3.
+        new_a = _make_word(text="ALPHA", x=0.0, y=0.1, w=0.3, h=0.05, line_id=1, word_id=1)
+        new_c = _make_word(text="GAMMA", x=0.5, y=0.1, w=0.3, h=0.05, line_id=1, word_id=2)
+        new_line = _make_line(text="ALPHA GAMMA", line_id=1)
+
+        ocr_json = self._build_ocr_json([
+            {"text": "ALPHA", "x": 0.0, "w": 0.3},
+            {"text": "GAMMA", "x": 0.5, "w": 0.3},
+        ])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_a, new_c], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        assert result["words_deleted"] == 1
+
+        # The rebuilt line text must contain the updated words and exclude the orphan.
+        proc.dynamo.update_receipt_lines.assert_called_once()
+        rebuilt_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
+        rebuilt_text = rebuilt_lines[0].text
+        assert "GARBLED" not in rebuilt_text
+        assert "ALPHA" in rebuilt_text
+        assert "GAMMA" in rebuilt_text
+
+    def test_orphan_letters_deleted_before_words(self):
+        """Orphan letters must be removed before orphan words are deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # One existing word in the region, no re-OCR words match it.
+        existing_orphan = _make_word(text="STALE", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        orphan_letter = _make_letter(text="S", line_id=1, word_id=1, letter_id=1, x=0.80, y=0.1)
+
+        # Also add an existing word OUTSIDE the region so the receipt has words.
+        existing_outside = _make_word(text="KEEPER", x=0.10, y=0.1, w=0.1, h=0.05, line_id=1, word_id=2)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_orphan, existing_outside]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.return_value = [orphan_letter]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = [
+            _make_line(text="STALE KEEPER", line_id=1),
+        ]
+
+        # Re-OCR produces no words (region was all noise).
+        ocr_json = self._build_ocr_json([{"text": "X", "x": 0.0, "y": 0.8, "h": 0.01}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        new_word = _make_word(text="X", x=0.0, y=0.8, w=0.01, h=0.01, line_id=1, word_id=1)
+        new_line = _make_line(text="X", line_id=1)
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            proc._process_regional_reocr_job(ocr_job, routing)
+
+        # Extract call order: remove_receipt_letters must precede delete_receipt_words.
+        call_names = [c[0] for c in proc.dynamo.method_calls]
+        remove_idx = next(i for i, n in enumerate(call_names) if n == "remove_receipt_letters")
+        delete_idx = next(i for i, n in enumerate(call_names) if n == "delete_receipt_words")
+        assert remove_idx < delete_idx, (
+            "remove_receipt_letters must be called before delete_receipt_words"
+        )
+
+    def test_no_orphans_when_all_matched(self):
+        """When every candidate word matches a re-OCR word, nothing should be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        existing_w = _make_word(text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.return_value = []
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        new_word = _make_word(text="NEW", x=0.0, y=0.1, w=1.0, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="NEW", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "NEW"}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        assert result["words_deleted"] == 0
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_boundary_word_spared_by_containment(self):
+        """A word straddling the region edge (<80% contained) must NOT be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            # Region covers x=[0.70, 1.0], y=[0.0, 1.0]
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # "GOOD" is fully inside the region (center at x=0.85) — will match.
+        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        # "EDGE" straddles the left boundary: x=[0.65, 0.85], center=0.75
+        # (inside region), but containment ~75% < 80% threshold.
+        existing_edge = _make_word(text="EDGE", x=0.65, y=0.1, w=0.20, h=0.05, line_id=1, word_id=2)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_edge]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.return_value = []
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        # Re-OCR produces one word at crop-space x=0.5 → receipt-relative x~0.85,
+        # which is closer to GOOD (center=0.85) than EDGE (center=0.75).
+        # The greedy matcher will pair it with GOOD, leaving EDGE unmatched.
+        new_word = _make_word(text="BETTER", x=0.5, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="BETTER", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.5, "w": 0.5}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        # "EDGE" should NOT be deleted because containment < 80%.
+        assert result["words_deleted"] == 0
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_fully_contained_orphan_still_deleted(self):
+        """A word fully inside the region (100% contained) that isn't matched SHOULD be deleted."""
+        proc = _make_processor()
+        ocr_job = SimpleNamespace(
+            image_id=_IMG_ID, receipt_id=1,
+            reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
+            s3_bucket="b", s3_key="k",
+        )
+        routing = SimpleNamespace(
+            s3_bucket="b", s3_key="r.json",
+            status=None, receipt_count=None, updated_at=None,
+        )
+
+        # "GOOD" matches, "JUNK" is fully inside (x=[0.90, 0.95]) — 100% contained.
+        existing_good = _make_word(text="GOOD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1)
+        existing_junk = _make_word(text="JUNK", x=0.90, y=0.1, w=0.05, h=0.05, line_id=1, word_id=2)
+
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_good, existing_junk]
+        proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
+        proc.dynamo.list_receipt_letters_from_word.side_effect = [[], []]
+        proc.dynamo.list_receipt_lines_from_receipt.return_value = []
+
+        new_word = _make_word(text="BETTER", x=0.0, y=0.1, w=0.5, h=0.05, line_id=1, word_id=1)
+        new_line = _make_line(text="BETTER", line_id=1)
+
+        ocr_json = self._build_ocr_json([{"text": "BETTER", "x": 0.0, "w": 0.5}])
+        tmp = Path(tempfile.mkstemp(suffix=".json")[1])
+        tmp.write_text(json.dumps(ocr_json))
+
+        with patch("handler.ocr_processor.download_file_from_s3", return_value=tmp), \
+             patch("handler.ocr_processor.process_ocr_dict_as_image", return_value=([], [], [])), \
+             patch("handler.ocr_processor.image_ocr_to_receipt_ocr", return_value=([new_line], [new_word], [])):
+            result = proc._process_regional_reocr_job(ocr_job, routing)
+
+        assert result["success"] is True
+        assert result["words_deleted"] == 1
+        proc.dynamo.delete_receipt_words.assert_called_once()
+        deleted = proc.dynamo.delete_receipt_words.call_args[0][0]
+        assert deleted[0].text == "JUNK"

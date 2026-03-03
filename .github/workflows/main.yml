@@ -33,16 +33,22 @@ jobs:
 
       - name: Setup Python
         run: |
+          # Detect Python 3.12+ (framework install or Homebrew)
           if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
             echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          elif [ -f "/opt/homebrew/bin/python3" ]; then
+          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
             echo "/opt/homebrew/bin" >> $GITHUB_PATH
           fi
 
       - name: Install and test
         run: |
-          # Create fresh virtual environment
-          python3 -m venv .venv-${{ matrix.package }}
+          # Create fresh virtual environment (prefer python3.12 over system python3)
+          PYTHON=$(command -v python3.12 || command -v python3)
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          "$PYTHON" -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
@@ -83,7 +89,7 @@ jobs:
             --cov --cov-report=xml
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
@@ -108,7 +114,7 @@ jobs:
           npm run test:ci
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-portfolio
           path: portfolio/coverage
@@ -135,7 +141,7 @@ jobs:
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report

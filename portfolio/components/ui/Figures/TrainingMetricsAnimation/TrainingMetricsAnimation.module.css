@@ -8,6 +8,7 @@
   width: 100%;
   max-width: 700px;
   margin: 0 auto;
+  contain: paint;
 }
 
 /* Dataset Stats with segmented bars */
@@ -262,11 +263,13 @@
 .labelBarFilled {
   height: 100%;
   background: var(--text-color);
+  transition: width 0.3s ease-out;
 }
 
 .labelBarEmpty {
   height: 100%;
   background: rgba(var(--text-color-rgb), 0.2);
+  transition: width 0.3s ease-out;
 }
 
 .labelBarValue {
@@ -286,11 +289,13 @@
 .labelBarDistFilled {
   height: 100%;
   background: var(--color-blue);
+  transition: width 0.3s ease-out;
 }
 
 .labelBarDistEmpty {
   height: 100%;
   background: rgba(var(--color-blue-rgb), 0.2);
+  transition: width 0.3s ease-out;
 }
 
 /* Bar Legend */

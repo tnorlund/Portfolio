@@ -42,7 +42,9 @@ def _set_label_array_fields(
     canonical_valid = _normalize_labels(list(valid_labels))
     canonical_invalid = _normalize_labels(list(invalid_labels))
 
-    metadata["valid_labels_array"] = canonical_valid if canonical_valid else None
+    metadata["valid_labels_array"] = (
+        canonical_valid if canonical_valid else None
+    )
     metadata["invalid_labels_array"] = (
         canonical_invalid if canonical_invalid else None
     )

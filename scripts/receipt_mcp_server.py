@@ -152,10 +152,15 @@ Examples:
             description="""Get full receipt details with formatted text showing all words and their labels.
 
 Returns formatted receipt like:
-  Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
-  Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
-  Line 8: TAX 0.84[TAX]
-  Line 9: TOTAL 13.83[GRAND_TOTAL]
+  (line 1): TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
+  (lines 12-13): ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
+  (lines 18-19): TAX 0.84[TAX]
+  (line 20): TOTAL 13.83[GRAND_TOTAL]
+
+Each line shows the DynamoDB line_id range in parentheses. Words on the same
+visual row (similar Y-coordinates) are grouped together, so a single display
+line may span multiple DynamoDB line_ids. Use these line_ids directly with
+get_receipt_words, create_word_label, and update_word_label.
 
 Labels mean:
 - [MERCHANT_NAME]: Store name
@@ -618,9 +623,10 @@ Returns every word on the receipt with its line_id, word_id, text, and any
 existing labels (with validation_status). Words are sorted by line_id then
 word_id.
 
-Use this when you need to find the exact line_id/word_id for a word before
-creating or updating a label. The get_receipt tool shows formatted text but
-hides word coordinates — this tool exposes them.
+The line_id values here are the DynamoDB keys required by create_word_label
+and update_word_label. They match the line_id ranges shown in parentheses by
+get_receipt (e.g., "(lines 12-13)"), so you can use get_receipt to identify
+the line_id range, then filter here with that line_id for the exact word_id.
 
 Optionally filter to a single line_id to reduce output.""",
             inputSchema={
@@ -780,6 +786,34 @@ Use this to find recently uploaded images or check processing status.""",
                         "description": "Number of recent uploads to return (max 50)",
                     },
                 },
+            },
+        ),
+        Tool(
+            name="get_receipt_image_url",
+            description="""Get the CDN URL for a receipt image.
+
+Queries the Receipt record in DynamoDB and builds the URL from its cdn_s3_key.
+Returns the primary JPG URL plus any available variants (WebP, AVIF, thumbnail,
+small, medium).
+
+Example response:
+  {"url": "https://dev.tylernorlund.com/assets/{image_id}_RECEIPT_00002.jpg",
+   "variants": {"webp": "...", "thumbnail": "..."}}
+
+Use this to visually inspect a receipt when reviewing OCR quality or labels.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID)",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
             },
         ),
         Tool(
@@ -944,6 +978,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await list_recent_uploads_impl(
                 dynamo_client,
                 limit=arguments.get("limit", 10),
+            )
+        elif name == "get_receipt_image_url":
+            result = await get_receipt_image_url_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
             )
         elif name == "delete_image":
             result = await delete_image_impl(
@@ -1148,16 +1188,24 @@ async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dic
         current_line.sort(key=lambda c: c["x"])
         visual_lines.append(current_line)
 
-        # Format as text with inline labels
+        # Format as text with inline labels, showing DynamoDB line_id ranges
         formatted_lines = []
-        for i, line in enumerate(visual_lines):
+        for line in visual_lines:
             line_parts = []
             for w in line:
                 if w["label"]:
                     line_parts.append(f"{w['text']}[{w['label']}]")
                 else:
                     line_parts.append(w["text"])
-            formatted_lines.append(f"Line {i}: {' '.join(line_parts)}")
+            # Show DynamoDB line_id range for this visual line
+            line_ids = sorted({w["word"].line_id for w in line})
+            if len(line_ids) == 1:
+                prefix = f"(line {line_ids[0]})"
+            elif line_ids[-1] - line_ids[0] + 1 == len(line_ids):
+                prefix = f"(lines {line_ids[0]}-{line_ids[-1]})"
+            else:
+                prefix = f"(lines {','.join(str(lid) for lid in line_ids)})"
+            formatted_lines.append(f"{prefix}: {' '.join(line_parts)}")
 
         formatted_receipt = "\n".join(formatted_lines)
 
@@ -2468,6 +2516,49 @@ async def trigger_reocr_impl(
         )
     except Exception as e:
         logger.exception("Error invoking trigger-reocr Lambda")
+        return {"error": str(e)}
+
+
+async def get_receipt_image_url_impl(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """Build the CDN URL for a receipt image from DynamoDB record."""
+    try:
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        receipt = details.receipt
+
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        domain = "dev.tylernorlund.com" if env == "dev" else "tylernorlund.com"
+
+        result: dict[str, Any] = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+        }
+
+        if receipt.cdn_s3_key:
+            result["url"] = f"https://{domain}/{receipt.cdn_s3_key}"
+        else:
+            result["url"] = None
+            result["note"] = "No cdn_s3_key on receipt record"
+
+        # Include all available CDN variants
+        variants = {}
+        if receipt.cdn_webp_s3_key:
+            variants["webp"] = f"https://{domain}/{receipt.cdn_webp_s3_key}"
+        if receipt.cdn_avif_s3_key:
+            variants["avif"] = f"https://{domain}/{receipt.cdn_avif_s3_key}"
+        if receipt.cdn_thumbnail_s3_key:
+            variants["thumbnail"] = f"https://{domain}/{receipt.cdn_thumbnail_s3_key}"
+        if receipt.cdn_small_s3_key:
+            variants["small"] = f"https://{domain}/{receipt.cdn_small_s3_key}"
+        if receipt.cdn_medium_s3_key:
+            variants["medium"] = f"https://{domain}/{receipt.cdn_medium_s3_key}"
+        if variants:
+            result["variants"] = variants
+
+        return result
+
+    except Exception as e:
         return {"error": str(e)}
 
 
