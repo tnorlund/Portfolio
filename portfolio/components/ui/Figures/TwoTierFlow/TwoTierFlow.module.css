@@ -1,4 +1,4 @@
-/* Container - matches global .container max-width */
+/* Container */
 .container {
   width: 100%;
   max-width: 1024px;
@@ -23,7 +23,8 @@
   border: 1px solid #ccc;
   background: var(--background-color);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-  transition: top 0.4s ease, left 0.4s ease, opacity 0.4s ease, transform 0.4s ease;
+  transition: top 0.4s ease, left 0.4s ease, opacity 0.4s ease,
+    transform 0.4s ease;
   overflow: hidden;
 }
 
@@ -32,6 +33,82 @@
   pointer-events: none;
 }
 
+/* Flying receipt */
+.flyingReceipt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.flyingReceiptImage {
+  display: block;
+  max-height: 500px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Center Column */
+.centerColumn {
+  flex: 1;
+  max-width: 350px;
+  min-width: 0;
+  position: relative;
+  height: 500px;
+  z-index: 2;
+}
+
+.receiptContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fadeOut {
+  animation: fadeOut 0.4s ease-out forwards;
+}
+
+.fadeIn {
+  animation: fadeIn 0.4s ease-in forwards;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.nextReceipt {
+  display: none;
+}
+
+.flyingReceiptContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
 
 /* Receipt Viewer */
 .receiptViewer {
@@ -71,15 +148,7 @@
   display: block;
 }
 
-.phaseIndicator {
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--text-color);
-  opacity: 0.7;
-  font-weight: 500;
-}
-
-/* Scanner Legend - Right Column (like LayoutLM EntityLegend) */
+/* Scanner Legend - Right Column */
 .scannerLegend {
   width: 280px;
   box-sizing: border-box;
@@ -108,10 +177,6 @@
   opacity: 1;
 }
 
-.legendItem.skipped {
-  opacity: 0.5;
-}
-
 .legendIcon {
   width: 16px;
   height: 16px;
@@ -134,8 +199,13 @@
 }
 
 @keyframes hourglassRotate {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(180deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(180deg);
+  }
 }
 
 .legendName {
@@ -158,10 +228,6 @@
   opacity: 0.7;
 }
 
-.legendProgress {
-  color: var(--color-blue);
-}
-
 .legendWaiting {
   color: var(--text-color);
   opacity: 0.5;
@@ -169,14 +235,7 @@
   padding-right: 2px;
 }
 
-.legendSkipped {
-  color: var(--text-color);
-  opacity: 0.5;
-  font-style: italic;
-  padding-right: 2px;
-}
-
-/* Decision tally in legend - shows below the scanner row */
+/* Decision tally */
 .legendTally {
   position: relative;
   width: 100%;
@@ -185,8 +244,6 @@
   min-height: 14px;
   overflow: hidden;
 }
-
-/* Note: .tallyRow is defined below in "Decision Tally Row" section */
 
 .tallyRowOverlay {
   position: absolute;
@@ -208,166 +265,58 @@
 }
 
 @keyframes tallyFadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes tallyFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-/* Pipeline Panel - Right Column */
-.pipelinePanel {
-  flex: 1;
-  max-width: 350px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.pipelineSection {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sectionTitle {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin: 0 0 0.25rem 0;
+/* Tally Row */
+.tallyRow {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px 0 4px 0;
+  min-height: 20px;
+  max-width: 100%;
 }
 
-.phaseNumber {
+.tallyIcon {
+  font-size: 11px;
+  width: 14px;
+  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text-color);
-  color: var(--background-color);
-  font-size: 0.65rem;
-  font-weight: 700;
-  opacity: 0.8;
+  font-weight: 600;
 }
 
-.parallelGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-left: 0.5rem;
-  border-left: 2px solid var(--text-color);
-  opacity: 1;
-}
-
-/* Scanner Bar */
-.scannerBar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  opacity: 0.5;
-  transition: opacity 0.3s ease;
-}
-
-.scannerBar.active {
-  opacity: 1;
-}
-
-.scannerBar.complete {
-  opacity: 0.8;
-}
-
-.scannerBar.waiting {
-  opacity: 0.4;
-}
-
-.waitingBadge {
-  font-size: 0.6rem;
-  font-weight: 500;
-  color: var(--color-yellow);
-  font-style: italic;
-  margin-left: 0.25rem;
-}
-
-.scannerHeader {
-  display: flex;
-  justify-content: space-between;
+.tallyOverflow {
+  display: inline-flex;
   align-items: center;
-}
-
-.scannerNameWrapper {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.scannerName {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.scannerType {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: var(--text-color);
-  opacity: 0.5;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.scannerMeta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.durationBadge {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: var(--text-color);
-  opacity: 0.6;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
-}
-
-.decisionBadges {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  color: var(--text-color);
+  opacity: 0.6;
+  padding: 0 4px;
+  height: 14px;
   min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: white;
-}
-
-.progressTrack {
-  height: 8px;
-  background: var(--text-color);
-  opacity: 0.1;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progressFill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.1s linear;
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 7px;
 }
 
 /* Summary Section */
@@ -406,13 +355,22 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Receipt Counter */
-.receiptCounter {
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.8rem;
-  color: var(--text-color);
-  opacity: 0.5;
+/* Decision Indicator on Receipt */
+.decisionIndicator {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: popIn 0.25s ease-out forwards;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* Loading / Error states */
@@ -433,7 +391,7 @@
   opacity: 1;
 }
 
-/* Tablet Responsive - Hide Queue */
+/* Tablet Responsive */
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
@@ -467,6 +425,23 @@
     inset: 0;
   }
 
+  .flyingReceiptContainer {
+    display: none;
+  }
+
+  .flyingReceipt {
+    display: none;
+  }
+
+  .nextReceipt {
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
   .scannerLegend {
     width: 100%;
     flex-direction: column;
@@ -481,14 +456,8 @@
     padding: 0.25rem 0;
   }
 
-  /* Hide decision tally icons on mobile - too cluttered */
   .legendTally {
     display: none;
-  }
-
-  .pipelinePanel {
-    width: 100%;
-    max-width: 100%;
   }
 
   .summaryStats {
@@ -519,99 +488,7 @@
     font-size: 0.75rem;
   }
 
-  .sectionTitle {
-    font-size: 0.7rem;
-  }
-
-  .scannerName {
-    font-size: 0.8rem;
-  }
-
-  .badge {
-    min-width: 18px;
-    height: 18px;
-    font-size: 0.65rem;
-  }
-
   .statValue {
     font-size: 1.25rem;
-  }
-}
-
-/* Scanner with Tally wrapper */
-.scannerWithTally {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* Decision Tally Row */
-.tallyRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px 0 4px 0;
-  min-height: 20px;
-  max-width: 100%;
-}
-
-.tallyIcons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  flex: 1;
-}
-
-.tallyIcon {
-  font-size: 11px;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-}
-
-.tallyCounter {
-  font-size: 10px;
-  opacity: 0.5;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  color: var(--text-color);
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.tallyOverflow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 600;
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
-  color: var(--text-color);
-  opacity: 0.6;
-  padding: 0 4px;
-  height: 14px;
-  min-width: 20px;
-  background: rgba(128, 128, 128, 0.15);
-  border-radius: 7px;
-}
-
-/* Decision Indicator Circles on Receipt */
-.decisionIndicator {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: popIn 0.25s ease-out forwards;
-}
-
-@keyframes popIn {
-  from {
-    transform: scale(0);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
   }
 }

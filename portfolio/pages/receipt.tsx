@@ -15,11 +15,12 @@ import {
   BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
+  CurrencyVisualization,
   DynamoStreamAnimation,
   FinancialMathOverlay,
   LabelValidationTimeline,
   LabelWordCloud,
-  LayoutLMInferenceVisualization,
+  MetadataVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
   QAAgentFlow,
@@ -390,7 +391,11 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <ClientOnly>
-        <LayoutLMInferenceVisualization />
+        <MetadataVisualization />
+      </ClientOnly>
+
+      <ClientOnly>
+        <CurrencyVisualization />
       </ClientOnly>
 
       <p>
@@ -399,9 +404,6 @@ M1LK 2%           1    $4.4g`}</code>
         instead of 15+.
       </p>
 
-      {/* <ClientOnly>
-  <LabelValidationVisualization />
-</ClientOnly> */}
 
       <p>
         Same results. Fraction of the time. Fraction of the cost. I can finally

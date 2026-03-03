@@ -102,8 +102,12 @@ export const LabelValidationTimeline = dynamic(
   () => import("./LabelValidationTimeline"),
   { ssr: false }
 );
-export const LabelEvaluatorVisualization = dynamic(
-  () => import("./LabelEvaluatorVisualization"),
+export const MetadataVisualization = dynamic(
+  () => import("./MetadataVisualization"),
+  { ssr: false }
+);
+export const CurrencyVisualization = dynamic(
+  () => import("./CurrencyVisualization"),
   { ssr: false }
 );
 export const LabelWordCloud = dynamic(
