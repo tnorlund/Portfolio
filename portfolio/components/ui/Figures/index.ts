@@ -48,8 +48,8 @@ const ClientLabelValidationCount = dynamic(
   }
 );
 
-export { default as AWSFlowDiagram } from "./AWSFlowDiagram";
-export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
+export const AWSFlowDiagram = dynamic(() => import("./AWSFlowDiagram"), { ssr: false });
+export const CodeBuildDiagram = dynamic(() => import("./CodeBuildDiagram"), { ssr: false });
 export { ClientImageCounts, ClientReceiptCounts } from "./DataCounts";
 export { default as EmbeddingCoordinate } from "./EmbeddingCoordinate";
 export { default as EmbeddingExample } from "./EmbeddingExample";
@@ -60,10 +60,10 @@ export {
 } from "./IsometricPlane";
 export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";
-export { default as ReceiptBoundingBoxGrid } from "./ReceiptBoundingBoxGrid";
-export { default as ReceiptStack } from "./ReceiptStack";
+export const ReceiptBoundingBoxGrid = dynamic(() => import("./ReceiptBoundingBoxGrid"), { ssr: false });
+export const ReceiptStack = dynamic(() => import("./ReceiptStack"), { ssr: false });
 export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
-export { default as UploadDiagram } from "./UploadDiagram";
+export const UploadDiagram = dynamic(() => import("./UploadDiagram"), { ssr: false });
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
 export { default as ZDepthUnconstrained } from "./ZDepthUnconstrained";
 export { ClientLabelValidationCount as LabelValidationCount, ClientMerchantCount as MerchantCount };
@@ -76,11 +76,11 @@ export const PhotoReceiptDBSCAN = dynamic(
   { ssr: false }
 );
 export { default as AddressSimilarity } from "./AddressSimilarity";
-export { default as AddressSimilaritySideBySide } from "./AddressSimilaritySideBySide";
-export { default as WordSimilarity } from "./WordSimilarity";
-export { default as CICDLoop } from "./CICDLoop";
+export const AddressSimilaritySideBySide = dynamic(() => import("./AddressSimilaritySideBySide"), { ssr: false });
+export const WordSimilarity = dynamic(() => import("./WordSimilarity"), { ssr: false });
+export const CICDLoop = dynamic(() => import("./CICDLoop"), { ssr: false });
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
-export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";
+export const DynamoStreamAnimation = dynamic(() => import("./DynamoStreamAnimation"), { ssr: false });
 export { default as ImageStack } from "./ImageStack";
 const DynamicLayoutLMInferenceVisualization = dynamic(
   () => import("./LayoutLMBatchVisualization"),
@@ -90,10 +90,10 @@ const DynamicLayoutLMInferenceVisualization = dynamic(
   }
 );
 export const LayoutLMInferenceVisualization = DynamicLayoutLMInferenceVisualization;
-export { default as PageCurlLetter } from "./PageCurlLetter";
-export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
+export const PageCurlLetter = dynamic(() => import("./PageCurlLetter"), { ssr: false });
+export const PrecisionRecallDartboard = dynamic(() => import("./PrecisionRecallDartboard"), { ssr: false });
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
-export { default as StreamBitsRoutingDiagram } from "./StreamBitsRoutingDiagram";
+export const StreamBitsRoutingDiagram = dynamic(() => import("./StreamBitsRoutingDiagram"), { ssr: false });
 export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }

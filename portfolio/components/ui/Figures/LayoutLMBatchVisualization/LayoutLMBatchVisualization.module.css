@@ -6,6 +6,7 @@
   padding: 1.5rem;
   background: var(--background-color);
   border-radius: 12px;
+  contain: paint;
 }
 
 /* Receipt Queue - Left Column */

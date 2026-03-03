@@ -2,7 +2,7 @@ import { animated, useSprings } from "@react-spring/web";
 import React from "react";
 import {
   useViewportAnimation,
-  pointAtCached,
+  getCachedPathLength,
   fadeLUT,
   OPTIMIZED_SPRING_CONFIG,
 } from "./useDiagramOptimizations";
@@ -30,6 +30,9 @@ const CYCLE_PAUSE_MS = 300;
 const TILT_DEG = 26;
 
 const clampMs = (n: number) => Math.max(1, Math.round(n));
+
+// Shared point cache survives cycle remounts — keyed by SVGPathElement so GC-safe
+const pathPointCache = new WeakMap<SVGPathElement, Array<{ x: number; y: number }>>();
 
 function mulberry32(seed: number) {
     let t = seed >>> 0;
@@ -94,6 +97,34 @@ function BitStream({
         [pathRefs.length]
     );
 
+    // Look up (or lazily build) 101 precomputed points for a path element
+    const getPoint = React.useCallback(
+        (pathIdx: number, pct: number): { x: number; y: number } => {
+            const el = pathRefs[pathIdx].current;
+            if (!el) return { x: 0, y: 0 };
+            let points = pathPointCache.get(el);
+            if (!points) {
+                const len = getCachedPathLength(el);
+                points = new Array(101);
+                for (let i = 0; i <= 100; i++) {
+                    const pt = el.getPointAtLength((i / 100) * len);
+                    points[i] = { x: pt.x, y: pt.y };
+                }
+                pathPointCache.set(el, points);
+            }
+            const clamped = Math.max(0, Math.min(100, pct));
+            const lower = Math.floor(clamped);
+            const upper = Math.ceil(clamped);
+            if (lower === upper || upper > 100) return points[lower];
+            const t = clamped - lower;
+            return {
+                x: points[lower].x + (points[upper].x - points[lower].x) * t,
+                y: points[lower].y + (points[upper].y - points[lower].y) * t,
+            };
+        },
+        [pathRefs]
+    );
+
     const [springs] = useSprings(
         bits.length,
         (i) => ({
@@ -112,11 +143,10 @@ function BitStream({
                 <animated.g
                     key={i}
                     transform={spring.pct.to((p) => {
-                        // Use cached path length for better performance
-                        const { x, y } = pointAtCached(pathRefs[bits[i].pathIdx], p);
+                        const { x, y } = getPoint(bits[i].pathIdx, p);
                         return `translate(${x},${y}) rotate(${bits[i].rot})`;
                     })}
-                    opacity={spring.pct.to(fadeLUT)} // Use lookup table for fade
+                    opacity={spring.pct.to(fadeLUT)}
                 >
                     <rect
                         x="-0.45em"

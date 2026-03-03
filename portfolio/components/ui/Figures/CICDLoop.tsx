@@ -584,7 +584,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
-    triggerOnce: true,
   });
   const [mounted, setMounted] = useState(false);
   const [hasEntered, setHasEntered] = useState(false);
@@ -670,7 +669,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
-    if ((!inView && !hasEntered) || !mounted) {
+    if (!inView || !mounted) {
       clearPulseAnimation();
       return;
     }
@@ -732,7 +731,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
     };
-  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N, segments]);
+  }, [inView, mounted, staggerDelay, flowDuration, api, N, segments]);
 
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
