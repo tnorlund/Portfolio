@@ -1,4 +1,6 @@
 import React from "react";
+import PassIndicator from "../WithinReceiptVerification/PassIndicator";
+import withinStyles from "../WithinReceiptVerification/WithinReceiptVerification.module.css";
 import { ReceiptFlowShell } from "./ReceiptFlowShell";
 import styles from "./ReceiptFlowLoadingShell.module.css";
 
@@ -60,11 +62,8 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
   switch (variant) {
     case "within":
       return (
-        <div className={`${styles.legendSkeleton} ${styles.legendWithin}`}>
-          <div className={styles.passDotsSkeleton}>
-            <div className={styles.passDotSkeleton} />
-            <div className={styles.passDotSkeleton} />
-          </div>
+        <div className={withinStyles.rightPanel}>
+          <PassIndicator />
           <div className={styles.cardBlockSkeleton}>
             <div className={`${styles.cardLineSkeleton} ${styles.short}`} />
             <div className={`${styles.cardLineSkeleton} ${styles.medium}`} />
@@ -92,12 +91,24 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
     case "layoutlm":
       return (
         <div className={`${styles.legendSkeleton} ${styles.legendLayoutLM}`}>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div key={i} className={styles.legendRowSkeleton}>
-              <div className={styles.legendDotSkeleton} />
-              <div className={styles.legendLabelSkeleton} />
-            </div>
-          ))}
+          {/* Desktop: 8 vertical rows matching ENTITY_TYPES */}
+          <div className={styles.legendLayoutLMDesktop}>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div key={i} className={styles.legendRowSkeleton}>
+                <div className={styles.legendDotSkeleton} />
+                <div className={styles.legendLabelSkeleton} />
+              </div>
+            ))}
+          </div>
+          {/* Mobile: 6 items in 3-col grid matching MOBILE_LEGEND_GROUPS */}
+          <div className={styles.legendLayoutLMMobile}>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className={styles.legendRowSkeleton}>
+                <div className={styles.legendDotSkeleton} />
+                <div className={styles.legendLabelSkeleton} />
+              </div>
+            ))}
+          </div>
           <div className={styles.inferenceTimeSkeleton}>
             <div className={`${styles.cardLineSkeleton} ${styles.short}`} />
             <div className={styles.cardLineSkeleton} />

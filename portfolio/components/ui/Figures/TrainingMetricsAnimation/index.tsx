@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { animated, useSpring, config } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
@@ -458,21 +458,157 @@ const MatrixCell: React.FC<MatrixCellProps> = ({ value, rowSum, isDiagonal }) =>
   );
 };
 
+// Skeleton placeholder labels (match the 8 entity labels in the loaded state)
+const SKELETON_LABELS = [
+  "Address", "Amount", "Date", "Merchant Name",
+  "Payment Method", "Store Hours", "Time", "Website",
+];
+
+// 9 labels for the confusion matrix (8 entity + O)
+const SKELETON_MATRIX_LABELS = ["Addr", "Amt", "Date", "Merch", "Pay", "Hours", "Time", "Web", "O"];
+
+const SKELETON_BG = "rgba(var(--text-color-rgb, 0, 0, 0), 0.08)";
+
+// Skeleton that mirrors the loaded layout exactly
+const TrainingMetricsSkeleton: React.FC = () => {
+  const N = SKELETON_MATRIX_LABELS.length;
+  const gridTemplateColumns = `var(--matrix-label-col) repeat(${N}, var(--matrix-cell-size))`;
+  const gridTemplateRows = `var(--matrix-header-row) repeat(${N}, var(--matrix-cell-size))`;
+
+  return (
+    <>
+      {/* DatasetStats skeleton */}
+      <div className={styles.datasetStats}>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Train/Val</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "90%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "10%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 70, height: 10 }} />
+        </div>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Labeled</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "33%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "67%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 30, height: 10 }} />
+        </div>
+      </div>
+
+      {/* Desktop timeline skeleton */}
+      <div className={styles.timeline}>
+        <div className={styles.timelineNodes}>
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className={styles.timelineNode}>
+              <span className={styles.timelineNodeDot} style={{ opacity: 0.3 }} />
+              <span className={styles.timelineNodeLabel} style={{ opacity: 0.3 }}>{i + 1}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile timeline skeleton */}
+      <div className={styles.timelineMobile}>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>‹</div>
+        <div className={styles.timelineMobileCenter}>
+          <span className={styles.timelineMobileText} style={{ opacity: 0.3 }}>— / —</span>
+        </div>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>›</div>
+      </div>
+
+      {/* Left panel skeleton */}
+      <div className={styles.leftPanel}>
+        {/* F1 Gauge */}
+        <div className={styles.gaugeContainer}>
+          <div style={{ width: 80, height: 32, background: SKELETON_BG, borderRadius: 4 }} />
+          <div className={styles.gaugeBar} />
+        </div>
+
+        {/* Per-label bars */}
+        <div className={styles.perLabelContainer}>
+          {SKELETON_LABELS.map((label) => (
+            <div key={label} className={styles.labelRow}>
+              <span className={styles.labelName} style={{ opacity: 0.3 }}>{label}</span>
+              <div className={styles.labelBarStack}>
+                <div className={styles.labelBarSegmented}>
+                  <div className={styles.labelBarEmpty} style={{ width: "100%" }} />
+                </div>
+                <div className={styles.labelBarDistribution}>
+                  <div className={styles.labelBarDistEmpty} style={{ width: "100%" }} />
+                </div>
+              </div>
+              <span className={styles.labelBarValue} style={{ opacity: 0 }}>0.00</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Bar legend */}
+        <BarLegend />
+      </div>
+
+      {/* Right panel — confusion matrix skeleton */}
+      <div className={styles.rightPanel}>
+        <div className={styles.matrixContainer}>
+          <div className={styles.matrixGrid} style={{ gridTemplateColumns, gridTemplateRows }}>
+            <div className={styles.matrixCorner} />
+            {SKELETON_MATRIX_LABELS.map((label) => (
+              <div key={`x-${label}`} className={styles.matrixAxisLabel} style={{ opacity: 0.3 }}>
+                {label}
+              </div>
+            ))}
+            {SKELETON_MATRIX_LABELS.map((rowLabel, i) => (
+              <React.Fragment key={`row-${i}`}>
+                <div className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`} style={{ opacity: 0.3 }}>
+                  {rowLabel}
+                </div>
+                {SKELETON_MATRIX_LABELS.map((_, j) => (
+                  <div
+                    key={`${i}-${j}`}
+                    className={styles.matrixCell}
+                    style={{ backgroundColor: i === j ? SKELETON_BG : "transparent" }}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
 // Main Component
 const TrainingMetricsAnimation: React.FC = () => {
-  const { ref, inView } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: true,
   });
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      lazyRef(node);
+      animRef(node);
+    },
+    [lazyRef, animRef],
+  );
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
   const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
   const hasStartedAnimation = useRef(false);
+  const hasFetchedRef = useRef(false);
 
-  // Fetch data on mount
+  // Fetch data only when near viewport - defers work until section is close
   useEffect(() => {
+    if (!nearViewport || hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     api
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
@@ -484,7 +620,7 @@ const TrainingMetricsAnimation: React.FC = () => {
         console.error("Failed to fetch training metrics:", err);
         setIsLoading(false);
       });
-  }, []);
+  }, [nearViewport]);
 
   // Autoplay animation when in view and data is loaded
   useEffect(() => {
@@ -525,18 +661,18 @@ const TrainingMetricsAnimation: React.FC = () => {
 
   const currentEpoch = epochs[currentEpochIndex];
 
-  if (isLoading) {
+  if (!nearViewport || isLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading training metrics...
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
 
   if (!currentEpoch) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No training data available
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
@@ -546,7 +682,7 @@ const TrainingMetricsAnimation: React.FC = () => {
   };
 
   return (
-    <animated.div ref={ref} className={styles.container}>
+    <animated.div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
       <EpochTimeline
         epochs={epochs}
