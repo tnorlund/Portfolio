@@ -31,6 +31,9 @@ const TILT_DEG = 26;
 
 const clampMs = (n: number) => Math.max(1, Math.round(n));
 
+// Shared point cache survives cycle remounts — keyed by SVGPathElement so GC-safe
+const pathPointCache = new WeakMap<SVGPathElement, Array<{ x: number; y: number }>>();
+
 function mulberry32(seed: number) {
     let t = seed >>> 0;
     return () => {
@@ -94,22 +97,20 @@ function BitStream({
         [pathRefs.length]
     );
 
-    // Precompute 101 points per path to eliminate per-frame getPointAtLength DOM calls
-    const precomputedRef = React.useRef<Map<number, Array<{ x: number; y: number }>>>(new Map());
-
+    // Look up (or lazily build) 101 precomputed points for a path element
     const getPoint = React.useCallback(
         (pathIdx: number, pct: number): { x: number; y: number } => {
-            let points = precomputedRef.current.get(pathIdx);
+            const el = pathRefs[pathIdx].current;
+            if (!el) return { x: 0, y: 0 };
+            let points = pathPointCache.get(el);
             if (!points) {
-                const el = pathRefs[pathIdx].current;
-                if (!el) return { x: 0, y: 0 };
                 const len = getCachedPathLength(el);
                 points = new Array(101);
                 for (let i = 0; i <= 100; i++) {
                     const pt = el.getPointAtLength((i / 100) * len);
                     points[i] = { x: pt.x, y: pt.y };
                 }
-                precomputedRef.current.set(pathIdx, points);
+                pathPointCache.set(el, points);
             }
             const clamped = Math.max(0, Math.min(100, pct));
             const lower = Math.floor(clamped);
