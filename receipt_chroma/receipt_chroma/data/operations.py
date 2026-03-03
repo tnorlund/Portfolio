@@ -34,19 +34,20 @@ def _set_label_array_fields(
     valid_labels: set[str],
     invalid_labels: set[str],
 ) -> None:
-    """Write canonical label arrays with Chroma-safe clear semantics."""
+    """Write canonical label arrays with Chroma-safe clear semantics.
+
+    Always writes both keys so that ``dict.update()`` callers overwrite
+    stale values from existing ChromaDB metadata.
+    """
     canonical_valid = _normalize_labels(list(valid_labels))
     canonical_invalid = _normalize_labels(list(invalid_labels))
 
-    if canonical_valid:
-        metadata["valid_labels_array"] = canonical_valid
-    elif "valid_labels_array" in metadata:
-        metadata["valid_labels_array"] = None
-
-    if canonical_invalid:
-        metadata["invalid_labels_array"] = canonical_invalid
-    elif "invalid_labels_array" in metadata:
-        metadata["invalid_labels_array"] = None
+    metadata["valid_labels_array"] = (
+        canonical_valid if canonical_valid else None
+    )
+    metadata["invalid_labels_array"] = (
+        canonical_invalid if canonical_invalid else None
+    )
 
 
 def update_receipt_place(
@@ -663,8 +664,8 @@ def update_word_labels(
                         valid_set.add(normalized_label)
                         invalid_set.discard(normalized_label)
                     elif status == "INVALID":
-                        if normalized_label not in valid_set:
-                            invalid_set.add(normalized_label)
+                        invalid_set.add(normalized_label)
+                        valid_set.discard(normalized_label)
                     elif status == "PENDING":
                         valid_set.discard(normalized_label)
                         invalid_set.discard(normalized_label)
