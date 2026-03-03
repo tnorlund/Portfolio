@@ -38,7 +38,7 @@ const LABEL_COLORS: Record<string, string> = {
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
-  ADDRESS_LINE: "var(--color-teal)",
+  ADDRESS_LINE: "var(--color-red)",
   PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
