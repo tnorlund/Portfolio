@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationWord
 
-Defined in: [types/api.ts:625](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L625)
+Defined in: [types/api.ts:625](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L625)
 
 Individual word validation result from the label validation pipeline.
 Each word is validated by ChromaDB consensus (Tier 1) or LLM (Tier 2).
@@ -17,7 +17,7 @@ Each word is validated by ChromaDB consensus (Tier 1) or LLM (Tier 2).
 
 > **bbox**: `object`
 
-Defined in: [types/api.ts:629](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L629)
+Defined in: [types/api.ts:629](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L629)
 
 #### height
 
@@ -41,7 +41,7 @@ Defined in: [types/api.ts:629](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **decision**: `"VALID"` \| `"INVALID"` \| `"NEEDS_REVIEW"` \| `"CORRECTED"` \| `null`
 
-Defined in: [types/api.ts:638](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L638)
+Defined in: [types/api.ts:638](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L638)
 
 ***
 
@@ -49,7 +49,7 @@ Defined in: [types/api.ts:638](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **label**: `string`
 
-Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L635)
+Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L635)
 
 ***
 
@@ -57,7 +57,7 @@ Defined in: [types/api.ts:635](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:627](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L627)
+Defined in: [types/api.ts:627](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L627)
 
 ***
 
@@ -65,7 +65,7 @@ Defined in: [types/api.ts:627](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **text**: `string`
 
-Defined in: [types/api.ts:626](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L626)
+Defined in: [types/api.ts:626](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L626)
 
 ***
 
@@ -73,7 +73,7 @@ Defined in: [types/api.ts:626](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **validation\_source**: `"chroma"` \| `"llm"` \| `null`
 
-Defined in: [types/api.ts:637](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L637)
+Defined in: [types/api.ts:637](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L637)
 
 ***
 
@@ -81,7 +81,7 @@ Defined in: [types/api.ts:637](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > **word\_id**: `number`
 
-Defined in: [types/api.ts:628](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L628)
+Defined in: [types/api.ts:628](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L628)
 
 ***
 
@@ -89,4 +89,4 @@ Defined in: [types/api.ts:628](https://github.com/tnorlund/Portfolio/blob/67ef87
 
 > `optional` **validation\_status**: `"PENDING"` \| `"VALID"` \| `"INVALID"` \| `"NEEDS_REVIEW"` \| `"NONE"`
 
-Defined in: [types/api.ts:636](https://github.com/tnorlund/Portfolio/blob/67ef87bbeba7f6bd443496f09dce637d1ca4d931/portfolio/types/api.ts#L636)
+Defined in: [types/api.ts:636](https://github.com/tnorlund/Portfolio/blob/d593377e163f9f455efd2812a2cb57767ff1884e/portfolio/types/api.ts#L636)
