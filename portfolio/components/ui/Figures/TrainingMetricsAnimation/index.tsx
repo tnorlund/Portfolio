@@ -297,8 +297,8 @@ interface LabelBarProps {
 }
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }) => {
-  const widthPct = value * 100;
-  const distWidthPct = (support / maxSupport) * 100;
+  const widthPct = Math.max(0, Math.min(100, value * 100));
+  const distWidthPct = maxSupport > 0 ? Math.max(0, Math.min(100, (support / maxSupport) * 100)) : 0;
 
   return (
     <div className={styles.labelRow}>

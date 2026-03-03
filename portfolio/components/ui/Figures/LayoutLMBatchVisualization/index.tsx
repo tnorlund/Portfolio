@@ -23,7 +23,7 @@ import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
-const EMPTY_STRING_SET = new Set<string>();
+const emptyStringSet = new Set<string>();
 
 // Label colors for hybrid model (8-label and 10-label)
 const LABEL_COLORS: Record<string, string> = {
@@ -458,7 +458,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
   const { revealedWordIds, revealedEntityTypes } = useMemo(() => {
     const receipt = receipts[currentReceiptIndex];
     if (!receipt) {
-      return { revealedWordIds: EMPTY_STRING_SET, revealedEntityTypes: EMPTY_STRING_SET };
+      return { revealedWordIds: emptyStringSet, revealedEntityTypes: emptyStringSet };
     }
 
     const { words } = receipt.original;
