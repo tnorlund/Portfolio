@@ -25,14 +25,19 @@ import styles from "./LayoutLMBatchVisualization.module.css";
 
 const emptyStringSet = new Set<string>();
 
-// Label colors for hybrid model (8-label and 10-label)
+// Normalize ADDRESS_LINE to ADDRESS for display purposes
+const normalizeLabel = (label: string): string => {
+  if (label === "ADDRESS_LINE") return "ADDRESS";
+  return label;
+};
+
+// Label colors for hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
-  ADDRESS_LINE: "var(--color-teal)",
   PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
@@ -47,7 +52,6 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amount",
   ADDRESS: "Address",
-  ADDRESS_LINE: "Address Line",
   PHONE_NUMBER: "Phone",
   WEBSITE: "Website",
   STORE_HOURS: "Hours",
@@ -61,7 +65,6 @@ const ENTITY_TYPES = [
   "TIME",
   "AMOUNT",
   "ADDRESS",
-  "ADDRESS_LINE",
   "PHONE_NUMBER",
   "WEBSITE",
   "STORE_HOURS",
@@ -74,7 +77,6 @@ const MOBILE_LEGEND_GROUPS = [
   { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
   { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
   { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
-  { color: "var(--color-teal)", label: "Address Line", types: ["ADDRESS_LINE"] },
   { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
   { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
   { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
@@ -291,7 +293,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   // Get predictions with non-O labels that are revealed
   const visiblePredictions = useMemo(() => {
     return predictions.filter((pred) => {
-      if (pred.predicted_label_base === "O") return false;
+      if (normalizeLabel(pred.predicted_label_base) === "O") return false;
       const key = `${pred.line_id}_${pred.word_id}`;
       return revealedWordIds.has(key);
     });
@@ -359,7 +361,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
               if (!word) return null;
 
               const { bounding_box } = word;
-              const color = LABEL_COLORS[pred.predicted_label_base] || LABEL_COLORS.O;
+              const color = LABEL_COLORS[normalizeLabel(pred.predicted_label_base)] || LABEL_COLORS.O;
 
               // Convert normalized bounding box to pixel coordinates
               const x = bounding_box.x * receiptData.width;
@@ -447,8 +449,9 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     if (!receipt) return new Map<string, string>();
     const map = new Map<string, string>();
     for (const pred of receipt.original.predictions) {
-      if (pred.predicted_label_base !== "O") {
-        map.set(`${pred.line_id}_${pred.word_id}`, pred.predicted_label_base);
+      const label = normalizeLabel(pred.predicted_label_base);
+      if (label !== "O") {
+        map.set(`${pred.line_id}_${pred.word_id}`, label);
       }
     }
     return map;
