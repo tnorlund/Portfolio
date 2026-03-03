@@ -61,7 +61,8 @@ class TestSetLabelArrayFields:
 
     def test_always_writes_keys_on_fresh_dict(self):
         """Regression: _set_label_array_fields must write both keys even on a
-        fresh dict so that dict.update() will overwrite stale ChromaDB values."""
+        fresh dict so that dict.update() will overwrite stale ChromaDB values.
+        """
         fresh = {"label_status": "validated"}
         _set_label_array_fields(
             fresh,
@@ -132,9 +133,15 @@ class TestIncrementalLabelTransitions:
     def _apply_incremental_update(
         self, existing_valid, existing_invalid, label, status
     ):
-        """Simulate the incremental update path from operations.py:654-675."""
+        """Simulate the incremental update path from operations.py:654-675.
+
+        TODO: Replace with a call to the real ``update_word_labels``
+        once a lightweight test harness for ChromaDB collections exists.
+        """
         metadata = {
-            "valid_labels_array": list(existing_valid) if existing_valid else None,
+            "valid_labels_array": (
+                list(existing_valid) if existing_valid else None
+            ),
             "invalid_labels_array": (
                 list(existing_invalid) if existing_invalid else None
             ),
