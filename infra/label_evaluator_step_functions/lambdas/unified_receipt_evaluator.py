@@ -43,14 +43,12 @@ try:
         TRACING_VERSION,
         TraceContext,
         child_trace,
-        create_historical_span,
         create_receipt_trace,
         end_receipt_trace,
         flush_langsmith_traces,
     )
     from utils.s3_helpers import (
         download_chromadb_snapshot,
-        get_merchant_hash,
         load_json_from_s3,
         upload_json_to_s3,
     )
@@ -70,7 +68,6 @@ except ImportError:
         TRACING_VERSION,
         TraceContext,
         child_trace,
-        create_historical_span,
         create_receipt_trace,
         end_receipt_trace,
         flush_langsmith_traces,
@@ -85,7 +82,6 @@ except ImportError:
     )
     from utils.s3_helpers import (
         download_chromadb_snapshot,
-        get_merchant_hash,
         load_json_from_s3,
         upload_json_to_s3,
     )
@@ -422,7 +418,6 @@ async def unified_receipt_evaluator(
         # Import utilities
         from utils.serialization import (
             deserialize_label,
-            deserialize_patterns,
             deserialize_place,
             deserialize_word,
             serialize_label,
@@ -677,188 +672,16 @@ async def unified_receipt_evaluator(
             root_run_id=receipt_trace.root_run_id,
         )
 
-        # 3. Setup phase: Load patterns, build visual lines, and setup LLM concurrently
-        # These three operations have no dependencies on each other
+        # 3. Setup phase: Build visual lines
         from receipt_agent.agents.label_evaluator.word_context import (
             assemble_visual_lines,
             build_word_contexts,
         )
-        merchant_hash = get_merchant_hash(merchant_name)
-        patterns_s3_key = event.get("patterns_s3_key") or (
-            f"patterns/{execution_id}/{merchant_hash}.json"
-        )
-        line_item_patterns_s3_key = event.get("line_item_patterns_s3_key") or (
-            f"line_item_patterns/{execution_id}/{merchant_hash}.json"
-        )
 
-        # Define async functions for parallel execution
-        async def load_patterns_async() -> tuple[dict | None, dict | None]:
-            """Load geometric and line item patterns from S3."""
-            patterns_data = await asyncio.to_thread(
-                load_json_from_s3,
-                s3,
-                batch_bucket,
-                patterns_s3_key,
-                logger,
-                True,  # allow_missing
-            )
-            line_item_data = await asyncio.to_thread(
-                load_json_from_s3,
-                s3,
-                batch_bucket,
-                line_item_patterns_s3_key,
-                logger,
-                True,  # allow_missing
-            )
-            return patterns_data, line_item_data
+        word_contexts = build_word_contexts(words, labels)
+        visual_lines = assemble_visual_lines(word_contexts)
 
-        async def build_visual_lines_async() -> list:
-            """Build visual lines from words and labels."""
-            word_contexts = await asyncio.to_thread(build_word_contexts, words, labels)
-            return await asyncio.to_thread(assemble_visual_lines, word_contexts)
-
-        # Initialize results
-        patterns = None
-        line_item_patterns = None
-        patterns_data = None
-        line_item_patterns_data = None
-        visual_lines: list = []
-
-        # Run setup operations concurrently
-        (
-            (patterns_data, line_item_patterns_data),
-            visual_lines,
-        ) = await asyncio.gather(
-            load_patterns_async(),
-            build_visual_lines_async(),
-        )
-
-        # Deserialize patterns after loading
-        if patterns_data:
-            patterns = deserialize_patterns(patterns_data)
-        if line_item_patterns_data:
-            if "patterns" in line_item_patterns_data:
-                line_item_patterns = line_item_patterns_data["patterns"]
-            else:
-                line_item_patterns = line_item_patterns_data
-
-        logger.info(
-            "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
-            len(visual_lines),
-            patterns is not None,
-            line_item_patterns is not None,
-        )
-
-        # Create historical spans for pattern computation (from batch Phase 1)
-        # These show up in the trace as if they happened during this receipt's evaluation
-        if line_item_patterns_data:
-            try:
-                discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
-                discovery_start = discovery_metadata.get("discovery_start_time")
-                discovery_end = discovery_metadata.get("discovery_end_time")
-
-                if discovery_start and discovery_end:
-                    create_historical_span(
-                        parent_ctx=trace_ctx,
-                        name="DiscoverPatterns",
-                        start_time_iso=discovery_start,
-                        end_time_iso=discovery_end,
-                        duration_seconds=discovery_metadata.get(
-                            "discovery_duration_seconds", 0
-                        ),
-                        run_type="chain",
-                        inputs={
-                            "merchant_name": merchant_name,
-                            "llm_model": discovery_metadata.get(
-                                "discovery_llm_model", "unknown"
-                            ),
-                        },
-                        outputs={
-                            "line_item_labels": discovery_metadata.get(
-                                "line_item_labels", []
-                            ),
-                        },
-                        metadata={
-                            "batch_computed": True,
-                        },
-                    )
-                    logger.info(
-                        "Added DiscoverPatterns historical span (%.2fs)",
-                        discovery_metadata.get("discovery_duration_seconds", 0),
-                    )
-            except Exception as span_err:
-                logger.warning(
-                    "Failed to create DiscoverPatterns historical span: %s",
-                    span_err,
-                )
-
-        if patterns_data:
-            try:
-                computation_metadata = patterns_data.get("_trace_metadata", {})
-                computation_start = computation_metadata.get("computation_start_time")
-                computation_end = computation_metadata.get("computation_end_time")
-
-                if computation_start and computation_end:
-                    # Extract pattern names for outputs
-                    constellation_geometry = patterns_data.get(
-                        "constellation_geometry", {}
-                    )
-                    label_pair_geometry = patterns_data.get("label_pair_geometry", {})
-                    constellation_names = (
-                        list(constellation_geometry.keys())
-                        if constellation_geometry
-                        else []
-                    )
-                    label_pair_names = (
-                        list(label_pair_geometry.keys()) if label_pair_geometry else []
-                    )
-
-                    create_historical_span(
-                        parent_ctx=trace_ctx,
-                        name="ComputePatterns",
-                        start_time_iso=computation_start,
-                        end_time_iso=computation_end,
-                        duration_seconds=computation_metadata.get(
-                            "computation_duration_seconds", 0
-                        ),
-                        run_type="chain",
-                        inputs={
-                            "merchant_name": merchant_name,
-                            "training_receipt_count": computation_metadata.get(
-                                "training_receipt_count", 0
-                            ),
-                        },
-                        outputs={
-                            "status": computation_metadata.get(
-                                "computation_status", "unknown"
-                            ),
-                            "constellation_patterns": constellation_names,
-                            "constellation_count": len(constellation_names),
-                            "label_pair_patterns": label_pair_names,
-                            "label_pair_count": len(label_pair_names),
-                        },
-                        metadata={
-                            "load_data_duration_seconds": computation_metadata.get(
-                                "load_data_duration_seconds", 0
-                            ),
-                            "compute_patterns_duration_seconds": computation_metadata.get(
-                                "compute_patterns_duration_seconds", 0
-                            ),
-                            "batch_computed": True,
-                        },
-                    )
-                    logger.info(
-                        "Added ComputePatterns historical span "
-                        "(%.2fs, %d constellations, %d label pairs)",
-                        computation_metadata.get("computation_duration_seconds", 0),
-                        len(constellation_names),
-                        len(label_pair_names),
-                    )
-            except Exception as span_err:
-                logger.warning(
-                    "Failed to create ComputePatterns historical span: %s",
-                    span_err,
-                )
+        logger.info("Setup complete: %d visual lines", len(visual_lines))
 
         # 4. Phase 1: Run metadata evaluation
         from receipt_agent.agents.label_evaluator.metadata_subagent import (

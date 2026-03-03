@@ -7,7 +7,6 @@ because langsmith is only available in container-based Lambdas.
 from utils.emf_metrics import emf_metrics
 from utils.serialization import (
     deserialize_label,
-    deserialize_patterns,
     deserialize_place,
     deserialize_word,
     serialize_label,
@@ -17,7 +16,6 @@ from utils.serialization import (
 
 __all__ = [
     "deserialize_label",
-    "deserialize_patterns",
     "deserialize_place",
     "deserialize_word",
     "emf_metrics",

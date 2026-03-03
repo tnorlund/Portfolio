@@ -21,14 +21,13 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Aggregate results across all receipts (two-phase architecture).
+    Aggregate results across all receipts.
 
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "receipt_results": [{...}, {...}, ...],  # Flat list of receipt results
-        "pattern_results": [{"merchant_name": ..., "status": "patterns_computed"}, ...],
         "total_merchants": 18,
         "total_receipts": 702
     }

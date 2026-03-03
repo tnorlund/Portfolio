@@ -188,7 +188,6 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         # Import shared deserialization utilities
         from utils.serialization import (
             deserialize_label,
-            deserialize_patterns,
             deserialize_place,
             deserialize_word,
         )
@@ -381,136 +380,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                         exc_info=True,
                     )
 
-        # 4. Load geometric patterns (from Phase 1 ComputePatterns) and create historical span
-        # Patterns were computed in Phase 1 (ComputeAllPatterns) - we just load them here.
+        # 4. Patterns removed — no longer computed or loaded
         merchant_patterns = None
-        patterns_data = None
-        if patterns_s3_key:
-            logger.info(
-                "Loading patterns from s3://%s/%s",
-                batch_bucket,
-                patterns_s3_key,
-            )
-            # Use allow_missing=True for graceful fallback when patterns don't exist
-            patterns_data = load_json_from_s3(
-                s3,
-                batch_bucket,
-                patterns_s3_key,
-                logger=logger,
-                allow_missing=True,
-            )
-
-            if patterns_data:
-                # Create historical ComputePatterns span using stored timing (best-effort)
-                try:
-                    computation_metadata = patterns_data.get(
-                        "_trace_metadata", {}
-                    )
-                    computation_start = computation_metadata.get(
-                        "computation_start_time"
-                    )
-                    computation_end = computation_metadata.get(
-                        "computation_end_time"
-                    )
-                    if computation_start and computation_end:
-                        # Extract constellation/geometry pattern info for rich output
-                        # constellation_geometry contains multi-label constellations
-                        # label_pair_geometry contains individual label pairs
-                        label_pair_geometry = patterns_data.get(
-                            "label_pair_geometry", {}
-                        )
-                        constellation_geometry = patterns_data.get(
-                            "constellation_geometry", {}
-                        )
-                        constellation_names = (
-                            list(constellation_geometry.keys())
-                            if constellation_geometry
-                            else []
-                        )
-                        label_pair_names = (
-                            list(label_pair_geometry.keys())
-                            if label_pair_geometry
-                            else []
-                        )
-
-                        create_historical_span(
-                            parent_ctx=trace_ctx,
-                            name="ComputePatterns",
-                            start_time_iso=computation_start,
-                            end_time_iso=computation_end,
-                            duration_seconds=computation_metadata.get(
-                                "computation_duration_seconds", 0
-                            ),
-                            run_type="chain",
-                            inputs={
-                                "merchant_name": merchant_name,
-                                "training_receipt_count": computation_metadata.get(
-                                    "training_receipt_count", 0
-                                ),
-                            },
-                            outputs={
-                                "status": computation_metadata.get(
-                                    "computation_status", "unknown"
-                                ),
-                                "constellation_patterns": constellation_names,
-                                "constellation_count": len(
-                                    constellation_names
-                                ),
-                                "label_pair_patterns": label_pair_names,
-                                "label_pair_count": len(label_pair_names),
-                            },
-                            metadata={
-                                "load_data_duration_seconds": computation_metadata.get(
-                                    "load_data_duration_seconds", 0
-                                ),
-                                "compute_patterns_duration_seconds": computation_metadata.get(
-                                    "compute_patterns_duration_seconds", 0
-                                ),
-                                "batch_computed": True,
-                            },
-                        )
-                        logger.info(
-                            "Added ComputePatterns historical span "
-                            "(%.2fs, %d constellations, %d label pairs)",
-                            computation_metadata.get(
-                                "computation_duration_seconds", 0
-                            ),
-                            len(constellation_names),
-                            len(label_pair_names),
-                        )
-                except Exception as span_err:
-                    logger.warning(
-                        "Failed to create ComputePatterns historical span: %s",
-                        span_err,
-                        exc_info=True,
-                    )
-
-                # Deserialize patterns for evaluation (best-effort)
-                try:
-                    merchant_patterns = deserialize_patterns(patterns_data)
-                    if merchant_patterns:
-                        logger.info(
-                            "Loaded patterns for %s (%s receipts)",
-                            merchant_patterns.merchant_name,
-                            merchant_patterns.receipt_count,
-                        )
-                    else:
-                        logger.info(
-                            "Patterns file exists but no patterns available"
-                        )
-                except Exception as deser_err:
-                    logger.warning(
-                        "Failed to deserialize patterns, proceeding without: %s",
-                        deser_err,
-                        exc_info=True,
-                    )
-                    merchant_patterns = None
-            else:
-                logger.warning(
-                    "No patterns found at s3://%s/%s - proceeding without patterns",
-                    batch_bucket,
-                    patterns_s3_key,
-                )
 
         # 5. Create pre-loaded EvaluatorState with patterns
         from receipt_agent.agents.label_evaluator.state import EvaluatorState
