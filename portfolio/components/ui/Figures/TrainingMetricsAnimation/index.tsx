@@ -5,6 +5,12 @@ import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
+// Normalize ADDRESS_LINE to ADDRESS for display purposes
+const normalizeLabel = (label: string): string => {
+  if (label === "ADDRESS_LINE") return "ADDRESS";
+  return label;
+};
+
 // Label color mapping for hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
@@ -12,7 +18,6 @@ const LABEL_COLORS: Record<string, string> = {
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
-  ADDRESS_LINE: "var(--color-red)",
   PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
@@ -21,13 +26,14 @@ const LABEL_COLORS: Record<string, string> = {
 };
 
 const getLabelColor = (label: string): string => {
-  return LABEL_COLORS[label] || "var(--color-gray, #888)";
+  return LABEL_COLORS[normalizeLabel(label)] || "var(--color-gray, #888)";
 };
 
 // Format label: "MERCHANT_NAME" -> "Merchant Name", "O" -> "None"
 const formatLabel = (label: string): string => {
-  if (label === "O") return "None";
-  return label
+  const normalized = normalizeLabel(label);
+  if (normalized === "O") return "None";
+  return normalized
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
@@ -40,7 +46,6 @@ const LABEL_ABBREV: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amt",
   ADDRESS: "Addr",
-  ADDRESS_LINE: "Addr",
   PHONE_NUMBER: "Phone",
   WEBSITE: "Web",
   STORE_HOURS: "Hours",
@@ -49,7 +54,8 @@ const LABEL_ABBREV: Record<string, string> = {
 };
 
 const formatLabelAbbrev = (label: string): string => {
-  return LABEL_ABBREV[label] || label.slice(0, 4);
+  const normalized = normalizeLabel(label);
+  return LABEL_ABBREV[normalized] || normalized.slice(0, 4);
 };
 
 // Spring config for smooth animations
