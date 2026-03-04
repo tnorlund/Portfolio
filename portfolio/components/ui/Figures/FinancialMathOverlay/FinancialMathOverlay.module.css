@@ -131,6 +131,16 @@
   transition: opacity 0.4s ease, border-color 0.4s ease;
 }
 
+.equationTitle {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+  color: rgba(var(--text-color-rgb), 0.5);
+  transition: color 0.4s ease;
+}
+
 .equationCard.revealed {
   opacity: 1;
 }

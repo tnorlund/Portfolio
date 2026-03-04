@@ -205,32 +205,160 @@ def _build_cdn_fields(
 # ---------------------------------------------------------------------------
 
 
+def _parse_numeric(text: str) -> float | None:
+    """Parse a numeric value from word text, stripping currency symbols."""
+    cleaned = text.replace("$", "").replace(",", "").strip()
+    try:
+        return float(cleaned)
+    except (ValueError, TypeError):
+        return None
+
+
 def _build_equations(
     decisions: list[dict],
     word_lookup: dict[tuple[int, int], dict],
 ) -> list[dict[str, Any]]:
-    """Group financial decisions by description into equations."""
+    """Reconstruct equations from per-word financial decisions.
+
+    The unified evaluator outputs individual word decisions (line_id, word_id,
+    current_label, word_text + llm_review). We reconstruct equation-level data
+    by grouping words by their financial label roles:
+      - GRAND_TOTAL = SUBTOTAL + TAX + TIP - DISCOUNT
+      - GRAND_TOTAL_DIRECT = sum(LINE_TOTAL) + TAX + TIP - DISCOUNT (no SUBTOTAL)
+      - SUBTOTAL = sum(LINE_TOTAL)
+      - LINE_ITEM_BALANCED = QUANTITY × UNIT_PRICE = LINE_TOTAL (per line)
+    """
     if not decisions:
         return []
 
-    groups: dict[str, list[dict]] = {}
+    # Build word entries and group by label
+    by_label: dict[str, list[dict[str, Any]]] = {}
+    by_line: dict[int, dict[str, list[dict[str, Any]]]] = {}
+
     for d in decisions:
-        issue = d.get("issue", {})
-        desc = issue.get("description", "<unknown>")
-        groups.setdefault(desc, []).append(d)
+        entry = _build_decision_entry(d, word_lookup)
+        label = entry.get("current_label", "")
+        by_label.setdefault(label, []).append(entry)
+
+        # Also group by line for line-item equations
+        lid = entry.get("line_id")
+        if lid is not None and label in ("QUANTITY", "UNIT_PRICE", "LINE_TOTAL"):
+            by_line.setdefault(lid, {}).setdefault(label, []).append(entry)
 
     equations: list[dict[str, Any]] = []
-    for desc, group in groups.items():
-        first_issue = group[0].get("issue", {})
-        involved_words = [_build_decision_entry(d, word_lookup) for d in group]
+
+    has_subtotal = "SUBTOTAL" in by_label
+    has_grand_total = "GRAND_TOTAL" in by_label
+    line_totals = by_label.get("LINE_TOTAL", [])
+    subtotals = by_label.get("SUBTOTAL", [])
+    taxes = by_label.get("TAX", [])
+    tips = by_label.get("TIP", [])
+    discounts = by_label.get("DISCOUNT", [])
+    grand_totals = by_label.get("GRAND_TOTAL", [])
+
+    # --- LINE_ITEM_BALANCED: QUANTITY × UNIT_PRICE = LINE_TOTAL per line ---
+    for lid, labels in sorted(by_line.items()):
+        qtys = labels.get("QUANTITY", [])
+        ups = labels.get("UNIT_PRICE", [])
+        lts = labels.get("LINE_TOTAL", [])
+        if qtys and ups and lts:
+            qty_val = _parse_numeric(qtys[0].get("word_text", ""))
+            up_val = _parse_numeric(ups[0].get("word_text", ""))
+            lt_val = _parse_numeric(lts[0].get("word_text", ""))
+            expected = qty_val * up_val if qty_val is not None and up_val is not None else None
+            diff = round(lt_val - expected, 2) if lt_val is not None and expected is not None else None
+            involved = qtys + ups + lts
+            equations.append({
+                "issue_type": "LINE_ITEM_BALANCED",
+                "description": (
+                    f"Line {lid}: LINE_TOTAL ({lts[0]['word_text']}) "
+                    f"= QTY ({qtys[0]['word_text']}) × UNIT_PRICE ({ups[0]['word_text']})"
+                ),
+                "expected_value": expected,
+                "actual_value": lt_val,
+                "difference": diff,
+                "involved_words": involved,
+            })
+
+    # --- SUBTOTAL = sum(LINE_TOTAL) ---
+    if has_subtotal and line_totals:
+        lt_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in line_totals)
+        discount_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in discounts)
+        expected = round(lt_sum - discount_sum, 2)
+        st_val = _parse_numeric(subtotals[0]["word_text"]) if subtotals else None
+        diff = round(st_val - expected, 2) if st_val is not None else None
+        lt_desc = " + ".join(w["word_text"] for w in line_totals)
+        desc = f"SUBTOTAL ({subtotals[0]['word_text']}) = sum(LINE_TOTAL) ({lt_desc})"
+        if discounts:
+            desc += f" - DISCOUNT ({discounts[0]['word_text']})"
         equations.append({
-            "issue_type": first_issue.get("issue_type", ""),
+            "issue_type": "SUBTOTAL",
             "description": desc,
-            "expected_value": first_issue.get("expected_value"),
-            "actual_value": first_issue.get("actual_value"),
-            "difference": first_issue.get("difference"),
-            "involved_words": involved_words,
+            "expected_value": expected,
+            "actual_value": st_val,
+            "difference": diff,
+            "involved_words": subtotals + line_totals + discounts,
         })
+
+    # --- GRAND_TOTAL equation ---
+    if has_grand_total:
+        gt_val = _parse_numeric(grand_totals[0]["word_text"]) if grand_totals else None
+        tax_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in taxes)
+        tip_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in tips)
+        discount_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in discounts)
+
+        if has_subtotal:
+            # GRAND_TOTAL = SUBTOTAL + TAX + TIP - DISCOUNT
+            st_val = _parse_numeric(subtotals[0]["word_text"]) if subtotals else 0
+            expected = round((st_val or 0) + tax_sum + tip_sum - discount_sum, 2)
+            parts = [f"SUBTOTAL ({subtotals[0]['word_text']})"] if subtotals else []
+            if taxes:
+                parts.append(f"TAX ({taxes[0]['word_text']})")
+            if tips:
+                parts.append(f"TIP ({tips[0]['word_text']})")
+            desc = f"GRAND_TOTAL ({grand_totals[0]['word_text']}) = {' + '.join(parts)}"
+            if discounts:
+                desc += f" - DISCOUNT ({discounts[0]['word_text']})"
+            issue_type = "GRAND_TOTAL"
+            involved = grand_totals + subtotals + taxes + tips + discounts
+        else:
+            # GRAND_TOTAL_DIRECT = sum(LINE_TOTAL) + TAX + TIP - DISCOUNT
+            lt_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in line_totals)
+            expected = round(lt_sum + tax_sum + tip_sum - discount_sum, 2)
+            lt_desc = " + ".join(w["word_text"] for w in line_totals) if line_totals else "0"
+            parts = [f"sum(LINE_TOTAL) ({lt_desc})"]
+            if taxes:
+                parts.append(f"TAX ({taxes[0]['word_text']})")
+            if tips:
+                parts.append(f"TIP ({tips[0]['word_text']})")
+            desc = f"GRAND_TOTAL ({grand_totals[0]['word_text']}) = {' + '.join(parts)}"
+            if discounts:
+                desc += f" - DISCOUNT ({discounts[0]['word_text']})"
+            issue_type = "GRAND_TOTAL_DIRECT"
+            involved = grand_totals + line_totals + taxes + tips + discounts
+
+        diff = round(gt_val - expected, 2) if gt_val is not None else None
+        equations.append({
+            "issue_type": issue_type,
+            "description": desc,
+            "expected_value": expected,
+            "actual_value": gt_val,
+            "difference": diff,
+            "involved_words": involved,
+        })
+
+    # --- HAS_TOTAL: only when no other equations were built ---
+    if not equations and has_grand_total:
+        gt_val = _parse_numeric(grand_totals[0]["word_text"]) if grand_totals else None
+        equations.append({
+            "issue_type": "HAS_TOTAL",
+            "description": f"GRAND_TOTAL = {grand_totals[0]['word_text']}" if grand_totals else "GRAND_TOTAL",
+            "expected_value": gt_val,
+            "actual_value": gt_val,
+            "difference": 0,
+            "involved_words": grand_totals,
+        })
+
     return equations
 
 

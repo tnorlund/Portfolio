@@ -269,6 +269,19 @@ interface EquationNotation {
   result: string;
 }
 
+function getEquationTitle(issueType: string): string {
+  switch (issueType) {
+    case "LINE_ITEM_BALANCED": return "Line Item";
+    case "SUBTOTAL": return "Subtotal";
+    case "GRAND_TOTAL": return "Grand Total";
+    case "GRAND_TOTAL_DIRECT": return "Grand Total";
+    case "HAS_TOTAL": return "Total";
+    case "TOTAL_CHECK": return "Total Check";
+    case "TIP_CHECK": return "Tip Check";
+    default: return "";
+  }
+}
+
 function buildEquationNotation(eq: FinancialMathEquation): EquationNotation {
   const words = eq.involved_words;
   const issueType = eq.issue_type || "";
@@ -430,6 +443,7 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
         const isValid = !hasInvalid && !hasReview;
         const notation = buildEquationNotation(eq);
         const isHasTotal = eq.issue_type === "HAS_TOTAL";
+        const title = getEquationTitle(eq.issue_type || "");
 
         return (
           <div
@@ -437,6 +451,11 @@ const EquationPanel: React.FC<EquationPanelProps> = ({
             className={`${styles.equationCard} ${isRevealed ? styles.revealed : ""}`}
             style={{ borderColor: isRevealed ? color : undefined }}
           >
+            {title && (
+              <div className={styles.equationTitle} style={{ color: isRevealed ? color : undefined }}>
+                {title}
+              </div>
+            )}
             <div className={styles.summation}>
               {isHasTotal ? (
                 /* HAS_TOTAL: simple single-value display */
