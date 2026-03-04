@@ -1307,12 +1307,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 ]
             )
 
-        # Add viz-cache outputs if enabled (indices 21-22)
+        # Add viz-cache outputs if enabled (after EMR or after batch_bucket)
         if self.viz_cache_enabled and build_viz_cache_lambda:
             base_outputs.extend(
                 [
-                    self.cache_bucket,  # 21
-                    build_viz_cache_lambda.arn,  # 22
+                    self.cache_bucket,
+                    build_viz_cache_lambda.arn,
                 ]
             )
 
@@ -1339,7 +1339,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         def build_viz_cache_config(args):
             """Build VizCacheConfig from resolved outputs."""
-            viz_base_idx = 21  # After EMR params
+            viz_base_idx = 21 if self.emr_enabled else 16  # After EMR params (or directly after batch_bucket)
             if self.viz_cache_enabled and len(args) > viz_base_idx:
                 return VizCacheConfig(
                     cache_bucket=args[viz_base_idx],
