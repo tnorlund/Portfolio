@@ -3,7 +3,6 @@ import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
 import UploadProgressPanel from "../components/ui/UploadProgressPanel";
-import { useQAQueue } from "../hooks/useQAQueue";
 import { useUploadProgress } from "../hooks/useUploadProgress";
 import styles from "../styles/Receipt.module.css";
 
@@ -12,18 +11,14 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
-  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
   FinancialMathOverlay,
-  LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
-  QAAgentFlow,
-  QuestionMarquee,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
   StreamBitsRoutingDiagram,
@@ -40,8 +35,6 @@ import {
   GithubActionsLogo,
   GithubLogo,
   GoogleMapsLogo,
-  LangChainLogo,
-  LangSmithLogo,
   PulumiLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
@@ -89,9 +82,6 @@ export default function ReceiptPage({
   //   );
   //   setUploadDiagramChars(chars);
   // }, []);
-
-  // --- QA Agent live data ---
-  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   // --- Receipt Upload State & Handlers ---
   const [dragging, setDragging] = useState(false);
@@ -328,34 +318,6 @@ M1LK 2%           1    $4.4g`}</code>
         <FinancialMathOverlay />
       </ClientOnly>
 
-      <p>
-        Then I compare the labels across receipts from the same store. If
-        every other Trader Joe's receipt calls that field a line total, but
-        this one says subtotal, something's off.
-      </p>
-
-      <ClientOnly>
-        <BetweenReceiptVisualization />
-      </ClientOnly>
-
-      <p>
-        This works, kind of. AI isn't consistent. It would call the price of
-        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
-        something that doesn't know what milk is. So I corrected the results
-        by asking AI to verify again.
-      </p>
-
-      <p>And again. And again.</p>
-
-      <ClientOnly>
-        <LabelValidationTimeline />
-      </ClientOnly>
-
-      <p>
-        Each pass got a little better. The red shrinks, the green grows. But
-        asking ~4 different AI, 5+ times to verify the results was slow and
-        expensive. I needed a better way.
-      </p>
 
       <h2>Making it Faster and Cheaper</h2>
 
@@ -451,36 +413,6 @@ M1LK 2%           1    $4.4g`}</code>
         What if I ask it a weird question? What if the receipt is formatted in
         a way I've never seen? What if the AI hallucinates a grocery store that
         doesn't exist? I need to find out.
-      </p>
-
-      <ClientOnly>
-        <LangChainLogo />
-      </ClientOnly>
-
-      <p>
-        LangChain lets me wire up the whole pipeline: question in, answer out.
-        But more importantly, it lets me throw hundreds of fake questions at
-        the system to see what breaks.
-      </p>
-
-      <ClientOnly>
-        <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
-          <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
-        </QAAgentFlow>
-      </ClientOnly>
-
-      <p>
-        Some work. Some don't. That's the point.
-      </p>
-
-      <ClientOnly>
-        <LangSmithLogo />
-      </ClientOnly>
-
-      <p>
-        LangSmith records what happened:  which questions worked, which failed,
-        and why. I can use AI to annotate bad answers, use AI to evaluate why
-        it went wrong, and plan a new experiment.
       </p>
 
       <ClientOnly>

@@ -57,6 +57,7 @@ from label_evaluator_step_functions.step_function_states import (
     EmrConfig,
     LambdaArns,
     RuntimeConfig,
+    VizCacheConfig,
     create_step_function_definition,
 )
 
@@ -101,12 +102,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         langsmith_export_bucket: Optional[pulumi.Input[str]] = None,
         analytics_output_bucket: Optional[pulumi.Input[str]] = None,
         spark_artifacts_bucket: Optional[pulumi.Input[str]] = None,
-        # Viz-cache integration (optional, enables merged analytics+viz-cache)
+        # Viz-cache integration (optional, writes cache via Lambda)
         cache_bucket: Optional[pulumi.Input[str]] = None,
-        langsmith_api_key: Optional[pulumi.Input[str]] = None,
-        langsmith_tenant_id: Optional[pulumi.Input[str]] = None,
-        setup_lambda_name: Optional[pulumi.Input[str]] = None,
-        setup_lambda_arn: Optional[pulumi.Input[str]] = None,
         # External batch bucket (optional - if not provided, creates one internally)
         # Use this to break circular dependencies with EMR analytics
         batch_bucket_name: Optional[pulumi.Input[str]] = None,
@@ -126,17 +123,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.langsmith_export_bucket = langsmith_export_bucket
         self.analytics_output_bucket = analytics_output_bucket
 
-        # Viz-cache config (enables merged EMR job)
-        self.viz_cache_enabled = (
-            cache_bucket is not None
-            and langsmith_api_key is not None
-            and setup_lambda_arn is not None
-        )
+        # Viz-cache config (BuildVizCache Lambda, replaces LangSmith + EMR)
+        self.viz_cache_enabled = cache_bucket is not None
         self.cache_bucket = cache_bucket
-        self.langsmith_api_key = langsmith_api_key
-        self.langsmith_tenant_id = langsmith_tenant_id
-        self.setup_lambda_name = setup_lambda_name
-        self.setup_lambda_arn = setup_lambda_arn
         self.spark_artifacts_bucket = spark_artifacts_bucket
 
         # ============================================================
@@ -1004,22 +993,17 @@ class LabelEvaluatorStepFunction(ComponentResource):
         )
 
         # ============================================================
-        # LangSmith Export Lambdas (for viz-cache integration)
+        # Viz-Cache Builder Lambda (replaces LangSmith export + EMR)
         # ============================================================
-        trigger_export_lambda = None
-        check_export_lambda = None
+        build_viz_cache_lambda = None
 
         if self.viz_cache_enabled:
-            import pulumi_aws as aws
-            from pulumi import StringAsset
+            LAMBDAS_DIR = os.path.join(CURRENT_DIR, "lambdas")
 
-            region = aws.get_region().name
-            account_id = aws.get_caller_identity().account_id
-
-            # Trigger Export Lambda Role
-            trigger_export_role = Role(
-                f"{name}-trigger-export-role",
-                name=f"{name}-trigger-export-role",
+            # Build viz cache Lambda role — needs read from batch bucket + write to cache bucket
+            build_viz_cache_role = Role(
+                f"{name}-build-viz-cache-role",
+                name=f"{name}-build-viz-cache-role",
                 assume_role_policy=json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -1036,54 +1020,46 @@ class LabelEvaluatorStepFunction(ComponentResource):
             )
 
             RolePolicyAttachment(
-                f"{name}-trigger-export-basic-exec",
-                role=trigger_export_role.name,
+                f"{name}-build-viz-cache-basic-exec",
+                role=build_viz_cache_role.name,
                 policy_arn=(
                     "arn:aws:iam::aws:policy/service-role/"
                     "AWSLambdaBasicExecutionRole"
                 ),
-                opts=ResourceOptions(parent=trigger_export_role),
+                opts=ResourceOptions(parent=build_viz_cache_role),
             )
 
-            # SSM access for destination_id
+            # S3 read (batch bucket) + write (cache bucket)
             RolePolicy(
-                f"{name}-trigger-export-ssm-policy",
-                role=trigger_export_role.id,
-                policy=json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "ssm:GetParameter",
-                                    "ssm:DeleteParameter",
-                                ],
-                                "Resource": (
-                                    f"arn:aws:ssm:{region}:{account_id}"
-                                    f":parameter/langsmith/{stack}/*"
-                                ),
-                            }
-                        ],
-                    }
-                ),
-                opts=ResourceOptions(parent=self),
-            )
-
-            # Permission to invoke setup lambda
-            RolePolicy(
-                f"{name}-trigger-export-invoke-setup-policy",
-                role=trigger_export_role.id,
-                policy=Output.from_input(self.setup_lambda_arn).apply(
-                    lambda arn: json.dumps(
+                f"{name}-build-viz-cache-s3-policy",
+                role=build_viz_cache_role.id,
+                policy=Output.all(self.batch_bucket.arn, cache_bucket).apply(
+                    lambda args: json.dumps(
                         {
                             "Version": "2012-10-17",
                             "Statement": [
                                 {
                                     "Effect": "Allow",
-                                    "Action": ["lambda:InvokeFunction"],
-                                    "Resource": arn,
-                                }
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:ListBucket",
+                                    ],
+                                    "Resource": [
+                                        args[0],
+                                        f"{args[0]}/*",
+                                    ],
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:PutObject",
+                                        "s3:ListBucket",
+                                    ],
+                                    "Resource": [
+                                        f"arn:aws:s3:::{args[1]}",
+                                        f"arn:aws:s3:::{args[1]}/*",
+                                    ],
+                                },
                             ],
                         }
                     )
@@ -1091,310 +1067,40 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-            trigger_export_code = '''
-import json
-import logging
-import os
-from datetime import datetime, timedelta, timezone
-
-import boto3
-import urllib3
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-LANGSMITH_API_URL = "https://api.smith.langchain.com"
-
-
-def _ensure_destination_exists(ssm, http, headers, stack, setup_lambda_name):
-    """Ensure destination exists in LangSmith, create if needed."""
-    param_name = f"/langsmith/{stack}/destination_id"
-    lambda_client = boto3.client("lambda")
-
-    destination_id = None
-    try:
-        response = ssm.get_parameter(Name=param_name)
-        destination_id = response["Parameter"]["Value"]
-        logger.info("Found destination_id in SSM: %s", destination_id)
-    except ssm.exceptions.ParameterNotFound:
-        logger.info("No destination_id in SSM, will create new one")
-
-    if destination_id:
-        response = http.request(
-            "GET",
-            f"{LANGSMITH_API_URL}/api/v1/bulk-export-destinations/{destination_id}",
-            headers=headers,
-        )
-        if response.status == 200:
-            logger.info("Destination verified: %s", destination_id)
-            return destination_id
-        else:
-            logger.warning("Destination %s not found, will recreate", destination_id)
-            try:
-                ssm.delete_parameter(Name=param_name)
-            except Exception:
-                pass
-
-    logger.info("Invoking setup lambda: %s", setup_lambda_name)
-    response = lambda_client.invoke(
-        FunctionName=setup_lambda_name,
-        InvocationType="RequestResponse",
-        Payload=json.dumps({"prefix": "traces"}),
-    )
-
-    result = json.loads(response["Payload"].read().decode())
-    if result.get("statusCode") != 200:
-        raise Exception(f"Setup lambda failed: {result}")
-
-    destination_id = result.get("destination_id")
-    if not destination_id:
-        raise Exception(f"No destination_id returned: {result}")
-
-    logger.info("Created destination: %s", destination_id)
-    return destination_id
-
-
-def handler(event, context):
-    """Trigger LangSmith bulk export."""
-    logger.info("Event: %s", json.dumps(event))
-
-    langchain_project = event.get("langchain_project") or event.get("project_name", "label-evaluator")
-    days_back = event.get("days_back", 1)
-    end_time_value = event.get("end_time")
-    if end_time_value:
-        end_time = datetime.fromisoformat(end_time_value.replace("Z", "+00:00"))
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=timezone.utc)
-    else:
-        end_time = datetime.now(timezone.utc)
-    end_time_iso = end_time.astimezone(timezone.utc).isoformat()
-    start_time_iso = event.get("start_time")
-    if not start_time_iso:
-        start_time_iso = (end_time - timedelta(days=days_back)).isoformat()
-
-    export_fields = event.get(
-        "export_fields",
-        [
-            "id",
-            "trace_id",
-            "parent_run_id",
-            "is_root",
-            "name",
-            "inputs",
-            "outputs",
-            "extra",
-            "start_time",
-            "end_time",
-            "run_type",
-            "status",
-            "total_tokens",
-            "prompt_tokens",
-            "completion_tokens",
-        ],
-    )
-
-    api_key = os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
-    stack = os.environ.get("STACK", "dev")
-    setup_lambda_name = os.environ.get("SETUP_LAMBDA_NAME")
-
-    ssm = boto3.client("ssm")
-    http = urllib3.PoolManager()
-
-    headers = {"x-api-key": api_key}
-    if tenant_id:
-        headers["x-tenant-id"] = tenant_id
-
-    destination_id = _ensure_destination_exists(
-        ssm, http, headers, stack, setup_lambda_name
-    )
-
-    # Get project_id
-    response = http.request(
-        "GET", f"{LANGSMITH_API_URL}/api/v1/sessions", headers=headers
-    )
-    if response.status != 200:
-        raise Exception(f"Failed to list projects: {response.data.decode()}")
-
-    projects = json.loads(response.data.decode("utf-8"))
-    project_id = None
-    for proj in projects:
-        if proj.get("name") == langchain_project:
-            project_id = proj.get("id")
-            break
-
-    if not project_id:
-        raise Exception(f"Project not found: {langchain_project}")
-
-    export_body = {
-        "bulk_export_destination_id": destination_id,
-        "session_id": project_id,
-        "start_time": start_time_iso,
-        "end_time": end_time_iso,
-        "export_fields": export_fields,
-    }
-
-    post_headers = dict(headers)
-    post_headers["Content-Type"] = "application/json"
-
-    response = http.request(
-        "POST",
-        f"{LANGSMITH_API_URL}/api/v1/bulk-exports",
-        headers=post_headers,
-        body=json.dumps(export_body),
-    )
-
-    if response.status not in (200, 201, 202):
-        raise Exception(f"Failed to trigger export: {response.data.decode()}")
-
-    result = json.loads(response.data.decode("utf-8"))
-    export_id = result.get("id")
-    logger.info("Triggered export: %s", export_id)
-
-    return {"export_id": export_id, "status": result.get("status", "pending")}
-'''
-
-            trigger_export_lambda = Function(
-                f"{name}-trigger-export",
-                name=f"{name}-trigger-export",
-                role=trigger_export_role.arn,
+            build_viz_cache_lambda = Function(
+                f"{name}-build-viz-cache",
+                name=f"{name}-build-viz-cache",
+                role=build_viz_cache_role.arn,
                 runtime="python3.12",
                 architectures=["arm64"],
-                handler="index.handler",
-                code=AssetArchive({"index.py": StringAsset(trigger_export_code)}),
-                timeout=30,
-                memory_size=128,
-                tags={"environment": stack},
-                environment=FunctionEnvironmentArgs(
-                    variables={
-                        "LANGCHAIN_API_KEY": self.langsmith_api_key,
-                        "LANGSMITH_TENANT_ID": self.langsmith_tenant_id or "",
-                        "SETUP_LAMBDA_NAME": self.setup_lambda_name,
-                        "STACK": stack,
-                    }
-                ),
-                opts=ResourceOptions(parent=self),
-            )
-
-            LogGroup(
-                f"{name}-trigger-export-logs",
-                name=trigger_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
-                retention_in_days=14,
-                opts=ResourceOptions(parent=self),
-            )
-
-            # Check Export Lambda Role
-            check_export_role = Role(
-                f"{name}-check-export-role",
-                name=f"{name}-check-export-role",
-                assume_role_policy=json.dumps(
+                handler="build_viz_cache.handler",
+                code=AssetArchive(
                     {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
-                                "Action": "sts:AssumeRole",
-                            }
-                        ],
+                        "build_viz_cache.py": FileAsset(
+                            os.path.join(LAMBDAS_DIR, "build_viz_cache.py")
+                        ),
                     }
                 ),
-                opts=ResourceOptions(parent=self),
-            )
-
-            RolePolicyAttachment(
-                f"{name}-check-export-basic-exec",
-                role=check_export_role.name,
-                policy_arn=(
-                    "arn:aws:iam::aws:policy/service-role/"
-                    "AWSLambdaBasicExecutionRole"
-                ),
-                opts=ResourceOptions(parent=check_export_role),
-            )
-
-            check_export_code = '''
-import json
-import logging
-import os
-
-import urllib3
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-LANGSMITH_API_URL = "https://api.smith.langchain.com"
-
-
-def handler(event, context):
-    """Check LangSmith export status."""
-    logger.info("Event: %s", json.dumps(event))
-
-    export_id = event.get("export_id")
-    if not export_id:
-        raise ValueError("export_id is required")
-
-    api_key = os.environ["LANGCHAIN_API_KEY"]
-    http = urllib3.PoolManager()
-
-    response = http.request(
-        "GET",
-        f"{LANGSMITH_API_URL}/api/v1/bulk-exports/{export_id}",
-        headers={"x-api-key": api_key},
-    )
-
-    if response.status != 200:
-        logger.error("Failed to check status: %s", response.data.decode())
-        return {"status": "error", "export_id": export_id}
-
-    result = json.loads(response.data.decode("utf-8"))
-    status = result.get("status", "unknown")
-
-    # Normalize status
-    if status in ("Complete", "Completed"):
-        status = "completed"
-    elif status in ("Failed", "Cancelled"):
-        status = "failed"
-    elif status in ("Pending", "Running", "InProgress"):
-        status = "pending"
-
-    logger.info("Export %s status: %s", export_id, status)
-    return {"export_id": export_id, "status": status}
-'''
-
-            check_export_lambda = Function(
-                f"{name}-check-export",
-                name=f"{name}-check-export",
-                role=check_export_role.arn,
-                runtime="python3.12",
-                architectures=["arm64"],
-                handler="index.handler",
-                code=AssetArchive({"index.py": StringAsset(check_export_code)}),
-                timeout=30,
-                memory_size=128,
+                timeout=300,
+                memory_size=1024,
                 tags={"environment": stack},
-                environment=FunctionEnvironmentArgs(
-                    variables={
-                        "LANGCHAIN_API_KEY": self.langsmith_api_key,
-                    }
-                ),
                 opts=ResourceOptions(parent=self),
             )
 
             LogGroup(
-                f"{name}-check-export-logs",
-                name=check_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+                f"{name}-build-viz-cache-logs",
+                name=build_viz_cache_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
                 retention_in_days=14,
                 opts=ResourceOptions(parent=self),
             )
 
-        # Store Lambda references for use in step function
-        self.trigger_export_lambda = trigger_export_lambda
-        self.check_export_lambda = check_export_lambda
+        # Store Lambda reference for use in step function
+        self.build_viz_cache_lambda = build_viz_cache_lambda
 
         # ============================================================
         # Step Function role policies
         # ============================================================
-        # Build list of Lambda ARNs (including export lambdas if enabled)
+        # Build list of Lambda ARNs (including build_viz_cache if enabled)
         lambda_arn_list = [
             list_merchants_lambda.arn,
             list_all_receipts_lambda.arn,
@@ -1413,9 +1119,8 @@ def handler(event, context):
             unified_pattern_builder_lambda.arn,  # NEW: combined pattern builder
         ]
 
-        if trigger_export_lambda and check_export_lambda:
-            lambda_arn_list.append(trigger_export_lambda.arn)
-            lambda_arn_list.append(check_export_lambda.arn)
+        if build_viz_cache_lambda:
+            lambda_arn_list.append(build_viz_cache_lambda.arn)
 
         RolePolicy(
             f"{name}-sfn-lambda-policy",
@@ -1590,23 +1295,21 @@ def handler(event, context):
                 ]
             )
 
-        # Add viz-cache outputs if enabled (indices 21-23)
-        if self.viz_cache_enabled and trigger_export_lambda and check_export_lambda:
+        # Add viz-cache outputs if enabled (indices 21-22)
+        if self.viz_cache_enabled and build_viz_cache_lambda:
             base_outputs.extend(
                 [
                     self.cache_bucket,  # 21
-                    trigger_export_lambda.arn,  # 22
-                    check_export_lambda.arn,  # 23
+                    build_viz_cache_lambda.arn,  # 22
                 ]
             )
 
         # Helper to safely get EMR and viz-cache params
         def build_emr_config(args):
-            """Build EmrConfig with optional viz-cache params."""
+            """Build EmrConfig from resolved outputs."""
             emr_base_idx = 16  # After batch_bucket at 15
-            viz_base_idx = 21  # After EMR params
 
-            config = EmrConfig(
+            return EmrConfig(
                 application_id=(args[emr_base_idx] if self.emr_enabled else None),
                 job_execution_role_arn=(
                     args[emr_base_idx + 1] if self.emr_enabled else None
@@ -1622,14 +1325,15 @@ def handler(event, context):
                 ),
             )
 
-            # Add viz-cache params if enabled
+        def build_viz_cache_config(args):
+            """Build VizCacheConfig from resolved outputs."""
+            viz_base_idx = 21  # After EMR params
             if self.viz_cache_enabled and len(args) > viz_base_idx:
-                config.cache_bucket = args[viz_base_idx]
-                config.batch_bucket = args[15]  # batch_bucket from base
-                config.trigger_export_lambda_arn = args[viz_base_idx + 1]
-                config.check_export_lambda_arn = args[viz_base_idx + 2]
-
-            return config
+                return VizCacheConfig(
+                    cache_bucket=args[viz_base_idx],
+                    build_viz_cache_lambda_arn=args[viz_base_idx + 1],
+                )
+            return VizCacheConfig()
 
         self.state_machine = StateMachine(
             f"{name}-sf",
@@ -1654,12 +1358,13 @@ def handler(event, context):
                         discover_patterns=args[11],
                         llm_review=args[12],
                         unified_evaluator=args[13],
-                        unified_pattern_builder=args[14],  # NEW
+                        unified_pattern_builder=args[14],
                     ),
                     runtime=RuntimeConfig(
-                        batch_bucket=args[15],  # Updated index
+                        batch_bucket=args[15],
                     ),
                     emr=build_emr_config(args),
+                    viz_cache=build_viz_cache_config(args),
                 )
             ),
             logging_configuration=logging_config,
