@@ -1396,15 +1396,10 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # Shared resources (viz-cache bucket for EMR output, batch bucket for data)
+    # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
     cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
     batch_bucket_name=label_evaluator_shared.batch_bucket_name,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-    # LangSmith integration
-    langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-    langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-    setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
-    setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
@@ -1513,25 +1508,7 @@ if hasattr(api_gateway, "api"):
         label_evaluator_shared.viz_cache_bucket_name,
     )
 
-    # Label evaluator visualization endpoint
-    integration_viz = aws.apigatewayv2.Integration(
-        "label_evaluator_viz_cache_integration",
-        api_id=api_gateway.api.id,
-        integration_type="AWS_PROXY",
-        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
-        integration_method="POST",
-        payload_format_version="2.0",
-    )
-    route_viz = aws.apigatewayv2.Route(
-        "label_evaluator_viz_cache_route",
-        api_id=api_gateway.api.id,
-        route_key="GET /label_evaluator/visualization",
-        target=integration_viz.id.apply(lambda id: f"integrations/{id}"),
-        opts=pulumi.ResourceOptions(
-            replace_on_changes=["route_key", "target"],
-            delete_before_replace=True,
-        ),
-    )
+    # Label evaluator viz-cache endpoints (financial_math and within_receipt)
     aws.lambda_.Permission(
         "label_evaluator_viz_lambda_permission",
         action="lambda:InvokeFunction",
@@ -1542,8 +1519,7 @@ if hasattr(api_gateway, "api"):
         ),
     )
 
-    # Additional label evaluator visualization endpoints (same Lambda, different paths)
-    for viz_name in ["financial_math", "diff", "journey", "patterns", "evidence", "dedup", "within_receipt"]:
+    for viz_name in ["financial_math", "within_receipt"]:
         _integration = aws.apigatewayv2.Integration(
             f"label_evaluator_{viz_name}_integration",
             api_id=api_gateway.api.id,
