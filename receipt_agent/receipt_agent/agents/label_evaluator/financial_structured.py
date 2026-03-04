@@ -16,7 +16,7 @@ in the unified evaluator works unchanged.
 import logging
 import time
 from dataclasses import dataclass
-from statistics import median
+
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
@@ -576,54 +576,6 @@ def _status_value(status: Any) -> str:
     return str(status or "NONE")
 
 
-def _compute_reocr_region(words: list, labels: list) -> dict[str, float]:
-    """Compute a right-side crop region for targeted price re-OCR.
-
-    Region coordinates use Vision-style normalized image space
-    (origin at bottom-left). We currently keep full-height crops
-    (y=0, height=1) and only tune x/width for totals columns.
-    """
-    # Default: rightmost 30% plus 5% horizontal padding on each side.
-    default_region = {"x": 0.65, "y": 0.0, "width": 0.35, "height": 1.0}
-
-    if not words or not labels:
-        return default_region
-
-    word_lookup = {
-        (getattr(w, "line_id", 0), getattr(w, "word_id", 0)): w
-        for w in words
-    }
-    valid_line_total_x: list[float] = []
-    for lbl in labels:
-        if getattr(lbl, "label", "") != "LINE_TOTAL":
-            continue
-        if _status_value(getattr(lbl, "validation_status", "NONE")) != "VALID":
-            continue
-        key = (getattr(lbl, "line_id", 0), getattr(lbl, "word_id", 0))
-        word = word_lookup.get(key)
-        if word is None:
-            continue
-        bbox = getattr(word, "bounding_box", {}) or {}
-        x_val = bbox.get("x")
-        if isinstance(x_val, (int, float)):
-            valid_line_total_x.append(float(x_val))
-
-    if not valid_line_total_x:
-        return default_region
-
-    # Anchor the crop slightly left of the median LINE_TOTAL x-position,
-    # then add 5% horizontal padding so both the Swift crop and Python
-    # overlay use identical geometry (see PR #820 review).
-    x_anchor = median(valid_line_total_x)
-    raw_width = 0.30
-    raw_x = max(0.0, min(x_anchor - 0.05, 1.0 - raw_width))
-    padding = 0.05
-    padded_x = max(0.0, raw_x - padding)
-    padded_right = min(1.0, raw_x + raw_width + padding)
-    padded_width = max(0.01, padded_right - padded_x)
-    return {"x": padded_x, "y": 0.0, "width": padded_width, "height": 1.0}
-
-
 def _subtotal_mismatch_gap(math_issues: list) -> float:
     """Return absolute subtotal mismatch gap if present."""
     for issue in math_issues:
@@ -694,7 +646,7 @@ def _run_two_tier_core(
 
     math_issues = detect_math_issues_from_values(enhanced_values)
     subtotal_gap = _subtotal_mismatch_gap(math_issues)
-    reocr_region = _compute_reocr_region(words, labels) if subtotal_gap > 0 else None
+    reocr_region = None
     has_values = any(bool(v) for v in enhanced_values.values())
     label_type_count = len(label_types_with_values)
 

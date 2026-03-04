@@ -757,6 +757,22 @@ class OCRProcessor:
                     max_word_id[w.line_id] = w.word_id
 
             for new_word in unmatched_new_words:
+                # Guard 4a — confidence floor (same 0.5 as Guard 3a).
+                if new_word.confidence < 0.5:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
+                        new_word.text, new_word.confidence,
+                    )
+                    continue
+
+                # Guard 4b — noise rejection.
+                if is_noise_text(new_word.text):
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — noise text",
+                        new_word.text,
+                    )
+                    continue
+
                 nw_y = float(new_word.bounding_box.get("y", 0))
                 nw_h = float(new_word.bounding_box.get("height", 0))
 
