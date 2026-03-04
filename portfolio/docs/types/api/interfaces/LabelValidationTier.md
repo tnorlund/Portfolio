@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationTier
 
-Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/3a5044c9a2088b63a985d7c20f9d0a758802d507/portfolio/types/api.ts#L645)
+Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/74da542b8cb88f1fab07f5fbb272bbb46d32e1bc/portfolio/types/api.ts#L645)
 
 Validation tier results (ChromaDB or LLM).
 Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
@@ -17,7 +17,7 @@ Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/3a5044c9a2088b63a985d7c20f9d0a758802d507/portfolio/types/api.ts#L649)
+Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/74da542b8cb88f1fab07f5fbb272bbb46d32e1bc/portfolio/types/api.ts#L649)
 
 #### INVALID
 
@@ -41,7 +41,7 @@ Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/3a5044
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/3a5044c9a2088b63a985d7c20f9d0a758802d507/portfolio/types/api.ts#L647)
+Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/74da542b8cb88f1fab07f5fbb272bbb46d32e1bc/portfolio/types/api.ts#L647)
 
 ***
 
@@ -49,7 +49,7 @@ Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/3a5044
 
 > **tier**: `"chroma"` \| `"llm"`
 
-Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/3a5044c9a2088b63a985d7c20f9d0a758802d507/portfolio/types/api.ts#L646)
+Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/74da542b8cb88f1fab07f5fbb272bbb46d32e1bc/portfolio/types/api.ts#L646)
 
 ***
 
@@ -57,4 +57,4 @@ Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/3a5044
 
 > **words\_count**: `number`
 
-Defined in: [types/api.ts:648](https://github.com/tnorlund/Portfolio/blob/3a5044c9a2088b63a985d7c20f9d0a758802d507/portfolio/types/api.ts#L648)
+Defined in: [types/api.ts:648](https://github.com/tnorlund/Portfolio/blob/74da542b8cb88f1fab07f5fbb272bbb46d32e1bc/portfolio/types/api.ts#L648)
