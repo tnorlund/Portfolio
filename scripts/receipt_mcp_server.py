@@ -686,18 +686,19 @@ using get_receipt to read its content.""",
         ),
         Tool(
             name="compute_reocr_region",
-            description="""Compute an axis-aligned re-OCR region from receipt line IDs.
+            description="""Compute a full-width re-OCR region from receipt line IDs.
 
-Given line_ids, computes the bounding box that covers all words on those lines,
-adds padding, and returns a normalized Vision-space region {x, y, width, height}
-ready to pass to the trigger_reocr Lambda.
+Always uses the full receipt width to avoid clipping price columns.
+Vertical bounds extend to the neighboring lines above and below the
+target lines, providing natural padding without a numeric parameter.
 
 Use this after inspecting a receipt with get_receipt to identify lines with
 bad OCR (e.g., garbled prices). Pass those line_ids here to get the crop region.
 
 Example:
   compute_reocr_region("abc-123", 1, [15, 16, 17])
-  -> {"region": {"x": 0.62, "y": 0.31, "width": 0.38, "height": 0.12}}""",
+  -> {"region": {"x": 0.05, "y": 0.28, "width": 0.90, "height": 0.15},
+      "pad_line_above": 14, "pad_line_below": 18}""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -714,11 +715,6 @@ Example:
                         "items": {"type": "integer"},
                         "description": "Line IDs to include in the region",
                         "minItems": 1,
-                    },
-                    "padding": {
-                        "type": "number",
-                        "description": "Padding (0-1) around the region. Default 0.05",
-                        "default": 0.05,
                     },
                 },
                 "required": ["image_id", "receipt_id", "line_ids"],
@@ -965,7 +961,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_ids=arguments["line_ids"],
-                padding=arguments.get("padding", 0.05),
             )
         elif name == "trigger_reocr":
             result = await trigger_reocr_impl(
@@ -2371,9 +2366,12 @@ async def compute_reocr_region_impl(
     image_id: str,
     receipt_id: int,
     line_ids: list[int],
-    padding: float = 0.05,
 ) -> dict:
-    """Compute axis-aligned bounding box from receipt line IDs.
+    """Compute full-width re-OCR region with line-based vertical padding.
+
+    Always uses the full receipt width (x=0, right=1) so price columns
+    are never clipped.  Vertical bounds extend to the neighboring lines
+    above and below the target lines, providing natural padding.
 
     Word bounding boxes are in receipt-relative space (normalised to the
     warped receipt paper).  The Swift crop needs full-image Vision
@@ -2381,40 +2379,59 @@ async def compute_reocr_region_impl(
     perspective bounds.
     """
     try:
-        if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
-            return {"error": f"padding must be between 0 and 1, got {padding}"}
-
         details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        all_words = details.words
 
-        # Filter words to only those on the requested lines
-        target_line_ids = set(line_ids)
-        words_in_region = [
-            w for w in details.words if w.line_id in target_line_ids
-        ]
+        # Build line_id -> vertical extent map from ALL words
+        line_extents: dict[int, tuple[float, float]] = {}
+        for w in all_words:
+            lid = w.line_id
+            y_top = w.bounding_box["y"]
+            y_bot = y_top + w.bounding_box["height"]
+            if lid not in line_extents:
+                line_extents[lid] = (y_top, y_bot)
+            else:
+                line_extents[lid] = (
+                    min(line_extents[lid][0], y_top),
+                    max(line_extents[lid][1], y_bot),
+                )
 
-        if not words_in_region:
+        target_set = set(line_ids)
+        found_targets = sorted(target_set & set(line_extents.keys()))
+        missing_targets = sorted(target_set - set(line_extents.keys()))
+
+        if not found_targets:
             return {
                 "error": f"No words found on line_ids {line_ids}",
-                "available_line_ids": sorted({w.line_id for w in details.words}),
+                "available_line_ids": sorted(line_extents.keys()),
             }
 
-        # Compute axis-aligned bounding box in receipt-relative space
-        min_x = min(w.bounding_box["x"] for w in words_in_region)
-        min_y = min(w.bounding_box["y"] for w in words_in_region)
-        max_x = max(
-            w.bounding_box["x"] + w.bounding_box["width"]
-            for w in words_in_region
-        )
-        max_y = max(
-            w.bounding_box["y"] + w.bounding_box["height"]
-            for w in words_in_region
-        )
+        all_line_ids = sorted(line_extents.keys())
 
-        # Add padding in receipt-relative space, clamped to [0, 1]
-        padded_x = max(0.0, min_x - padding)
-        padded_y = max(0.0, min_y - padding)
-        padded_right = min(1.0, max_x + padding)
-        padded_top = min(1.0, max_y + padding)
+        # Find neighboring lines above and below target region
+        min_target = min(found_targets)
+        max_target = max(found_targets)
+
+        lines_above = [lid for lid in all_line_ids if lid < min_target]
+        lines_below = [lid for lid in all_line_ids if lid > max_target]
+
+        pad_line_above = lines_above[-1] if lines_above else None
+        pad_line_below = lines_below[0] if lines_below else None
+
+        # Vertical extent: top edge of line above → bottom edge of line below
+        if pad_line_above is not None:
+            padded_y = line_extents[pad_line_above][0]
+        else:
+            padded_y = 0.0
+
+        if pad_line_below is not None:
+            padded_top = line_extents[pad_line_below][1]
+        else:
+            padded_top = 1.0
+
+        # Full receipt width
+        padded_x = 0.0
+        padded_right = 1.0
 
         # Transform the four corners of the padded region from
         # receipt-relative space to full-image Vision coordinates using
@@ -2474,21 +2491,19 @@ async def compute_reocr_region_impl(
             "height": round(img_max_y - img_min_y, 6),
         }
 
-        # Include context: which lines were found, word count
-        found_line_ids = sorted(
-            target_line_ids & {w.line_id for w in details.words}
-        )
-        missing_line_ids = sorted(
-            target_line_ids - {w.line_id for w in details.words}
-        )
+        words_in_region = [
+            w for w in all_words if w.line_id in target_set
+        ]
 
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
             "region": region,
-            "lines_included": found_line_ids,
-            "lines_missing": missing_line_ids,
+            "lines_included": found_targets,
+            "lines_missing": missing_targets,
             "word_count": len(words_in_region),
+            "pad_line_above": pad_line_above,
+            "pad_line_below": pad_line_below,
         }
 
     except Exception as e:
