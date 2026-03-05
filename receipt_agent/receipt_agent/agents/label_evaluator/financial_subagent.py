@@ -459,6 +459,12 @@ def extract_financial_values_enhanced(
             )
             continue
 
+        # INVALID labels were explicitly rejected — never use them in
+        # math checks, otherwise they poison balancing and cause the
+        # fast path to mark every value INVALID.
+        if status == "INVALID":
+            continue
+
         # Non-VALID currency labels: column filter via Chroma + local
         if label in _COLUMN_FILTERED_LABELS:
             chroma_col_x, _consensus, pos_count, _neg_count = (
