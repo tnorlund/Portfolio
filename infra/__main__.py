@@ -1388,21 +1388,18 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    ocr_job_queue_url=upload_images.ocr_queue.url,
+    ocr_job_queue_arn=upload_images.ocr_queue.arn,
     # EMR Serverless Analytics integration
     emr_application_id=emr_analytics.emr_application.id,
     emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # Shared resources (viz-cache bucket for EMR output, batch bucket for data)
+    # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
     cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
     batch_bucket_name=label_evaluator_shared.batch_bucket_name,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-    # LangSmith integration
-    langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-    langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-    setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
-    setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)

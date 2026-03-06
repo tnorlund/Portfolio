@@ -3,11 +3,10 @@
 Reads local LangSmith parquet trace exports and produces per-receipt
 diff payloads showing every word with its *before* label (from the
 evaluation input) and its *after* label (overlaid with INVALID
-suggested_label decisions from the four evaluation sources).
+suggested_label decisions from the three evaluation sources).
 
 Priority when a word appears in multiple sources:
-  financial_validation > currency_evaluation > metadata_evaluation
-  > flag_geometric_anomalies
+  financial_validation > metadata_evaluation > flag_geometric_anomalies
 """
 
 from __future__ import annotations
@@ -23,12 +22,11 @@ from receipt_langsmith.spark.utils import to_s3a
 logger = logging.getLogger(__name__)
 
 # Priority order: higher number wins when a word is flagged by multiple
-# sources.  financial > currency > metadata > geometric.
+# sources.  financial > metadata > geometric.
 _SOURCE_PRIORITY: dict[str, int] = {
     "flag_geometric_anomalies": 0,
     "metadata_evaluation": 1,
-    "currency_evaluation": 2,
-    "financial_validation": 3,
+    "financial_validation": 2,
 }
 
 
@@ -79,7 +77,7 @@ def _read_all_traces(parquet_dir: str) -> list[dict[str, Any]]:
 def _extract_words_from_input(
     inp: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Extract the flat word list from a currency/metadata_evaluation input.
+    """Extract the flat word list from a metadata_evaluation input.
 
     Each returned dict has: line_id, word_id, text, bbox, before_label.
     """
@@ -128,8 +126,8 @@ def _extract_llm_decisions(
     outputs: dict[str, Any],
     source_name: str,
 ) -> dict[tuple[int, int], _Decision]:
-    """Extract INVALID + suggested_label decisions from currency/metadata/
-    financial_validation outputs.
+    """Extract INVALID + suggested_label decisions from metadata/financial_validation
+    outputs.
 
     Returns a dict keyed by (line_id, word_id).
     """
@@ -314,7 +312,7 @@ def build_diff_cache(
     logger.info("Found %d ReceiptEvaluation roots", len(root_meta))
 
     # ---- pass 2: per trace_id, collect words + decisions ----
-    # words: use the first of currency_evaluation / metadata_evaluation
+    # words: use the first metadata_evaluation span found
     trace_words: dict[str, list[dict]] = {}
     # decisions: accumulate per source, respecting priority
     trace_decisions: dict[str, dict[tuple[int, int], _Decision]] = defaultdict(
@@ -327,7 +325,7 @@ def build_diff_cache(
         if tid not in root_meta:
             continue
 
-        if name in ("currency_evaluation", "metadata_evaluation"):
+        if name == "metadata_evaluation":
             # Extract words from input if we haven't already
             if tid not in trace_words:
                 inp = _safe_json(row.get("inputs"))
