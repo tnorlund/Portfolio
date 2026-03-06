@@ -2,9 +2,8 @@
 
 This handler consolidates all receipt evaluation steps into a single Lambda:
 - Step 0: Fetch receipt data from DynamoDB and write to S3 (for EMR job)
-- Phase 1 (concurrent): Currency, Metadata, and Geometric evaluations
+- Phase 1 (concurrent): Currency and Metadata evaluations
 - Phase 2 (sequential): Financial validation (needs corrected labels)
-- Phase 3 (conditional): LLM review of flagged issues
 
 Uses asyncio.gather() for true concurrent LLM calls, eliminating Step Function
 orchestration overhead and reducing cold starts from 5 lambdas to 1.
@@ -99,32 +98,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 s3 = boto3.client("s3")
-
-
-def _build_consensus_auto_review(
-    issue: dict[str, Any],
-    target_label: str,
-    consensus: float,
-    positive_count: int,
-    negative_count: int,
-    min_evidence: int,
-    threshold: float,
-) -> dict[str, Any] | None:
-    """Build an auto-review decision when Chroma consensus is decisive.
-
-    Thin wrapper around the shared utility in chroma_helpers.
-    """
-    from receipt_agent.utils.chroma_helpers import build_consensus_auto_review
-
-    return build_consensus_auto_review(
-        issue=issue,
-        target_label=target_label,
-        consensus=consensus,
-        positive_count=positive_count,
-        negative_count=negative_count,
-        min_evidence=min_evidence,
-        threshold=threshold,
-    )
 
 
 async def unified_receipt_evaluator(
@@ -515,17 +488,6 @@ async def unified_receipt_evaluator(
             word_contexts = await asyncio.to_thread(build_word_contexts, words, labels)
             return await asyncio.to_thread(assemble_visual_lines, word_contexts)
 
-        async def setup_llm_async():
-            """Create the production LLM invoker."""
-            return await asyncio.to_thread(
-                create_production_invoker,
-                temperature=0.0,
-                timeout=120,
-                circuit_breaker_threshold=5,
-                max_jitter_seconds=0.25,
-                reasoning_effort="high",
-            )
-
         # Initialize results
         patterns = None
         line_item_patterns = None
@@ -534,7 +496,7 @@ async def unified_receipt_evaluator(
         visual_lines: list = []
         llm_invoker = None
 
-        # Run all three setup operations concurrently
+        # Run setup operations concurrently
         (
             (patterns_data, line_item_patterns_data),
             visual_lines,
@@ -542,7 +504,14 @@ async def unified_receipt_evaluator(
         ) = await asyncio.gather(
             load_patterns_async(),
             build_visual_lines_async(),
-            setup_llm_async(),
+            asyncio.to_thread(
+                create_production_invoker,
+                temperature=0.0,
+                timeout=120,
+                circuit_breaker_threshold=5,
+                max_jitter_seconds=0.25,
+                reasoning_effort="high",
+            ),
         )
 
         # Deserialize patterns after loading
@@ -672,20 +641,13 @@ async def unified_receipt_evaluator(
                     span_err,
                 )
 
-        # 4. Phase 1: Run currency, metadata, and geometric evaluations concurrently
+        # 4. Phase 1: Run currency and metadata evaluations concurrently
         # Each evaluation gets its own child trace for visibility in LangSmith
-        from receipt_agent.agents.label_evaluator import (
-            create_compute_only_graph,
-            run_compute_only_sync,
-        )
         from receipt_agent.agents.label_evaluator.currency_subagent import (
             evaluate_currency_labels_async,
         )
         from receipt_agent.agents.label_evaluator.metadata_subagent import (
             evaluate_metadata_labels_async,
-        )
-        from receipt_agent.agents.label_evaluator.state import (
-            EvaluatorState,
         )
 
         # Initialize results
@@ -838,7 +800,7 @@ async def unified_receipt_evaluator(
             result = await coro
             return result, time.time() - start
 
-        # Run currency and metadata concurrently (both use LLM)
+        # Run currency and metadata concurrently
         # @traceable decorators on subagents auto-nest under receipt root
         currency_task = timed_eval(
             evaluate_currency_labels_async(
@@ -856,7 +818,6 @@ async def unified_receipt_evaluator(
             evaluate_metadata_labels_async(
                 visual_lines=visual_lines,
                 place=place,
-                llm=llm_invoker,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 merchant_name=merchant_name,
@@ -864,31 +825,7 @@ async def unified_receipt_evaluator(
             )
         )
 
-        # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
-        geometric_state = EvaluatorState(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            words=words,
-            labels=labels,
-            place=place,
-            other_receipt_data=[],
-            merchant_patterns=patterns,
-            skip_llm_review=True,
-        )
-
-        geometric_graph = create_compute_only_graph()
-
-        async def run_geometric() -> tuple[dict, float]:
-            start = time.time()
-            result = await asyncio.to_thread(
-                run_compute_only_sync,
-                geometric_graph,
-                geometric_state,
-                None,
-            )
-            return result, time.time() - start
-
-        # Wait for all evaluations concurrently
+        # Wait for evaluations concurrently
         # tracing_context propagates through asyncio.gather so @traceable
         # subagents auto-nest as children of the ReceiptEvaluation root trace
         with tracing_context(parent=receipt_trace.run_tree):
@@ -898,17 +835,12 @@ async def unified_receipt_evaluator(
                     metadata_result,
                     metadata_duration,
                 ),
-                (
-                    geometric_result,
-                    geometric_duration,
-                ),
-            ) = await asyncio.gather(currency_task, metadata_task, run_geometric())
+            ) = await asyncio.gather(currency_task, metadata_task)
 
         logger.info(
-            "Phase 1 complete: currency=%d, metadata=%d, geometric issues=%d",
+            "Phase 1 complete: currency=%d, metadata=%d",
             len(currency_result),
             len(metadata_result),
-            geometric_result.get("issues_found", 0),
         )
 
         # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
@@ -1183,411 +1115,10 @@ async def unified_receipt_evaluator(
                             execution_id=f"financial-{execution_id}",
                         )
 
-        # 9. Phase 3: LLM review of flagged geometric issues (if any)
+        # 9. Geometric review removed — semantic search is sufficient
         llm_review_result = None
         review_duration = 0.0
-        geometric_issues_found = geometric_result.get("issues_found", 0)
-
-        if geometric_issues_found > 0:
-            with child_trace("phase3_llm_review", trace_ctx) as review_ctx:
-                review_start = time.time()
-                # ChromaDB client was initialized before Phase 1 and is
-                # reused here for Phase 3 geometric review.
-
-                # Get issues from geometric result
-                geometric_issues = geometric_result.get("issues", [])
-
-                if geometric_issues and chroma_client:
-                    from langchain_core.messages import HumanMessage
-
-                    from receipt_agent.agents.label_evaluator.llm_review import (
-                        assemble_receipt_text,
-                    )
-                    from receipt_agent.prompts.label_evaluator import (
-                        build_receipt_context_prompt,
-                        parse_batched_llm_response,
-                    )
-                    from receipt_agent.prompts.structured_outputs import (
-                        BatchedReviewResponse,
-                    )
-                    from receipt_agent.utils.chroma_helpers import (
-                        compute_label_consensus,
-                        format_label_evidence_for_prompt,
-                        query_label_evidence,
-                    )
-                    from receipt_agent.utils.structured_output import (
-                        ainvoke_structured_with_retry,
-                        get_structured_output_settings,
-                    )
-
-                    # Gather context for issues using targeted boolean queries.
-                    # Then short-circuit high-consensus cases without an LLM
-                    # call to reduce latency/cost and make decision provenance
-                    # explicit in outputs.
-                    consensus_threshold = float(
-                        os.environ.get("LLM_REVIEW_CONSENSUS_THRESHOLD", "0.75")
-                    )
-                    consensus_threshold = min(max(consensus_threshold, 0.0), 1.0)
-                    consensus_min_evidence = max(
-                        1,
-                        int(
-                            os.environ.get("LLM_REVIEW_CONSENSUS_MIN_EVIDENCE", "4")
-                        ),
-                    )
-
-                    issues_with_context = []
-                    for issue_index, issue in enumerate(
-                        geometric_issues[:15]
-                    ):  # Limit to 15
-                        line_id = issue.get("line_id", 0)
-                        word_id = issue.get("word_id", 0)
-                        current_label = issue.get("current_label", "")
-                        suggested_label = issue.get("suggested_label", "")
-
-                        # Use current_label if set, otherwise
-                        # fall back to suggested_label (for
-                        # missing_label_cluster and
-                        # missing_constellation_member issues
-                        # where the word is unlabeled).
-                        target_label = (
-                            current_label
-                            if (current_label and current_label != "O")
-                            else suggested_label
-                        )
-
-                        try:
-                            if target_label and target_label != "O":
-                                label_evidence = query_label_evidence(
-                                    chroma_client=chroma_client,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    line_id=line_id,
-                                    word_id=word_id,
-                                    target_label=target_label,
-                                    target_merchant=merchant_name,
-                                    n_results_per_query=15,
-                                    min_similarity=0.70,
-                                    include_collections=("words", "lines"),
-                                )
-
-                                # Format evidence for prompt
-                                evidence_text = format_label_evidence_for_prompt(
-                                    label_evidence,
-                                    target_label=target_label,
-                                    max_positive=5,
-                                    max_negative=3,
-                                )
-
-                                # Compute consensus for decision support
-                                consensus, pos_count, neg_count = (
-                                    compute_label_consensus(label_evidence)
-                                )
-                            else:
-                                label_evidence = []
-                                evidence_text = "No evidence needed for O labels."
-                                consensus, pos_count, neg_count = 0.0, 0, 0
-
-                            issues_with_context.append(
-                                {
-                                    "issue": issue,
-                                    "issue_index": issue_index,
-                                    "target_label": target_label,
-                                    "label_evidence": label_evidence,
-                                    "evidence_text": evidence_text,
-                                    "consensus": consensus,
-                                    "positive_count": pos_count,
-                                    "negative_count": neg_count,
-                                }
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                "Error gathering context for %s: %s",
-                                current_label,
-                                e,
-                            )
-                            issues_with_context.append(
-                                {
-                                    "issue": issue,
-                                    "issue_index": issue_index,
-                                    "target_label": target_label,
-                                    "label_evidence": [],
-                                    "evidence_text": f"Error: {e}",
-                                    "consensus": 0.0,
-                                    "positive_count": 0,
-                                    "negative_count": 0,
-                                }
-                            )
-
-                    if issues_with_context:
-                        reviewed_issues: list[dict[str, Any]] = []
-                        llm_candidates: list[dict[str, Any]] = []
-
-                        def build_reviewed_issue(
-                            meta: dict[str, Any],
-                            review_result: dict[str, Any],
-                            decision_source: str,
-                        ) -> dict[str, Any]:
-                            label_evidence = meta.get("label_evidence", [])
-                            issue_evidence = [
-                                {
-                                    "word_text": getattr(e, "word_text", ""),
-                                    "similarity_score": getattr(
-                                        e, "similarity_score", 0.0
-                                    ),
-                                    "label_valid": getattr(e, "label_valid", False),
-                                    "evidence_source": getattr(
-                                        e, "evidence_source", "words"
-                                    ),
-                                    "is_same_merchant": getattr(
-                                        e, "is_same_merchant", False
-                                    ),
-                                }
-                                for e in label_evidence[:10]
-                            ]
-
-                            return {
-                                "_issue_index": meta.get("issue_index", 0),
-                                "image_id": image_id,
-                                "receipt_id": receipt_id,
-                                "issue": meta["issue"],
-                                "llm_review": review_result,
-                                "decision_source": decision_source,
-                                "similar_word_count": len(label_evidence),
-                                "evidence": issue_evidence,
-                                "consensus_score": meta.get("consensus", 0.0),
-                            }
-
-                        for meta in issues_with_context:
-                            auto_review = _build_consensus_auto_review(
-                                issue=meta.get("issue", {}),
-                                target_label=str(meta.get("target_label") or ""),
-                                consensus=float(meta.get("consensus", 0.0)),
-                                positive_count=int(meta.get("positive_count", 0)),
-                                negative_count=int(meta.get("negative_count", 0)),
-                                min_evidence=consensus_min_evidence,
-                                threshold=consensus_threshold,
-                            )
-
-                            if auto_review is None:
-                                llm_candidates.append(meta)
-                            else:
-                                reviewed_issues.append(
-                                    build_reviewed_issue(
-                                        meta,
-                                        auto_review,
-                                        decision_source="chroma_consensus",
-                                    )
-                                )
-
-                        if llm_candidates:
-                            # Build prompt and call LLM only for unresolved
-                            # issues.
-                            highlight_words = [
-                                (
-                                    item["issue"].get("line_id"),
-                                    item["issue"].get("word_id"),
-                                )
-                                for item in llm_candidates
-                            ]
-
-                            # Convert objects to dicts for
-                            # assemble_receipt_text.
-                            words_as_dicts = [serialize_word(w) for w in words]
-                            labels_as_dicts = [
-                                serialize_label(lbl) for lbl in labels
-                            ]
-                            receipt_text = assemble_receipt_text(
-                                words=words_as_dicts,
-                                labels=labels_as_dicts,
-                                highlight_words=highlight_words,
-                                max_lines=60,
-                            )
-
-                            prompt = build_receipt_context_prompt(
-                                receipt_text=receipt_text,
-                                issues_with_context=llm_candidates,
-                                merchant_name=merchant_name,
-                                merchant_receipt_count=0,  # Not available here
-                                line_item_patterns=line_item_patterns,
-                            )
-
-                            (
-                                strict_structured_output,
-                                structured_retries,
-                            ) = get_structured_output_settings(
-                                logger_instance=logger
-                            )
-
-                            if strict_structured_output:
-                                structured_result = (
-                                    await ainvoke_structured_with_retry(
-                                        llm=llm_invoker,
-                                        schema=BatchedReviewResponse,
-                                        input_payload=[
-                                            HumanMessage(content=prompt)
-                                        ],
-                                        retries=structured_retries,
-                                    )
-                                )
-
-                                if (
-                                    structured_result.success
-                                    and structured_result.response is not None
-                                ):
-                                    chunk_reviews = (
-                                        structured_result.response.to_ordered_list(
-                                            len(llm_candidates)
-                                        )
-                                    )
-                                else:
-                                    failure_reason = (
-                                        "Strict structured output failed for "
-                                        "phase3 LLM review "
-                                        f"(attempts={structured_result.attempts}, "
-                                        f"error={structured_result.error_type or 'unknown'})."
-                                    )
-                                    logger.warning("%s", failure_reason)
-                                    chunk_reviews = [
-                                        {
-                                            "decision": "NEEDS_REVIEW",
-                                            "reasoning": failure_reason,
-                                            "suggested_label": None,
-                                            "confidence": "low",
-                                        }
-                                        for _ in llm_candidates
-                                    ]
-                            else:
-                                # Make async LLM call (child_trace sets
-                                # tracing_context so LLM calls auto-nest under
-                                # phase3_llm_review span).
-                                response = await llm_invoker.ainvoke(
-                                    [HumanMessage(content=prompt)],
-                                )
-
-                                # Parse response
-                                response_text = (
-                                    response.content
-                                    if hasattr(response, "content")
-                                    else str(response)
-                                )
-                                chunk_reviews = parse_batched_llm_response(
-                                    response_text.strip(),
-                                    expected_count=len(llm_candidates),
-                                    raise_on_parse_error=False,
-                                )
-
-                            for meta, review_result in zip(
-                                llm_candidates,
-                                chunk_reviews,
-                                strict=True,
-                            ):
-                                reviewed_issues.append(
-                                    build_reviewed_issue(
-                                        meta,
-                                        review_result,
-                                        decision_source="llm_review",
-                                    )
-                                )
-                        else:
-                            logger.info(
-                                "All %d phase3 issues auto-decided via "
-                                "Chroma consensus (threshold=%.2f, "
-                                "min_evidence=%d)",
-                                len(reviewed_issues),
-                                consensus_threshold,
-                                consensus_min_evidence,
-                            )
-
-                        reviewed_issues.sort(
-                            key=lambda item: int(item.get("_issue_index", 0) or 0)
-                        )
-                        for item in reviewed_issues:
-                            item.pop("_issue_index", None)
-
-                        llm_review_result = reviewed_issues
-
-                        total_evidence_count = sum(
-                            int(item.get("similar_word_count", 0) or 0)
-                            for item in llm_review_result
-                        )
-                        words_with_evidence = sum(
-                            1
-                            for item in llm_review_result
-                            if int(item.get("similar_word_count", 0) or 0) > 0
-                        )
-                        similarity_scores = [
-                            float(e.get("similarity_score", 0.0) or 0.0)
-                            for item in llm_review_result
-                            for e in item.get("evidence", [])
-                            if isinstance(e, dict)
-                        ]
-                        consensus_scores = [
-                            float(item.get("consensus_score", 0.0) or 0.0)
-                            for item in llm_review_result
-                        ]
-                        avg_sim = (
-                            sum(similarity_scores) / len(similarity_scores)
-                            if similarity_scores
-                            else 0.0
-                        )
-                        avg_cons = (
-                            sum(consensus_scores) / len(consensus_scores)
-                            if consensus_scores
-                            else 0.0
-                        )
-
-                        decision_summary: dict[str, int] = {}
-                        decision_source_summary: dict[str, int] = {}
-                        for reviewed in llm_review_result:
-                            decision = reviewed.get("llm_review", {}).get(
-                                "decision", "UNKNOWN"
-                            )
-                            decision_summary[decision] = (
-                                decision_summary.get(decision, 0) + 1
-                            )
-
-                            source = reviewed.get("decision_source", "unknown")
-                            decision_source_summary[source] = (
-                                decision_source_summary.get(source, 0) + 1
-                            )
-
-                        review_ctx.set_outputs(
-                            {
-                                "issues_reviewed": len(llm_review_result),
-                                "decisions": decision_summary,
-                                "decision_sources": decision_source_summary,
-                                "consensus_threshold": consensus_threshold,
-                                "consensus_min_evidence": consensus_min_evidence,
-                                "evidence_summary": {
-                                    "total_evidence_items": total_evidence_count,
-                                    "words_with_evidence": words_with_evidence,
-                                    "words_without_evidence": (
-                                        len(llm_review_result) - words_with_evidence
-                                    ),
-                                    "avg_similarity": round(avg_sim, 4),
-                                    "avg_consensus": round(avg_cons, 4),
-                                },
-                            }
-                        )
-
-                        # Apply LLM review decisions
-                        if dynamo_table:
-                            invalid_reviewed = [
-                                d
-                                for d in llm_review_result
-                                if d.get("llm_review", {}).get("decision")
-                                == "INVALID"
-                            ]
-                            if invalid_reviewed:
-                                dynamo_client = DynamoClient(
-                                    table_name=dynamo_table
-                                )
-                                apply_llm_decisions(
-                                    reviewed_issues=invalid_reviewed,
-                                    dynamo_client=dynamo_client,
-                                    execution_id=execution_id,
-                                )
-                review_duration = time.time() - review_start
+        geometric_issues_found = 0
 
         # 10. Aggregate results
         decision_counts = {
