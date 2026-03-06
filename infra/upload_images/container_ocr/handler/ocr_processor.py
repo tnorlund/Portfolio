@@ -341,6 +341,38 @@ class OCRProcessor:
         return float(bbox.get("y", 0.0)) + (float(bbox.get("height", 0.0)) / 2.0)
 
     @staticmethod
+    def _bbox_containment_ratio(
+        bbox: dict[str, float],
+        region_x1: float,
+        region_y1: float,
+        region_x2: float,
+        region_y2: float,
+    ) -> float:
+        """Fraction of *bbox* area that falls inside the region rectangle.
+
+        Returns 0.0 when no overlap or zero-area bbox, up to 1.0 when fully
+        contained.
+        """
+        wx1 = float(bbox.get("x", 0.0))
+        wy1 = float(bbox.get("y", 0.0))
+        wx2 = wx1 + float(bbox.get("width", 0.0))
+        wy2 = wy1 + float(bbox.get("height", 0.0))
+
+        ix1 = max(wx1, region_x1)
+        iy1 = max(wy1, region_y1)
+        ix2 = min(wx2, region_x2)
+        iy2 = min(wy2, region_y2)
+
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+
+        word_area = (wx2 - wx1) * (wy2 - wy1)
+        if word_area <= 0:
+            return 0.0
+
+        return (ix2 - ix1) * (iy2 - iy1) / word_area
+
+    @staticmethod
     def _y_overlap_ratio(
         a_bbox: dict[str, float], b_bbox: dict[str, float]
     ) -> float:
@@ -515,6 +547,19 @@ class OCRProcessor:
                 "error": "No existing receipt words found for overlay",
             }
 
+        labels: list[Any] = []
+        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
+        )
+        labels.extend(page or [])
+        while lek:
+            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                last_evaluated_key=lek,
+            )
+            labels.extend(page or [])
+
         candidate_words = [
             word
             for word in existing_words
@@ -542,6 +587,30 @@ class OCRProcessor:
             if (w.line_id, w.word_id) not in matched_new_keys
         ]
 
+        # Identify existing candidate words that weren't matched by any
+        # new re-OCR word.  These are orphans that the re-OCR region no
+        # longer contains — they must be deleted so they don't
+        # contaminate the rebuilt ReceiptLine.text.
+        #
+        # Guard: Only delete words whose bounding box is substantially
+        # inside the re-OCR region (>= 80% containment).  Words that
+        # straddle the region boundary may not have been fully visible
+        # to Vision, so we leave them alone to avoid data loss.
+        _ORPHAN_CONTAINMENT_THRESHOLD = 0.80
+        matched_old_ids = {
+            (ew.line_id, ew.word_id) for _, ew in matches
+        }
+        orphaned_words = [
+            w
+            for w in candidate_words
+            if (w.line_id, w.word_id) not in matched_old_ids
+            and self._bbox_containment_ratio(
+                w.bounding_box,
+                region_x1, region_y1, region_x2, region_y2,
+            )
+            >= _ORPHAN_CONTAINMENT_THRESHOLD
+        ]
+
         new_letters_by_new_key: dict[tuple[int, int], list[ReceiptLetter]] = {}
         for letter in receipt_letters:
             new_letters_by_new_key.setdefault(
@@ -549,12 +618,31 @@ class OCRProcessor:
             ).append(letter)
 
         words_to_update: list[ReceiptWord] = []
+        words_to_delete: list[ReceiptWord] = []
         letters_to_delete: list[ReceiptLetter] = []
         letters_to_add: list[ReceiptLetter] = []
         words_rejected = 0
 
         for new_word, existing_word in matches:
-            # Guard 3: Confidence-based quality check.
+            # Guard 3a: Absolute confidence floor.
+            # Reject if the new OCR confidence is too low — the crop
+            # may have produced garbage text.
+            if new_word.confidence < 0.5:
+                logger.info(
+                    "Rejecting overlay for word %s#%s line=%d word=%d: "
+                    "new confidence %.4f below floor 0.5 (text '%s' -> '%s')",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                    existing_word.line_id,
+                    existing_word.word_id,
+                    new_word.confidence,
+                    existing_word.text,
+                    new_word.text,
+                )
+                words_rejected += 1
+                continue
+
+            # Guard 3b: Confidence-based quality check (identical text).
             # If the text is identical and the new confidence is lower,
             # reject this overlay to avoid degrading existing data.
             if (
@@ -570,6 +658,31 @@ class OCRProcessor:
                     existing_word.word_id,
                     existing_word.confidence,
                     new_word.confidence,
+                )
+                words_rejected += 1
+                continue
+
+            # Guard 3c: Significant confidence drop with text change.
+            # If the text changed but confidence dropped substantially,
+            # the crop likely produced a misread — reject.
+            confidence_drop = existing_word.confidence - new_word.confidence
+            if (
+                new_word.text != existing_word.text
+                and confidence_drop > 0.15
+            ):
+                logger.info(
+                    "Rejecting overlay for word %s#%s line=%d word=%d: "
+                    "text changed '%s' -> '%s' with confidence drop "
+                    "%.4f -> %.4f (delta %.4f > 0.15)",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                    existing_word.line_id,
+                    existing_word.word_id,
+                    existing_word.text,
+                    new_word.text,
+                    existing_word.confidence,
+                    new_word.confidence,
+                    confidence_drop,
                 )
                 words_rejected += 1
                 continue
@@ -644,6 +757,22 @@ class OCRProcessor:
                     max_word_id[w.line_id] = w.word_id
 
             for new_word in unmatched_new_words:
+                # Guard 4a — confidence floor (same 0.5 as Guard 3a).
+                if new_word.confidence < 0.5:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
+                        new_word.text, new_word.confidence,
+                    )
+                    continue
+
+                # Guard 4b — noise rejection.
+                if is_noise_text(new_word.text):
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — noise text",
+                        new_word.text,
+                    )
+                    continue
+
                 nw_y = float(new_word.bounding_box.get("y", 0))
                 nw_h = float(new_word.bounding_box.get("height", 0))
 
@@ -718,6 +847,26 @@ class OCRProcessor:
                     next_wid,
                 )
 
+        # --- Delete orphaned candidate words (in re-OCR region but not
+        # matched by any new word).  Their letters are collected first
+        # so we can remove them in the correct order.
+        for orphan in orphaned_words:
+            orphan_letters = self.dynamo.list_receipt_letters_from_word(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                line_id=orphan.line_id,
+                word_id=orphan.word_id,
+            )
+            letters_to_delete.extend(orphan_letters)
+            words_to_delete.append(orphan)
+            logger.info(
+                "Deleting orphaned word '%s' (line=%d word=%d) — "
+                "no re-OCR match in region",
+                orphan.text,
+                orphan.line_id,
+                orphan.word_id,
+            )
+
         if words_to_update:
             self.dynamo.update_receipt_words(words_to_update)
         if words_to_add:
@@ -731,14 +880,19 @@ class OCRProcessor:
             self.dynamo.put_receipt_letters(letters_to_add)
         if letters_to_add_for_new:
             self.dynamo.put_receipt_letters(letters_to_add_for_new)
+        if words_to_delete:
+            self.dynamo.delete_receipt_words(words_to_delete)
 
-        # Rebuild ReceiptLine.text for lines with overlaid or added words so
-        # downstream consumers (Chroma embeddings, merchant resolution,
-        # agents, cache generators) see the corrected text.
+        # Rebuild ReceiptLine.text for lines with overlaid, added, or
+        # deleted words so downstream consumers (Chroma embeddings,
+        # merchant resolution, agents, cache generators) see the
+        # corrected text.
         lines_to_update: list[ReceiptLine] = []
-        affected_line_ids = {w.line_id for w in words_to_update} | {
-            w.line_id for w in words_to_add
-        }
+        affected_line_ids = (
+            {w.line_id for w in words_to_update}
+            | {w.line_id for w in words_to_add}
+            | {w.line_id for w in words_to_delete}
+        )
         if affected_line_ids:
             existing_lines = self.dynamo.list_receipt_lines_from_receipt(
                 ocr_job.image_id, ocr_job.receipt_id
@@ -747,16 +901,21 @@ class OCRProcessor:
             updated_lookup = {
                 (w.line_id, w.word_id): w for w in words_to_update
             }
+            deleted_ids = {
+                (w.line_id, w.word_id) for w in words_to_delete
+            }
             added_by_line: dict[int, list[ReceiptWord]] = {}
             for w in words_to_add:
                 added_by_line.setdefault(w.line_id, []).append(w)
             for line in existing_lines:
                 if line.line_id not in affected_line_ids:
                     continue
+                # Exclude deleted (orphaned) words from the rebuild.
                 line_words = [
                     updated_lookup.get((w.line_id, w.word_id), w)
                     for w in existing_words
                     if w.line_id == line.line_id
+                    and (w.line_id, w.word_id) not in deleted_ids
                 ]
                 line_words.extend(added_by_line.get(line.line_id, []))
                 line_words.sort(key=lambda w: w.word_id)
@@ -826,6 +985,7 @@ class OCRProcessor:
             "word_count": len(words_to_update) + len(words_to_add),
             "words_replaced": len(words_to_update),
             "words_added": len(words_to_add),
+            "words_deleted": len(words_to_delete),
             "words_rejected": words_rejected,
             "lines_rebuilt": len(lines_to_update),
             "compaction_run_id": compaction_run_id,
