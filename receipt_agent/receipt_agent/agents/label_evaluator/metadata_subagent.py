@@ -412,7 +412,7 @@ def auto_resolve_metadata_words(
     - Day ranges, time ranges, DAILY → STORE_HOURS
 
     All other words (no confirming signal, conflicts, COUPON, LOYALTY_ID)
-    are returned as unresolved for LLM evaluation.
+    are returned as unresolved.
 
     Returns:
         (resolved_pairs, unresolved_words) where resolved_pairs is a list of
