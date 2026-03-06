@@ -513,105 +513,12 @@ export interface LabelEvaluatorDecision {
   };
 }
 
-export interface ReviewEvidence {
-  word_text: string;
-  similarity_score: number;
-  label_valid: boolean;
-  evidence_source: "words" | "lines";
-  is_same_merchant: boolean;
-}
-
-export interface ReviewDecision {
-  image_id: string;
-  receipt_id: number;
-  consensus_score: number;
-  similar_word_count: number;
-  issue: {
-    type: string;
-    line_id: number;
-    word_id: number;
-    word_text: string;
-    current_label: string | null;
-    suggested_label: string;
-    suggested_status: string;
-    reasoning: string;
-  };
-  evidence: ReviewEvidence[];
-  llm_review: {
-    decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
-    reasoning: string;
-    suggested_label: string | null;
-    confidence: "high" | "medium" | "low";
-  };
-}
-
-export interface LabelEvaluatorEvaluation {
-  image_id: string;
-  receipt_id: number;
-  merchant_name: string;
-  duration_seconds: number;
-  decisions: {
-    VALID: number;
-    INVALID: number;
-    NEEDS_REVIEW: number;
-  };
-  all_decisions: (LabelEvaluatorDecision | ReviewDecision)[];
-}
-
-export interface LabelEvaluatorGeometric {
-  image_id: string;
-  receipt_id: number;
-  issues_found: number;
-  issues: LabelEvaluatorIssue[];
-  error: string | null;
-  merchant_receipts_analyzed: number;
-  label_types_found: number;
-  duration_seconds?: number;
-}
-
-export interface LabelEvaluatorReceipt {
-  image_id: string;
-  receipt_id: number;
-  merchant_name: string | null;
-  issues_found: number;
-  words: LabelEvaluatorWord[];
-  geometric: LabelEvaluatorGeometric;
-  currency: LabelEvaluatorEvaluation;
-  metadata: LabelEvaluatorEvaluation;
-  financial: LabelEvaluatorEvaluation;
-  // Review runs after Geometric if issues were found - produces V/I/R decisions
-  review?: LabelEvaluatorEvaluation;
-  // Line item structure discovery duration (seconds)
-  line_item_duration_seconds?: number | null;
-  // CDN image keys
-  cdn_s3_key: string;
-  cdn_webp_s3_key?: string;
-  cdn_avif_s3_key?: string;
-  cdn_medium_s3_key?: string;
-  cdn_medium_webp_s3_key?: string;
-  cdn_medium_avif_s3_key?: string;
-  width: number;
-  height: number;
-}
-
 export interface LabelEvaluatorAggregateStats {
   total_receipts_in_pool: number;
   batch_size: number;
   avg_issues: number;
   max_issues: number;
   receipts_with_issues: number;
-}
-
-export interface LabelEvaluatorResponse {
-  receipts: LabelEvaluatorReceipt[];
-  total_count: number;
-  offset: number;
-  has_more: boolean;
-  seed: number;
-  aggregate_stats: LabelEvaluatorAggregateStats;
-  execution_id?: string;
-  cached_at?: string;
-  fetched_at?: string;
 }
 
 // ============================================================================
@@ -639,8 +546,7 @@ export interface LabelValidationWord {
 }
 
 /**
- * Validation tier results (ChromaDB or LLM).
- * Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
+ * Validation tier results (ChromaDB or LLM) for the two-tier validation system.
  */
 export interface LabelValidationTier {
   tier: "chroma" | "llm";
@@ -721,9 +627,9 @@ export interface FinancialMathWord {
 export interface FinancialMathEquation {
   issue_type: string;
   description: string;
-  expected_value: number | string;
-  actual_value: number | string;
-  difference: number | string;
+  expected_value: number | string | null;
+  actual_value: number | string | null;
+  difference: number | string | null;
   involved_words: FinancialMathWord[];
 }
 
@@ -732,9 +638,11 @@ export interface FinancialMathReceipt {
   receipt_id: number;
   merchant_name: string | null;
   trace_id: string;
+  receipt_type?: "itemized" | "service" | "terminal";
   equations: FinancialMathEquation[];
   summary: {
     total_equations: number;
+    total_confirmed?: number;
     has_invalid: boolean;
     has_needs_review: boolean;
   };
@@ -747,6 +655,12 @@ export interface FinancialMathReceipt {
   cdn_medium_avif_s3_key?: string;
   width: number;
   height: number;
+  reocr_region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface FinancialMathResponse {

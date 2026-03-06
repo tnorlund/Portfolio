@@ -62,6 +62,7 @@ class LabelEnum(str, Enum):
     LINE_TOTAL = "LINE_TOTAL"
     SUBTOTAL = "SUBTOTAL"
     TAX = "TAX"
+    TIP = "TIP"
     GRAND_TOTAL = "GRAND_TOTAL"
     CHANGE = "CHANGE"
     CASH_BACK = "CASH_BACK"
@@ -84,6 +85,7 @@ class ReceiptTypeEnum(str, Enum):
 
     ITEMIZED = "itemized"
     SERVICE = "service"
+    TERMINAL = "terminal"
 
 
 class ItemStructureEnum(str, Enum):
@@ -370,6 +372,7 @@ class FinancialLabelEnum(str, Enum):
     GRAND_TOTAL = "GRAND_TOTAL"
     SUBTOTAL = "SUBTOTAL"
     TAX = "TAX"
+    TIP = "TIP"
     LINE_TOTAL = "LINE_TOTAL"
     UNIT_PRICE = "UNIT_PRICE"
     QUANTITY = "QUANTITY"

@@ -2,8 +2,9 @@
 
 This handler consolidates all receipt evaluation steps into a single Lambda:
 - Step 0: Fetch receipt data from DynamoDB and write to S3 (for EMR job)
-- Phase 1 (concurrent): Currency and Metadata evaluations
+- Phase 1 (concurrent): Metadata and Geometric evaluations
 - Phase 2 (sequential): Financial validation (needs corrected labels)
+- Phase 3 (conditional): LLM review of flagged issues
 
 Uses asyncio.gather() for true concurrent LLM calls, eliminating Step Function
 orchestration overhead and reducing cold starts from 5 lambdas to 1.
@@ -28,7 +29,9 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import boto3
 from langsmith import tracing_context
@@ -100,6 +103,234 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
+# ---------------------------------------------------------------------------
+# Viz-cache helpers (replicate merged_job.py logic for receipts/ prefix)
+# ---------------------------------------------------------------------------
+
+
+def _build_words_with_labels(
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build word list with labels for viz-cache JSON."""
+    label_lookup: dict[tuple[int, int], str] = {}
+    for label in labels:
+        lid = label.get("line_id")
+        wid = label.get("word_id")
+        lbl = label.get("label")
+        if lid is not None and wid is not None and lbl is not None:
+            label_lookup[(int(lid), int(wid))] = str(lbl)
+
+    result: list[dict[str, Any]] = []
+    for word in words:
+        lid = word.get("line_id")
+        wid = word.get("word_id")
+        bbox = word.get("bounding_box", {})
+        word_label: str | None = None
+        if lid is not None and wid is not None:
+            word_label = label_lookup.get((int(lid), int(wid)))
+        result.append(
+            {
+                "text": word.get("text", ""),
+                "label": word_label,
+                "line_id": lid,
+                "word_id": wid,
+                "bbox": {
+                    "x": bbox.get("x", 0.0),
+                    "y": bbox.get("y", 0.0),
+                    "width": bbox.get("width", 0.0),
+                    "height": bbox.get("height", 0.0),
+                },
+            }
+        )
+    return result
+
+
+def _build_decisions_block(
+    prefix: str,
+    decisions: dict[str, int],
+    all_decisions: list[dict[str, Any]],
+    duration_seconds: float,
+) -> dict[str, Any]:
+    """Build a decisions block for viz-cache JSON."""
+    return {
+        "decisions": {
+            "VALID": decisions.get("VALID", 0),
+            "INVALID": decisions.get("INVALID", 0),
+            "NEEDS_REVIEW": decisions.get("NEEDS_REVIEW", 0),
+        },
+        "all_decisions": all_decisions,
+        "duration_seconds": duration_seconds,
+    }
+
+
+def _build_viz_cache_receipt(
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    execution_id: str,
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    cdn_keys: dict[str, Any],
+    width: int,
+    height: int,
+    issues_found: int,
+    metadata_decisions: dict[str, int],
+    metadata_all: list[dict[str, Any]],
+    metadata_duration: float,
+    financial_decisions: dict[str, int],
+    financial_all: list[dict[str, Any]],
+    financial_duration: float,
+    geometric_result: dict[str, Any],
+    geometric_duration: float,
+    review_all: list[dict[str, Any]] | None,
+    review_duration: float,
+    regional_reocr: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Assemble the full viz-cache receipt JSON."""
+    review_block = None
+    if review_all or review_duration > 0:
+        review_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+        for d in (review_all or []):
+            dec = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+            if dec in review_counts:
+                review_counts[dec] += 1
+        review_block = {
+            "decisions": review_counts,
+            "all_decisions": review_all or [],
+            "duration_seconds": review_duration,
+        }
+
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merchant_name": merchant_name or "Unknown",
+        "execution_id": execution_id,
+        "issues_found": issues_found,
+        "words": _build_words_with_labels(words, labels),
+        "geometric": {
+            "issues_found": geometric_result.get("issues_found", 0),
+            "issues": geometric_result.get("issues", []),
+            "duration_seconds": geometric_duration,
+        },
+        "metadata": _build_decisions_block(
+            "metadata", metadata_decisions, metadata_all, metadata_duration
+        ),
+        "financial": _build_decisions_block(
+            "financial", financial_decisions, financial_all, financial_duration
+        ),
+        "review": review_block,
+        "regional_reocr": regional_reocr,
+        **cdn_keys,
+        "width": width,
+        "height": height,
+    }
+
+
+def _enqueue_regional_reocr_job(
+    *,
+    dynamo_client: Any,
+    image_id: str,
+    receipt_id: int,
+    receipt_info: Any,
+    two_tier_result: Any,
+) -> dict[str, Any]:
+    """Fire-and-forget enqueue of REGIONAL_REOCR job when guards pass."""
+    queue_url = os.environ.get("OCR_JOB_QUEUE_URL", "").strip()
+    if not queue_url:
+        return {"triggered": False, "reason": "queue_not_configured"}
+
+    subtotal_gap = float(
+        getattr(two_tier_result, "subtotal_mismatch_gap", 0.0) or 0.0
+    )
+    if subtotal_gap < 1.0:
+        return {
+            "triggered": False,
+            "reason": "gap_below_threshold",
+            "subtotal_gap": subtotal_gap,
+        }
+
+    if not bool(getattr(two_tier_result, "phantom_values_filtered", False)):
+        return {"triggered": False, "reason": "no_phantom_values_filtered"}
+
+    region = getattr(two_tier_result, "reocr_region", None)
+    if not isinstance(region, dict):
+        return {"triggered": False, "reason": "missing_reocr_region"}
+
+    raw_bucket = getattr(receipt_info, "raw_s3_bucket", None)
+    raw_key = getattr(receipt_info, "raw_s3_key", None)
+    if not raw_bucket or not raw_key:
+        return {"triggered": False, "reason": "missing_receipt_raw_s3"}
+
+    from receipt_dynamo.constants import OCRJobType, OCRStatus
+    from receipt_dynamo.entities import OCRJob
+
+    # Prevent re-OCR loops: skip if this receipt already has a regional job.
+    existing_jobs: list[Any] = []
+    page, lek = dynamo_client.list_ocr_jobs_for_image(
+        image_id=image_id, limit=100
+    )
+    existing_jobs.extend(page or [])
+    while lek:
+        page, lek = dynamo_client.list_ocr_jobs_for_image(
+            image_id=image_id,
+            limit=100,
+            last_evaluated_key=lek,
+        )
+        existing_jobs.extend(page or [])
+
+    for job in existing_jobs:
+        if (
+            getattr(job, "receipt_id", None) == receipt_id
+            and getattr(job, "job_type", "")
+            == OCRJobType.REGIONAL_REOCR.value
+            # Allow retry of stranded PENDING jobs (e.g. SQS send
+            # failed after DynamoDB write).  Only block when the job
+            # is actively running or already completed.
+            and getattr(job, "status", "")
+            != OCRStatus.PENDING.value
+        ):
+            return {
+                "triggered": False,
+                "reason": "already_attempted",
+                "existing_job_id": getattr(job, "job_id", None),
+            }
+
+    now = datetime.now(timezone.utc)
+    reocr_job = OCRJob(
+        image_id=image_id,
+        job_id=str(uuid4()),
+        s3_bucket=raw_bucket,
+        s3_key=raw_key,
+        created_at=now,
+        updated_at=now,
+        status=OCRStatus.PENDING.value,
+        job_type=OCRJobType.REGIONAL_REOCR.value,
+        receipt_id=receipt_id,
+        reocr_region={
+            "x": float(region.get("x", 0.70)),
+            "y": float(region.get("y", 0.0)),
+            "width": float(region.get("width", 0.30)),
+            "height": float(region.get("height", 1.0)),
+        },
+        reocr_reason="subtotal_mismatch_phantom_values",
+    )
+    dynamo_client.add_ocr_job(reocr_job)
+    boto3.client("sqs").send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(
+            {"job_id": reocr_job.job_id, "image_id": image_id}
+        ),
+    )
+    return {
+        "triggered": True,
+        "job_id": reocr_job.job_id,
+        "subtotal_gap": subtotal_gap,
+        "region": reocr_job.reocr_region,
+        "reason": reocr_job.reocr_reason,
+    }
+
+
 async def unified_receipt_evaluator(
     event: dict[str, Any], _context: Any
 ) -> dict[str, Any]:
@@ -132,7 +363,6 @@ async def unified_receipt_evaluator(
         "image_id": "img1",
         "receipt_id": 1,
         "issues_found": 3,
-        "currency_words_evaluated": 12,
         "metadata_words_evaluated": 15,
         "financial_values_evaluated": 8,
         "decisions": {...}
@@ -186,6 +416,7 @@ async def unified_receipt_evaluator(
     # Initialize for error handling (image_id/receipt_id already set above for direct fetch)
     result = None
     receipt_trace = None  # Will hold the ReceiptTraceInfo
+    chroma_client = None  # Must be set before try so finally can always access it
 
     try:
         # Import utilities
@@ -452,8 +683,6 @@ async def unified_receipt_evaluator(
             assemble_visual_lines,
             build_word_contexts,
         )
-        from receipt_agent.utils import create_production_invoker
-
         merchant_hash = get_merchant_hash(merchant_name)
         patterns_s3_key = event.get("patterns_s3_key") or (
             f"patterns/{execution_id}/{merchant_hash}.json"
@@ -494,24 +723,14 @@ async def unified_receipt_evaluator(
         patterns_data = None
         line_item_patterns_data = None
         visual_lines: list = []
-        llm_invoker = None
 
         # Run setup operations concurrently
         (
             (patterns_data, line_item_patterns_data),
             visual_lines,
-            llm_invoker,
         ) = await asyncio.gather(
             load_patterns_async(),
             build_visual_lines_async(),
-            asyncio.to_thread(
-                create_production_invoker,
-                temperature=0.0,
-                timeout=120,
-                circuit_breaker_threshold=5,
-                max_jitter_seconds=0.25,
-                reasoning_effort="high",
-            ),
         )
 
         # Deserialize patterns after loading
@@ -641,20 +860,14 @@ async def unified_receipt_evaluator(
                     span_err,
                 )
 
-        # 4. Phase 1: Run currency and metadata evaluations concurrently
-        # Each evaluation gets its own child trace for visibility in LangSmith
-        from receipt_agent.agents.label_evaluator.currency_subagent import (
-            evaluate_currency_labels_async,
-        )
+        # 4. Phase 1: Run metadata evaluation
         from receipt_agent.agents.label_evaluator.metadata_subagent import (
             evaluate_metadata_labels_async,
         )
 
         # Initialize results
-        currency_result: list[dict] = []
         metadata_result: list[dict] = []
         geometric_result: dict = {"issues_found": 0}
-        currency_duration = 0.0
         metadata_duration = 0.0
         geometric_duration = 0.0
 
@@ -800,20 +1013,8 @@ async def unified_receipt_evaluator(
             result = await coro
             return result, time.time() - start
 
-        # Run currency and metadata concurrently
+        # Run metadata and geometric concurrently
         # @traceable decorators on subagents auto-nest under receipt root
-        currency_task = timed_eval(
-            evaluate_currency_labels_async(
-                visual_lines=visual_lines,
-                patterns=line_item_patterns,
-                llm=llm_invoker,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                merchant_name=merchant_name,
-                chroma_client=chroma_client,
-            )
-        )
-
         metadata_task = timed_eval(
             evaluate_metadata_labels_async(
                 visual_lines=visual_lines,
@@ -825,70 +1026,27 @@ async def unified_receipt_evaluator(
             )
         )
 
-        # Wait for evaluations concurrently
-        # tracing_context propagates through asyncio.gather so @traceable
-        # subagents auto-nest as children of the ReceiptEvaluation root trace
+        # Run metadata evaluation (geometric review removed — ChromaDB
+        # semantic search handles label consensus without LLM calls)
         with tracing_context(parent=receipt_trace.run_tree):
-            (
-                (currency_result, currency_duration),
-                (
-                    metadata_result,
-                    metadata_duration,
-                ),
-            ) = await asyncio.gather(currency_task, metadata_task)
+            metadata_result, metadata_duration = await metadata_task
 
         logger.info(
-            "Phase 1 complete: currency=%d, metadata=%d",
-            len(currency_result),
+            "Phase 1 complete: metadata=%d",
             len(metadata_result),
         )
 
-        # 7. Apply Phase 1 corrections to DynamoDB (deduplicated)
+        # 7. Apply Phase 1 corrections to DynamoDB (metadata only)
         applied_stats_phase1 = None
 
         if dynamo_table:
-            # Index both result sets by (line_id, word_id) to detect overlaps
-            currency_by_word: dict[tuple, dict] = {}
-            for d in currency_result:
-                issue = d.get("issue", {})
-                key = (issue.get("line_id"), issue.get("word_id"))
-                currency_by_word[key] = d
-
-            metadata_by_word: dict[tuple, dict] = {}
-            for d in metadata_result:
-                issue = d.get("issue", {})
-                key = (issue.get("line_id"), issue.get("word_id"))
-                metadata_by_word[key] = d
-
-            overlapping_keys = set(currency_by_word) & set(metadata_by_word)
-            conflicting_keys = [
-                k
-                for k in overlapping_keys
-                if currency_by_word[k].get("llm_review", {}).get("decision")
-                != metadata_by_word[k].get("llm_review", {}).get("decision")
-            ]
-
-            invalid_currency = [
-                d
-                for d in currency_result
-                if d.get("llm_review", {}).get("decision") == "INVALID"
-            ]
             invalid_metadata = [
                 d
                 for d in metadata_result
                 if d.get("llm_review", {}).get("decision") == "INVALID"
             ]
 
-            with child_trace(
-                "apply_phase1_corrections",
-                trace_ctx,
-                inputs={
-                    "currency_invalid_count": len(invalid_currency),
-                    "metadata_invalid_count": len(invalid_metadata),
-                    "overlapping_words": len(overlapping_keys),
-                    "conflicting_words": len(conflicting_keys),
-                },
-            ) as correction_ctx:
+            if invalid_metadata:
                 from receipt_dynamo import DynamoClient
 
                 from receipt_agent.agents.label_evaluator.llm_review import (
@@ -896,164 +1054,18 @@ async def unified_receipt_evaluator(
                 )
 
                 dynamo_client = DynamoClient(table_name=dynamo_table)
-
-                # Deduplicate by (line_id, word_id) — if both evaluators
-                # flag the same word, prefer higher confidence or the
-                # currency evaluator (more accurate for financial labels)
-                CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
-                FINANCIAL_LABELS = {
-                    "GRAND_TOTAL",
-                    "SUBTOTAL",
-                    "TAX",
-                    "LINE_TOTAL",
-                    "UNIT_PRICE",
-                    "QUANTITY",
-                    "DISCOUNT",
-                }
-
-                merged: dict[tuple, dict] = {}
-                resolutions: list[dict] = []
-
-                for d in invalid_currency:
-                    issue = d.get("issue", {})
-                    key = (issue.get("line_id"), issue.get("word_id"))
-                    merged[key] = d
-
-                for d in invalid_metadata:
-                    issue = d.get("issue", {})
-                    key = (issue.get("line_id"), issue.get("word_id"))
-                    if key not in merged:
-                        merged[key] = d
-                    else:
-                        # Resolve conflict: prefer higher confidence
-                        existing = merged[key]
-                        existing_conf = CONFIDENCE_RANK.get(
-                            existing.get("llm_review", {}).get("confidence", "low"),
-                            1,
-                        )
-                        new_conf = CONFIDENCE_RANK.get(
-                            d.get("llm_review", {}).get("confidence", "low"), 1
-                        )
-                        if new_conf > existing_conf:
-                            merged[key] = d
-                            resolutions.append(
-                                {
-                                    "line_id": key[0],
-                                    "word_id": key[1],
-                                    "word_text": issue.get("word_text", ""),
-                                    "current_label": issue.get("current_label", ""),
-                                    "currency_decision": existing.get(
-                                        "llm_review", {}
-                                    ).get("decision"),
-                                    "currency_confidence": existing.get(
-                                        "llm_review", {}
-                                    ).get("confidence"),
-                                    "metadata_decision": d.get("llm_review", {}).get(
-                                        "decision"
-                                    ),
-                                    "metadata_confidence": d.get("llm_review", {}).get(
-                                        "confidence"
-                                    ),
-                                    "winner": "metadata",
-                                    "resolution_reason": "higher_confidence",
-                                    "applied_label": d.get("llm_review", {}).get(
-                                        "suggested_label"
-                                    ),
-                                }
-                            )
-                        elif new_conf == existing_conf:
-                            # Equal confidence: prefer financial label suggestion
-                            existing_label = existing.get("llm_review", {}).get(
-                                "suggested_label"
-                            )
-                            new_label = d.get("llm_review", {}).get("suggested_label")
-                            if (
-                                new_label in FINANCIAL_LABELS
-                                and existing_label not in FINANCIAL_LABELS
-                            ):
-                                merged[key] = d
-                                resolutions.append(
-                                    {
-                                        "line_id": key[0],
-                                        "word_id": key[1],
-                                        "word_text": issue.get("word_text", ""),
-                                        "current_label": issue.get("current_label", ""),
-                                        "currency_decision": existing.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "currency_confidence": existing.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "metadata_decision": d.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "metadata_confidence": d.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "winner": "metadata",
-                                        "resolution_reason": "financial_label_priority",
-                                        "applied_label": new_label,
-                                    }
-                                )
-                            else:
-                                resolutions.append(
-                                    {
-                                        "line_id": key[0],
-                                        "word_id": key[1],
-                                        "word_text": issue.get("word_text", ""),
-                                        "current_label": issue.get("current_label", ""),
-                                        "currency_decision": existing.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "currency_confidence": existing.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "metadata_decision": d.get(
-                                            "llm_review", {}
-                                        ).get("decision"),
-                                        "metadata_confidence": d.get(
-                                            "llm_review", {}
-                                        ).get("confidence"),
-                                        "winner": "currency",
-                                        "resolution_reason": "currency_priority_default",
-                                        "applied_label": existing_label,
-                                    }
-                                )
-
-                merged_invalid = list(merged.values())
-                dedup_removed = (len(invalid_currency) + len(invalid_metadata)) - len(
-                    merged_invalid
-                )
-                if dedup_removed > 0:
-                    logger.info(
-                        "Deduplicated %d overlapping decisions (currency=%d, metadata=%d -> merged=%d)",
-                        dedup_removed,
-                        len(invalid_currency),
-                        len(invalid_metadata),
-                        len(merged_invalid),
-                    )
-
-                if merged_invalid:
-                    applied_stats_phase1 = apply_llm_decisions(
-                        reviewed_issues=merged_invalid,
-                        dynamo_client=dynamo_client,
-                        execution_id=f"phase1-{execution_id}",
-                    )
-
-                correction_ctx.set_outputs(
-                    {
-                        "resolutions": resolutions,
-                        "total_corrections_applied": len(merged_invalid),
-                        "dedup_removed": dedup_removed,
-                        "resolution_strategy": "confidence_priority",
-                    }
+                applied_stats_phase1 = apply_llm_decisions(
+                    reviewed_issues=invalid_metadata,
+                    dynamo_client=dynamo_client,
+                    execution_id=f"phase1-{execution_id}",
                 )
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
         financial_result = None
         financial_duration = 0.0
+        regional_reocr: dict[str, Any] = {"triggered": False}
         if dynamo_table:
-            with child_trace("phase2_financial_validation", trace_ctx):
+            with child_trace("financial_validation", trace_ctx):
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
@@ -1082,55 +1094,106 @@ async def unified_receipt_evaluator(
                 fresh_word_contexts = build_word_contexts(words, fresh_labels)
                 fresh_visual_lines = assemble_visual_lines(fresh_word_contexts)
 
-                # Run financial validation
-                from receipt_agent.agents.label_evaluator.financial_subagent import (
-                    evaluate_financial_math_async,
+                # Run financial validation (two-tier structured approach)
+                from receipt_agent.agents.label_evaluator.financial_structured import (
+                    run_two_tier_financial_validation_async,
                 )
 
                 financial_start = time.time()
-                financial_result = await evaluate_financial_math_async(
+                two_tier_result = await run_two_tier_financial_validation_async(
+                    words=words,
+                    labels=fresh_labels,
                     visual_lines=fresh_visual_lines,
-                    llm=llm_invoker,
+                    chroma_client=chroma_client,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
                 )
-                financial_duration = time.time() - financial_start
+                financial_result = two_tier_result.decisions
+                financial_duration = two_tier_result.duration_seconds
 
-                # Apply financial corrections
+                # Fire-and-forget: enqueue targeted regional re-OCR when
+                # subtotal mismatch remains and phantom values were filtered.
+                if receipt_info is not None:
+                    try:
+                        regional_reocr = _enqueue_regional_reocr_job(
+                            dynamo_client=dynamo_client,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            receipt_info=receipt_info,
+                            two_tier_result=two_tier_result,
+                        )
+                        if regional_reocr.get("triggered"):
+                            logger.info(
+                                "Enqueued REGIONAL_REOCR image=%s receipt=%s job_id=%s gap=%.2f",
+                                image_id,
+                                receipt_id,
+                                regional_reocr.get("job_id"),
+                                float(regional_reocr.get("subtotal_gap", 0.0)),
+                            )
+                        else:
+                            logger.info(
+                                "Skipped REGIONAL_REOCR image=%s receipt=%s reason=%s",
+                                image_id,
+                                receipt_id,
+                                regional_reocr.get("reason"),
+                            )
+                    except Exception:
+                        logger.exception(
+                            "REGIONAL_REOCR enqueue failed for %s#%s",
+                            image_id,
+                            receipt_id,
+                        )
+                        regional_reocr = {
+                            "triggered": False,
+                            "reason": "enqueue_exception",
+                        }
+
+                # Apply financial corrections and confirmations
                 if financial_result:
                     from receipt_agent.agents.label_evaluator.llm_review import (
                         apply_llm_decisions,
                     )
 
-                    invalid_financial = [
+                    # Only apply decisions that reference real financial
+                    # label names.  Text-scan results use issue-type names
+                    # like "TOTAL_CHECK" and lack real word coordinates.
+                    _FINANCIAL_LABELS = {
+                        "GRAND_TOTAL",
+                        "SUBTOTAL",
+                        "TAX",
+                        "TIP",
+                        "LINE_TOTAL",
+                        "DISCOUNT",
+                        "UNIT_PRICE",
+                        "QUANTITY",
+                    }
+                    actionable_financial = [
                         d
                         for d in financial_result
-                        if d.get("llm_review", {}).get("decision") == "INVALID"
+                        if d.get("llm_review", {}).get("decision")
+                        in ("VALID", "INVALID")
+                        and d.get("issue", {}).get("current_label")
+                        in _FINANCIAL_LABELS
                     ]
-                    if invalid_financial:
+                    if actionable_financial:
                         apply_llm_decisions(
-                            reviewed_issues=invalid_financial,
+                            reviewed_issues=actionable_financial,
                             dynamo_client=dynamo_client,
                             execution_id=f"financial-{execution_id}",
                         )
 
-        # 9. Geometric review removed — semantic search is sufficient
+        # 9. Phase 3: Geometric review removed — semantic search is sufficient
         llm_review_result = None
         review_duration = 0.0
         geometric_issues_found = 0
 
+
         # 10. Aggregate results
         decision_counts = {
-            "currency": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             "metadata": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             "financial": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
         }
-
-        for d in currency_result:
-            decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
-            if decision in decision_counts["currency"]:
-                decision_counts["currency"][decision] += 1
 
         for d in metadata_result:
             decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
@@ -1144,14 +1207,9 @@ async def unified_receipt_evaluator(
                     decision_counts["financial"][decision] += 1
 
         review_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        if llm_review_result:
-            for d in llm_review_result:
-                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
-                if decision in review_counts:
-                    review_counts[decision] += 1
 
-        total_issues = geometric_issues_found
-        for decision_bucket in ("currency", "metadata", "financial"):
+        total_issues = 0
+        for decision_bucket in ("metadata", "financial"):
             total_issues += decision_counts[decision_bucket].get("INVALID", 0)
             total_issues += decision_counts[decision_bucket].get("NEEDS_REVIEW", 0)
 
@@ -1163,19 +1221,15 @@ async def unified_receipt_evaluator(
                 "receipt_id": receipt_id,
                 "merchant_name": merchant_name,
                 "issues_found": total_issues,
-                "currency_words_evaluated": len(currency_result),
                 "metadata_words_evaluated": len(metadata_result),
                 "financial_values_evaluated": (
                     len(financial_result) if financial_result else 0
                 ),
                 "decisions": decision_counts,
-                "currency_decisions": decision_counts["currency"],
                 "metadata_decisions": decision_counts["metadata"],
                 "financial_decisions": decision_counts["financial"],
-                "currency_all_decisions": currency_result,
                 "metadata_all_decisions": metadata_result,
                 "financial_all_decisions": financial_result or [],
-                "currency_duration_seconds": currency_duration,
                 "metadata_duration_seconds": metadata_duration,
                 "financial_duration_seconds": financial_duration,
                 "geometric_issues_found": geometric_issues_found,
@@ -1184,6 +1238,7 @@ async def unified_receipt_evaluator(
                 "review_decisions": review_counts,
                 "review_all_decisions": llm_review_result or [],
                 "review_duration_seconds": review_duration,
+                "regional_reocr": regional_reocr,
                 "applied_stats": {
                     "phase1": applied_stats_phase1,
                 },
@@ -1197,23 +1252,81 @@ async def unified_receipt_evaluator(
                 results_s3_key,
             )
 
+        # Write viz-cache receipt directly (Option C — evaluator owns receipts/)
+        viz_cache_bucket = os.environ.get("VIZ_CACHE_BUCKET")
+        if viz_cache_bucket:
+            try:
+                # Serialize words/labels for viz-cache
+                words_dicts = [serialize_word(w) for w in words]
+                labels_dicts = [serialize_label(lbl) for lbl in labels]
+
+                viz_cdn_keys = {
+                    "cdn_s3_key": cdn_s3_key,
+                    "cdn_webp_s3_key": cdn_webp_s3_key,
+                    "cdn_avif_s3_key": cdn_avif_s3_key,
+                    "cdn_medium_s3_key": cdn_medium_s3_key,
+                    "cdn_medium_webp_s3_key": cdn_medium_webp_s3_key,
+                    "cdn_medium_avif_s3_key": cdn_medium_avif_s3_key,
+                }
+
+                viz_receipt = _build_viz_cache_receipt(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_name=merchant_name,
+                    execution_id=execution_id,
+                    words=words_dicts,
+                    labels=labels_dicts,
+                    cdn_keys=viz_cdn_keys,
+                    width=width,
+                    height=height,
+                    issues_found=total_issues,
+                    metadata_decisions=decision_counts["metadata"],
+                    metadata_all=metadata_result,
+                    metadata_duration=metadata_duration,
+                    financial_decisions=decision_counts["financial"],
+                    financial_all=financial_result or [],
+                    financial_duration=financial_duration,
+                    geometric_result=geometric_result,
+                    geometric_duration=geometric_duration,
+                    review_all=llm_review_result,
+                    review_duration=review_duration,
+                    regional_reocr=regional_reocr,
+                )
+                viz_key = f"receipts/receipt-{image_id}-{receipt_id}.json"
+                s3.put_object(
+                    Bucket=viz_cache_bucket,
+                    Key=viz_key,
+                    Body=json.dumps(viz_receipt, default=str).encode("utf-8"),
+                    ContentType="application/json",
+                )
+                logger.info(
+                    "Wrote viz-cache receipt to s3://%s/%s",
+                    viz_cache_bucket,
+                    viz_key,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to write viz-cache receipt for %s#%s",
+                    image_id,
+                    receipt_id,
+                )
+
         result = {
             "status": "completed",
             "image_id": image_id,
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "issues_found": total_issues,
-            "currency_words_evaluated": len(currency_result),
             "metadata_words_evaluated": len(metadata_result),
             "financial_values_evaluated": (
                 len(financial_result) if financial_result else 0
             ),
             "decisions": decision_counts,
-            "currency_decisions": decision_counts["currency"],
             "metadata_decisions": decision_counts["metadata"],
             "financial_decisions": decision_counts["financial"],
             "geometric_issues_found": geometric_issues_found,
             "review_decisions": review_counts,
+            "regional_reocr": regional_reocr,
             "results_s3_key": results_s3_key,
         }
 
@@ -1245,11 +1358,9 @@ async def unified_receipt_evaluator(
             "receipt_id": receipt_id or event.get("receipt_id"),
             "merchant_name": merchant_name,
             "issues_found": 0,  # Default to 0 on error
-            "currency_words_evaluated": 0,
             "metadata_words_evaluated": 0,
             "financial_values_evaluated": 0,
             "decisions": {
-                "currency": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
                 "metadata": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
                 "financial": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0},
             },
