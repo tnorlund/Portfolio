@@ -185,6 +185,7 @@ CORE_LABELS: dict[str, str] = {
     # ── Totals & taxes ─────────────────────────────────────────
     "SUBTOTAL": "Sum of all line totals before tax and discounts.",
     "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
+    "TIP": "Gratuity or tip amount added by customer.",
     "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
     # ── Payment-related ────────────────────────────────────────
     # Added to prevent mislabeling as LINE_TOTAL in training data.
