@@ -159,7 +159,7 @@ def _build_confirmed_equations(
     up_words = by_label.get("UNIT_PRICE", [])
 
     # Grand Total equation: SUBTOTAL + TAX + TIP = GRAND_TOTAL
-    if gt_words and (st_words or tax_words or tip_words):
+    if gt_words and st_words:
         involved = [
             _build_involved_word(d, word_lookup)
             for d in st_words + tax_words + tip_words + gt_words
