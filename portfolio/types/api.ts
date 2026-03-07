@@ -732,6 +732,7 @@ export interface FinancialMathReceipt {
   receipt_id: number;
   merchant_name: string | null;
   trace_id: string;
+  receipt_type?: "itemized" | "service" | "terminal";
   equations: FinancialMathEquation[];
   summary: {
     total_equations: number;
