@@ -8,7 +8,9 @@ export type ReceiptFlowLoadingVariant =
   | "within"
   | "financial"
   | "between"
-  | "layoutlm";
+  | "layoutlm"
+  | "timeline"
+  | "qa";
 
 export const DEFAULT_LAYOUT_VARS = {
   "--rf-queue-width": "120px",
