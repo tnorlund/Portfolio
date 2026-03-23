@@ -4,6 +4,7 @@ import {
   LabelValidationCountResponse,
   LabelValidationTimelineResponse,
   LabelValidationResponse,
+  LabelEvaluatorResponse,
   MerchantCountsResponse,
   ReceiptApiResponse,
   ImageCountApiResponse,
@@ -14,7 +15,6 @@ import {
   MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
-  LabelEvaluatorResponse,
   FinancialMathResponse,
   WithinReceiptVerificationResponse,
 } from "../../types/api";
@@ -272,31 +272,6 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchLabelEvaluatorVisualization(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/visualization?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
   async fetchLabelEvaluatorFinancialMath(
     batchSize: number = 20,
     seed?: number,
@@ -312,131 +287,6 @@ const baseApi = {
 
     const response = await fetch(
       `${apiUrl}/label_evaluator/financial_math?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
-  async fetchLabelEvaluatorDiff(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/diff?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
-  async fetchLabelEvaluatorJourney(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/journey?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
-  async fetchLabelEvaluatorPatterns(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/patterns?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
-  async fetchLabelEvaluatorEvidence(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/evidence?${params.toString()}`,
-      fetchConfig
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Network response was not ok (status: ${response.status})`
-      );
-    }
-    return response.json();
-  },
-
-  async fetchLabelEvaluatorDedup(
-    batchSize: number = 20,
-    seed?: number,
-    offset: number = 0
-  ): Promise<LabelEvaluatorResponse> {
-    const apiUrl = getAPIUrl();
-    const params = new URLSearchParams();
-    params.set("batch_size", batchSize.toString());
-    params.set("offset", offset.toString());
-    if (seed !== undefined) {
-      params.set("seed", seed.toString());
-    }
-
-    const response = await fetch(
-      `${apiUrl}/label_evaluator/dedup?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {
@@ -487,6 +337,31 @@ const baseApi = {
 
     const response = await fetch(
       `${apiUrl}/label_validation/visualization?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorVisualization(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/visualization?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

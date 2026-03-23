@@ -15,7 +15,6 @@ Graph nodes (full workflow):
 - build_spatial_context: Create WordContext and VisualLine objects
 - compute_merchant_patterns: Build geometric patterns from training data
 - flag_geometric_anomalies: Run 6 detection rules to flag geometric anomalies
-- review_currency_labels: LLM reviews currency-type labels
 - review_metadata_labels: LLM reviews metadata labels (MERCHANT_NAME, etc.)
 - validate_financial_math: Validate GRAND_TOTAL = SUBTOTAL + TAX, etc.
 - review_flagged_labels: LLM reviews all flagged words
@@ -41,7 +40,6 @@ from receipt_dynamo.entities import ReceiptWordLabel
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
-    evaluate_currency_labels_sync,
 )
 from receipt_agent.agents.label_evaluator.financial_subagent import (
     evaluate_financial_math_sync,
@@ -376,60 +374,6 @@ def create_label_evaluator_graph(
 
         return {"issues_found": issues}
 
-    def review_currency_labels(state: EvaluatorState) -> dict:
-        """Evaluate currency labels using the currency subagent."""
-        if state.error:
-            return {}
-
-        if not state.visual_lines:
-            return {}
-
-        # Skip currency evaluation if LLM not available
-        if _llm is None:
-            logger.info("Skipping currency evaluation - LLM not available")
-            return {}
-
-        merchant_name = "Unknown"
-        if state.place:
-            merchant_name = state.place.merchant_name or "Unknown"
-
-        # Get line item patterns if available
-        patterns = None
-        if state.merchant_patterns:
-            patterns = {
-                "merchant": state.merchant_patterns.merchant_name,
-                "receipt_count": state.merchant_patterns.receipt_count,
-                "label_positions": state.merchant_patterns.label_positions,
-            }
-
-        try:
-            currency_decisions = evaluate_currency_labels_sync(
-                visual_lines=state.visual_lines,
-                patterns=patterns,
-                llm=_llm,
-                image_id=state.image_id,
-                receipt_id=state.receipt_id,
-                merchant_name=merchant_name,
-            )
-
-            if currency_decisions:
-                # Convert dicts to EvaluationIssue objects and merge
-                currency_issues = convert_to_evaluation_issues(
-                    currency_decisions
-                )
-                logger.info(
-                    "Currency subagent evaluated %s words, found %s issues",
-                    len(currency_decisions),
-                    len(currency_issues),
-                )
-                combined_issues = list(state.issues_found) + currency_issues
-                return {"issues_found": combined_issues}
-
-        except Exception as e:
-            logger.warning("Currency evaluation failed: %s", e)
-
-        return {}
-
     def review_metadata_labels(state: EvaluatorState) -> dict:
         """Evaluate metadata labels using the metadata subagent."""
         if state.error:
@@ -475,7 +419,7 @@ def create_label_evaluator_graph(
         return {}
 
     def validate_financial_math(state: EvaluatorState) -> dict:
-        """Validate financial math relationships after currency corrections."""
+        """Validate financial math relationships after metadata corrections."""
         if state.error:
             return {}
 
@@ -491,6 +435,14 @@ def create_label_evaluator_graph(
         if state.place:
             merchant_name = state.place.merchant_name or "Unknown"
 
+        # Build line_item_patterns from merchant_patterns if available
+        line_item_patterns = None
+        if state.merchant_patterns:
+            line_item_patterns = {
+                "merchant": state.merchant_patterns.merchant_name,
+                "receipt_count": state.merchant_patterns.receipt_count,
+            }
+
         try:
             financial_results = evaluate_financial_math_sync(
                 visual_lines=state.visual_lines,
@@ -498,6 +450,10 @@ def create_label_evaluator_graph(
                 image_id=state.image_id,
                 receipt_id=state.receipt_id,
                 merchant_name=merchant_name,
+                words=state.words,
+                labels=state.labels,
+                chroma_client=_chroma_client,
+                line_item_patterns=line_item_patterns,
             )
 
             if financial_results:
@@ -737,7 +693,6 @@ def create_label_evaluator_graph(
     workflow.add_node("build_spatial_context", build_spatial_context)
     workflow.add_node("compute_merchant_patterns", compute_merchant_patterns)
     workflow.add_node("flag_geometric_anomalies", flag_geometric_anomalies)
-    workflow.add_node("review_currency_labels", review_currency_labels)
     workflow.add_node("review_metadata_labels", review_metadata_labels)
     workflow.add_node("validate_financial_math", validate_financial_math)
     workflow.add_node("review_flagged_labels", review_flagged_labels)
@@ -748,8 +703,7 @@ def create_label_evaluator_graph(
     workflow.add_edge("load_training_receipts", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
     workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
-    workflow.add_edge("flag_geometric_anomalies", "review_currency_labels")
-    workflow.add_edge("review_currency_labels", "review_metadata_labels")
+    workflow.add_edge("flag_geometric_anomalies", "review_metadata_labels")
     workflow.add_edge("review_metadata_labels", "validate_financial_math")
     workflow.add_edge("validate_financial_math", "review_flagged_labels")
     workflow.add_edge("review_flagged_labels", "persist_label_decisions")

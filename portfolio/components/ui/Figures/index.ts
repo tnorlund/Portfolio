@@ -98,33 +98,13 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
-export const LabelValidationTimeline = dynamic(
-  () => import("./LabelValidationTimeline"),
-  { ssr: false }
-);
-export const LabelEvaluatorVisualization = dynamic(
-  () => import("./LabelEvaluatorVisualization"),
-  { ssr: false }
-);
 export const LabelWordCloud = dynamic(
   () => import("./LabelWordCloud"),
-  { ssr: false }
-);
-export { default as QuestionMarquee } from "./QuestionMarquee";
-export const QAAgentFlow = dynamic(
-  () => import("./QAAgentFlow"),
   { ssr: false }
 );
 export const LabelValidationVisualization = dynamic(
   () => import("./LabelValidationVisualization"),
   { ssr: false }
-);
-export const BetweenReceiptVisualization = dynamic(
-  () => import("./BetweenReceiptVisualization"),
-  {
-    ssr: false,
-    loading: () => loadingShell("between"),
-  }
 );
 export const FinancialMathOverlay = dynamic(
   () => import("./FinancialMathOverlay"),
@@ -138,5 +118,27 @@ export const WithinReceiptVerification = dynamic(
   {
     ssr: false,
     loading: () => loadingShell("within"),
+  }
+);
+export const LabelValidationTimeline = dynamic(
+  () => import("./LabelValidationTimeline"),
+  {
+    ssr: false,
+    loading: () => loadingShell("timeline"),
+  }
+);
+export { default as QuestionMarquee } from "./QuestionMarquee";
+export const QAAgentFlow = dynamic(
+  () => import("./QAAgentFlow"),
+  {
+    ssr: false,
+    loading: () => loadingShell("qa"),
+  }
+);
+export const BetweenReceiptVisualization = dynamic(
+  () => import("./BetweenReceiptVisualization"),
+  {
+    ssr: false,
+    loading: () => loadingShell("between"),
   }
 );
