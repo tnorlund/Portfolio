@@ -6,10 +6,9 @@
 
 # Interface: LabelValidationTier
 
-Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/7dbeb29a122f0d393ef39a6ff949fe905a8e7089/portfolio/types/api.ts#L645)
+Defined in: [types/api.ts:641](https://github.com/tnorlund/Portfolio/blob/161bfdfe1272fef6dc4436ebfe8d2c75b09d2f92/portfolio/types/api.ts#L641)
 
-Validation tier results (ChromaDB or LLM).
-Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
+Validation tier results (ChromaDB or LLM) for the two-tier validation system.
 
 ## Properties
 
@@ -17,7 +16,7 @@ Similar to LabelEvaluatorEvaluation but for the two-tier validation system.
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/7dbeb29a122f0d393ef39a6ff949fe905a8e7089/portfolio/types/api.ts#L649)
+Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/161bfdfe1272fef6dc4436ebfe8d2c75b09d2f92/portfolio/types/api.ts#L645)
 
 #### INVALID
 
@@ -41,7 +40,7 @@ Defined in: [types/api.ts:649](https://github.com/tnorlund/Portfolio/blob/7dbeb2
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/7dbeb29a122f0d393ef39a6ff949fe905a8e7089/portfolio/types/api.ts#L647)
+Defined in: [types/api.ts:643](https://github.com/tnorlund/Portfolio/blob/161bfdfe1272fef6dc4436ebfe8d2c75b09d2f92/portfolio/types/api.ts#L643)
 
 ***
 
@@ -49,7 +48,7 @@ Defined in: [types/api.ts:647](https://github.com/tnorlund/Portfolio/blob/7dbeb2
 
 > **tier**: `"chroma"` \| `"llm"`
 
-Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/7dbeb29a122f0d393ef39a6ff949fe905a8e7089/portfolio/types/api.ts#L646)
+Defined in: [types/api.ts:642](https://github.com/tnorlund/Portfolio/blob/161bfdfe1272fef6dc4436ebfe8d2c75b09d2f92/portfolio/types/api.ts#L642)
 
 ***
 
@@ -57,4 +56,4 @@ Defined in: [types/api.ts:646](https://github.com/tnorlund/Portfolio/blob/7dbeb2
 
 > **words\_count**: `number`
 
-Defined in: [types/api.ts:648](https://github.com/tnorlund/Portfolio/blob/7dbeb29a122f0d393ef39a6ff949fe905a8e7089/portfolio/types/api.ts#L648)
+Defined in: [types/api.ts:644](https://github.com/tnorlund/Portfolio/blob/161bfdfe1272fef6dc4436ebfe8d2c75b09d2f92/portfolio/types/api.ts#L644)
