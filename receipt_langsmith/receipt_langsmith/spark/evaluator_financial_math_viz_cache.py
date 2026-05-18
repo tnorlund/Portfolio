@@ -125,14 +125,145 @@ def _build_involved_word(
     return entry
 
 
+def _build_confirmed_equations(
+    decisions: list[dict],
+    word_lookup: dict[tuple[int, int], dict],
+) -> list[dict[str, Any]]:
+    """Group VALID decisions into balanced equation objects.
+
+    The frontend renders word_text from involved_words directly, so
+    expected_value / actual_value are left as None.
+    """
+    valid_decisions = [
+        d for d in decisions
+        if d.get("llm_review", {}).get("decision") == "VALID"
+    ]
+    if not valid_decisions:
+        return []
+
+    # Group by current_label
+    by_label: dict[str, list[dict]] = {}
+    for d in valid_decisions:
+        label = d.get("issue", {}).get("current_label", "")
+        by_label.setdefault(label, []).append(d)
+
+    equations: list[dict[str, Any]] = []
+
+    gt_words = by_label.get("GRAND_TOTAL", [])
+    st_words = by_label.get("SUBTOTAL", [])
+    tax_words = by_label.get("TAX", [])
+    tip_words = by_label.get("TIP", [])
+    lt_words = by_label.get("LINE_TOTAL", [])
+    disc_words = by_label.get("DISCOUNT", [])
+    qty_words = by_label.get("QUANTITY", [])
+    up_words = by_label.get("UNIT_PRICE", [])
+
+    # Grand Total equation: SUBTOTAL + TAX + TIP = GRAND_TOTAL
+    if gt_words and st_words:
+        involved = [
+            _build_involved_word(d, word_lookup)
+            for d in st_words + tax_words + tip_words + gt_words
+        ]
+        equations.append(
+            {
+                "issue_type": "GRAND_TOTAL_BALANCED",
+                "description": "Grand total matches subtotal + tax + tip",
+                "expected_value": None,
+                "actual_value": None,
+                "difference": 0.0,
+                "involved_words": involved,
+            }
+        )
+    # Direct equation: LINE_TOTALs + TAX + TIP = GRAND_TOTAL (no SUBTOTAL)
+    elif gt_words and lt_words and not st_words:
+        involved = [
+            _build_involved_word(d, word_lookup)
+            for d in lt_words + disc_words + tax_words + tip_words + gt_words
+        ]
+        equations.append(
+            {
+                "issue_type": "GRAND_TOTAL_DIRECT_BALANCED",
+                "description": "Grand total matches sum of line items",
+                "expected_value": None,
+                "actual_value": None,
+                "difference": 0.0,
+                "involved_words": involved,
+            }
+        )
+
+    # Subtotal equation: LINE_TOTALs + DISCOUNTs = SUBTOTAL
+    if st_words and lt_words:
+        involved = [
+            _build_involved_word(d, word_lookup)
+            for d in lt_words + disc_words + st_words
+        ]
+        equations.append(
+            {
+                "issue_type": "SUBTOTAL_BALANCED",
+                "description": "Subtotal matches sum of line items",
+                "expected_value": None,
+                "actual_value": None,
+                "difference": 0.0,
+                "involved_words": involved,
+            }
+        )
+
+    # Line Item equations: per line_id, QUANTITY × UNIT_PRICE = LINE_TOTAL
+    if qty_words or up_words:
+        line_groups: dict[int, dict[str, list[dict]]] = {}
+        for d in qty_words:
+            lid = d.get("issue", {}).get("line_id")
+            if lid is not None:
+                line_groups.setdefault(
+                    lid, {"QUANTITY": [], "UNIT_PRICE": [], "LINE_TOTAL": []}
+                )["QUANTITY"].append(d)
+        for d in up_words:
+            lid = d.get("issue", {}).get("line_id")
+            if lid is not None:
+                line_groups.setdefault(
+                    lid, {"QUANTITY": [], "UNIT_PRICE": [], "LINE_TOTAL": []}
+                )["UNIT_PRICE"].append(d)
+        for d in lt_words:
+            lid = d.get("issue", {}).get("line_id")
+            if lid is not None and lid in line_groups:
+                line_groups[lid]["LINE_TOTAL"].append(d)
+
+        for lid, group in sorted(line_groups.items()):
+            all_d = group["QUANTITY"] + group["UNIT_PRICE"] + group["LINE_TOTAL"]
+            # Need a LINE_TOTAL (the result) plus at least one operand
+            if not group["LINE_TOTAL"]:
+                continue
+            if not group["QUANTITY"] and not group["UNIT_PRICE"]:
+                continue
+            involved = [_build_involved_word(d, word_lookup) for d in all_d]
+            equations.append(
+                {
+                    "issue_type": "LINE_ITEM_BALANCED",
+                    "description": f"Line {lid}: quantity × unit price = line total",
+                    "expected_value": None,
+                    "actual_value": None,
+                    "difference": 0.0,
+                    "involved_words": involved,
+                }
+            )
+
+    return equations
+
+
 def _build_equations(
     decisions: list[dict],
     word_lookup: dict[tuple[int, int], dict],
 ) -> list[dict[str, Any]]:
     """Group decisions by description (equation) and build equation dicts."""
+    # Filter out VALID confirmations — they lack equation metadata
+    equation_decisions = [
+        d for d in decisions
+        if d.get("llm_review", {}).get("decision") != "VALID"
+    ]
+
     # Group by description
     groups: dict[str, list[dict]] = {}
-    for d in decisions:
+    for d in equation_decisions:
         desc = d.get("issue", {}).get("description", "<unknown>")
         groups.setdefault(desc, []).append(d)
 
@@ -155,7 +286,10 @@ def _build_equations(
     return equations
 
 
-def _build_summary(equations: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_summary(
+    equations: list[dict[str, Any]],
+    total_confirmed: int = 0,
+) -> dict[str, Any]:
     """Build summary stats from equation list."""
     has_invalid = False
     has_needs_review = False
@@ -169,6 +303,7 @@ def _build_summary(equations: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "total_equations": len(equations),
+        "total_confirmed": total_confirmed,
         "has_invalid": has_invalid,
         "has_needs_review": has_needs_review,
     }
@@ -178,6 +313,7 @@ def build_financial_math_cache(
     parquet_dir: str | None = None,
     *,
     rows: list[dict[str, Any]] | None = None,
+    unified_rows: list[dict[str, Any]] | None = None,
     receipt_lookup: dict[tuple[str, int], dict[str, Any]] | None = None,
 ) -> list[dict]:  # pylint: disable=too-many-locals,too-many-branches
     """Return financial math viz-cache dicts.
@@ -188,6 +324,7 @@ def build_financial_math_cache(
     Args:
         parquet_dir: Path containing LangSmith parquet exports.
         rows: Optional preloaded trace rows.
+        unified_rows: Optional evaluator result rows (for regional_reocr).
         receipt_lookup: Optional (image_id, receipt_id) -> receipt data dict
             containing CDN keys and dimensions.
 
@@ -215,6 +352,16 @@ def build_financial_math_cache(
                 }
 
     logger.info("Found %d ReceiptEvaluation root spans", len(root_meta))
+
+    # Build reocr_region lookup from unified rows
+    reocr_lookup: dict[tuple[str, int], dict[str, float]] = {}
+    for urow in unified_rows or []:
+        rr = urow.get("regional_reocr", {})
+        if rr.get("triggered") and isinstance(rr.get("region"), dict):
+            uid = urow.get("image_id")
+            urid = urow.get("receipt_id")
+            if uid and urid is not None:
+                reocr_lookup[(str(uid), int(urid))] = rr["region"]
 
     # --- Process financial_validation spans ---
     results: list[dict] = []
@@ -265,7 +412,11 @@ def build_financial_math_cache(
 
         # Build equations grouped by description
         equations = _build_equations(output_list, word_lookup)
-        summary = _build_summary(equations)
+        confirmed_equations = _build_confirmed_equations(output_list, word_lookup)
+        equations.extend(confirmed_equations)
+        summary = _build_summary(
+            equations, total_confirmed=len(confirmed_equations)
+        )
 
         # Enrich with CDN keys and dimensions from receipt lookup
         cdn_fields: dict[str, Any] = {"cdn_s3_key": ""}
@@ -290,6 +441,13 @@ def build_financial_math_cache(
                 width = lookup_row.get("width", 0) or 0
                 height = lookup_row.get("height", 0) or 0
 
+        # Skip receipts with no equations — nothing to visualize.
+        if not equations:
+            logger.debug(
+                "Skipping %s/%s: no equations to visualize", image_id, receipt_id
+            )
+            continue
+
         results.append(
             {
                 "image_id": image_id,
@@ -301,6 +459,11 @@ def build_financial_math_cache(
                 "summary": summary,
                 "width": width,
                 "height": height,
+                "reocr_region": reocr_lookup.get(
+                    (str(image_id), int(receipt_id))
+                )
+                if receipt_id is not None
+                else None,
                 **cdn_fields,
             }
         )

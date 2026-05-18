@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
@@ -171,6 +172,59 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except Exception:
         logger.exception("Failed to upload grand summary")
         raise
+
+    # Write receipts/ viz-cache metadata (evaluator owns receipts/)
+    viz_cache_bucket = os.environ.get("VIZ_CACHE_BUCKET")
+    if viz_cache_bucket:
+        try:
+            timestamp_now = datetime.now(timezone.utc)
+            timestamp_str = timestamp_now.strftime("%Y%m%d-%H%M%S")
+            viz_metadata = {
+                "version": timestamp_str,
+                "execution_id": execution_id,
+                "total_receipts": total_receipts,
+                "receipts_with_issues": total_issues > 0
+                and sum(
+                    1
+                    for r in receipt_results
+                    if isinstance(r, dict) and r.get("issues_found", 0) > 0
+                )
+                or 0,
+                "cached_at": timestamp_now.isoformat(),
+            }
+            # Recount receipts_with_issues properly
+            receipts_with_issues_count = sum(
+                1
+                for r in receipt_results
+                if isinstance(r, dict) and r.get("issues_found", 0) > 0
+            )
+            viz_metadata["receipts_with_issues"] = receipts_with_issues_count
+
+            s3.put_object(
+                Bucket=viz_cache_bucket,
+                Key="receipts/metadata.json",
+                Body=json.dumps(viz_metadata, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+
+            # Write latest.json pointer
+            latest = {
+                "version": timestamp_str,
+                "prefix": "receipts/",
+                "cached_at": timestamp_now.isoformat(),
+            }
+            s3.put_object(
+                Bucket=viz_cache_bucket,
+                Key="latest.json",
+                Body=json.dumps(latest, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            logger.info(
+                "Wrote viz-cache metadata to s3://%s/receipts/metadata.json",
+                viz_cache_bucket,
+            )
+        except Exception:
+            logger.exception("Failed to write viz-cache metadata")
 
     return {
         "status": "completed",
