@@ -102,16 +102,19 @@ def _build_involved_word(
 
     llm_review = decision.get("llm_review", {})
 
+    # Text-scanned results may not have bounding boxes
+    bbox = (
+        _extract_bbox(word)
+        if word
+        else {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}
+    )
+
     entry: dict[str, Any] = {
         "line_id": lid,
         "word_id": wid,
         "word_text": issue.get("word_text", ""),
         "current_label": issue.get("current_label", ""),
-        "bbox": (
-            _extract_bbox(word)
-            if word
-            else {"x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0}
-        ),
+        "bbox": bbox,
         "decision": llm_review.get("decision"),
         "confidence": llm_review.get("confidence"),
         "reasoning": llm_review.get("reasoning"),
@@ -249,6 +252,13 @@ def build_financial_math_cache(
             logger.debug("Skipping financial_validation span without image_id")
             continue
 
+        # Detect receipt_type from the output decisions
+        receipt_type = "itemized"
+        if output_list:
+            first_rt = output_list[0].get("receipt_type")
+            if first_rt in ("service", "terminal"):
+                receipt_type = first_rt
+
         # Build word lookup from visual_lines
         visual_lines = inputs.get("visual_lines", [])
         word_lookup = _build_word_lookup(visual_lines)
@@ -286,6 +296,7 @@ def build_financial_math_cache(
                 "receipt_id": receipt_id,
                 "merchant_name": merchant_name,
                 "trace_id": trace_id,
+                "receipt_type": receipt_type,
                 "equations": equations,
                 "summary": summary,
                 "width": width,

@@ -204,6 +204,11 @@ def _build_cdn_fields(
 # Financial math cache builder
 # ---------------------------------------------------------------------------
 
+# Service/terminal receipts emit pre-formed equations from text-scan rather
+# than per-word label decisions. The financial_subagent stamps issue_type
+# directly on these and they need no reconstruction.
+TEXT_SCAN_ISSUE_TYPES = frozenset({"HAS_TOTAL", "TOTAL_CHECK", "TIP_CHECK"})
+
 
 def _parse_numeric(text: str) -> float | None:
     """Parse a numeric value from word text, stripping currency symbols."""
@@ -212,6 +217,39 @@ def _parse_numeric(text: str) -> float | None:
         return float(cleaned)
     except (ValueError, TypeError):
         return None
+
+
+def _extract_receipt_type(decisions: list[dict]) -> str:
+    """Detect receipt_type from financial decisions. Defaults to 'itemized'."""
+    if not decisions:
+        return "itemized"
+    rt = decisions[0].get("receipt_type")
+    if rt in ("service", "terminal"):
+        return rt
+    return "itemized"
+
+
+def _build_text_scan_equations(
+    decisions: list[dict],
+    word_lookup: dict[tuple[int, int], dict],
+) -> list[dict[str, Any]]:
+    """Wrap pre-formed text-scan issues as equations for service/terminal receipts."""
+    equations: list[dict[str, Any]] = []
+    for d in decisions:
+        issue = d.get("issue", {})
+        issue_type = issue.get("issue_type")
+        if issue_type not in TEXT_SCAN_ISSUE_TYPES:
+            continue
+        entry = _build_decision_entry(d, word_lookup)
+        equations.append({
+            "issue_type": issue_type,
+            "description": issue.get("description", ""),
+            "expected_value": issue.get("expected_value"),
+            "actual_value": issue.get("actual_value"),
+            "difference": issue.get("difference"),
+            "involved_words": [entry],
+        })
+    return equations
 
 
 def _build_equations(
@@ -227,9 +265,15 @@ def _build_equations(
       - GRAND_TOTAL_DIRECT = sum(LINE_TOTAL) + TAX + TIP - DISCOUNT (no SUBTOTAL)
       - SUBTOTAL = sum(LINE_TOTAL)
       - LINE_ITEM_BALANCED = QUANTITY × UNIT_PRICE = LINE_TOTAL (per line)
+
+    Service/terminal receipts skip reconstruction — their decisions already
+    carry issue_type (HAS_TOTAL/TOTAL_CHECK/TIP_CHECK) from text-scan.
     """
     if not decisions:
         return []
+
+    if _extract_receipt_type(decisions) in ("service", "terminal"):
+        return _build_text_scan_equations(decisions, word_lookup)
 
     # Build word entries and group by label
     by_label: dict[str, list[dict[str, Any]]] = {}
@@ -407,6 +451,7 @@ def build_financial_math_entry(
         "receipt_id": unified_row.get("receipt_id"),
         "merchant_name": unified_row.get("merchant_name"),
         "trace_id": unified_row.get("trace_id", ""),
+        "receipt_type": _extract_receipt_type(financial_decisions),
         "equations": equations,
         "summary": summary,
         "width": width,
@@ -543,6 +588,7 @@ def build_within_receipt_entry(
         "receipt_id": unified_row.get("receipt_id"),
         "merchant_name": unified_row.get("merchant_name"),
         "trace_id": unified_row.get("trace_id", ""),
+        "receipt_type": _extract_receipt_type(financial_decisions),
         "place_validation": {
             "place": place_info,
             "decisions": place_decisions,
