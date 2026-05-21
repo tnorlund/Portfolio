@@ -1108,8 +1108,6 @@ async def unified_receipt_evaluator(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
-                    words=words,
-                    line_item_patterns=line_item_patterns,
                 )
                 financial_result = two_tier_result.decisions
                 financial_duration = two_tier_result.duration_seconds
