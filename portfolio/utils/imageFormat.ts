@@ -181,37 +181,25 @@ export const getBestImageUrl = (
     }
   };
 
-  const getKey = (format: 'jpeg' | 'webp' | 'avif'): string | undefined => {
-    for (const s of sizeFallback[size]) {
+  // Iterate size tier OUTER, format INNER: a 'thumbnail' request must
+  // prefer a thumbnail-JPEG over a medium-AVIF (bandwidth beats format
+  // quality at the smallest tiers). Only fall through to a larger size
+  // when no format at the current tier is available.
+  const preferredFormats: Array<'avif' | 'webp' | 'jpeg'> = [];
+  if (formatSupport.supportsAVIF) preferredFormats.push('avif');
+  if (formatSupport.supportsWebP) preferredFormats.push('webp');
+  preferredFormats.push('jpeg');
+
+  for (const s of sizeFallback[size]) {
+    for (const format of preferredFormats) {
       const key = keyForSize(s, format);
-      if (key) return key;
-    }
-    return undefined;
-  };
-
-  // Try AVIF first if supported
-  if (formatSupport.supportsAVIF) {
-    const avifKey = getKey('avif');
-    if (avifKey) {
-      return `${baseUrl}/${avifKey}`;
+      if (key) {
+        return `${baseUrl}/${key}`;
+      }
     }
   }
 
-  // Try WebP if supported
-  if (formatSupport.supportsWebP) {
-    const webpKey = getKey('webp');
-    if (webpKey) {
-      return `${baseUrl}/${webpKey}`;
-    }
-  }
-
-  // Fallback to JPEG
-  const jpegKey = getKey('jpeg');
-  if (jpegKey) {
-    return `${baseUrl}/${jpegKey}`;
-  }
-
-  // Ultimate fallback to full-size JPEG if specific size not available
+  // Ultimate fallback to full-size JPEG if nothing else available
   return `${baseUrl}/${image.cdn_s3_key}`;
 };
 
