@@ -620,8 +620,12 @@ def handler(_event, _context):
                 price = line_total or unit_price
                 size = infer_size(product_text, price)
 
-                # Convert lines to dict format
-                lines_dict = [line_to_dict(line) for line in details.lines]
+                # NOTE: details.lines (the full per-receipt line list, ~75 lines
+                # × 69 receipts ≈ 2.8 MB across the response) is intentionally
+                # NOT included in the cache entry. WordSimilarity.tsx builds a
+                # cropped image from `receipt` + `bbox` only and never reads
+                # `lines`. Including it inflated the API payload ~20× for no
+                # frontend benefit. See PR notes / type def MilkReceiptData.
 
                 return {
                     "image_id": image_id,
@@ -631,9 +635,9 @@ def handler(_event, _context):
                     "price": price,
                     "size": size,
                     "line_id": milk_line_id,
-                    # Full receipt data for visual display
+                    # Receipt header (image_id, dimensions, CDN keys) — used
+                    # to build the image URL for visual display.
                     "receipt": receipt_to_dict(details.receipt),
-                    "lines": lines_dict,
                     "bbox": bbox,
                     "_timings": timings,
                 }
