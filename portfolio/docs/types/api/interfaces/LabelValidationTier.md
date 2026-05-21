@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationTier
 
-Defined in: [types/api.ts:641](https://github.com/tnorlund/Portfolio/blob/43b0c79cec7dc106c70cf5dca4476544ce680b06/portfolio/types/api.ts#L641)
+Defined in: [types/api.ts:641](https://github.com/tnorlund/Portfolio/blob/3722d5b91ac4c12b78ccb763e68792121d5b78b4/portfolio/types/api.ts#L641)
 
 Validation tier results (ChromaDB or LLM) for the two-tier validation system.
 
@@ -16,7 +16,7 @@ Validation tier results (ChromaDB or LLM) for the two-tier validation system.
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/43b0c79cec7dc106c70cf5dca4476544ce680b06/portfolio/types/api.ts#L645)
+Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/3722d5b91ac4c12b78ccb763e68792121d5b78b4/portfolio/types/api.ts#L645)
 
 #### INVALID
 
@@ -40,7 +40,7 @@ Defined in: [types/api.ts:645](https://github.com/tnorlund/Portfolio/blob/43b0c7
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:643](https://github.com/tnorlund/Portfolio/blob/43b0c79cec7dc106c70cf5dca4476544ce680b06/portfolio/types/api.ts#L643)
+Defined in: [types/api.ts:643](https://github.com/tnorlund/Portfolio/blob/3722d5b91ac4c12b78ccb763e68792121d5b78b4/portfolio/types/api.ts#L643)
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: [types/api.ts:643](https://github.com/tnorlund/Portfolio/blob/43b0c7
 
 > **tier**: `"chroma"` \| `"llm"`
 
-Defined in: [types/api.ts:642](https://github.com/tnorlund/Portfolio/blob/43b0c79cec7dc106c70cf5dca4476544ce680b06/portfolio/types/api.ts#L642)
+Defined in: [types/api.ts:642](https://github.com/tnorlund/Portfolio/blob/3722d5b91ac4c12b78ccb763e68792121d5b78b4/portfolio/types/api.ts#L642)
 
 ***
 
@@ -56,4 +56,4 @@ Defined in: [types/api.ts:642](https://github.com/tnorlund/Portfolio/blob/43b0c7
 
 > **words\_count**: `number`
 
-Defined in: [types/api.ts:644](https://github.com/tnorlund/Portfolio/blob/43b0c79cec7dc106c70cf5dca4476544ce680b06/portfolio/types/api.ts#L644)
+Defined in: [types/api.ts:644](https://github.com/tnorlund/Portfolio/blob/3722d5b91ac4c12b78ccb763e68792121d5b78b4/portfolio/types/api.ts#L644)
