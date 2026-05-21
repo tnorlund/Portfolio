@@ -6,7 +6,7 @@
 
 # Interface: FinancialMathResponse
 
-Defined in: [types/api.ts:756](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L756)
+Defined in: [types/api.ts:756](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L756)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:756](https://github.com/tnorlund/Portfolio/blob/f40737
 
 > **has\_more**: `boolean`
 
-Defined in: [types/api.ts:760](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L760)
+Defined in: [types/api.ts:760](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L760)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:760](https://github.com/tnorlund/Portfolio/blob/f40737
 
 > **offset**: `number`
 
-Defined in: [types/api.ts:759](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L759)
+Defined in: [types/api.ts:759](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L759)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:759](https://github.com/tnorlund/Portfolio/blob/f40737
 
 > **receipts**: [`FinancialMathReceipt`](FinancialMathReceipt.md)[]
 
-Defined in: [types/api.ts:757](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L757)
+Defined in: [types/api.ts:757](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L757)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:757](https://github.com/tnorlund/Portfolio/blob/f40737
 
 > **seed**: `number`
 
-Defined in: [types/api.ts:761](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L761)
+Defined in: [types/api.ts:761](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L761)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:761](https://github.com/tnorlund/Portfolio/blob/f40737
 
 > **total\_count**: `number`
 
-Defined in: [types/api.ts:758](https://github.com/tnorlund/Portfolio/blob/f407376b2e06035c71db52e7a051b30467e0d9f7/portfolio/types/api.ts#L758)
+Defined in: [types/api.ts:758](https://github.com/tnorlund/Portfolio/blob/5cdc00c960c55c967f5ffdec37d005d35c2ea5a6/portfolio/types/api.ts#L758)
