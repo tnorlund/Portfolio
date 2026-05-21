@@ -19,6 +19,28 @@ jobs:
   # STAGE 1: All tests run in parallel
   # ============================================================================
 
+  lambda-syntax:
+    name: Lambda Syntax
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          clean: true
+
+      - name: Compile all Lambda handler sources
+        run: |
+          PYTHON=$(command -v python3.12 || command -v python3)
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          # Compile every .py file under infra/ — catches SyntaxError before
+          # docker build copies broken code into a Lambda image. Specifically
+          # guards against `keyword argument repeated`-class regressions like
+          # the one that crashed unified_evaluator after #861's rebase.
+          find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
+            | xargs -0 "$PYTHON" -m py_compile
+
   python-tests:
     name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]
@@ -154,7 +176,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [python-tests, typescript-tests, browser-tests]
+    needs: [lambda-syntax, python-tests, typescript-tests, browser-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
