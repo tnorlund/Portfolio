@@ -621,10 +621,10 @@ def handler(_event, _context):
                 size = infer_size(product_text, price)
 
                 # NOTE: details.lines (the full per-receipt line list, ~75 lines
-                # × 69 receipts ≈ 2.8 MB across the response) is intentionally
+                # x 69 receipts ~= 2.8 MB across the response) is intentionally
                 # NOT included in the cache entry. WordSimilarity.tsx builds a
                 # cropped image from `receipt` + `bbox` only and never reads
-                # `lines`. Including it inflated the API payload ~20× for no
+                # `lines`. Including it inflated the API payload ~20x for no
                 # frontend benefit. See PR notes / type def MilkReceiptData.
 
                 return {
