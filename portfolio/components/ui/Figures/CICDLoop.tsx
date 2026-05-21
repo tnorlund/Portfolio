@@ -586,7 +586,13 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     threshold: 0.3,
   });
   const [mounted, setMounted] = useState(false);
-  const [hasEntered, setHasEntered] = useState(false);
+  // Tracked as a ref (not state) so flipping it does NOT trigger a re-run
+  // of the animation effect below. A previous state-based version caused
+  // the effect's cleanup function to fire on the hasEntered=false→true
+  // re-render, which cancelled every staggered setTimeout the moment it
+  // was scheduled — leaving the segment springs stuck at opacity 0 (an
+  // invisible figure-8).
+  const hasEnteredRef = useRef(false);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
   const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -608,12 +614,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (inView && !hasEntered) {
-      setHasEntered(true);
-    }
-  }, [inView, hasEntered]);
-
   // Clear all pending timeouts
   const clearAllTimeouts = () => {
     timeoutIds.current.forEach((id) => clearTimeout(id));
@@ -630,11 +630,14 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     pulseTimeoutsRef.current = [];
   };
 
-  // Trigger animations when in view
+  // Trigger animations when in view. Note: hasEnteredRef is a ref (not
+  // state) so mutating it does not retrigger this effect — the cleanup
+  // only fires on real dep changes (inView, mounted) and on unmount.
   useEffect(() => {
     if (!mounted) return;
 
-    if (inView && !hasEntered) {
+    if (inView && !hasEnteredRef.current) {
+      hasEnteredRef.current = true;
       clearAllTimeouts();
 
       // Staggered fade-in for each segment
@@ -653,10 +656,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         }, index * staggerDelay);
         timeoutIds.current.push(id);
       });
-    } else if (!hasEntered) {
+    } else if (!hasEnteredRef.current) {
       clearAllTimeouts();
       clearPulseAnimation();
-      // Reset when out of view
+      // Reset when out of view (before first entrance)
       api.start(() => ({
         opacity: 0,
         transform: "scale(0.9)",
@@ -665,7 +668,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     return () => clearAllTimeouts();
-  }, [inView, hasEntered, mounted, staggerDelay, api, N, segments]);
+  }, [inView, mounted, staggerDelay, api, N, segments]);
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
