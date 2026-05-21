@@ -6,7 +6,7 @@
 
 # Interface: WithinReceiptFinancialMath
 
-Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/b3a0a72c8a4cef5bed57918eacdfb351beb22ca0/portfolio/types/api.ts#L837)
+Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/ff74bc6b3542bbf7f45e3810cef6b62e0d7cd775/portfolio/types/api.ts#L837)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/b3a0a7
 
 > **duration\_seconds**: `number` \| `null`
 
-Defined in: [types/api.ts:844](https://github.com/tnorlund/Portfolio/blob/b3a0a72c8a4cef5bed57918eacdfb351beb22ca0/portfolio/types/api.ts#L844)
+Defined in: [types/api.ts:844](https://github.com/tnorlund/Portfolio/blob/ff74bc6b3542bbf7f45e3810cef6b62e0d7cd775/portfolio/types/api.ts#L844)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:844](https://github.com/tnorlund/Portfolio/blob/b3a0a7
 
 > **equations**: [`WithinReceiptEquation`](WithinReceiptEquation.md)[]
 
-Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/b3a0a72c8a4cef5bed57918eacdfb351beb22ca0/portfolio/types/api.ts#L838)
+Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/ff74bc6b3542bbf7f45e3810cef6b62e0d7cd775/portfolio/types/api.ts#L838)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/b3a0a7
 
 > **is\_llm**: `boolean`
 
-Defined in: [types/api.ts:845](https://github.com/tnorlund/Portfolio/blob/b3a0a72c8a4cef5bed57918eacdfb351beb22ca0/portfolio/types/api.ts#L845)
+Defined in: [types/api.ts:845](https://github.com/tnorlund/Portfolio/blob/ff74bc6b3542bbf7f45e3810cef6b62e0d7cd775/portfolio/types/api.ts#L845)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:845](https://github.com/tnorlund/Portfolio/blob/b3a0a7
 
 > **summary**: `object`
 
-Defined in: [types/api.ts:839](https://github.com/tnorlund/Portfolio/blob/b3a0a72c8a4cef5bed57918eacdfb351beb22ca0/portfolio/types/api.ts#L839)
+Defined in: [types/api.ts:839](https://github.com/tnorlund/Portfolio/blob/ff74bc6b3542bbf7f45e3810cef6b62e0d7cd775/portfolio/types/api.ts#L839)
 
 #### has\_invalid
 
