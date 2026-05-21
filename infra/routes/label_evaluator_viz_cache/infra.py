@@ -131,7 +131,7 @@ class LabelEvaluatorVizCache(ComponentResource):
                     "S3_CACHE_BUCKET": cache_bucket_output,
                 }
             ),
-            memory_size=256,
+            memory_size=1024,
             timeout=30,
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),

@@ -118,6 +118,8 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
                 alt={`Queued receipt ${idx + 1}`}
                 width={100}
                 height={150}
+                loading="lazy"
+                decoding="async"
                 style={{ width: "100%", height: "auto", display: "block" }}
                 onError={(e) => {
                   const fallback = getJpegFallbackUrl(receipt);
