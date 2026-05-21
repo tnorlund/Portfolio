@@ -255,7 +255,7 @@ const WordSimilarity: React.FC = () => {
   }, []);
 
   if (!nearViewport || loading) {
-    const reservedHeight = windowWidth <= 768 ? 600 : 900;
+    const reservedHeight = windowWidth <= 768 ? 100 : 120;
     return (
       <div
         ref={lazyRef}

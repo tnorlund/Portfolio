@@ -109,7 +109,7 @@ def create_label_validation_timeline_lambda(
                 }
             )
         ),
-        memory_size=256,
+        memory_size=1024,
         timeout=30,  # Fast since it just reads from S3
         tags={"environment": stack},
     )

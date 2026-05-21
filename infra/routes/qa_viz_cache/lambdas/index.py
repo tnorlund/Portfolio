@@ -33,13 +33,18 @@ s3_client = boto3.client("s3")
 
 def _cors_response(status_code: int, body: Any) -> dict:
     """Build an API Gateway v2 response with CORS headers."""
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+    }
+    if status_code == 200:
+        headers["Cache-Control"] = (
+            "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
+        )
     return {
         "statusCode": status_code,
         "body": json.dumps(body, default=str),
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
+        "headers": headers,
     }
 
 
