@@ -285,7 +285,13 @@ export interface MilkReceiptData {
   size: string;
   line_id: number;
   receipt: Receipt;
-  lines: Line[];
+  /**
+   * Per-receipt line list. The frontend never reads this — the cropped
+   * image is built from `receipt` + `bbox`. Cache generator no longer
+   * emits it (saves ~95% of payload). Kept optional only so older cached
+   * responses still type-check during rollout.
+   */
+  lines?: Line[];
   bbox: AddressBoundingBox | null;
 }
 
