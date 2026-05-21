@@ -475,7 +475,7 @@ class UploadImages(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
+                "OPENROUTER_MODEL": "x-ai/grok-4.3",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
@@ -686,7 +686,7 @@ class UploadImages(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
+                "OPENROUTER_MODEL": "x-ai/grok-4.3",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
