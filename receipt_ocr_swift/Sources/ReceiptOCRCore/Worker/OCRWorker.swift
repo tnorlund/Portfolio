@@ -208,9 +208,9 @@ public final class OCRWorker {
 
     #if os(macOS)
     private func cropImageData(_ imageData: Data, region: ReOCRRegion) throws -> Data {
-        // The region already includes horizontal padding (applied in
-        // _compute_reocr_region on the Python side). Use it directly so
-        // crop and overlay coordinate mapping are identical.
+        // trigger_reocr always sends full-width (x=0..1) with line-based
+        // vertical padding. Use the region directly so crop and overlay
+        // coordinate mapping are identical.
         guard let nsImage = NSImage(data: imageData),
               let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw DynamoMapError.invalid("regional_reocr_image_decode")

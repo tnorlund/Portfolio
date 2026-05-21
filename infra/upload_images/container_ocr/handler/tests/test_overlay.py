@@ -578,6 +578,30 @@ class TestUnmatchedWordAddition:
 
         assert result.get("words_added", 0) == 0
 
+    def test_unmatched_word_low_confidence_skipped(self):
+        """A new word with confidence below 0.5 is not added."""
+        proc = _make_processor()
+        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
+                              line_id=1, word_id=1)
+        new_word = _make_word(text="X", x=0.5, y=0.1, w=0.1, h=0.05,
+                              line_id=1, word_id=2, confidence=0.3)
+
+        result = self._run_overlay(proc, [existing], [new_word])
+
+        assert result.get("words_added", 0) == 0
+
+    def test_unmatched_word_noise_skipped(self):
+        """A new word that is noise text (e.g. 'SA-/') is not added."""
+        proc = _make_processor()
+        existing = _make_word(text="A", x=0.1, y=0.1, w=0.1, h=0.05,
+                              line_id=1, word_id=1)
+        new_word = _make_word(text="SA-/", x=0.5, y=0.1, w=0.1, h=0.05,
+                              line_id=1, word_id=2)
+
+        result = self._run_overlay(proc, [existing], [new_word])
+
+        assert result.get("words_added", 0) == 0
+
     def test_line_text_includes_added_words(self):
         """ReceiptLine text is rebuilt to include the added word."""
         proc = _make_processor()

@@ -547,6 +547,19 @@ class OCRProcessor:
                 "error": "No existing receipt words found for overlay",
             }
 
+        labels: list[Any] = []
+        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
+        )
+        labels.extend(page or [])
+        while lek:
+            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
+                image_id=ocr_job.image_id,
+                receipt_id=ocr_job.receipt_id,
+                last_evaluated_key=lek,
+            )
+            labels.extend(page or [])
+
         candidate_words = [
             word
             for word in existing_words
@@ -611,7 +624,25 @@ class OCRProcessor:
         words_rejected = 0
 
         for new_word, existing_word in matches:
-            # Guard 3: Confidence-based quality check.
+            # Guard 3a: Absolute confidence floor.
+            # Reject if the new OCR confidence is too low — the crop
+            # may have produced garbage text.
+            if new_word.confidence < 0.5:
+                logger.info(
+                    "Rejecting overlay for word %s#%s line=%d word=%d: "
+                    "new confidence %.4f below floor 0.5 (text '%s' -> '%s')",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                    existing_word.line_id,
+                    existing_word.word_id,
+                    new_word.confidence,
+                    existing_word.text,
+                    new_word.text,
+                )
+                words_rejected += 1
+                continue
+
+            # Guard 3b: Confidence-based quality check (identical text).
             # If the text is identical and the new confidence is lower,
             # reject this overlay to avoid degrading existing data.
             if (
@@ -627,6 +658,31 @@ class OCRProcessor:
                     existing_word.word_id,
                     existing_word.confidence,
                     new_word.confidence,
+                )
+                words_rejected += 1
+                continue
+
+            # Guard 3c: Significant confidence drop with text change.
+            # If the text changed but confidence dropped substantially,
+            # the crop likely produced a misread — reject.
+            confidence_drop = existing_word.confidence - new_word.confidence
+            if (
+                new_word.text != existing_word.text
+                and confidence_drop > 0.15
+            ):
+                logger.info(
+                    "Rejecting overlay for word %s#%s line=%d word=%d: "
+                    "text changed '%s' -> '%s' with confidence drop "
+                    "%.4f -> %.4f (delta %.4f > 0.15)",
+                    ocr_job.image_id,
+                    ocr_job.receipt_id,
+                    existing_word.line_id,
+                    existing_word.word_id,
+                    existing_word.text,
+                    new_word.text,
+                    existing_word.confidence,
+                    new_word.confidence,
+                    confidence_drop,
                 )
                 words_rejected += 1
                 continue
@@ -701,6 +757,22 @@ class OCRProcessor:
                     max_word_id[w.line_id] = w.word_id
 
             for new_word in unmatched_new_words:
+                # Guard 4a — confidence floor (same 0.5 as Guard 3a).
+                if new_word.confidence < 0.5:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
+                        new_word.text, new_word.confidence,
+                    )
+                    continue
+
+                # Guard 4b — noise rejection.
+                if is_noise_text(new_word.text):
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — noise text",
+                        new_word.text,
+                    )
+                    continue
+
                 nw_y = float(new_word.bounding_box.get("y", 0))
                 nw_h = float(new_word.bounding_box.get("height", 0))
 
