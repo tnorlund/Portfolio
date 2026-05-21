@@ -23,7 +23,6 @@ interface ScannerState {
   metadata: number;      // 0-100
   geometric: number;     // 0-100
   financial: number;     // 0-100
-  currency: number;      // 0-100 (starts after lineItem completes)
   review: number;        // 0-100 (conditional)
 }
 
@@ -32,13 +31,10 @@ type Phase = "idle" | "scanning" | "complete";
 // Scanner colors - grouped by dependency chain
 // Using CSS variables for automatic light/dark mode support
 const SCANNER_COLORS = {
-  // Chain 1: Line Item → Currency → Financial (purple)
-  // Financial validates currency labels (GRAND_TOTAL, SUBTOTAL, TAX, etc.)
-  // It needs Currency's corrections but NOT Metadata's
+  // Chain 1: Line Item → Financial (purple)
   lineItem: "var(--color-purple)",
-  currency: "var(--color-purple)",
   financial: "var(--color-purple)",
-  // Independent: Metadata (blue) - no data flows to Financial
+  // Independent: Metadata (blue)
   metadata: "var(--color-blue)",
   // Chain 2: Geometric → Review (orange)
   geometric: "var(--color-orange)",
@@ -55,7 +51,7 @@ const DECISION_COLORS: Record<string, string> = {
 // Revealed decision for tracking individual V/I/R decisions as scanner progresses
 interface RevealedDecision {
   key: string;                    // "metadata_1_3"
-  type: 'currency' | 'metadata' | 'financial' | 'review';
+  type: 'metadata' | 'financial' | 'review';
   decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
   wordText: string;
   lineId: number;
@@ -250,7 +246,7 @@ const ScannerBar: React.FC<ScannerBarProps> = ({
 
 // Decision tally component - shows ✓/✗/👤 icons as scanner reveals decisions
 interface DecisionTallyProps {
-  scannerType: 'currency' | 'metadata' | 'financial' | 'review';
+  scannerType: 'metadata' | 'financial' | 'review';
   revealedDecisions: RevealedDecision[];
   totalDecisions: number;
 }
@@ -339,7 +335,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   const metadataY = (scannerState.metadata / 100) * height;
   const geometricY = (scannerState.geometric / 100) * height;
   const financialY = (scannerState.financial / 100) * height;
-  const currencyY = (scannerState.currency / 100) * height;
   const reviewY = (scannerState.review / 100) * height;
 
   return (
@@ -509,18 +504,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
               />
             )}
 
-            {/* Currency (green) - starts after Line Item completes */}
-            {scannerState.currency > 0 && scannerState.currency < 100 && (
-              <rect
-                x="0"
-                y={currencyY}
-                width={width}
-                height={Math.max(height * 0.006, 3)}
-                fill={SCANNER_COLORS.currency}
-                filter={`url(#${filterId})`}
-              />
-            )}
-
             {/* Review (pink) - conditional, after all others */}
             {scannerState.review > 0 && scannerState.review < 100 && (
               <rect
@@ -550,13 +533,10 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({
   scannerState,
   revealedDecisions,
 }) => {
-  const { currency, metadata, geometric, financial } = receipt;
+  const { metadata, geometric, financial } = receipt;
 
   // Check if we have geometric issues (triggers review phase)
   const hasGeometricIssues = geometric.issues_found > 0;
-
-  // Currency waits for Line Item to complete
-  const currencyIsWaiting = scannerState.lineItem < 100 && scannerState.currency === 0;
 
   return (
     <div className={styles.pipelinePanel}>
@@ -629,38 +609,11 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({
         </div>
       </div>
 
-      {/* After Line Item: Currency */}
-      <div className={styles.pipelineSection}>
-        <h4 className={styles.sectionTitle}>
-          <span className={styles.phaseNumber}>2</span>
-          After Line Item
-        </h4>
-        <div className={styles.scannerWithTally}>
-          <ScannerBar
-            name="Currency"
-            color={SCANNER_COLORS.currency}
-            progress={scannerState.currency}
-            isActive={scannerState.currency > 0 && scannerState.currency < 100}
-            isComplete={scannerState.currency >= 100}
-            isLLM={true}
-            isWaiting={currencyIsWaiting}
-            waitingFor="Line Item"
-            durationMs={scannerState.currency >= 100 ? currency.duration_seconds * 1000 : undefined}
-            decisions={currency.decisions}
-          />
-          <DecisionTally
-            scannerType="currency"
-            revealedDecisions={revealedDecisions}
-            totalDecisions={currency.all_decisions.length}
-          />
-        </div>
-      </div>
-
       {/* Conditional: Review Flagged */}
       {hasGeometricIssues && (
         <div className={styles.pipelineSection}>
           <h4 className={styles.sectionTitle}>
-            <span className={styles.phaseNumber}>3</span>
+            <span className={styles.phaseNumber}>2</span>
             Review Flagged
           </h4>
           <ScannerBar
@@ -971,22 +924,18 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
   isTransitioning,
   nextReceipt,
 }) => {
-  const { currency, metadata, geometric, financial } = receipt;
+  const { metadata, geometric, financial } = receipt;
   const hasGeometricIssues = geometric.issues_found > 0;
 
   // Determine waiting states based on dependencies
-  // Currency waits for Line Item
-  const currencyIsWaiting = scannerState.lineItem < 100 && scannerState.currency === 0;
-  // Financial waits for Currency + Metadata
-  const currencyEndTime = scannerState.lineItem >= 100 ? scannerState.currency : 0;
-  const financialIsWaiting = (currencyEndTime < 100 || scannerState.metadata < 100) && scannerState.financial === 0;
+  // Financial waits for Line Item + Metadata
+  const financialIsWaiting = (scannerState.lineItem < 100 || scannerState.metadata < 100) && scannerState.financial === 0;
   // Review waits for Geometric (and only shows if review data exists)
   const hasReviewData = receipt.review !== null && receipt.review !== undefined;
   const reviewIsWaiting = hasReviewData && scannerState.geometric < 100 && scannerState.review === 0;
 
   // Filter decisions by scanner type
   const metadataDecisions = revealedDecisions.filter(d => d.type === 'metadata');
-  const currencyDecisions = revealedDecisions.filter(d => d.type === 'currency');
   const financialDecisions = revealedDecisions.filter(d => d.type === 'financial');
   const reviewDecisions = revealedDecisions.filter(d => d.type === 'review');
 
@@ -1032,7 +981,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         nextTotalDecisions={0} // Don't show next placeholders - Review depends on Geometric
         showPlaceholders={hasReviewData && scannerState.geometric >= 100}
       />
-      {/* Purple - Line Item → Currency → Financial chain */}
+      {/* Purple - Line Item → Financial chain */}
       <ScannerLegendItem
         name="Line Item"
         color={SCANNER_COLORS.lineItem}
@@ -1040,19 +989,6 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         isWaiting={false}
         isComplete={scannerState.lineItem >= 100}
         durationMs={receipt.line_item_duration_seconds ? receipt.line_item_duration_seconds * 1000 : undefined}
-      />
-      <ScannerLegendItem
-        name="Currency"
-        color={SCANNER_COLORS.currency}
-        progress={scannerState.currency}
-        isWaiting={currencyIsWaiting}
-        isComplete={scannerState.currency >= 100}
-        durationMs={currency.duration_seconds * 1000}
-        decisions={currencyDecisions}
-        totalDecisions={currency.all_decisions.length}
-        isTransitioning={isTransitioning}
-        nextTotalDecisions={0} // Don't show next placeholders - Currency depends on Line Item
-        showPlaceholders={scannerState.lineItem >= 100}
       />
       <ScannerLegendItem
         name="Financial"
@@ -1064,8 +1000,8 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={financialDecisions}
         totalDecisions={financial.all_decisions.length}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={0} // Don't show next placeholders - Financial depends on Currency + Metadata
-        showPlaceholders={scannerState.currency >= 100 && scannerState.metadata >= 100}
+        nextTotalDecisions={0} // Don't show next placeholders - Financial depends on Line Item + Metadata
+        showPlaceholders={scannerState.lineItem >= 100 && scannerState.metadata >= 100}
       />
     </div>
   );
@@ -1092,7 +1028,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
     metadata: 0,
     geometric: 0,
     financial: 0,
-    currency: 0,
     review: 0,
   });
   const [revealedDecisions, setRevealedDecisions] = useState<RevealedDecision[]>([]);
@@ -1115,7 +1050,7 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const { words, currency, metadata, financial, review } = currentReceipt;
+    const { words, metadata, financial, review } = currentReceipt;
     const decisions: RevealedDecision[] = [];
 
     // Helper to check if a word's top edge has been passed by a scanner
@@ -1134,24 +1069,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
           decisions.push({
             key: `metadata_${d.issue.line_id}_${d.issue.word_id}`,
             type: 'metadata',
-            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-            wordText: d.issue.word_text,
-            lineId: d.issue.line_id,
-            wordId: d.issue.word_id,
-            bbox: word.bbox,
-          });
-        }
-      }
-    });
-
-    // Currency decisions - track ALL decisions (V/I/R)
-    currency.all_decisions.forEach((d) => {
-      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.currency)) {
-        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-        if (word) {
-          decisions.push({
-            key: `currency_${d.issue.line_id}_${d.issue.word_id}`,
-            type: 'currency',
             decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
             wordText: d.issue.word_text,
             lineId: d.issue.line_id,
@@ -1224,17 +1141,15 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
     const rawMetadata = receipt.metadata.duration_seconds || 1;
     const rawGeometric = receipt.geometric.duration_seconds || 0.3;  // Deterministic, usually very fast
     const rawFinancial = receipt.financial.duration_seconds || 1;
-    const rawCurrency = receipt.currency.duration_seconds || 1;
     // Review uses actual duration from data - only show if review actually ran
     // If review is null but hasGeometricIssues, it means review didn't run for this receipt
     const hasReviewData = receipt.review !== null && receipt.review !== undefined;
     const rawReview = hasReviewData ? (receipt.review!.duration_seconds || 1) : 0;
 
     // Calculate total raw duration to find scale factor
-    // Branch 1: Line Item -> Currency -> Financial (sequential after Currency+Metadata)
+    // Branch 1: Line Item -> Financial (sequential after Line Item+Metadata)
     // Branch 2: Geometric -> Review (conditional, independent)
-    const currencyEnd = rawLineItem + rawCurrency;
-    const financialStart = Math.max(currencyEnd, rawMetadata);
+    const financialStart = Math.max(rawLineItem, rawMetadata);
     const branch1End = financialStart + rawFinancial;
     const branch2End = rawGeometric + (hasReviewData ? rawReview : 0);
     const totalRawDuration = Math.max(branch1End, branch2End);
@@ -1245,15 +1160,12 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
     const metadataDuration = Math.max(rawMetadata * 1000 * scaleFactor, MIN_PHASE_DURATION);
     const geometricDuration = Math.max(rawGeometric * 1000 * scaleFactor, MIN_PHASE_DURATION);
     const financialDuration = Math.max(rawFinancial * 1000 * scaleFactor, MIN_PHASE_DURATION);
-    const currencyDuration = Math.max(rawCurrency * 1000 * scaleFactor, MIN_PHASE_DURATION);
     const reviewDuration = hasReviewData
       ? Math.max(rawReview * 1000 * scaleFactor, MIN_PHASE_DURATION)
       : 0;
 
-    // Branch 1 timing: Line Item -> Currency, then Financial after Currency+Metadata
-    const currencyStartTime = lineItemDuration;
-    const currencyEndTime = currencyStartTime + currencyDuration;
-    const financialStartTime = Math.max(currencyEndTime, metadataDuration);
+    // Branch 1 timing: Financial starts after Line Item + Metadata complete
+    const financialStartTime = Math.max(lineItemDuration, metadataDuration);
 
     // Branch 2 timing: Geometric -> Review (independent of Branch 1)
     const reviewStartTime = geometricDuration;
@@ -1275,7 +1187,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
       metadata: 0,
       geometric: 0,
       financial: 0,
-      currency: 0,
       review: 0,
     });
 
@@ -1295,14 +1206,7 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
         const lineItemProgress = Math.min((elapsed / lineItemDuration) * 100, 100);
         const metadataProgress = Math.min((elapsed / metadataDuration) * 100, 100);
 
-        // Branch 1: Currency starts after Line Item completes
-        let currencyProgress = 0;
-        if (elapsed >= currencyStartTime) {
-          const currencyElapsed = elapsed - currencyStartTime;
-          currencyProgress = Math.min((currencyElapsed / currencyDuration) * 100, 100);
-        }
-
-        // Branch 1: Financial starts after Currency + Metadata complete
+        // Branch 1: Financial starts after Line Item + Metadata complete
         let financialProgress = 0;
         if (elapsed >= financialStartTime) {
           const financialElapsed = elapsed - financialStartTime;
@@ -1326,7 +1230,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
           metadata: metadataProgress,
           geometric: geometricProgress,
           financial: financialProgress,
-          currency: currencyProgress,
           review: reviewProgress,
         });
       } else if (elapsed < holdEnd) {
@@ -1338,7 +1241,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
           metadata: 100,
           geometric: 100,
           financial: 100,
-          currency: 100,
           review: hasReviewData ? 100 : 0,
         });
       } else if (elapsed < totalCycle) {
@@ -1361,7 +1263,6 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
           metadata: 0,
           geometric: 0,
           financial: 0,
-          currency: 0,
           review: 0,
         });
         setRevealedDecisions([]);
@@ -1443,7 +1344,7 @@ const LabelEvaluatorInner: React.FC<LabelEvaluatorInnerProps> = ({
           isTransitioning && nextReceipt ? (
             <ReceiptViewer
               receipt={nextReceipt}
-              scannerState={{ lineItem: 0, metadata: 0, geometric: 0, financial: 0, currency: 0, review: 0 }}
+              scannerState={{ lineItem: 0, metadata: 0, geometric: 0, financial: 0, review: 0 }}
               phase="idle"
               revealedDecisions={[]}
               formatSupport={formatSupport}
