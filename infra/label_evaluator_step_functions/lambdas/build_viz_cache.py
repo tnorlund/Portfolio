@@ -191,6 +191,12 @@ def _build_cdn_fields(
             "cdn_medium_s3_key",
             "cdn_medium_webp_s3_key",
             "cdn_medium_avif_s3_key",
+            "cdn_small_s3_key",
+            "cdn_small_webp_s3_key",
+            "cdn_small_avif_s3_key",
+            "cdn_thumbnail_s3_key",
+            "cdn_thumbnail_webp_s3_key",
+            "cdn_thumbnail_avif_s3_key",
         ):
             val = lookup_row.get(key)
             if val is not None:

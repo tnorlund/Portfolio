@@ -315,6 +315,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
             },
         }
 

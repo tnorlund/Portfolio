@@ -584,6 +584,12 @@ async def unified_receipt_evaluator(
             cdn_medium_s3_key = receipt_info.cdn_medium_s3_key
             cdn_medium_webp_s3_key = receipt_info.cdn_medium_webp_s3_key
             cdn_medium_avif_s3_key = receipt_info.cdn_medium_avif_s3_key
+            cdn_small_s3_key = receipt_info.cdn_small_s3_key
+            cdn_small_webp_s3_key = receipt_info.cdn_small_webp_s3_key
+            cdn_small_avif_s3_key = receipt_info.cdn_small_avif_s3_key
+            cdn_thumbnail_s3_key = receipt_info.cdn_thumbnail_s3_key
+            cdn_thumbnail_webp_s3_key = receipt_info.cdn_thumbnail_webp_s3_key
+            cdn_thumbnail_avif_s3_key = receipt_info.cdn_thumbnail_avif_s3_key
             width = receipt_info.width
             height = receipt_info.height
         else:
@@ -594,6 +600,12 @@ async def unified_receipt_evaluator(
             cdn_medium_s3_key = f"assets/{receipt_key}_medium.jpg"
             cdn_medium_webp_s3_key = f"assets/{receipt_key}_medium.webp"
             cdn_medium_avif_s3_key = f"assets/{receipt_key}_medium.avif"
+            cdn_small_s3_key = f"assets/{receipt_key}_small.jpg"
+            cdn_small_webp_s3_key = f"assets/{receipt_key}_small.webp"
+            cdn_small_avif_s3_key = f"assets/{receipt_key}_small.avif"
+            cdn_thumbnail_s3_key = f"assets/{receipt_key}_thumbnail.jpg"
+            cdn_thumbnail_webp_s3_key = f"assets/{receipt_key}_thumbnail.webp"
+            cdn_thumbnail_avif_s3_key = f"assets/{receipt_key}_thumbnail.avif"
             # Default dimensions - will be overridden if receipt_info exists
             width = receipt_info.width if receipt_info else 800
             height = receipt_info.height if receipt_info else 2400
@@ -613,6 +625,12 @@ async def unified_receipt_evaluator(
             "cdn_medium_s3_key": cdn_medium_s3_key,
             "cdn_medium_webp_s3_key": cdn_medium_webp_s3_key,
             "cdn_medium_avif_s3_key": cdn_medium_avif_s3_key,
+            "cdn_small_s3_key": cdn_small_s3_key,
+            "cdn_small_webp_s3_key": cdn_small_webp_s3_key,
+            "cdn_small_avif_s3_key": cdn_small_avif_s3_key,
+            "cdn_thumbnail_s3_key": cdn_thumbnail_s3_key,
+            "cdn_thumbnail_webp_s3_key": cdn_thumbnail_webp_s3_key,
+            "cdn_thumbnail_avif_s3_key": cdn_thumbnail_avif_s3_key,
             "width": width,
             "height": height,
         }
