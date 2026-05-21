@@ -6,7 +6,7 @@
 
 # Interface: LabelEvaluatorEvaluation
 
-Defined in: [types/api.ts:548](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L548)
+Defined in: [types/api.ts:548](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L548)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:548](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **all\_decisions**: ([`LabelEvaluatorDecision`](LabelEvaluatorDecision.md) \| [`ReviewDecision`](ReviewDecision.md))[]
 
-Defined in: [types/api.ts:558](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L558)
+Defined in: [types/api.ts:558](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L558)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:558](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **decisions**: `object`
 
-Defined in: [types/api.ts:553](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L553)
+Defined in: [types/api.ts:553](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L553)
 
 #### INVALID
 
@@ -42,7 +42,7 @@ Defined in: [types/api.ts:553](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **duration\_seconds**: `number`
 
-Defined in: [types/api.ts:552](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L552)
+Defined in: [types/api.ts:552](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L552)
 
 ***
 
@@ -50,7 +50,7 @@ Defined in: [types/api.ts:552](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **image\_id**: `string`
 
-Defined in: [types/api.ts:549](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L549)
+Defined in: [types/api.ts:549](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L549)
 
 ***
 
@@ -58,7 +58,7 @@ Defined in: [types/api.ts:549](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **merchant\_name**: `string`
 
-Defined in: [types/api.ts:551](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L551)
+Defined in: [types/api.ts:551](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L551)
 
 ***
 
@@ -66,4 +66,4 @@ Defined in: [types/api.ts:551](https://github.com/tnorlund/Portfolio/blob/428639
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:550](https://github.com/tnorlund/Portfolio/blob/428639f1b31b2db3211b6e31826adfe2edfb77f7/portfolio/types/api.ts#L550)
+Defined in: [types/api.ts:550](https://github.com/tnorlund/Portfolio/blob/5c99e54bc663f7e8584273408c1098a7328c56ad/portfolio/types/api.ts#L550)
