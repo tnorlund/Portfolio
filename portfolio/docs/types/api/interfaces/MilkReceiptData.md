@@ -6,7 +6,7 @@
 
 # Interface: MilkReceiptData
 
-Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L279)
+Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L279)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:279](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **bbox**: [`AddressBoundingBox`](AddressBoundingBox.md) \| `null`
 
-Defined in: [types/api.ts:295](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L295)
+Defined in: [types/api.ts:295](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L295)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:295](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **image\_id**: `string`
 
-Defined in: [types/api.ts:280](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L280)
+Defined in: [types/api.ts:280](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L280)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:280](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:286](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L286)
+Defined in: [types/api.ts:286](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L286)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:286](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **merchant**: `string`
 
-Defined in: [types/api.ts:283](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L283)
+Defined in: [types/api.ts:283](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L283)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:283](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **price**: `string` \| `null`
 
-Defined in: [types/api.ts:284](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L284)
+Defined in: [types/api.ts:284](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L284)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:284](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **product**: `string`
 
-Defined in: [types/api.ts:282](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L282)
+Defined in: [types/api.ts:282](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L282)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:282](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **receipt**: [`Receipt`](Receipt.md)
 
-Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L287)
+Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L287)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:287](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:281](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L281)
+Defined in: [types/api.ts:281](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L281)
 
 ***
 
@@ -78,7 +78,7 @@ Defined in: [types/api.ts:281](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > **size**: `string`
 
-Defined in: [types/api.ts:285](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L285)
+Defined in: [types/api.ts:285](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L285)
 
 ***
 
@@ -86,7 +86,7 @@ Defined in: [types/api.ts:285](https://github.com/tnorlund/Portfolio/blob/f52d6d
 
 > `optional` **lines**: [`Line`](Line.md)[]
 
-Defined in: [types/api.ts:294](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/types/api.ts#L294)
+Defined in: [types/api.ts:294](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/types/api.ts#L294)
 
 Per-receipt line list. The frontend never reads this — the cropped
 image is built from `receipt` + `bbox`. Cache generator no longer

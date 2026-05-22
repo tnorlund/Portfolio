@@ -8,7 +8,7 @@
 
 > **measureAsync**\<`T`\>(`name`, `fn`): `Promise`\<`T`\>
 
-Defined in: [utils/performance/monitor.ts:200](https://github.com/tnorlund/Portfolio/blob/f52d6db8aab7e0b629d135f5fb36cfc41659c9c6/portfolio/utils/performance/monitor.ts#L200)
+Defined in: [utils/performance/monitor.ts:200](https://github.com/tnorlund/Portfolio/blob/d8605b5aa0e6e43082ec5afacf7979e58e48e13b/portfolio/utils/performance/monitor.ts#L200)
 
 ## Type Parameters
 
