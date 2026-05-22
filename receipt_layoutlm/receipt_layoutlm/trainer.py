@@ -35,6 +35,7 @@ def _checkpoint_step(path: str) -> int:
 
 
 SAGEMAKER_CHECKPOINT_DIR = "/opt/ml/checkpoints"
+_LOCAL_OUTPUT_ROOT = "/tmp/receipt_layoutlm"
 
 
 def _resolve_output_dir(job_name: str) -> str:
@@ -55,10 +56,21 @@ def _resolve_output_dir(job_name: str) -> str:
     Resolution order:
       1. /opt/ml/checkpoints (when SageMaker mounted it)
       2. /tmp/receipt_layoutlm/{job_name} (local dev fallback)
+
+    ``job_name`` is interpolated into the fallback path, so we validate
+    it can't contain path separators or ".." segments that would let
+    the path escape the local root.
     """
     if os.path.isdir(SAGEMAKER_CHECKPOINT_DIR):
         return SAGEMAKER_CHECKPOINT_DIR
-    return f"/tmp/receipt_layoutlm/{job_name}"
+
+    root = os.path.realpath(_LOCAL_OUTPUT_ROOT)
+    candidate = os.path.realpath(os.path.join(root, job_name))
+    if candidate == root or os.path.commonpath([root, candidate]) != root:
+        raise ValueError(
+            f"Invalid job_name {job_name!r}: would escape {root}"
+        )
+    return candidate
 
 
 class ReceiptLayoutLMTrainer:

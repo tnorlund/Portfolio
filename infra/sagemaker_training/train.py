@@ -130,23 +130,22 @@ def build_train_command(hps: dict) -> list[str]:
     return cmd
 
 
-def _training_dir(job_name: str) -> Path:
-    """Mirror of receipt_layoutlm.trainer._resolve_output_dir.
-
-    Kept in sync intentionally — the trainer writes checkpoints to
-    /opt/ml/checkpoints when SageMaker mounts it (so spot interruptions
-    can recover), otherwise to /tmp/receipt_layoutlm/{job_name}.
-    """
-    sagemaker_ckpt = Path("/opt/ml/checkpoints")
-    if sagemaker_ckpt.is_dir():
-        return sagemaker_ckpt
-    return Path(f"/tmp/receipt_layoutlm/{job_name}")
-
-
 def copy_model_to_sagemaker_dir(job_name: str):
-    """Copy trained model to SageMaker's model directory."""
+    """Copy trained model to SageMaker's model directory.
+
+    The training output directory is resolved by
+    ``receipt_layoutlm.trainer._resolve_output_dir`` so the SageMaker
+    container side stays in lockstep with the trainer's own writes
+    (avoids the kind of path-mismatch silent data loss this PR
+    addresses for spot restarts).
+    """
     model_dir = os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
-    training_dir = _training_dir(job_name)
+    # Import locally so train.py is still importable in environments
+    # that don't have receipt_layoutlm installed (it's only required at
+    # SageMaker container runtime, not at static-analysis time).
+    from receipt_layoutlm.trainer import _resolve_output_dir
+
+    training_dir = Path(_resolve_output_dir(job_name))
 
     if not training_dir.exists():
         print(f"Warning: Training directory {training_dir} not found")
