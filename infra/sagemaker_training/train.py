@@ -131,9 +131,21 @@ def build_train_command(hps: dict) -> list[str]:
 
 
 def copy_model_to_sagemaker_dir(job_name: str):
-    """Copy trained model to SageMaker's model directory."""
+    """Copy trained model to SageMaker's model directory.
+
+    The training output directory is resolved by
+    ``receipt_layoutlm.trainer._resolve_output_dir`` so the SageMaker
+    container side stays in lockstep with the trainer's own writes
+    (avoids the kind of path-mismatch silent data loss this PR
+    addresses for spot restarts).
+    """
     model_dir = os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
-    training_dir = Path(f"/tmp/receipt_layoutlm/{job_name}")
+    # Import locally so train.py is still importable in environments
+    # that don't have receipt_layoutlm installed (it's only required at
+    # SageMaker container runtime, not at static-analysis time).
+    from receipt_layoutlm.trainer import _resolve_output_dir
+
+    training_dir = Path(_resolve_output_dir(job_name))
 
     if not training_dir.exists():
         print(f"Warning: Training directory {training_dir} not found")
