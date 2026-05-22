@@ -240,6 +240,10 @@ def _extract_summary_fields(
     state = _ExtractionState()
 
     for label in word_labels:
+        # Skip labels that didn't pass validation — they're usually OCR
+        # misreads or LLM mislabels that the evaluator already rejected.
+        if label.validation_status != "VALID":
+            continue
         handler = _LABEL_HANDLERS.get(label.label)
         if handler:
             text = word_text_lookup.get((label.line_id, label.word_id), "")
