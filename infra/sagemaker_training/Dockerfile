@@ -1,7 +1,13 @@
 # LayoutLM Training Container for SageMaker
-# Based on PyTorch with CUDA support
-
-FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+# Based on PyTorch with CUDA support.
+#
+# Why torch >= 2.4: transformers >= 5.0 (see PR #859) requires PyTorch
+# 2.4+. With torch 2.2 the library logs "Disabling PyTorch because
+# PyTorch >= 2.4 is required but found 2.2.0" at import time, after
+# which LayoutLMForTokenClassification.from_pretrained() fails with
+# "PyTorch library not found." The Dockerfile's pre-download step
+# trips this, breaking every container build.
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
