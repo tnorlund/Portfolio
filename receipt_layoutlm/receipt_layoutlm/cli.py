@@ -211,6 +211,17 @@ def main() -> None:
         default="float16",
         help="Quantization mode for CoreML export (default: float16).",
     )
+    train_p.add_argument(
+        "--resume-from-s3",
+        default=None,
+        help=(
+            "S3 URI to a previous training run's output directory "
+            "(e.g. s3://bucket/runs/layoutlm-hybrid-8-labels-v4/). "
+            "Files are synced to /tmp/receipt_layoutlm/{job_name}/ "
+            "before training, so the trainer's auto-resume picks up "
+            "the latest checkpoint and continues training from there."
+        ),
+    )
 
     infer_p = sub.add_parser("infer", help="Run LayoutLM inference")
     infer_p.add_argument(
@@ -393,6 +404,10 @@ def main() -> None:
         train_cfg.auto_export_coreml = args.export_coreml
         train_cfg.coreml_quantize = args.coreml_quantize
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
+        if args.resume_from_s3:
+            from .resume import sync_resume_checkpoint
+
+            sync_resume_checkpoint(args.resume_from_s3, args.job_name)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)
     elif args.cmd == "infer":

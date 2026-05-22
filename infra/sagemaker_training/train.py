@@ -84,6 +84,7 @@ def build_train_command(hps: dict) -> list[str]:
         "early_stopping_patience": "--early-stopping-patience",
         "pretrained": "--pretrained",
         "o_entity_ratio": "--o-entity-ratio",
+        "resume_from_s3": "--resume-from-s3",
     }
 
     for hp_name, cli_flag in param_mapping.items():
