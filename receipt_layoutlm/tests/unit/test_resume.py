@@ -7,7 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from receipt_layoutlm.resume import _parse_s3_uri, sync_resume_checkpoint
+from receipt_layoutlm.resume import (
+    _allowlist_numpy_pickle_globals,
+    _parse_s3_uri,
+    sync_resume_checkpoint,
+)
 
 
 @pytest.mark.parametrize(
@@ -155,3 +159,83 @@ def test_sync_resume_checkpoint_empty_prefix_is_warning_not_error(
     assert any(
         "no objects found" in r.message for r in caplog.records
     ), "expected a warning when no objects matched the resume prefix"
+
+
+def test_allowlist_numpy_pickle_globals_registers_expected_items(monkeypatch):
+    """torch.load(weights_only=True) needs these numpy globals to unpickle
+    HF Trainer's optimizer.pt files — the helper must register at least
+    numpy.ndarray and numpy.dtype, plus _reconstruct from whichever module
+    path this version of numpy uses."""
+    captured: list = []
+
+    import torch.serialization
+
+    monkeypatch.setattr(
+        torch.serialization,
+        "add_safe_globals",
+        lambda items: captured.append(list(items)),
+    )
+
+    _allowlist_numpy_pickle_globals()
+
+    assert len(captured) == 1, "expected one call to add_safe_globals"
+    names = {getattr(item, "__qualname__", getattr(item, "__name__", str(item)))
+             for item in captured[0]}
+
+    import numpy as np
+
+    # Always-present essentials
+    assert np.ndarray in captured[0]
+    assert np.dtype in captured[0]
+    # _reconstruct path varies by numpy version — verify by name not module.
+    assert any(
+        "_reconstruct" in n for n in names
+    ), f"expected _reconstruct in {names}"
+
+
+def test_sync_resume_checkpoint_allowlists_when_files_downloaded(tmp_path):
+    """The sync function should register numpy globals on the happy path
+    (files actually downloaded), so HF Trainer's later torch.load succeeds.
+    Skip when there are no files — registering would be wasted work."""
+    objects = [{"Key": "runs/v6/checkpoint-1/optimizer.pt"}]
+    s3 = _build_fake_s3_client(objects)
+
+    import torch.serialization
+
+    calls = []
+    orig = torch.serialization.add_safe_globals
+    torch.serialization.add_safe_globals = lambda items: calls.append(items)
+    try:
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v6/",
+            job_name="job",
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+    finally:
+        torch.serialization.add_safe_globals = orig
+
+    assert len(calls) == 1, "allowlist should be invoked once when files exist"
+
+
+def test_sync_resume_checkpoint_skips_allowlist_when_empty(tmp_path):
+    """If the resume prefix is empty (zero downloads), there's nothing to
+    unpickle later — skip the allowlist call to keep the no-op cheap."""
+    s3 = _build_fake_s3_client([])
+
+    import torch.serialization
+
+    calls = []
+    orig = torch.serialization.add_safe_globals
+    torch.serialization.add_safe_globals = lambda items: calls.append(items)
+    try:
+        sync_resume_checkpoint(
+            "s3://bucket/empty/",
+            job_name="job",
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+    finally:
+        torch.serialization.add_safe_globals = orig
+
+    assert calls == [], "allowlist must not run when no files downloaded"
