@@ -41,7 +41,6 @@ import {
   GithubLogo,
   GoogleMapsLogo,
   LangChainLogo,
-  LangSmithLogo,
   PulumiLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
@@ -475,12 +474,6 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         Some work. Some don't. That's the point.
       </p>
-
-      <ClientOnly>
-        <AnimatedInView>
-          <LangSmithLogo />
-        </AnimatedInView>
-      </ClientOnly>
 
       <p>
         LangSmith records what happened: which questions worked, which failed,
