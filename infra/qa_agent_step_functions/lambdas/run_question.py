@@ -13,9 +13,13 @@ import os
 import time
 from threading import Lock
 from typing import Any
+from uuid import UUID
 
 import boto3
 from langchain_core.callbacks import BaseCallbackHandler
+
+# LangGraph node names we care about for the trace.
+TRACE_NODE_NAMES = frozenset({"plan", "agent", "tools", "shape", "synthesize"})
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -132,6 +136,102 @@ class CostTrackingCallback(BaseCallbackHandler):
             }
 
 
+class TraceCaptureCallback(BaseCallbackHandler):
+    """Capture the LangGraph node firing sequence for the viz cache.
+
+    Each top-level node entry/exit is recorded as a trace event with
+    {type, start_ts, end_ts, duration_ms}. Thread-safe for asyncio use.
+
+    The "type" matches the QAAgentFlow frontend's expected phase names
+    (plan, agent, tools, shape, synthesize). Nodes can fire multiple
+    times in the ReAct loop — the trace preserves order.
+    """
+
+    def __init__(self):
+        self._events: list[dict] = []
+        # run_id → index in self._events, so on_chain_end can patch its event.
+        self._pending: dict[UUID, int] = {}
+        self._lock = Lock()
+
+    @staticmethod
+    def _node_name(metadata: dict | None) -> str | None:
+        if not metadata:
+            return None
+        node = metadata.get("langgraph_node")
+        if node and node in TRACE_NODE_NAMES:
+            return node
+        return None
+
+    def on_chain_start(
+        self,
+        serialized: dict,
+        inputs: dict,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict | None = None,
+        **kwargs,
+    ) -> None:
+        node = self._node_name(metadata)
+        if not node:
+            return
+        with self._lock:
+            self._events.append(
+                {
+                    "type": node,
+                    "start_ts": time.time(),
+                    "end_ts": None,
+                    "duration_ms": None,
+                    "status": "running",
+                }
+            )
+            self._pending[run_id] = len(self._events) - 1
+
+    def on_chain_end(
+        self,
+        outputs: dict,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs,
+    ) -> None:
+        with self._lock:
+            idx = self._pending.pop(run_id, None)
+            if idx is None:
+                return
+            event = self._events[idx]
+            event["end_ts"] = time.time()
+            event["duration_ms"] = round(
+                (event["end_ts"] - event["start_ts"]) * 1000, 1
+            )
+            event["status"] = "ok"
+
+    def on_chain_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs,
+    ) -> None:
+        with self._lock:
+            idx = self._pending.pop(run_id, None)
+            if idx is None:
+                return
+            event = self._events[idx]
+            event["end_ts"] = time.time()
+            event["duration_ms"] = round(
+                (event["end_ts"] - event["start_ts"]) * 1000, 1
+            )
+            event["status"] = "error"
+            event["error"] = str(error)[:200]
+
+    def get_trace(self) -> list[dict]:
+        with self._lock:
+            return list(self._events)
+
+
 async def _run_question(
     semaphore: asyncio.Semaphore,
     answer_question_fn,
@@ -151,6 +251,7 @@ async def _run_question(
         )
 
         cost_callback = CostTrackingCallback()
+        trace_callback = TraceCaptureCallback()
         start_time = time.time()
 
         try:
@@ -158,7 +259,7 @@ async def _run_question(
                 graph,
                 state_holder,
                 question_text,
-                callbacks=[cost_callback],
+                callbacks=[cost_callback, trace_callback],
             )
             duration = time.time() - start_time
             stats = cost_callback.get_stats()
@@ -175,6 +276,7 @@ async def _run_question(
                 "toolInvocations": len(state_holder.get("searches", [])),
                 "durationSeconds": round(duration, 1),
                 "success": True,
+                "trace": trace_callback.get_trace(),
             }
         except Exception as e:
             logger.exception(
@@ -193,6 +295,7 @@ async def _run_question(
                 "durationSeconds": round(time.time() - start_time, 1),
                 "success": False,
                 "error": str(e),
+                "trace": trace_callback.get_trace(),
             }
 
 
@@ -276,6 +379,19 @@ async def _run_all(
         Body=ndjson_lines.encode("utf-8"),
         ContentType="application/x-ndjson",
     )
+
+    # Also write one JSON file per question with full trace + result.
+    # The forthcoming BuildVizCache Lambda will read these to assemble the
+    # viz cache, replacing the LangSmith export + EMR pipeline.
+    for r in processed:
+        q_idx = r.get("questionIndex", 0)
+        q_key = f"qa-runs/{execution_id}/q{q_idx:02d}.json"
+        s3_client.put_object(
+            Bucket=batch_bucket,
+            Key=q_key,
+            Body=json.dumps(r, default=str, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
 
     success_count = sum(1 for r in processed if r.get("success"))
     total_cost = sum(r.get("cost", 0) for r in processed)
