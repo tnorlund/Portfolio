@@ -34,6 +34,33 @@ def _checkpoint_step(path: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+SAGEMAKER_CHECKPOINT_DIR = "/opt/ml/checkpoints"
+
+
+def _resolve_output_dir(job_name: str) -> str:
+    """Pick the trainer's checkpoint directory.
+
+    When running inside a SageMaker BYOC container with managed-spot
+    checkpointing enabled, SageMaker mounts /opt/ml/checkpoints and
+    auto-syncs it with the S3 path configured in ``CheckpointConfig``
+    — both *during* training (so checkpoints survive a spot
+    interruption) and *at startup* on the replacement instance (so the
+    trainer's auto-resume can pick up where the previous run left off).
+
+    Writing to /tmp/receipt_layoutlm/{job_name}/ defeats that
+    mechanism: the spot-restart pulls an empty /opt/ml/checkpoints/
+    back from S3, the trainer's auto-resume looks in /tmp/ and finds
+    nothing, and training silently starts over from epoch 0.
+
+    Resolution order:
+      1. /opt/ml/checkpoints (when SageMaker mounted it)
+      2. /tmp/receipt_layoutlm/{job_name} (local dev fallback)
+    """
+    if os.path.isdir(SAGEMAKER_CHECKPOINT_DIR):
+        return SAGEMAKER_CHECKPOINT_DIR
+    return f"/tmp/receipt_layoutlm/{job_name}"
+
+
 class ReceiptLayoutLMTrainer:
     def __init__(
         self,
@@ -85,8 +112,12 @@ class ReceiptLayoutLMTrainer:
         return ["O", *labels]
 
     def train(self, job_name: str, created_by: str = "system") -> str:
-        # Derive output directory early for run logging
-        output_dir = f"/tmp/receipt_layoutlm/{job_name}"
+        # Derive output directory early for run logging. Inside SageMaker
+        # with managed-spot checkpointing this is /opt/ml/checkpoints (so
+        # CheckpointConfig auto-syncs it ↔ S3 and the trainer's
+        # auto-resume can survive spot interruptions); falls back to
+        # /tmp/receipt_layoutlm/{job_name} for local dev.
+        output_dir = _resolve_output_dir(job_name)
         # Best-effort create output directory
         os.makedirs(output_dir, exist_ok=True)
 

@@ -130,10 +130,23 @@ def build_train_command(hps: dict) -> list[str]:
     return cmd
 
 
+def _training_dir(job_name: str) -> Path:
+    """Mirror of receipt_layoutlm.trainer._resolve_output_dir.
+
+    Kept in sync intentionally — the trainer writes checkpoints to
+    /opt/ml/checkpoints when SageMaker mounts it (so spot interruptions
+    can recover), otherwise to /tmp/receipt_layoutlm/{job_name}.
+    """
+    sagemaker_ckpt = Path("/opt/ml/checkpoints")
+    if sagemaker_ckpt.is_dir():
+        return sagemaker_ckpt
+    return Path(f"/tmp/receipt_layoutlm/{job_name}")
+
+
 def copy_model_to_sagemaker_dir(job_name: str):
     """Copy trained model to SageMaker's model directory."""
     model_dir = os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
-    training_dir = Path(f"/tmp/receipt_layoutlm/{job_name}")
+    training_dir = _training_dir(job_name)
 
     if not training_dir.exists():
         print(f"Warning: Training directory {training_dir} not found")
