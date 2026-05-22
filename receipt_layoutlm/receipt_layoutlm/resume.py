@@ -120,4 +120,54 @@ def sync_resume_checkpoint(
             bucket,
             prefix,
         )
+        return dest
+
+    _allowlist_numpy_pickle_globals()
     return dest
+
+
+def _allowlist_numpy_pickle_globals() -> None:
+    """Allowlist numpy globals so torch.load(weights_only=True) can
+    unpickle HuggingFace Trainer optimizer/scheduler/RNG checkpoints.
+
+    PyTorch 2.6 flipped ``torch.load`` to default ``weights_only=True``
+    as a CVE mitigation. HF Trainer checkpoints from earlier
+    transformers versions (e.g. v6's optimizer.pt produced by 4.57.6)
+    contain pickled numpy arrays — those raise
+    ``WeightsUnpickler error: Unsupported global: GLOBAL
+    numpy.core.multiarray._reconstruct`` under the new default.
+
+    Resume here is loading a checkpoint we trained ourselves on prior
+    SageMaker runs, so allowlisting the standard numpy globals is the
+    right CVE-aware fix per PyTorch's own guidance — not flipping
+    ``weights_only=False`` blanket.
+    """
+    try:
+        import numpy as np
+        import torch.serialization
+    except ImportError:
+        # If torch/numpy aren't importable we'll fail more loudly elsewhere.
+        return
+
+    # Collect the numpy items HuggingFace Trainer checkpoints pickle. We
+    # only allowlist what's actually needed; expand the list (rather than
+    # disabling weights_only) when a new unpickle error names a global.
+    safe_globals = [np.ndarray, np.dtype]
+    # numpy.core.multiarray was reorganized in newer numpy; try both
+    # locations so this code keeps working across upgrades.
+    for attr in ("_reconstruct", "scalar"):
+        for mod_name in ("numpy.core.multiarray", "numpy._core.multiarray"):
+            try:
+                mod = __import__(mod_name, fromlist=[attr])
+            except ImportError:
+                continue
+            fn = getattr(mod, attr, None)
+            if fn is not None:
+                safe_globals.append(fn)
+                break
+
+    torch.serialization.add_safe_globals(safe_globals)
+    logger.info(
+        "Resume: allowlisted %d numpy globals for torch.load(weights_only=True)",
+        len(safe_globals),
+    )
