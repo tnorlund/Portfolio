@@ -359,6 +359,10 @@ async def _run_all(
                     "durationSeconds": 0,
                     "success": False,
                     "error": str(result),
+                    # Always include trace so per-Q JSON consumers
+                    # (BuildVizCache Lambda, scripts) can rely on the key
+                    # existing — keep as empty list for exception cases.
+                    "trace": [],
                 }
             )
         else:
