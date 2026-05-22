@@ -1,13 +1,20 @@
 # LayoutLM Training Container for SageMaker
 # Based on PyTorch with CUDA support.
 #
-# Why torch >= 2.4: transformers >= 5.0 (see PR #859) requires PyTorch
-# 2.4+. With torch 2.2 the library logs "Disabling PyTorch because
-# PyTorch >= 2.4 is required but found 2.2.0" at import time, after
-# which LayoutLMForTokenClassification.from_pretrained() fails with
-# "PyTorch library not found." The Dockerfile's pre-download step
-# trips this, breaking every container build.
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+# Why torch >= 2.6: transformers 5.x has TWO torch version guards:
+#   1. Import-level: requires torch >= 2.4 to enable PyTorch backends at
+#      all (otherwise LayoutLMForTokenClassification raises
+#      "PyTorch library not found"). Fixed initially by PR #894 with
+#      torch 2.5.1.
+#   2. Checkpoint-load: torch.load(weights_only=True) refuses to run on
+#      torch < 2.6 due to a CVE. transformers raises a ValueError when
+#      HuggingFace Trainer tries to resume from a checkpoint. This broke
+#      v7-may2026 (continuation from v6 via --resume-from-s3, PR #890)
+#      and isn't catchable by the Dockerfile's pre-download step since
+#      that step only exercises from_pretrained, not torch.load.
+# torch 2.6 satisfies both guards; receipt_layoutlm/pyproject.toml caps
+# at <2.8 for forward safety.
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
