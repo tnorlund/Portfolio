@@ -8,7 +8,7 @@
 
 > `const` **default**: `object`
 
-Defined in: [types/css.d.ts:2](https://github.com/tnorlund/Portfolio/blob/d469f551bffef8d3381e288916a9b87d64717264/portfolio/types/css.d.ts#L2)
+Defined in: [types/css.d.ts:2](https://github.com/tnorlund/Portfolio/blob/cd890899a325f2efe4c238aaa691e041069f4500/portfolio/types/css.d.ts#L2)
 
 ## Index Signature
 
