@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -63,7 +64,17 @@ def sync_resume_checkpoint(
         s3_client = boto3.client("s3")
 
     bucket, prefix = _parse_s3_uri(resume_from_s3)
-    dest = local_root / job_name
+
+    # Resolve local_root once so we can verify every path we write lands
+    # inside it. job_name comes from a hyperparameter and S3 keys come from
+    # a (potentially attacker-influenced) bucket prefix — both need
+    # containment checks to prevent path traversal via ".." segments.
+    root = local_root.resolve()
+    dest = (root / job_name).resolve()
+    if dest == root or root not in dest.parents:
+        raise ValueError(
+            f"Invalid job_name {job_name!r}: would escape {root}"
+        )
     dest.mkdir(parents=True, exist_ok=True)
 
     logger.info(
@@ -71,6 +82,7 @@ def sync_resume_checkpoint(
     )
     paginator = s3_client.get_paginator("list_objects_v2")
     count = 0
+    skipped = 0
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []) or []:
             key = obj["Key"]
@@ -78,7 +90,24 @@ def sync_resume_checkpoint(
             if key.endswith("/"):
                 continue
             rel = key[len(prefix):] if prefix else key
-            local_path = dest / rel
+            # Normalize using POSIX semantics since S3 keys use forward
+            # slashes regardless of host platform.
+            rel = posixpath.normpath(rel.lstrip("/"))
+            if rel.startswith("..") or rel.startswith("/") or rel == ".":
+                logger.warning(
+                    "Resume: skipping suspicious key %r", key
+                )
+                skipped += 1
+                continue
+            local_path = (dest / rel).resolve()
+            if dest not in local_path.parents and local_path != dest:
+                logger.warning(
+                    "Resume: skipping key %r — resolved path escapes %s",
+                    key,
+                    dest,
+                )
+                skipped += 1
+                continue
             local_path.parent.mkdir(parents=True, exist_ok=True)
             s3_client.download_file(bucket, key, str(local_path))
             count += 1

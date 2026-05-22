@@ -93,6 +93,51 @@ def test_sync_resume_checkpoint_creates_intermediate_dirs(tmp_path):
     )
 
 
+@pytest.mark.parametrize("bad_job_name", ["../escape", "..", "/abs/path", ""])
+def test_sync_resume_checkpoint_rejects_traversal_job_name(
+    tmp_path, bad_job_name
+):
+    """job_name must resolve to a subdirectory of local_root."""
+    s3 = _build_fake_s3_client([])
+    with pytest.raises(ValueError, match="Invalid job_name"):
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v4/",
+            job_name=bad_job_name,
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+    s3.download_file.assert_not_called()
+
+
+def test_sync_resume_checkpoint_skips_traversal_keys(tmp_path, caplog):
+    """S3 keys whose normalized rel path escapes the dest dir are skipped."""
+    objects = [
+        {"Key": "runs/v4/checkpoint-100/legit.bin"},
+        {"Key": "runs/v4/../../../etc/passwd"},
+        {"Key": "runs/v4/sub/../../escape.bin"},
+    ]
+    s3 = _build_fake_s3_client(objects)
+
+    with caplog.at_level("WARNING"):
+        sync_resume_checkpoint(
+            "s3://bucket/runs/v4/",
+            job_name="job",
+            s3_client=s3,
+            local_root=tmp_path,
+        )
+
+    # Only the legitimate key was downloaded; the two traversal attempts
+    # were skipped before any download_file call.
+    assert s3.download_file.call_count == 1
+    s3.download_file.assert_called_once_with(
+        "bucket",
+        "runs/v4/checkpoint-100/legit.bin",
+        str(tmp_path / "job/checkpoint-100/legit.bin"),
+    )
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert any("suspicious key" in m or "escapes" in m for m in warnings)
+
+
 def test_sync_resume_checkpoint_empty_prefix_is_warning_not_error(
     tmp_path, caplog
 ):
