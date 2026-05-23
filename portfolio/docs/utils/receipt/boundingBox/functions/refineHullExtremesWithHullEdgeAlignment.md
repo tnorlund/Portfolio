@@ -8,7 +8,7 @@
 
 > **refineHullExtremesWithHullEdgeAlignment**(`hull`, `leftExtreme`, `rightExtreme`, `targetAngle`): `object`
 
-Defined in: [utils/receipt/boundingBox.ts:353](https://github.com/tnorlund/Portfolio/blob/0e7ddabdd8a24d2b2f84a9671915a2fc3ab2e504/portfolio/utils/receipt/boundingBox.ts#L353)
+Defined in: [utils/receipt/boundingBox.ts:353](https://github.com/tnorlund/Portfolio/blob/a2cdefcec06c0f64b3ae06e032f8ace84d916c8f/portfolio/utils/receipt/boundingBox.ts#L353)
 
 Refine hull extreme points by selecting CW/CCW neighbors using Hull Edge Alignment.
 

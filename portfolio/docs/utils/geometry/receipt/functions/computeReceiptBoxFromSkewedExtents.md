@@ -8,7 +8,7 @@
 
 > **computeReceiptBoxFromSkewedExtents**(`hull`, `cx`, `cy`, `rotationDeg`): [`Point`](../../basic/interfaces/Point.md)[] \| `null`
 
-Defined in: [utils/geometry/receipt.ts:16](https://github.com/tnorlund/Portfolio/blob/0e7ddabdd8a24d2b2f84a9671915a2fc3ab2e504/portfolio/utils/geometry/receipt.ts#L16)
+Defined in: [utils/geometry/receipt.ts:16](https://github.com/tnorlund/Portfolio/blob/a2cdefcec06c0f64b3ae06e032f8ace84d916c8f/portfolio/utils/geometry/receipt.ts#L16)
 
 Determine a bounding box from a skewed hull by estimating the
 vertical extents after de-skewing.
