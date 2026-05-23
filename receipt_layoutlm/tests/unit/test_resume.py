@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from receipt_layoutlm.resume import (
-    _allowlist_numpy_pickle_globals,
+    _make_torch_load_trust_checkpoints,
     _parse_s3_uri,
     sync_resume_checkpoint,
 )
@@ -161,50 +161,81 @@ def test_sync_resume_checkpoint_empty_prefix_is_warning_not_error(
     ), "expected a warning when no objects matched the resume prefix"
 
 
-def test_allowlist_numpy_pickle_globals_registers_expected_items(monkeypatch):
-    """torch.load(weights_only=True) needs these numpy globals to unpickle
-    HF Trainer's optimizer.pt files — the helper must register at least
-    numpy.ndarray and numpy.dtype, plus _reconstruct from whichever module
-    path this version of numpy uses."""
-    captured: list = []
+def test_make_torch_load_trust_checkpoints_patches_default(tmp_path):
+    """torch.load should default to weights_only=False after the patch
+    runs, so HF Trainer can unpickle optimizer.pt with arbitrary nested
+    types (numpy dtypes, RandomState, etc.) the way pre-PyTorch-2.6
+    behavior allowed."""
+    import torch
 
-    import torch.serialization
+    orig_load = torch.load
+    try:
+        _make_torch_load_trust_checkpoints()
+        # Round-trip a numpy array to confirm the patched load works
+        # without us having to enumerate every numpy subtype.
+        import numpy as np
 
-    monkeypatch.setattr(
-        torch.serialization,
-        "add_safe_globals",
-        lambda items: captured.append(list(items)),
-    )
-
-    _allowlist_numpy_pickle_globals()
-
-    assert len(captured) == 1, "expected one call to add_safe_globals"
-    names = {getattr(item, "__qualname__", getattr(item, "__name__", str(item)))
-             for item in captured[0]}
-
-    import numpy as np
-
-    # Always-present essentials
-    assert np.ndarray in captured[0]
-    assert np.dtype in captured[0]
-    # _reconstruct path varies by numpy version — verify by name not module.
-    assert any(
-        "_reconstruct" in n for n in names
-    ), f"expected _reconstruct in {names}"
+        t = {"arr": np.arange(5)}
+        out = tmp_path / "rt.pt"
+        torch.save(t, str(out))
+        loaded = torch.load(str(out))
+        assert loaded["arr"].tolist() == [0, 1, 2, 3, 4]
+    finally:
+        torch.load = orig_load
 
 
-def test_sync_resume_checkpoint_allowlists_when_files_downloaded(tmp_path):
-    """The sync function should register numpy globals on the happy path
-    (files actually downloaded), so HF Trainer's later torch.load succeeds.
-    Skip when there are no files — registering would be wasted work."""
+def test_make_torch_load_trust_checkpoints_is_idempotent():
+    """Calling the patch twice should not re-wrap (or worse, recurse).
+    Other code in the process might call sync_resume_checkpoint more
+    than once across retries; the patch must stay safe."""
+    import torch
+
+    orig_load = torch.load
+    try:
+        _make_torch_load_trust_checkpoints()
+        first_patched = torch.load
+        _make_torch_load_trust_checkpoints()
+        second_patched = torch.load
+        assert first_patched is second_patched, (
+            "second call should be a no-op, not double-wrap torch.load"
+        )
+    finally:
+        torch.load = orig_load
+
+
+def test_explicit_weights_only_still_honored(tmp_path):
+    """The patch only overrides the DEFAULT — callers that explicitly
+    pass weights_only=True should still get the strict behavior."""
+    import torch
+
+    orig_load = torch.load
+    try:
+        _make_torch_load_trust_checkpoints()
+        # Plain tensor: legal under weights_only=True
+        t = {"x": torch.tensor([1.0, 2.0])}
+        out = tmp_path / "plain.pt"
+        torch.save(t, str(out))
+        loaded = torch.load(str(out), weights_only=True)
+        assert loaded["x"].tolist() == [1.0, 2.0]
+    finally:
+        torch.load = orig_load
+
+
+def test_sync_resume_checkpoint_patches_torch_load_when_files_downloaded(
+    tmp_path,
+):
+    """The sync function must arm the torch.load patch on the happy path
+    (files actually downloaded), so HF Trainer's later resume succeeds.
+
+    We check via the marker attribute the patch sets, not by comparing
+    function identity — other tests in this module may have left
+    torch.load already patched (the marker is the contract)."""
     objects = [{"Key": "runs/v6/checkpoint-1/optimizer.pt"}]
     s3 = _build_fake_s3_client(objects)
 
-    import torch.serialization
+    import torch
 
-    calls = []
-    orig = torch.serialization.add_safe_globals
-    torch.serialization.add_safe_globals = lambda items: calls.append(items)
+    orig_load = torch.load
     try:
         sync_resume_checkpoint(
             "s3://bucket/runs/v6/",
@@ -212,22 +243,25 @@ def test_sync_resume_checkpoint_allowlists_when_files_downloaded(tmp_path):
             s3_client=s3,
             local_root=tmp_path,
         )
+        assert getattr(torch.load, "_layoutlm_resume_patched", False), (
+            "torch.load should carry the patch marker after sync"
+        )
     finally:
-        torch.serialization.add_safe_globals = orig
-
-    assert len(calls) == 1, "allowlist should be invoked once when files exist"
+        torch.load = orig_load
 
 
-def test_sync_resume_checkpoint_skips_allowlist_when_empty(tmp_path):
-    """If the resume prefix is empty (zero downloads), there's nothing to
-    unpickle later — skip the allowlist call to keep the no-op cheap."""
+def test_sync_resume_checkpoint_skips_patch_when_empty(tmp_path):
+    """No downloads means nothing to unpickle later — don't apply the
+    patch (would weaken defaults for code that didn't ask to resume)."""
     s3 = _build_fake_s3_client([])
 
-    import torch.serialization
+    import torch
 
-    calls = []
-    orig = torch.serialization.add_safe_globals
-    torch.serialization.add_safe_globals = lambda items: calls.append(items)
+    # Save and restore via a known-unpatched function so this test is
+    # robust to prior tests leaving torch.load patched.
+    sentinel = torch.serialization.load  # always the real torch loader
+    orig_load = torch.load
+    torch.load = sentinel
     try:
         sync_resume_checkpoint(
             "s3://bucket/empty/",
@@ -235,7 +269,8 @@ def test_sync_resume_checkpoint_skips_allowlist_when_empty(tmp_path):
             s3_client=s3,
             local_root=tmp_path,
         )
+        assert torch.load is sentinel, (
+            "no-download path must not patch torch.load"
+        )
     finally:
-        torch.serialization.add_safe_globals = orig
-
-    assert calls == [], "allowlist must not run when no files downloaded"
+        torch.load = orig_load

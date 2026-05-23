@@ -122,52 +122,51 @@ def sync_resume_checkpoint(
         )
         return dest
 
-    _allowlist_numpy_pickle_globals()
+    _make_torch_load_trust_checkpoints()
     return dest
 
 
-def _allowlist_numpy_pickle_globals() -> None:
-    """Allowlist numpy globals so torch.load(weights_only=True) can
-    unpickle HuggingFace Trainer optimizer/scheduler/RNG checkpoints.
+def _make_torch_load_trust_checkpoints() -> None:
+    """Override ``torch.load``'s default to ``weights_only=False`` for the
+    rest of this process.
 
     PyTorch 2.6 flipped ``torch.load`` to default ``weights_only=True``
-    as a CVE mitigation. HF Trainer checkpoints from earlier
-    transformers versions (e.g. v6's optimizer.pt produced by 4.57.6)
-    contain pickled numpy arrays — those raise
-    ``WeightsUnpickler error: Unsupported global: GLOBAL
-    numpy.core.multiarray._reconstruct`` under the new default.
+    as a CVE mitigation, but HuggingFace Trainer optimizer/scheduler/
+    RNG checkpoints contain many pickled non-tensor types (numpy
+    arrays, numpy dtype subclasses, RandomState, etc.). Allowlisting
+    them via ``add_safe_globals`` is a whack-a-mole rabbit hole —
+    optimizer state alone needs ``numpy.ndarray``, ``numpy.dtype``,
+    ``numpy.core.multiarray._reconstruct``, every concrete numpy
+    dtype (``Int64DType``, ``Float32DType``, …), and more.
 
-    Resume here is loading a checkpoint we trained ourselves on prior
-    SageMaker runs, so allowlisting the standard numpy globals is the
-    right CVE-aware fix per PyTorch's own guidance — not flipping
-    ``weights_only=False`` blanket.
+    Pragmatic answer: per PyTorch's own guidance in the CVE error
+    message, ``weights_only=False`` is safe when the checkpoint source
+    is trusted. Our trainer only resumes from S3 paths we wrote on a
+    prior SageMaker run of our own pipeline. No external/untrusted
+    artifacts ever flow through this code path, so the CVE protection
+    isn't load-bearing here.
+
+    Only patched when the caller explicitly opted into resume — fresh
+    training runs (no ``--resume-from-s3``) keep the strict default.
     """
     try:
-        import numpy as np
-        import torch.serialization
+        import torch
     except ImportError:
-        # If torch/numpy aren't importable we'll fail more loudly elsewhere.
         return
 
-    # Collect the numpy items HuggingFace Trainer checkpoints pickle. We
-    # only allowlist what's actually needed; expand the list (rather than
-    # disabling weights_only) when a new unpickle error names a global.
-    safe_globals = [np.ndarray, np.dtype]
-    # numpy.core.multiarray was reorganized in newer numpy; try both
-    # locations so this code keeps working across upgrades.
-    for attr in ("_reconstruct", "scalar"):
-        for mod_name in ("numpy.core.multiarray", "numpy._core.multiarray"):
-            try:
-                mod = __import__(mod_name, fromlist=[attr])
-            except ImportError:
-                continue
-            fn = getattr(mod, attr, None)
-            if fn is not None:
-                safe_globals.append(fn)
-                break
+    orig_load = torch.load
 
-    torch.serialization.add_safe_globals(safe_globals)
+    def _load_with_full_pickle(*args, **kwargs):
+        if "weights_only" not in kwargs:
+            kwargs["weights_only"] = False
+        return orig_load(*args, **kwargs)
+
+    # Idempotent — re-patching a second time is a no-op.
+    if getattr(torch.load, "_layoutlm_resume_patched", False):
+        return
+    _load_with_full_pickle._layoutlm_resume_patched = True
+    torch.load = _load_with_full_pickle
     logger.info(
-        "Resume: allowlisted %d numpy globals for torch.load(weights_only=True)",
-        len(safe_globals),
+        "Resume: patched torch.load to default weights_only=False "
+        "(checkpoint source is our own SageMaker S3 outputs)"
     )
