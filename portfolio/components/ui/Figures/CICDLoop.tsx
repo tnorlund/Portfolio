@@ -670,12 +670,19 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     return () => clearAllTimeouts();
   }, [inView, mounted, staggerDelay, api, N, segments]);
 
-  // Continuous pulsing animation after all segments have animated in
+  // Continuous pulsing animation after all segments have animated in.
+  //
+  // Tracked as a ref (not state) so the pulse keeps running once started,
+  // even if the figure scrolls out of view (inView=false) and back again.
+  // The previous version's cleanup cleared the pulse on every inView flip,
+  // so scrolling away made the loop go static until you scrolled back.
+  // Now we start once on first entry and only clear on unmount.
+  const pulseStartedRef = useRef(false);
+
   useEffect(() => {
-    if (!inView || !mounted) {
-      clearPulseAnimation();
-      return;
-    }
+    if (!inView || !mounted) return;
+    if (pulseStartedRef.current) return; // already running — don't restart
+    pulseStartedRef.current = true;
 
     // Wait for all sections to finish initial animation
     const totalAnimationTime =
@@ -729,12 +736,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }, totalAnimationTime);
 
     timeoutIds.current.push(continuousAnimationTimeout);
-
-    return () => {
-      clearTimeout(continuousAnimationTimeout);
-      clearPulseAnimation();
-    };
   }, [inView, mounted, staggerDelay, flowDuration, api, N, segments]);
+
+  // Unmount-only cleanup — clears the pulse when the component goes away.
+  useEffect(() => () => clearPulseAnimation(), []);
 
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
