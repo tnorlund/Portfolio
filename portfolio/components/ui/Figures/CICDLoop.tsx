@@ -1022,4 +1022,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   );
 };
 
-export default CICDLoop;
+// React.memo guards against parent re-renders. The receipt page re-renders
+// every time a question is clicked in the QAAgentFlow marquee above us
+// (state in useQAQueue updates), which @react-spring/web@10 was treating
+// as a signal to reset all springs to their init state — leaving segments
+// invisible until the next pulse cycle (~5s). CICDLoop takes no props from
+// the page so a stable memo here is safe.
+export default React.memo(CICDLoop);
