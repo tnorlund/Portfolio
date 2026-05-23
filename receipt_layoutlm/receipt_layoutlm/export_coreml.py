@@ -265,9 +265,17 @@ def export_coreml(
         shutil.copy(vocab_src, vocab_dst)
         print(f"Copied vocab.txt to {vocab_dst}")
     else:
-        # Try to save vocab from tokenizer (may create additional files like added_tokens.json)
-        tokenizer.save_vocabulary(str(output_path))
-        print(f"Saved vocabulary to {output_path}")
+        # transformers 5.x removed BertTokenizer.vocab_file, so
+        # tokenizer.save_vocabulary() crashes (AttributeError). The Swift
+        # inference side (BertTokenizer.swift) only needs the BERT-format
+        # vocab.txt — sort tokens by id and write directly. Works with
+        # both slow (BertTokenizer) and fast (BertTokenizerFast) loaders.
+        vocab = tokenizer.get_vocab()
+        sorted_tokens = sorted(vocab.items(), key=lambda kv: kv[1])
+        with open(vocab_dst, "w", encoding="utf-8") as f:
+            for token, _ in sorted_tokens:
+                f.write(token + "\n")
+        print(f"Wrote vocab.txt to {vocab_dst} ({len(sorted_tokens)} tokens)")
 
     # Sort label IDs for consistent ordering in JSON output
     sorted_ids = sorted(id2label.keys())
