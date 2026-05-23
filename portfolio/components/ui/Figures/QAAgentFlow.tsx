@@ -123,12 +123,12 @@ const EXAMPLE_TRACE: TraceStep[] = [
   },
 ];
 
-const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string; node: string }> = {
-  plan: { color: "var(--color-purple)", label: "Plan", icon: "📋", node: "1" },
-  agent: { color: "var(--color-blue)", label: "Agent", icon: "🤖", node: "2" },
-  tools: { color: "var(--color-green)", label: "Tools", icon: "🔧", node: "3" },
-  shape: { color: "var(--color-orange)", label: "Shape", icon: "📊", node: "4" },
-  synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5" },
+const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string; node: string; description: string }> = {
+  plan: { color: "var(--color-purple)", label: "Plan", icon: "📋", node: "1", description: "Classifying the question and picking a retrieval strategy" },
+  agent: { color: "var(--color-blue)", label: "Agent", icon: "🤖", node: "2", description: "Reasoning about the question and deciding which tools to call" },
+  tools: { color: "var(--color-green)", label: "Tools", icon: "🔧", node: "3", description: "Searching DynamoDB and ChromaDB for relevant receipts" },
+  shape: { color: "var(--color-orange)", label: "Shape", icon: "📊", node: "4", description: "Filtering and structuring receipt summaries for synthesis" },
+  synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5", description: "Composing the final answer with evidence citations" },
 };
 
 const CDN_BASE = "https://dev.tylernorlund.com";
@@ -531,6 +531,31 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               </svg>
             </div>
 
+            {/* Active-phase narrative — shows what the agent is doing right now */}
+            <div
+              style={{
+                minHeight: "1.6rem",
+                marginBottom: "0.5rem",
+                fontSize: "0.85rem",
+                lineHeight: "1.4",
+                color: "var(--text-color)",
+                opacity: activeStep >= 0 && trace[activeStep] ? 1 : 0.4,
+                transition: "opacity 0.3s ease",
+                textAlign: "center",
+              }}
+            >
+              {activeStep >= 0 && trace[activeStep] ? (
+                <>
+                  <strong style={{ color: STEP_CONFIG[trace[activeStep].type].color }}>
+                    {STEP_CONFIG[trace[activeStep].type].label}:
+                  </strong>{" "}
+                  {STEP_CONFIG[trace[activeStep].type].description}
+                </>
+              ) : (
+                <span style={{ fontStyle: "italic" }}>Ready</span>
+              )}
+            </div>
+
             {/* Progress bar — animated with spring */}
             <div
               style={{
@@ -566,17 +591,32 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
               >
                 {trace.map((step, idx) => {
                   const cfg = STEP_CONFIG[step.type];
+                  // Only render a duration label if the segment is wide enough to read it
+                  const widthPct = barWidths[idx];
+                  const showLabel = widthPct >= 6 && step.durationMs;
                   return (
                     <div
                       key={`bar-${idx}-${step.type}`}
-                      title={`${cfg.label}: ${step.durationMs ? formatMs(step.durationMs) : "—"} (${barWidths[idx].toFixed(1)}%)`}
+                      title={`${cfg.label}: ${step.durationMs ? formatMs(step.durationMs) : "—"} (${widthPct.toFixed(1)}%)`}
                       style={{
-                        width: `${barWidths[idx]}%`,
+                        width: `${widthPct}%`,
                         height: "100%",
                         backgroundColor: cfg.color,
                         flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "rgba(255,255,255,0.95)",
+                        fontSize: "0.7rem",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontWeight: 600,
+                        textShadow: "0 0 2px rgba(0,0,0,0.4)",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
                       }}
-                    />
+                    >
+                      {showLabel && formatMs(step.durationMs!)}
+                    </div>
                   );
                 })}
               </animated.div>
