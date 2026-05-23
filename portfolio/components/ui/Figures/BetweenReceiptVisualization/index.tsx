@@ -31,6 +31,29 @@ function isReviewDecision(
   return "evidence" in d && "consensus_score" in d;
 }
 
+/**
+ * Collect all label decisions for a receipt.
+ *
+ * Pre-#860: came from `receipt.review.all_decisions` (a fused list from the
+ * metadata-LLM + financial-LLM + geometric tiers). That field is null on
+ * the post-#860 cache. The raw per-tier decisions still ship in
+ * `metadata.all_decisions` and `financial.all_decisions`, so we union them.
+ *
+ * Shim with empty `evidence` + zero `consensus_score` so the resulting list
+ * is shape-compatible with ReviewDecision consumers (EvidenceCard etc.).
+ */
+function getAllReceiptDecisions(
+  receipt: LabelEvaluatorReceipt
+): ReviewDecision[] {
+  const metadata = receipt.metadata?.all_decisions ?? [];
+  const financial = receipt.financial?.all_decisions ?? [];
+  return [...metadata, ...financial].map((d) => ({
+    ...d,
+    evidence: ([] as ReviewEvidence[]),
+    consensus_score: 0,
+  }));
+}
+
 // Label colors for bounding boxes (same as LayoutLMBatchVisualization)
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
@@ -437,7 +460,7 @@ const BetweenReceiptVisualization: React.FC = () => {
         const response = await api.fetchLabelEvaluatorVisualization();
         if (response && response.receipts) {
           const filtered = response.receipts.filter(
-            (r) => r.review && r.review.all_decisions.length > 0
+            (r) => getAllReceiptDecisions(r).length > 0
           );
           setReceipts(filtered);
         }
@@ -492,14 +515,14 @@ const BetweenReceiptVisualization: React.FC = () => {
 
   // Calculate revealed cards based on scan progress
   useEffect(() => {
-    if (!currentReceipt || !currentReceipt.review) return;
+    if (!currentReceipt) return;
+    const decisions = getAllReceiptDecisions(currentReceipt);
+    if (decisions.length === 0) return;
 
     const scanY = scanProgress / 100;
     const cards: RevealedCard[] = [];
 
-    const reviewDecisions = currentReceipt.review.all_decisions.filter(isReviewDecision);
-
-    for (const decision of reviewDecisions) {
+    for (const decision of decisions) {
       const word = wordLookup.get(
         `${decision.issue.line_id}_${decision.issue.word_id}`
       );
