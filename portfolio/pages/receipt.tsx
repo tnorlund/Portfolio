@@ -12,7 +12,6 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
-  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
@@ -328,23 +327,9 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Then I compare the labels across receipts from the same store. If
-        every other Trader Joe's receipt calls that field a line total, but
-        this one says subtotal, something's off.
+        Even with the math checks, the labels weren't perfect. So I corrected
+        the results by asking AI to verify them. And again. And again.
       </p>
-
-      <ClientOnly>
-        <BetweenReceiptVisualization />
-      </ClientOnly>
-
-      <p>
-        This works, kind of. AI isn't consistent. It would call the price of
-        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
-        something that doesn't know what milk is. So I corrected the results
-        by asking AI to verify again.
-      </p>
-
-      <p>And again. And again.</p>
 
       <ClientOnly>
         <LabelValidationTimeline />
