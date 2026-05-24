@@ -2,7 +2,6 @@ import hashlib
 import importlib
 import os
 import random
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -60,208 +59,100 @@ class WordInfo:
     receipt_id: int
 
 
-def _ranges_overlap(
-    a_min: float, a_max: float, b_min: float, b_max: float
-) -> bool:
-    """Check if two 1D ranges overlap."""
-    return a_min < b_max and b_min < a_max
+def _build_receipt_window_examples(
+    words: List[WordInfo],
+    receipt_key: str,
+    window_size: int = 200,
+    stride: int = 150,
+) -> List[LineExample]:
+    """Build sliding-window examples spanning a whole receipt with per-token BIO tags.
 
+    Replaces per-spatial-block examples (which yield 1-5-word single-entity-type
+    windows the model can't recognize at inference) with realistic per-receipt
+    sequences containing entities interleaved with "O" tokens — matching the
+    distribution the Swift worker actually feeds at inference.
 
-def _find_right_neighbor(
-    word: WordInfo, all_words: List[WordInfo]
-) -> Optional[int]:
-    """Find the index of the word directly to the right of this word.
-
-    Returns the closest word that:
-    - Has x_min > word's x_max (is to the right)
-    - Has overlapping y-range (on same visual line)
-    """
-    word_x_max = word.bbox[2]
-    word_y_min, word_y_max = word.bbox[1], word.bbox[3]
-
-    best_idx: Optional[int] = None
-    best_distance = float("inf")
-
-    for i, other in enumerate(all_words):
-        if other is word:
-            continue
-
-        other_x_min = other.bbox[0]
-        other_y_min, other_y_max = other.bbox[1], other.bbox[3]
-
-        # Must be to the right
-        if other_x_min <= word_x_max:
-            continue
-
-        # Must have overlapping y-range (same visual line)
-        if not _ranges_overlap(
-            word_y_min, word_y_max, other_y_min, other_y_max
-        ):
-            continue
-
-        distance = other_x_min - word_x_max
-        if distance < best_distance:
-            best_distance = distance
-            best_idx = i
-
-    return best_idx
-
-
-def _find_below_neighbor(
-    word: WordInfo, all_words: List[WordInfo]
-) -> Optional[int]:
-    """Find the index of the word directly below this word.
-
-    Returns the closest word that:
-    - Has y_min > word's y_max (is below)
-    - Has overlapping x-range (vertically aligned)
-    """
-    word_y_max = word.bbox[3]
-    word_x_min, word_x_max = word.bbox[0], word.bbox[2]
-
-    best_idx: Optional[int] = None
-    best_distance = float("inf")
-
-    for i, other in enumerate(all_words):
-        if other is word:
-            continue
-
-        other_y_min = other.bbox[1]
-        other_x_min, other_x_max = other.bbox[0], other.bbox[2]
-
-        # Must be below
-        if other_y_min <= word_y_max:
-            continue
-
-        # Must have overlapping x-range (vertically aligned)
-        if not _ranges_overlap(
-            word_x_min, word_x_max, other_x_min, other_x_max
-        ):
-            continue
-
-        distance = other_y_min - word_y_max
-        if distance < best_distance:
-            best_distance = distance
-            best_idx = i
-
-    return best_idx
-
-
-def _group_words_into_blocks(words: List[WordInfo]) -> List[List[WordInfo]]:
-    """Group words into spatially contiguous blocks of the same ORIGINAL label.
-
-    Uses spatial adjacency (right neighbor, below neighbor) to build a graph,
-    then finds connected components where all words share the same original label.
-
-    Grouping by original_label (before merging) ensures that:
-    - Multi-line addresses (all ADDRESS_LINE) are grouped together
-    - Separate amounts (SUBTOTAL, TAX, GRAND_TOTAL) stay as separate blocks
-      even though they merge to the same AMOUNT label
+    BIO logic: walk words in reading order. A word starts a new entity (B-)
+    when its merged label is non-O AND differs from the previous word's
+    original_label OR the previous word was unlabeled. Same-label runs in
+    reading order continue with I-.
 
     Args:
-        words: List of WordInfo objects to group.
+        words: All words in a receipt (any order).
+        receipt_key: Receipt identifier for the example.
+        window_size: Maximum words per example.
+        stride: Step between window starts (window_size - stride = overlap).
 
     Returns:
-        List of word groups, each containing words of the same original label.
+        One LineExample per window (or just one if the receipt fits).
+
+    Raises:
+        ValueError: if ``window_size`` or ``stride`` is not a positive int.
     """
+    if window_size <= 0:
+        raise ValueError(f"window_size must be positive, got {window_size}")
+    if stride <= 0:
+        raise ValueError(f"stride must be positive, got {stride}")
     if not words:
         return []
 
-    n = len(words)
+    # Reading order: top-to-bottom, left-to-right
+    sorted_words = sorted(words, key=lambda w: (w.bbox[1], w.bbox[0]))
 
-    # Build adjacency list: connect words with same ORIGINAL label that are neighbors
-    adjacency: List[List[int]] = [[] for _ in range(n)]
-
-    for i, word in enumerate(words):
-        # Find right neighbor
-        right_idx = _find_right_neighbor(word, words)
-        if (
-            right_idx is not None
-            and words[right_idx].original_label == word.original_label
-        ):
-            adjacency[i].append(right_idx)
-            adjacency[right_idx].append(i)
-
-        # Find below neighbor
-        below_idx = _find_below_neighbor(word, words)
-        if (
-            below_idx is not None
-            and words[below_idx].original_label == word.original_label
-        ):
-            adjacency[i].append(below_idx)
-            adjacency[below_idx].append(i)
-
-    # Find connected components using BFS
-    visited = [False] * n
-    blocks: List[List[WordInfo]] = []
-
-    for start in range(n):
-        if visited[start]:
-            continue
-
-        # BFS to find all words in this component
-        component: List[WordInfo] = []
-        queue: deque[int] = deque([start])
-        visited[start] = True
-
-        while queue:
-            idx = queue.popleft()
-            component.append(words[idx])
-
-            for neighbor in adjacency[idx]:
-                if not visited[neighbor]:
-                    visited[neighbor] = True
-                    queue.append(neighbor)
-
-        blocks.append(component)
-
-    return blocks
-
-
-def _build_block_example(
-    block: List[WordInfo],
-    receipt_key: str,
-) -> LineExample:
-    """Build a LineExample from a word block with proper BIO tagging.
-
-    Args:
-        block: List of WordInfo objects (all same label) to convert.
-        receipt_key: The receipt key for this example.
-
-    Returns:
-        LineExample with proper BIO tags across the entire block.
-    """
-    # Sort words by y then x for reading order
-    sorted_words = sorted(block, key=lambda w: (w.bbox[1], w.bbox[0]))
-
-    tokens: List[str] = []
-    bboxes: List[List[int]] = []
-    bio_labels: List[str] = []
-
-    # All words in a block have the same label
-    label = sorted_words[0].label
-    for i, word in enumerate(sorted_words):
-        tokens.append(word.text)
-        bboxes.append(word.bbox)
-
-        if label == "O":
-            bio_labels.append("O")
+    # Assign BIO tags for the full receipt sequence
+    full_tags: List[str] = []
+    prev_orig = "O"
+    for w in sorted_words:
+        if w.label == "O":
+            full_tags.append("O")
+            prev_orig = "O"
+        elif w.original_label == prev_orig and prev_orig != "O":
+            full_tags.append("I-" + w.label)
         else:
-            # First word is B-, rest are I-
-            bio_labels.append("B-" + label if i == 0 else "I-" + label)
+            full_tags.append("B-" + w.label)
+            prev_orig = w.original_label
 
-    # Use first word's IDs for the example
-    first_word = sorted_words[0]
+    full_tokens = [w.text for w in sorted_words]
+    full_bboxes = [w.bbox for w in sorted_words]
+    n = len(sorted_words)
+    first = sorted_words[0]
 
-    return LineExample(
-        image_id=first_word.image_id,
-        receipt_id=first_word.receipt_id,
-        line_id=first_word.line_id,  # Use first word's line_id
-        tokens=tokens,
-        bboxes=bboxes,
-        ner_tags=bio_labels,
-        receipt_key=receipt_key,
-    )
+    if n <= window_size:
+        return [
+            LineExample(
+                image_id=first.image_id,
+                receipt_id=first.receipt_id,
+                line_id=first.line_id,
+                tokens=full_tokens,
+                bboxes=full_bboxes,
+                ner_tags=full_tags,
+                receipt_key=receipt_key,
+            )
+        ]
+
+    examples: List[LineExample] = []
+    start = 0
+    while start < n:
+        end = min(start + window_size, n)
+        # If a window starts mid-entity, promote the leading I- to B-
+        win_tags = list(full_tags[start:end])
+        if win_tags and win_tags[0].startswith("I-"):
+            win_tags[0] = "B-" + win_tags[0][2:]
+        examples.append(
+            LineExample(
+                image_id=first.image_id,
+                receipt_id=first.receipt_id,
+                line_id=first.line_id,
+                tokens=full_tokens[start:end],
+                bboxes=full_bboxes[start:end],
+                ner_tags=win_tags,
+                receipt_key=receipt_key,
+            )
+        )
+        if end >= n:
+            break
+        start += stride
+    return examples
 
 
 def _box_from_word(word) -> Tuple[float, float, float, float]:
@@ -566,18 +457,23 @@ def load_datasets(
         )
         receipt_words.setdefault(receipt_key_tuple, []).append(word_info)
 
-    # Build examples from spatial blocks within each receipt
+    # Build per-receipt sliding-window examples with mixed labels (incl. O).
+    # This matches the inference distribution where the Mac OCR worker feeds
+    # full multi-line word sequences — not pre-segmented same-label blocks.
     examples: List[LineExample] = []
+    window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
+    window_stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
 
     for (img_id, rec_id), words_in_receipt in receipt_words.items():
         receipt_key = f"{img_id}#{rec_id:05d}"
-
-        # Group words into spatially contiguous blocks of the same label
-        blocks = _group_words_into_blocks(words_in_receipt)
-
-        # Build an example from each block
-        for block in blocks:
-            examples.append(_build_block_example(block, receipt_key))
+        examples.extend(
+            _build_receipt_window_examples(
+                words_in_receipt,
+                receipt_key,
+                window_size=window_size,
+                stride=window_stride,
+            )
+        )
 
     ds_mod = importlib.import_module("datasets")
     Dataset = getattr(ds_mod, "Dataset")
