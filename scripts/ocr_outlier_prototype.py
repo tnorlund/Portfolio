@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import sys
 from collections import Counter, defaultdict
@@ -139,6 +140,149 @@ def _paginate_all_validated_words(
         max_words=max_words,
         label="validated words",
     )
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Standard Levenshtein edit distance — used for tight correction gating."""
+    if a == b:
+        return 0
+    if len(a) < len(b):
+        a, b = b, a
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i]
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            curr.append(min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost))
+        prev = curr
+    return prev[-1]
+
+
+# ---------------------------------------------------------------------------
+# Signal #3: character-trigram plausibility
+# ---------------------------------------------------------------------------
+
+
+def build_trigram_model(
+    texts: list[str],
+) -> tuple[Counter, Counter, float]:
+    """
+    Char-trigram model with Laplace smoothing.
+
+    Returns (bigram_counts, trigram_counts, vocab_size). vocab_size is
+    the effective alphabet size used in the smoothing denominator.
+    """
+    bigram: Counter = Counter()
+    trigram: Counter = Counter()
+    vocab: set[str] = set()
+    for raw in texts:
+        if not raw:
+            continue
+        t = "^^" + raw.upper() + "$"
+        for ch in t:
+            vocab.add(ch)
+        for i in range(len(t) - 2):
+            bigram[t[i : i + 2]] += 1
+            trigram[t[i : i + 3]] += 1
+    return bigram, trigram, float(max(len(vocab), 2))
+
+
+def trigram_logprob(
+    word: str, bigram: Counter, trigram: Counter, vocab_size: float
+) -> float:
+    """Average log-probability per char-trigram under the model."""
+    if not word:
+        return 0.0
+    t = "^^" + word.upper() + "$"
+    score = 0.0
+    n = 0
+    for i in range(len(t) - 2):
+        tg = t[i : i + 3]
+        bg = t[i : i + 2]
+        p = (trigram[tg] + 1) / (bigram[bg] + vocab_size)
+        score += math.log(p)
+        n += 1
+    return score / n if n > 0 else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Signal #5: label-bracket — OTHER token surrounded by labeled tokens
+# ---------------------------------------------------------------------------
+
+
+def _is_labeled_other(meta: dict[str, Any]) -> bool:
+    """True if the word is labeled OTHER and no other CORE_LABEL is True."""
+    other = meta.get("label_OTHER") is True
+    has_core = any(
+        v is True
+        for k, v in meta.items()
+        if k.startswith("label_") and k != "label_OTHER" and k != "label_status"
+    )
+    return other and not has_core
+
+
+def _word_label_summary(meta: dict[str, Any]) -> str:
+    labels = [
+        k.removeprefix("label_")
+        for k, v in meta.items()
+        if k.startswith("label_") and k != "label_status" and v is True
+    ]
+    return ",".join(sorted(labels)) or "-"
+
+
+def find_label_bracket(
+    metas: list[dict[str, Any]],
+    *,
+    min_labeled_siblings: int = 1,
+) -> list[dict[str, Any]]:
+    """
+    Find OTHER-labeled words on lines where >=N other words are
+    labeled with a CORE_LABEL (e.g. PRODUCT_NAME). These are tokens
+    the labeler rejected mid-product-line — the prototype "RAN" case
+    fits: line has DAIRY/RAW/WHOLE/MILK labeled PRODUCT_NAME and
+    "RAN" labeled OTHER right between them.
+    """
+    by_line: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
+    for meta in metas:
+        image_id = meta.get("image_id")
+        receipt_id = meta.get("receipt_id")
+        line_id = meta.get("line_id")
+        if image_id is None or receipt_id is None or line_id is None:
+            continue
+        by_line[(image_id, int(receipt_id), int(line_id))].append(meta)
+
+    candidates: list[dict[str, Any]] = []
+    for (image_id, receipt_id, line_id), words in by_line.items():
+        labeled = [w for w in words if not _is_labeled_other(w) and any(
+            k.startswith("label_") and k != "label_status" and v is True
+            for k, v in w.items()
+        )]
+        if len(labeled) < min_labeled_siblings:
+            continue
+        for w in words:
+            if not _is_labeled_other(w):
+                continue
+            candidates.append({
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": line_id,
+                "word_id": w.get("word_id"),
+                "merchant": w.get("merchant_name") or "",
+                "suspect_text": w.get("text") or "",
+                "confidence": w.get("confidence"),
+                "left": w.get("left") or "",
+                "right": w.get("right") or "",
+                "sibling_labels": ",".join(sorted({
+                    label
+                    for sib in labeled
+                    for label in (_word_label_summary(sib).split(",") if sib else [])
+                    if label and label != "-"
+                })),
+                "sibling_count": len(labeled),
+            })
+    return candidates
 
 
 def find_pair_outliers(
@@ -354,10 +498,43 @@ def main() -> int:
     )
     parser.add_argument(
         "--signal",
-        choices=["word", "pair", "both"],
+        choices=["word", "pair", "label-bracket", "both"],
         default="both",
         help="Which signal(s) to run",
     )
+    parser.add_argument(
+        "--ngram-floor",
+        type=float,
+        default=None,
+        help=(
+            "Post-filter: only keep per-pair candidates whose suspect text "
+            "has avg trigram log-prob below this floor (more implausible). "
+            "Try -5.0 as a starting threshold."
+        ),
+    )
+    parser.add_argument(
+        "--max-confidence",
+        type=float,
+        default=None,
+        help=(
+            "Post-filter: only keep candidates whose source word.confidence "
+            "is <= this. Useful for sanity-checking the hypothesis that "
+            "Apple Vision confidence correlates with OCR errors."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run-corrections",
+        action="store_true",
+        help=(
+            "Apply tight thresholds (suggested_count >= "
+            "--correction-min-count, Levenshtein <= --correction-max-edit, "
+            "abs(len-diff) <= --correction-max-length-diff) to per-pair "
+            "candidates and print the proposed text patches. No writes."
+        ),
+    )
+    parser.add_argument("--correction-min-count", type=int, default=10)
+    parser.add_argument("--correction-max-edit", type=int, default=1)
+    parser.add_argument("--correction-max-length-diff", type=int, default=2)
     args = parser.parse_args()
 
     _, chroma = _load_clients()
@@ -365,6 +542,8 @@ def main() -> int:
 
     word_candidates: list[dict[str, Any]] = []
     pair_candidates: list[dict[str, Any]] = []
+    bracket_candidates: list[dict[str, Any]] = []
+    all_metas: list[dict[str, Any]] = []
 
     if args.signal in ("word", "both"):
         product_metas = _paginate_product_words(words_col, max_words=args.max_words)
@@ -382,9 +561,11 @@ def main() -> int:
             )
         )
 
-    if args.signal in ("pair", "both"):
+    if args.signal in ("pair", "label-bracket", "both"):
         all_metas = _paginate_all_validated_words(words_col, max_words=args.max_words)
         logger.info("Loaded %d validated words from Chroma", len(all_metas))
+
+    if args.signal in ("pair", "both"):
         pair_candidates = find_pair_outliers(
             all_metas,
             min_popular_count=args.min_popular_count,
@@ -396,6 +577,78 @@ def main() -> int:
                 (c.get("confidence") or 0.0),
                 c["merchant"],
             )
+        )
+
+    if args.signal == "label-bracket":
+        bracket_candidates = find_label_bracket(all_metas)
+        bracket_candidates.sort(
+            key=lambda c: (-(c["sibling_count"] or 0), c["merchant"])
+        )
+
+    # Build the trigram model from all validated text (used for both
+    # the --ngram-floor filter and the dry-run-corrections column).
+    trigram_inputs = (
+        [m.get("text") or "" for m in all_metas]
+        if all_metas
+        else [m.get("text") or "" for m in product_metas]
+        if args.signal == "word"
+        else []
+    )
+    bigram_counts: Counter = Counter()
+    trigram_counts: Counter = Counter()
+    vocab_size = 2.0
+    if trigram_inputs and (
+        args.ngram_floor is not None
+        or args.dry_run_corrections
+        or args.signal == "label-bracket"
+    ):
+        bigram_counts, trigram_counts, vocab_size = build_trigram_model(trigram_inputs)
+        logger.info(
+            "Built trigram model: %d bigrams, %d trigrams, vocab=%d",
+            len(bigram_counts),
+            len(trigram_counts),
+            int(vocab_size),
+        )
+
+    def _score(text: str) -> float:
+        return trigram_logprob(text, bigram_counts, trigram_counts, vocab_size)
+
+    if args.ngram_floor is not None:
+        before_pair = len(pair_candidates)
+        pair_candidates = [
+            c
+            for c in pair_candidates
+            if _score(c["suspect_text"]) < args.ngram_floor
+        ]
+        before_bracket = len(bracket_candidates)
+        bracket_candidates = [
+            c
+            for c in bracket_candidates
+            if _score(c["suspect_text"]) < args.ngram_floor
+        ]
+        logger.info(
+            "ngram-floor=%.2f kept %d/%d pair, %d/%d label-bracket",
+            args.ngram_floor,
+            len(pair_candidates),
+            before_pair,
+            len(bracket_candidates),
+            before_bracket,
+        )
+
+    if args.max_confidence is not None:
+        def _keep(c: dict[str, Any]) -> bool:
+            conf = c.get("confidence")
+            return isinstance(conf, (int, float)) and conf <= args.max_confidence
+
+        before = len(pair_candidates)
+        pair_candidates = [c for c in pair_candidates if _keep(c)]
+        word_candidates = [c for c in word_candidates if _keep(c)]
+        bracket_candidates = [c for c in bracket_candidates if _keep(c)]
+        logger.info(
+            "max-confidence=%.2f kept %d/%d pair candidates",
+            args.max_confidence,
+            len(pair_candidates),
+            before,
         )
 
     if word_candidates:
@@ -418,14 +671,18 @@ def main() -> int:
                 f"{(row.get('image_id') or ''):<36}"
             )
 
-    if pair_candidates:
+    if pair_candidates and not args.dry_run_corrections:
         logger.info("Found %d per-pair candidates", len(pair_candidates))
         print("\n=== PER-PAIR (singleton neighbor-pair close to popular pair) ===\n")
-        print(
+        header = (
             f"{'MERCHANT':<25} {'SUSPECT-CONTEXT':<28} {'SUGGESTED':<14} "
-            f"{'POP':>5} {'CONF':>6}  {'IMAGE_ID':<36}"
+            f"{'POP':>5} {'CONF':>6}"
         )
-        print("-" * 130)
+        if bigram_counts:
+            header += f" {'NGRAM':>7}"
+        header += f"  {'IMAGE_ID':<36}"
+        print(header)
+        print("-" * (len(header) + 4))
         for row in pair_candidates[: args.limit]:
             conf = row.get("confidence")
             conf_str = f"{conf:.3f}" if isinstance(conf, (int, float)) else " -"
@@ -433,13 +690,92 @@ def main() -> int:
                 ctx = f"{row['suspect_text']} {row['context_value']}"
             else:
                 ctx = f"{row['context_value']} {row['suspect_text']}"
-            print(
+            line = (
                 f"{row['merchant'][:24]:<25} "
                 f"{ctx[:27]:<28} "
                 f"{row['suggested_text'][:13]:<14} "
                 f"{row['suggested_count']:>5} "
-                f"{conf_str:>6}  "
-                f"{(row.get('image_id') or ''):<36}"
+                f"{conf_str:>6}"
+            )
+            if bigram_counts:
+                line += f" {_score(row['suspect_text']):>7.2f}"
+            line += f"  {(row.get('image_id') or ''):<36}"
+            print(line)
+
+    if bracket_candidates:
+        logger.info("Found %d label-bracket candidates", len(bracket_candidates))
+        print("\n=== LABEL-BRACKET (OTHER token among labeled siblings) ===\n")
+        print(
+            f"{'MERCHANT':<25} {'LEFT':<10} {'SUSPECT':<14} {'RIGHT':<10} "
+            f"{'#SIB':>4} {'CONF':>6} {'NGRAM':>7}  {'IMAGE_ID':<36} "
+            f"{'LINE':>5} {'WORD':>5}"
+        )
+        print("-" * 140)
+        for row in bracket_candidates[: args.limit]:
+            conf = row.get("confidence")
+            conf_str = f"{conf:.3f}" if isinstance(conf, (int, float)) else " -"
+            ngram_str = (
+                f"{_score(row['suspect_text']):>7.2f}" if bigram_counts else "   -"
+            )
+            print(
+                f"{(row['merchant'] or '')[:24]:<25} "
+                f"{(row['left'] or '')[:9]:<10} "
+                f"{row['suspect_text'][:13]:<14} "
+                f"{(row['right'] or '')[:9]:<10} "
+                f"{row['sibling_count']:>4} "
+                f"{conf_str:>6} "
+                f"{ngram_str} "
+                f" {(row.get('image_id') or ''):<36} "
+                f"{row['line_id']:>5} "
+                f"{row.get('word_id') or 0:>5}"
+            )
+
+    if args.dry_run_corrections and pair_candidates:
+        kept = []
+        for c in pair_candidates:
+            suspect = (c["suspect_text"] or "").upper()
+            suggested = (c["suggested_text"] or "").upper()
+            if (c["suggested_count"] or 0) < args.correction_min_count:
+                continue
+            if _levenshtein(suspect, suggested) > args.correction_max_edit:
+                continue
+            if abs(len(suspect) - len(suggested)) > args.correction_max_length_diff:
+                continue
+            kept.append(c)
+        logger.info(
+            "Dry-run-corrections: %d/%d candidates pass tight thresholds "
+            "(count>=%d, edit<=%d, len-diff<=%d)",
+            len(kept),
+            len(pair_candidates),
+            args.correction_min_count,
+            args.correction_max_edit,
+            args.correction_max_length_diff,
+        )
+        print(
+            "\n=== DRY-RUN CORRECTIONS (no writes; apply via separate script) ===\n"
+        )
+        print(
+            f"{'MERCHANT':<25} {'OLD':<14} {'NEW':<14} {'POP':>5} {'CONF':>6} "
+            f"{'NGRAM':>7}  {'IMAGE_ID':<36} {'R':>3} {'L':>4} {'W':>4}"
+        )
+        print("-" * 140)
+        for row in kept[: args.limit]:
+            conf = row.get("confidence")
+            conf_str = f"{conf:.3f}" if isinstance(conf, (int, float)) else " -"
+            ngram_str = (
+                f"{_score(row['suspect_text']):>7.2f}" if bigram_counts else "   -"
+            )
+            print(
+                f"{row['merchant'][:24]:<25} "
+                f"{row['suspect_text'][:13]:<14} "
+                f"{row['suggested_text'][:13]:<14} "
+                f"{row['suggested_count']:>5} "
+                f"{conf_str:>6} "
+                f"{ngram_str}  "
+                f"{(row.get('image_id') or ''):<36} "
+                f"{row.get('receipt_id') or 0:>3} "
+                f"{row.get('line_id') or 0:>4} "
+                f"{row.get('word_id') or 0:>4}"
             )
     print()
     return 0
