@@ -1065,7 +1065,63 @@ class ReceiptLayoutLMTrainer:
 
             return metrics
 
-        trainer = self._transformers.Trainer(
+        # Class-weighted cross-entropy to combat majority-class ("O") collapse.
+        # Per-receipt-window training has O:entity ratio ~3.6:1; un-weighted
+        # CE drives the model toward all-O predictions. Weight = inverse class
+        # frequency, clipped to [0.3, 5.0].
+        torch_mod = self._torch
+        n_classes = len(label_list)
+        class_counts = [0] * n_classes
+        for ex in datasets["train"]:
+            for lid in ex["labels"]:
+                if lid == -100:
+                    continue
+                if 0 <= lid < n_classes:
+                    class_counts[lid] += 1
+        total = sum(class_counts)
+        weights = []
+        for c in class_counts:
+            if c == 0:
+                weights.append(1.0)
+            else:
+                w = total / (n_classes * c)
+                weights.append(max(0.3, min(w, 5.0)))
+        class_weights_tensor = torch_mod.tensor(
+            weights, dtype=torch_mod.float32
+        )
+        print(
+            "[trainer] class weights: "
+            + ", ".join(
+                f"{label_list[i]}={weights[i]:.2f}" for i in range(n_classes)
+            )
+        )
+
+        TrainerBase = self._transformers.Trainer
+
+        class WeightedTrainer(TrainerBase):  # type: ignore[misc, valid-type]
+            _class_weights = class_weights_tensor
+
+            def compute_loss(
+                self,
+                model,
+                inputs,
+                return_outputs=False,
+                num_items_in_batch=None,
+            ):
+                labels = inputs.pop("labels")
+                outputs = model(**inputs)
+                logits = outputs.logits
+                loss_fct = torch_mod.nn.CrossEntropyLoss(
+                    weight=self._class_weights.to(logits.device),
+                    ignore_index=-100,
+                )
+                loss = loss_fct(
+                    logits.view(-1, logits.size(-1)),
+                    labels.view(-1),
+                )
+                return (loss, outputs) if return_outputs else loss
+
+        trainer = WeightedTrainer(
             model=model,
             args=training_args,
             train_dataset=datasets.get("train"),
