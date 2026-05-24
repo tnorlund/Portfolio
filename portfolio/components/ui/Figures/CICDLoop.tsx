@@ -842,8 +842,13 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   const ribbonRefs = useRef<(SVGPathElement | null)[]>([]);
   const textRefs = useRef<(SVGTextElement | null)[]>([]);
 
-  // State for text offset adjustments due to overlap
-  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>([]);
+  // State for text offset adjustments due to overlap. Initialize to a
+  // zero-filled array of the right length so the no-overlap setState call
+  // is dedupe'd in the overlap-detection effect — avoiding a needless
+  // re-render that would otherwise reset useSprings in @react-spring/web@10.
+  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>(
+    () => new Array(segments.length).fill(0),
+  );
 
   // Find the "Plan" segment index
   const planIndex = useMemo(() => {
@@ -918,7 +923,19 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         }
       });
 
-      setTextOffsetAdjustments(adjustments);
+      // Only setState if values actually changed — every re-render of
+      // CICDLoop triggers @react-spring/web@10 to reset segment springs
+      // to their init state (opacity:0), so we avoid spurious setState
+      // that would cause an unnecessary re-render here.
+      setTextOffsetAdjustments((prev) => {
+        if (
+          prev.length === adjustments.length &&
+          prev.every((v, idx) => v === adjustments[idx])
+        ) {
+          return prev;
+        }
+        return adjustments;
+      });
     }, animationCompleteDelay);
 
     return () => clearTimeout(timeoutId);
