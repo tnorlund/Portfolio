@@ -1111,14 +1111,23 @@ class ReceiptLayoutLMTrainer:
                 labels = inputs.pop("labels")
                 outputs = model(**inputs)
                 logits = outputs.logits
+                # When transformers Trainer is using gradient accumulation
+                # (4.46+), it passes num_items_in_batch so per-microbatch loss
+                # can be summed-then-divided rather than mean-reduced. Mirror
+                # the standard ForTokenClassification loss pattern so GA > 1
+                # weighs microbatches correctly regardless of -100 padding.
+                use_sum_reduction = num_items_in_batch is not None
                 loss_fct = torch_mod.nn.CrossEntropyLoss(
                     weight=self._class_weights.to(logits.device),
                     ignore_index=-100,
+                    reduction="sum" if use_sum_reduction else "mean",
                 )
                 loss = loss_fct(
                     logits.view(-1, logits.size(-1)),
                     labels.view(-1),
                 )
+                if use_sum_reduction:
+                    loss = loss / num_items_in_batch
                 return (loss, outputs) if return_outputs else loss
 
         trainer = WeightedTrainer(

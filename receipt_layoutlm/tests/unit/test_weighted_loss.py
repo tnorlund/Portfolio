@@ -107,3 +107,34 @@ def test_label_count_skips_minus_100():
             if 0 <= lid < n_classes:
                 counts[lid] += 1
     assert counts == [3, 3, 1]  # not [3, 3, 1, 3] (no -100 leakage)
+
+
+def test_grad_accum_pattern_matches_sum_over_num_items():
+    """When num_items_in_batch is provided (gradient accumulation in
+    transformers 4.46+), the loss must be ``sum / num_items_in_batch`` so
+    that accumulating K microbatches gives the same result as one big
+    batch. Mirrors HF's standard ForTokenClassification loss pattern.
+    """
+    torch.manual_seed(0)
+    n_classes = 4
+    weights = torch.tensor([0.3, 1.0, 2.0, 5.0])
+    # One "big batch" of 8 tokens with 6 supervised + 2 ignored
+    logits_big = torch.randn(1, 8, n_classes)
+    labels_big = torch.tensor([[0, 1, 2, 3, -100, 0, 1, -100]])
+    num_items_big = int((labels_big != -100).sum())
+
+    def weighted_loss(logits, labels, num_items):
+        loss_fct = nn.CrossEntropyLoss(
+            weight=weights, ignore_index=-100, reduction="sum"
+        )
+        loss = loss_fct(logits.view(-1, n_classes), labels.view(-1))
+        return loss / num_items
+
+    big_loss = weighted_loss(logits_big, labels_big, num_items_big)
+    # Split into two microbatches of 4 tokens each (different supervised counts)
+    accum_loss = weighted_loss(
+        logits_big[:, :4], labels_big[:, :4], num_items_big
+    ) + weighted_loss(
+        logits_big[:, 4:], labels_big[:, 4:], num_items_big
+    )
+    assert torch.allclose(big_loss, accum_loss, atol=1e-6)

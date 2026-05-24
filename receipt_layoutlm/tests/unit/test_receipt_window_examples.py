@@ -75,7 +75,7 @@ def test_sliding_window_splits_long_receipt():
     # Verify coverage: union of window indices covers 0..499
     covered = set()
     starts = [0, 150, 300]
-    for start, ex in zip(starts, out):
+    for start, ex in zip(starts, out, strict=True):
         covered.update(range(start, start + len(ex.tokens)))
     assert covered == set(range(500))
 
@@ -117,6 +117,26 @@ def test_receipt_smaller_than_window_yields_single_example():
     )
     assert len(out) == 1
     assert len(out[0].tokens) == 50
+
+
+@pytest.mark.parametrize("bad_stride", [0, -1, -150])
+def test_stride_must_be_positive(bad_stride):
+    # Regression: stride <= 0 used to spin forever when the receipt exceeded
+    # window_size. Now raises immediately.
+    words = [_w(i, "O") for i in range(500)]
+    with pytest.raises(ValueError, match="stride must be positive"):
+        _build_receipt_window_examples(
+            words, "k", window_size=200, stride=bad_stride
+        )
+
+
+@pytest.mark.parametrize("bad_window", [0, -1])
+def test_window_size_must_be_positive(bad_window):
+    words = [_w(0, "O")]
+    with pytest.raises(ValueError, match="window_size must be positive"):
+        _build_receipt_window_examples(
+            words, "k", window_size=bad_window, stride=10
+        )
 
 
 def test_reading_order_sort_top_to_bottom_left_to_right():

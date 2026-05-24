@@ -85,7 +85,14 @@ def _build_receipt_window_examples(
 
     Returns:
         One LineExample per window (or just one if the receipt fits).
+
+    Raises:
+        ValueError: if ``window_size`` or ``stride`` is not a positive int.
     """
+    if window_size <= 0:
+        raise ValueError(f"window_size must be positive, got {window_size}")
+    if stride <= 0:
+        raise ValueError(f"stride must be positive, got {stride}")
     if not words:
         return []
 
