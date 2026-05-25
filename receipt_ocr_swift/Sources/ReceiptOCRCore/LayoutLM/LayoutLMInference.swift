@@ -267,7 +267,7 @@ public class LayoutLMInference {
         // Split predictions by line
         var predictions: [LinePrediction] = []
 
-        for (batchIdx, item) in batch.enumerated() {
+        for (batchIdx, _) in batch.enumerated() {
             let range = lineWordRanges[batchIdx]
 
             // Find word IDs that belong to this line
@@ -289,6 +289,14 @@ public class LayoutLMInference {
     }
 
     /// Aggregate predictions for a specific line within a batched sequence.
+    ///
+    /// Uses ONLY the first subtoken's logits per word to match training-time
+    /// supervision (trainer.py labels first subtoken, sets rest to -100).
+    /// Averaging across subtokens — what this code used to do — mixed in
+    /// logits the model never optimized for, which broke BIO continuity:
+    /// a word's first occurrence could land as `I-MERCHANT_NAME` with no
+    /// preceding `B-` because the averaged distribution drifted off the
+    /// first-subtoken decision boundary.
     private func aggregatePredictionsForLine(
         logits: MLMultiArray,
         wordIds: [Int?],
@@ -299,12 +307,14 @@ public class LayoutLMInference {
         let numLabels = logits.shape[2].intValue
         let numWords = words.count
 
-        // Group token indices by word ID (only for words in this line)
-        var wordToTokens: [Int: [Int]] = [:]
+        // First subtoken index per word (only for words in this line).
+        var wordToFirstToken: [Int: Int] = [:]
         for (tokenIdx, wordId) in wordIds.enumerated() {
             if let wid = wordId, targetWordIds.contains(wid) {
                 let localWordId = wid - wordIdOffset
-                wordToTokens[localWordId, default: []].append(tokenIdx)
+                if wordToFirstToken[localWordId] == nil {
+                    wordToFirstToken[localWordId] = tokenIdx
+                }
             }
         }
 
@@ -313,29 +323,20 @@ public class LayoutLMInference {
         var allProbs: [[String: Float]] = []
 
         for wordIdx in 0..<numWords {
-            let tokenIndices = wordToTokens[wordIdx] ?? []
-
-            if tokenIndices.isEmpty {
+            guard let tokenIdx = wordToFirstToken[wordIdx] else {
                 labels.append("O")
                 confidences.append(0.0)
                 allProbs.append([:])
                 continue
             }
 
-            // Average logits across subtokens
-            var avgLogits = [Float](repeating: 0, count: numLabels)
-            for tokenIdx in tokenIndices {
-                for labelIdx in 0..<numLabels {
-                    let index = tokenIdx * numLabels + labelIdx
-                    avgLogits[labelIdx] += logits[index].floatValue
-                }
-            }
+            var wordLogits = [Float](repeating: 0, count: numLabels)
             for labelIdx in 0..<numLabels {
-                avgLogits[labelIdx] /= Float(tokenIndices.count)
+                let index = tokenIdx * numLabels + labelIdx
+                wordLogits[labelIdx] = logits[index].floatValue
             }
 
-            // Softmax and argmax
-            let probs = softmax(avgLogits)
+            let probs = softmax(wordLogits)
             var maxProb: Float = 0
             var maxIdx = 0
             for (idx, prob) in probs.enumerated() {
@@ -439,11 +440,12 @@ public class LayoutLMInference {
     ) -> LinePrediction {
         let numLabels = logits.shape[2].intValue
 
-        // Group token indices by word ID
-        var wordToTokens: [Int: [Int]] = [:]
+        // First subtoken index per word (matches training-time supervision —
+        // trainer.py labels first subtoken only, sets the rest to -100).
+        var wordToFirstToken: [Int: Int] = [:]
         for (tokenIdx, wordId) in wordIds.enumerated() {
-            if let wid = wordId {
-                wordToTokens[wid, default: []].append(tokenIdx)
+            if let wid = wordId, wordToFirstToken[wid] == nil {
+                wordToFirstToken[wid] = tokenIdx
             }
         }
 
@@ -452,9 +454,7 @@ public class LayoutLMInference {
         var allProbs: [[String: Float]] = []
 
         for wordIdx in 0..<numWords {
-            let tokenIndices = wordToTokens[wordIdx] ?? []
-
-            if tokenIndices.isEmpty {
+            guard let tokenIdx = wordToFirstToken[wordIdx] else {
                 // Word was dropped during tokenization
                 labels.append("O")
                 confidences.append(0.0)
@@ -462,22 +462,13 @@ public class LayoutLMInference {
                 continue
             }
 
-            // Average logits across subtokens
-            var avgLogits = [Float](repeating: 0, count: numLabels)
-            for tokenIdx in tokenIndices {
-                for labelIdx in 0..<numLabels {
-                    let index = tokenIdx * numLabels + labelIdx
-                    avgLogits[labelIdx] += logits[index].floatValue
-                }
-            }
+            var wordLogits = [Float](repeating: 0, count: numLabels)
             for labelIdx in 0..<numLabels {
-                avgLogits[labelIdx] /= Float(tokenIndices.count)
+                let index = tokenIdx * numLabels + labelIdx
+                wordLogits[labelIdx] = logits[index].floatValue
             }
 
-            // Softmax
-            let probs = softmax(avgLogits)
-
-            // Argmax
+            let probs = softmax(wordLogits)
             var maxProb: Float = 0
             var maxIdx = 0
             for (idx, prob) in probs.enumerated() {
@@ -490,7 +481,6 @@ public class LayoutLMInference {
             labels.append(config.labelName(for: maxIdx))
             confidences.append(maxProb.isNaN ? 0.0 : maxProb)
 
-            // Build probability dict (sanitize NaN values for JSON encoding)
             var probDict: [String: Float] = [:]
             for labelIdx in 0..<numLabels {
                 let prob = probs[labelIdx]
