@@ -42,8 +42,12 @@ _dynamo_client = None
 _chroma_client = None
 _words_collection = None
 
-# SK pattern for a ReceiptWord row: LINE#{line_id:05d}#WORD#{word_id:05d}
-_WORD_SK_RE = re.compile(r"^LINE#(\d{5})#WORD#(\d{5})$")
+# SK pattern for a ReceiptWord row:
+# RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
+# Source of truth: receipt_dynamo/entities/receipt_word.py:91-109
+_WORD_SK_RE = re.compile(
+    r"^RECEIPT#(\d{5})#LINE#(\d{5})#WORD#(\d{5})$"
+)
 
 
 def _get_clients():
@@ -92,9 +96,9 @@ def _extract_word_change(record: dict[str, Any]) -> dict[str, Any] | None:
 
     return {
         "image_id": pk.removeprefix("IMAGE#"),
-        "line_id": int(match.group(1)),
-        "word_id": int(match.group(2)),
-        "receipt_id": int(new_image.get("receipt_id", {}).get("N", "0")),
+        "receipt_id": int(match.group(1)),
+        "line_id": int(match.group(2)),
+        "word_id": int(match.group(3)),
         "new_text": new_text,
         "old_text": old_text,
     }
@@ -180,10 +184,24 @@ def _evaluate_label(
     if total_votes == 0:
         return None  # No similar validated words
 
-    # Approximate match count by counting items above similarity floor
+    # Approximate match count — apply the same filter `_consensus` uses
+    # (similarity floor + self-exclusion) so the min_matches gate
+    # doesn't admit decisions that have zero qualifying voters.
     def _count(query_result: dict[str, Any]) -> int:
+        metas = (query_result.get("metadatas") or [[]])[0]
         dists = (query_result.get("distances") or [[]])[0]
-        return sum(1 for d in dists if _dist_to_sim(d) >= min_similarity)
+        n = 0
+        for m, d in zip(metas, dists):
+            if _dist_to_sim(d) < min_similarity:
+                continue
+            cand_id = (
+                f"IMAGE#{m.get('image_id', '')}#RECEIPT#{m.get('receipt_id', 0):05d}"
+                f"#LINE#{m.get('line_id', 0):05d}#WORD#{m.get('word_id', 0):05d}"
+            )
+            if cand_id == chroma_id:
+                continue
+            n += 1
+        return n
 
     n_for, n_against = _count(pos), _count(neg)
     if n_for + n_against < min_matches:
@@ -237,9 +255,11 @@ def _process_word(
         out["error"] = str(exc)
         return out
 
+    # ReceiptDetails carries labels under the `labels` field (see
+    # receipt_dynamo/entities/receipt_details.py).
     word_labels = [
         lbl
-        for lbl in (details.receipt_word_labels or [])
+        for lbl in (details.labels or [])
         if lbl.line_id == line_id and lbl.word_id == word_id
     ]
 
@@ -335,17 +355,32 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     }
     logger.info("label_refresh_summary: %s", json.dumps(response))
     if processed and total_proposed:
-        # Surface details for the first few updates so CloudWatch logs are useful
+        # Surface fix counts per word so CloudWatch logs are useful, but
+        # avoid emitting raw OCR text (receipts can contain PII/PHI like
+        # card numbers, addresses, names). The (image_id, receipt_id,
+        # line_id, word_id) tuple is enough to dig into the affected
+        # word manually if needed.
         for r in processed[:10]:
-            if r.get("updates"):
-                logger.info(
-                    "word=%s/%d/%d/%d text='%s'→'%s' updates=%s",
-                    r["image_id"],
-                    r["receipt_id"],
-                    r["line_id"],
-                    r["word_id"],
-                    r["old_text"],
-                    r["new_text"],
-                    r["updates"],
-                )
+            updates = r.get("updates") or []
+            if not updates:
+                continue
+            redacted = [
+                {
+                    "label": u["label"],
+                    "old_status": u["old_status"],
+                    "new_status": u["new_status"],
+                    "confidence": u["confidence"],
+                }
+                for u in updates
+            ]
+            logger.info(
+                "word=%s/%d/%d/%d old_text_len=%d new_text_len=%d updates=%s",
+                r["image_id"],
+                r["receipt_id"],
+                r["line_id"],
+                r["word_id"],
+                len(r["old_text"]),
+                len(r["new_text"]),
+                redacted,
+            )
     return response

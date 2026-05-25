@@ -131,14 +131,17 @@ class LabelRefreshLambda(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
+                                # Note: receipt_dynamo's `_update_entity`
+                                # uses `put_item` under the hood with a
+                                # condition expression, so PutItem must be
+                                # allowed even though we only ever update
+                                # existing rows.
                                 "Action": [
                                     "dynamodb:DescribeTable",
                                     "dynamodb:GetItem",
                                     "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
-                                    "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": [arn, f"{arn}/index/*"],
                             }
@@ -217,10 +220,14 @@ class LabelRefreshLambda(ComponentResource):
         # ============================================================
         # DynamoDB Stream EventSourceMapping
         # ============================================================
-        # Filter: only fire on MODIFY events whose SK begins with LINE#
-        # (ReceiptWord entities). The handler does a second-pass check
-        # for actual text changes; this filter just keeps the volume
-        # down at the AWS level.
+        # Filter: only fire on MODIFY events whose SK begins with
+        # RECEIPT# (ReceiptWord rows — also matches Receipt, ReceiptLine,
+        # ReceiptLetter, etc., which the handler filters out via its
+        # _WORD_SK_RE regex). Source of truth for the SK shape is
+        # receipt_dynamo/entities/receipt_word.py:91-109:
+        #   SK = "RECEIPT#{rid:05d}#LINE#{lid:05d}#WORD#{wid:05d}"
+        # The AWS-side filter keeps invocation volume manageable; the
+        # handler does the precise SK regex + actual text-change check.
         self.event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-stream-mapping",
             event_source_arn=dynamodb_stream_arn,
@@ -236,7 +243,7 @@ class LabelRefreshLambda(ComponentResource):
                                 "eventName": ["MODIFY"],
                                 "dynamodb": {
                                     "Keys": {
-                                        "SK": {"S": [{"prefix": "LINE#"}]}
+                                        "SK": {"S": [{"prefix": "RECEIPT#"}]}
                                     }
                                 },
                             }
