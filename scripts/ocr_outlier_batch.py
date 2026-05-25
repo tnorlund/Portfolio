@@ -354,9 +354,21 @@ def main() -> int:
 
     fired: list[dict[str, Any]] = []
     for i, g in enumerate(batch, 1):
-        region_result = _compute_region_for_lines(
-            dynamo, g["image_id"], g["receipt_id"], g["line_ids"]
-        )
+        try:
+            region_result = _compute_region_for_lines(
+                dynamo, g["image_id"], g["receipt_id"], g["line_ids"]
+            )
+        except Exception as exc:
+            # Most common: EntityNotFoundError when Chroma still holds
+            # metadata for a receipt that's been deleted from DynamoDB.
+            logger.warning(
+                "[%d] %s receipt=%d region compute failed: %s",
+                i,
+                g["image_id"],
+                g["receipt_id"],
+                exc,
+            )
+            continue
         if "error" in region_result:
             logger.warning(
                 "[%d] %s receipt=%d skipped: %s",
