@@ -48,7 +48,14 @@ def get_hyperparameters() -> dict:
     # Also check individual SM_HP_* variables
     for key, value in os.environ.items():
         if key.startswith("SM_HP_"):
-            param_name = key[6:].lower()  # Remove SM_HP_ prefix
+            suffix = key[6:]  # Remove SM_HP_ prefix
+            # Preserve original case for `env_*` keys — they get promoted to
+            # process env vars in main() and the downstream code reads
+            # LAYOUTLM_CLASS_WEIGHT_MAX, not layoutlm_class_weight_max.
+            if suffix.lower().startswith("env_"):
+                param_name = "env_" + suffix[len("env_"):]
+            else:
+                param_name = suffix.lower()
             hps[param_name] = value
 
     return hps
@@ -183,8 +190,19 @@ def main():
     print(f"Running: {' '.join(cmd)}")
     print("=" * 60)
 
+    # Promote hyperparameters of the form `env_VAR=val` to process env vars
+    # before launching the trainer. Lets callers tune env-driven knobs
+    # (LAYOUTLM_WINDOW_SIZE, LAYOUTLM_CLASS_WEIGHT_*, etc.) per training job
+    # without adding a new CLI flag for each one.
+    child_env = os.environ.copy()
+    for key, value in hps.items():
+        if key.startswith("env_"):
+            env_name = key[len("env_") :]
+            child_env[env_name] = str(value)
+            print(f"  setenv {env_name}={value}")
+
     # Run training
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False, env=child_env)
 
     if result.returncode != 0:
         print(f"Training failed with exit code {result.returncode}")
