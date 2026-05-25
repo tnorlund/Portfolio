@@ -1068,7 +1068,22 @@ class ReceiptLayoutLMTrainer:
         # Class-weighted cross-entropy to combat majority-class ("O") collapse.
         # Per-receipt-window training has O:entity ratio ~3.6:1; un-weighted
         # CE drives the model toward all-O predictions. Weight = inverse class
-        # frequency, clipped to [0.3, 5.0].
+        # frequency, clipped to [w_min, w_max]. Defaults preserve v13 behavior.
+        # Tighten via LAYOUTLM_CLASS_WEIGHT_MIN / _MAX to reduce over-prediction
+        # of rare classes at the cost of accepting more O bias.
+        try:
+            w_min = float(os.getenv("LAYOUTLM_CLASS_WEIGHT_MIN", "0.3"))
+        except ValueError:
+            w_min = 0.3
+        try:
+            w_max = float(os.getenv("LAYOUTLM_CLASS_WEIGHT_MAX", "5.0"))
+        except ValueError:
+            w_max = 5.0
+        if not (0 < w_min <= w_max):
+            raise ValueError(
+                f"class weight clip range invalid: "
+                f"min={w_min}, max={w_max} (require 0 < min <= max)"
+            )
         torch_mod = self._torch
         n_classes = len(label_list)
         class_counts = [0] * n_classes
@@ -1085,7 +1100,7 @@ class ReceiptLayoutLMTrainer:
                 weights.append(1.0)
             else:
                 w = total / (n_classes * c)
-                weights.append(max(0.3, min(w, 5.0)))
+                weights.append(max(w_min, min(w, w_max)))
         class_weights_tensor = torch_mod.tensor(
             weights, dtype=torch_mod.float32
         )
