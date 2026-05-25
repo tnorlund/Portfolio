@@ -61,120 +61,219 @@ const formatLabelAbbrev = (label: string): string => {
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
-// Timeline density tuning. Receipts trained with the v14 recipe and beyond
-// run 60+ epochs; rendering one dot per epoch overflows the container and
-// the per-dot numeric labels overlap. When we exceed this threshold we
-// switch to a compact rendering (smaller gap, no per-dot numbers).
-const TIMELINE_COMPACT_THRESHOLD = 20;
 // Cap the total autoplay duration so a 60+-epoch run finishes in a
 // reasonable time rather than ~75s at 1200ms/step.
 const TIMELINE_AUTOPLAY_TOTAL_MS = 18000;
 const TIMELINE_AUTOPLAY_MIN_STEP_MS = 250;
 const TIMELINE_AUTOPLAY_MAX_STEP_MS = 1200;
 
-// Epoch Timeline Component (Desktop - dots)
-interface EpochTimelineProps {
+// Epoch Sparkline: a line chart of val_f1 across all epochs. Replaces
+// the per-epoch dot row which couldn't scale past ~20 epochs and only
+// encoded "which epoch you're on" — the sparkline additionally encodes
+// the convergence shape, plateau, and any drift the user can read at a
+// glance. Click anywhere on the curve to scrub.
+interface EpochSparklineProps {
   epochs: TrainingMetricsEpoch[];
   currentIndex: number;
   onSelectEpoch: (index: number) => void;
   showBestLabel: boolean;
 }
 
-const EpochTimeline: React.FC<EpochTimelineProps> = ({
+// SVG viewBox dims (internal coordinates). CSS sizes the SVG; the
+// viewBox stretches to fit while keeping our math simple.
+const SVG_W = 600;
+const SVG_H = 80;
+const SVG_PAD_X = 8; // left/right inset so end markers don't clip
+const SVG_PAD_TOP = 18; // room for "BEST" label
+const SVG_PAD_BOTTOM = 14; // room for x-axis epoch numbers
+
+const EpochSparkline: React.FC<EpochSparklineProps> = ({
   epochs,
   currentIndex,
   onSelectEpoch,
   showBestLabel,
 }) => {
-  const nodesRef = useRef<HTMLDivElement>(null);
-  const [lineStyle, setLineStyle] = useState<{ left: number; width: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  useEffect(() => {
-    if (!nodesRef.current || epochs.length < 2) return;
+  const { points, bestIdx, yScale, xScale } = useMemo(() => {
+    if (epochs.length === 0) {
+      return {
+        points: "",
+        bestIdx: -1,
+        yScale: (_: number) => SVG_PAD_TOP,
+        xScale: (_: number) => SVG_PAD_X,
+      };
+    }
+    // Fit val_f1 into the plot area, with a tiny pad so 0/1 don't hug the edge.
+    // Auto-range to data so even mediocre runs have visible variation.
+    const f1Values = epochs.map((e) => e.metrics?.val_f1 ?? 0);
+    const dataMin = Math.max(0, Math.min(...f1Values) - 0.05);
+    const dataMax = Math.min(1, Math.max(...f1Values) + 0.05);
+    const span = dataMax - dataMin || 1;
 
-    const updateLine = () => {
-      const container = nodesRef.current;
-      if (!container) return;
+    const plotLeft = SVG_PAD_X;
+    const plotRight = SVG_W - SVG_PAD_X;
+    const plotTop = SVG_PAD_TOP;
+    const plotBottom = SVG_H - SVG_PAD_BOTTOM;
+    const plotWidth = plotRight - plotLeft;
+    const plotHeight = plotBottom - plotTop;
 
-      const dots = container.querySelectorAll(`.${styles.timelineNodeDot}`);
-      if (dots.length < 2) return;
+    const xScale = (i: number) =>
+      epochs.length === 1
+        ? plotLeft + plotWidth / 2
+        : plotLeft + (i / (epochs.length - 1)) * plotWidth;
+    const yScale = (v: number) =>
+      plotBottom - ((v - dataMin) / span) * plotHeight;
 
-      const firstDot = dots[0] as HTMLElement;
-      const lastDot = dots[dots.length - 1] as HTMLElement;
-      const containerRect = container.getBoundingClientRect();
-      const firstRect = firstDot.getBoundingClientRect();
-      const lastRect = lastDot.getBoundingClientRect();
+    const points = epochs
+      .map((e, i) => `${xScale(i).toFixed(1)},${yScale(f1Values[i]).toFixed(1)}`)
+      .join(" ");
+    const bestIdx = epochs.findIndex((e) => e.is_best);
+    return { points, bestIdx, yScale, xScale };
+  }, [epochs]);
 
-      const left = firstRect.left - containerRect.left + firstRect.width / 2;
-      const right = lastRect.left - containerRect.left + lastRect.width / 2;
-
-      setLineStyle({ left, width: right - left });
-    };
-
-    updateLine();
-    window.addEventListener('resize', updateLine);
-    return () => window.removeEventListener('resize', updateLine);
-  }, [epochs.length]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (epochs.length === 0 || !svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      // Convert click px → viewBox x → nearest epoch index
+      const xPx = e.clientX - rect.left;
+      const vbX = (xPx / rect.width) * SVG_W;
+      const plotLeft = SVG_PAD_X;
+      const plotRight = SVG_W - SVG_PAD_X;
+      const t = (vbX - plotLeft) / (plotRight - plotLeft);
+      const clampedT = Math.max(0, Math.min(1, t));
+      const idx = Math.round(clampedT * (epochs.length - 1));
+      onSelectEpoch(idx);
+    },
+    [epochs.length, onSelectEpoch]
+  );
 
   const currentEpoch = epochs[currentIndex];
-  const isBest = currentEpoch?.is_best && showBestLabel;
-  const isCompact = epochs.length > TIMELINE_COMPACT_THRESHOLD;
+  const currentF1 = currentEpoch?.metrics?.val_f1 ?? 0;
+  const cx = xScale(currentIndex);
+  const cy = yScale(currentF1);
+  const bestEpoch = bestIdx >= 0 ? epochs[bestIdx] : null;
+  const bestF1 = bestEpoch?.metrics?.val_f1 ?? 0;
+  const bx = bestIdx >= 0 ? xScale(bestIdx) : 0;
+  const by = bestIdx >= 0 ? yScale(bestF1) : 0;
+  const lastIdx = epochs.length - 1;
+  const showBest = bestIdx >= 0 && showBestLabel;
 
-  // Decide which per-dot numeric labels to render. In compact mode we only
-  // show first, last, best, and the currently-active epoch number so the
-  // labels don't collide visually.
-  const labelVisibleIndexes = useMemo(() => {
-    if (!isCompact) {
-      return new Set(epochs.map((_, i) => i));
+  // Axis label positions (left edge, best epoch, right edge — skip if they collide)
+  const axisLabels: Array<{ x: number; text: string; key: string }> = [];
+  if (epochs.length > 0) {
+    axisLabels.push({
+      x: xScale(0),
+      text: String(epochs[0].epoch),
+      key: "first",
+    });
+    if (lastIdx > 0) {
+      axisLabels.push({
+        x: xScale(lastIdx),
+        text: String(epochs[lastIdx].epoch),
+        key: "last",
+      });
     }
-    const indexes = new Set<number>();
-    if (epochs.length === 0) return indexes;
-    indexes.add(0);
-    indexes.add(epochs.length - 1);
-    const bestIdx = epochs.findIndex((e) => e.is_best);
-    if (bestIdx !== -1) indexes.add(bestIdx);
-    indexes.add(currentIndex);
-    return indexes;
-  }, [epochs, currentIndex, isCompact]);
+    if (bestIdx > 0 && bestIdx < lastIdx) {
+      axisLabels.push({
+        x: bx,
+        text: String(epochs[bestIdx].epoch),
+        key: "best",
+      });
+    }
+  }
 
   return (
     <>
-      {/* Desktop timeline with dots */}
+      {/* Desktop sparkline */}
       <div className={styles.timeline}>
-        <div
-          ref={nodesRef}
-          className={`${styles.timelineNodes} ${
-            isCompact ? styles.timelineNodesCompact : ""
-          }`}
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          onClick={handleClick}
+          role="slider"
+          aria-label="Training epoch"
+          aria-valuemin={0}
+          aria-valuemax={lastIdx}
+          aria-valuenow={currentIndex}
         >
-          {lineStyle && (
-            <div
-              className={styles.timelineLine}
-              style={{ left: lineStyle.left, width: lineStyle.width }}
+          {/* Convergence curve */}
+          {epochs.length >= 2 && (
+            <polyline
+              points={points}
+              className={styles.sparklinePath}
+              vectorEffect="non-scaling-stroke"
             />
           )}
-          {epochs.map((epoch, index) => (
-            <button
-              key={epoch.epoch}
-              className={`${styles.timelineNode} ${
-                index === currentIndex ? styles.timelineNodeActive : ""
-              } ${isCompact ? styles.timelineNodeCompact : ""}`}
-              onClick={() => onSelectEpoch(index)}
-              title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
+
+          {/* Vertical drop line at active epoch */}
+          <line
+            x1={cx}
+            x2={cx}
+            y1={cy}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            className={styles.sparklineActiveLine}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Best epoch marker (open ring under the curve, labeled) */}
+          {bestIdx >= 0 && (
+            <>
+              {showBest && (
+                <text
+                  x={bx}
+                  y={SVG_PAD_TOP - 6}
+                  className={styles.sparklineBestLabel}
+                  textAnchor="middle"
+                >
+                  BEST
+                </text>
+              )}
+              <circle
+                cx={bx}
+                cy={by}
+                r={4}
+                className={styles.sparklineBestMarker}
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
+          )}
+
+          {/* Active epoch marker — filled dot on the curve */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={4.5}
+            className={styles.sparklineActiveMarker}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Axis labels (first/best/last epoch numbers) */}
+          {axisLabels.map((l) => (
+            <text
+              key={l.key}
+              x={l.x}
+              y={SVG_H - 3}
+              className={styles.sparklineAxisLabel}
+              textAnchor={
+                l.x < SVG_PAD_X + 20
+                  ? "start"
+                  : l.x > SVG_W - SVG_PAD_X - 20
+                  ? "end"
+                  : "middle"
+              }
             >
-              {epoch.is_best && showBestLabel && (
-                <span className={styles.timelineBestLabel}>Best</span>
-              )}
-              <span className={styles.timelineNodeDot} />
-              {labelVisibleIndexes.has(index) && (
-                <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
-              )}
-            </button>
+              {l.text}
+            </text>
           ))}
-        </div>
+        </svg>
       </div>
 
-      {/* Mobile timeline with arrows */}
+      {/* Mobile uses the existing prev/next arrow UI — touch-friendly,
+          handles any epoch count naturally. */}
       <div className={styles.timelineMobile}>
         <button
           className={styles.timelineArrow}
@@ -185,7 +284,9 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
           ‹
         </button>
         <div className={styles.timelineMobileCenter}>
-          {isBest && <span className={styles.timelineBestLabelMobile}>Best</span>}
+          {showBest && currentIndex === bestIdx && (
+            <span className={styles.timelineBestLabelMobile}>Best</span>
+          )}
           <span className={styles.timelineMobileText}>
             {currentIndex + 1} / {epochs.length}
           </span>
@@ -519,16 +620,24 @@ const TrainingMetricsSkeleton: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop timeline skeleton */}
+      {/* Desktop sparkline skeleton — flat baseline in the placeholder color */}
       <div className={styles.timeline}>
-        <div className={styles.timelineNodes}>
-          {Array.from({ length: 10 }, (_, i) => (
-            <div key={i} className={styles.timelineNode}>
-              <span className={styles.timelineNodeDot} style={{ opacity: 0.3 }} />
-              <span className={styles.timelineNodeLabel} style={{ opacity: 0.3 }}>{i + 1}</span>
-            </div>
-          ))}
-        </div>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          aria-hidden="true"
+        >
+          <line
+            x1={SVG_PAD_X}
+            x2={SVG_W - SVG_PAD_X}
+            y1={SVG_H - SVG_PAD_BOTTOM}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            stroke={SKELETON_BG}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
 
       {/* Mobile timeline skeleton */}
@@ -716,7 +825,7 @@ const TrainingMetricsAnimation: React.FC = () => {
   return (
     <div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
-      <EpochTimeline
+      <EpochSparkline
         epochs={epochs}
         currentIndex={currentEpochIndex}
         onSelectEpoch={handleSelectEpoch}
