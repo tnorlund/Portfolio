@@ -96,9 +96,6 @@ jobs:
               ;;
             *)
               pip install -e "${{ matrix.package }}[test]"
-              # Ensure rerunfailures is available for the --reruns flag
-              # below; pyproject [test] extras may not include it.
-              pip install pytest-rerunfailures
               ;;
           esac
 
