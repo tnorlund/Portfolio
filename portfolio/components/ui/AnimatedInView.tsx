@@ -34,14 +34,19 @@ const AnimatedInView = ({
   }));
   const [replaced, setReplaced] = useState(false);
 
-  // Reset state when component goes out of view
+  // Reset the replacement state when the component goes out of view so the
+  // first-paint sequence replays cleanly if it comes back. Do NOT reset
+  // opacity here — the underlying hook uses `triggerOnce: true`, but if a
+  // remount or fallbackInView race makes `inView` momentarily false after a
+  // successful fade-in, calling `api.set({ opacity: 0 })` permanently hides
+  // the content even after the element is fully in viewport again (no
+  // observer callback ever fires to bring it back). See AnimatedInView
+  // logo-disappear bug from May 2026.
   useEffect(() => {
     if (!inView) {
-      // Reset to initial state when out of view
       setReplaced(false);
-      api.set({ opacity: 0 });
     }
-  }, [inView, api]);
+  }, [inView]);
 
   // Initial fade in when component comes into view
   useEffect(() => {
