@@ -4,6 +4,12 @@ import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
+import {
+  axisLabelAnchor,
+  clickXToEpochIndex,
+  computeAxisLabels,
+  computeScales,
+} from "./sparkline";
 
 // Normalize ADDRESS_LINE to ADDRESS for display purposes
 const normalizeLabel = (label: string): string => {
@@ -79,13 +85,25 @@ interface EpochSparklineProps {
   showBestLabel: boolean;
 }
 
-// SVG viewBox dims (internal coordinates). CSS sizes the SVG; the
-// viewBox stretches to fit while keeping our math simple.
-const SVG_W = 600;
+// SVG viewBox dims (internal coordinates). The viewBox width tracks the
+// rendered container width (via ResizeObserver) so the curve isn't
+// horizontally stretched by `preserveAspectRatio="none"` — a 7%-or-so
+// distortion would otherwise make the early-epoch climb look gentler
+// than it really is.
+const SVG_W_FALLBACK = 600; // before measurement / SSR
 const SVG_H = 80;
 const SVG_PAD_X = 8; // left/right inset so end markers don't clip
 const SVG_PAD_TOP = 18; // room for "BEST" label
 const SVG_PAD_BOTTOM = 14; // room for x-axis epoch numbers
+const AXIS_LABEL_MIN_GAP_PX = 24; // min viewBox-x distance before suppressing best label
+
+const SPARKLINE_DIMS_FALLBACK = {
+  width: SVG_W_FALLBACK,
+  height: SVG_H,
+  padX: SVG_PAD_X,
+  padTop: SVG_PAD_TOP,
+  padBottom: SVG_PAD_BOTTOM,
+};
 
 const EpochSparkline: React.FC<EpochSparklineProps> = ({
   epochs,
@@ -94,59 +112,90 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   showBestLabel,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const [svgWidth, setSvgWidth] = useState<number>(SVG_W_FALLBACK);
 
-  const { points, bestIdx, yScale, xScale } = useMemo(() => {
-    if (epochs.length === 0) {
-      return {
-        points: "",
-        bestIdx: -1,
-        yScale: (_: number) => SVG_PAD_TOP,
-        xScale: (_: number) => SVG_PAD_X,
-      };
-    }
-    // Fit val_f1 into the plot area, with a tiny pad so 0/1 don't hug the edge.
-    // Auto-range to data so even mediocre runs have visible variation.
-    const f1Values = epochs.map((e) => e.metrics?.val_f1 ?? 0);
-    const dataMin = Math.max(0, Math.min(...f1Values) - 0.05);
-    const dataMax = Math.min(1, Math.max(...f1Values) + 0.05);
-    const span = dataMax - dataMin || 1;
+  // Track rendered SVG width so the viewBox aspect matches the screen
+  // aspect and the curve isn't horizontally stretched.
+  useEffect(() => {
+    const node = svgRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.round(entry.contentRect.width);
+        if (w > 0) setSvgWidth(w);
+      }
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
 
-    const plotLeft = SVG_PAD_X;
-    const plotRight = SVG_W - SVG_PAD_X;
-    const plotTop = SVG_PAD_TOP;
-    const plotBottom = SVG_H - SVG_PAD_BOTTOM;
-    const plotWidth = plotRight - plotLeft;
-    const plotHeight = plotBottom - plotTop;
+  const dims = useMemo(
+    () => ({ ...SPARKLINE_DIMS_FALLBACK, width: svgWidth }),
+    [svgWidth]
+  );
 
-    const xScale = (i: number) =>
-      epochs.length === 1
-        ? plotLeft + plotWidth / 2
-        : plotLeft + (i / (epochs.length - 1)) * plotWidth;
-    const yScale = (v: number) =>
-      plotBottom - ((v - dataMin) / span) * plotHeight;
-
-    const points = epochs
-      .map((e, i) => `${xScale(i).toFixed(1)},${yScale(f1Values[i]).toFixed(1)}`)
-      .join(" ");
-    const bestIdx = epochs.findIndex((e) => e.is_best);
-    return { points, bestIdx, yScale, xScale };
-  }, [epochs]);
+  const { points, yScale, xScale, dataMin, dataMax } = useMemo(
+    () => computeScales(epochs, dims),
+    [epochs, dims]
+  );
+  const bestIdx = useMemo(() => epochs.findIndex((e) => e.is_best), [epochs]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (epochs.length === 0 || !svgRef.current) return;
       const rect = svgRef.current.getBoundingClientRect();
-      // Convert click px → viewBox x → nearest epoch index
-      const xPx = e.clientX - rect.left;
-      const vbX = (xPx / rect.width) * SVG_W;
-      const plotLeft = SVG_PAD_X;
-      const plotRight = SVG_W - SVG_PAD_X;
-      const t = (vbX - plotLeft) / (plotRight - plotLeft);
-      const clampedT = Math.max(0, Math.min(1, t));
-      const idx = Math.round(clampedT * (epochs.length - 1));
+      const idx = clickXToEpochIndex(
+        e.clientX,
+        rect.left,
+        rect.width,
+        svgWidth,
+        SVG_PAD_X,
+        epochs.length
+      );
       onSelectEpoch(idx);
     },
-    [epochs.length, onSelectEpoch]
+    [epochs.length, onSelectEpoch, svgWidth]
+  );
+
+  // Keyboard navigation — required because role="slider" promises AT users
+  // they can change the value (WCAG). Arrow keys step by 1, Home/End jump
+  // to first/last.
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<SVGSVGElement>) => {
+      if (epochs.length === 0) return;
+      const last = epochs.length - 1;
+      let next = currentIndex;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+          next = Math.max(0, currentIndex - 1);
+          break;
+        case "ArrowRight":
+        case "ArrowUp":
+          next = Math.min(last, currentIndex + 1);
+          break;
+        case "PageDown":
+          next = Math.max(0, currentIndex - Math.max(1, Math.floor(last / 10)));
+          break;
+        case "PageUp":
+          next = Math.min(
+            last,
+            currentIndex + Math.max(1, Math.floor(last / 10))
+          );
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = last;
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+      if (next !== currentIndex) onSelectEpoch(next);
+    },
+    [epochs.length, currentIndex, onSelectEpoch]
   );
 
   const currentEpoch = epochs[currentIndex];
@@ -160,29 +209,12 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   const lastIdx = epochs.length - 1;
   const showBest = bestIdx >= 0 && showBestLabel;
 
-  // Axis label positions (left edge, best epoch, right edge — skip if they collide)
-  const axisLabels: Array<{ x: number; text: string; key: string }> = [];
-  if (epochs.length > 0) {
-    axisLabels.push({
-      x: xScale(0),
-      text: String(epochs[0].epoch),
-      key: "first",
-    });
-    if (lastIdx > 0) {
-      axisLabels.push({
-        x: xScale(lastIdx),
-        text: String(epochs[lastIdx].epoch),
-        key: "last",
-      });
-    }
-    if (bestIdx > 0 && bestIdx < lastIdx) {
-      axisLabels.push({
-        x: bx,
-        text: String(epochs[bestIdx].epoch),
-        key: "best",
-      });
-    }
-  }
+  const axisLabels = useMemo(
+    () => computeAxisLabels(epochs, bestIdx, xScale, AXIS_LABEL_MIN_GAP_PX),
+    [epochs, bestIdx, xScale]
+  );
+  void dataMin;
+  void dataMax;
 
   return (
     <>
@@ -190,15 +222,24 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
       <div className={styles.timeline}>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          viewBox={`0 0 ${svgWidth} ${SVG_H}`}
           preserveAspectRatio="none"
           className={styles.sparkline}
           onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
           role="slider"
-          aria-label="Training epoch"
+          aria-label={`Training epoch — use arrow keys to scrub, Home/End to jump to first/last`}
           aria-valuemin={0}
           aria-valuemax={lastIdx}
           aria-valuenow={currentIndex}
+          aria-valuetext={
+            currentEpoch
+              ? `Epoch ${currentEpoch.epoch}${
+                  currentIndex === bestIdx ? " (best)" : ""
+                }, F1 ${currentF1.toFixed(3)}`
+              : undefined
+          }
         >
           {/* Convergence curve */}
           {epochs.length >= 2 && (
@@ -238,7 +279,13 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
                 r={4}
                 className={styles.sparklineBestMarker}
                 vectorEffect="non-scaling-stroke"
-              />
+              >
+                <title>
+                  {bestEpoch
+                    ? `Best epoch ${bestEpoch.epoch} · F1 ${bestF1.toFixed(3)}`
+                    : ""}
+                </title>
+              </circle>
             </>
           )}
 
@@ -258,13 +305,7 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
               x={l.x}
               y={SVG_H - 3}
               className={styles.sparklineAxisLabel}
-              textAnchor={
-                l.x < SVG_PAD_X + 20
-                  ? "start"
-                  : l.x > SVG_W - SVG_PAD_X - 20
-                  ? "end"
-                  : "middle"
-              }
+              textAnchor={axisLabelAnchor(l.x, svgWidth, SVG_PAD_X)}
             >
               {l.text}
             </text>
@@ -623,14 +664,14 @@ const TrainingMetricsSkeleton: React.FC = () => {
       {/* Desktop sparkline skeleton — flat baseline in the placeholder color */}
       <div className={styles.timeline}>
         <svg
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          viewBox={`0 0 ${SVG_W_FALLBACK} ${SVG_H}`}
           preserveAspectRatio="none"
           className={styles.sparkline}
           aria-hidden="true"
         >
           <line
             x1={SVG_PAD_X}
-            x2={SVG_W - SVG_PAD_X}
+            x2={SVG_W_FALLBACK - SVG_PAD_X}
             y1={SVG_H - SVG_PAD_BOTTOM}
             y2={SVG_H - SVG_PAD_BOTTOM}
             stroke={SKELETON_BG}
