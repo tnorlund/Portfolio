@@ -95,6 +95,64 @@
   gap: 24px;
 }
 
+/* Sparkline: line chart of val_f1 across epochs. Click anywhere on the SVG to
+   scrub to the nearest epoch. Sizes responsively to fill the timeline row. */
+.sparkline {
+  width: 100%;
+  height: 80px;
+  cursor: pointer;
+  display: block;
+  overflow: visible;
+}
+
+.sparklinePath {
+  fill: none;
+  stroke: var(--text-color);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.sparklineActiveLine {
+  stroke: var(--text-color);
+  stroke-width: 1;
+  opacity: 0.25;
+  stroke-dasharray: 2 3;
+}
+
+.sparklineActiveMarker {
+  fill: var(--text-color);
+  stroke: var(--background-color);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.sparklineBestMarker {
+  fill: var(--background-color);
+  stroke: var(--text-color);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.sparklineBestLabel {
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--text-color);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.sparklineAxisLabel {
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--text-color);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 .timelineLine {
   position: absolute;
   top: 50%;

@@ -4,6 +4,12 @@ import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
+import {
+  axisLabelAnchor,
+  clickXToEpochIndex,
+  computeAxisLabels,
+  computeScales,
+} from "./sparkline";
 
 // Normalize ADDRESS_LINE to ADDRESS for display purposes
 const normalizeLabel = (label: string): string => {
@@ -61,84 +67,254 @@ const formatLabelAbbrev = (label: string): string => {
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
-// Epoch Timeline Component (Desktop - dots)
-interface EpochTimelineProps {
+// Cap the total autoplay duration so a 60+-epoch run finishes in a
+// reasonable time rather than ~75s at 1200ms/step.
+const TIMELINE_AUTOPLAY_TOTAL_MS = 18000;
+const TIMELINE_AUTOPLAY_MIN_STEP_MS = 250;
+const TIMELINE_AUTOPLAY_MAX_STEP_MS = 1200;
+
+// Epoch Sparkline: a line chart of val_f1 across all epochs. Replaces
+// the per-epoch dot row which couldn't scale past ~20 epochs and only
+// encoded "which epoch you're on" — the sparkline additionally encodes
+// the convergence shape, plateau, and any drift the user can read at a
+// glance. Click anywhere on the curve to scrub.
+interface EpochSparklineProps {
   epochs: TrainingMetricsEpoch[];
   currentIndex: number;
   onSelectEpoch: (index: number) => void;
   showBestLabel: boolean;
 }
 
-const EpochTimeline: React.FC<EpochTimelineProps> = ({
+// SVG viewBox dims (internal coordinates). The viewBox width tracks the
+// rendered container width (via ResizeObserver) so the curve isn't
+// horizontally stretched by `preserveAspectRatio="none"` — a 7%-or-so
+// distortion would otherwise make the early-epoch climb look gentler
+// than it really is.
+const SVG_W_FALLBACK = 600; // before measurement / SSR
+const SVG_H = 80;
+const SVG_PAD_X = 8; // left/right inset so end markers don't clip
+const SVG_PAD_TOP = 18; // room for "BEST" label
+const SVG_PAD_BOTTOM = 14; // room for x-axis epoch numbers
+const AXIS_LABEL_MIN_GAP_PX = 24; // min viewBox-x distance before suppressing best label
+
+const SPARKLINE_DIMS_FALLBACK = {
+  width: SVG_W_FALLBACK,
+  height: SVG_H,
+  padX: SVG_PAD_X,
+  padTop: SVG_PAD_TOP,
+  padBottom: SVG_PAD_BOTTOM,
+};
+
+const EpochSparkline: React.FC<EpochSparklineProps> = ({
   epochs,
   currentIndex,
   onSelectEpoch,
   showBestLabel,
 }) => {
-  const nodesRef = useRef<HTMLDivElement>(null);
-  const [lineStyle, setLineStyle] = useState<{ left: number; width: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [svgWidth, setSvgWidth] = useState<number>(SVG_W_FALLBACK);
 
+  // Track rendered SVG width so the viewBox aspect matches the screen
+  // aspect and the curve isn't horizontally stretched.
   useEffect(() => {
-    if (!nodesRef.current || epochs.length < 2) return;
+    const node = svgRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.round(entry.contentRect.width);
+        if (w > 0) setSvgWidth(w);
+      }
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
 
-    const updateLine = () => {
-      const container = nodesRef.current;
-      if (!container) return;
+  const dims = useMemo(
+    () => ({ ...SPARKLINE_DIMS_FALLBACK, width: svgWidth }),
+    [svgWidth]
+  );
 
-      const dots = container.querySelectorAll(`.${styles.timelineNodeDot}`);
-      if (dots.length < 2) return;
+  const { points, yScale, xScale, dataMin, dataMax } = useMemo(
+    () => computeScales(epochs, dims),
+    [epochs, dims]
+  );
+  const bestIdx = useMemo(() => epochs.findIndex((e) => e.is_best), [epochs]);
 
-      const firstDot = dots[0] as HTMLElement;
-      const lastDot = dots[dots.length - 1] as HTMLElement;
-      const containerRect = container.getBoundingClientRect();
-      const firstRect = firstDot.getBoundingClientRect();
-      const lastRect = lastDot.getBoundingClientRect();
+  const handleClick = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (epochs.length === 0 || !svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const idx = clickXToEpochIndex(
+        e.clientX,
+        rect.left,
+        rect.width,
+        svgWidth,
+        SVG_PAD_X,
+        epochs.length
+      );
+      onSelectEpoch(idx);
+    },
+    [epochs.length, onSelectEpoch, svgWidth]
+  );
 
-      const left = firstRect.left - containerRect.left + firstRect.width / 2;
-      const right = lastRect.left - containerRect.left + lastRect.width / 2;
-
-      setLineStyle({ left, width: right - left });
-    };
-
-    updateLine();
-    window.addEventListener('resize', updateLine);
-    return () => window.removeEventListener('resize', updateLine);
-  }, [epochs.length]);
+  // Keyboard navigation — required because role="slider" promises AT users
+  // they can change the value (WCAG). Arrow keys step by 1, Home/End jump
+  // to first/last.
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<SVGSVGElement>) => {
+      if (epochs.length === 0) return;
+      const last = epochs.length - 1;
+      let next = currentIndex;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+          next = Math.max(0, currentIndex - 1);
+          break;
+        case "ArrowRight":
+        case "ArrowUp":
+          next = Math.min(last, currentIndex + 1);
+          break;
+        case "PageDown":
+          next = Math.max(0, currentIndex - Math.max(1, Math.floor(last / 10)));
+          break;
+        case "PageUp":
+          next = Math.min(
+            last,
+            currentIndex + Math.max(1, Math.floor(last / 10))
+          );
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = last;
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+      if (next !== currentIndex) onSelectEpoch(next);
+    },
+    [epochs.length, currentIndex, onSelectEpoch]
+  );
 
   const currentEpoch = epochs[currentIndex];
-  const isBest = currentEpoch?.is_best && showBestLabel;
+  const currentF1 = currentEpoch?.metrics?.val_f1 ?? 0;
+  const cx = xScale(currentIndex);
+  const cy = yScale(currentF1);
+  const bestEpoch = bestIdx >= 0 ? epochs[bestIdx] : null;
+  const bestF1 = bestEpoch?.metrics?.val_f1 ?? 0;
+  const bx = bestIdx >= 0 ? xScale(bestIdx) : 0;
+  const by = bestIdx >= 0 ? yScale(bestF1) : 0;
+  const lastIdx = epochs.length - 1;
+  const showBest = bestIdx >= 0 && showBestLabel;
+
+  const axisLabels = useMemo(
+    () => computeAxisLabels(epochs, bestIdx, xScale, AXIS_LABEL_MIN_GAP_PX),
+    [epochs, bestIdx, xScale]
+  );
+  void dataMin;
+  void dataMax;
 
   return (
     <>
-      {/* Desktop timeline with dots */}
+      {/* Desktop sparkline */}
       <div className={styles.timeline}>
-        <div ref={nodesRef} className={styles.timelineNodes}>
-          {lineStyle && (
-            <div
-              className={styles.timelineLine}
-              style={{ left: lineStyle.left, width: lineStyle.width }}
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${svgWidth} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          role="slider"
+          aria-label={`Training epoch — use arrow keys to scrub, Home/End to jump to first/last`}
+          aria-valuemin={0}
+          aria-valuemax={lastIdx}
+          aria-valuenow={currentIndex}
+          aria-valuetext={
+            currentEpoch
+              ? `Epoch ${currentEpoch.epoch}${
+                  currentIndex === bestIdx ? " (best)" : ""
+                }, F1 ${currentF1.toFixed(3)}`
+              : undefined
+          }
+        >
+          {/* Convergence curve */}
+          {epochs.length >= 2 && (
+            <polyline
+              points={points}
+              className={styles.sparklinePath}
+              vectorEffect="non-scaling-stroke"
             />
           )}
-          {epochs.map((epoch, index) => (
-            <button
-              key={epoch.epoch}
-              className={`${styles.timelineNode} ${
-                index === currentIndex ? styles.timelineNodeActive : ""
-              }`}
-              onClick={() => onSelectEpoch(index)}
-              title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
-            >
-              {epoch.is_best && showBestLabel && (
-                <span className={styles.timelineBestLabel}>Best</span>
+
+          {/* Vertical drop line at active epoch */}
+          <line
+            x1={cx}
+            x2={cx}
+            y1={cy}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            className={styles.sparklineActiveLine}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Best epoch marker (open ring under the curve, labeled) */}
+          {bestIdx >= 0 && (
+            <>
+              {showBest && (
+                <text
+                  x={bx}
+                  y={SVG_PAD_TOP - 6}
+                  className={styles.sparklineBestLabel}
+                  textAnchor="middle"
+                >
+                  BEST
+                </text>
               )}
-              <span className={styles.timelineNodeDot} />
-              <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
-            </button>
+              <circle
+                cx={bx}
+                cy={by}
+                r={4}
+                className={styles.sparklineBestMarker}
+                vectorEffect="non-scaling-stroke"
+              >
+                <title>
+                  {bestEpoch
+                    ? `Best epoch ${bestEpoch.epoch} · F1 ${bestF1.toFixed(3)}`
+                    : ""}
+                </title>
+              </circle>
+            </>
+          )}
+
+          {/* Active epoch marker — filled dot on the curve */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={4.5}
+            className={styles.sparklineActiveMarker}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Axis labels (first/best/last epoch numbers) */}
+          {axisLabels.map((l) => (
+            <text
+              key={l.key}
+              x={l.x}
+              y={SVG_H - 3}
+              className={styles.sparklineAxisLabel}
+              textAnchor={axisLabelAnchor(l.x, svgWidth, SVG_PAD_X)}
+            >
+              {l.text}
+            </text>
           ))}
-        </div>
+        </svg>
       </div>
 
-      {/* Mobile timeline with arrows */}
+      {/* Mobile uses the existing prev/next arrow UI — touch-friendly,
+          handles any epoch count naturally. */}
       <div className={styles.timelineMobile}>
         <button
           className={styles.timelineArrow}
@@ -149,7 +325,9 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
           ‹
         </button>
         <div className={styles.timelineMobileCenter}>
-          {isBest && <span className={styles.timelineBestLabelMobile}>Best</span>}
+          {showBest && currentIndex === bestIdx && (
+            <span className={styles.timelineBestLabelMobile}>Best</span>
+          )}
           <span className={styles.timelineMobileText}>
             {currentIndex + 1} / {epochs.length}
           </span>
@@ -483,16 +661,24 @@ const TrainingMetricsSkeleton: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop timeline skeleton */}
+      {/* Desktop sparkline skeleton — flat baseline in the placeholder color */}
       <div className={styles.timeline}>
-        <div className={styles.timelineNodes}>
-          {Array.from({ length: 10 }, (_, i) => (
-            <div key={i} className={styles.timelineNode}>
-              <span className={styles.timelineNodeDot} style={{ opacity: 0.3 }} />
-              <span className={styles.timelineNodeLabel} style={{ opacity: 0.3 }}>{i + 1}</span>
-            </div>
-          ))}
-        </div>
+        <svg
+          viewBox={`0 0 ${SVG_W_FALLBACK} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          aria-hidden="true"
+        >
+          <line
+            x1={SVG_PAD_X}
+            x2={SVG_W_FALLBACK - SVG_PAD_X}
+            y1={SVG_H - SVG_PAD_BOTTOM}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            stroke={SKELETON_BG}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
 
       {/* Mobile timeline skeleton */}
@@ -620,7 +806,17 @@ const TrainingMetricsAnimation: React.FC = () => {
     // Find the best epoch index
     const bestIndex = epochs.findIndex((e) => e.is_best);
 
-    // Start from epoch 0, animate through ALL epochs, then land on best
+    // Start from epoch 0, animate through ALL epochs, then land on best.
+    // Step interval adapts to epoch count so the whole playback stays
+    // bounded — at ~60+ epochs, 1200ms/step would take 75s, which is too
+    // long for a marquee animation.
+    const stepMs = Math.max(
+      TIMELINE_AUTOPLAY_MIN_STEP_MS,
+      Math.min(
+        TIMELINE_AUTOPLAY_MAX_STEP_MS,
+        Math.round(TIMELINE_AUTOPLAY_TOTAL_MS / Math.max(1, epochs.length))
+      )
+    );
     let currentIndex = 0;
     setCurrentEpochIndex(0);
 
@@ -640,7 +836,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       }
 
       setCurrentEpochIndex(currentIndex);
-    }, 1200);
+    }, stepMs);
 
     return () => clearInterval(interval);
   }, [inView, epochs, isLoading]);
@@ -670,7 +866,7 @@ const TrainingMetricsAnimation: React.FC = () => {
   return (
     <div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
-      <EpochTimeline
+      <EpochSparkline
         epochs={epochs}
         currentIndex={currentEpochIndex}
         onSelectEpoch={handleSelectEpoch}

@@ -18,11 +18,23 @@ logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
-# Featured job ID - hardcoded for the portfolio demo
-# This can be updated to point to the best trained model
+# Featured job ID for the portfolio demo.
+#
+# `FEATURED_JOB_ID` is read from the Lambda's environment if present, but
+# Pulumi does NOT currently set it for any stack (only `DYNAMODB_TABLE_NAME`
+# is wired in `infra/routes/job_training_metrics/infra.py`). The os.environ
+# check is kept as a forward-compatible escape hatch — wire the env var in
+# Pulumi config if you want to swap the featured run without a code deploy.
+# Until then, this hardcoded default is what actually serves prod requests.
+#
+# Current featured run: layoutlm-v14-loose-clip-may2026
+#   per-receipt-window training, class-weighted CE clipped [0.5, 3.0],
+#   best_f1 = 0.785 at epoch 48 of 100 (early-stopped at 63).
+# To swap: copy the new run's Job + JobMetric rows from dev DDB to prod
+# DDB (otherwise the handler returns 404), then update this constant.
 FEATURED_JOB_ID = os.environ.get(
     "FEATURED_JOB_ID",
-    "18da9414-37a5-4837-b65a-a03b7f8df4cd",  # layoutlm-hybrid-8-labels-orig-label-fix
+    "9775a6f5-80f5-435b-b711-47b69ce174bc",
 )
 
 
@@ -52,6 +64,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Support "featured" as a special job_id alias
         if job_id == "featured":
+            logger.info("Resolved featured -> %s", FEATURED_JOB_ID)
             job_id = FEATURED_JOB_ID
 
         # Parse query parameters
