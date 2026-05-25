@@ -95,6 +95,26 @@
   gap: 24px;
 }
 
+/* Compact mode: 60+-epoch runs (e.g. v14) overflow the container at the
+   default gap. Tighten spacing and let flex distribute across the row. */
+.timelineNodesCompact {
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  justify-content: space-between;
+}
+
+.timelineNodeCompact {
+  width: 8px;
+  height: 8px;
+}
+
+.timelineNodeCompact .timelineNodeDot {
+  width: 8px;
+  height: 8px;
+  border-width: 1.5px;
+}
+
 .timelineLine {
   position: absolute;
   top: 50%;

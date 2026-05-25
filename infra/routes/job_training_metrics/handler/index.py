@@ -18,11 +18,14 @@ logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
-# Featured job ID - hardcoded for the portfolio demo
-# This can be updated to point to the best trained model
+# Featured job ID - hardcoded for the portfolio demo.
+# Override at deploy time with FEATURED_JOB_ID env var to switch the
+# featured run without code change. The hardcoded default is the most
+# recent best-performing model trained on the new per-receipt-window
+# pipeline (PR #904) with class-weighted loss tuned by PR #905.
 FEATURED_JOB_ID = os.environ.get(
     "FEATURED_JOB_ID",
-    "18da9414-37a5-4837-b65a-a03b7f8df4cd",  # layoutlm-hybrid-8-labels-orig-label-fix
+    "9775a6f5-80f5-435b-b711-47b69ce174bc",  # layoutlm-v14-loose-clip-may2026 (best_f1=0.785)
 )
 
 

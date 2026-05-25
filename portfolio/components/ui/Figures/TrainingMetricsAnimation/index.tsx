@@ -61,6 +61,17 @@ const formatLabelAbbrev = (label: string): string => {
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
+// Timeline density tuning. Receipts trained with the v14 recipe and beyond
+// run 60+ epochs; rendering one dot per epoch overflows the container and
+// the per-dot numeric labels overlap. When we exceed this threshold we
+// switch to a compact rendering (smaller gap, no per-dot numbers).
+const TIMELINE_COMPACT_THRESHOLD = 20;
+// Cap the total autoplay duration so a 60+-epoch run finishes in a
+// reasonable time rather than ~75s at 1200ms/step.
+const TIMELINE_AUTOPLAY_TOTAL_MS = 18000;
+const TIMELINE_AUTOPLAY_MIN_STEP_MS = 250;
+const TIMELINE_AUTOPLAY_MAX_STEP_MS = 1200;
+
 // Epoch Timeline Component (Desktop - dots)
 interface EpochTimelineProps {
   epochs: TrainingMetricsEpoch[];
@@ -107,12 +118,35 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
 
   const currentEpoch = epochs[currentIndex];
   const isBest = currentEpoch?.is_best && showBestLabel;
+  const isCompact = epochs.length > TIMELINE_COMPACT_THRESHOLD;
+
+  // Decide which per-dot numeric labels to render. In compact mode we only
+  // show first, last, best, and the currently-active epoch number so the
+  // labels don't collide visually.
+  const labelVisibleIndexes = useMemo(() => {
+    if (!isCompact) {
+      return new Set(epochs.map((_, i) => i));
+    }
+    const indexes = new Set<number>();
+    if (epochs.length === 0) return indexes;
+    indexes.add(0);
+    indexes.add(epochs.length - 1);
+    const bestIdx = epochs.findIndex((e) => e.is_best);
+    if (bestIdx !== -1) indexes.add(bestIdx);
+    indexes.add(currentIndex);
+    return indexes;
+  }, [epochs, currentIndex, isCompact]);
 
   return (
     <>
       {/* Desktop timeline with dots */}
       <div className={styles.timeline}>
-        <div ref={nodesRef} className={styles.timelineNodes}>
+        <div
+          ref={nodesRef}
+          className={`${styles.timelineNodes} ${
+            isCompact ? styles.timelineNodesCompact : ""
+          }`}
+        >
           {lineStyle && (
             <div
               className={styles.timelineLine}
@@ -124,7 +158,7 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
               key={epoch.epoch}
               className={`${styles.timelineNode} ${
                 index === currentIndex ? styles.timelineNodeActive : ""
-              }`}
+              } ${isCompact ? styles.timelineNodeCompact : ""}`}
               onClick={() => onSelectEpoch(index)}
               title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
             >
@@ -132,7 +166,9 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
                 <span className={styles.timelineBestLabel}>Best</span>
               )}
               <span className={styles.timelineNodeDot} />
-              <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
+              {labelVisibleIndexes.has(index) && (
+                <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
+              )}
             </button>
           ))}
         </div>
@@ -620,7 +656,17 @@ const TrainingMetricsAnimation: React.FC = () => {
     // Find the best epoch index
     const bestIndex = epochs.findIndex((e) => e.is_best);
 
-    // Start from epoch 0, animate through ALL epochs, then land on best
+    // Start from epoch 0, animate through ALL epochs, then land on best.
+    // Step interval adapts to epoch count so the whole playback stays
+    // bounded — at ~60+ epochs, 1200ms/step would take 75s, which is too
+    // long for a marquee animation.
+    const stepMs = Math.max(
+      TIMELINE_AUTOPLAY_MIN_STEP_MS,
+      Math.min(
+        TIMELINE_AUTOPLAY_MAX_STEP_MS,
+        Math.round(TIMELINE_AUTOPLAY_TOTAL_MS / Math.max(1, epochs.length))
+      )
+    );
     let currentIndex = 0;
     setCurrentEpochIndex(0);
 
@@ -640,7 +686,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       }
 
       setCurrentEpochIndex(currentIndex);
-    }, 1200);
+    }, stepMs);
 
     return () => clearInterval(interval);
   }, [inView, epochs, isLoading]);
