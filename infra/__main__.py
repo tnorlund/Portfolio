@@ -1304,16 +1304,23 @@ pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.
 # automatically re-evaluates ReceiptWord labels whenever a word's
 # text changes (e.g. after the Mac worker writes new OCR text from
 # a regional re-OCR job). Closes the loop so labels don't go stale.
+#
+# Per-stack rollout switch — defaults to True (dry-run) so first
+# deploy is observe-only. Flip per stack with:
+#   pulumi config set portfolio:label_refresh_dry_run false --stack dev
+# Then verify dev for 48h before flipping prod.
+_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
+    "label_refresh_dry_run"
+)
 label_refresh_lambda = create_label_refresh_lambda(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
-    # Start in dry-run so the first deploy logs proposed updates only.
-    # Flip to false after eyeballing the CloudWatch logs.
-    dry_run=True,
+    dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
 )
 pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
 pulumi.export("label_refresh_lambda_name", label_refresh_lambda.lambda_function.name)
+pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport

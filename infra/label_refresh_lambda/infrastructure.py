@@ -228,6 +228,40 @@ class LabelRefreshLambda(ComponentResource):
         #   SK = "RECEIPT#{rid:05d}#LINE#{lid:05d}#WORD#{wid:05d}"
         # The AWS-side filter keeps invocation volume manageable; the
         # handler does the precise SK regex + actual text-change check.
+        #
+        # Failure handling: a single poison record can otherwise retry
+        # against the shard until the 24h stream record expires, blocking
+        # downstream consumers. Mirror the resilience settings used by
+        # chromadb_compaction (the only other consumer on this stream).
+        # An SQS DLQ captures records that survive the bisect retries so
+        # an operator can replay them after a fix.
+        dlq = aws.sqs.Queue(
+            f"{name}-dlq",
+            message_retention_seconds=14 * 24 * 60 * 60,  # 14 days
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+
+        RolePolicy(
+            f"{name}-lambda-dlq-policy",
+            role=lambda_role.id,
+            policy=dlq.arn.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["sqs:SendMessage"],
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
         self.event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-stream-mapping",
             event_source_arn=dynamodb_stream_arn,
@@ -235,6 +269,15 @@ class LabelRefreshLambda(ComponentResource):
             starting_position="LATEST",
             batch_size=10,
             maximum_batching_window_in_seconds=5,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
+            bisect_batch_on_function_error=True,
+            function_response_types=["ReportBatchItemFailures"],
+            destination_config=aws.lambda_.EventSourceMappingDestinationConfigArgs(
+                on_failure=aws.lambda_.EventSourceMappingDestinationConfigOnFailureArgs(
+                    destination_arn=dlq.arn,
+                ),
+            ),
             filter_criteria=aws.lambda_.EventSourceMappingFilterCriteriaArgs(
                 filters=[
                     aws.lambda_.EventSourceMappingFilterCriteriaFilterArgs(
@@ -254,12 +297,17 @@ class LabelRefreshLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        self.dlq = dlq
+        self.dlq_url = dlq.url
+        self.dlq_arn = dlq.arn
+
         self.register_outputs(
             {
                 "lambda_arn": self.lambda_arn,
                 "lambda_name": self.lambda_function.name,
                 "lambda_role_name": self.lambda_role_name,
                 "event_source_mapping_uuid": self.event_source_mapping.uuid,
+                "dlq_url": self.dlq_url,
             }
         )
 

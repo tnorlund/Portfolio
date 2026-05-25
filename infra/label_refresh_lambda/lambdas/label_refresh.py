@@ -246,6 +246,46 @@ def _process_word(
         "updates": [],
     }
 
+    # ------------------------------------------------------------------
+    # Freshness gate. After a regional re-OCR, the overlay Lambda writes
+    # new ReceiptWord.text to DynamoDB AND kicks off a re-embedding +
+    # COMPACTION_RUN that eventually refreshes Chroma. Those two halves
+    # race: this Lambda fires off the DynamoDB MODIFY ~5s after the
+    # write, but the COMPACTION_RUN can take 30s–2min to land in Chroma.
+    # If we validate labels against the OLD embedding/text in Chroma we
+    # will write confidently-wrong updates. Compare what Chroma currently
+    # has for this word against the new text and bail out if stale —
+    # the next scheduled refresh (or a subsequent stream event after
+    # Chroma catches up) will pick the word up.
+    # ------------------------------------------------------------------
+    chroma_id = (
+        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+        f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
+    )
+    try:
+        chroma_row = words_collection.get(
+            ids=[chroma_id], include=["metadatas"]
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "Chroma get failed for %s/%d/%d/%d: %s",
+            image_id, receipt_id, line_id, word_id, exc,
+        )
+        out["error"] = f"chroma_get: {exc}"
+        return out
+
+    chroma_metas = chroma_row.get("metadatas") or []
+    if not chroma_row.get("ids") or not chroma_metas:
+        out["skipped_reason"] = "no_chroma_row"
+        return out
+
+    chroma_text = (chroma_metas[0] or {}).get("text", "")
+    if chroma_text != new_text:
+        # Chroma is still stale — compaction hasn't caught up.
+        out["skipped_reason"] = "chroma_stale"
+        out["chroma_text"] = chroma_text
+        return out
+
     try:
         # The DynamoClient exposes word-label lookup via receipt details.
         # Pull just this receipt's labels and filter to this word.
@@ -294,13 +334,31 @@ def _process_word(
         if dry_run:
             continue
 
+        # Preserve human attribution: only stamp our system identity
+        # over another system's, never over a human reviewer. The
+        # existing system identities we know of are emitted by the
+        # MCP server (`mcp-claude-review`), the label-evaluator Lambda
+        # (`label-evaluator-llm`), and the simple analyzer
+        # (`simple_receipt_analyzer`). Anything else — empty, None,
+        # or a username — is treated as human and left alone.
+        SYSTEM_PROPOSED_BY = {
+            "",
+            "label-evaluator-llm",
+            "simple_receipt_analyzer",
+            "mcp-claude-review",
+            "label-refresh-on-text-change",
+        }
         label.validation_status = new_status
-        label.label_proposed_by = "label-refresh-on-text-change"
+        current_attribution = (label.label_proposed_by or "")
+        if current_attribution in SYSTEM_PROPOSED_BY:
+            label.label_proposed_by = "label-refresh-on-text-change"
         try:
             dynamo.update_receipt_word_label(label)
             out["labels_updated"] += 1
         except Exception as exc:  # pylint: disable=broad-except
-            logger.error(
+            logger.warning(
+                # ConditionalCheckFailedException is a benign race
+                # (label deleted between read and write), not an alarm.
                 "Failed to update label %s on %s/%d/%d/%d: %s",
                 label.label,
                 image_id,
@@ -346,9 +404,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     total_updates = sum(r.get("labels_updated", 0) for r in processed)
     total_proposed = sum(len(r.get("updates", [])) for r in processed)
+    stale = sum(1 for r in processed if r.get("skipped_reason") == "chroma_stale")
+    no_chroma = sum(1 for r in processed if r.get("skipped_reason") == "no_chroma_row")
     response = {
         "processed": len(processed),
-        "skipped": skipped,
+        "skipped_non_target": skipped,
+        "skipped_chroma_stale": stale,
+        "skipped_no_chroma_row": no_chroma,
         "labels_proposed": total_proposed,
         "labels_updated": total_updates,
         "dry_run": dry_run,
