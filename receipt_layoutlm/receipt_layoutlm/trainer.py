@@ -1071,14 +1071,21 @@ class ReceiptLayoutLMTrainer:
         # frequency, clipped to [w_min, w_max]. Defaults preserve v13 behavior.
         # Tighten via LAYOUTLM_CLASS_WEIGHT_MIN / _MAX to reduce over-prediction
         # of rare classes at the cost of accepting more O bias.
-        try:
-            w_min = float(os.getenv("LAYOUTLM_CLASS_WEIGHT_MIN", "0.3"))
-        except ValueError:
-            w_min = 0.3
-        try:
-            w_max = float(os.getenv("LAYOUTLM_CLASS_WEIGHT_MAX", "5.0"))
-        except ValueError:
-            w_max = 5.0
+        def _read_float_env(name: str, default: float) -> float:
+            raw = os.getenv(name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except ValueError:
+                print(
+                    f"[trainer] WARN: {name}={raw!r} is not a valid float; "
+                    f"falling back to default {default}"
+                )
+                return default
+
+        w_min = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MIN", 0.3)
+        w_max = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MAX", 5.0)
         if not (0 < w_min <= w_max):
             raise ValueError(
                 f"class weight clip range invalid: "

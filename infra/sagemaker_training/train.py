@@ -48,7 +48,14 @@ def get_hyperparameters() -> dict:
     # Also check individual SM_HP_* variables
     for key, value in os.environ.items():
         if key.startswith("SM_HP_"):
-            param_name = key[6:].lower()  # Remove SM_HP_ prefix
+            suffix = key[6:]  # Remove SM_HP_ prefix
+            # Preserve original case for `env_*` keys — they get promoted to
+            # process env vars in main() and the downstream code reads
+            # LAYOUTLM_CLASS_WEIGHT_MAX, not layoutlm_class_weight_max.
+            if suffix.lower().startswith("env_"):
+                param_name = "env_" + suffix[len("env_"):]
+            else:
+                param_name = suffix.lower()
             hps[param_name] = value
 
     return hps
