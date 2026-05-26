@@ -45,6 +45,7 @@ class SageMakerTrainingInfra(ComponentResource):
         self,
         name: str,
         dynamodb_table_name: Output[str],
+        raw_bucket_arn: Output[str] | None = None,
         opts: ResourceOptions | None = None,
     ):
         super().__init__("custom:ml:SageMakerTrainingInfra", name, None, opts)
@@ -167,14 +168,16 @@ class SageMakerTrainingInfra(ComponentResource):
         )
 
         # SageMaker execution policy
+        policy_inputs = [
+            self.output_bucket.arn,
+            self.ecr_repo.arn,
+            dynamodb_table_name,
+            raw_bucket_arn or "",
+        ]
         sagemaker_policy = aws.iam.RolePolicy(
             f"{name}-sagemaker-policy",
             role=self.sagemaker_role.id,
-            policy=Output.all(
-                self.output_bucket.arn,
-                self.ecr_repo.arn,
-                dynamodb_table_name,
-            ).apply(
+            policy=Output.all(*policy_inputs).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -247,7 +250,19 @@ class SageMakerTrainingInfra(ComponentResource):
                                     }
                                 },
                             },
-                        ],
+                        ]
+                        + (
+                            [
+                                # S3 read access for raw receipt images (LayoutLMv3 image-based training)
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:GetObject",
+                                    "Resource": f"{args[3]}/*",
+                                },
+                            ]
+                            if args[3]
+                            else []
+                        ),
                     }
                 )
             ),

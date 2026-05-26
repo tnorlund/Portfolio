@@ -3,7 +3,7 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import MERGE_PRESETS, DataConfig, TrainingConfig
+from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
 from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
@@ -79,6 +79,12 @@ def main() -> None:
     train_p.add_argument("--lr", type=float, default=5e-5)
     train_p.add_argument(
         "--pretrained", default="microsoft/layoutlm-base-uncased"
+    )
+    train_p.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 (text+bbox) or v3 (text+bbox+image)",
     )
     train_p.add_argument(
         "--warmup-ratio",
@@ -282,6 +288,12 @@ def main() -> None:
         default=None,
         help="Quantization mode for smaller model size",
     )
+    export_p.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 (text+bbox) or v3 (text+bbox+image)",
+    )
 
     # Validate CoreML subcommand
     validate_p = sub.add_parser(
@@ -366,11 +378,18 @@ def main() -> None:
             dynamo_table_name=args.dynamo_table,
             aws_region=args.region,
         )
+        pretrained = args.pretrained
+        if (
+            args.model_version == "v3"
+            and pretrained == "microsoft/layoutlm-base-uncased"
+        ):
+            pretrained = MODEL_DEFAULTS[ModelVersion.V3]
         train_cfg = TrainingConfig(
             epochs=args.epochs,
             batch_size=args.batch_size,
             learning_rate=args.lr,
-            pretrained_model_name=args.pretrained,
+            pretrained_model_name=pretrained,
+            model_version=args.model_version,
         )
         if args.warmup_ratio is not None:
             train_cfg.warmup_ratio = args.warmup_ratio
@@ -457,6 +476,7 @@ def main() -> None:
                 model_name=args.model_name,
                 local_cache=args.local_cache,
                 quantize=args.quantize,
+                model_version=args.model_version,
             )
         else:
             bundle_path = export_coreml(
@@ -464,6 +484,7 @@ def main() -> None:
                 output_dir=args.output_dir,
                 model_name=args.model_name,
                 quantize=args.quantize,
+                model_version=args.model_version,
             )
         print(f"CoreML bundle created: {bundle_path}")
 

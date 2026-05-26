@@ -92,6 +92,7 @@ def build_train_command(hps: dict) -> list[str]:
         "pretrained": "--pretrained",
         "o_entity_ratio": "--o-entity-ratio",
         "resume_from_s3": "--resume-from-s3",
+        "model_version": "--model-version",
     }
 
     for hp_name, cli_flag in param_mapping.items():

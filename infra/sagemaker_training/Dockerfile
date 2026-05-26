@@ -52,6 +52,12 @@ from transformers import LayoutLMTokenizerFast, LayoutLMForTokenClassification; 
 LayoutLMTokenizerFast.from_pretrained('microsoft/layoutlm-base-uncased'); \
 LayoutLMForTokenClassification.from_pretrained('microsoft/layoutlm-base-uncased')"
 
+# Pre-download v3 model weights
+RUN python -c "\
+from transformers import LayoutLMv3TokenizerFast, LayoutLMv3ForTokenClassification; \
+LayoutLMv3TokenizerFast.from_pretrained('microsoft/layoutlmv3-base'); \
+LayoutLMv3ForTokenClassification.from_pretrained('microsoft/layoutlmv3-base')"
+
 # Copy training entrypoint
 COPY infra/sagemaker_training/train.py /opt/ml/code/train.py
 

@@ -110,9 +110,19 @@ class ReceiptLayoutLMTrainer:
             except AttributeError:
                 pass
 
-        self.tokenizer = transformers.LayoutLMTokenizerFast.from_pretrained(
-            self.training_config.pretrained_model_name
-        )
+        if self.training_config.model_version == "v3":
+            self.tokenizer = transformers.LayoutLMv3TokenizerFast.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor = transformers.LayoutLMv3ImageProcessor.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor.apply_ocr = False
+        else:
+            self.tokenizer = transformers.LayoutLMTokenizerFast.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor = None
 
     def _label_list(self, dataset) -> List[str]:
         tags = set()
@@ -159,12 +169,14 @@ class ReceiptLayoutLMTrainer:
                     self.dynamo,
                     label_merges=effective_label_merges,
                     allowed_labels=self.data_config.allowed_labels,
+                    model_version=self.training_config.model_version,
                 )
         else:
             datasets, split_metadata, merge_info = load_datasets(
                 self.dynamo,
                 label_merges=effective_label_merges,
                 allowed_labels=self.data_config.allowed_labels,
+                model_version=self.training_config.model_version,
             )
 
         # Compute dataset counts prior to tokenization for run logging
@@ -225,13 +237,16 @@ class ReceiptLayoutLMTrainer:
             i: label for i, label in enumerate(label_list)
         }
 
-        model = (
-            self._transformers.LayoutLMForTokenClassification.from_pretrained(
-                self.training_config.pretrained_model_name,
-                num_labels=len(label_list),
-                id2label=id2label,
-                label2id=label2id,
-            )
+        if self.training_config.model_version == "v3":
+            model_cls = self._transformers.LayoutLMv3ForTokenClassification
+        else:
+            model_cls = self._transformers.LayoutLMForTokenClassification
+
+        model = model_cls.from_pretrained(
+            self.training_config.pretrained_model_name,
+            num_labels=len(label_list),
+            id2label=id2label,
+            label2id=label2id,
         )
 
         # Initialize category-aware label embeddings if enabled
@@ -274,19 +289,86 @@ class ReceiptLayoutLMTrainer:
             encoding["bbox"] = bboxes
             return encoding
 
-        preprocess = partial(
-            _preprocess,
-            tokenizer=self.tokenizer,
-            label2id=label2id,
-            max_len=self.data_config.max_seq_length,
-        )
+        def _preprocess_v3(
+            example, tokenizer, label2id, max_len: int, image_processor, image_cache_dir
+        ):
+            from PIL import Image as PILImage
+
+            encoding = tokenizer(
+                example["tokens"],
+                is_split_into_words=True,
+                truncation=True,
+                padding="max_length",
+                max_length=max_len,
+                return_attention_mask=True,
+            )
+            word_ids = encoding.word_ids()
+            seq_len = len(encoding["input_ids"])
+            labels = []
+            bboxes = []
+            prev_word_id = None
+            for i in range(seq_len):
+                wid = word_ids[i]
+                if wid is None:
+                    labels.append(-100)
+                    bboxes.append([0, 0, 0, 0])
+                else:
+                    if wid != prev_word_id:
+                        lbl = example["ner_tags"][wid]
+                        labels.append(label2id.get(lbl, 0))
+                    else:
+                        labels.append(-100)
+                    bboxes.append(example["bboxes"][wid])
+                    prev_word_id = wid
+            encoding["labels"] = labels
+            encoding["bbox"] = bboxes
+
+            img_path = os.path.join(image_cache_dir, f"{example['image_id']}.png")
+            if os.path.exists(img_path):
+                image = PILImage.open(img_path).convert("RGB")
+            else:
+                image = PILImage.new("RGB", (224, 224), (128, 128, 128))
+            pixel_values = image_processor(images=image, return_tensors="pt")[
+                "pixel_values"
+            ].squeeze(0)
+            encoding["pixel_values"] = pixel_values
+
+            if "token_type_ids" in encoding:
+                del encoding["token_type_ids"]
+
+            return encoding
+
+        if self.training_config.model_version == "v3":
+            image_cache_dir = (
+                split_metadata.image_cache_dir
+                if split_metadata and split_metadata.image_cache_dir
+                else "/tmp/receipt_images"
+            )
+            preprocess = partial(
+                _preprocess_v3,
+                tokenizer=self.tokenizer,
+                label2id=label2id,
+                max_len=self.data_config.max_seq_length,
+                image_processor=self._image_processor,
+                image_cache_dir=image_cache_dir,
+            )
+        else:
+            preprocess = partial(
+                _preprocess,
+                tokenizer=self.tokenizer,
+                label2id=label2id,
+                max_len=self.data_config.max_seq_length,
+            )
+
+        # Columns to remove during preprocessing
+        remove_cols = ["tokens", "bboxes", "ner_tags", "image_id"]
 
         # Parallelize preprocessing across CPU cores
         # Disable cache to minimize local disk usage on SageMaker instances
         num_proc = max(1, min(os.cpu_count() or 1, 8))
         datasets = datasets.map(  # type: ignore[attr-defined]
             preprocess,
-            remove_columns=["tokens", "bboxes", "ner_tags"],
+            remove_columns=remove_cols,
             num_proc=num_proc,
             desc="Tokenize+align",
             load_from_cache_file=False,  # Don't cache to disk
@@ -413,7 +495,7 @@ class ReceiptLayoutLMTrainer:
 
         # Build job_config with explicit merge info for experiment tracking
         job_config_dict = {
-            "model": "layoutlm",
+            "model": f"layoutlm-{self.training_config.model_version}",
             **asdict(self.training_config),
             **asdict(self.data_config),
             # Explicit merge info for reproducibility and comparison
@@ -1431,18 +1513,23 @@ class ReceiptLayoutLMTrainer:
                 label_to_category[label] = category
 
         # Get label embeddings from the classifier layer
-        # The classifier is typically a linear layer: classifier.weight is [num_labels, hidden_size]
-        if not hasattr(model, "classifier") or not hasattr(
-            model.classifier, "weight"
-        ):
+        # v1: classifier.weight is [num_labels, hidden_size]
+        # v3: classifier.out_proj.weight is [num_labels, hidden_size]
+        if not hasattr(model, "classifier"):
             print(
-                "⚠️  Model doesn't have classifier.weight, skipping category-aware initialization"
+                "⚠️  Model doesn't have classifier, skipping category-aware initialization"
             )
             return
 
-        label_embeddings = (
-            model.classifier.weight.data
-        )  # Shape: [num_labels, hidden_size]
+        if hasattr(model.classifier, "out_proj"):
+            label_embeddings = model.classifier.out_proj.weight.data
+        elif hasattr(model.classifier, "weight"):
+            label_embeddings = model.classifier.weight.data
+        else:
+            print(
+                "⚠️  Model classifier has no weight or out_proj, skipping category-aware initialization"
+            )
+            return
 
         # Only process labels that exist in our label2id mapping
         available_labels = set(label2id.keys())

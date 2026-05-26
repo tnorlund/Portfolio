@@ -32,6 +32,8 @@ class SplitMetadata:
     entity_lines_total: int
     # Target ratio used
     target_o_entity_ratio: float
+    # v3 image cache directory (set when model_version == "v3")
+    image_cache_dir: Optional[str] = None
 
 
 @dataclass
@@ -330,12 +332,33 @@ class MergeInfo:
     resulting_labels: List[str]
 
 
+def download_receipt_images(
+    dynamo: DynamoClient,
+    image_ids: set[str],
+    cache_dir: str = "/tmp/receipt_images",
+) -> str:
+    """Download receipt images from S3 for v3 training. Returns cache_dir."""
+    import boto3
+
+    os.makedirs(cache_dir, exist_ok=True)
+    s3 = boto3.client("s3")
+    for img_id in image_ids:
+        local_path = os.path.join(cache_dir, f"{img_id}.png")
+        if os.path.exists(local_path):
+            continue
+        image = dynamo.get_image(img_id)
+        if image and image.raw_s3_bucket and image.raw_s3_key:
+            s3.download_file(image.raw_s3_bucket, image.raw_s3_key, local_path)
+    return cache_dir
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
     random_seed: Optional[int] = None,
     label_merges: Optional[Dict[str, List[str]]] = None,
     allowed_labels: Optional[List[str]] = None,
+    model_version: str = "v1",
 ) -> Tuple[Any, SplitMetadata, MergeInfo]:
     """Load and process datasets from DynamoDB.
 
@@ -488,6 +511,7 @@ def load_datasets(
             "bboxes": Sequence(Sequence(Value("int64"))),
             "ner_tags": Sequence(Value("string")),
             "receipt_key": Value("string"),
+            "image_id": Value("string"),
         }
     )
 
@@ -497,6 +521,7 @@ def load_datasets(
             "bboxes": [ex.bboxes for ex in examples],
             "ner_tags": [ex.ner_tags for ex in examples],
             "receipt_key": [ex.receipt_key for ex in examples],
+            "image_id": [ex.image_id for ex in examples],
         },
         features=features,
     )
@@ -609,6 +634,12 @@ def load_datasets(
         else float("inf")
     )
 
+    # Download images for v3 training
+    image_cache_dir: Optional[str] = None
+    if model_version == "v3":
+        unique_image_ids = {ex.image_id for ex in examples}
+        image_cache_dir = download_receipt_images(dynamo, unique_image_ids)
+
     # Create split metadata
     split_metadata = SplitMetadata(
         random_seed=random_seed,
@@ -626,6 +657,7 @@ def load_datasets(
         o_only_lines_dropped=o_only_lines_count - o_only_lines_kept,
         entity_lines_total=entity_lines_count,
         target_o_entity_ratio=target_ratio,
+        image_cache_dir=image_cache_dir,
     )
 
     train_ds = dataset.select(filtered_train_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
