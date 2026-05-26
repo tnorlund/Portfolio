@@ -435,7 +435,8 @@ class ReceiptLayoutLMTrainer:
         if "group_by_length" in ta_params:
             args_kwargs["group_by_length"] = True
         if "gradient_checkpointing" in ta_params:
-            args_kwargs["gradient_checkpointing"] = True
+            if self.training_config.model_version != "v3":
+                args_kwargs["gradient_checkpointing"] = True
         if "optim" in ta_params:
             args_kwargs["optim"] = "adamw_torch"
         # Enable torch.compile only if Triton backend is available
