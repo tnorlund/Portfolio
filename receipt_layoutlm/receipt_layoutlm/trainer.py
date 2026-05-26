@@ -256,52 +256,8 @@ class ReceiptLayoutLMTrainer:
             tokenizer=self.tokenizer
         )
 
-        # Prepare features: tokenize and align labels/bboxes
-        def _preprocess(example, tokenizer, label2id, max_len: int):
-            encoding = tokenizer(
-                example["tokens"],
-                is_split_into_words=True,
-                truncation=True,
-                padding="max_length",
-                max_length=max_len,
-                return_attention_mask=True,
-            )
-            word_ids = encoding.word_ids()
-            seq_len = len(encoding["input_ids"])  # includes padding/specials
-            labels = []
-            bboxes = []
-            prev_word_id = None
-            for i in range(seq_len):
-                wid = word_ids[i]
-                if wid is None:
-                    labels.append(-100)
-                    bboxes.append([0, 0, 0, 0])
-                else:
-                    # Supervise only the first subtoken of each word; others = -100
-                    if wid != prev_word_id:
-                        lbl = example["ner_tags"][wid]
-                        labels.append(label2id.get(lbl, 0))
-                    else:
-                        labels.append(-100)
-                    bboxes.append(example["bboxes"][wid])
-                    prev_word_id = wid
-            encoding["labels"] = labels
-            encoding["bbox"] = bboxes
-            return encoding
-
-        def _preprocess_v3(
-            example, tokenizer, label2id, max_len: int, image_processor, image_cache_dir
-        ):
-            from PIL import Image as PILImage
-
-            encoding = tokenizer(
-                example["tokens"],
-                is_split_into_words=True,
-                truncation=True,
-                padding="max_length",
-                max_length=max_len,
-                return_attention_mask=True,
-            )
+        # Shared label/bbox alignment for both v1 and v3
+        def _align_labels_and_bboxes(encoding, example, label2id):
             word_ids = encoding.word_ids()
             seq_len = len(encoding["input_ids"])
             labels = []
@@ -322,6 +278,33 @@ class ReceiptLayoutLMTrainer:
                     prev_word_id = wid
             encoding["labels"] = labels
             encoding["bbox"] = bboxes
+
+        def _preprocess(example, tokenizer, label2id, max_len: int):
+            encoding = tokenizer(
+                example["tokens"],
+                is_split_into_words=True,
+                truncation=True,
+                padding="max_length",
+                max_length=max_len,
+                return_attention_mask=True,
+            )
+            _align_labels_and_bboxes(encoding, example, label2id)
+            return encoding
+
+        def _preprocess_v3(
+            example, tokenizer, label2id, max_len: int, image_processor, image_cache_dir
+        ):
+            from PIL import Image as PILImage
+
+            encoding = tokenizer(
+                example["tokens"],
+                is_split_into_words=True,
+                truncation=True,
+                padding="max_length",
+                max_length=max_len,
+                return_attention_mask=True,
+            )
+            _align_labels_and_bboxes(encoding, example, label2id)
 
             img_path = os.path.join(image_cache_dir, f"{example['image_id']}.png")
             if os.path.exists(img_path):

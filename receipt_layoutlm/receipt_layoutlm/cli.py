@@ -384,6 +384,14 @@ def main() -> None:
             and pretrained == "microsoft/layoutlm-base-uncased"
         ):
             pretrained = MODEL_DEFAULTS[ModelVersion.V3]
+        if args.model_version == "v1" and "layoutlmv3" in pretrained:
+            raise SystemExit(
+                f"--model-version v1 is incompatible with v3 model '{pretrained}'. Use --model-version v3."
+            )
+        if args.model_version == "v3" and pretrained == "microsoft/layoutlm-base-uncased":
+            raise SystemExit(
+                f"--model-version v3 requires a v3 model, not '{pretrained}'."
+            )
         train_cfg = TrainingConfig(
             epochs=args.epochs,
             batch_size=args.batch_size,

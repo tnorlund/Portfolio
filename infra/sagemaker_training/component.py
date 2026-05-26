@@ -659,6 +659,12 @@ def handler(event, context):
             "S3Uri": f"s3://{os.environ['OUTPUT_BUCKET']}/checkpoints/{job_name}",
         }
 
+    # Skip CoreML auto-export for v3 runs (Swift inference not yet supported)
+    if hyperparameters.get("model_version") == "v3":
+        training_job_config["Tags"] = [
+            {"Key": "skip-coreml-export", "Value": "true"},
+        ]
+
     # Create the training job
     response = sagemaker.create_training_job(**training_job_config)
 

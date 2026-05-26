@@ -338,17 +338,30 @@ def download_receipt_images(
     cache_dir: str = "/tmp/receipt_images",
 ) -> str:
     """Download receipt images from S3 for v3 training. Returns cache_dir."""
+    import logging
+
     import boto3
 
+    logger = logging.getLogger(__name__)
     os.makedirs(cache_dir, exist_ok=True)
     s3 = boto3.client("s3")
+    downloaded = 0
+    skipped = 0
     for img_id in image_ids:
         local_path = os.path.join(cache_dir, f"{img_id}.png")
         if os.path.exists(local_path):
+            skipped += 1
             continue
-        image = dynamo.get_image(img_id)
-        if image and image.raw_s3_bucket and image.raw_s3_key:
-            s3.download_file(image.raw_s3_bucket, image.raw_s3_key, local_path)
+        try:
+            image = dynamo.get_image(img_id)
+            if image and image.raw_s3_bucket and image.raw_s3_key:
+                s3.download_file(image.raw_s3_bucket, image.raw_s3_key, local_path)
+                downloaded += 1
+            else:
+                logger.warning("Image %s has no S3 location, will use placeholder", img_id)
+        except Exception as e:
+            logger.warning("Failed to download image %s: %s", img_id, e)
+    logger.info("Images: %d downloaded, %d cached, %d total", downloaded, skipped, len(image_ids))
     return cache_dir
 
 
