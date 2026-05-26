@@ -483,7 +483,7 @@ if enable_sagemaker:
     sagemaker_training = SageMakerTrainingInfra(
         "layoutlm-sagemaker",
         dynamodb_table_name=dynamodb_table.name,
-        raw_bucket_arn=raw_bucket.arn,
+        raw_bucket_arn=upload_images.image_bucket.arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
     pulumi.export(

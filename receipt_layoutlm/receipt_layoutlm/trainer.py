@@ -296,8 +296,10 @@ class ReceiptLayoutLMTrainer:
         ):
             from PIL import Image as PILImage
 
+            # v3 tokenizer requires boxes= parameter alongside tokens
             encoding = tokenizer(
                 example["tokens"],
+                boxes=example["bboxes"],
                 is_split_into_words=True,
                 truncation=True,
                 padding="max_length",
