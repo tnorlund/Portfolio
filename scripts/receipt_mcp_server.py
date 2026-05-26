@@ -846,6 +846,91 @@ using list_recent_uploads or get_receipt.""",
                 "required": ["image_id"],
             },
         ),
+        Tool(
+            name="list_training_jobs",
+            description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
+
+Returns jobs sorted newest-first with:
+- name, status, created_at
+- best_f1, best_epoch (from results)
+- learning_rate, epochs, batch_size, merge_amounts, early_stopping_patience (from config)
+- num_train_samples, num_val_samples
+
+Use status_filter to narrow results (e.g., "succeeded", "running", "failed").""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Maximum number of jobs to return",
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": ["succeeded", "running", "failed", "pending", "cancelled", "interrupted"],
+                        "description": "Filter jobs by status (optional)",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_training_metrics",
+            description="""Get epoch-by-epoch training metrics for a specific training job.
+
+Returns metrics grouped by epoch including:
+- eval_f1, eval_precision, eval_recall, eval_loss
+- loss, learning_rate
+
+Use this to understand how a model's performance evolved during training.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the training job (e.g., 'layoutlm-my-experiment')",
+                    },
+                },
+                "required": ["job_name"],
+            },
+        ),
+        Tool(
+            name="get_active_model",
+            description="""Show which LayoutLM model is currently marked as active for inference.
+
+Returns the active model's name, job_id, best_f1, best_checkpoint_s3_path, and tags.
+The active model is used by the CoreML export pipeline and inference services.""",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="set_active_model",
+            description="""Mark a training job as the active model for inference services.
+
+WARNING: This WRITES to DynamoDB. It clears the active_model tag from the
+currently active job and sets it on the specified job. This affects which
+model is used by the CoreML export pipeline and inference services.
+
+Only use this after confirming the job has good F1 scores and is ready for production.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the training job to mark as active",
+                    },
+                },
+                "required": ["job_name"],
+            },
+        ),
+        Tool(
+            name="get_label_distribution",
+            description="""Show the distribution of word labels in the training dataset.
+
+Returns how many words have each label type (MERCHANT_NAME, PRODUCT_NAME, etc.)
+broken down by validation status (VALID, INVALID, PENDING, NEEDS_REVIEW, NONE).
+
+Use this to understand training data balance and identify under-represented labels.""",
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 
@@ -991,6 +1076,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 image_id=arguments["image_id"],
                 dry_run=arguments.get("dry_run", True),
             )
+        elif name == "list_training_jobs":
+            result = await list_training_jobs_impl(
+                dynamo_client,
+                limit=arguments.get("limit", 20),
+                status_filter=arguments.get("status_filter"),
+            )
+        elif name == "get_training_metrics":
+            result = await get_training_metrics_impl(
+                dynamo_client,
+                job_name=arguments["job_name"],
+            )
+        elif name == "get_active_model":
+            result = await get_active_model_impl(dynamo_client)
+        elif name == "set_active_model":
+            result = await set_active_model_impl(
+                dynamo_client,
+                job_name=arguments["job_name"],
+            )
+        elif name == "get_label_distribution":
+            result = await get_label_distribution_impl(dynamo_client)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -2627,6 +2732,212 @@ async def delete_image_impl(
 
     except Exception as e:
         logger.exception("Error deleting image")
+        return {"error": str(e)}
+
+
+async def list_training_jobs_impl(
+    dynamo_client,
+    limit: int = 20,
+    status_filter: Optional[str] = None,
+) -> dict:
+    """List LayoutLM training jobs with F1 scores, hyperparameters, and status."""
+    try:
+        if status_filter:
+            jobs, _ = dynamo_client.list_jobs_by_status(
+                status=status_filter,
+            )
+        else:
+            jobs, _ = dynamo_client.list_jobs()
+
+        results = []
+        for job in sorted(
+            jobs,
+            key=lambda j: str(j.created_at) if j.created_at else "",
+            reverse=True,
+        ):
+            r = job.results or {}
+            if isinstance(r, str):
+                r = json.loads(r)
+            config = job.job_config or {}
+            if isinstance(config, str):
+                config = json.loads(config)
+            results.append({
+                "name": job.name,
+                "status": job.status,
+                "created_at": str(job.created_at) if job.created_at else None,
+                "best_f1": r.get("best_f1"),
+                "best_epoch": r.get("best_epoch"),
+                "num_train_samples": r.get("num_train_samples"),
+                "num_val_samples": r.get("num_val_samples"),
+                "learning_rate": config.get("learning_rate"),
+                "epochs": config.get("epochs"),
+                "batch_size": config.get("batch_size"),
+                "merge_amounts": config.get("merge_amounts"),
+                "early_stopping_patience": config.get("early_stopping_patience"),
+            })
+
+        return {
+            "total": len(results),
+            "jobs": results[:limit],
+        }
+
+    except Exception as e:
+        logger.exception("Error listing training jobs")
+        return {"error": str(e)}
+
+
+async def get_training_metrics_impl(
+    dynamo_client,
+    job_name: str,
+) -> dict:
+    """Get epoch-by-epoch training metrics for a specific training job."""
+    try:
+        jobs, _ = dynamo_client.get_job_by_name(job_name)
+        if not jobs:
+            return {"error": f"No job found with name: {job_name}"}
+        job = jobs[0]
+
+        metrics, _ = dynamo_client.list_job_metrics(job.job_id)
+
+        # Group by epoch, filter to eval and training metrics
+        by_epoch: dict[int, dict[str, Any]] = {}
+        for m in metrics:
+            if (
+                m.metric_name.startswith("eval_")
+                or m.metric_name in ("loss", "learning_rate")
+            ):
+                epoch = m.epoch if m.epoch is not None else 0
+                if epoch not in by_epoch:
+                    by_epoch[epoch] = {}
+                by_epoch[epoch][m.metric_name] = m.value
+
+        return {
+            "job_name": job.name,
+            "job_id": job.job_id,
+            "status": job.status,
+            "total_metrics": len(metrics),
+            "epochs": dict(sorted(by_epoch.items())),
+        }
+
+    except Exception as e:
+        logger.exception("Error getting training metrics")
+        return {"error": str(e)}
+
+
+async def get_active_model_impl(dynamo_client) -> dict:
+    """Show which model is marked as active for inference."""
+    try:
+        active = dynamo_client.get_active_model_job()
+        if active:
+            r = active.results or {}
+            if isinstance(r, str):
+                r = json.loads(r)
+            return {
+                "name": active.name,
+                "job_id": active.job_id,
+                "best_f1": r.get("best_f1"),
+                "best_checkpoint_s3_path": r.get("best_checkpoint_s3_path"),
+                "tags": active.tags,
+            }
+        else:
+            return {"error": "No active model job found"}
+
+    except Exception as e:
+        logger.exception("Error getting active model")
+        return {"error": str(e)}
+
+
+async def set_active_model_impl(
+    dynamo_client,
+    job_name: str,
+) -> dict:
+    """Mark a training job as the active model for inference services."""
+    try:
+        # Find the job
+        jobs, _ = dynamo_client.get_job_by_name(job_name)
+        if not jobs:
+            return {"error": f"No job found with name: {job_name}"}
+        job = jobs[0]
+
+        # Clear old active model tag
+        old_active = dynamo_client.get_active_model_job()
+        if old_active:
+            old_active.tags = {
+                k: v
+                for k, v in (old_active.tags or {}).items()
+                if k != "active_model"
+            }
+            dynamo_client.update_job(old_active)
+
+        # Set new active model
+        job.tags = {**(job.tags or {}), "active_model": "true"}
+        dynamo_client.update_job(job)
+
+        r = job.results or {}
+        if isinstance(r, str):
+            r = json.loads(r)
+
+        return {
+            "success": True,
+            "name": job.name,
+            "job_id": job.job_id,
+            "best_f1": r.get("best_f1"),
+            "message": f"Set {job.name} as the active model",
+        }
+
+    except Exception as e:
+        logger.exception("Error setting active model")
+        return {"error": str(e)}
+
+
+async def get_label_distribution_impl(dynamo_client) -> dict:
+    """Show the distribution of word labels in the training dataset."""
+    try:
+        from receipt_dynamo.constants import CORE_LABELS
+
+        summary: dict[str, dict[str, int]] = {}
+
+        for label in CORE_LABELS:
+            counts: dict[str, int] = defaultdict(int)
+            last_key = None
+
+            while True:
+                records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                    label=label,
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for record in records:
+                    status = getattr(record, "validation_status", None) or "NONE"
+                    counts[status] += 1
+
+                if last_key is None:
+                    break
+
+            total = sum(counts.values())
+            summary[label] = {
+                "VALID": counts.get("VALID", 0),
+                "INVALID": counts.get("INVALID", 0),
+                "PENDING": counts.get("PENDING", 0),
+                "NEEDS_REVIEW": counts.get("NEEDS_REVIEW", 0),
+                "NONE": counts.get("NONE", 0),
+                "total": total,
+            }
+
+        # Compute grand totals
+        grand_total = sum(s["total"] for s in summary.values())
+        grand_valid = sum(s["VALID"] for s in summary.values())
+
+        return {
+            "labels": summary,
+            "grand_total": grand_total,
+            "grand_valid": grand_valid,
+            "label_count": len(summary),
+        }
+
+    except Exception as e:
+        logger.exception("Error getting label distribution")
         return {"error": str(e)}
 
 
