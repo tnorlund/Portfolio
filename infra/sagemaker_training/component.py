@@ -511,6 +511,7 @@ class SageMakerTrainingInfra(ComponentResource):
                                     "sagemaker:DescribeTrainingJob",
                                     "sagemaker:StopTrainingJob",
                                     "sagemaker:ListTrainingJobs",
+                                    "sagemaker:AddTags",
                                 ],
                                 "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
                             },
