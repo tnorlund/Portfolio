@@ -334,10 +334,15 @@ class MergeInfo:
 
 def download_receipt_images(
     dynamo: DynamoClient,
-    image_ids: set[str],
+    receipt_keys: set[tuple[str, int]],
     cache_dir: str = "/tmp/receipt_images",
 ) -> str:
-    """Download receipt images from S3 for v3 training. Returns cache_dir."""
+    """Download warped receipt images from S3 for v3 training.
+
+    Uses Receipt.raw_s3_key (the perspective-corrected crop) rather than
+    Image.raw_s3_key (the original photo), since bounding boxes in the
+    training data are in the warped receipt's coordinate space.
+    """
     import logging
 
     import boto3
@@ -347,21 +352,21 @@ def download_receipt_images(
     s3 = boto3.client("s3")
     downloaded = 0
     skipped = 0
-    for img_id in image_ids:
-        local_path = os.path.join(cache_dir, f"{img_id}.png")
+    for image_id, receipt_id in receipt_keys:
+        local_path = os.path.join(cache_dir, f"{image_id}_{receipt_id}.png")
         if os.path.exists(local_path):
             skipped += 1
             continue
         try:
-            image = dynamo.get_image(img_id)
-            if image and image.raw_s3_bucket and image.raw_s3_key:
-                s3.download_file(image.raw_s3_bucket, image.raw_s3_key, local_path)
+            receipt = dynamo.get_receipt(image_id, receipt_id)
+            if receipt and receipt.raw_s3_bucket and receipt.raw_s3_key:
+                s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, local_path)
                 downloaded += 1
             else:
-                logger.warning("Image %s has no S3 location, will use placeholder", img_id)
+                logger.warning("Receipt %s/%d has no S3 location, will use placeholder", image_id, receipt_id)
         except Exception as e:
-            logger.warning("Failed to download image %s: %s", img_id, e)
-    logger.info("Images: %d downloaded, %d cached, %d total", downloaded, skipped, len(image_ids))
+            logger.warning("Failed to download receipt image %s/%d: %s", image_id, receipt_id, e)
+    logger.info("Receipt images: %d downloaded, %d cached, %d total", downloaded, skipped, len(receipt_keys))
     return cache_dir
 
 
@@ -647,11 +652,11 @@ def load_datasets(
         else float("inf")
     )
 
-    # Download images for v3 training
+    # Download warped receipt images for v3 training
     image_cache_dir: Optional[str] = None
     if model_version == "v3":
-        unique_image_ids = {ex.image_id for ex in examples}
-        image_cache_dir = download_receipt_images(dynamo, unique_image_ids)
+        unique_receipt_keys = {(ex.image_id, ex.receipt_id) for ex in examples}
+        image_cache_dir = download_receipt_images(dynamo, unique_receipt_keys)
 
     # Create split metadata
     split_metadata = SplitMetadata(
@@ -673,8 +678,10 @@ def load_datasets(
         image_cache_dir=image_cache_dir,
     )
 
-    train_ds = dataset.select(filtered_train_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
-    val_ds = dataset.select(val_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
+    # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()
+    remove_after_split = ["receipt_key"] if model_version != "v3" else []
+    train_ds = dataset.select(filtered_train_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
+    val_ds = dataset.select(val_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
 
     # Build merge info for tracking
     merge_info = MergeInfo(

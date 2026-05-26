@@ -323,7 +323,10 @@ class ReceiptLayoutLMTrainer:
                     prev_word_id = wid
             encoding["labels"] = labels
 
-            img_path = os.path.join(image_cache_dir, f"{example['image_id']}.png")
+            # receipt_key format: "image_id#00001" — parse for warped receipt cache lookup
+            parts = example["receipt_key"].split("#")
+            receipt_id = int(parts[1]) if len(parts) == 2 else 1
+            img_path = os.path.join(image_cache_dir, f"{parts[0]}_{receipt_id}.png")
             if os.path.exists(img_path):
                 image = PILImage.open(img_path).convert("RGB")
             else:
@@ -361,7 +364,8 @@ class ReceiptLayoutLMTrainer:
             )
 
         # Columns to remove during preprocessing
-        remove_cols = ["tokens", "bboxes", "ner_tags", "image_id"]
+        # v3 needs receipt_key during preprocess (for image lookup), removed here
+        remove_cols = ["tokens", "bboxes", "ner_tags", "image_id", "receipt_key"]
 
         # Parallelize preprocessing across CPU cores
         # Disable cache to minimize local disk usage on SageMaker instances
