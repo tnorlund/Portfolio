@@ -253,11 +253,14 @@ class SageMakerTrainingInfra(ComponentResource):
                         ]
                         + (
                             [
-                                # S3 read access for raw receipt images (LayoutLMv3 image-based training)
+                                # S3 read access for receipt images across all buckets (LayoutLMv3 training)
                                 {
                                     "Effect": "Allow",
                                     "Action": "s3:GetObject",
-                                    "Resource": f"{args[3]}/*",
+                                    "Resource": [
+                                        f"{args[3]}/*",
+                                        "arn:aws:s3:::raw-image-bucket-*/*",
+                                    ],
                                 },
                             ]
                             if args[3]
