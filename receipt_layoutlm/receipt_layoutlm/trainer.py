@@ -296,17 +296,32 @@ class ReceiptLayoutLMTrainer:
         ):
             from PIL import Image as PILImage
 
-            # v3 tokenizer requires boxes= parameter alongside tokens
+            # v3 tokenizer takes words + boxes together and aligns bboxes to subtokens
             encoding = tokenizer(
-                example["tokens"],
+                text=example["tokens"],
                 boxes=example["bboxes"],
-                is_split_into_words=True,
                 truncation=True,
                 padding="max_length",
                 max_length=max_len,
                 return_attention_mask=True,
             )
-            _align_labels_and_bboxes(encoding, example, label2id)
+            # Align labels using word_ids (same logic as v1, but bbox already handled by v3 tokenizer)
+            word_ids = encoding.word_ids()
+            seq_len = len(encoding["input_ids"])
+            labels = []
+            prev_word_id = None
+            for i in range(seq_len):
+                wid = word_ids[i]
+                if wid is None:
+                    labels.append(-100)
+                else:
+                    if wid != prev_word_id:
+                        lbl = example["ner_tags"][wid]
+                        labels.append(label2id.get(lbl, 0))
+                    else:
+                        labels.append(-100)
+                    prev_word_id = wid
+            encoding["labels"] = labels
 
             img_path = os.path.join(image_cache_dir, f"{example['image_id']}.png")
             if os.path.exists(img_path):
