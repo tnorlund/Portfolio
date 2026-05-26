@@ -6,7 +6,7 @@
 
 # Interface: MilkSimilarityResponse
 
-Defined in: [types/api.ts:326](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L326)
+Defined in: [types/api.ts:326](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L326)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:326](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:332](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L332)
+Defined in: [types/api.ts:332](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L332)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:332](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **query\_word**: `string`
 
-Defined in: [types/api.ts:327](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L327)
+Defined in: [types/api.ts:327](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L327)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:327](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **receipts**: [`MilkReceiptData`](MilkReceiptData.md)[]
 
-Defined in: [types/api.ts:331](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L331)
+Defined in: [types/api.ts:331](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L331)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:331](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **summary\_table**: [`MilkSummaryRow`](MilkSummaryRow.md)[]
 
-Defined in: [types/api.ts:330](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L330)
+Defined in: [types/api.ts:330](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L330)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:330](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **total\_items**: `number`
 
-Defined in: [types/api.ts:329](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L329)
+Defined in: [types/api.ts:329](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L329)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:329](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > **total\_receipts**: `number`
 
-Defined in: [types/api.ts:328](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L328)
+Defined in: [types/api.ts:328](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L328)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:328](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > `optional` **commentary**: `string`
 
-Defined in: [types/api.ts:335](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L335)
+Defined in: [types/api.ts:335](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L335)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:335](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > `optional` **grand\_total**: `number`
 
-Defined in: [types/api.ts:334](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L334)
+Defined in: [types/api.ts:334](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L334)
 
 ***
 
@@ -78,4 +78,4 @@ Defined in: [types/api.ts:334](https://github.com/tnorlund/Portfolio/blob/1fb07d
 
 > `optional` **timing**: [`MilkSimilarityTiming`](MilkSimilarityTiming.md)
 
-Defined in: [types/api.ts:333](https://github.com/tnorlund/Portfolio/blob/1fb07d2099ea69fbc4661856cc779c8df8147b76/portfolio/types/api.ts#L333)
+Defined in: [types/api.ts:333](https://github.com/tnorlund/Portfolio/blob/207d4e99b549981da49c8387251d0e8424f0afff/portfolio/types/api.ts#L333)
