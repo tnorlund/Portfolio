@@ -46,6 +46,7 @@ from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
@@ -187,6 +188,7 @@ def copy_image_entities(
         "receipt_letters": 0,
         "receipt_word_labels": 0,
         "receipt_metadatas": 0,
+        "receipt_places": 0,
         "ocr_jobs": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
@@ -303,6 +305,16 @@ def copy_image_entities(
             if not dry_run:
                 prod_client.add_receipt_metadatas(receipt_metadatas)
             stats["receipt_metadatas"] = len(receipt_metadatas)
+
+        # Process ReceiptPlaces
+        if export_data.get("receipt_places"):
+            receipt_places = [
+                ReceiptPlace(**place)
+                for place in export_data["receipt_places"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_places(receipt_places)
+            stats["receipt_places"] = len(receipt_places)
 
         # Process OCRJobs
         if export_data.get("ocr_jobs"):
