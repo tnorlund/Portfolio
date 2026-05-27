@@ -64,7 +64,7 @@ def get_clients():
 
         # In Lambda, read config directly from environment variables.
         # Locally, fall back to Pulumi CLI.
-        if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        if os.environ.get("DYNAMODB_TABLE_NAME"):
             config = {
                 "dynamodb_table_name": os.environ["DYNAMODB_TABLE_NAME"],
                 "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
