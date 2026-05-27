@@ -289,7 +289,7 @@ class McpServerLambda(ComponentResource):
         function_url = aws.lambda_.FunctionUrl(
             f"{name}-function-url",
             function_name=self.lambda_function.name,
-            authorization_type="AWS_IAM",
+            authorization_type="NONE",
             invoke_mode="RESPONSE_STREAM",
             opts=ResourceOptions(parent=self),
         )
