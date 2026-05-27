@@ -10,6 +10,7 @@ handler extracts the JSON-RPC body before passing to the adapter.
 """
 
 import json
+import os
 import sys
 
 from mcp.client.stdio import StdioServerParameters
@@ -18,6 +19,7 @@ from mcp_lambda import stdio_server_adapter
 server_params = StdioServerParameters(
     command=sys.executable,
     args=["-m", "receipt_mcp_server"],
+    env=dict(os.environ),
 )
 
 
