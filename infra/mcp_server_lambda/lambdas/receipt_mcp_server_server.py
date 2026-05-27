@@ -58,18 +58,32 @@ def get_clients():
             create_embed_fn,
         )
         from receipt_chroma.data.chroma_client import ChromaClient
-        from receipt_dynamo.data._pulumi import load_env, load_secrets
 
         env = os.environ.get("PORTFOLIO_ENV", "dev")
         logger.info("Loading %s environment...", env)
 
-        config = load_env(env=env)
-        secrets = load_secrets(env=env)
-
-        # Merge secrets
-        for key, value in secrets.items():
-            normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
-            config[normalized_key] = value
+        # In Lambda, read config directly from environment variables.
+        # Locally, fall back to Pulumi CLI.
+        table_env = os.environ.get("DYNAMODB_TABLE_NAME")
+        if table_env:
+            config = {
+                "dynamodb_table_name": table_env,
+                "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
+                "chroma_cloud_api_key": os.environ.get("CHROMA_CLOUD_API_KEY", ""),
+                "chroma_cloud_tenant": os.environ.get("CHROMA_CLOUD_TENANT", ""),
+                "chroma_cloud_database": os.environ.get("CHROMA_CLOUD_DATABASE", ""),
+                "chroma_cloud_enabled": "true",
+                "openrouter_api_key": os.environ.get("OPENROUTER_API_KEY", ""),
+                "langchain_api_key": os.environ.get("LANGCHAIN_API_KEY", ""),
+                "google_places_api_key": os.environ.get("GOOGLE_PLACES_API_KEY", ""),
+            }
+        else:
+            from receipt_dynamo.data._pulumi import load_env, load_secrets
+            config = load_env(env=env)
+            secrets = load_secrets(env=env)
+            for key, value in secrets.items():
+                normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
+                config[normalized_key] = value
 
         # Set up API keys
         if config.get("openai_api_key"):

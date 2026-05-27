@@ -1276,6 +1276,17 @@ pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
+# Receipt MCP Server Lambda (remote MCP access via Function URL)
+from mcp_server_lambda import McpServerLambda
+
+mcp_server = McpServerLambda(
+    "receipt-mcp",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+)
+pulumi.export("mcp_server_url", mcp_server.function_url)
+pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
+
 # Merge Receipt Lambda (for merging receipt fragments into a single receipt)
 # Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
 merge_receipt_lambda = create_merge_receipt_lambda(
