@@ -228,6 +228,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset
         )
 
+        # Filter by image_id if provided
+        filter_image_id = query_params.get("image_id")
+
         # List all cached receipts
         cached_keys = _list_cached_receipts(prefix)
         if not cached_keys:
@@ -245,6 +248,24 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "Access-Control-Allow-Origin": "*",
                 },
             }
+
+        # If image_id filter provided, return only matching receipts
+        if filter_image_id:
+            cached_keys = [
+                k for k in cached_keys
+                if k.split("/")[-1].startswith(filter_image_id)
+            ]
+            if not cached_keys:
+                return {
+                    "statusCode": 404,
+                    "body": json.dumps(
+                        {"error": f"No cached receipts found for image_id {filter_image_id}"}
+                    ),
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                }
 
         # Sort keys first for consistency, then shuffle with seed
         total_count = len(cached_keys)
