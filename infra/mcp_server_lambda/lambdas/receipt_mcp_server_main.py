@@ -13,9 +13,14 @@ import os
 def _load_env_from_envvars(**_kwargs):
     """Return a config dict built from Lambda environment variables."""
     config = {}
-    table = os.environ.get("DYNAMODB_TABLE_NAME")
-    if table:
-        config["dynamodb_table_name"] = table
+    env_mapping = {
+        "DYNAMODB_TABLE_NAME": "dynamodb_table_name",
+        "PORTFOLIO_ENV": "portfolio_env",
+    }
+    for env_key, config_key in env_mapping.items():
+        val = os.environ.get(env_key)
+        if val:
+            config[config_key] = val
     return config
 
 
