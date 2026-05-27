@@ -34,8 +34,8 @@ public class LayoutLMInference {
     /// The CoreML model
     private let model: MLModel
 
-    /// BERT tokenizer for WordPiece tokenization
-    private let tokenizer: BertTokenizer
+    /// Tokenizer function — wraps either BertTokenizer (v1) or BPETokenizer (v3)
+    private let tokenizer: (_ words: [String], _ padding: Bool, _ truncation: Bool) -> BertTokenizer.TokenizationResult
 
     /// Model configuration (labels)
     private let config: LayoutLMConfig
@@ -94,22 +94,32 @@ public class LayoutLMInference {
             self.model = try MLModel(contentsOf: persistentCompiledURL)
         }
 
-        // Load tokenizer
-        let vocabURL = bundlePath.appendingPathComponent("vocab.txt")
-        guard fileManager.fileExists(atPath: vocabURL.path) else {
-            throw LayoutLMError.vocabNotFound(path: vocabURL.path)
-        }
-        self.tokenizer = try BertTokenizer(vocabURL: vocabURL)
-
         // Load config
         let configURL = bundlePath.appendingPathComponent("config.json")
         guard fileManager.fileExists(atPath: configURL.path) else {
             throw LayoutLMError.configNotFound(path: configURL.path)
         }
         self.config = try LayoutLMConfig.load(from: configURL)
-
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
         self.requiresImageInput = model.modelDescription.inputDescriptionsByName.keys.contains("pixel_values")
+
+        // Load tokenizer — use BPE for v3 (tokenizer.json), WordPiece for v1 (vocab.txt)
+        let tokenizerJsonURL = bundlePath.appendingPathComponent("tokenizer.json")
+        if fileManager.fileExists(atPath: tokenizerJsonURL.path) {
+            let bpe = try BPETokenizer(tokenizerJsonURL: tokenizerJsonURL, maxLength: self.maxSeqLength)
+            self.tokenizer = { words, padding, truncation in
+                bpe.tokenize(words: words, padding: padding, truncation: truncation)
+            }
+        } else {
+            let vocabURL = bundlePath.appendingPathComponent("vocab.txt")
+            guard fileManager.fileExists(atPath: vocabURL.path) else {
+                throw LayoutLMError.vocabNotFound(path: vocabURL.path)
+            }
+            let bert = try BertTokenizer(vocabURL: vocabURL)
+            self.tokenizer = { words, padding, truncation in
+                bert.tokenize(words: words, padding: padding, truncation: truncation)
+            }
+        }
     }
 
     // MARK: - Prediction
@@ -267,7 +277,7 @@ public class LayoutLMInference {
         var count = 0
         for word in words {
             // Use tokenizer to count subtokens
-            let result = tokenizer.tokenize(words: [word], padding: false, truncation: false)
+            let result = tokenizer([word], false, false)
             // Subtract 2 for [CLS] and [SEP] that tokenize() adds
             count += max(0, result.inputIds.count - 2)
         }
@@ -292,7 +302,7 @@ public class LayoutLMInference {
         }
 
         // Tokenize the combined words
-        let tokenResult = tokenizer.tokenize(words: allWords, padding: true, truncation: true)
+        let tokenResult = tokenizer(allWords, true, true)
 
         // Build bbox tensor for subtokens
         var bboxTensor: [[Int32]] = []
@@ -447,7 +457,7 @@ public class LayoutLMInference {
         let (texts, wordBboxes) = BboxNormalizer.normalizeWords(words, maxX: maxX, maxY: maxY)
 
         // Tokenize
-        let tokenResult = tokenizer.tokenize(words: texts, padding: true, truncation: true)
+        let tokenResult = tokenizer(texts, true, true)
 
         // Build bbox tensor for subtokens (repeat word bbox for each subtoken)
         var bboxTensor: [[Int32]] = []
