@@ -32,6 +32,8 @@ class SplitMetadata:
     entity_lines_total: int
     # Target ratio used
     target_o_entity_ratio: float
+    # v3 image cache directory (set when model_version == "v3")
+    image_cache_dir: Optional[str] = None
 
 
 @dataclass
@@ -330,12 +332,51 @@ class MergeInfo:
     resulting_labels: List[str]
 
 
+def download_receipt_images(
+    dynamo: DynamoClient,
+    receipt_keys: set[tuple[str, int]],
+    cache_dir: str = "/tmp/receipt_images",
+) -> str:
+    """Download warped receipt images from S3 for v3 training.
+
+    Uses Receipt.raw_s3_key (the perspective-corrected crop) rather than
+    Image.raw_s3_key (the original photo), since bounding boxes in the
+    training data are in the warped receipt's coordinate space.
+    """
+    import logging
+
+    import boto3
+
+    logger = logging.getLogger(__name__)
+    os.makedirs(cache_dir, exist_ok=True)
+    s3 = boto3.client("s3")
+    downloaded = 0
+    skipped = 0
+    for image_id, receipt_id in receipt_keys:
+        local_path = os.path.join(cache_dir, f"{image_id}_{receipt_id}.png")
+        if os.path.exists(local_path):
+            skipped += 1
+            continue
+        try:
+            receipt = dynamo.get_receipt(image_id, receipt_id)
+            if receipt and receipt.raw_s3_bucket and receipt.raw_s3_key:
+                s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, local_path)
+                downloaded += 1
+            else:
+                logger.warning("Receipt %s/%d has no S3 location, will use placeholder", image_id, receipt_id)
+        except Exception as e:
+            logger.warning("Failed to download receipt image %s/%d: %s", image_id, receipt_id, e)
+    logger.info("Receipt images: %d downloaded, %d cached, %d total", downloaded, skipped, len(receipt_keys))
+    return cache_dir
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
     random_seed: Optional[int] = None,
     label_merges: Optional[Dict[str, List[str]]] = None,
     allowed_labels: Optional[List[str]] = None,
+    model_version: str = "v1",
 ) -> Tuple[Any, SplitMetadata, MergeInfo]:
     """Load and process datasets from DynamoDB.
 
@@ -488,6 +529,7 @@ def load_datasets(
             "bboxes": Sequence(Sequence(Value("int64"))),
             "ner_tags": Sequence(Value("string")),
             "receipt_key": Value("string"),
+            "image_id": Value("string"),
         }
     )
 
@@ -497,6 +539,7 @@ def load_datasets(
             "bboxes": [ex.bboxes for ex in examples],
             "ner_tags": [ex.ner_tags for ex in examples],
             "receipt_key": [ex.receipt_key for ex in examples],
+            "image_id": [ex.image_id for ex in examples],
         },
         features=features,
     )
@@ -609,6 +652,12 @@ def load_datasets(
         else float("inf")
     )
 
+    # Download warped receipt images for v3 training
+    image_cache_dir: Optional[str] = None
+    if model_version == "v3":
+        unique_receipt_keys = {(ex.image_id, ex.receipt_id) for ex in examples}
+        image_cache_dir = download_receipt_images(dynamo, unique_receipt_keys)
+
     # Create split metadata
     split_metadata = SplitMetadata(
         random_seed=random_seed,
@@ -626,10 +675,13 @@ def load_datasets(
         o_only_lines_dropped=o_only_lines_count - o_only_lines_kept,
         entity_lines_total=entity_lines_count,
         target_o_entity_ratio=target_ratio,
+        image_cache_dir=image_cache_dir,
     )
 
-    train_ds = dataset.select(filtered_train_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
-    val_ds = dataset.select(val_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
+    # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()
+    remove_after_split = ["receipt_key"] if model_version != "v3" else []
+    train_ds = dataset.select(filtered_train_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
+    val_ds = dataset.select(val_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
 
     # Build merge info for tracking
     merge_info = MergeInfo(
