@@ -686,18 +686,21 @@ using get_receipt to read its content.""",
         ),
         Tool(
             name="compute_reocr_region",
-            description="""Compute an axis-aligned re-OCR region from receipt line IDs.
+            description="""Compute a full-width re-OCR region from receipt line IDs.
 
-Given line_ids, computes the bounding box that covers all words on those lines,
-adds padding, and returns a normalized Vision-space region {x, y, width, height}
-ready to pass to the trigger_reocr Lambda.
+Given line_ids, computes a full-width crop that covers the vertical range of
+all words on those lines (with padding), and returns a normalized Vision-space
+region {x, y, width, height} ready to pass to the trigger_reocr Lambda.
+
+Always uses full image width (x=0, width=1) because Vision OCR produces
+significantly better results with more horizontal context.
 
 Use this after inspecting a receipt with get_receipt to identify lines with
 bad OCR (e.g., garbled prices). Pass those line_ids here to get the crop region.
 
 Example:
   compute_reocr_region("abc-123", 1, [15, 16, 17])
-  -> {"region": {"x": 0.62, "y": 0.31, "width": 0.38, "height": 0.12}}""",
+  -> {"region": {"x": 0.0, "y": 0.31, "width": 1.0, "height": 0.12}}""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -2515,10 +2518,11 @@ async def compute_reocr_region_impl(
             for w in words_in_region
         )
 
-        # Add padding in receipt-relative space, clamped to [0, 1]
-        padded_x = max(0.0, min_x - padding)
+        # Always use full width — Vision OCR produces better results with
+        # more horizontal context. Only constrain the vertical range.
+        padded_x = 0.0
         padded_y = max(0.0, min_y - padding)
-        padded_right = min(1.0, max_x + padding)
+        padded_right = 1.0
         padded_top = min(1.0, max_y + padding)
 
         # Transform the four corners of the padded region from
