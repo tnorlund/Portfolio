@@ -67,6 +67,7 @@ class McpServerLambda(ComponentResource):
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
+        account_id = aws.get_caller_identity().account_id
 
         # ============================================================
         # IAM Role
@@ -154,7 +155,7 @@ class McpServerLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy (read receipts, images, ChromaDB snapshots)
+        # S3 access policy — scoped to receipt/chroma buckets in this account
         RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
@@ -169,7 +170,16 @@ class McpServerLambda(ComponentResource):
                                 "s3:ListBucket",
                                 "s3:GetBucketLocation",
                             ],
-                            "Resource": "*",
+                            "Resource": [
+                                "arn:aws:s3:::upload-images-*",
+                                "arn:aws:s3:::upload-images-*/*",
+                                "arn:aws:s3:::raw-image-bucket-*",
+                                "arn:aws:s3:::raw-image-bucket-*/*",
+                                "arn:aws:s3:::chromadb-*",
+                                "arn:aws:s3:::chromadb-*/*",
+                                "arn:aws:s3:::sitebucket-*",
+                                "arn:aws:s3:::sitebucket-*/*",
+                            ],
                         }
                     ],
                 }
@@ -177,7 +187,7 @@ class McpServerLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # SQS access policy (for triggering re-OCR etc.)
+        # SQS access policy — scoped to upload-images queues
         RolePolicy(
             f"{name}-lambda-sqs-policy",
             role=lambda_role.id,
@@ -192,7 +202,7 @@ class McpServerLambda(ComponentResource):
                                 "sqs:GetQueueUrl",
                                 "sqs:GetQueueAttributes",
                             ],
-                            "Resource": "*",
+                            "Resource": f"arn:aws:sqs:us-east-1:{account_id}:upload-images-*",
                         }
                     ],
                 }
@@ -200,7 +210,7 @@ class McpServerLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # Lambda invoke policy (for calling other Lambdas)
+        # Lambda invoke policy — scoped to this account's functions
         RolePolicy(
             f"{name}-lambda-invoke-policy",
             role=lambda_role.id,
@@ -211,7 +221,7 @@ class McpServerLambda(ComponentResource):
                         {
                             "Effect": "Allow",
                             "Action": ["lambda:InvokeFunction"],
-                            "Resource": "*",
+                            "Resource": f"arn:aws:lambda:us-east-1:{account_id}:function:*",
                         }
                     ],
                 }
@@ -279,13 +289,8 @@ class McpServerLambda(ComponentResource):
         function_url = aws.lambda_.FunctionUrl(
             f"{name}-function-url",
             function_name=self.lambda_function.name,
-            authorization_type="NONE",
-            invoke_mode="RESPONSE_STREAM",  # Required for MCP streaming
-            cors=aws.lambda_.FunctionUrlCorsArgs(
-                allow_origins=["*"],
-                allow_methods=["*"],
-                allow_headers=["*"],
-            ),
+            authorization_type="AWS_IAM",
+            invoke_mode="RESPONSE_STREAM",
             opts=ResourceOptions(parent=self),
         )
 
