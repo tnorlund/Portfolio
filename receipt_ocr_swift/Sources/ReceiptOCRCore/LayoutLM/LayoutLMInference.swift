@@ -43,6 +43,9 @@ public class LayoutLMInference {
     /// Maximum sequence length
     public let maxSeqLength: Int
 
+    /// Whether this model requires image input (v3)
+    public let requiresImageInput: Bool
+
     // MARK: - Initialization
 
     /// Initialize from a model bundle directory.
@@ -106,9 +109,57 @@ public class LayoutLMInference {
         self.config = try LayoutLMConfig.load(from: configURL)
 
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
+        self.requiresImageInput = model.modelDescription.inputDescriptionsByName.keys.contains("pixel_values")
     }
 
     // MARK: - Prediction
+
+    /// Create pixel_values MLMultiArray from a receipt image (v3 only).
+    /// Resizes to 224x224 and normalizes with mean/std = 0.5.
+    private func createPixelValues(from imageData: Data) throws -> MLMultiArray? {
+        guard requiresImageInput else { return nil }
+        guard let imageSource = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
+            return createGrayPixelValues()
+        }
+
+        let size = 224
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * size
+        var pixelData = [UInt8](repeating: 0, count: size * size * bytesPerPixel)
+
+        guard let context = CGContext(
+            data: &pixelData, width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return createGrayPixelValues()
+        }
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        let array = try MLMultiArray(shape: [1, 3, NSNumber(value: size), NSNumber(value: size)], dataType: .float32)
+        for y in 0..<size {
+            for x in 0..<size {
+                let offset = (y * size + x) * bytesPerPixel
+                let r = Float(pixelData[offset]) / 255.0
+                let g = Float(pixelData[offset + 1]) / 255.0
+                let b = Float(pixelData[offset + 2]) / 255.0
+                // Normalize: (pixel / 255 - 0.5) / 0.5 = pixel / 127.5 - 1.0
+                array[[0, 0, y, x] as [NSNumber]] = NSNumber(value: (r - 0.5) / 0.5)
+                array[[0, 1, y, x] as [NSNumber]] = NSNumber(value: (g - 0.5) / 0.5)
+                array[[0, 2, y, x] as [NSNumber]] = NSNumber(value: (b - 0.5) / 0.5)
+            }
+        }
+        return array
+    }
+
+    private func createGrayPixelValues() -> MLMultiArray? {
+        guard let array = try? MLMultiArray(shape: [1, 3, 224, 224], dataType: .float32) else { return nil }
+        for i in 0..<array.count { array[i] = 0 }
+        return array
+    }
 
     /// Predict labels for words in OCR lines using batched inference.
     ///
@@ -116,9 +167,11 @@ public class LayoutLMInference {
     /// to reduce inference overhead. Lines are greedily packed into sequences
     /// that fit within the 512 token limit.
     ///
-    /// - Parameter lines: Array of OCR lines from receipt
+    /// - Parameters:
+    ///   - lines: Array of OCR lines from receipt
+    ///   - receiptImageData: Optional warped receipt image data (required for v3 models)
     /// - Returns: Array of LinePrediction results
-    public func predict(lines: [Line]) throws -> [LinePrediction] {
+    public func predict(lines: [Line], receiptImageData: Data? = nil) throws -> [LinePrediction] {
         guard !lines.isEmpty else { return [] }
 
         // Compute bbox extents for the entire receipt
@@ -185,8 +238,14 @@ public class LayoutLMInference {
         // Run inference on each batch and collect results
         var results: [LinePrediction?] = Array(repeating: nil, count: lines.count)
 
+        // Prepare pixel_values once for all batches (v3 only, same image for all lines in a receipt)
+        let pixelValues: MLMultiArray? = try {
+            guard let imageData = receiptImageData else { return createGrayPixelValues() }
+            return try createPixelValues(from: imageData)
+        }()
+
         for batch in batches {
-            let batchPredictions = try predictBatch(batch)
+            let batchPredictions = try predictBatch(batch, pixelValues: pixelValues)
             for (i, item) in batch.enumerated() {
                 results[item.lineIndex] = batchPredictions[i]
             }
@@ -217,7 +276,8 @@ public class LayoutLMInference {
 
     /// Predict labels for a batch of lines packed into a single sequence.
     private func predictBatch(
-        _ batch: [(lineIndex: Int, words: [String], bboxes: [[Int32]])]
+        _ batch: [(lineIndex: Int, words: [String], bboxes: [[Int32]])],
+        pixelValues: MLMultiArray? = nil
     ) throws -> [LinePrediction] {
         // Concatenate all words and bboxes, tracking line boundaries
         var allWords: [String] = []
@@ -256,7 +316,8 @@ public class LayoutLMInference {
             input_ids: inputIds,
             attention_mask: attentionMask,
             bbox: bbox,
-            token_type_ids: tokenTypeIds
+            token_type_ids: tokenTypeIds,
+            pixel_values: pixelValues
         )
         let output = try model.prediction(from: inputFeatures)
 
@@ -560,22 +621,26 @@ public class LayoutLMInference {
 
 // MARK: - CoreML Input Provider
 
-/// Feature provider for LayoutLM model inputs.
+/// Feature provider for LayoutLM model inputs (v1 and v3).
 private class LayoutLMInput: MLFeatureProvider {
     let input_ids: MLMultiArray
     let attention_mask: MLMultiArray
     let bbox: MLMultiArray
     let token_type_ids: MLMultiArray
+    let pixel_values: MLMultiArray?
 
-    init(input_ids: MLMultiArray, attention_mask: MLMultiArray, bbox: MLMultiArray, token_type_ids: MLMultiArray) {
+    init(input_ids: MLMultiArray, attention_mask: MLMultiArray, bbox: MLMultiArray, token_type_ids: MLMultiArray, pixel_values: MLMultiArray? = nil) {
         self.input_ids = input_ids
         self.attention_mask = attention_mask
         self.bbox = bbox
         self.token_type_ids = token_type_ids
+        self.pixel_values = pixel_values
     }
 
     var featureNames: Set<String> {
-        return ["input_ids", "attention_mask", "bbox", "token_type_ids"]
+        var names: Set<String> = ["input_ids", "attention_mask", "bbox", "token_type_ids"]
+        if pixel_values != nil { names.insert("pixel_values") }
+        return names
     }
 
     func featureValue(for featureName: String) -> MLFeatureValue? {
@@ -588,6 +653,8 @@ private class LayoutLMInput: MLFeatureProvider {
             return MLFeatureValue(multiArray: bbox)
         case "token_type_ids":
             return MLFeatureValue(multiArray: token_type_ids)
+        case "pixel_values":
+            return pixel_values.map { MLFeatureValue(multiArray: $0) }
         default:
             return nil
         }

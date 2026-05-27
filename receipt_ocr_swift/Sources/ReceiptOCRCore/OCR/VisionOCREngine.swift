@@ -490,7 +490,13 @@ public struct VisionOCREngine: OCREngineProtocol {
                                 var layoutlmPredictions: [LinePrediction]?
                                 if let inference = layoutLMInference, !receiptLines.isEmpty {
                                     do {
-                                        layoutlmPredictions = try inference.predict(lines: receiptLines)
+                                        // For v3 models, pass the warped receipt image
+                                        var receiptImageData: Data? = nil
+                                        if inference.requiresImageInput {
+                                            let bitmapRep = NSBitmapImageRep(cgImage: receipt.warpedImage)
+                                            receiptImageData = bitmapRep.representation(using: .png, properties: [:])
+                                        }
+                                        layoutlmPredictions = try inference.predict(lines: receiptLines, receiptImageData: receiptImageData)
                                     } catch {
                                         print("Warning: LayoutLM inference failed for receipt \(receipt.clusterId): \(error)")
                                     }
@@ -706,7 +712,12 @@ public struct VisionOCREngine: OCREngineProtocol {
                             var layoutlmPredictions: [LinePrediction]?
                             if let inference = layoutLMInference, !receiptLines.isEmpty {
                                 do {
-                                    layoutlmPredictions = try inference.predict(lines: receiptLines)
+                                    var receiptImageData: Data? = nil
+                                    if inference.requiresImageInput {
+                                        let bitmapRep = NSBitmapImageRep(cgImage: receipt.warpedImage)
+                                        receiptImageData = bitmapRep.representation(using: .png, properties: [:])
+                                    }
+                                    layoutlmPredictions = try inference.predict(lines: receiptLines, receiptImageData: receiptImageData)
                                 } catch {
                                     print("Warning: LayoutLM inference failed for receipt \(receipt.clusterId): \(error)")
                                 }
