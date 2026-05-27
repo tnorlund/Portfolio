@@ -6,7 +6,7 @@
 
 # Interface: WithinReceiptEquation
 
-Defined in: [types/api.ts:803](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L803)
+Defined in: [types/api.ts:803](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L803)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:803](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **actual\_value**: `number` \| `null`
 
-Defined in: [types/api.ts:807](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L807)
+Defined in: [types/api.ts:807](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L807)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:807](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **description**: `string`
 
-Defined in: [types/api.ts:805](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L805)
+Defined in: [types/api.ts:805](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L805)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:805](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **difference**: `number` \| `null`
 
-Defined in: [types/api.ts:808](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L808)
+Defined in: [types/api.ts:808](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L808)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:808](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **expected\_value**: `number` \| `null`
 
-Defined in: [types/api.ts:806](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L806)
+Defined in: [types/api.ts:806](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L806)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:806](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **involved\_words**: [`WithinReceiptWordDecision`](WithinReceiptWordDecision.md)[]
 
-Defined in: [types/api.ts:809](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L809)
+Defined in: [types/api.ts:809](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L809)
 
 ***
 
@@ -54,4 +54,4 @@ Defined in: [types/api.ts:809](https://github.com/tnorlund/Portfolio/blob/de50d9
 
 > **issue\_type**: `string`
 
-Defined in: [types/api.ts:804](https://github.com/tnorlund/Portfolio/blob/de50d9ceec0a4283d39623a0b5aa85e894d4e65a/portfolio/types/api.ts#L804)
+Defined in: [types/api.ts:804](https://github.com/tnorlund/Portfolio/blob/f85807f43f78d5d5b5c65a1007bf5eaab79fca18/portfolio/types/api.ts#L804)
