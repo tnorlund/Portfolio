@@ -37,7 +37,7 @@ FROM dependencies
 RUN mkdir -p ${LAMBDA_TASK_ROOT}/receipt_mcp_server
 
 # Copy the receipt MCP server as the package's server module
-COPY scripts/receipt_mcp_server.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/server.py
+COPY infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/server.py
 
 # Copy the Lambda-aware __init__ and __main__ for the package
 COPY infra/mcp_server_lambda/lambdas/receipt_mcp_server_init.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/__init__.py

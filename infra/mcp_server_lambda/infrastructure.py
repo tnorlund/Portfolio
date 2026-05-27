@@ -262,7 +262,6 @@ class McpServerLambda(ComponentResource):
                 "receipt_dynamo_stream",
                 "receipt_places",
                 "receipt_upload",
-                "scripts",
             ],
             lambda_function_name=f"{name}-{stack}-mcp-server",
             lambda_config=lambda_config,
