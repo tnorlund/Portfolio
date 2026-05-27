@@ -58,7 +58,9 @@ def get_clients():
             create_embed_fn,
         )
         from receipt_chroma.data.chroma_client import ChromaClient
-        from receipt_dynamo.data._pulumi import load_env, load_secrets
+        import receipt_dynamo.data._pulumi as _pulumi_mod
+        load_env = _pulumi_mod.load_env
+        load_secrets = _pulumi_mod.load_secrets
 
         env = os.environ.get("PORTFOLIO_ENV", "dev")
         logger.info("Loading %s environment...", env)
