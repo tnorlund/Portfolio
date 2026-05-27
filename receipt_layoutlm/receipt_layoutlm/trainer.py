@@ -363,9 +363,10 @@ class ReceiptLayoutLMTrainer:
                 max_len=self.data_config.max_seq_length,
             )
 
-        # Columns to remove during preprocessing
-        # v3 needs receipt_key during preprocess (for image lookup), removed here
-        remove_cols = ["tokens", "bboxes", "ner_tags", "image_id", "receipt_key"]
+        # Columns to remove during preprocessing — filter to those actually present
+        # (v1 datasets already had receipt_key removed in data_loader)
+        candidate_cols = ["tokens", "bboxes", "ner_tags", "image_id", "receipt_key"]
+        remove_cols = [c for c in candidate_cols if c in datasets["train"].column_names]
 
         # Parallelize preprocessing across CPU cores
         # Disable cache to minimize local disk usage on SageMaker instances

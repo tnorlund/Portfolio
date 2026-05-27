@@ -313,17 +313,21 @@ def export_coreml(
         print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN/Inf")
 
     # Copy vocab.txt for tokenizer
+    # NOTE: v3 uses RoBERTa BPE tokenizer, not BERT WordPiece. The Swift
+    # BertTokenizer.swift is not compatible with v3 vocab. A v3-specific
+    # Swift tokenizer is needed before v3 CoreML inference works end-to-end.
     vocab_src = checkpoint_path / "vocab.txt"
     vocab_dst = output_path / "vocab.txt"
-    if vocab_src.exists():
+    if model_version == "v3":
+        print("WARNING: v3 uses RoBERTa BPE tokenizer — vocab.txt is not compatible with Swift BertTokenizer")
+        print("         v3 Swift inference requires a BPE tokenizer implementation (follow-up PR)")
+        # Still write it for reference, but save the full tokenizer too
+        tokenizer.save_pretrained(str(output_path))
+        print(f"Saved v3 tokenizer files to {output_path}")
+    elif vocab_src.exists():
         shutil.copy(vocab_src, vocab_dst)
         print(f"Copied vocab.txt to {vocab_dst}")
     else:
-        # transformers 5.x removed BertTokenizer.vocab_file, so
-        # tokenizer.save_vocabulary() crashes (AttributeError). The Swift
-        # inference side (BertTokenizer.swift) only needs the BERT-format
-        # vocab.txt — sort tokens by id and write directly. Works with
-        # both slow (BertTokenizer) and fast (BertTokenizerFast) loaders.
         vocab = tokenizer.get_vocab()
         sorted_tokens = sorted(vocab.items(), key=lambda kv: kv[1])
         with open(vocab_dst, "w", encoding="utf-8") as f:
@@ -527,6 +531,12 @@ if __name__ == "__main__":
         default=1,
         help="Minimum sequence length for model (default: 1)",
     )
+    parser.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 or v3",
+    )
 
     args = parser.parse_args()
 
@@ -547,6 +557,7 @@ if __name__ == "__main__":
             quantize=args.quantize,
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
+            model_version=args.model_version,
         )
     else:
         export_coreml(
@@ -556,4 +567,5 @@ if __name__ == "__main__":
             quantize=args.quantize,
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
+            model_version=args.model_version,
         )
