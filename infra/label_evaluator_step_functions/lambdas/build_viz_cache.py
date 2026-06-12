@@ -1,7 +1,7 @@
 """Lambda to build viz-cache directly from evaluator S3 outputs.
 
 Replaces the LangSmith export + EMR Spark pipeline. Reads three S3 prefixes
-written by unified_receipt_evaluator.py and writes two viz-cache prefixes
+written by unified_receipt_evaluator.py and writes three viz-cache prefixes
 matching the TypeScript frontend types.
 
 Input (from Step Function):
@@ -20,10 +20,13 @@ S3 Writes:
     {cache_bucket}/financial-math/metadata.json
     {cache_bucket}/within-receipt/{image_id}_{receipt_id}.json
     {cache_bucket}/within-receipt/metadata.json
+    {cache_bucket}/receipt-health/{image_id}_{receipt_id}.json
+    {cache_bucket}/receipt-health/metadata.json
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -39,25 +42,34 @@ logger.setLevel(logging.INFO)
 
 s3_client = boto3.client("s3")
 
+RECEIPT_HEALTH_LEDGER_KEY = "receipt-health/issues/ledger.json"
+RECEIPT_HEALTH_ELIGIBLE_KEY = "receipt-health/issues/eligible.json"
+RECEIPT_HEALTH_CURRENT_KEY = "receipt-health/issues/current.json"
+MAX_LEDGER_ATTEMPTS = 2
+
 # ---------------------------------------------------------------------------
 # Label sets for within-receipt verification
 # ---------------------------------------------------------------------------
 
-PLACE_LABELS = frozenset({
-    "MERCHANT_NAME",
-    "ADDRESS_LINE",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "STORE_HOURS",
-})
+PLACE_LABELS = frozenset(
+    {
+        "MERCHANT_NAME",
+        "ADDRESS_LINE",
+        "PHONE_NUMBER",
+        "WEBSITE",
+        "STORE_HOURS",
+    }
+)
 
-FORMAT_LABELS = frozenset({
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "LOYALTY_ID",
-})
+FORMAT_LABELS = frozenset(
+    {
+        "DATE",
+        "TIME",
+        "PAYMENT_METHOD",
+        "COUPON",
+        "LOYALTY_ID",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -247,14 +259,16 @@ def _build_text_scan_equations(
         if issue_type not in TEXT_SCAN_ISSUE_TYPES:
             continue
         entry = _build_decision_entry(d, word_lookup)
-        equations.append({
-            "issue_type": issue_type,
-            "description": issue.get("description", ""),
-            "expected_value": issue.get("expected_value"),
-            "actual_value": issue.get("actual_value"),
-            "difference": issue.get("difference"),
-            "involved_words": [entry],
-        })
+        equations.append(
+            {
+                "issue_type": issue_type,
+                "description": issue.get("description", ""),
+                "expected_value": issue.get("expected_value"),
+                "actual_value": issue.get("actual_value"),
+                "difference": issue.get("difference"),
+                "involved_words": [entry],
+            }
+        )
     return equations
 
 
@@ -292,7 +306,11 @@ def _build_equations(
 
         # Also group by line for line-item equations
         lid = entry.get("line_id")
-        if lid is not None and label in ("QUANTITY", "UNIT_PRICE", "LINE_TOTAL"):
+        if lid is not None and label in (
+            "QUANTITY",
+            "UNIT_PRICE",
+            "LINE_TOTAL",
+        ):
             by_line.setdefault(lid, {}).setdefault(label, []).append(entry)
 
     equations: list[dict[str, Any]] = []
@@ -315,53 +333,83 @@ def _build_equations(
             qty_val = _parse_numeric(qtys[0].get("word_text", ""))
             up_val = _parse_numeric(ups[0].get("word_text", ""))
             lt_val = _parse_numeric(lts[0].get("word_text", ""))
-            expected = qty_val * up_val if qty_val is not None and up_val is not None else None
-            diff = round(lt_val - expected, 2) if lt_val is not None and expected is not None else None
+            expected = (
+                qty_val * up_val
+                if qty_val is not None and up_val is not None
+                else None
+            )
+            diff = (
+                round(lt_val - expected, 2)
+                if lt_val is not None and expected is not None
+                else None
+            )
             involved = qtys + ups + lts
-            equations.append({
-                "issue_type": "LINE_ITEM_BALANCED",
-                "description": (
-                    f"Line {lid}: LINE_TOTAL ({lts[0]['word_text']}) "
-                    f"= QTY ({qtys[0]['word_text']}) × UNIT_PRICE ({ups[0]['word_text']})"
-                ),
-                "expected_value": expected,
-                "actual_value": lt_val,
-                "difference": diff,
-                "involved_words": involved,
-            })
+            equations.append(
+                {
+                    "issue_type": "LINE_ITEM_BALANCED",
+                    "description": (
+                        f"Line {lid}: LINE_TOTAL ({lts[0]['word_text']}) "
+                        f"= QTY ({qtys[0]['word_text']}) × UNIT_PRICE ({ups[0]['word_text']})"
+                    ),
+                    "expected_value": expected,
+                    "actual_value": lt_val,
+                    "difference": diff,
+                    "involved_words": involved,
+                }
+            )
 
     # --- SUBTOTAL = sum(LINE_TOTAL) ---
     if has_subtotal and line_totals:
         lt_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in line_totals)
-        discount_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in discounts)
+        discount_sum = sum(
+            _parse_numeric(w["word_text"]) or 0 for w in discounts
+        )
         expected = round(lt_sum - discount_sum, 2)
-        st_val = _parse_numeric(subtotals[0]["word_text"]) if subtotals else None
+        st_val = (
+            _parse_numeric(subtotals[0]["word_text"]) if subtotals else None
+        )
         diff = round(st_val - expected, 2) if st_val is not None else None
         lt_desc = " + ".join(w["word_text"] for w in line_totals)
         desc = f"SUBTOTAL ({subtotals[0]['word_text']}) = sum(LINE_TOTAL) ({lt_desc})"
         if discounts:
             desc += f" - DISCOUNT ({discounts[0]['word_text']})"
-        equations.append({
-            "issue_type": "SUBTOTAL",
-            "description": desc,
-            "expected_value": expected,
-            "actual_value": st_val,
-            "difference": diff,
-            "involved_words": subtotals + line_totals + discounts,
-        })
+        equations.append(
+            {
+                "issue_type": "SUBTOTAL",
+                "description": desc,
+                "expected_value": expected,
+                "actual_value": st_val,
+                "difference": diff,
+                "involved_words": subtotals + line_totals + discounts,
+            }
+        )
 
     # --- GRAND_TOTAL equation ---
     if has_grand_total:
-        gt_val = _parse_numeric(grand_totals[0]["word_text"]) if grand_totals else None
+        gt_val = (
+            _parse_numeric(grand_totals[0]["word_text"])
+            if grand_totals
+            else None
+        )
         tax_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in taxes)
         tip_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in tips)
-        discount_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in discounts)
+        discount_sum = sum(
+            _parse_numeric(w["word_text"]) or 0 for w in discounts
+        )
 
         if has_subtotal:
             # GRAND_TOTAL = SUBTOTAL + TAX + TIP - DISCOUNT
-            st_val = _parse_numeric(subtotals[0]["word_text"]) if subtotals else 0
-            expected = round((st_val or 0) + tax_sum + tip_sum - discount_sum, 2)
-            parts = [f"SUBTOTAL ({subtotals[0]['word_text']})"] if subtotals else []
+            st_val = (
+                _parse_numeric(subtotals[0]["word_text"]) if subtotals else 0
+            )
+            expected = round(
+                (st_val or 0) + tax_sum + tip_sum - discount_sum, 2
+            )
+            parts = (
+                [f"SUBTOTAL ({subtotals[0]['word_text']})"]
+                if subtotals
+                else []
+            )
             if taxes:
                 parts.append(f"TAX ({taxes[0]['word_text']})")
             if tips:
@@ -373,9 +421,15 @@ def _build_equations(
             involved = grand_totals + subtotals + taxes + tips + discounts
         else:
             # GRAND_TOTAL_DIRECT = sum(LINE_TOTAL) + TAX + TIP - DISCOUNT
-            lt_sum = sum(_parse_numeric(w["word_text"]) or 0 for w in line_totals)
+            lt_sum = sum(
+                _parse_numeric(w["word_text"]) or 0 for w in line_totals
+            )
             expected = round(lt_sum + tax_sum + tip_sum - discount_sum, 2)
-            lt_desc = " + ".join(w["word_text"] for w in line_totals) if line_totals else "0"
+            lt_desc = (
+                " + ".join(w["word_text"] for w in line_totals)
+                if line_totals
+                else "0"
+            )
             parts = [f"sum(LINE_TOTAL) ({lt_desc})"]
             if taxes:
                 parts.append(f"TAX ({taxes[0]['word_text']})")
@@ -388,26 +442,38 @@ def _build_equations(
             involved = grand_totals + line_totals + taxes + tips + discounts
 
         diff = round(gt_val - expected, 2) if gt_val is not None else None
-        equations.append({
-            "issue_type": issue_type,
-            "description": desc,
-            "expected_value": expected,
-            "actual_value": gt_val,
-            "difference": diff,
-            "involved_words": involved,
-        })
+        equations.append(
+            {
+                "issue_type": issue_type,
+                "description": desc,
+                "expected_value": expected,
+                "actual_value": gt_val,
+                "difference": diff,
+                "involved_words": involved,
+            }
+        )
 
     # --- HAS_TOTAL: only when no other equations were built ---
     if not equations and has_grand_total:
-        gt_val = _parse_numeric(grand_totals[0]["word_text"]) if grand_totals else None
-        equations.append({
-            "issue_type": "HAS_TOTAL",
-            "description": f"GRAND_TOTAL = {grand_totals[0]['word_text']}" if grand_totals else "GRAND_TOTAL",
-            "expected_value": gt_val,
-            "actual_value": gt_val,
-            "difference": 0,
-            "involved_words": grand_totals,
-        })
+        gt_val = (
+            _parse_numeric(grand_totals[0]["word_text"])
+            if grand_totals
+            else None
+        )
+        equations.append(
+            {
+                "issue_type": "HAS_TOTAL",
+                "description": (
+                    f"GRAND_TOTAL = {grand_totals[0]['word_text']}"
+                    if grand_totals
+                    else "GRAND_TOTAL"
+                ),
+                "expected_value": gt_val,
+                "actual_value": gt_val,
+                "difference": 0,
+                "involved_words": grand_totals,
+            }
+        )
 
     return equations
 
@@ -492,10 +558,16 @@ def _split_metadata_decisions(
 def _build_decision_summary(decisions: list[dict]) -> dict[str, int]:
     """Count V/I/R decisions."""
     total = len(decisions)
-    valid = sum(1 for d in decisions if (d.get("decision") or "").upper() == "VALID")
-    invalid = sum(1 for d in decisions if (d.get("decision") or "").upper() == "INVALID")
+    valid = sum(
+        1 for d in decisions if (d.get("decision") or "").upper() == "VALID"
+    )
+    invalid = sum(
+        1 for d in decisions if (d.get("decision") or "").upper() == "INVALID"
+    )
     needs_review = sum(
-        1 for d in decisions if (d.get("decision") or "").upper() == "NEEDS_REVIEW"
+        1
+        for d in decisions
+        if (d.get("decision") or "").upper() == "NEEDS_REVIEW"
     )
     return {
         "total": total,
@@ -503,6 +575,730 @@ def _build_decision_summary(decisions: list[dict]) -> dict[str, int]:
         "invalid": invalid,
         "needs_review": needs_review,
     }
+
+
+def _check_status_from_summary(summary: dict[str, int]) -> str:
+    """Convert a decision summary to a frontend check status."""
+    total = int(summary.get("total") or 0)
+    if total == 0:
+        return "not_applicable"
+    if int(summary.get("invalid") or 0) > 0:
+        return "fail"
+    if int(summary.get("needs_review") or 0) > 0:
+        return "review"
+    return "pass"
+
+
+def _equation_has_mismatch(equation: dict[str, Any]) -> bool:
+    """Return true when an equation materially fails numeric reconciliation."""
+    diff = equation.get("difference")
+    if diff is None:
+        return False
+    try:
+        return abs(float(diff)) > 0.05
+    except (TypeError, ValueError):
+        return False
+
+
+def _financial_status(financial_math: dict[str, Any]) -> str:
+    """Derive a health status from financial equations and word decisions."""
+    equations = financial_math.get("equations") or []
+    if not equations:
+        return "not_applicable"
+
+    summary = financial_math.get("summary") or {}
+    if summary.get("has_invalid") or any(
+        _equation_has_mismatch(eq) for eq in equations
+    ):
+        return "fail"
+    if summary.get("has_needs_review"):
+        return "review"
+    return "pass"
+
+
+def _status_priority(status: str) -> int:
+    """Order health statuses from least to most severe."""
+    return {
+        "not_applicable": 0,
+        "pass": 1,
+        "review": 2,
+        "fail": 3,
+    }.get(status, 0)
+
+
+def _overall_status(checks: list[dict[str, Any]]) -> str:
+    """Return the most severe applicable status across checks."""
+    if not checks:
+        return "not_applicable"
+    return max(
+        (check.get("status", "not_applicable") for check in checks),
+        key=_status_priority,
+    )
+
+
+def _check_counts(checks: list[dict[str, Any]]) -> dict[str, int]:
+    """Count check statuses for the receipt health summary."""
+    statuses = ["pass", "review", "fail", "not_applicable"]
+    return {
+        status: sum(1 for check in checks if check.get("status") == status)
+        for status in statuses
+    }
+
+
+def _issue_count_for_check(check: dict[str, Any]) -> int:
+    """Count concrete issues represented by one check."""
+    status = check.get("status")
+    if status == "pass":
+        return 0
+    summary = check.get("summary") or {}
+    if "invalid" in summary or "needs_review" in summary:
+        return int(summary.get("invalid") or 0) + int(
+            summary.get("needs_review") or 0
+        )
+    if "mismatched_equations" in summary:
+        return int(summary.get("mismatched_equations") or 0)
+    return 1 if status in {"fail", "review"} else 0
+
+
+def _build_primary_issues(
+    checks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build compact issue list ordered by severity for the frontend."""
+    issues: list[dict[str, Any]] = []
+    for check in checks:
+        if check.get("status") not in {"fail", "review"}:
+            continue
+        issue_count = _issue_count_for_check(check)
+        result = check.get("result") or "Needs review"
+        issues.append(
+            {
+                "check_id": check.get("id"),
+                "status": check.get("status"),
+                "title": check.get("title"),
+                "message": result,
+                "issue_count": issue_count,
+                "summary": result,
+            }
+        )
+    return sorted(
+        issues,
+        key=lambda item: (
+            -_status_priority(str(item.get("status"))),
+            -int(item.get("issue_count") or 0),
+        ),
+    )
+
+
+def build_receipt_health_entry(
+    within_entry: dict[str, Any],
+) -> dict[str, Any]:
+    """Build unified receipt-health cache entry from within-receipt data."""
+    place_validation = within_entry["place_validation"]
+    format_validation = within_entry["format_validation"]
+    financial_math = within_entry["financial_math"]
+
+    place_summary = place_validation.get("summary") or {}
+    format_summary = format_validation.get("summary") or {}
+    equations = financial_math.get("equations") or []
+    mismatched_equations = sum(
+        1 for equation in equations if _equation_has_mismatch(equation)
+    )
+
+    checks = [
+        {
+            "id": "merchant_identity",
+            "title": "Merchant Identity",
+            "question": (
+                "Do the merchant, address, phone, and website words agree "
+                "with the stored ReceiptPlace?"
+            ),
+            "status": _check_status_from_summary(place_summary),
+            "validator": "place_validation",
+            "is_llm": place_validation.get("is_llm", False),
+            "duration_seconds": place_validation.get("duration_seconds"),
+            "summary": place_summary,
+            "result": (
+                f"{place_summary.get('valid', 0)} valid, "
+                f"{place_summary.get('invalid', 0)} invalid, "
+                f"{place_summary.get('needs_review', 0)} review"
+            ),
+            "evidence_count": len(place_validation.get("decisions") or []),
+            "what_it_validates": [
+                "merchant name",
+                "street address",
+                "phone number",
+                "website or store hours",
+            ],
+        },
+        {
+            "id": "receipt_format",
+            "title": "Receipt Format",
+            "question": (
+                "Do date, time, payment, coupon, and loyalty labels make "
+                "sense within this receipt?"
+            ),
+            "status": _check_status_from_summary(format_summary),
+            "validator": "format_validation",
+            "is_llm": format_validation.get("is_llm", False),
+            "duration_seconds": format_validation.get("duration_seconds"),
+            "summary": format_summary,
+            "result": (
+                f"{format_summary.get('valid', 0)} valid, "
+                f"{format_summary.get('invalid', 0)} invalid, "
+                f"{format_summary.get('needs_review', 0)} review"
+            ),
+            "evidence_count": len(format_validation.get("decisions") or []),
+            "what_it_validates": [
+                "date",
+                "time",
+                "payment method",
+                "coupon",
+                "loyalty ID",
+            ],
+        },
+        {
+            "id": "financial_math",
+            "title": "Financial Math",
+            "question": (
+                "Do line totals, subtotal, tax, tip, discounts, and grand "
+                "total reconcile?"
+            ),
+            "status": _financial_status(financial_math),
+            "validator": "financial_math",
+            "is_llm": financial_math.get("is_llm", False),
+            "duration_seconds": financial_math.get("duration_seconds"),
+            "summary": {
+                **(financial_math.get("summary") or {}),
+                "mismatched_equations": mismatched_equations,
+            },
+            "result": (
+                f"{len(equations)} equations, "
+                f"{mismatched_equations} mismatches"
+            ),
+            "evidence_count": sum(
+                len(eq.get("involved_words") or []) for eq in equations
+            ),
+            "what_it_validates": [
+                "line item arithmetic",
+                "subtotal",
+                "tax",
+                "tip",
+                "discount",
+                "grand total",
+            ],
+        },
+    ]
+
+    status = _overall_status(checks)
+    counts = _check_counts(checks)
+    issue_count = sum(_issue_count_for_check(check) for check in checks)
+
+    return {
+        "image_id": within_entry.get("image_id"),
+        "receipt_id": within_entry.get("receipt_id"),
+        "merchant_name": within_entry.get("merchant_name"),
+        "trace_id": within_entry.get("trace_id"),
+        "receipt_type": within_entry.get("receipt_type"),
+        "overall_status": status,
+        "summary": {
+            "total_checks": len(checks),
+            "passed": counts["pass"],
+            "needs_review": counts["review"],
+            "failed": counts["fail"],
+            "not_applicable": counts["not_applicable"],
+            "issue_count": issue_count,
+        },
+        "checks": checks,
+        "primary_issues": _build_primary_issues(checks),
+        "place_validation": place_validation,
+        "format_validation": format_validation,
+        "financial_math": financial_math,
+        "words": within_entry.get("words", []),
+        "width": within_entry.get("width", 0),
+        "height": within_entry.get("height", 0),
+        **{
+            key: value
+            for key, value in within_entry.items()
+            if key.startswith("cdn_")
+        },
+    }
+
+
+def _stable_issue_hash(parts: dict[str, Any]) -> str:
+    """Build a short deterministic hash for an issue fingerprint."""
+    payload = json.dumps(parts, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+
+def _word_ref(word: dict[str, Any]) -> dict[str, Any]:
+    """Return only stable word identity fields for issue fingerprinting."""
+    return {
+        "line_id": word.get("line_id"),
+        "word_id": word.get("word_id"),
+        "label": word.get("current_label") or word.get("label"),
+    }
+
+
+def _compact_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    """Keep the fields a cleanup agent needs without duplicating whole receipts."""
+    result = {
+        "line_id": decision.get("line_id"),
+        "word_id": decision.get("word_id"),
+        "word_text": decision.get("word_text"),
+        "current_label": decision.get("current_label"),
+        "decision": decision.get("decision"),
+        "confidence": decision.get("confidence"),
+        "reasoning": decision.get("reasoning"),
+        "bbox": decision.get("bbox"),
+    }
+    if decision.get("suggested_label"):
+        result["suggested_label"] = decision.get("suggested_label")
+    return result
+
+
+def _issue_base(
+    receipt: dict[str, Any],
+    check: dict[str, Any],
+    *,
+    execution_id: str,
+    observed_at: str,
+    status: str,
+    issue_type: str,
+    message: str,
+    fingerprint_parts: dict[str, Any],
+    evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the shared issue payload used by run snapshots and the ledger."""
+    issue_hash = _stable_issue_hash(fingerprint_parts)
+    image_id = str(receipt.get("image_id"))
+    receipt_id = receipt.get("receipt_id")
+    check_id = str(check.get("id"))
+    return {
+        "issue_id": f"{image_id}:{receipt_id}:{check_id}:{issue_hash}",
+        "fingerprint": issue_hash,
+        "execution_id": execution_id,
+        "observed_at": observed_at,
+        "image_id": receipt.get("image_id"),
+        "receipt_id": receipt_id,
+        "merchant_name": receipt.get("merchant_name"),
+        "receipt_type": receipt.get("receipt_type"),
+        "check_id": check_id,
+        "check_title": check.get("title"),
+        "validator": check.get("validator"),
+        "status": status,
+        "issue_type": issue_type,
+        "message": message,
+        "result": check.get("result"),
+        "evidence": evidence,
+    }
+
+
+def _metadata_decision_issues(
+    receipt: dict[str, Any],
+    check: dict[str, Any],
+    decisions: list[dict[str, Any]],
+    *,
+    execution_id: str,
+    observed_at: str,
+) -> list[dict[str, Any]]:
+    """Build ledger issues from merchant/format label decisions."""
+    issues: list[dict[str, Any]] = []
+    for decision in decisions:
+        decision_status = str(decision.get("decision") or "").upper()
+        if decision_status not in {"INVALID", "NEEDS_REVIEW"}:
+            continue
+
+        status = "fail" if decision_status == "INVALID" else "review"
+        issue_type = (
+            "invalid_label"
+            if decision_status == "INVALID"
+            else "label_needs_review"
+        )
+        label = decision.get("current_label") or "UNKNOWN_LABEL"
+        word_text = decision.get("word_text") or ""
+        message = f"{label} on {word_text!r} is {decision_status}"
+        fingerprint_parts = {
+            "image_id": receipt.get("image_id"),
+            "receipt_id": receipt.get("receipt_id"),
+            "check_id": check.get("id"),
+            "issue_type": issue_type,
+            "word": _word_ref(decision),
+        }
+        issues.append(
+            _issue_base(
+                receipt,
+                check,
+                execution_id=execution_id,
+                observed_at=observed_at,
+                status=status,
+                issue_type=issue_type,
+                message=message,
+                fingerprint_parts=fingerprint_parts,
+                evidence=[_compact_decision(decision)],
+            )
+        )
+    return issues
+
+
+def _financial_issue_message(equation: dict[str, Any]) -> str:
+    """Return a compact human-readable financial issue summary."""
+    description = equation.get("description")
+    if description:
+        return str(description)
+
+    issue_type = equation.get("issue_type") or "financial_math"
+    difference = equation.get("difference")
+    if difference is None:
+        return str(issue_type)
+    return f"{issue_type} mismatch by {difference}"
+
+
+def _financial_equation_issues(
+    receipt: dict[str, Any],
+    check: dict[str, Any],
+    equations: list[dict[str, Any]],
+    *,
+    execution_id: str,
+    observed_at: str,
+) -> list[dict[str, Any]]:
+    """Build ledger issues from financial equations and their word evidence."""
+    issues: list[dict[str, Any]] = []
+    for equation in equations:
+        involved_words = equation.get("involved_words") or []
+        bad_decisions = [
+            word
+            for word in involved_words
+            if str(word.get("decision") or "").upper()
+            in {"INVALID", "NEEDS_REVIEW"}
+        ]
+        has_mismatch = _equation_has_mismatch(equation)
+        if not has_mismatch and not bad_decisions:
+            continue
+
+        has_invalid = any(
+            str(word.get("decision") or "").upper() == "INVALID"
+            for word in bad_decisions
+        )
+        status = "fail" if has_mismatch or has_invalid else "review"
+        issue_type = str(equation.get("issue_type") or "financial_math")
+        word_refs = sorted(
+            (_word_ref(word) for word in involved_words),
+            key=lambda item: (
+                item.get("line_id") is None,
+                item.get("line_id") or -1,
+                item.get("word_id") is None,
+                item.get("word_id") or -1,
+                item.get("label") or "",
+            ),
+        )
+        fingerprint_parts = {
+            "image_id": receipt.get("image_id"),
+            "receipt_id": receipt.get("receipt_id"),
+            "check_id": check.get("id"),
+            "issue_type": issue_type,
+            "word_refs": word_refs,
+        }
+        evidence = [
+            {
+                "issue_type": issue_type,
+                "description": equation.get("description"),
+                "expected_value": equation.get("expected_value"),
+                "actual_value": equation.get("actual_value"),
+                "difference": equation.get("difference"),
+                "involved_words": [
+                    _compact_decision(word) for word in involved_words
+                ],
+            }
+        ]
+        issues.append(
+            _issue_base(
+                receipt,
+                check,
+                execution_id=execution_id,
+                observed_at=observed_at,
+                status=status,
+                issue_type=issue_type,
+                message=_financial_issue_message(equation),
+                fingerprint_parts=fingerprint_parts,
+                evidence=evidence,
+            )
+        )
+    return issues
+
+
+def build_receipt_health_issues(
+    receipt: dict[str, Any],
+    *,
+    execution_id: str,
+    observed_at: str,
+) -> list[dict[str, Any]]:
+    """Extract stable issue records from one receipt-health entry."""
+    issues: list[dict[str, Any]] = []
+    checks_by_id = {
+        str(check.get("id")): check for check in receipt.get("checks", [])
+    }
+
+    place_check = checks_by_id.get("merchant_identity")
+    if place_check:
+        issues.extend(
+            _metadata_decision_issues(
+                receipt,
+                place_check,
+                receipt.get("place_validation", {}).get("decisions") or [],
+                execution_id=execution_id,
+                observed_at=observed_at,
+            )
+        )
+
+    format_check = checks_by_id.get("receipt_format")
+    if format_check:
+        issues.extend(
+            _metadata_decision_issues(
+                receipt,
+                format_check,
+                receipt.get("format_validation", {}).get("decisions") or [],
+                execution_id=execution_id,
+                observed_at=observed_at,
+            )
+        )
+
+    financial_check = checks_by_id.get("financial_math")
+    if financial_check:
+        issues.extend(
+            _financial_equation_issues(
+                receipt,
+                financial_check,
+                receipt.get("financial_math", {}).get("equations") or [],
+                execution_id=execution_id,
+                observed_at=observed_at,
+            )
+        )
+
+    return sorted(
+        issues,
+        key=lambda issue: (
+            -_status_priority(str(issue.get("status"))),
+            str(issue.get("merchant_name") or ""),
+            str(issue.get("image_id") or ""),
+            int(issue.get("receipt_id") or 0),
+            str(issue.get("issue_id") or ""),
+        ),
+    )
+
+
+def build_receipt_health_run_artifacts(
+    receipts: list[dict[str, Any]],
+    *,
+    execution_id: str,
+    observed_at: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build immutable issue list and summary for a receipt-health run."""
+    issues: list[dict[str, Any]] = []
+    status_counts = {"pass": 0, "review": 0, "fail": 0, "not_applicable": 0}
+    check_counts: dict[str, dict[str, int]] = {}
+
+    for receipt in receipts:
+        status = str(receipt.get("overall_status") or "not_applicable")
+        if status not in status_counts:
+            status = "not_applicable"
+        status_counts[status] += 1
+
+        for check in receipt.get("checks", []):
+            check_id = str(check.get("id") or "unknown")
+            check_status = str(check.get("status") or "not_applicable")
+            check_counts.setdefault(
+                check_id,
+                {"pass": 0, "review": 0, "fail": 0, "not_applicable": 0},
+            )
+            if check_status not in check_counts[check_id]:
+                check_status = "not_applicable"
+            check_counts[check_id][check_status] += 1
+
+        issues.extend(
+            build_receipt_health_issues(
+                receipt,
+                execution_id=execution_id,
+                observed_at=observed_at,
+            )
+        )
+
+    summary = {
+        "execution_id": execution_id,
+        "cached_at": observed_at,
+        "total_receipts": len(receipts),
+        "total_issues": len(issues),
+        "receipts_with_issues": len(
+            {
+                (issue.get("image_id"), issue.get("receipt_id"))
+                for issue in issues
+            }
+        ),
+        "by_status": status_counts,
+        "by_check": check_counts,
+        "by_issue_type": {},
+    }
+    by_issue_type: dict[str, int] = {}
+    for issue in issues:
+        issue_type = str(issue.get("issue_type") or "unknown")
+        by_issue_type[issue_type] = by_issue_type.get(issue_type, 0) + 1
+    summary["by_issue_type"] = dict(
+        sorted(by_issue_type.items(), key=lambda item: (-item[1], item[0]))
+    )
+    return issues, summary
+
+
+def _summarize_ledger(issues: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build compact ledger counts for API responses and dashboards."""
+    by_state: dict[str, int] = {}
+    by_check: dict[str, int] = {}
+    for issue in issues:
+        state = str(issue.get("state") or "open")
+        check_id = str(issue.get("check_id") or "unknown")
+        by_state[state] = by_state.get(state, 0) + 1
+        by_check[check_id] = by_check.get(check_id, 0) + 1
+    return {
+        "total_issues": len(issues),
+        "by_state": dict(sorted(by_state.items())),
+        "by_check": dict(sorted(by_check.items())),
+        "eligible_issues": sum(
+            1
+            for issue in issues
+            if issue.get("state") == "open"
+            and int(issue.get("attempt_count") or 0) < MAX_LEDGER_ATTEMPTS
+        ),
+    }
+
+
+def reconcile_receipt_health_ledger(
+    previous_ledger: dict[str, Any] | None,
+    run_issues: list[dict[str, Any]],
+    *,
+    execution_id: str,
+    observed_at: str,
+    max_attempts: int = MAX_LEDGER_ATTEMPTS,
+) -> dict[str, Any]:
+    """Reconcile current run observations with the mutable issue ledger."""
+    previous_issues = {
+        str(issue.get("issue_id")): issue
+        for issue in (previous_ledger or {}).get("issues", [])
+        if issue.get("issue_id")
+    }
+    current_ids = {str(issue.get("issue_id")) for issue in run_issues}
+    reconciled: list[dict[str, Any]] = []
+
+    for issue in run_issues:
+        issue_id = str(issue.get("issue_id"))
+        previous = previous_issues.get(issue_id)
+        if previous:
+            attempt_count = int(previous.get("attempt_count") or 0)
+            prior_state = str(previous.get("state") or "open")
+            next_issue = {
+                **previous,
+                **issue,
+                "state": prior_state,
+                "first_seen_at": previous.get("first_seen_at")
+                or issue.get("observed_at"),
+                "first_seen_execution_id": previous.get(
+                    "first_seen_execution_id"
+                )
+                or issue.get("execution_id"),
+                "last_seen_at": observed_at,
+                "last_seen_execution_id": execution_id,
+                "occurrence_count": int(previous.get("occurrence_count") or 1)
+                + 1,
+                "attempt_count": attempt_count,
+                "attempts": previous.get("attempts") or [],
+            }
+            if prior_state == "resolved":
+                next_issue["state"] = "open"
+                next_issue["reopened_at"] = observed_at
+                next_issue["reopened_execution_id"] = execution_id
+                next_issue.pop("resolved_at", None)
+                next_issue.pop("resolved_execution_id", None)
+            elif prior_state in {"awaiting_validation", "claimed"}:
+                next_issue["last_validation_execution_id"] = execution_id
+                if attempt_count >= max_attempts:
+                    next_issue["state"] = "manual_review"
+                    next_issue["blocked_reason"] = (
+                        "Still failing after automated attempts"
+                    )
+                else:
+                    next_issue["state"] = "open"
+            elif prior_state in {"blocked", "manual_review"}:
+                next_issue["state"] = prior_state
+            else:
+                next_issue["state"] = "open"
+
+            if next_issue.get("state") != "claimed":
+                next_issue.pop("claimed_at", None)
+                next_issue.pop("claimed_by", None)
+            reconciled.append(next_issue)
+            continue
+
+        reconciled.append(
+            {
+                **issue,
+                "state": "open",
+                "first_seen_at": observed_at,
+                "first_seen_execution_id": execution_id,
+                "last_seen_at": observed_at,
+                "last_seen_execution_id": execution_id,
+                "occurrence_count": 1,
+                "attempt_count": 0,
+                "attempts": [],
+            }
+        )
+
+    for issue_id, previous in previous_issues.items():
+        if issue_id in current_ids:
+            continue
+        state = str(previous.get("state") or "open")
+        if state != "resolved":
+            previous = {
+                **previous,
+                "state": "resolved",
+                "resolved_at": observed_at,
+                "resolved_execution_id": execution_id,
+            }
+        reconciled.append(previous)
+
+    reconciled.sort(
+        key=lambda issue: (
+            str(issue.get("state") or ""),
+            -_status_priority(str(issue.get("status") or "")),
+            str(issue.get("merchant_name") or ""),
+            str(issue.get("issue_id") or ""),
+        )
+    )
+    ledger = {
+        "version": 1,
+        "updated_at": observed_at,
+        "latest_execution_id": execution_id,
+        "max_attempts": max_attempts,
+        "summary": _summarize_ledger(reconciled),
+        "issues": reconciled,
+    }
+    return ledger
+
+
+def eligible_receipt_health_issues(
+    ledger: dict[str, Any],
+    *,
+    limit: int = 10,
+    check_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return open ledger issues that an automated routine may attempt."""
+    max_attempts = int(ledger.get("max_attempts") or MAX_LEDGER_ATTEMPTS)
+    issues = []
+    for issue in ledger.get("issues", []):
+        if issue.get("state") != "open":
+            continue
+        if int(issue.get("attempt_count") or 0) >= max_attempts:
+            continue
+        if check_id and issue.get("check_id") != check_id:
+            continue
+        issues.append(issue)
+    return issues[:limit]
 
 
 def _extract_place_info(place: dict | None) -> dict[str, Any] | None:
@@ -527,13 +1323,15 @@ def _build_word_list(words: list[dict]) -> list[dict[str, Any]]:
     """Build simplified word list with bboxes for frontend overlay."""
     result: list[dict[str, Any]] = []
     for w in words:
-        result.append({
-            "text": w.get("text", ""),
-            "label": w.get("label"),
-            "line_id": w.get("line_id"),
-            "word_id": w.get("word_id"),
-            "bbox": _extract_bbox(w),
-        })
+        result.append(
+            {
+                "text": w.get("text", ""),
+                "label": w.get("label"),
+                "line_id": w.get("line_id"),
+                "word_id": w.get("word_id"),
+                "bbox": _extract_bbox(w),
+            }
+        )
     return result
 
 
@@ -578,8 +1376,12 @@ def build_within_receipt_entry(
     if metadata_duration and (place_decisions or format_decisions):
         total_meta = len(place_decisions) + len(format_decisions)
         if total_meta > 0:
-            place_duration = metadata_duration * len(place_decisions) / total_meta
-            format_duration = metadata_duration * len(format_decisions) / total_meta
+            place_duration = (
+                metadata_duration * len(place_decisions) / total_meta
+            )
+            format_duration = (
+                metadata_duration * len(format_decisions) / total_meta
+            )
         else:
             place_duration = metadata_duration / 2
             format_duration = metadata_duration / 2
@@ -664,6 +1466,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "execution_id": execution_id,
             "financial_math_count": 0,
             "within_receipt_count": 0,
+            "receipt_health_count": 0,
         }
 
     # 2. Read all files in parallel
@@ -686,7 +1489,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # Classify by content: unified rows have decision fields,
         # lookup rows have cdn_s3_key, data rows have words
-        if "financial_all_decisions" in item or "metadata_all_decisions" in item:
+        if (
+            "financial_all_decisions" in item
+            or "metadata_all_decisions" in item
+        ):
             unified_lookup[key] = item
         elif "cdn_s3_key" in item and "words" not in item:
             receipt_lookup[key] = item
@@ -703,6 +1509,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # 3. Build cache entries
     financial_math_entries: list[tuple[str, dict]] = []  # (key, data)
     within_receipt_entries: list[tuple[str, dict]] = []
+    receipt_health_entries: list[tuple[str, dict]] = []
 
     for receipt_key, urow in unified_lookup.items():
         image_id, receipt_id = receipt_key
@@ -720,14 +1527,37 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         s3_name = f"within-receipt/{image_id}_{receipt_id}.json"
         within_receipt_entries.append((s3_name, wr_entry))
 
+        # Receipt health (single unified view over place, format, and math)
+        rh_entry = build_receipt_health_entry(wr_entry)
+        s3_name = f"receipt-health/{image_id}_{receipt_id}.json"
+        receipt_health_entries.append((s3_name, rh_entry))
+
     logger.info(
-        "Built %d financial-math, %d within-receipt entries",
+        "Built %d financial-math, %d within-receipt, %d receipt-health entries",
         len(financial_math_entries),
         len(within_receipt_entries),
+        len(receipt_health_entries),
     )
 
     # 4. Write all cache entries + metadata in parallel
     now_iso = datetime.now(timezone.utc).isoformat()
+    receipt_health_receipts = [entry for _, entry in receipt_health_entries]
+    run_issues, run_summary = build_receipt_health_run_artifacts(
+        receipt_health_receipts,
+        execution_id=execution_id,
+        observed_at=now_iso,
+    )
+    previous_ledger = _read_json(cache_bucket, RECEIPT_HEALTH_LEDGER_KEY) or {}
+    issue_ledger = reconcile_receipt_health_ledger(
+        previous_ledger,
+        run_issues,
+        execution_id=execution_id,
+        observed_at=now_iso,
+    )
+    eligible_issues = eligible_receipt_health_issues(
+        issue_ledger,
+        limit=1000,
+    )
 
     fm_metadata = {
         "execution_id": execution_id,
@@ -739,12 +1569,65 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "cached_at": now_iso,
         "total_receipts": len(within_receipt_entries),
     }
+    rh_metadata = {
+        "execution_id": execution_id,
+        "cached_at": now_iso,
+        "total_receipts": len(receipt_health_entries),
+        "total_issues": len(run_issues),
+        "run_prefix": f"receipt-health/runs/{execution_id}/",
+        "ledger_key": RECEIPT_HEALTH_LEDGER_KEY,
+    }
 
     write_tasks: list[tuple[str, dict]] = []
     write_tasks.extend(financial_math_entries)
     write_tasks.append(("financial-math/metadata.json", fm_metadata))
     write_tasks.extend(within_receipt_entries)
     write_tasks.append(("within-receipt/metadata.json", wr_metadata))
+    write_tasks.extend(receipt_health_entries)
+    write_tasks.append(("receipt-health/metadata.json", rh_metadata))
+    run_prefix = f"receipt-health/runs/{execution_id}"
+    write_tasks.extend(
+        (
+            f"{run_prefix}/receipts/{key.split('/')[-1]}",
+            data,
+        )
+        for key, data in receipt_health_entries
+    )
+    write_tasks.append((f"{run_prefix}/summary.json", run_summary))
+    write_tasks.append(
+        (
+            f"{run_prefix}/issues.json",
+            {
+                "execution_id": execution_id,
+                "cached_at": now_iso,
+                "summary": run_summary,
+                "issues": run_issues,
+            },
+        )
+    )
+    write_tasks.append((RECEIPT_HEALTH_LEDGER_KEY, issue_ledger))
+    write_tasks.append(
+        (
+            RECEIPT_HEALTH_CURRENT_KEY,
+            {
+                "execution_id": execution_id,
+                "cached_at": now_iso,
+                "summary": run_summary,
+                "issues": run_issues,
+            },
+        )
+    )
+    write_tasks.append(
+        (
+            RECEIPT_HEALTH_ELIGIBLE_KEY,
+            {
+                "execution_id": execution_id,
+                "cached_at": now_iso,
+                "summary": issue_ledger.get("summary", {}),
+                "issues": eligible_issues,
+            },
+        )
+    )
 
     logger.info("Writing %d files to s3://%s/", len(write_tasks), cache_bucket)
 
@@ -765,10 +1648,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     elapsed = time.time() - t0
     logger.info(
-        "Completed in %.1fs: %d financial-math, %d within-receipt, %d errors",
+        (
+            "Completed in %.1fs: %d financial-math, %d within-receipt, "
+            "%d receipt-health, %d errors"
+        ),
         elapsed,
         len(financial_math_entries),
         len(within_receipt_entries),
+        len(receipt_health_entries),
         errors,
     )
 
@@ -777,6 +1664,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": execution_id,
         "financial_math_count": len(financial_math_entries),
         "within_receipt_count": len(within_receipt_entries),
+        "receipt_health_count": len(receipt_health_entries),
+        "receipt_health_issue_count": len(run_issues),
+        "eligible_issue_count": len(eligible_issues),
         "write_errors": errors,
         "duration_seconds": round(elapsed, 1),
     }

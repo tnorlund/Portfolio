@@ -34,6 +34,10 @@ interface CardPosition {
   rotation: number;
 }
 
+function getReceiptKey(receipt: { image_id?: string; receipt_id: number }): string {
+  return `${receipt.image_id ?? "receipt"}-${receipt.receipt_id}`;
+}
+
 // Constraint-based position solver that guarantees cards stay within bounds
 // (Same approach as WordSimilarity component)
 function solveCardPosition(
@@ -112,7 +116,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
 
   // Track card dimensions for bounds checking
   const [cardDimensions, setCardDimensions] = useState<{
-    [key: number]: { width: number; height: number };
+    [key: string]: { width: number; height: number };
   }>({});
 
   // Track window resize to adjust height on mobile
@@ -177,12 +181,12 @@ const AddressSimilaritySideBySide: React.FC = () => {
   }, []);
 
   // Handle image load to get actual dimensions
-  const handleImageLoad = useCallback((receiptId: number) => (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = useCallback((receiptKey: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
       setImageDimensions((prev) => ({
         ...prev,
-        [receiptId]: {
+        [receiptKey]: {
           width: img.naturalWidth,
           height: img.naturalHeight,
         },
@@ -320,7 +324,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
     receipt: any,
     lines: any[],
     apiBbox: AddressBoundingBox | undefined,
-    receiptId: number,
+    receiptKey: string,
     label?: string,
     noMargin?: boolean,
     hideLabel?: boolean,
@@ -344,7 +348,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
       return null;
     }
 
-    const dims = imageDimensions[receiptId];
+    const dims = imageDimensions[receiptKey];
     const displayWidth = dims?.width ?? receipt.width;
     const displayHeight = dims?.height ?? receipt.height;
     const displayAspectRatio = displayWidth / displayHeight;
@@ -419,7 +423,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
               transform: `translate(-${shiftLeftPercent}%, -${shiftTopPercent}%)`,
               boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)",
             }}
-            onLoad={handleImageLoad(receiptId)}
+            onLoad={handleImageLoad(receiptKey)}
             onError={(e) => {
               console.error("AddressSimilaritySideBySide: Image failed to load:", imageSrc, e);
             }}
@@ -467,7 +471,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
           data.original.receipt,
           data.original.lines,
           data.original.bbox,
-          data.original.receipt.receipt_id,
+          getReceiptKey(data.original.receipt),
           "Original",
           false, // noMargin
           true,  // hideLabel
@@ -510,7 +514,8 @@ const AddressSimilaritySideBySide: React.FC = () => {
               : Math.min(effectiveContainerWidth * 0.85, 350);
 
             // Get card dimensions (use stored or estimate)
-            let cardDims = cardDimensions[similar.receipt.receipt_id];
+            const similarReceiptKey = getReceiptKey(similar.receipt);
+            let cardDims = cardDimensions[similarReceiptKey];
             if (!cardDims) {
               const estimatedAspectRatio = 3.5;
               cardDims = { width: cardWidth, height: cardWidth / estimatedAspectRatio };
@@ -520,18 +525,18 @@ const AddressSimilaritySideBySide: React.FC = () => {
               similar.receipt,
               similar.lines,
               similar.bbox,
-              similar.receipt.receipt_id,
+              similarReceiptKey,
               `Similar #${index + 1} (distance: ${similar.similarity_distance.toFixed(4)})`,
               true, // noMargin for stacked cards
               true, // hideLabel for stacked cards
               true, // hideText for stacked cards
               (width, height) => {
                 setCardDimensions(prev => {
-                  const existing = prev[similar.receipt.receipt_id];
+                  const existing = prev[similarReceiptKey];
                   if (!existing || existing.width !== width || existing.height !== height) {
                     return {
                       ...prev,
-                      [similar.receipt.receipt_id]: { width, height }
+                      [similarReceiptKey]: { width, height }
                     };
                   }
                   return prev;
@@ -562,7 +567,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
             // Position card centered at (x, y) with rotation
             return (
               <div
-                key={similar.receipt.receipt_id}
+                key={similarReceiptKey}
                 style={{
                   position: "absolute",
                   top: `${y}px`,
@@ -584,4 +589,3 @@ const AddressSimilaritySideBySide: React.FC = () => {
 };
 
 export default AddressSimilaritySideBySide;
-

@@ -83,7 +83,7 @@ class LabelEvaluatorVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # API Lambda policy - read from cache bucket
+        # API Lambda policy - read visualization cache and update issue ledger.
         aws.iam.RolePolicy(
             f"{name}-api-policy",
             role=self.api_lambda_role.id,
@@ -108,6 +108,13 @@ class LabelEvaluatorVizCache(ComponentResource):
                                     f"arn:aws:s3:::{bucket}",
                                     f"arn:aws:s3:::{bucket}/*",
                                 ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:PutObject"],
+                                "Resource": (
+                                    f"arn:aws:s3:::{bucket}/receipt-health/issues/*"
+                                ),
                             },
                         ],
                     }

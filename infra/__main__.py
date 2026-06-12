@@ -48,7 +48,6 @@ from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from merge_receipt_lambda import create_merge_receipt_lambda
 from trigger_reocr_lambda import create_trigger_reocr_lambda
 from label_refresh_lambda import create_label_refresh_lambda
-from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1247,25 +1246,6 @@ pulumi.export(
     combine_receipts_sf.batch_bucket_name,
 )
 
-# Metadata Harmonizer Step Function (place_id-based harmonization)
-# Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
-# This is where ChromaDB snapshots are stored by the compaction process
-metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
-    f"metadata-harmonizer-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-)
-
-pulumi.export(
-    "metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn
-)
-pulumi.export(
-    "metadata_harmonizer_batch_bucket_name",
-    metadata_harmonizer_sf.batch_bucket_name,
-)
-
 # Fix Place Lambda (for correcting incorrect ReceiptPlace records)
 # Can be invoked with: {image_id, receipt_id, reason}
 fix_place_lambda = create_fix_place_lambda(
@@ -1573,7 +1553,17 @@ if hasattr(api_gateway, "api"):
     )
 
     # Additional label evaluator visualization endpoints (same Lambda, different paths)
-    for viz_name in ["financial_math", "diff", "journey", "patterns", "evidence", "dedup", "within_receipt"]:
+    for viz_name in [
+        "financial_math",
+        "diff",
+        "journey",
+        "patterns",
+        "evidence",
+        "dedup",
+        "within_receipt",
+        "receipt_health",
+        "receipt_health_issues",
+    ]:
         _integration = aws.apigatewayv2.Integration(
             f"label_evaluator_{viz_name}_integration",
             api_id=api_gateway.api.id,
@@ -1592,6 +1582,27 @@ if hasattr(api_gateway, "api"):
                 delete_before_replace=True,
             ),
         )
+
+    receipt_health_issues_post_integration = aws.apigatewayv2.Integration(
+        "label_evaluator_receipt_health_issues_post_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    aws.apigatewayv2.Route(
+        "label_evaluator_receipt_health_issues_post_route",
+        api_id=api_gateway.api.id,
+        route_key="POST /label_evaluator/receipt_health_issues",
+        target=receipt_health_issues_post_integration.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
 
     # Label Validation Visualization Cache (uses label_validation_project_name)
     from routes.label_validation_viz_cache import (
