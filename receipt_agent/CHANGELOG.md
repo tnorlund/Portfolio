@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- **BREAKING**: Removed the retired bulk metadata harmonizer surface:
+  - `receipt_agent.agents.harmonizer`
+  - `receipt_agent.subagents.cove_text_consistency`
+  - `infra/metadata_harmonizer_step_functions/`
+
+### Migration Notes
+- Use the fix-place workflow, receipt MCP tools, and label evaluator outputs for
+  current receipt cleanup and validation work.
+
 ## [0.3.0] - 2025-12-30
 
 ### Removed
@@ -50,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration Notes
 - If you were using deprecated `receipt_agent.graph.*_workflow` imports, update to:
-  - `receipt_agent.agents.harmonizer` (was `graph.harmonizer_workflow`)
+  - `receipt_agent.agents.harmonizer` (was `graph.harmonizer_workflow`; later retired)
   - `receipt_agent.agents.label_evaluator` (was `graph.label_harmonizer_workflow`) - **Note: label_harmonizer removed in v0.3.0**
   - `receipt_agent.agents.label_validation` (was `graph.label_validation_workflow`)
   - `receipt_agent.agents.label_suggestion` (was `graph.label_suggestion_workflow`)
@@ -59,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `receipt_agent.agents.agentic` (was `graph.agentic_workflow`)
   - `receipt_agent.agents.validation` (was `graph.workflow`)
   - `receipt_agent.subagents.place_finder` (was `graph.receipt_metadata_finder_workflow`)
-  - `receipt_agent.subagents.cove_text_consistency` (was `graph.cove_text_consistency_workflow`)
+  - `receipt_agent.subagents.cove_text_consistency` (was `graph.cove_text_consistency_workflow`; later retired)
   - `receipt_agent.subagents.financial_validation` (was `graph.financial_validation_workflow`)
 
 ## [0.1.0] - Initial Release

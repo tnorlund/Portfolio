@@ -5,8 +5,8 @@ Place ID Finder - Find Google Place IDs for Receipts
 Purpose
 -------
 Finds Google Place IDs for receipt place data that don't have place_ids yet.
-This complements the harmonizer v3 workflow which works on receipts that
-already have place_ids.
+Existing place_ids are corrected by the fix-place workflow and the receipt
+MCP tools.
 
 Key Insight
 -----------
