@@ -214,6 +214,8 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
     attempted["issues"][0]["last_attempted_execution_id"] = "exec-1"
     attempted["issues"][0]["claimed_at"] = "2026-01-01T00:00:01+00:00"
     attempted["issues"][0]["claimed_by"] = "receipt-label-fixer"
+    attempted["issues"][1]["claimed_at"] = "2026-01-01T00:00:02+00:00"
+    attempted["issues"][1]["claimed_by"] = "stale-claim"
 
     still_failing = reconcile_receipt_health_ledger(
         attempted,
@@ -232,6 +234,14 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
     assert retried_issue["last_validation_execution_id"] == "exec-2"
     assert "claimed_at" not in retried_issue
     assert "claimed_by" not in retried_issue
+    open_issue = next(
+        issue
+        for issue in still_failing["issues"]
+        if issue["issue_id"] == attempted["issues"][1]["issue_id"]
+    )
+    assert open_issue["state"] == "open"
+    assert "claimed_at" not in open_issue
+    assert "claimed_by" not in open_issue
 
     resolved = reconcile_receipt_health_ledger(
         still_failing,
