@@ -51,6 +51,23 @@ interface ReceiptPageProps {
   codeBuildDiagramChars: string[];
 }
 
+interface FigureBoundaryProps {
+  children: React.ReactNode;
+  intrinsicSize?: string;
+}
+
+const FigureBoundary = ({
+  children,
+  intrinsicSize = "600px",
+}: FigureBoundaryProps) => (
+  <div
+    className={styles.figureBoundary}
+    style={{ "--figure-intrinsic-size": intrinsicSize } as React.CSSProperties}
+  >
+    {children}
+  </div>
+);
+
 // Use getStaticProps for static generation - this runs at build time
 export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
   // Generate random chars at build time (deterministic for each build)
@@ -230,22 +247,28 @@ M1LK 2%           1    $4.4g`}</code>
         piece of paper with words on it.
       </p>
 
-      <ClientOnly>
-        <PageCurlLetter />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="520px">
+        <ClientOnly>
+          <PageCurlLetter />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         After determining what a receipt is, I needed to pull the piece of
         paper with words on it out of the image.
       </p>
 
-      <ReceiptBoundingBoxGrid />
+      <FigureBoundary intrinsicSize="760px">
+        <ReceiptBoundingBoxGrid />
+      </FigureBoundary>
 
       <p>
         This flattened receipt is now as clean as it can be.
       </p>
 
-      <ReceiptStack />
+      <FigureBoundary intrinsicSize="760px">
+        <ReceiptStack />
+      </FigureBoundary>
 
       <h1>Structuring the Chaos</h1>
 
@@ -284,9 +307,11 @@ M1LK 2%           1    $4.4g`}</code>
         this address before?"
       </p>
 
-      <ClientOnly>
-        <AddressSimilaritySideBySide />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="520px">
+        <ClientOnly>
+          <AddressSimilaritySideBySide />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Turns out receipts from the same store look like receipts from the
@@ -303,9 +328,11 @@ M1LK 2%           1    $4.4g`}</code>
         formats it differently. I needed a shared vocabulary.
       </p>
 
-      <ClientOnly>
-        <LabelWordCloud />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="560px">
+        <ClientOnly>
+          <LabelWordCloud />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label.
@@ -314,9 +341,11 @@ M1LK 2%           1    $4.4g`}</code>
         formatted correctly?
       </p>
 
-      <ClientOnly>
-        <WithinReceiptVerification />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="700px">
+        <ClientOnly>
+          <WithinReceiptVerification />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Beyond labeling, I also check the math. Does the subtotal plus tax
@@ -324,9 +353,11 @@ M1LK 2%           1    $4.4g`}</code>
         and flags mismatches.
       </p>
 
-      <ClientOnly>
-        <FinancialMathOverlay />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="700px">
+        <ClientOnly>
+          <FinancialMathOverlay />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Then I compare the labels across receipts from the same store. If
@@ -334,9 +365,11 @@ M1LK 2%           1    $4.4g`}</code>
         this one says subtotal, something's off.
       </p>
 
-      <ClientOnly>
-        <BetweenReceiptVisualization />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="700px">
+        <ClientOnly>
+          <BetweenReceiptVisualization />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         This works, kind of. AI isn't consistent. It would call the price of
@@ -347,9 +380,11 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>And again. And again.</p>
 
-      <ClientOnly>
-        <LabelValidationTimeline />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="420px">
+        <ClientOnly>
+          <LabelValidationTimeline />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Each pass got a little better. The red shrinks, the green grows. But
@@ -377,7 +412,9 @@ M1LK 2%           1    $4.4g`}</code>
         MILKs" You can't crank both to 100%.
       </p>
 
-      <PrecisionRecallDartboard />
+      <FigureBoundary intrinsicSize="500px">
+        <PrecisionRecallDartboard />
+      </FigureBoundary>
 
       <p>
         After a lot of trial and error-tweaking parameters, retraining, staring
@@ -385,13 +422,17 @@ M1LK 2%           1    $4.4g`}</code>
         is called hyper-parameter tuning.
       </p>
 
-      <ClientOnly>
-        <TrainingMetricsAnimation />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="640px">
+        <ClientOnly>
+          <TrainingMetricsAnimation />
+        </ClientOnly>
+      </FigureBoundary>
 
-      <ClientOnly>
-        <LayoutLMInferenceVisualization />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="720px">
+        <ClientOnly>
+          <LayoutLMInferenceVisualization />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         The custom model does most of the work. Then I ship the results to AWS
@@ -408,9 +449,11 @@ M1LK 2%           1    $4.4g`}</code>
         afford to find out about the milk.
       </p>
 
-      <ClientOnly>
-        <AWSFlowDiagram />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="260px">
+        <ClientOnly>
+          <AWSFlowDiagram />
+        </ClientOnly>
+      </FigureBoundary>
 
       <h1>Asking About the $$$ Spent on Milk</h1>
 
@@ -424,21 +467,25 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
 
-      <ClientOnly>
-        <QueryLabelTransform
-          query="How much did I spend on milk?"
-          transformed='Which receipts have "milk" as PRODUCT_NAME? What is the LINE_TOTAL and/or UNIT_PRICE?'
-        />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="280px">
+        <ClientOnly>
+          <QueryLabelTransform
+            query="How much did I spend on milk?"
+            transformed='Which receipts have "milk" as PRODUCT_NAME? What is the LINE_TOTAL and/or UNIT_PRICE?'
+          />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         It digs through the corpus, finds every mention of milk, and adds
         them up.
       </p>
 
-      <ClientOnly>
-        <WordSimilarity />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="900px">
+        <ClientOnly>
+          <WordSimilarity />
+        </ClientOnly>
+      </FigureBoundary>
 
       <h1>So Now What?</h1>
 
@@ -463,11 +510,13 @@ M1LK 2%           1    $4.4g`}</code>
         the system to see what breaks.
       </p>
 
-      <ClientOnly>
-        <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
-          <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
-        </QAAgentFlow>
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="760px">
+        <ClientOnly>
+          <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
+            <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
+          </QAAgentFlow>
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Some work. Some don't. That's the point.
@@ -483,9 +532,11 @@ M1LK 2%           1    $4.4g`}</code>
         it went wrong, and plan a new experiment.
       </p>
 
-      <ClientOnly>
-        <CICDLoop />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="360px">
+        <ClientOnly>
+          <CICDLoop />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Change something, ask the questions, check the results, repeat. It's
@@ -579,9 +630,11 @@ M1LK 2%           1    $4.4g`}</code>
         </AnimatedInView>
       </ClientOnly>
 
-      <ClientOnly>
-        <CodeBuildDiagram chars={codeBuildDiagramChars} />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="460px">
+        <ClientOnly>
+          <CodeBuildDiagram chars={codeBuildDiagramChars} />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         The other thing I leaned into: event-driven architecture. DynamoDB has
@@ -589,27 +642,33 @@ M1LK 2%           1    $4.4g`}</code>
         to it.
       </p>
 
-      <ClientOnly>
-        <DynamoStreamAnimation />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="240px">
+        <ClientOnly>
+          <DynamoStreamAnimation />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         That's how I keep DynamoDB and Chroma in sync. A change hits Dynamo,
         a Lambda picks it up, Chroma gets updated. No polling, no cron jobs.
       </p>
 
-      <ClientOnly>
-        <StreamBitsRoutingDiagram />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="360px">
+        <ClientOnly>
+          <StreamBitsRoutingDiagram />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         Same pattern for my laptop talking to AWS. SQS queues everywhere.
         Things fail, things retry, nothing gets lost.
       </p>
 
-      <ClientOnly>
-        <UploadDiagram chars={uploadDiagramChars} />
-      </ClientOnly>
+      <FigureBoundary intrinsicSize="360px">
+        <ClientOnly>
+          <UploadDiagram chars={uploadDiagramChars} />
+        </ClientOnly>
+      </FigureBoundary>
 
       <p>
         I'll probably keep building this way. It's nice when the system does

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useInView } from "react-intersection-observer";
 
 interface UseOptimizedInViewOptions {
@@ -30,6 +31,35 @@ export const useOptimizedInView = (options: UseOptimizedInViewOptions = {}) => {
     // Fallback visibility for SSR
     fallbackInView: true,
   });
+};
+
+/**
+ * Tracks both live viewport visibility and whether an element has ever been
+ * revealed. Use this when visual state should remain rendered after first
+ * exposure, but timers or springs should pause while the element is offscreen.
+ */
+export const useRevealInView = (options: UseOptimizedInViewOptions = {}) => {
+  const {
+    threshold = 0.3,
+    rootMargin = "100px",
+    skip = false,
+  } = options;
+  const [hasEntered, setHasEntered] = useState(false);
+  const [ref, inView, entry] = useInView({
+    threshold,
+    triggerOnce: false,
+    rootMargin,
+    skip,
+    fallbackInView: true,
+  });
+
+  useEffect(() => {
+    if (inView) {
+      setHasEntered(true);
+    }
+  }, [inView]);
+
+  return [ref, inView, hasEntered, entry] as const;
 };
 
 export default useOptimizedInView;

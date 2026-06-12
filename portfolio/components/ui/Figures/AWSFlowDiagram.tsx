@@ -1,18 +1,27 @@
 import React from "react";
 import { useSprings, animated } from "@react-spring/web";
+import {
+  useViewportAnimation,
+  pointAtCached,
+  fadeLUT,
+  OPTIMIZED_SPRING_CONFIG,
+} from "./useDiagramOptimizations";
 
 interface AWSFlowDiagramProps {
   /** Optional deterministic sequence of characters (e.g., ['0','1','1',…]).
    *  Pass this from getServerSideProps/getStaticProps so that SSR and CSR output match,
    *  preventing hydration warnings like "Text content does not match server‑rendered HTML." */
   chars?: string[];
+  /** Optional: pause animation externally */
+  paused?: boolean;
 }
 
-const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
+const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars, paused = false }) => {
+  const { containerRef, shouldAnimate, springPause } = useViewportAnimation(paused);
+
   // ═══ Shared helpers ════════════════════════════════════════
   const BIT_COUNT = 15;
   const TILT = 30; // ±30°
-  const FADE = (p: number) => 1 - Math.abs((p % 100) - 50) / 50; // 0→1→0
 
   /* ─── Global animation knobs ────────────────────────────── */
   const PHASE_LEN = 500; // default travel time per leg
@@ -51,6 +60,8 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
   const [cycle, setCycle] = React.useState(0);
 
   React.useEffect(() => {
+    if (!shouldAnimate) return;
+
     // total storyboard duration = sum(durations) + STAGGER between phases + CYCLE_PAUSE after last
     const totalMs =
       TIMELINE.reduce((acc, p) => acc + phaseLength(p) + STAGGER, 0) +
@@ -58,7 +69,7 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
 
     const id = setTimeout(() => setCycle((c) => c + 1), totalMs);
     return () => clearTimeout(id);
-  }, [TIMELINE, cycle, phaseLength]);
+  }, [TIMELINE, cycle, phaseLength, shouldAnimate]);
 
   /* Compute cumulative delay for a phase index */
   const delayFor = (idx: number) => {
@@ -82,14 +93,6 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
     []
   );
 
-  // get (x,y) point on path at pct%
-  const pointAt = (ref: React.RefObject<SVGPathElement>, pct: number) => {
-    const el = ref.current;
-    if (!el) return { x: 0, y: 0 };
-    const len = el.getTotalLength();
-    return el.getPointAtLength(((pct % 100) / 100) * len);
-  };
-
   // reusable bit stream component
   function BitStream({
     pathRefs,
@@ -99,6 +102,7 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
     launch = 250,
     initialDelay = 0,
     chars,
+    pause,
   }: {
     pathRefs: React.RefObject<SVGPathElement>[];
     count?: number;
@@ -107,6 +111,7 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
     launch?: number;
     initialDelay?: number;
     chars?: string[];
+    pause?: boolean;
   }) {
     const bits = React.useMemo<Bit[]>(
       () =>
@@ -123,8 +128,9 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
     const springs = useSprings(bits.length, (i) => ({
       from: { offset: dir === -1 ? 100 : 0 },
       to: { offset: dir === -1 ? 0 : 100 },
-      config: { duration, precision: 1, easing: (t: number) => t },
+      config: { duration, ...OPTIMIZED_SPRING_CONFIG },
       delay: initialDelay + i * launch,
+      pause,
     }))[0];
 
     return (
@@ -133,10 +139,10 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
           <animated.g
             key={i}
             transform={spring.offset.to((o) => {
-              const { x, y } = pointAt(pathRefs[bits[i].pathIdx], o);
+              const { x, y } = pointAtCached(pathRefs[bits[i].pathIdx], o);
               return `translate(${x},${y}) rotate(${bits[i].rot})`;
             })}
-            opacity={spring.offset.to(FADE)}
+            opacity={spring.offset.to(fadeLUT)}
           >
             <rect
               x="-0.45em"
@@ -160,6 +166,7 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
 
   return (
     <div
+      ref={containerRef}
       style={{
         display: "flex",
         justifyContent: "center",
@@ -250,6 +257,7 @@ const AWSFlowDiagram: React.FC<AWSFlowDiagramProps> = ({ chars }) => {
                   launch={phase.launch ?? LAUNCH_STEP}
                   initialDelay={delayFor(phaseIdx)}
                   chars={chars}
+                  pause={springPause}
                 />
               ))
             )}

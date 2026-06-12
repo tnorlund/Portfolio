@@ -577,7 +577,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
-    triggerOnce: true,
+    triggerOnce: false,
   });
   const [mounted, setMounted] = useState(false);
   const [hasEntered, setHasEntered] = useState(false);
@@ -663,7 +663,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
-    if ((!inView && !hasEntered) || !mounted) {
+    if (!inView || !hasEntered || !mounted) {
       clearPulseAnimation();
       return;
     }
