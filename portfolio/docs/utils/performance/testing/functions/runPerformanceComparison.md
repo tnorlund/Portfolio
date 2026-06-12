@@ -8,7 +8,7 @@
 
 > **runPerformanceComparison**(`tests`): `Promise`\<[`PerformanceTestResult`](../interfaces/PerformanceTestResult.md)[]\>
 
-Defined in: [utils/performance/testing.ts:81](https://github.com/tnorlund/Portfolio/blob/7a136c6e454246bf710480579b804358003f72fe/portfolio/utils/performance/testing.ts#L81)
+Defined in: [utils/performance/testing.ts:81](https://github.com/tnorlund/Portfolio/blob/c9b55a0ab22ebda6ef87a5f232075197b48ca1ab/portfolio/utils/performance/testing.ts#L81)
 
 Run multiple performance tests and compare results
 
