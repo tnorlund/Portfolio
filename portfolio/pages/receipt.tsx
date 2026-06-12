@@ -1,6 +1,7 @@
 import { GetStaticProps } from "next";
 import Head from "next/head";
 import React, { useCallback, useEffect, useState } from "react";
+import { useInView } from "react-intersection-observer";
 import ClientOnly from "../components/ClientOnly";
 import UploadProgressPanel from "../components/ui/UploadProgressPanel";
 import { useQAQueue } from "../hooks/useQAQueue";
@@ -54,17 +55,56 @@ interface FigureBoundaryProps {
   intrinsicSize?: string;
 }
 
+const FIGURE_LAZY_ROOT_MARGIN = "1000px 0px";
+
 const FigureBoundary = ({
   children,
   intrinsicSize = "600px",
-}: FigureBoundaryProps) => (
-  <div
-    className={styles.figureBoundary}
-    style={{ "--figure-intrinsic-size": intrinsicSize } as React.CSSProperties}
-  >
-    {children}
-  </div>
-);
+}: FigureBoundaryProps) => {
+  const { ref, inView } = useInView({
+    rootMargin: FIGURE_LAZY_ROOT_MARGIN,
+    triggerOnce: true,
+    fallbackInView: false,
+  });
+  const [shouldRender, setShouldRender] = useState(false);
+
+  useEffect(() => {
+    if (inView) {
+      setShouldRender(true);
+    }
+  }, [inView]);
+
+  return (
+    <div
+      ref={ref}
+      className={styles.figureBoundary}
+      data-lazy-pending={shouldRender ? undefined : "true"}
+      style={
+        {
+          "--figure-intrinsic-size": intrinsicSize,
+          minHeight: shouldRender ? undefined : intrinsicSize,
+        } as React.CSSProperties
+      }
+    >
+      {shouldRender ? children : null}
+    </div>
+  );
+};
+
+const QAAgentFigure = () => {
+  const {
+    data: qaData,
+    questionIndex: selectedQuestion,
+    advance: advanceQuestion,
+    selectQuestion: setSelectedQuestion,
+  } = useQAQueue();
+
+  return (
+    <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
+      <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
+    </QAAgentFlow>
+  );
+};
 
 // Use getStaticProps for static generation - this runs at build time
 export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
@@ -119,9 +159,6 @@ export default function ReceiptPage({
   }, []);
 
   const { fileStates, addFiles, clearAll } = useUploadProgress(apiUrl);
-
-  // --- QA Agent live data ---
-  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   const handleDrop = useCallback(
     (e: DragEvent) => {
@@ -497,9 +534,7 @@ M1LK 2%           1    $4.4g`}</code>
 
       <FigureBoundary intrinsicSize="760px">
         <ClientOnly>
-          <QAAgentFlow autoPlay={true} questionData={qaData ?? undefined} onCycleComplete={advanceQuestion}>
-            <QuestionMarquee rows={4} speed={25} onQuestionClick={setSelectedQuestion} activeQuestion={selectedQuestion} />
-          </QAAgentFlow>
+          <QAAgentFigure />
         </ClientOnly>
       </FigureBoundary>
 
