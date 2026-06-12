@@ -3,7 +3,7 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import MERGE_PRESETS, DataConfig, TrainingConfig
+from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
 from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
@@ -79,6 +79,12 @@ def main() -> None:
     train_p.add_argument("--lr", type=float, default=5e-5)
     train_p.add_argument(
         "--pretrained", default="microsoft/layoutlm-base-uncased"
+    )
+    train_p.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 (text+bbox) or v3 (text+bbox+image)",
     )
     train_p.add_argument(
         "--warmup-ratio",
@@ -211,6 +217,17 @@ def main() -> None:
         default="float16",
         help="Quantization mode for CoreML export (default: float16).",
     )
+    train_p.add_argument(
+        "--resume-from-s3",
+        default=None,
+        help=(
+            "S3 URI to a previous training run's output directory "
+            "(e.g. s3://bucket/runs/layoutlm-hybrid-8-labels-v4/). "
+            "Files are synced to /tmp/receipt_layoutlm/{job_name}/ "
+            "before training, so the trainer's auto-resume picks up "
+            "the latest checkpoint and continues training from there."
+        ),
+    )
 
     infer_p = sub.add_parser("infer", help="Run LayoutLM inference")
     infer_p.add_argument(
@@ -270,6 +287,12 @@ def main() -> None:
         choices=["float16", "int8", "int4"],
         default=None,
         help="Quantization mode for smaller model size",
+    )
+    export_p.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 (text+bbox) or v3 (text+bbox+image)",
     )
 
     # Validate CoreML subcommand
@@ -355,11 +378,26 @@ def main() -> None:
             dynamo_table_name=args.dynamo_table,
             aws_region=args.region,
         )
+        pretrained = args.pretrained
+        if (
+            args.model_version == "v3"
+            and pretrained == "microsoft/layoutlm-base-uncased"
+        ):
+            pretrained = MODEL_DEFAULTS[ModelVersion.V3]
+        if args.model_version == "v1" and "layoutlmv3" in pretrained:
+            raise SystemExit(
+                f"--model-version v1 is incompatible with v3 model '{pretrained}'. Use --model-version v3."
+            )
+        if args.model_version == "v3" and pretrained == "microsoft/layoutlm-base-uncased":
+            raise SystemExit(
+                f"--model-version v3 requires a v3 model, not '{pretrained}'."
+            )
         train_cfg = TrainingConfig(
             epochs=args.epochs,
             batch_size=args.batch_size,
             learning_rate=args.lr,
-            pretrained_model_name=args.pretrained,
+            pretrained_model_name=pretrained,
+            model_version=args.model_version,
         )
         if args.warmup_ratio is not None:
             train_cfg.warmup_ratio = args.warmup_ratio
@@ -393,6 +431,10 @@ def main() -> None:
         train_cfg.auto_export_coreml = args.export_coreml
         train_cfg.coreml_quantize = args.coreml_quantize
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
+        if args.resume_from_s3:
+            from .resume import sync_resume_checkpoint
+
+            sync_resume_checkpoint(args.resume_from_s3, args.job_name)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)
     elif args.cmd == "infer":
@@ -442,6 +484,7 @@ def main() -> None:
                 model_name=args.model_name,
                 local_cache=args.local_cache,
                 quantize=args.quantize,
+                model_version=args.model_version,
             )
         else:
             bundle_path = export_coreml(
@@ -449,6 +492,7 @@ def main() -> None:
                 output_dir=args.output_dir,
                 model_name=args.model_name,
                 quantize=args.quantize,
+                model_version=args.model_version,
             )
         print(f"CoreML bundle created: {bundle_path}")
 

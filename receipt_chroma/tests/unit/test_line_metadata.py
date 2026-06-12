@@ -300,6 +300,52 @@ class TestEnrichRowMetadataWithLabels:
 
         assert enriched["label_status"] == "unvalidated"
 
+    def test_invalid_overrides_valid_when_processed_later(self):
+        """INVALID after VALID must move label to invalid array.
+
+        Regression: the guard ``if normalized_label not in valid_labels``
+        prevented VALID->INVALID transitions when labels were iterated
+        in VALID-first order.
+        """
+        metadata = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+        labels = [
+            MockReceiptWordLabel(1, 1, "LINE_TOTAL", "VALID"),
+            MockReceiptWordLabel(1, 1, "LINE_TOTAL", "INVALID"),
+        ]
+
+        enriched = enrich_row_metadata_with_labels(metadata, row_words, labels)
+
+        assert "valid_labels_array" not in enriched
+        assert enriched["invalid_labels_array"] == ["LINE_TOTAL"]
+        assert enriched["label_status"] == "validated"
+
+    def test_no_overlap_after_any_label_ordering(self):
+        """No ordering of VALID/INVALID labels should produce overlap."""
+        metadata_base = {"text": "row text"}
+        row_words = [MockReceiptWord("A", line_id=1, word_id=1)]
+
+        for first, second in [
+            ("VALID", "INVALID"),
+            ("INVALID", "VALID"),
+            ("VALID", "VALID"),
+            ("INVALID", "INVALID"),
+        ]:
+            metadata = dict(metadata_base)
+            labels = [
+                MockReceiptWordLabel(1, 1, "LINE_TOTAL", first),
+                MockReceiptWordLabel(1, 1, "LINE_TOTAL", second),
+            ]
+            enriched = enrich_row_metadata_with_labels(
+                metadata, row_words, labels
+            )
+            valid = set(enriched.get("valid_labels_array", []))
+            invalid = set(enriched.get("invalid_labels_array", []))
+            assert not (valid & invalid), (
+                f"Overlap for {first}->{second}: "
+                f"valid={valid}, invalid={invalid}"
+            )
+
     def test_no_labels_sets_unvalidated(self):
         """Rows with no matching labels should be marked unvalidated."""
         metadata = {"text": "row text"}

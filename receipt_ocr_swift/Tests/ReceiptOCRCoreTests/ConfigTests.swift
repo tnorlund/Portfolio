@@ -13,12 +13,14 @@ final class ConfigTests: XCTestCase {
             ocrJobQueueURL: "q1",
             ocrResultsQueueURL: "q2",
             dynamoTableName: "tbl",
+            rawBucketName: "my-bucket",
             region: "us-west-2",
             localstackEndpoint: nil
         )
         XCTAssertEqual(cfg.ocrJobQueueURL, "q1")
         XCTAssertEqual(cfg.ocrResultsQueueURL, "q2")
         XCTAssertEqual(cfg.dynamoTableName, "tbl")
+        XCTAssertEqual(cfg.rawBucketName, "my-bucket")
         XCTAssertEqual(cfg.region, "us-west-2")
         XCTAssertNil(cfg.localstackEndpoint)
     }
@@ -27,7 +29,8 @@ final class ConfigTests: XCTestCase {
         let pulumi = StubPulumi(outputs: [
             "ocr_job_queue_url": "jq",
             "ocr_results_queue_url": "rq",
-            "dynamodb_table_name": "dt"
+            "dynamodb_table_name": "dt",
+            "raw_bucket_name": "rb"
         ])
         let cfg = try Config.load(
             env: "dev",
@@ -41,6 +44,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(cfg.ocrJobQueueURL, "jq")
         XCTAssertEqual(cfg.ocrResultsQueueURL, "rq")
         XCTAssertEqual(cfg.dynamoTableName, "dt")
+        XCTAssertEqual(cfg.rawBucketName, "rb")
     }
 
     func test_missing_fields_throw() {

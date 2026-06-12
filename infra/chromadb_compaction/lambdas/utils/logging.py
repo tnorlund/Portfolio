@@ -48,28 +48,38 @@ class OperationLogger:
         self.logger = logger
         self.correlation_id = str(uuid.uuid4())
 
-    def info(self, message: str, **kwargs):
+    def info(self, message: str, *args, **kwargs):
         """Log info message with additional context."""
-        self._log_with_context(logging.INFO, message, **kwargs)
+        self._log_with_context(logging.INFO, message, *args, **kwargs)
 
-    def error(self, message: str, **kwargs):
+    def error(self, message: str, *args, **kwargs):
         """Log error message with additional context."""
-        self._log_with_context(logging.ERROR, message, **kwargs)
+        self._log_with_context(logging.ERROR, message, *args, **kwargs)
 
-    def warning(self, message: str, **kwargs):
+    def warning(self, message: str, *args, **kwargs):
         """Log warning message with additional context."""
-        self._log_with_context(logging.WARNING, message, **kwargs)
+        self._log_with_context(logging.WARNING, message, *args, **kwargs)
 
-    def debug(self, message: str, **kwargs):
+    def debug(self, message: str, *args, **kwargs):
         """Log debug message with additional context."""
-        self._log_with_context(logging.DEBUG, message, **kwargs)
+        self._log_with_context(logging.DEBUG, message, *args, **kwargs)
 
-    def exception(self, message: str, **kwargs):
+    def exception(self, message: str, *args, **kwargs):
         """Log error message with exception traceback."""
-        self._log_with_context(logging.ERROR, message, exc_info=True, **kwargs)
+        self._log_with_context(
+            logging.ERROR, message, *args, exc_info=True, **kwargs
+        )
 
-    def _log_with_context(self, level: int, message: str, **kwargs):
-        """Log message with correlation ID and extra context."""
+    def _log_with_context(self, level: int, message: str, *args, **kwargs):
+        """Log message with correlation ID and extra context.
+
+        Supports both stdlib `logging.Logger` styles:
+        - kwargs-only:  logger.info("event", run_id=x)
+        - %-formatting: logger.info("Run %s of %d", run_id, total)
+
+        Positional args are passed to ``makeRecord`` so standard ``%``-style
+        formatting still runs via ``record.getMessage()`` downstream.
+        """
         import sys
 
         exc_info = kwargs.pop("exc_info", None)
@@ -81,7 +91,7 @@ class OperationLogger:
         extra_fields = {"correlation_id": self.correlation_id, **kwargs}
 
         record = self.logger.makeRecord(
-            self.logger.name, level, "", 0, message, (), exc_info
+            self.logger.name, level, "", 0, message, args, exc_info
         )
         record.extra_fields = extra_fields
         self.logger.handle(record)

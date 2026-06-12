@@ -1,17 +1,30 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
-import { animated, useSpring, config } from "@react-spring/web";
+import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
+import {
+  axisLabelAnchor,
+  clickXToEpochIndex,
+  computeAxisLabels,
+  computeScales,
+} from "./sparkline";
 
-// Label color mapping for 8-label hybrid model
+// Normalize ADDRESS_LINE to ADDRESS for display purposes
+const normalizeLabel = (label: string): string => {
+  if (label === "ADDRESS_LINE") return "ADDRESS";
+  return label;
+};
+
+// Label color mapping for hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
   ADDRESS: "var(--color-red)",
+  PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
   PAYMENT_METHOD: "var(--color-orange)",
@@ -19,13 +32,14 @@ const LABEL_COLORS: Record<string, string> = {
 };
 
 const getLabelColor = (label: string): string => {
-  return LABEL_COLORS[label] || "var(--color-gray, #888)";
+  return LABEL_COLORS[normalizeLabel(label)] || "var(--color-gray, #888)";
 };
 
 // Format label: "MERCHANT_NAME" -> "Merchant Name", "O" -> "None"
 const formatLabel = (label: string): string => {
-  if (label === "O") return "None";
-  return label
+  const normalized = normalizeLabel(label);
+  if (normalized === "O") return "None";
+  return normalized
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
@@ -38,6 +52,7 @@ const LABEL_ABBREV: Record<string, string> = {
   TIME: "Time",
   AMOUNT: "Amt",
   ADDRESS: "Addr",
+  PHONE_NUMBER: "Phone",
   WEBSITE: "Web",
   STORE_HOURS: "Hours",
   PAYMENT_METHOD: "Pay",
@@ -45,90 +60,261 @@ const LABEL_ABBREV: Record<string, string> = {
 };
 
 const formatLabelAbbrev = (label: string): string => {
-  return LABEL_ABBREV[label] || label.slice(0, 4);
+  const normalized = normalizeLabel(label);
+  return LABEL_ABBREV[normalized] || normalized.slice(0, 4);
 };
 
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
-// Epoch Timeline Component (Desktop - dots)
-interface EpochTimelineProps {
+// Cap the total autoplay duration so a 60+-epoch run finishes in a
+// reasonable time rather than ~75s at 1200ms/step.
+const TIMELINE_AUTOPLAY_TOTAL_MS = 18000;
+const TIMELINE_AUTOPLAY_MIN_STEP_MS = 250;
+const TIMELINE_AUTOPLAY_MAX_STEP_MS = 1200;
+
+// Epoch Sparkline: a line chart of val_f1 across all epochs. Replaces
+// the per-epoch dot row which couldn't scale past ~20 epochs and only
+// encoded "which epoch you're on" — the sparkline additionally encodes
+// the convergence shape, plateau, and any drift the user can read at a
+// glance. Click anywhere on the curve to scrub.
+interface EpochSparklineProps {
   epochs: TrainingMetricsEpoch[];
   currentIndex: number;
   onSelectEpoch: (index: number) => void;
   showBestLabel: boolean;
 }
 
-const EpochTimeline: React.FC<EpochTimelineProps> = ({
+// SVG viewBox dims (internal coordinates). The viewBox width tracks the
+// rendered container width (via ResizeObserver) so the curve isn't
+// horizontally stretched by `preserveAspectRatio="none"` — a 7%-or-so
+// distortion would otherwise make the early-epoch climb look gentler
+// than it really is.
+const SVG_W_FALLBACK = 600; // before measurement / SSR
+const SVG_H = 80;
+const SVG_PAD_X = 8; // left/right inset so end markers don't clip
+const SVG_PAD_TOP = 18; // room for "BEST" label
+const SVG_PAD_BOTTOM = 14; // room for x-axis epoch numbers
+const AXIS_LABEL_MIN_GAP_PX = 24; // min viewBox-x distance before suppressing best label
+
+const SPARKLINE_DIMS_FALLBACK = {
+  width: SVG_W_FALLBACK,
+  height: SVG_H,
+  padX: SVG_PAD_X,
+  padTop: SVG_PAD_TOP,
+  padBottom: SVG_PAD_BOTTOM,
+};
+
+const EpochSparkline: React.FC<EpochSparklineProps> = ({
   epochs,
   currentIndex,
   onSelectEpoch,
   showBestLabel,
 }) => {
-  const nodesRef = useRef<HTMLDivElement>(null);
-  const [lineStyle, setLineStyle] = useState<{ left: number; width: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [svgWidth, setSvgWidth] = useState<number>(SVG_W_FALLBACK);
 
+  // Track rendered SVG width so the viewBox aspect matches the screen
+  // aspect and the curve isn't horizontally stretched.
   useEffect(() => {
-    if (!nodesRef.current || epochs.length < 2) return;
+    const node = svgRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.round(entry.contentRect.width);
+        if (w > 0) setSvgWidth(w);
+      }
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
 
-    const updateLine = () => {
-      const container = nodesRef.current;
-      if (!container) return;
+  const dims = useMemo(
+    () => ({ ...SPARKLINE_DIMS_FALLBACK, width: svgWidth }),
+    [svgWidth]
+  );
 
-      const dots = container.querySelectorAll(`.${styles.timelineNodeDot}`);
-      if (dots.length < 2) return;
+  const { points, yScale, xScale, dataMin, dataMax } = useMemo(
+    () => computeScales(epochs, dims),
+    [epochs, dims]
+  );
+  const bestIdx = useMemo(() => epochs.findIndex((e) => e.is_best), [epochs]);
 
-      const firstDot = dots[0] as HTMLElement;
-      const lastDot = dots[dots.length - 1] as HTMLElement;
-      const containerRect = container.getBoundingClientRect();
-      const firstRect = firstDot.getBoundingClientRect();
-      const lastRect = lastDot.getBoundingClientRect();
+  const handleClick = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (epochs.length === 0 || !svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const idx = clickXToEpochIndex(
+        e.clientX,
+        rect.left,
+        rect.width,
+        svgWidth,
+        SVG_PAD_X,
+        epochs.length
+      );
+      onSelectEpoch(idx);
+    },
+    [epochs.length, onSelectEpoch, svgWidth]
+  );
 
-      const left = firstRect.left - containerRect.left + firstRect.width / 2;
-      const right = lastRect.left - containerRect.left + lastRect.width / 2;
-
-      setLineStyle({ left, width: right - left });
-    };
-
-    updateLine();
-    window.addEventListener('resize', updateLine);
-    return () => window.removeEventListener('resize', updateLine);
-  }, [epochs.length]);
+  // Keyboard navigation — required because role="slider" promises AT users
+  // they can change the value (WCAG). Arrow keys step by 1, Home/End jump
+  // to first/last.
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<SVGSVGElement>) => {
+      if (epochs.length === 0) return;
+      const last = epochs.length - 1;
+      let next = currentIndex;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+          next = Math.max(0, currentIndex - 1);
+          break;
+        case "ArrowRight":
+        case "ArrowUp":
+          next = Math.min(last, currentIndex + 1);
+          break;
+        case "PageDown":
+          next = Math.max(0, currentIndex - Math.max(1, Math.floor(last / 10)));
+          break;
+        case "PageUp":
+          next = Math.min(
+            last,
+            currentIndex + Math.max(1, Math.floor(last / 10))
+          );
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = last;
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+      if (next !== currentIndex) onSelectEpoch(next);
+    },
+    [epochs.length, currentIndex, onSelectEpoch]
+  );
 
   const currentEpoch = epochs[currentIndex];
-  const isBest = currentEpoch?.is_best && showBestLabel;
+  const currentF1 = currentEpoch?.metrics?.val_f1 ?? 0;
+  const cx = xScale(currentIndex);
+  const cy = yScale(currentF1);
+  const bestEpoch = bestIdx >= 0 ? epochs[bestIdx] : null;
+  const bestF1 = bestEpoch?.metrics?.val_f1 ?? 0;
+  const bx = bestIdx >= 0 ? xScale(bestIdx) : 0;
+  const by = bestIdx >= 0 ? yScale(bestF1) : 0;
+  const lastIdx = epochs.length - 1;
+  const showBest = bestIdx >= 0 && showBestLabel;
+
+  const axisLabels = useMemo(
+    () => computeAxisLabels(epochs, bestIdx, xScale, AXIS_LABEL_MIN_GAP_PX),
+    [epochs, bestIdx, xScale]
+  );
+  void dataMin;
+  void dataMax;
 
   return (
     <>
-      {/* Desktop timeline with dots */}
+      {/* Desktop sparkline */}
       <div className={styles.timeline}>
-        <div ref={nodesRef} className={styles.timelineNodes}>
-          {lineStyle && (
-            <div
-              className={styles.timelineLine}
-              style={{ left: lineStyle.left, width: lineStyle.width }}
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${svgWidth} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          role="slider"
+          aria-label={`Training epoch — use arrow keys to scrub, Home/End to jump to first/last`}
+          aria-valuemin={0}
+          aria-valuemax={lastIdx}
+          aria-valuenow={currentIndex}
+          aria-valuetext={
+            currentEpoch
+              ? `Epoch ${currentEpoch.epoch}${
+                  currentIndex === bestIdx ? " (best)" : ""
+                }, F1 ${currentF1.toFixed(3)}`
+              : undefined
+          }
+        >
+          {/* Convergence curve */}
+          {epochs.length >= 2 && (
+            <polyline
+              points={points}
+              className={styles.sparklinePath}
+              vectorEffect="non-scaling-stroke"
             />
           )}
-          {epochs.map((epoch, index) => (
-            <button
-              key={epoch.epoch}
-              className={`${styles.timelineNode} ${
-                index === currentIndex ? styles.timelineNodeActive : ""
-              }`}
-              onClick={() => onSelectEpoch(index)}
-              title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
-            >
-              {epoch.is_best && showBestLabel && (
-                <span className={styles.timelineBestLabel}>Best</span>
+
+          {/* Vertical drop line at active epoch */}
+          <line
+            x1={cx}
+            x2={cx}
+            y1={cy}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            className={styles.sparklineActiveLine}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Best epoch marker (open ring under the curve, labeled) */}
+          {bestIdx >= 0 && (
+            <>
+              {showBest && (
+                <text
+                  x={bx}
+                  y={SVG_PAD_TOP - 6}
+                  className={styles.sparklineBestLabel}
+                  textAnchor="middle"
+                >
+                  BEST
+                </text>
               )}
-              <span className={styles.timelineNodeDot} />
-              <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
-            </button>
+              <circle
+                cx={bx}
+                cy={by}
+                r={4}
+                className={styles.sparklineBestMarker}
+                vectorEffect="non-scaling-stroke"
+              >
+                <title>
+                  {bestEpoch
+                    ? `Best epoch ${bestEpoch.epoch} · F1 ${bestF1.toFixed(3)}`
+                    : ""}
+                </title>
+              </circle>
+            </>
+          )}
+
+          {/* Active epoch marker — filled dot on the curve */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={4.5}
+            className={styles.sparklineActiveMarker}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {/* Axis labels (first/best/last epoch numbers) */}
+          {axisLabels.map((l) => (
+            <text
+              key={l.key}
+              x={l.x}
+              y={SVG_H - 3}
+              className={styles.sparklineAxisLabel}
+              textAnchor={axisLabelAnchor(l.x, svgWidth, SVG_PAD_X)}
+            >
+              {l.text}
+            </text>
           ))}
-        </div>
+        </svg>
       </div>
 
-      {/* Mobile timeline with arrows */}
+      {/* Mobile uses the existing prev/next arrow UI — touch-friendly,
+          handles any epoch count naturally. */}
       <div className={styles.timelineMobile}>
         <button
           className={styles.timelineArrow}
@@ -139,7 +325,9 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
           ‹
         </button>
         <div className={styles.timelineMobileCenter}>
-          {isBest && <span className={styles.timelineBestLabelMobile}>Best</span>}
+          {showBest && currentIndex === bestIdx && (
+            <span className={styles.timelineBestLabelMobile}>Best</span>
+          )}
           <span className={styles.timelineMobileText}>
             {currentIndex + 1} / {epochs.length}
           </span>
@@ -293,43 +481,35 @@ interface LabelBarProps {
 }
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value, support, maxSupport }) => {
-  const spring = useSpring({
-    to: {
-      width: value * 100,
-      displayValue: value,
-      distWidth: (support / maxSupport) * 100,
-    },
-    config: SPRING_CONFIG,
-  });
+  const widthPct = Math.max(0, Math.min(100, value * 100));
+  const distWidthPct = maxSupport > 0 ? Math.max(0, Math.min(100, (support / maxSupport) * 100)) : 0;
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
       <div className={styles.labelBarStack}>
         <div className={styles.labelBarSegmented}>
-          <animated.div
+          <div
             className={styles.labelBarFilled}
-            style={{ width: spring.width.to((w) => `${w}%`) }}
+            style={{ width: `${widthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarEmpty}
-            style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - widthPct}%` }}
           />
         </div>
         <div className={styles.labelBarDistribution}>
-          <animated.div
+          <div
             className={styles.labelBarDistFilled}
-            style={{ width: spring.distWidth.to((w) => `${w}%`) }}
+            style={{ width: `${distWidthPct}%` }}
           />
-          <animated.div
+          <div
             className={styles.labelBarDistEmpty}
-            style={{ width: spring.distWidth.to((w) => `${100 - w}%`) }}
+            style={{ width: `${100 - distWidthPct}%` }}
           />
         </div>
       </div>
-      <animated.span className={styles.labelBarValue}>
-        {spring.displayValue.to((v) => v.toFixed(2))}
-      </animated.span>
+      <span className={styles.labelBarValue}>{value.toFixed(2)}</span>
     </div>
   );
 };
@@ -427,48 +607,180 @@ const MatrixCell: React.FC<MatrixCellProps> = ({ value, rowSum, isDiagonal }) =>
   // Row-normalized intensity: what % of this row's predictions went to this cell
   const intensity = rowSum > 0 ? value / rowSum : 0;
 
-  const spring = useSpring({
-    to: { intensity, displayValue: value },
-    config: SPRING_CONFIG,
-  });
-
   // Use green for diagonal (correct predictions), red for off-diagonal (errors)
   // Empty cells (value = 0) use transparent background
   const colorVar = isDiagonal ? "--color-green-rgb" : "--color-red-rgb";
+  const bg = intensity < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + intensity * 0.8})`;
 
   return (
-    <animated.div
+    <div
       className={styles.matrixCell}
-      style={{
-        backgroundColor: spring.intensity.to((i) =>
-          i < 0.01 ? "transparent" : `rgba(var(${colorVar}), ${0.2 + i * 0.8})`
-        ),
-      }}
+      style={{ backgroundColor: bg }}
     >
-      <animated.span>
-        {spring.displayValue.to((v) =>
-          v > 0.5 ? Math.round(v).toLocaleString() : ""
-        )}
-      </animated.span>
-    </animated.div>
+      <span>{value > 0 ? Math.round(value).toLocaleString() : ""}</span>
+    </div>
+  );
+};
+
+// Skeleton placeholder labels (match the 8 entity labels in the loaded state)
+const SKELETON_LABELS = [
+  "Address", "Amount", "Date", "Merchant Name",
+  "Payment Method", "Store Hours", "Time", "Website",
+];
+
+// 9 labels for the confusion matrix (8 entity + O)
+const SKELETON_MATRIX_LABELS = ["Addr", "Amt", "Date", "Merch", "Pay", "Hours", "Time", "Web", "O"];
+
+const SKELETON_BG = "rgba(var(--text-color-rgb, 0, 0, 0), 0.08)";
+
+// Skeleton that mirrors the loaded layout exactly
+const TrainingMetricsSkeleton: React.FC = () => {
+  const N = SKELETON_MATRIX_LABELS.length;
+  const gridTemplateColumns = `var(--matrix-label-col) repeat(${N}, var(--matrix-cell-size))`;
+  const gridTemplateRows = `var(--matrix-header-row) repeat(${N}, var(--matrix-cell-size))`;
+
+  return (
+    <>
+      {/* DatasetStats skeleton */}
+      <div className={styles.datasetStats}>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Train/Val</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "90%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "10%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 70, height: 10 }} />
+        </div>
+        <div className={styles.statGroup}>
+          <span className={styles.statLabel}>Labeled</span>
+          <div className={styles.segmentedBar}>
+            <div style={{ width: "33%", height: "100%", background: SKELETON_BG }} />
+            <div style={{ width: "67%", height: "100%", background: SKELETON_BG, opacity: 0.5 }} />
+          </div>
+          <span className={styles.statValues} style={{ background: SKELETON_BG, borderRadius: 3, width: 30, height: 10 }} />
+        </div>
+      </div>
+
+      {/* Desktop sparkline skeleton — flat baseline in the placeholder color */}
+      <div className={styles.timeline}>
+        <svg
+          viewBox={`0 0 ${SVG_W_FALLBACK} ${SVG_H}`}
+          preserveAspectRatio="none"
+          className={styles.sparkline}
+          aria-hidden="true"
+        >
+          <line
+            x1={SVG_PAD_X}
+            x2={SVG_W_FALLBACK - SVG_PAD_X}
+            y1={SVG_H - SVG_PAD_BOTTOM}
+            y2={SVG_H - SVG_PAD_BOTTOM}
+            stroke={SKELETON_BG}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+
+      {/* Mobile timeline skeleton */}
+      <div className={styles.timelineMobile}>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>‹</div>
+        <div className={styles.timelineMobileCenter}>
+          <span className={styles.timelineMobileText} style={{ opacity: 0.3 }}>— / —</span>
+        </div>
+        <div className={styles.timelineArrow} style={{ opacity: 0.25 }}>›</div>
+      </div>
+
+      {/* Left panel skeleton */}
+      <div className={styles.leftPanel}>
+        {/* F1 Gauge */}
+        <div className={styles.gaugeContainer}>
+          <div style={{ width: 80, height: 32, background: SKELETON_BG, borderRadius: 4 }} />
+          <div className={styles.gaugeBar} />
+        </div>
+
+        {/* Per-label bars */}
+        <div className={styles.perLabelContainer}>
+          {SKELETON_LABELS.map((label) => (
+            <div key={label} className={styles.labelRow}>
+              <span className={styles.labelName} style={{ opacity: 0.3 }}>{label}</span>
+              <div className={styles.labelBarStack}>
+                <div className={styles.labelBarSegmented}>
+                  <div className={styles.labelBarEmpty} style={{ width: "100%" }} />
+                </div>
+                <div className={styles.labelBarDistribution}>
+                  <div className={styles.labelBarDistEmpty} style={{ width: "100%" }} />
+                </div>
+              </div>
+              <span className={styles.labelBarValue} style={{ opacity: 0 }}>0.00</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Bar legend */}
+        <BarLegend />
+      </div>
+
+      {/* Right panel — confusion matrix skeleton */}
+      <div className={styles.rightPanel}>
+        <div className={styles.matrixContainer}>
+          <div className={styles.matrixGrid} style={{ gridTemplateColumns, gridTemplateRows }}>
+            <div className={styles.matrixCorner} />
+            {SKELETON_MATRIX_LABELS.map((label) => (
+              <div key={`x-${label}`} className={styles.matrixAxisLabel} style={{ opacity: 0.3 }}>
+                {label}
+              </div>
+            ))}
+            {SKELETON_MATRIX_LABELS.map((rowLabel, i) => (
+              <React.Fragment key={`row-${i}`}>
+                <div className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`} style={{ opacity: 0.3 }}>
+                  {rowLabel}
+                </div>
+                {SKELETON_MATRIX_LABELS.map((_, j) => (
+                  <div
+                    key={`${i}-${j}`}
+                    className={styles.matrixCell}
+                    style={{ backgroundColor: i === j ? SKELETON_BG : "transparent" }}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
 // Main Component
 const TrainingMetricsAnimation: React.FC = () => {
-  const { ref, inView } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+  const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: true,
   });
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      lazyRef(node);
+      animRef(node);
+    },
+    [lazyRef, animRef],
+  );
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
   const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
   const hasStartedAnimation = useRef(false);
+  const hasFetchedRef = useRef(false);
 
-  // Fetch data on mount
+  // Fetch data only when near viewport - defers work until section is close
   useEffect(() => {
+    if (!nearViewport || hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
     api
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
@@ -480,7 +792,7 @@ const TrainingMetricsAnimation: React.FC = () => {
         console.error("Failed to fetch training metrics:", err);
         setIsLoading(false);
       });
-  }, []);
+  }, [nearViewport]);
 
   // Autoplay animation when in view and data is loaded
   useEffect(() => {
@@ -494,7 +806,17 @@ const TrainingMetricsAnimation: React.FC = () => {
     // Find the best epoch index
     const bestIndex = epochs.findIndex((e) => e.is_best);
 
-    // Start from epoch 0, animate through ALL epochs, then land on best
+    // Start from epoch 0, animate through ALL epochs, then land on best.
+    // Step interval adapts to epoch count so the whole playback stays
+    // bounded — at ~60+ epochs, 1200ms/step would take 75s, which is too
+    // long for a marquee animation.
+    const stepMs = Math.max(
+      TIMELINE_AUTOPLAY_MIN_STEP_MS,
+      Math.min(
+        TIMELINE_AUTOPLAY_MAX_STEP_MS,
+        Math.round(TIMELINE_AUTOPLAY_TOTAL_MS / Math.max(1, epochs.length))
+      )
+    );
     let currentIndex = 0;
     setCurrentEpochIndex(0);
 
@@ -514,25 +836,25 @@ const TrainingMetricsAnimation: React.FC = () => {
       }
 
       setCurrentEpochIndex(currentIndex);
-    }, 1200);
+    }, stepMs);
 
     return () => clearInterval(interval);
   }, [inView, epochs, isLoading]);
 
   const currentEpoch = epochs[currentEpochIndex];
 
-  if (isLoading) {
+  if (!nearViewport || isLoading) {
     return (
-      <div ref={ref} className={styles.loading}>
-        Loading training metrics...
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
 
   if (!currentEpoch) {
     return (
-      <div ref={ref} className={styles.loading}>
-        No training data available
+      <div ref={setRefs} className={styles.container}>
+        <TrainingMetricsSkeleton />
       </div>
     );
   }
@@ -542,9 +864,9 @@ const TrainingMetricsAnimation: React.FC = () => {
   };
 
   return (
-    <animated.div ref={ref} className={styles.container}>
+    <div ref={setRefs} className={styles.container}>
       <DatasetStats datasetMetrics={datasetMetrics} />
-      <EpochTimeline
+      <EpochSparkline
         epochs={epochs}
         currentIndex={currentEpochIndex}
         onSelectEpoch={handleSelectEpoch}
@@ -565,7 +887,7 @@ const TrainingMetricsAnimation: React.FC = () => {
           />
         )}
       </div>
-    </animated.div>
+    </div>
   );
 };
 

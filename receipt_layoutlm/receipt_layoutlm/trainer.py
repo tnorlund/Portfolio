@@ -34,6 +34,45 @@ def _checkpoint_step(path: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+SAGEMAKER_CHECKPOINT_DIR = "/opt/ml/checkpoints"
+_LOCAL_OUTPUT_ROOT = "/tmp/receipt_layoutlm"
+
+
+def _resolve_output_dir(job_name: str) -> str:
+    """Pick the trainer's checkpoint directory.
+
+    When running inside a SageMaker BYOC container with managed-spot
+    checkpointing enabled, SageMaker mounts /opt/ml/checkpoints and
+    auto-syncs it with the S3 path configured in ``CheckpointConfig``
+    — both *during* training (so checkpoints survive a spot
+    interruption) and *at startup* on the replacement instance (so the
+    trainer's auto-resume can pick up where the previous run left off).
+
+    Writing to /tmp/receipt_layoutlm/{job_name}/ defeats that
+    mechanism: the spot-restart pulls an empty /opt/ml/checkpoints/
+    back from S3, the trainer's auto-resume looks in /tmp/ and finds
+    nothing, and training silently starts over from epoch 0.
+
+    Resolution order:
+      1. /opt/ml/checkpoints (when SageMaker mounted it)
+      2. /tmp/receipt_layoutlm/{job_name} (local dev fallback)
+
+    ``job_name`` is interpolated into the fallback path, so we validate
+    it can't contain path separators or ".." segments that would let
+    the path escape the local root.
+    """
+    if os.path.isdir(SAGEMAKER_CHECKPOINT_DIR):
+        return SAGEMAKER_CHECKPOINT_DIR
+
+    root = os.path.realpath(_LOCAL_OUTPUT_ROOT)
+    candidate = os.path.realpath(os.path.join(root, job_name))
+    if candidate == root or os.path.commonpath([root, candidate]) != root:
+        raise ValueError(
+            f"Invalid job_name {job_name!r}: would escape {root}"
+        )
+    return candidate
+
+
 class ReceiptLayoutLMTrainer:
     def __init__(
         self,
@@ -71,9 +110,19 @@ class ReceiptLayoutLMTrainer:
             except AttributeError:
                 pass
 
-        self.tokenizer = transformers.LayoutLMTokenizerFast.from_pretrained(
-            self.training_config.pretrained_model_name
-        )
+        if self.training_config.model_version == "v3":
+            self.tokenizer = transformers.LayoutLMv3TokenizerFast.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor = transformers.LayoutLMv3ImageProcessor.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor.apply_ocr = False
+        else:
+            self.tokenizer = transformers.LayoutLMTokenizerFast.from_pretrained(
+                self.training_config.pretrained_model_name
+            )
+            self._image_processor = None
 
     def _label_list(self, dataset) -> List[str]:
         tags = set()
@@ -85,8 +134,12 @@ class ReceiptLayoutLMTrainer:
         return ["O", *labels]
 
     def train(self, job_name: str, created_by: str = "system") -> str:
-        # Derive output directory early for run logging
-        output_dir = f"/tmp/receipt_layoutlm/{job_name}"
+        # Derive output directory early for run logging. Inside SageMaker
+        # with managed-spot checkpointing this is /opt/ml/checkpoints (so
+        # CheckpointConfig auto-syncs it ↔ S3 and the trainer's
+        # auto-resume can survive spot interruptions); falls back to
+        # /tmp/receipt_layoutlm/{job_name} for local dev.
+        output_dir = _resolve_output_dir(job_name)
         # Best-effort create output directory
         os.makedirs(output_dir, exist_ok=True)
 
@@ -116,12 +169,14 @@ class ReceiptLayoutLMTrainer:
                     self.dynamo,
                     label_merges=effective_label_merges,
                     allowed_labels=self.data_config.allowed_labels,
+                    model_version=self.training_config.model_version,
                 )
         else:
             datasets, split_metadata, merge_info = load_datasets(
                 self.dynamo,
                 label_merges=effective_label_merges,
                 allowed_labels=self.data_config.allowed_labels,
+                model_version=self.training_config.model_version,
             )
 
         # Compute dataset counts prior to tokenization for run logging
@@ -182,13 +237,16 @@ class ReceiptLayoutLMTrainer:
             i: label for i, label in enumerate(label_list)
         }
 
-        model = (
-            self._transformers.LayoutLMForTokenClassification.from_pretrained(
-                self.training_config.pretrained_model_name,
-                num_labels=len(label_list),
-                id2label=id2label,
-                label2id=label2id,
-            )
+        if self.training_config.model_version == "v3":
+            model_cls = self._transformers.LayoutLMv3ForTokenClassification
+        else:
+            model_cls = self._transformers.LayoutLMForTokenClassification
+
+        model = model_cls.from_pretrained(
+            self.training_config.pretrained_model_name,
+            num_labels=len(label_list),
+            id2label=id2label,
+            label2id=label2id,
         )
 
         # Initialize category-aware label embeddings if enabled
@@ -198,18 +256,10 @@ class ReceiptLayoutLMTrainer:
             tokenizer=self.tokenizer
         )
 
-        # Prepare features: tokenize and align labels/bboxes
-        def _preprocess(example, tokenizer, label2id, max_len: int):
-            encoding = tokenizer(
-                example["tokens"],
-                is_split_into_words=True,
-                truncation=True,
-                padding="max_length",
-                max_length=max_len,
-                return_attention_mask=True,
-            )
+        # Shared label/bbox alignment for both v1 and v3
+        def _align_labels_and_bboxes(encoding, example, label2id):
             word_ids = encoding.word_ids()
-            seq_len = len(encoding["input_ids"])  # includes padding/specials
+            seq_len = len(encoding["input_ids"])
             labels = []
             bboxes = []
             prev_word_id = None
@@ -219,7 +269,6 @@ class ReceiptLayoutLMTrainer:
                     labels.append(-100)
                     bboxes.append([0, 0, 0, 0])
                 else:
-                    # Supervise only the first subtoken of each word; others = -100
                     if wid != prev_word_id:
                         lbl = example["ner_tags"][wid]
                         labels.append(label2id.get(lbl, 0))
@@ -229,21 +278,102 @@ class ReceiptLayoutLMTrainer:
                     prev_word_id = wid
             encoding["labels"] = labels
             encoding["bbox"] = bboxes
+
+        def _preprocess(example, tokenizer, label2id, max_len: int):
+            encoding = tokenizer(
+                example["tokens"],
+                is_split_into_words=True,
+                truncation=True,
+                padding="max_length",
+                max_length=max_len,
+                return_attention_mask=True,
+            )
+            _align_labels_and_bboxes(encoding, example, label2id)
             return encoding
 
-        preprocess = partial(
-            _preprocess,
-            tokenizer=self.tokenizer,
-            label2id=label2id,
-            max_len=self.data_config.max_seq_length,
-        )
+        def _preprocess_v3(
+            example, tokenizer, label2id, max_len: int, image_processor, image_cache_dir
+        ):
+            from PIL import Image as PILImage
+
+            # v3 tokenizer takes words + boxes together and aligns bboxes to subtokens
+            encoding = tokenizer(
+                text=example["tokens"],
+                boxes=example["bboxes"],
+                truncation=True,
+                padding="max_length",
+                max_length=max_len,
+                return_attention_mask=True,
+            )
+            # Align labels using word_ids (same logic as v1, but bbox already handled by v3 tokenizer)
+            word_ids = encoding.word_ids()
+            seq_len = len(encoding["input_ids"])
+            labels = []
+            prev_word_id = None
+            for i in range(seq_len):
+                wid = word_ids[i]
+                if wid is None:
+                    labels.append(-100)
+                else:
+                    if wid != prev_word_id:
+                        lbl = example["ner_tags"][wid]
+                        labels.append(label2id.get(lbl, 0))
+                    else:
+                        labels.append(-100)
+                    prev_word_id = wid
+            encoding["labels"] = labels
+
+            # receipt_key format: "image_id#00001" — parse for warped receipt cache lookup
+            parts = example["receipt_key"].split("#")
+            receipt_id = int(parts[1]) if len(parts) == 2 else 1
+            img_path = os.path.join(image_cache_dir, f"{parts[0]}_{receipt_id}.png")
+            if os.path.exists(img_path):
+                image = PILImage.open(img_path).convert("RGB")
+            else:
+                image = PILImage.new("RGB", (224, 224), (128, 128, 128))
+            pixel_values = image_processor(images=image, return_tensors="pt")[
+                "pixel_values"
+            ].squeeze(0)
+            encoding["pixel_values"] = pixel_values
+
+            if "token_type_ids" in encoding:
+                del encoding["token_type_ids"]
+
+            return encoding
+
+        if self.training_config.model_version == "v3":
+            image_cache_dir = (
+                split_metadata.image_cache_dir
+                if split_metadata and split_metadata.image_cache_dir
+                else "/tmp/receipt_images"
+            )
+            preprocess = partial(
+                _preprocess_v3,
+                tokenizer=self.tokenizer,
+                label2id=label2id,
+                max_len=self.data_config.max_seq_length,
+                image_processor=self._image_processor,
+                image_cache_dir=image_cache_dir,
+            )
+        else:
+            preprocess = partial(
+                _preprocess,
+                tokenizer=self.tokenizer,
+                label2id=label2id,
+                max_len=self.data_config.max_seq_length,
+            )
+
+        # Columns to remove during preprocessing — filter to those actually present
+        # (v1 datasets already had receipt_key removed in data_loader)
+        candidate_cols = ["tokens", "bboxes", "ner_tags", "image_id", "receipt_key"]
+        remove_cols = [c for c in candidate_cols if c in datasets["train"].column_names]
 
         # Parallelize preprocessing across CPU cores
         # Disable cache to minimize local disk usage on SageMaker instances
         num_proc = max(1, min(os.cpu_count() or 1, 8))
         datasets = datasets.map(  # type: ignore[attr-defined]
             preprocess,
-            remove_columns=["tokens", "bboxes", "ner_tags"],
+            remove_columns=remove_cols,
             num_proc=num_proc,
             desc="Tokenize+align",
             load_from_cache_file=False,  # Don't cache to disk
@@ -310,7 +440,8 @@ class ReceiptLayoutLMTrainer:
         if "group_by_length" in ta_params:
             args_kwargs["group_by_length"] = True
         if "gradient_checkpointing" in ta_params:
-            args_kwargs["gradient_checkpointing"] = True
+            if self.training_config.model_version != "v3":
+                args_kwargs["gradient_checkpointing"] = True
         if "optim" in ta_params:
             args_kwargs["optim"] = "adamw_torch"
         # Enable torch.compile only if Triton backend is available
@@ -370,7 +501,7 @@ class ReceiptLayoutLMTrainer:
 
         # Build job_config with explicit merge info for experiment tracking
         job_config_dict = {
-            "model": "layoutlm",
+            "model": f"layoutlm-{self.training_config.model_version}",
             **asdict(self.training_config),
             **asdict(self.data_config),
             # Explicit merge info for reproducibility and comparison
@@ -1022,7 +1153,94 @@ class ReceiptLayoutLMTrainer:
 
             return metrics
 
-        trainer = self._transformers.Trainer(
+        # Class-weighted cross-entropy to combat majority-class ("O") collapse.
+        # Per-receipt-window training has O:entity ratio ~3.6:1; un-weighted
+        # CE drives the model toward all-O predictions. Weight = inverse class
+        # frequency, clipped to [w_min, w_max]. Defaults preserve v13 behavior.
+        # Tighten via LAYOUTLM_CLASS_WEIGHT_MIN / _MAX to reduce over-prediction
+        # of rare classes at the cost of accepting more O bias.
+        def _read_float_env(name: str, default: float) -> float:
+            raw = os.getenv(name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except ValueError:
+                print(
+                    f"[trainer] WARN: {name}={raw!r} is not a valid float; "
+                    f"falling back to default {default}"
+                )
+                return default
+
+        w_min = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MIN", 0.3)
+        w_max = _read_float_env("LAYOUTLM_CLASS_WEIGHT_MAX", 5.0)
+        if not (0 < w_min <= w_max):
+            raise ValueError(
+                f"class weight clip range invalid: "
+                f"min={w_min}, max={w_max} (require 0 < min <= max)"
+            )
+        torch_mod = self._torch
+        n_classes = len(label_list)
+        class_counts = [0] * n_classes
+        for ex in datasets["train"]:
+            for lid in ex["labels"]:
+                if lid == -100:
+                    continue
+                if 0 <= lid < n_classes:
+                    class_counts[lid] += 1
+        total = sum(class_counts)
+        weights = []
+        for c in class_counts:
+            if c == 0:
+                weights.append(1.0)
+            else:
+                w = total / (n_classes * c)
+                weights.append(max(w_min, min(w, w_max)))
+        class_weights_tensor = torch_mod.tensor(
+            weights, dtype=torch_mod.float32
+        )
+        print(
+            "[trainer] class weights: "
+            + ", ".join(
+                f"{label_list[i]}={weights[i]:.2f}" for i in range(n_classes)
+            )
+        )
+
+        TrainerBase = self._transformers.Trainer
+
+        class WeightedTrainer(TrainerBase):  # type: ignore[misc, valid-type]
+            _class_weights = class_weights_tensor
+
+            def compute_loss(
+                self,
+                model,
+                inputs,
+                return_outputs=False,
+                num_items_in_batch=None,
+            ):
+                labels = inputs.pop("labels")
+                outputs = model(**inputs)
+                logits = outputs.logits
+                # When transformers Trainer is using gradient accumulation
+                # (4.46+), it passes num_items_in_batch so per-microbatch loss
+                # can be summed-then-divided rather than mean-reduced. Mirror
+                # the standard ForTokenClassification loss pattern so GA > 1
+                # weighs microbatches correctly regardless of -100 padding.
+                use_sum_reduction = num_items_in_batch is not None
+                loss_fct = torch_mod.nn.CrossEntropyLoss(
+                    weight=self._class_weights.to(logits.device),
+                    ignore_index=-100,
+                    reduction="sum" if use_sum_reduction else "mean",
+                )
+                loss = loss_fct(
+                    logits.view(-1, logits.size(-1)),
+                    labels.view(-1),
+                )
+                if use_sum_reduction:
+                    loss = loss / num_items_in_batch
+                return (loss, outputs) if return_outputs else loss
+
+        trainer = WeightedTrainer(
             model=model,
             args=training_args,
             train_dataset=datasets.get("train"),
@@ -1301,18 +1519,23 @@ class ReceiptLayoutLMTrainer:
                 label_to_category[label] = category
 
         # Get label embeddings from the classifier layer
-        # The classifier is typically a linear layer: classifier.weight is [num_labels, hidden_size]
-        if not hasattr(model, "classifier") or not hasattr(
-            model.classifier, "weight"
-        ):
+        # v1: classifier.weight is [num_labels, hidden_size]
+        # v3: classifier.out_proj.weight is [num_labels, hidden_size]
+        if not hasattr(model, "classifier"):
             print(
-                "⚠️  Model doesn't have classifier.weight, skipping category-aware initialization"
+                "⚠️  Model doesn't have classifier, skipping category-aware initialization"
             )
             return
 
-        label_embeddings = (
-            model.classifier.weight.data
-        )  # Shape: [num_labels, hidden_size]
+        if hasattr(model.classifier, "out_proj"):
+            label_embeddings = model.classifier.out_proj.weight.data
+        elif hasattr(model.classifier, "weight"):
+            label_embeddings = model.classifier.weight.data
+        else:
+            print(
+                "⚠️  Model classifier has no weight or out_proj, skipping category-aware initialization"
+            )
+            return
 
         # Only process labels that exist in our label2id mapping
         available_labels = set(label2id.keys())

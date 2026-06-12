@@ -46,6 +46,8 @@ from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from merge_receipt_lambda import create_merge_receipt_lambda
+from trigger_reocr_lambda import create_trigger_reocr_lambda
+from label_refresh_lambda import create_label_refresh_lambda
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
@@ -481,6 +483,7 @@ if enable_sagemaker:
     sagemaker_training = SageMakerTrainingInfra(
         "layoutlm-sagemaker",
         dynamodb_table_name=dynamodb_table.name,
+        raw_bucket_arn=upload_images.image_bucket.arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
     pulumi.export(
@@ -1273,6 +1276,17 @@ pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
+# Receipt MCP Server Lambda (remote MCP access via Function URL)
+from mcp_server_lambda import McpServerLambda
+
+mcp_server = McpServerLambda(
+    "receipt-mcp",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+)
+pulumi.export("mcp_server_url", mcp_server.function_url)
+pulumi.export("mcp_server_lambda_arn", mcp_server.lambda_arn)
+
 # Merge Receipt Lambda (for merging receipt fragments into a single receipt)
 # Can be invoked with: {image_id, receipt_ids: [2, 3], dry_run: false}
 merge_receipt_lambda = create_merge_receipt_lambda(
@@ -1286,6 +1300,39 @@ merge_receipt_lambda = create_merge_receipt_lambda(
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
+
+# Trigger Re-OCR Lambda (for manually triggering regional re-OCR)
+# Can be invoked with: {image_id, receipt_id, reocr_region, reocr_reason}
+trigger_reocr_lambda = create_trigger_reocr_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    ocr_job_queue_url=upload_images.ocr_queue.url,
+    ocr_job_queue_arn=upload_images.ocr_queue.arn,
+)
+pulumi.export("trigger_reocr_lambda_arn", trigger_reocr_lambda.lambda_arn)
+pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name)
+
+# Label Refresh Lambda — subscribes to the DynamoDB stream and
+# automatically re-evaluates ReceiptWord labels whenever a word's
+# text changes (e.g. after the Mac worker writes new OCR text from
+# a regional re-OCR job). Closes the loop so labels don't go stale.
+#
+# Per-stack rollout switch — defaults to True (dry-run) so first
+# deploy is observe-only. Flip per stack with:
+#   pulumi config set portfolio:label_refresh_dry_run false --stack dev
+# Then verify dev for 48h before flipping prod.
+_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
+    "label_refresh_dry_run"
+)
+label_refresh_lambda = create_label_refresh_lambda(
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
+)
+pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
+pulumi.export("label_refresh_lambda_name", label_refresh_lambda.lambda_function.name)
+pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
@@ -1376,21 +1423,18 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    ocr_job_queue_url=upload_images.ocr_queue.url,
+    ocr_job_queue_arn=upload_images.ocr_queue.arn,
     # EMR Serverless Analytics integration
     emr_application_id=emr_analytics.emr_application.id,
     emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
     langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
     analytics_output_bucket=emr_analytics.analytics_bucket.id,
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # Shared resources (viz-cache bucket for EMR output, batch bucket for data)
+    # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
     cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
     batch_bucket_name=label_evaluator_shared.batch_bucket_name,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-    # LangSmith integration
-    langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-    langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-    setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
-    setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)

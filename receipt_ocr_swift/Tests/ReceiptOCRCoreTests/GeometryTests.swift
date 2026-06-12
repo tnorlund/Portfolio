@@ -287,6 +287,91 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(area, 5000, accuracy: 1.0)
     }
 
+    // MARK: - Long-Axis Projection Merge Tests
+
+    /// Helper: build a Line whose four corners span the given normalised rectangle.
+    private func makeLine(xMin: CGFloat, yMin: CGFloat, xMax: CGFloat, yMax: CGFloat) -> Line {
+        return Line(
+            text: "",
+            boundingBox: NormalizedRect(x: xMin, y: yMin, width: xMax - xMin, height: yMax - yMin),
+            topLeft:     CodablePoint(x: xMin, y: yMax),
+            topRight:    CodablePoint(x: xMax, y: yMax),
+            bottomLeft:  CodablePoint(x: xMin, y: yMin),
+            bottomRight: CodablePoint(x: xMax, y: yMin),
+            angleDegrees: 0,
+            angleRadians: 0,
+            confidence: 1.0,
+            words: []
+        )
+    }
+
+    func testJoinClustersVerticalSplitMerged() {
+        // Main body: x 0.10-0.50, y 0.20-0.80 (portrait)
+        let line0 = makeLine(xMin: 0.10, yMin: 0.20, xMax: 0.50, yMax: 0.50)
+        let line1 = makeLine(xMin: 0.10, yMin: 0.50, xMax: 0.50, yMax: 0.80)
+        // Footer: same x range, below main body
+        let line2 = makeLine(xMin: 0.10, yMin: 0.05, xMax: 0.50, yMax: 0.18)
+        let line3 = makeLine(xMin: 0.10, yMin: 0.01, xMax: 0.50, yMax: 0.05)
+
+        let lines = [line0, line1, line2, line3]
+        let clusters: [Int: [Int]] = [1: [0, 1], 2: [2, 3]]
+
+        let result = joinOverlappingClusters(
+            clusters: clusters,
+            lines: lines,
+            imageWidth: 1000,
+            imageHeight: 1000,
+            iouThreshold: 0.01
+        )
+
+        XCTAssertEqual(result.count, 1, "Vertically stacked clusters should merge")
+    }
+
+    func testJoinClustersSideBySideNotMerged() {
+        // Receipt A: x 0.05-0.45, y 0.10-0.90 (portrait)
+        let line0 = makeLine(xMin: 0.05, yMin: 0.10, xMax: 0.45, yMax: 0.50)
+        let line1 = makeLine(xMin: 0.05, yMin: 0.50, xMax: 0.45, yMax: 0.90)
+        // Receipt B: x 0.55-0.95, y 0.10-0.90 (portrait, side by side)
+        let line2 = makeLine(xMin: 0.55, yMin: 0.10, xMax: 0.95, yMax: 0.50)
+        let line3 = makeLine(xMin: 0.55, yMin: 0.50, xMax: 0.95, yMax: 0.90)
+
+        let lines = [line0, line1, line2, line3]
+        let clusters: [Int: [Int]] = [1: [0, 1], 2: [2, 3]]
+
+        let result = joinOverlappingClusters(
+            clusters: clusters,
+            lines: lines,
+            imageWidth: 1000,
+            imageHeight: 1000,
+            iouThreshold: 0.01
+        )
+
+        XCTAssertEqual(result.count, 2, "Side-by-side clusters should stay separate")
+    }
+
+    func testJoinClustersDiagonalSplitMerged() {
+        // Main body: x 0.10-0.58, y 0.20-0.80
+        let line0 = makeLine(xMin: 0.10, yMin: 0.20, xMax: 0.58, yMax: 0.50)
+        let line1 = makeLine(xMin: 0.10, yMin: 0.50, xMax: 0.58, yMax: 0.80)
+        // Footer: x 0.74-0.83, y 0.02-0.10 (offset in x AND y — the Sprouts case)
+        let line2 = makeLine(xMin: 0.74, yMin: 0.02, xMax: 0.83, yMax: 0.06)
+        let line3 = makeLine(xMin: 0.74, yMin: 0.06, xMax: 0.83, yMax: 0.10)
+
+        let lines = [line0, line1, line2, line3]
+        let clusters: [Int: [Int]] = [1: [0, 1], 2: [2, 3]]
+
+        // Portrait image dimensions (1000x2000) like a real phone photo
+        let result = joinOverlappingClusters(
+            clusters: clusters,
+            lines: lines,
+            imageWidth: 1000,
+            imageHeight: 2000,
+            iouThreshold: 0.01
+        )
+
+        XCTAssertEqual(result.count, 1, "Diagonal split should merge when separation is primarily along long axis")
+    }
+
     // MARK: - Circular Mean Angle Tests
 
     func testCircularMeanAngleSameAngles() {

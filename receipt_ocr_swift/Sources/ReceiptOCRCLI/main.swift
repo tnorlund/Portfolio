@@ -70,6 +70,7 @@ struct ReceiptOCR: AsyncParsableCommand {
                 region: config.region,
                 localstackEndpoint: config.localstackEndpoint,
                 logLevel: ll,
+                rawBucketName: config.rawBucketName,
                 layoutLMModelS3Bucket: config.layoutLMModelS3Bucket,
                 layoutLMModelS3Key: config.layoutLMModelS3Key,
                 layoutLMLocalCachePath: config.layoutLMLocalCachePath

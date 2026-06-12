@@ -30,13 +30,7 @@ MAX_BATCH_SIZE = 50
 
 # Map viz_type (last path segment) to S3 prefix
 VIZ_TYPE_PREFIXES = {
-    "visualization": "receipts/",
     "financial_math": "financial-math/",
-    "diff": "diff/",
-    "journey": "journey/",
-    "patterns": "patterns/",
-    "evidence": "evidence/",
-    "dedup": "dedup/",
     "within_receipt": "within-receipt/",
 }
 
@@ -136,94 +130,6 @@ def _calculate_aggregate_stats(
     }
 
 
-def _handle_patterns_single_merchant(prefix: str) -> dict[str, Any]:
-    """Return a single random merchant for the patterns endpoint.
-
-    Only considers merchants that have constellation data (non-empty
-    ``constellations`` list), so the frontend always gets rich data to render.
-    Uses a time-based seed for variety across page refreshes.
-    """
-    import time
-
-    cached_keys = _list_cached_receipts(prefix)
-    if not cached_keys:
-        return {
-            "statusCode": 404,
-            "body": json.dumps(
-                {
-                    "error": "No cached patterns found",
-                    "message": "Run the label evaluator to generate patterns cache.",
-                }
-            ),
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-        }
-
-    total_count = len(cached_keys)
-
-    # Load all merchants and keep only those with constellation data
-    # and a sample receipt (new-format cache files include sample_receipt;
-    # legacy dash-format files do not).
-    rich_merchants: list[dict[str, Any]] = []
-    for key in sorted(cached_keys):
-        merchant = _fetch_receipt(key)
-        if (
-            merchant
-            and merchant.get("constellations")
-            and merchant.get("sample_receipt")
-        ):
-            rich_merchants.append(merchant)
-
-    if not rich_merchants:
-        return {
-            "statusCode": 404,
-            "body": json.dumps(
-                {
-                    "error": "No merchants with constellation data found",
-                    "message": "Run the label evaluator with pattern files to populate constellations.",
-                }
-            ),
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-        }
-
-    # Time-based seed: changes every 30 seconds for variety across refreshes
-    seed = int(time.time() // 30)
-    rng = random.Random(seed)
-    merchant = rng.choice(rich_merchants)
-
-    metadata = _fetch_metadata(prefix)
-
-    response_data = {
-        "merchant": merchant,
-        "total_count": total_count,
-        "execution_id": metadata.get("execution_id"),
-        "cached_at": metadata.get("cached_at"),
-    }
-
-    logger.info(
-        "Returning merchant '%s' (%d constellations) from %d rich / %d total (seed=%d)",
-        merchant.get("merchant_name", "unknown"),
-        len(merchant.get("constellations", [])),
-        len(rich_merchants),
-        total_count,
-        seed,
-    )
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps(response_data, default=str),
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
-    }
-
-
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Handle API Gateway requests for label evaluator visualization cache.
 
@@ -296,10 +202,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # Parse query params
         query_params = event.get("queryStringParameters") or {}
 
-        # --- Single-merchant mode for patterns ---
-        if viz_type == "patterns":
-            return _handle_patterns_single_merchant(prefix)
-
         # batch_size: number of receipts per page
         try:
             batch_size = int(
@@ -326,6 +228,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset
         )
 
+        # Filter by image_id if provided
+        filter_image_id = query_params.get("image_id")
+
         # List all cached receipts
         cached_keys = _list_cached_receipts(prefix)
         if not cached_keys:
@@ -343,6 +248,24 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "Access-Control-Allow-Origin": "*",
                 },
             }
+
+        # If image_id filter provided, return only matching receipts
+        if filter_image_id:
+            cached_keys = [
+                k for k in cached_keys
+                if k.split("/")[-1].startswith(filter_image_id)
+            ]
+            if not cached_keys:
+                return {
+                    "statusCode": 404,
+                    "body": json.dumps(
+                        {"error": f"No cached receipts found for image_id {filter_image_id}"}
+                    ),
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                }
 
         # Sort keys first for consistency, then shuffle with seed
         total_count = len(cached_keys)
@@ -413,6 +336,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
             },
         }
 

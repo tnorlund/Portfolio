@@ -34,9 +34,7 @@
   position: relative;
   width: 100%;
   max-width: 280px;
-  height: 100%;
-  max-height: 500px;
-  min-height: 320px;
+  aspect-ratio: 3 / 5;
   border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
   background: rgba(var(--text-color-rgb, 0, 0, 0), 0.05);
   border-radius: 2px;
@@ -52,25 +50,8 @@
   flex-shrink: 0;
 }
 
-/* Within: pass indicator + card block */
-.legendWithin {
-  width: 280px;
-  min-height: 200px;
-}
-
-.passDotsSkeleton {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0.5rem;
-}
-
-.passDotSkeleton {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
-}
+/* Within variant now uses the real PassIndicator + rightPanel from
+   WithinReceiptVerification so the skeleton matches the loaded state exactly. */
 
 .cardBlockSkeleton {
   display: flex;
@@ -117,6 +98,21 @@
 /* LayoutLM: legend rows + inference time */
 .legendLayoutLM {
   width: 180px;
+}
+
+/* Desktop: vertical column (shown by default, hidden on mobile) */
+.legendLayoutLMDesktop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Mobile: 3-col grid matching MOBILE_LEGEND_GROUPS (hidden by default) */
+.legendLayoutLMMobile {
+  display: none;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
 }
 
 .legendRowSkeleton {
@@ -170,4 +166,25 @@
 .centerMessage.error {
   color: var(--color-red);
   opacity: 1;
+}
+
+/* Mobile: center the legend content when stacked vertically */
+@media (max-width: 768px) {
+  .legendSkeleton {
+    align-items: center;
+    width: 100%;
+  }
+
+  .cardBlockSkeleton {
+    width: 100%;
+  }
+
+  /* Swap desktop column → mobile grid for LayoutLM skeleton */
+  .legendLayoutLMDesktop {
+    display: none;
+  }
+
+  .legendLayoutLMMobile {
+    display: grid;
+  }
 }

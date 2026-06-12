@@ -109,7 +109,7 @@ def create_layoutlm_inference_lambda(
                 }
             )
         ),
-        memory_size=256,
+        memory_size=1024,
         timeout=30,  # Should be very fast since it's just reading from S3
         tags={"environment": stack},
     )

@@ -201,6 +201,7 @@ def _process_single_record(
         site_bucket=os.environ["SITE_BUCKET"],
         ocr_job_queue_url=os.environ["OCR_JOB_QUEUE_URL"],
         ocr_results_queue_url=os.environ["OCR_RESULTS_QUEUE_URL"],
+        chromadb_bucket=os.environ.get("CHROMADB_BUCKET", ""),
     )
 
     # Step 1: Process OCR (parse, classify, store in DynamoDB)

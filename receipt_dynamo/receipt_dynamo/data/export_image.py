@@ -86,3 +86,42 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         os.path.join(output_dir, f"{image_id}.json"), "w", encoding="utf-8"
     ) as f:
         json.dump(results, f, indent=4, default=datetime_handler)
+
+
+def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
+    """
+    Deletes ALL DynamoDB records for a given image_id.
+
+    Uses get_image_details() to discover all entities, then deletes them
+    in reverse-dependency order (children first).
+
+    Args:
+        table_name: The DynamoDB table name
+        image_id: UUID of the image whose data should be deleted
+
+    Returns:
+        A dict mapping entity type names to the number of records deleted.
+    """
+    dynamo_client = DynamoClient(table_name)
+    details = dynamo_client.get_image_details(image_id)
+    counts: dict[str, int] = {}
+    # Delete in reverse-dependency order (children first)
+    for attr, method in [
+        ("receipt_word_labels", "delete_receipt_word_labels"),
+        ("receipt_letters", "delete_receipt_letters"),
+        ("receipt_words", "delete_receipt_words"),
+        ("receipt_lines", "delete_receipt_lines"),
+        ("receipt_places", "delete_receipt_places"),
+        ("receipts", "delete_receipts"),
+        ("letters", "delete_letters"),
+        ("words", "delete_words"),
+        ("lines", "delete_lines"),
+        ("ocr_routing_decisions", "delete_ocr_routing_decisions"),
+        ("ocr_jobs", "delete_ocr_jobs"),
+        ("images", "delete_images"),
+    ]:
+        entities = getattr(details, attr)
+        if entities:
+            getattr(dynamo_client, method)(entities)
+            counts[attr] = len(entities)
+    return counts

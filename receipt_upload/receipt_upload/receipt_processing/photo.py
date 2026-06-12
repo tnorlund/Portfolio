@@ -507,3 +507,7 @@ def process_photo(
     ocr_routing_decision.receipt_count = successful_clusters
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
     dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
+
+    # Update Image entity with final receipt count
+    ocr_image.receipt_count = successful_clusters
+    dynamo_client.update_image(ocr_image)

@@ -12,7 +12,6 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
-  BetweenReceiptVisualization,
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
@@ -41,7 +40,6 @@ import {
   GithubLogo,
   GoogleMapsLogo,
   LangChainLogo,
-  LangSmithLogo,
   PulumiLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
@@ -107,9 +105,6 @@ export default function ReceiptPage({
   //   setUploadDiagramChars(chars);
   // }, []);
 
-  // --- QA Agent live data ---
-  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
-
   // --- Receipt Upload State & Handlers ---
   const [dragging, setDragging] = useState(false);
   const [apiUrl, setApiUrl] = useState("");
@@ -124,6 +119,9 @@ export default function ReceiptPage({
   }, []);
 
   const { fileStates, addFiles, clearAll } = useUploadProgress(apiUrl);
+
+  // --- QA Agent live data ---
+  const { data: qaData, questionIndex: selectedQuestion, advance: advanceQuestion, selectQuestion: setSelectedQuestion } = useQAQueue();
 
   const handleDrop = useCallback(
     (e: DragEvent) => {
@@ -360,25 +358,9 @@ M1LK 2%           1    $4.4g`}</code>
       </FigureBoundary>
 
       <p>
-        Then I compare the labels across receipts from the same store. If
-        every other Trader Joe's receipt calls that field a line total, but
-        this one says subtotal, something's off.
+        Even with the math checks, the labels weren't perfect. So I corrected
+        the results by asking AI to verify them. And again. And again.
       </p>
-
-      <FigureBoundary intrinsicSize="700px">
-        <ClientOnly>
-          <BetweenReceiptVisualization />
-        </ClientOnly>
-      </FigureBoundary>
-
-      <p>
-        This works, kind of. AI isn't consistent. It would call the price of
-        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
-        something that doesn't know what milk is. So I corrected the results
-        by asking AI to verify again.
-      </p>
-
-      <p>And again. And again.</p>
 
       <FigureBoundary intrinsicSize="420px">
         <ClientOnly>
@@ -391,6 +373,7 @@ M1LK 2%           1    $4.4g`}</code>
         asking ~4 different AI, 5+ times to verify the results was slow and
         expensive. I needed a better way.
       </p>
+
 
       <h2>Making it Faster and Cheaper</h2>
 
@@ -501,7 +484,9 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <LangChainLogo />
+        <AnimatedInView>
+          <LangChainLogo />
+        </AnimatedInView>
       </ClientOnly>
 
       <p>
@@ -522,12 +507,8 @@ M1LK 2%           1    $4.4g`}</code>
         Some work. Some don't. That's the point.
       </p>
 
-      <ClientOnly>
-        <LangSmithLogo />
-      </ClientOnly>
-
       <p>
-        LangSmith records what happened:  which questions worked, which failed,
+        LangSmith records what happened: which questions worked, which failed,
         and why. I can use AI to annotate bad answers, use AI to evaluate why
         it went wrong, and plan a new experiment.
       </p>

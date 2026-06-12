@@ -21,7 +21,10 @@ from receipt_dynamo.entities import ReceiptWord
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
 from receipt_agent.utils.chroma_types import extract_query_metadata_rows
-from receipt_agent.utils.label_metadata import parse_labels_from_metadata
+from receipt_agent.utils.label_metadata import (
+    build_label_membership_clause,
+    parse_labels_from_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,22 +192,24 @@ def chroma_resolve_words(
     chroma_client: Any,
     words: list[dict],
     merchant_name: str,
-    threshold: float = 0.75,
-    min_evidence: int = 4,
+    threshold: float = 0.60,
+    min_evidence: int = 2,
 ) -> tuple[list[tuple[dict, dict]], list[dict]]:
-    """Resolve words using ChromaDB consensus.
+    """Resolve words using ChromaDB top-K label-aware consensus.
 
-    For each word, queries ChromaDB for evidence and computes consensus.
-    Words with strong consensus are auto-resolved; others are returned
-    as unresolved for LLM evaluation.
+    For each word, runs an unfiltered nearest-neighbor query on the words
+    collection and counts the top-5 most similar neighbors that have the
+    target label in their ``valid_labels_array`` or
+    ``invalid_labels_array``.  Words with strong consensus are
+    auto-resolved; others are returned for LLM evaluation.
 
     Args:
         chroma_client: ChromaDB client instance
         words: List of word dicts, each with keys:
             image_id, receipt_id, line_id, word_id, current_label, word_text
-        merchant_name: Merchant name for same-merchant boosting
-        threshold: Consensus threshold for auto-resolution (default 0.75)
-        min_evidence: Minimum evidence items required (default 4)
+        merchant_name: Merchant name (kept for API compatibility)
+        threshold: Consensus threshold for auto-resolution (default 0.60)
+        min_evidence: Minimum label-aware neighbors required (default 2)
 
     Returns:
         Tuple of (resolved_pairs, unresolved_words) where each resolved
@@ -213,28 +218,98 @@ def chroma_resolve_words(
     resolved: list[tuple[dict, dict]] = []
     unresolved: list[dict] = []
 
+    # Diagnostic counters for unlabeled word resolution.
+    _ul_total = 0
+    _ul_no_embedding = 0
+    _ul_no_candidate = 0
+    _ul_weak_consensus = 0
+    _ul_resolved = 0
+
     for word_dict in words:
         current_label = word_dict.get("current_label", "")
-        # Determine target label for evidence query
         normalized = current_label.strip().upper() if current_label else ""
-        if normalized in {"", "O", "NONE", "NONE (UNLABELED)", "UNLABELED"}:
-            # Unlabeled word — skip ChromaDB (no target label to query)
-            unresolved.append(word_dict)
-            continue
+        is_unlabeled = normalized in {
+            "", "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
+        }
 
-        target_label = normalized
+        if is_unlabeled:
+            _ul_total += 1
 
+        # Fetch embedding once — reused for both discovery and consensus.
         try:
-            evidence = query_label_evidence(
+            word_query = _get_word_query_embedding(
                 chroma_client=chroma_client,
                 image_id=word_dict["image_id"],
                 receipt_id=word_dict["receipt_id"],
                 line_id=word_dict["line_id"],
                 word_id=word_dict["word_id"],
-                target_label=target_label,
-                target_merchant=merchant_name,
             )
-            consensus, pos_count, neg_count = compute_label_consensus(evidence)
+        except Exception as exc:
+            logger.warning(
+                "ChromaDB embedding lookup failed for word '%s' "
+                "(line=%s, word=%s): %s",
+                word_dict.get("word_text", ""),
+                word_dict.get("line_id"),
+                word_dict.get("word_id"),
+                exc,
+            )
+            if is_unlabeled:
+                _ul_no_embedding += 1
+            unresolved.append(word_dict)
+            continue
+
+        if not word_query:
+            if is_unlabeled:
+                _ul_no_embedding += 1
+            unresolved.append(word_dict)
+            continue
+
+        embedding, word_chroma_id = word_query
+
+        if is_unlabeled:
+            # Combined discovery + consensus in a single ChromaDB query.
+            result = _discover_and_evaluate_unlabeled(
+                chroma_client=chroma_client,
+                query_embedding=embedding,
+                exclude_chroma_id=word_chroma_id,
+            )
+            if result is None:
+                _ul_no_candidate += 1
+                unresolved.append(word_dict)
+                continue
+
+            candidate, consensus, pos_count, neg_count = result
+            issue = {
+                "current_label": current_label,
+                "word_text": word_dict.get("word_text", ""),
+            }
+            auto_review = build_consensus_auto_review(
+                issue=issue,
+                target_label=candidate,
+                consensus=consensus,
+                positive_count=pos_count,
+                negative_count=neg_count,
+                min_evidence=min_evidence,
+                threshold=threshold,
+            )
+            if auto_review is not None:
+                resolved.append((word_dict, auto_review))
+                _ul_resolved += 1
+            else:
+                _ul_weak_consensus += 1
+                unresolved.append(word_dict)
+            continue
+
+        # --- Labeled word path (unchanged) ---
+        target_label = normalized
+
+        try:
+            consensus, pos_count, neg_count, _ = _compute_top_k_word_consensus(
+                chroma_client=chroma_client,
+                query_embedding=embedding,
+                exclude_chroma_id=word_chroma_id,
+                target_label=target_label,
+            )
 
             issue = {
                 "current_label": current_label,
@@ -264,6 +339,17 @@ def chroma_resolve_words(
                 exc,
             )
             unresolved.append(word_dict)
+
+    if _ul_total > 0:
+        logger.info(
+            "ChromaDB unlabeled word stats: total=%d no_embedding=%d "
+            "no_candidate=%d weak_consensus=%d resolved=%d",
+            _ul_total,
+            _ul_no_embedding,
+            _ul_no_candidate,
+            _ul_weak_consensus,
+            _ul_resolved,
+        )
 
     return resolved, unresolved
 
@@ -753,6 +839,28 @@ def _get_line_query_embedding(
     return None
 
 
+def _build_label_where_clause(
+    collection_name: str,
+    target_label: str,
+    label_value: bool,
+) -> dict:
+    """Build the correct where-clause for a collection.
+
+    The words collection stores labels in array fields
+    (``valid_labels_array`` / ``invalid_labels_array``) while the lines
+    collection uses boolean flags (``label_STORE_HOURS: True``).
+    """
+    if collection_name == "words":
+        array_field = (
+            "valid_labels_array" if label_value else "invalid_labels_array"
+        )
+        return build_label_membership_clause(
+            target_label, array_field=array_field
+        )
+    # Lines collection uses boolean flags written by compaction/labels.py
+    return {f"label_{target_label}": label_value}
+
+
 def _query_label_evidence_for_collection(
     chroma_client: Any,
     collection_name: str,
@@ -764,24 +872,25 @@ def _query_label_evidence_for_collection(
     min_similarity: float,
 ) -> list[LabelEvidence]:
     """Query one collection for positive and negative label evidence."""
-    label_field = f"label_{target_label}"
 
     def _query_single_value(label_value: bool) -> list[LabelEvidence]:
+        where = _build_label_where_clause(
+            collection_name, target_label, label_value
+        )
         try:
             results = chroma_client.query(
                 collection_name=collection_name,
                 query_embeddings=[query_embedding],
                 n_results=n_results_per_query,
-                where={label_field: label_value},
+                where=where,
                 include=["metadatas", "distances"],
             )
         except Exception as exc:
             logger.warning(
-                "Error querying %s in %s for %s=%s: %s",
+                "Error querying %s for %s where=%s: %s",
                 collection_name,
                 target_label,
-                label_field,
-                label_value,
+                where,
                 exc,
             )
             return []
@@ -845,6 +954,397 @@ def _query_label_evidence_for_collection(
     return _query_single_value(True) + _query_single_value(False)
 
 
+def _discover_candidate_label(
+    chroma_client: Any,
+    query_embedding: list[float],
+    exclude_chroma_id: str,
+    n_query: int = 30,
+    min_similarity: float = 0.70,
+    top_k: int = 10,
+) -> str | None:
+    """Discover the dominant label from nearest neighbors for an unlabeled word.
+
+    Queries the ``words`` collection for nearest neighbors and collects all
+    labels from each neighbor's ``valid_labels_array``.  Returns the most
+    frequent label across the top-K most similar neighbors, or ``None`` if
+    no label has at least 2 occurrences.
+
+    Args:
+        chroma_client: ChromaDB client instance
+        query_embedding: Embedding vector for the query word
+        exclude_chroma_id: ChromaDB ID of the query word (skip self)
+        n_query: Number of nearest neighbors to fetch
+        min_similarity: Minimum similarity threshold (0-1)
+        top_k: Number of neighbors to consider for label counting
+
+    Returns:
+        The dominant label string, or ``None`` if no clear candidate.
+    """
+    try:
+        results = chroma_client.query(
+            collection_name="words",
+            query_embeddings=[query_embedding],
+            n_results=n_query,
+            include=["metadatas", "distances"],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Label discovery query failed: %s", exc
+        )
+        return None
+
+    metadata_rows = results.get("metadatas", [[]])
+    distance_rows = results.get("distances", [[]])
+    metadatas = metadata_rows[0] if metadata_rows else []
+    distances = distance_rows[0] if distance_rows else []
+
+    label_counts: dict[str, int] = {}
+    counted = 0
+
+    for metadata, distance in zip(metadatas, distances, strict=True):
+        if not isinstance(metadata, dict):
+            continue
+
+        result_id = _result_chroma_id_for_metadata("words", metadata)
+        if result_id == exclude_chroma_id:
+            continue
+
+        try:
+            distance_val = float(distance)
+        except (TypeError, ValueError):
+            continue
+        similarity = max(0.0, 1.0 - (distance_val / 2.0))
+        if similarity < min_similarity:
+            continue
+
+        counted += 1
+        if counted > top_k:
+            break
+
+        v_arr = metadata.get("valid_labels_array", []) or []
+        if isinstance(v_arr, list):
+            for label in v_arr:
+                label_str = str(label).strip().upper()
+                if label_str and label_str not in {
+                    "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
+                }:
+                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
+
+    if not label_counts:
+        return None
+
+    best_label = max(label_counts, key=label_counts.get)  # type: ignore[arg-type]
+    if label_counts[best_label] < 2:
+        return None
+
+    return best_label
+
+
+def _discover_and_evaluate_unlabeled(
+    chroma_client: Any,
+    query_embedding: list[float],
+    exclude_chroma_id: str,
+    n_query: int = 30,
+    min_similarity: float = 0.70,
+    discovery_top_k: int = 10,
+    consensus_top_k: int = 5,
+) -> tuple[str, float, int, int] | None:
+    """Discover a candidate label AND compute consensus in a single query.
+
+    Combines the work of ``_discover_candidate_label`` and
+    ``_compute_top_k_word_consensus`` into one ChromaDB round-trip for
+    unlabeled words.
+
+    Phase 1 (discovery): Collects labels from each neighbor's
+    ``valid_labels_array`` across the top *discovery_top_k* neighbors
+    and picks the most frequent label (requires ≥2 occurrences).
+
+    Phase 2 (consensus): Using the same neighbor data, classifies each
+    neighbor by whether the candidate label appears in its
+    ``valid_labels_array`` or ``invalid_labels_array``, then computes a
+    consensus score from the top *consensus_top_k* label-aware neighbors.
+
+    Returns:
+        ``(candidate_label, consensus, positive_count, negative_count)``
+        or ``None`` if no candidate label could be discovered.
+    """
+    _UNLABELED_SENTINELS = {"O", "NONE", "NONE (UNLABELED)", "UNLABELED", ""}
+
+    try:
+        results = chroma_client.query(
+            collection_name="words",
+            query_embeddings=[query_embedding],
+            n_results=n_query,
+            include=["metadatas", "distances"],
+        )
+    except Exception as exc:
+        logger.warning("Combined discovery+consensus query failed: %s", exc)
+        return None
+
+    metadata_rows = results.get("metadatas", [[]])
+    distance_rows = results.get("distances", [[]])
+    metadatas = metadata_rows[0] if metadata_rows else []
+    distances = distance_rows[0] if distance_rows else []
+
+    # Build filtered neighbor list (above min_similarity, excluding self).
+    neighbors: list[tuple[float, dict]] = []
+    for metadata, distance in zip(metadatas, distances, strict=True):
+        if not isinstance(metadata, dict):
+            continue
+        result_id = _result_chroma_id_for_metadata("words", metadata)
+        if result_id == exclude_chroma_id:
+            continue
+        try:
+            distance_val = float(distance)
+        except (TypeError, ValueError):
+            continue
+        similarity = max(0.0, 1.0 - (distance_val / 2.0))
+        if similarity < min_similarity:
+            continue
+        neighbors.append((similarity, metadata))
+
+    if not neighbors:
+        return None
+
+    # --- Phase 1: discover candidate label ---
+    label_counts: dict[str, int] = {}
+    for _, metadata in neighbors[:discovery_top_k]:
+        v_arr = metadata.get("valid_labels_array", []) or []
+        if isinstance(v_arr, list):
+            for label in v_arr:
+                label_str = str(label).strip().upper()
+                if label_str not in _UNLABELED_SENTINELS:
+                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
+
+    if not label_counts:
+        return None
+
+    candidate = max(label_counts, key=label_counts.get)  # type: ignore[arg-type]
+    if label_counts[candidate] < 2:
+        return None
+
+    # --- Phase 2: compute consensus for candidate ---
+    label_aware: list[tuple[float, bool, bool]] = []
+    for similarity, metadata in neighbors:
+        v_arr = metadata.get("valid_labels_array", []) or []
+        i_arr = metadata.get("invalid_labels_array", []) or []
+        has_valid = candidate in v_arr if isinstance(v_arr, list) else False
+        has_invalid = candidate in i_arr if isinstance(i_arr, list) else False
+        if not has_valid and not has_invalid:
+            continue
+        label_aware.append((similarity, has_valid, has_invalid))
+
+    top = label_aware[:consensus_top_k]
+    pos = sum(1 for _, hv, _ in top if hv)
+    neg = sum(1 for _, _, hi in top if hi)
+    total = pos + neg
+
+    if total == 0:
+        return None
+
+    consensus = (pos - neg) / total
+    return (candidate, consensus, pos, neg)
+
+
+def _compute_top_k_word_consensus(
+    chroma_client: Any,
+    query_embedding: list[float],
+    exclude_chroma_id: str,
+    target_label: str,
+    target_merchant: str = "",
+    n_query: int = 30,
+    min_similarity: float = 0.70,
+    top_k: int = 5,
+) -> tuple[float, int, int, list[LabelEvidence]]:
+    """Compute label consensus via unfiltered query + top-K label-aware vote.
+
+    Instead of two filtered queries (which always return balanced results
+    regardless of the true valid/invalid ratio), performs one unfiltered
+    nearest-neighbor search and classifies each neighbor post-hoc by
+    checking ``valid_labels_array`` / ``invalid_labels_array`` for the
+    target label.  Neighbors without the label in either array are ignored.
+    The top *k* most similar label-aware neighbors vote:
+    ``score = (valid - invalid) / (valid + invalid)``.
+
+    Args:
+        chroma_client: ChromaDB client instance
+        query_embedding: Embedding vector for the query word
+        exclude_chroma_id: ChromaDB ID of the query word (skip self)
+        target_label: Label to compute consensus for
+        target_merchant: Merchant name for same-merchant tagging
+        n_query: Number of nearest neighbors to fetch
+        min_similarity: Minimum similarity threshold (0-1)
+        top_k: Number of label-aware neighbors to use for voting
+
+    Returns:
+        Tuple of (consensus_score, valid_count, invalid_count, evidence)
+        where consensus ranges from -1.0 (all invalid) to +1.0 (all valid)
+        and evidence is a list of LabelEvidence from the top-K neighbors.
+    """
+    empty: tuple[float, int, int, list[LabelEvidence]] = (0.0, 0, 0, [])
+
+    try:
+        results = chroma_client.query(
+            collection_name="words",
+            query_embeddings=[query_embedding],
+            n_results=n_query,
+            include=["metadatas", "distances"],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Unfiltered word query failed for %s: %s", target_label, exc
+        )
+        return empty
+
+    metadata_rows = results.get("metadatas", [[]])
+    distance_rows = results.get("distances", [[]])
+    metadatas = metadata_rows[0] if metadata_rows else []
+    distances = distance_rows[0] if distance_rows else []
+
+    # Collect label-aware neighbors with their metadata for evidence
+    label_aware: list[tuple[float, bool, bool, dict]] = []
+
+    for metadata, distance in zip(metadatas, distances, strict=True):
+        if not isinstance(metadata, dict):
+            continue
+
+        result_id = _result_chroma_id_for_metadata("words", metadata)
+        if result_id == exclude_chroma_id:
+            continue
+
+        try:
+            distance_val = float(distance)
+        except (TypeError, ValueError):
+            continue
+        similarity = max(0.0, 1.0 - (distance_val / 2.0))
+        if similarity < min_similarity:
+            continue
+
+        v_arr = metadata.get("valid_labels_array", []) or []
+        i_arr = metadata.get("invalid_labels_array", []) or []
+        has_valid = target_label in v_arr if isinstance(v_arr, list) else False
+        has_invalid = (
+            target_label in i_arr if isinstance(i_arr, list) else False
+        )
+
+        if not has_valid and not has_invalid:
+            continue
+
+        label_aware.append((similarity, has_valid, has_invalid, metadata))
+
+    # ChromaDB returns nearest first, so already sorted by similarity.
+    top_neighbors = label_aware[:top_k]
+
+    valid_count = sum(1 for _, hv, _, _ in top_neighbors if hv)
+    invalid_count = sum(1 for _, _, hi, _ in top_neighbors if hi)
+    total = valid_count + invalid_count
+
+    if total == 0:
+        return empty
+
+    consensus = (valid_count - invalid_count) / total
+
+    # Build LabelEvidence items from top neighbors
+    evidence: list[LabelEvidence] = []
+    for similarity, has_valid, has_invalid, metadata in top_neighbors:
+        merchant = str(metadata.get("merchant_name", "Unknown"))
+        is_same = (
+            merchant.lower() == target_merchant.lower()
+            if target_merchant
+            else False
+        )
+        left_neighbor = str(metadata.get("left", "<EDGE>"))
+        right_neighbor = str(metadata.get("right", "<EDGE>"))
+        try:
+            pos_x = float(metadata.get("x", 0.5))
+            pos_y = float(metadata.get("y", 0.5))
+        except (TypeError, ValueError):
+            pos_x, pos_y = 0.5, 0.5
+
+        if has_valid:
+            evidence.append(
+                LabelEvidence(
+                    word_text=str(metadata.get("text", "")),
+                    similarity_score=round(similarity, 3),
+                    chroma_id=_result_chroma_id_for_metadata(
+                        "words", metadata
+                    ),
+                    label_valid=True,
+                    merchant_name=merchant,
+                    is_same_merchant=is_same,
+                    position_description=describe_position(pos_x, pos_y),
+                    left_neighbor=left_neighbor,
+                    right_neighbor=right_neighbor,
+                    evidence_source="words",
+                )
+            )
+        if has_invalid:
+            evidence.append(
+                LabelEvidence(
+                    word_text=str(metadata.get("text", "")),
+                    similarity_score=round(similarity, 3),
+                    chroma_id=_result_chroma_id_for_metadata(
+                        "words", metadata
+                    ),
+                    label_valid=False,
+                    merchant_name=merchant,
+                    is_same_merchant=is_same,
+                    position_description=describe_position(pos_x, pos_y),
+                    left_neighbor=left_neighbor,
+                    right_neighbor=right_neighbor,
+                    evidence_source="words",
+                )
+            )
+
+    return consensus, valid_count, invalid_count, evidence
+
+
+def query_top_k_word_evidence(
+    chroma_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    target_label: str,
+    target_merchant: str = "",
+    n_query: int = 30,
+    min_similarity: float = 0.70,
+    top_k: int = 5,
+) -> tuple[list[LabelEvidence], float, int, int]:
+    """Query words collection for top-K label-aware evidence and consensus.
+
+    Public wrapper around ``_compute_top_k_word_consensus`` that handles
+    embedding lookup.  Returns evidence items suitable for
+    ``format_label_evidence_for_prompt`` plus the consensus score for
+    ``build_consensus_auto_review``.
+
+    Returns:
+        Tuple of (evidence_list, consensus, valid_count, invalid_count).
+    """
+    word_query = _get_word_query_embedding(
+        chroma_client=chroma_client,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+        word_id=word_id,
+    )
+    if not word_query:
+        return [], 0.0, 0, 0
+
+    embedding, word_chroma_id = word_query
+    consensus, pos_count, neg_count, evidence = _compute_top_k_word_consensus(
+        chroma_client=chroma_client,
+        query_embedding=embedding,
+        exclude_chroma_id=word_chroma_id,
+        target_label=target_label,
+        target_merchant=target_merchant,
+        n_query=n_query,
+        min_similarity=min_similarity,
+        top_k=top_k,
+    )
+    return evidence, consensus, pos_count, neg_count
+
+
 def query_label_evidence(
     chroma_client: Any,
     image_id: str,
@@ -860,10 +1360,11 @@ def query_label_evidence(
     """
     Query ChromaDB for evidence FOR and AGAINST a specific label.
 
-    Uses targeted boolean metadata filters across one or more collections.
-    For each collection, runs two queries:
-    1. Embeddings where label was validated as TRUE (positive evidence)
-    2. Embeddings where label was validated as FALSE (negative evidence)
+    Uses collection-appropriate metadata filters (array ``$contains``
+    for words, boolean flags for lines).  For each collection, runs
+    two queries:
+    1. Embeddings where label was validated as VALID (positive evidence)
+    2. Embeddings where label was validated as INVALID (negative evidence)
 
     Args:
         chroma_client: ChromaDB client

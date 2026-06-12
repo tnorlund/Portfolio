@@ -48,7 +48,14 @@ def get_hyperparameters() -> dict:
     # Also check individual SM_HP_* variables
     for key, value in os.environ.items():
         if key.startswith("SM_HP_"):
-            param_name = key[6:].lower()  # Remove SM_HP_ prefix
+            suffix = key[6:]  # Remove SM_HP_ prefix
+            # Preserve original case for `env_*` keys — they get promoted to
+            # process env vars in main() and the downstream code reads
+            # LAYOUTLM_CLASS_WEIGHT_MAX, not layoutlm_class_weight_max.
+            if suffix.lower().startswith("env_"):
+                param_name = "env_" + suffix[len("env_"):]
+            else:
+                param_name = suffix.lower()
             hps[param_name] = value
 
     return hps
@@ -84,6 +91,8 @@ def build_train_command(hps: dict) -> list[str]:
         "early_stopping_patience": "--early-stopping-patience",
         "pretrained": "--pretrained",
         "o_entity_ratio": "--o-entity-ratio",
+        "resume_from_s3": "--resume-from-s3",
+        "model_version": "--model-version",
     }
 
     for hp_name, cli_flag in param_mapping.items():
@@ -130,9 +139,21 @@ def build_train_command(hps: dict) -> list[str]:
 
 
 def copy_model_to_sagemaker_dir(job_name: str):
-    """Copy trained model to SageMaker's model directory."""
+    """Copy trained model to SageMaker's model directory.
+
+    The training output directory is resolved by
+    ``receipt_layoutlm.trainer._resolve_output_dir`` so the SageMaker
+    container side stays in lockstep with the trainer's own writes
+    (avoids the kind of path-mismatch silent data loss this PR
+    addresses for spot restarts).
+    """
     model_dir = os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
-    training_dir = Path(f"/tmp/receipt_layoutlm/{job_name}")
+    # Import locally so train.py is still importable in environments
+    # that don't have receipt_layoutlm installed (it's only required at
+    # SageMaker container runtime, not at static-analysis time).
+    from receipt_layoutlm.trainer import _resolve_output_dir
+
+    training_dir = Path(_resolve_output_dir(job_name))
 
     if not training_dir.exists():
         print(f"Warning: Training directory {training_dir} not found")
@@ -170,8 +191,19 @@ def main():
     print(f"Running: {' '.join(cmd)}")
     print("=" * 60)
 
+    # Promote hyperparameters of the form `env_VAR=val` to process env vars
+    # before launching the trainer. Lets callers tune env-driven knobs
+    # (LAYOUTLM_WINDOW_SIZE, LAYOUTLM_CLASS_WEIGHT_*, etc.) per training job
+    # without adding a new CLI flag for each one.
+    child_env = os.environ.copy()
+    for key, value in hps.items():
+        if key.startswith("env_"):
+            env_name = key[len("env_") :]
+            child_env[env_name] = str(value)
+            print(f"  setenv {env_name}={value}")
+
     # Run training
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False, env=child_env)
 
     if result.returncode != 0:
         print(f"Training failed with exit code {result.returncode}")

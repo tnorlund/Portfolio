@@ -195,12 +195,44 @@ def handler(  # pylint: disable=unused-argument
 
         _propagate_env_vars()
 
-        # Run the LangGraph agent on the persistent event loop
-        agent_result, details = _loop.run_until_complete(
-            _run_place_finder(image_id, receipt_id, reason)
-        )
+        # The agent occasionally returns found=true with merchant_name but
+        # empty/None place_id. place_id is the canonical key — without it
+        # we can't write a usable ReceiptPlace. Retry up to MAX_ATTEMPTS,
+        # augmenting the reason on each retry so the agent knows to find
+        # the Google Places place_id explicitly.
+        MAX_ATTEMPTS = 3
+        agent_result = None
+        details = None
+        attempted_reason = reason
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            agent_result, details = _loop.run_until_complete(
+                _run_place_finder(image_id, receipt_id, attempted_reason)
+            )
+            if (
+                agent_result
+                and agent_result.get("found")
+                and agent_result.get("merchant_name")
+                and agent_result.get("place_id")
+            ):
+                break
+            logger.warning(
+                "place_finder attempt %d/%d incomplete: found=%s merchant=%s "
+                "place_id=%s",
+                attempt,
+                MAX_ATTEMPTS,
+                bool(agent_result and agent_result.get("found")),
+                bool(agent_result and agent_result.get("merchant_name")),
+                bool(agent_result and agent_result.get("place_id")),
+            )
+            attempted_reason = (
+                f"{reason}\n\n[Retry {attempt}] Previous attempt returned "
+                f"merchant='{agent_result.get('merchant_name') if agent_result else ''}' "
+                f"but no Google Places place_id. The place_id is REQUIRED. "
+                f"Use the Google Places search tools to find a matching "
+                f"place_id (format ChIJ…) before submitting."
+            )
 
-        current_place = details.place
+        current_place = details.place if details else None
         old_merchant = current_place.merchant_name if current_place else None
 
         if not agent_result or not agent_result.get("found"):
@@ -210,6 +242,7 @@ def handler(  # pylint: disable=unused-argument
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
+                "attempts": MAX_ATTEMPTS,
                 "reasoning": (
                     agent_result.get("reasoning", "") if agent_result else ""
                 ),
@@ -225,6 +258,24 @@ def handler(  # pylint: disable=unused-argument
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
+                "reasoning": agent_result.get("reasoning", ""),
+                "fields_found": agent_result.get("fields_found", []),
+            }
+
+        # Guard: place_id is the canonical Google Places key. Without it,
+        # downstream consumers can't refresh the place data later.
+        if not agent_result.get("place_id"):
+            return {
+                "success": False,
+                "error": (
+                    f"Agent found a place named "
+                    f"'{agent_result.get('merchant_name')}' but no "
+                    f"Google Places place_id after {MAX_ATTEMPTS} attempts"
+                ),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "old_merchant": old_merchant,
+                "attempts": MAX_ATTEMPTS,
                 "reasoning": agent_result.get("reasoning", ""),
                 "fields_found": agent_result.get("fields_found", []),
             }

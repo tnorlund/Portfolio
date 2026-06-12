@@ -59,6 +59,30 @@ class LayoutLMWrapper(nn.Module):
         return outputs.logits
 
 
+class LayoutLMv3Wrapper(nn.Module):
+    """Wrapper for LayoutLMv3 CoreML export with image input."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        bbox: torch.Tensor,
+        token_type_ids: torch.Tensor,
+        pixel_values: torch.Tensor,
+    ) -> torch.Tensor:
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            bbox=bbox,
+            pixel_values=pixel_values,
+        )
+        return outputs.logits
+
+
 def export_coreml(
     checkpoint_dir: str,
     output_dir: str,
@@ -66,6 +90,7 @@ def export_coreml(
     max_seq_length: int = 512,
     min_seq_length: int = 1,
     quantize: Optional[str] = None,
+    model_version: str = "v1",
 ) -> str:
     """Export a trained LayoutLM checkpoint to CoreML format.
 
@@ -76,6 +101,7 @@ def export_coreml(
         max_seq_length: Maximum sequence length for model.
         min_seq_length: Minimum sequence length for model.
         quantize: Quantization mode: None, "float16", "int8", or "int4".
+        model_version: Model version to export: "v1" or "v3".
 
     Returns:
         Path to the created model bundle directory.
@@ -92,10 +118,17 @@ def export_coreml(
 
     try:
         import coremltools as ct
-        from transformers import (
-            LayoutLMForTokenClassification,
-            LayoutLMTokenizerFast,
-        )
+
+        if model_version == "v3":
+            from transformers import (
+                LayoutLMv3ForTokenClassification,
+                LayoutLMv3TokenizerFast,
+            )
+        else:
+            from transformers import (
+                LayoutLMForTokenClassification,
+                LayoutLMTokenizerFast,
+            )
     except ImportError as e:
         msg = "coremltools and transformers required: pip install coremltools transformers"
         raise MissingDependencyError(msg) from e
@@ -107,8 +140,12 @@ def export_coreml(
     print(f"Loading model from {checkpoint_path}...")
 
     # Load the trained model and tokenizer
-    model = LayoutLMForTokenClassification.from_pretrained(checkpoint_path)
-    tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_path)
+    if model_version == "v3":
+        model = LayoutLMv3ForTokenClassification.from_pretrained(checkpoint_path)
+        tokenizer = LayoutLMv3TokenizerFast.from_pretrained(checkpoint_path)
+    else:
+        model = LayoutLMForTokenClassification.from_pretrained(checkpoint_path)
+        tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_path)
     model.eval()
 
     # Get model config for label mapping
@@ -120,7 +157,10 @@ def export_coreml(
     print(f"Model has {num_labels} labels: {list(id2label.values())}")
 
     # Create wrapper for tracing
-    wrapper = LayoutLMWrapper(model)
+    if model_version == "v3":
+        wrapper = LayoutLMv3Wrapper(model)
+    else:
+        wrapper = LayoutLMWrapper(model)
     wrapper.eval()
 
     # Create sample inputs for tracing
@@ -140,19 +180,22 @@ def export_coreml(
     sample_bbox = torch.stack([x1, y1, x2, y2], dim=-1)
     sample_token_type_ids = torch.zeros(1, sample_seq_len, dtype=torch.long)
 
+    trace_inputs = (
+        sample_input_ids,
+        sample_attention_mask,
+        sample_bbox,
+        sample_token_type_ids,
+    )
+
+    if model_version == "v3":
+        sample_pixel_values = torch.randn(1, 3, 224, 224)
+        trace_inputs = trace_inputs + (sample_pixel_values,)
+
     print("Tracing model with TorchScript...")
 
     # Trace the model
     with torch.no_grad():
-        traced_model = torch.jit.trace(
-            wrapper,
-            (
-                sample_input_ids,
-                sample_attention_mask,
-                sample_bbox,
-                sample_token_type_ids,
-            ),
-        )
+        traced_model = torch.jit.trace(wrapper, trace_inputs)
 
     print("Converting to CoreML...")
 
@@ -171,31 +214,42 @@ def export_coreml(
     if quantize == "float16":
         print("Applying float16 precision at conversion time...")
 
+    coreml_inputs = [
+        ct.TensorType(
+            name="input_ids",
+            shape=(1, seq_dim),
+            dtype=np.int32,
+        ),
+        ct.TensorType(
+            name="attention_mask",
+            shape=(1, seq_dim),
+            dtype=np.int32,
+        ),
+        ct.TensorType(
+            name="bbox",
+            shape=(1, seq_dim, 4),
+            dtype=np.int32,
+        ),
+        ct.TensorType(
+            name="token_type_ids",
+            shape=(1, seq_dim),
+            dtype=np.int32,
+        ),
+    ]
+
+    if model_version == "v3":
+        coreml_inputs.append(
+            ct.TensorType(
+                name="pixel_values",
+                shape=(1, 3, 224, 224),
+                dtype=np.float32,
+            ),
+        )
+
     # Convert to CoreML with explicit int32 dtype to match Swift MLMultiArray
     mlmodel = ct.convert(
         traced_model,
-        inputs=[
-            ct.TensorType(
-                name="input_ids",
-                shape=(1, seq_dim),
-                dtype=np.int32,
-            ),
-            ct.TensorType(
-                name="attention_mask",
-                shape=(1, seq_dim),
-                dtype=np.int32,
-            ),
-            ct.TensorType(
-                name="bbox",
-                shape=(1, seq_dim, 4),
-                dtype=np.int32,
-            ),
-            ct.TensorType(
-                name="token_type_ids",
-                shape=(1, seq_dim),
-                dtype=np.int32,
-            ),
-        ],
+        inputs=coreml_inputs,
         outputs=[
             ct.TensorType(name="logits"),
         ],
@@ -259,15 +313,27 @@ def export_coreml(
         print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN/Inf")
 
     # Copy vocab.txt for tokenizer
+    # NOTE: v3 uses RoBERTa BPE tokenizer, not BERT WordPiece. The Swift
+    # BertTokenizer.swift is not compatible with v3 vocab. A v3-specific
+    # Swift tokenizer is needed before v3 CoreML inference works end-to-end.
     vocab_src = checkpoint_path / "vocab.txt"
     vocab_dst = output_path / "vocab.txt"
-    if vocab_src.exists():
+    if model_version == "v3":
+        print("WARNING: v3 uses RoBERTa BPE tokenizer — vocab.txt is not compatible with Swift BertTokenizer")
+        print("         v3 Swift inference requires a BPE tokenizer implementation (follow-up PR)")
+        # Still write it for reference, but save the full tokenizer too
+        tokenizer.save_pretrained(str(output_path))
+        print(f"Saved v3 tokenizer files to {output_path}")
+    elif vocab_src.exists():
         shutil.copy(vocab_src, vocab_dst)
         print(f"Copied vocab.txt to {vocab_dst}")
     else:
-        # Try to save vocab from tokenizer (may create additional files like added_tokens.json)
-        tokenizer.save_vocabulary(str(output_path))
-        print(f"Saved vocabulary to {output_path}")
+        vocab = tokenizer.get_vocab()
+        sorted_tokens = sorted(vocab.items(), key=lambda kv: kv[1])
+        with open(vocab_dst, "w", encoding="utf-8") as f:
+            for token, _ in sorted_tokens:
+                f.write(token + "\n")
+        print(f"Wrote vocab.txt to {vocab_dst} ({len(sorted_tokens)} tokens)")
 
     # Sort label IDs for consistent ordering in JSON output
     sorted_ids = sorted(id2label.keys())
@@ -343,6 +409,7 @@ def export_from_s3(
     quantize: Optional[str] = None,
     max_seq_length: int = 512,
     min_seq_length: int = 1,
+    model_version: str = "v1",
 ) -> str:
     """Export a model from S3 to CoreML format.
 
@@ -354,6 +421,7 @@ def export_from_s3(
         quantize: Quantization mode: None, "float16", "int8", or "int4".
         max_seq_length: Maximum sequence length for model.
         min_seq_length: Minimum sequence length for model.
+        model_version: Model version to export: "v1" or "v3".
 
     Returns:
         Path to the created model bundle directory.
@@ -409,6 +477,7 @@ def export_from_s3(
             quantize=quantize,
             max_seq_length=max_seq_length,
             min_seq_length=min_seq_length,
+            model_version=model_version,
         )
     finally:
         # Clean up temp directory if we created one
@@ -462,6 +531,12 @@ if __name__ == "__main__":
         default=1,
         help="Minimum sequence length for model (default: 1)",
     )
+    parser.add_argument(
+        "--model-version",
+        choices=["v1", "v3"],
+        default="v1",
+        help="LayoutLM model version: v1 or v3",
+    )
 
     args = parser.parse_args()
 
@@ -482,6 +557,7 @@ if __name__ == "__main__":
             quantize=args.quantize,
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
+            model_version=args.model_version,
         )
     else:
         export_coreml(
@@ -491,4 +567,5 @@ if __name__ == "__main__":
             quantize=args.quantize,
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
+            model_version=args.model_version,
         )

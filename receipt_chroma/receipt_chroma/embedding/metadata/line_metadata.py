@@ -235,8 +235,8 @@ def enrich_row_metadata_with_labels(
             invalid_labels.discard(normalized_label)
             has_validated = True
         elif status == ValidationStatus.INVALID.value:
-            if normalized_label not in valid_labels:
-                invalid_labels.add(normalized_label)
+            invalid_labels.add(normalized_label)
+            valid_labels.discard(normalized_label)
             has_validated = True
 
     canonical_valid = sorted(valid_labels)

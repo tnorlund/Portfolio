@@ -34,6 +34,11 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
+# Chroma Cloud enforces a 36-byte limit on metadata key names.
+# Local ChromaDB has no such limit, so historical data may contain
+# oversized keys (e.g. label_SUBTOTAL SHOULD BE 50.63...).
+_MAX_METADATA_KEY_BYTES = 36
+
 
 @dataclass(frozen=True)
 class CloudConfig:
@@ -41,8 +46,8 @@ class CloudConfig:
 
     Attributes:
         api_key: Chroma Cloud API key
-        tenant: Chroma Cloud tenant ID (defaults to "default")
-        database: Chroma Cloud database name (defaults to "default")
+        tenant: Chroma Cloud tenant UUID (required when enabled)
+        database: Chroma Cloud database name (required when enabled)
         enabled: Whether dual-write is enabled
     """
 
@@ -73,15 +78,32 @@ class CloudConfig:
 
         api_key = env.get("CHROMA_CLOUD_API_KEY", "").strip()
         if not api_key:
-            logger.warning(
-                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_API_KEY not set"
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_API_KEY is not set. "
+                "Set the CHROMA_CLOUD_API_KEY environment variable."
             )
-            return None
+
+        tenant = (env.get("CHROMA_CLOUD_TENANT") or "").strip() or None
+        database = (env.get("CHROMA_CLOUD_DATABASE") or "").strip() or None
+
+        if not tenant:
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_TENANT is not set. "
+                "Set the CHROMA_CLOUD_TENANT environment variable to the "
+                "tenant UUID from Chroma Cloud (e.g. 'cf5b7019-...')."
+            )
+
+        if not database:
+            raise ValueError(
+                "CHROMA_CLOUD_ENABLED=true but CHROMA_CLOUD_DATABASE is not set. "
+                "Set the CHROMA_CLOUD_DATABASE environment variable to the "
+                "database name (e.g. 'receipt_dev' or 'receipt_prod')."
+            )
 
         return cls(
             api_key=api_key,
-            tenant=env.get("CHROMA_CLOUD_TENANT") or None,
-            database=env.get("CHROMA_CLOUD_DATABASE") or None,
+            tenant=tenant,
+            database=database,
             enabled=True,
         )
 
@@ -151,8 +173,8 @@ def _create_cloud_client(
         "Creating Chroma Cloud client",
         extra={
             "collection": collection.value,
-            "tenant": cloud_config.tenant or "default",
-            "database": cloud_config.database or "default",
+            "tenant": cloud_config.tenant,
+            "database": cloud_config.database,
         },
     )
 
@@ -334,6 +356,50 @@ class BulkSyncResult:
         return self.error is None and self.failed_batches == 0
 
 
+def _sanitize_metadatas(
+    metadatas: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Strip metadata keys that exceed Chroma Cloud's 36-byte key limit.
+
+    Local ChromaDB has no key-size limit, so historical data may contain
+    oversized keys (e.g. ``label_SUBTOTAL SHOULD BE 50.63...``).  Rather
+    than failing the entire batch, we silently drop those keys so the rest
+    of the metadata syncs successfully.
+
+    Args:
+        metadatas: List of metadata dicts (or None).
+
+    Returns:
+        Sanitized copy with oversized keys removed, or None unchanged.
+    """
+    if not metadatas:
+        return metadatas
+
+    sanitized: List[Dict[str, Any]] = []
+    dropped_keys: set = set()
+
+    for md in metadatas:
+        if not md:
+            sanitized.append(None)
+            continue
+        clean: Dict[str, Any] = {}
+        for key, value in md.items():
+            if len(key.encode("utf-8")) > _MAX_METADATA_KEY_BYTES:
+                dropped_keys.add(key)
+            else:
+                clean[key] = value
+        sanitized.append(clean or None)
+
+    if dropped_keys:
+        logger.warning(
+            "Dropped %d oversized metadata key(s) during cloud sync: %s",
+            len(dropped_keys),
+            ", ".join(sorted(dropped_keys)[:5]),  # Log up to 5 examples
+        )
+
+    return sanitized
+
+
 def _upload_batch_with_retry(
     cloud_coll: Any,
     batch: Dict[str, Any],
@@ -353,13 +419,14 @@ def _upload_batch_with_retry(
         Exception: If all retries fail
     """
     last_error = None
+    sanitized_metadatas = _sanitize_metadatas(batch.get("metadatas"))
 
     for attempt in range(max_retries):
         try:
             cloud_coll.upsert(
                 ids=batch["ids"],
                 embeddings=batch.get("embeddings"),
-                metadatas=batch.get("metadatas"),
+                metadatas=sanitized_metadatas,
                 documents=batch.get("documents"),
             )
             return len(batch["ids"])
@@ -389,8 +456,8 @@ def _create_cloud_client_for_sync(
         "Creating Chroma Cloud client for sync",
         extra={
             "collection": collection_name,
-            "tenant": cloud_config.tenant or "default",
-            "database": cloud_config.database or "default",
+            "tenant": cloud_config.tenant,
+            "database": cloud_config.database,
         },
     )
 

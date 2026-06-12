@@ -576,35 +576,25 @@ def test_cloud_client_creation():
 
 
 @pytest.mark.unit
-def test_cloud_client_default_tenant_and_database():
-    """Test Chroma Cloud uses defaults for tenant and database when not specified."""
+def test_cloud_client_missing_tenant_raises_error():
+    """Test Chroma Cloud raises ValueError when tenant is missing."""
     import importlib
 
     import receipt_chroma.data.chroma_client
 
     importlib.reload(receipt_chroma.data.chroma_client)
 
-    with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
-        mock_cloud_client = MagicMock()
-        mock_chromadb.CloudClient.return_value = mock_cloud_client
+    from receipt_chroma.data.chroma_client import (
+        ChromaClient as FreshChromaClient,
+    )
 
-        from receipt_chroma.data.chroma_client import (
-            ChromaClient as FreshChromaClient,
-        )
-
-        # Only provide API key, no tenant or database
-        client = FreshChromaClient(
-            cloud_api_key="test-api-key",
-            mode="write",
-        )
+    # Only provide API key, no tenant or database
+    client = FreshChromaClient(
+        cloud_api_key="test-api-key",
+        mode="write",
+    )
+    with pytest.raises(ValueError, match="cloud_tenant is missing"):
         _ = client.client
-
-        # Should use "default" for both tenant and database
-        mock_chromadb.CloudClient.assert_called_once_with(
-            api_key="test-api-key",
-            tenant="default",
-            database="default",
-        )
 
 
 @pytest.mark.unit
@@ -627,6 +617,8 @@ def test_cloud_client_takes_precedence_over_http():
         # Provide both cloud_api_key and http_url
         client = FreshChromaClient(
             cloud_api_key="test-api-key",
+            cloud_tenant="test-tenant",
+            cloud_database="test-database",
             http_url="http://localhost:8000",  # This should be ignored
             mode="write",
         )

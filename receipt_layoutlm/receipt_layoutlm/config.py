@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional
 
 # Predefined merge presets for common label grouping scenarios
@@ -53,6 +54,17 @@ class DataConfig:
         return result
 
 
+class ModelVersion(str, Enum):
+    V1 = "v1"
+    V3 = "v3"
+
+
+MODEL_DEFAULTS = {
+    ModelVersion.V1: "microsoft/layoutlm-base-uncased",
+    ModelVersion.V3: "microsoft/layoutlmv3-base",
+}
+
+
 @dataclass
 class TrainingConfig:
     pretrained_model_name: str = "microsoft/layoutlm-base-uncased"
@@ -70,3 +82,4 @@ class TrainingConfig:
     # CoreML export configuration
     auto_export_coreml: bool = False
     coreml_quantize: Optional[str] = "float16"
+    model_version: str = ModelVersion.V1.value

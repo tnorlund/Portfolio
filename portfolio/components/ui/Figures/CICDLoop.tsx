@@ -1,5 +1,6 @@
 import React, { useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
 import { animated, useSprings } from "@react-spring/web";
+import { useInView } from "react-intersection-observer";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 interface CICDLoopProps {
@@ -571,6 +572,12 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   staggerDelay = 150,
   flowDuration = 4000,
 }) => {
+  // Lazy loading: mount when near viewport
+  const { ref: lazyRef, inView: nearViewport } = useInView({
+    triggerOnce: true,
+    rootMargin: "200px",
+  });
+
   // Unique ID for this component instance (for SVG path IDs)
   const instanceId = useId();
 
@@ -580,7 +587,13 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     triggerOnce: false,
   });
   const [mounted, setMounted] = useState(false);
-  const [hasEntered, setHasEntered] = useState(false);
+  // Tracked as a ref (not state) so flipping it does NOT trigger a re-run
+  // of the animation effect below. A previous state-based version caused
+  // the effect's cleanup function to fire on the hasEntered=false→true
+  // re-render, which cancelled every staggered setTimeout the moment it
+  // was scheduled — leaving the segment springs stuck at opacity 0 (an
+  // invisible figure-8).
+  const hasEnteredRef = useRef(false);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
   const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -602,12 +615,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (inView && !hasEntered) {
-      setHasEntered(true);
-    }
-  }, [inView, hasEntered]);
-
   // Clear all pending timeouts
   const clearAllTimeouts = () => {
     timeoutIds.current.forEach((id) => clearTimeout(id));
@@ -624,11 +631,14 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     pulseTimeoutsRef.current = [];
   };
 
-  // Trigger animations when in view
+  // Trigger animations when in view. Note: hasEnteredRef is a ref (not
+  // state) so mutating it does not retrigger this effect — the cleanup
+  // only fires on real dep changes (inView, mounted) and on unmount.
   useEffect(() => {
     if (!mounted) return;
 
-    if (inView && !hasEntered) {
+    if (inView && !hasEnteredRef.current) {
+      hasEnteredRef.current = true;
       clearAllTimeouts();
 
       // Staggered fade-in for each segment
@@ -647,10 +657,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         }, index * staggerDelay);
         timeoutIds.current.push(id);
       });
-    } else if (!hasEntered) {
+    } else if (!hasEnteredRef.current) {
       clearAllTimeouts();
       clearPulseAnimation();
-      // Reset when out of view
+      // Reset when out of view (before first entrance)
       api.start(() => ({
         opacity: 0,
         transform: "scale(0.9)",
@@ -659,20 +669,36 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     return () => clearAllTimeouts();
-  }, [inView, hasEntered, mounted, staggerDelay, api, N, segments]);
+  }, [inView, mounted, staggerDelay, api, N, segments]);
 
-  // Continuous pulsing animation after all segments have animated in
+  // Continuous pulsing animation after all segments have animated in. Keep the
+  // first-entry state in refs so reveal timers are not cancelled by rerenders,
+  // but stop pulse timers while the figure is offscreen.
+  const pulseStartedRef = useRef(false);
+  const hasPulsedRef = useRef(false);
+
   useEffect(() => {
-    if (!inView || !hasEntered || !mounted) {
+    if (!mounted || !hasEnteredRef.current) {
       clearPulseAnimation();
+      pulseStartedRef.current = false;
       return;
     }
 
+    if (!inView) {
+      clearPulseAnimation();
+      pulseStartedRef.current = false;
+      return;
+    }
+
+    if (pulseStartedRef.current) return; // already running — don't restart
+    pulseStartedRef.current = true;
+
     // Wait for all sections to finish initial animation
-    const totalAnimationTime =
-      segments.length * staggerDelay +
-      INITIAL_STAGGER_SETTLE_MS +
-      PULSE_START_BUFFER_MS;
+    const totalAnimationTime = hasPulsedRef.current
+      ? 0
+      : segments.length * staggerDelay +
+        INITIAL_STAGGER_SETTLE_MS +
+        PULSE_START_BUFFER_MS;
 
     const continuousAnimationTimeout = setTimeout(() => {
       // Start continuous pulsing animation loop
@@ -716,16 +742,19 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
       // Start first pulse immediately, then repeat
       startPulse();
+      hasPulsedRef.current = true;
       pulseIntervalRef.current = setInterval(startPulse, flowDuration);
     }, totalAnimationTime);
-
-    timeoutIds.current.push(continuousAnimationTimeout);
 
     return () => {
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
+      pulseStartedRef.current = false;
     };
-  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N, segments]);
+  }, [inView, mounted, staggerDelay, flowDuration, api, N, segments]);
+
+  // Unmount-only cleanup — clears the pulse when the component goes away.
+  useEffect(() => () => clearPulseAnimation(), []);
 
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
@@ -828,8 +857,13 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   const ribbonRefs = useRef<(SVGPathElement | null)[]>([]);
   const textRefs = useRef<(SVGTextElement | null)[]>([]);
 
-  // State for text offset adjustments due to overlap
-  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>([]);
+  // State for text offset adjustments due to overlap. Initialize to a
+  // zero-filled array of the right length so the no-overlap setState call
+  // is dedupe'd in the overlap-detection effect — avoiding a needless
+  // re-render that would otherwise reset useSprings in @react-spring/web@10.
+  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>(
+    () => new Array(segments.length).fill(0),
+  );
 
   // Find the "Plan" segment index
   const planIndex = useMemo(() => {
@@ -848,7 +882,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       const centerOffset = -(bbox.y + bbox.height / 2);
       setTextDy(centerOffset);
     }
-  }, [fontSize]);
+  }, [fontSize, nearViewport]);
 
   // Detect overlap between Plan ribbon and other segments' text
   // Wait for all segments to animate in before checking
@@ -904,14 +938,32 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         }
       });
 
-      setTextOffsetAdjustments(adjustments);
+      // Only setState if values actually changed — every re-render of
+      // CICDLoop triggers @react-spring/web@10 to reset segment springs
+      // to their init state (opacity:0), so we avoid spurious setState
+      // that would cause an unnecessary re-render here.
+      setTextOffsetAdjustments((prev) => {
+        if (
+          prev.length === adjustments.length &&
+          prev.every((v, idx) => v === adjustments[idx])
+        ) {
+          return prev;
+        }
+        return adjustments;
+      });
     }, animationCompleteDelay);
 
     return () => clearTimeout(timeoutId);
   }, [mounted, inView, planIndex, segments, staggerDelay, segmentGeoms, textDy]);
 
+  if (!nearViewport) {
+    return (
+      <div ref={lazyRef} style={{ display: "flex", justifyContent: "center", minHeight: `${height}px` }} />
+    );
+  }
+
   return (
-    <div ref={containerRef} style={{ display: "flex", justifyContent: "center" }}>
+    <div ref={(el) => { lazyRef(el); if (typeof containerRef === 'function') containerRef(el); }} style={{ display: "flex", justifyContent: "center" }}>
       <svg
         ref={svgRef}
         width={width}
@@ -1002,4 +1054,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   );
 };
 
-export default CICDLoop;
+// React.memo guards against parent re-renders. The receipt page re-renders
+// every time a question is clicked in the QAAgentFlow marquee above us
+// (state in useQAQueue updates), which @react-spring/web@10 was treating
+// as a signal to reset all springs to their init state — leaving segments
+// invisible until the next pulse cycle (~5s). CICDLoop takes no props from
+// the page so a stable memo here is safe.
+export default React.memo(CICDLoop);

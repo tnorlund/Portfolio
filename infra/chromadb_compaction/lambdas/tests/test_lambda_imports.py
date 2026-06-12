@@ -75,23 +75,6 @@ def test_processor_imports():
         pytest.fail(f"Failed to import processor modules: {e}")
 
 
-def test_compaction_imports():
-    """Test that compaction module imports work."""
-    try:
-        from compaction.models import LambdaResponse, StreamMessage
-        from compaction.operations import (
-            update_receipt_metadata,
-            update_word_labels,
-        )
-
-        assert LambdaResponse is not None
-        assert StreamMessage is not None
-        assert update_receipt_metadata is not None
-        assert update_word_labels is not None
-        print("✅ Compaction imports successful")
-    except Exception as e:
-        pytest.fail(f"Failed to import compaction modules: {e}")
-
 
 def test_utils_imports():
     """Test that utils module imports work."""

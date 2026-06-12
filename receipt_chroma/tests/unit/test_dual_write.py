@@ -28,6 +28,7 @@ from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.dual_write import (
     BulkSyncResult,
     CloudConfig,
+    _sanitize_metadatas,
     _upload_batch_with_retry,
     sync_collection_to_cloud,
 )
@@ -90,6 +91,113 @@ class TestBulkSyncResult:
 
 
 # =============================================================================
+# _sanitize_metadatas Tests
+# =============================================================================
+
+
+class TestSanitizeMetadatas:
+    """Tests for _sanitize_metadatas helper function."""
+
+    def test_none_passthrough(self):
+        """None input returns None."""
+        assert _sanitize_metadatas(None) is None
+
+    def test_empty_list_passthrough(self):
+        """Empty list returns empty list, not None."""
+        result = _sanitize_metadatas([])
+        assert result == []
+        assert result is not None
+
+    def test_all_keys_within_limit(self):
+        """All keys under 36 bytes pass through unchanged."""
+        metadatas = [
+            {"text": "hello", "label_PRODUCT_NAME": True, "image_id": "img1"},
+            {"text": "world", "label_TAX": True},
+        ]
+        result = _sanitize_metadatas(metadatas)
+        assert result == metadatas
+
+    def test_oversized_key_dropped(self):
+        """Keys exceeding 36 bytes are stripped from metadata."""
+        # 77 bytes when encoded
+        long_key = "label_SUBTOTAL SHOULD BE 50.63 (OR THE DISCOUNT AMOUNTS NEED SIGN CORRECTION)"
+        metadatas = [
+            {"text": "50.63", long_key: True, "label_SUBTOTAL": True},
+        ]
+        result = _sanitize_metadatas(metadatas)
+        assert result == [{"text": "50.63", "label_SUBTOTAL": True}]
+
+    def test_mixed_items_only_affected_items_sanitized(self):
+        """Only metadata dicts with oversized keys are affected."""
+        long_key = "label_REMOVE OR SET LINE_TOTAL ON LINE 9 TO $0.00 (DUPLICATE ENTRY)"
+        metadatas = [
+            {"text": "clean", "label_TAX": True},
+            {"text": "dirty", long_key: True, "label_LINE_TOTAL": True},
+        ]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] == {"text": "clean", "label_TAX": True}
+        assert result[1] == {"text": "dirty", "label_LINE_TOTAL": True}
+
+    def test_exactly_36_bytes_kept(self):
+        """A key exactly at the 36-byte boundary is kept."""
+        # "label_REMOVE_DUPLICATE_LINE_TOTAL" = 33 bytes, pad to 36
+        key_36 = "a" * 36  # Exactly 36 bytes
+        metadatas = [{"text": "val", key_36: True}]
+        result = _sanitize_metadatas(metadatas)
+        assert key_36 in result[0]
+
+    def test_37_bytes_dropped(self):
+        """A key at 37 bytes (one over limit) is dropped."""
+        key_37 = "a" * 37
+        metadatas = [{"text": "val", key_37: True}]
+        result = _sanitize_metadatas(metadatas)
+        assert key_37 not in result[0]
+        assert result[0] == {"text": "val"}
+
+    def test_unicode_key_byte_count(self):
+        """Multi-byte unicode chars are counted correctly."""
+        # "label_TAX ≈ 614" = "label_TAX " (10) + "≈" (3 bytes UTF-8) + " 614" (4) = 17 bytes
+        key = "label_TAX ≈ 614"
+        metadatas = [{"text": "val", key: True}]
+        result = _sanitize_metadatas(metadatas)
+        # 17 bytes, well under 36 — should be kept
+        assert key in result[0]
+
+    def test_none_entry_in_list(self):
+        """None metadata entries become None (Chroma rejects empty dicts)."""
+        metadatas = [{"text": "a"}, None, {"text": "c"}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] == {"text": "a"}
+        assert result[1] is None
+        assert result[2] == {"text": "c"}
+
+    def test_empty_dict_entry_in_list(self):
+        """Empty dict entries become None (Chroma rejects empty dicts)."""
+        metadatas = [{"text": "a"}, {}, {"text": "c"}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] == {"text": "a"}
+        assert result[1] is None
+        assert result[2] == {"text": "c"}
+
+    def test_all_keys_oversized_becomes_none(self):
+        """Entry where all keys exceed limit becomes None, not empty dict."""
+        long_key = "a" * 37
+        metadatas = [{long_key: True}]
+        result = _sanitize_metadatas(metadatas)
+        assert result[0] is None
+
+    def test_oversized_key_logs_warning(self):
+        """A warning is emitted when oversized keys are dropped."""
+        long_key = "a" * 37
+        metadatas = [{"text": "val", long_key: True}]
+        with patch("receipt_chroma.compaction.dual_write.logger") as mock_log:
+            _sanitize_metadatas(metadatas)
+            mock_log.warning.assert_called_once()
+            args = mock_log.warning.call_args[0]
+            assert args[1] == 1  # one key dropped
+
+
+# =============================================================================
 # _upload_batch_with_retry Tests
 # =============================================================================
 
@@ -145,6 +253,28 @@ class TestUploadBatchWithRetry:
                 _upload_batch_with_retry(mock_coll, batch, max_retries=3)
 
         assert mock_coll.upsert.call_count == 3
+
+    def test_oversized_metadata_keys_stripped_before_upsert(self):
+        """Oversized metadata keys are removed before cloud upsert."""
+        mock_coll = MagicMock()
+        long_key = "label_SUBTOTAL SHOULD BE 50.63 (OR THE DISCOUNT AMOUNTS NEED SIGN CORRECTION)"
+        batch = {
+            "ids": ["id1"],
+            "embeddings": [[0.1] * 384],
+            "metadatas": [
+                {"text": "50.63", long_key: True, "label_SUBTOTAL": True}
+            ],
+            "documents": ["doc1"],
+        }
+
+        _upload_batch_with_retry(mock_coll, batch, max_retries=3)
+
+        # Verify the upsert was called with sanitized metadatas
+        upserted_metadatas = mock_coll.upsert.call_args.kwargs["metadatas"]
+        assert len(upserted_metadatas) == 1
+        assert long_key not in upserted_metadatas[0]
+        assert upserted_metadatas[0]["text"] == "50.63"
+        assert upserted_metadatas[0]["label_SUBTOTAL"] is True
 
 
 # =============================================================================

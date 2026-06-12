@@ -8,6 +8,8 @@ API:
     GET /qa/visualization?all=true    → all questions (for SSG/build-time)
 """
 
+import base64
+import gzip
 import json
 import logging
 import os
@@ -17,6 +19,8 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+
+GZIP_MIN_BYTES = 1024  # don't bother gzipping tiny payloads
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -31,15 +35,47 @@ if not S3_CACHE_BUCKET:
 s3_client = boto3.client("s3")
 
 
-def _cors_response(status_code: int, body: Any) -> dict:
-    """Build an API Gateway v2 response with CORS headers."""
+def _accepts_gzip(event: dict) -> bool:
+    """Check whether the caller declared gzip support."""
+    headers = event.get("headers") or {}
+    # API Gateway v2 lower-cases header keys; be defensive
+    ae = headers.get("accept-encoding") or headers.get("Accept-Encoding") or ""
+    return "gzip" in ae.lower()
+
+
+def _cors_response(status_code: int, body: Any, event: dict | None = None) -> dict:
+    """Build an API Gateway v2 response with CORS headers + optional gzip."""
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Vary": "Accept-Encoding",
+    }
+    if status_code == 200:
+        headers["Cache-Control"] = (
+            "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
+        )
+
+    raw = json.dumps(body, default=str, separators=(",", ":"))
+
+    if (
+        status_code == 200
+        and event is not None
+        and _accepts_gzip(event)
+        and len(raw) >= GZIP_MIN_BYTES
+    ):
+        gz = gzip.compress(raw.encode("utf-8"), compresslevel=6)
+        headers["Content-Encoding"] = "gzip"
+        return {
+            "statusCode": status_code,
+            "body": base64.b64encode(gz).decode("ascii"),
+            "headers": headers,
+            "isBase64Encoded": True,
+        }
+
     return {
         "statusCode": status_code,
-        "body": json.dumps(body, default=str),
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
+        "body": raw,
+        "headers": headers,
     }
 
 
@@ -179,6 +215,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "metadata": metadata,
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
                 },
+                event,
             )
 
         # All questions
@@ -191,6 +228,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "metadata": metadata,
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
                 },
+                event,
             )
 
         # Metadata only (default)
@@ -200,6 +238,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "metadata": metadata,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             },
+            event,
         )
 
     except ClientError:

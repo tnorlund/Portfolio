@@ -45,6 +45,7 @@ class SageMakerTrainingInfra(ComponentResource):
         self,
         name: str,
         dynamodb_table_name: Output[str],
+        raw_bucket_arn: Output[str] | None = None,
         opts: ResourceOptions | None = None,
     ):
         super().__init__("custom:ml:SageMakerTrainingInfra", name, None, opts)
@@ -167,14 +168,16 @@ class SageMakerTrainingInfra(ComponentResource):
         )
 
         # SageMaker execution policy
+        policy_inputs = [
+            self.output_bucket.arn,
+            self.ecr_repo.arn,
+            dynamodb_table_name,
+            raw_bucket_arn or "",
+        ]
         sagemaker_policy = aws.iam.RolePolicy(
             f"{name}-sagemaker-policy",
             role=self.sagemaker_role.id,
-            policy=Output.all(
-                self.output_bucket.arn,
-                self.ecr_repo.arn,
-                dynamodb_table_name,
-            ).apply(
+            policy=Output.all(*policy_inputs).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -247,7 +250,22 @@ class SageMakerTrainingInfra(ComponentResource):
                                     }
                                 },
                             },
-                        ],
+                        ]
+                        + (
+                            [
+                                # S3 read access for receipt images across all buckets (LayoutLMv3 training)
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:GetObject",
+                                    "Resource": [
+                                        f"{args[3]}/*",
+                                        "arn:aws:s3:::raw-image-bucket-*/*",
+                                    ],
+                                },
+                            ]
+                            if args[3]
+                            else []
+                        ),
                     }
                 )
             ),
@@ -496,6 +514,7 @@ class SageMakerTrainingInfra(ComponentResource):
                                     "sagemaker:DescribeTrainingJob",
                                     "sagemaker:StopTrainingJob",
                                     "sagemaker:ListTrainingJobs",
+                                    "sagemaker:AddTags",
                                 ],
                                 "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
                             },
@@ -643,6 +662,12 @@ def handler(event, context):
         training_job_config["CheckpointConfig"] = {
             "S3Uri": f"s3://{os.environ['OUTPUT_BUCKET']}/checkpoints/{job_name}",
         }
+
+    # Skip CoreML auto-export for v3 runs (Swift inference not yet supported)
+    if hyperparameters.get("model_version") == "v3":
+        training_job_config["Tags"] = [
+            {"Key": "skip-coreml-export", "Value": "true"},
+        ]
 
     # Create the training job
     response = sagemaker.create_training_job(**training_job_config)

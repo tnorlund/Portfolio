@@ -105,4 +105,77 @@ describe("getBestImageUrl", () => {
 
     process.env = { ...process.env, NODE_ENV: originalEnv };
   });
+
+  test("thumbnail request cascades to medium when no thumbnail/small keys exist", () => {
+    // Matches the real prod API shape: only cdn_* (full) + cdn_medium_* exist.
+    // A 'thumbnail' request must NOT silently fall back to the full-size asset.
+    const image = {
+      cdn_s3_key: "a.jpg",
+      cdn_webp_s3_key: "a.webp",
+      cdn_avif_s3_key: "a.avif",
+      cdn_medium_s3_key: "a_med.jpg",
+      cdn_medium_webp_s3_key: "a_med.webp",
+      cdn_medium_avif_s3_key: "a_med.avif",
+    };
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env = { ...process.env, NODE_ENV: "production" };
+
+    const url = getBestImageUrl(
+      image,
+      { supportsAVIF: true, supportsWebP: true },
+      "thumbnail"
+    );
+    expect(url).toBe("https://www.tylernorlund.com/a_med.avif");
+
+    process.env = { ...process.env, NODE_ENV: originalEnv };
+  });
+
+  test("prefers thumbnail JPEG over medium AVIF when caller asked for thumbnail", () => {
+    // Codex P2 regression guard: a 'thumbnail' request must NOT skip a
+    // tiny thumbnail JPEG just because a larger medium AVIF exists.
+    // Bandwidth at the smallest tier beats codec efficiency.
+    const image = {
+      cdn_s3_key: "a.jpg",
+      cdn_avif_s3_key: "a.avif",
+      cdn_medium_avif_s3_key: "a_med.avif",
+      cdn_thumbnail_s3_key: "a_thumb.jpg",
+      // Note: no thumbnail AVIF or WebP available
+    };
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env = { ...process.env, NODE_ENV: "production" };
+
+    const url = getBestImageUrl(
+      image,
+      { supportsAVIF: true, supportsWebP: true },
+      "thumbnail"
+    );
+    expect(url).toBe("https://www.tylernorlund.com/a_thumb.jpg");
+
+    process.env = { ...process.env, NODE_ENV: originalEnv };
+  });
+
+  test("full request returns full-size even when medium variants exist", () => {
+    // Full-size request must not "borrow" the medium variant just because
+    // it exists at a different size tier.
+    const image = {
+      cdn_s3_key: "a.jpg",
+      cdn_avif_s3_key: "a.avif",
+      cdn_medium_s3_key: "a_med.jpg",
+      cdn_medium_avif_s3_key: "a_med.avif",
+    };
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env = { ...process.env, NODE_ENV: "production" };
+
+    const url = getBestImageUrl(
+      image,
+      { supportsAVIF: true, supportsWebP: false },
+      "full"
+    );
+    expect(url).toBe("https://www.tylernorlund.com/a.avif");
+
+    process.env = { ...process.env, NODE_ENV: originalEnv };
+  });
 });

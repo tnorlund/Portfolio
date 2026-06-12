@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
+    DeleteRequestTypeDef,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
@@ -239,6 +240,59 @@ class _Image(FlattenedStandardMixin):
         """Deletes multiple Image items from the database in batches."""
         self._validate_entity_list(images, Image, "images")
         self._delete_entities(images)
+
+    @handle_dynamodb_errors("delete_image_details")
+    def delete_image_details(self, image_id: str) -> dict[str, int]:
+        """Deletes ALL records under an image partition key.
+
+        Queries every item with PK = IMAGE#{image_id} and batch-deletes them.
+        This removes the Image entity plus every child (receipts, lines, words,
+        letters, labels, places, summaries, OCR jobs, routing decisions, etc.)
+        regardless of entity type.
+
+        Args:
+            image_id: UUID of the image whose data should be deleted.
+
+        Returns:
+            A dict mapping entity type names to the number of records deleted.
+            Returns an empty dict if no items exist for the given image_id.
+        """
+        self._validate_image_id(image_id)
+
+        # Query all raw items under this partition key
+        items, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk_value",
+            expression_attribute_names={"#pk": "PK"},
+            expression_attribute_values={
+                ":pk_value": {"S": f"IMAGE#{image_id}"}
+            },
+            converter_func=lambda x: x,  # Return raw items
+            limit=None,
+            last_evaluated_key=None,
+        )
+
+        if not items:
+            return {}
+
+        # Count by entity type
+        type_counts: dict[str, int] = {}
+        for item in items:
+            entity_type = item.get("TYPE", {}).get("S", "UNKNOWN")
+            type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
+
+        # Batch delete all items
+        request_items = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(
+                    Key={"PK": item["PK"], "SK": item["SK"]}
+                )
+            )
+            for item in items
+        ]
+        self._batch_write_with_retry(request_items)
+
+        return type_counts
 
     @handle_dynamodb_errors("list_images")
     def list_images(

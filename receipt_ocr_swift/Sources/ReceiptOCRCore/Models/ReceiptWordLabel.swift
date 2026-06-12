@@ -96,6 +96,17 @@ public struct ReceiptWordLabel: Equatable {
         )
     }
 
+    /// GSI4 key for the receipt-details access pattern.
+    /// Used by `get_receipt_details` to fetch every entity for a receipt
+    /// (Receipt + Lines + Words + Labels + Place) in a single GSI query.
+    /// Must match `ReceiptWordLabel.gsi4_key()` in receipt_dynamo (Python).
+    public var gsi4Key: (pk: String, sk: String) {
+        (
+            pk: String(format: "IMAGE#%@#RECEIPT#%05d", imageId, receiptId),
+            sk: String(format: "4_LABEL#%05d#%05d#%@", lineId, wordId, label)
+        )
+    }
+
     /// Convert to DynamoDB item dictionary for batch write.
     /// Returns a dictionary with keys and string/number values.
     /// The actual DynamoDB.AttributeValue conversion happens in SotoDynamoClient.
@@ -104,6 +115,7 @@ public struct ReceiptWordLabel: Equatable {
         let gsi1 = gsi1Key
         let gsi2 = gsi2Key
         let gsi3 = gsi3Key
+        let gsi4 = gsi4Key
 
         var item: [String: Any] = [
             "PK": keys.pk,
@@ -114,6 +126,8 @@ public struct ReceiptWordLabel: Equatable {
             "GSI2SK": gsi2.sk,
             "GSI3PK": gsi3.pk,
             "GSI3SK": gsi3.sk,
+            "GSI4PK": gsi4.pk,
+            "GSI4SK": gsi4.sk,
             "TYPE": "RECEIPT_WORD_LABEL",
             "timestamp_added": ISO8601Python.format(timestampAdded),
             "validation_status": validationStatus.rawValue,

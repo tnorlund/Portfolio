@@ -180,7 +180,7 @@ class FixPlaceLambda(ComponentResource):
                 "RECEIPT_PLACES_AWS_REGION": "us-east-1",
                 # OpenRouter (for LLM calls)
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_MODEL": "x-ai/grok-4.1-fast",
+                "OPENROUTER_MODEL": "x-ai/grok-4.3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 # Chroma Cloud

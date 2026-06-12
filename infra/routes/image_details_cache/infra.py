@@ -99,7 +99,7 @@ def create_image_details_cache_lambda(
                 "S3_CACHE_BUCKET": Output.from_input(cache_bucket_name),
             }
         },
-        memory_size=256,
+        memory_size=1024,
         timeout=30,
         tags={"environment": stack},
     )

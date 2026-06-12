@@ -128,6 +128,33 @@ def test_item_to_ocr_job_roundtrip(example_ocr_job):
 
 
 @pytest.mark.unit
+def test_ocr_job_regional_reocr_fields_roundtrip():
+    job = OCRJob(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        s3_bucket="test-bucket",
+        s3_key="receipts/test.png",
+        created_at=datetime(2025, 5, 1, 12, 0, 0),
+        updated_at=datetime(2025, 5, 1, 13, 0, 0),
+        status=OCRStatus.PENDING,
+        job_type=OCRJobType.REGIONAL_REOCR,
+        receipt_id=42,
+        reocr_region={"x": 0.7, "y": 0.0, "width": 0.3, "height": 1.0},
+        reocr_reason="subtotal_mismatch_phantom_values",
+    )
+    restored = item_to_ocr_job(job.to_item())
+    assert restored.job_type == OCRJobType.REGIONAL_REOCR.value
+    assert restored.receipt_id == 42
+    assert restored.reocr_region == {
+        "x": 0.7,
+        "y": 0.0,
+        "width": 0.3,
+        "height": 1.0,
+    }
+    assert restored.reocr_reason == "subtotal_mismatch_phantom_values"
+
+
+@pytest.mark.unit
 def test_ocr_job_invalid_s3_bucket():
     with pytest.raises(ValueError, match="s3_bucket must be a string"):
         OCRJob(

@@ -41,7 +41,7 @@ final class WorkerTests: XCTestCase {
     }
 
     struct TestOCREngine: OCREngineProtocol {
-        func process(images: [URL], outputDirectory: URL) throws -> [URL] {
+        func process(images: [URL], outputDirectory: URL, includeClassification: Bool) throws -> [URL] {
             return try images.map { url in
                 let out = outputDirectory.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".json")
                 try Data("{\"ok\":true}".utf8).write(to: out)
@@ -57,7 +57,8 @@ final class WorkerTests: XCTestCase {
             dynamoTableName: "tbl",
             region: "us-west-2",
             localstackEndpoint: nil,
-            logLevel: "debug"
+            logLevel: "debug",
+            rawBucketName: "test-bucket"
         )
 
         var sqs = SQSMock()

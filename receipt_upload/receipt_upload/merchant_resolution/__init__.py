@@ -34,6 +34,8 @@ from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
     SimilarityMatch,
+    merchant_name_matches_receipt,
+    tokenize_text,
 )
 
 __all__ = [
@@ -41,4 +43,6 @@ __all__ = [
     "MerchantResolvingEmbeddingProcessor",
     "MerchantResult",
     "SimilarityMatch",
+    "merchant_name_matches_receipt",
+    "tokenize_text",
 ]

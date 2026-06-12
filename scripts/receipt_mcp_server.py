@@ -31,6 +31,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from mcp.server import Server
@@ -151,10 +152,15 @@ Examples:
             description="""Get full receipt details with formatted text showing all words and their labels.
 
 Returns formatted receipt like:
-  Line 0: TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
-  Line 5: ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
-  Line 8: TAX 0.84[TAX]
-  Line 9: TOTAL 13.83[GRAND_TOTAL]
+  (line 1): TRADER[MERCHANT_NAME] JOE'S[MERCHANT_NAME]
+  (lines 12-13): ORGANIC[PRODUCT_NAME] COFFEE[PRODUCT_NAME] 12.99[LINE_TOTAL]
+  (lines 18-19): TAX 0.84[TAX]
+  (line 20): TOTAL 13.83[GRAND_TOTAL]
+
+Each line shows the DynamoDB line_id range in parentheses. Words on the same
+visual row (similar Y-coordinates) are grouped together, so a single display
+line may span multiple DynamoDB line_ids. Use these line_ids directly with
+get_receipt_words, create_word_label, and update_word_label.
 
 Labels mean:
 - [MERCHANT_NAME]: Store name
@@ -617,9 +623,10 @@ Returns every word on the receipt with its line_id, word_id, text, and any
 existing labels (with validation_status). Words are sorted by line_id then
 word_id.
 
-Use this when you need to find the exact line_id/word_id for a word before
-creating or updating a label. The get_receipt tool shows formatted text but
-hides word coordinates — this tool exposes them.
+The line_id values here are the DynamoDB keys required by create_word_label
+and update_word_label. They match the line_id ranges shown in parentheses by
+get_receipt (e.g., "(lines 12-13)"), so you can use get_receipt to identify
+the line_id range, then filter here with that line_id for the exact word_id.
 
 Optionally filter to a single line_id to reduce output.""",
             inputSchema={
@@ -676,6 +683,256 @@ using get_receipt to read its content.""",
                 },
                 "required": ["image_id", "receipt_id", "reason"],
             },
+        ),
+        Tool(
+            name="compute_reocr_region",
+            description="""Compute a full-width re-OCR region from receipt line IDs.
+
+Given line_ids, computes a full-width crop that covers the vertical range of
+all words on those lines (with padding), and returns a normalized Vision-space
+region {x, y, width, height} ready to pass to the trigger_reocr Lambda.
+
+Always uses full image width (x=0, width=1) because Vision OCR produces
+significantly better results with more horizontal context.
+
+Use this after inspecting a receipt with get_receipt to identify lines with
+bad OCR (e.g., garbled prices). Pass those line_ids here to get the crop region.
+
+Example:
+  compute_reocr_region("abc-123", 1, [15, 16, 17])
+  -> {"region": {"x": 0.0, "y": 0.31, "width": 1.0, "height": 0.12}}""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "line_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Line IDs to include in the region",
+                        "minItems": 1,
+                    },
+                    "padding": {
+                        "type": "number",
+                        "description": "Padding (0-1) around the region. Default 0.05",
+                        "default": 0.05,
+                    },
+                },
+                "required": ["image_id", "receipt_id", "line_ids"],
+            },
+        ),
+        Tool(
+            name="trigger_reocr",
+            description="""Trigger regional re-OCR for a receipt.
+
+Creates an OCR job and sends it to the processing queue. The Swift worker
+will crop the specified region, run Vision OCR, and the overlay Lambda
+will update the receipt words with corrected text.
+
+Use compute_reocr_region first to get the region from line IDs.
+
+WARNING: This WRITES to DynamoDB and triggers async processing.
+Back up the receipt with export_image before triggering.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "reocr_region": {
+                        "type": "object",
+                        "description": "Normalized region {x, y, width, height}",
+                        "properties": {
+                            "x": {"type": "number"},
+                            "y": {"type": "number"},
+                            "width": {"type": "number"},
+                            "height": {"type": "number"},
+                        },
+                        "required": ["x", "y", "width", "height"],
+                    },
+                    "reocr_reason": {
+                        "type": "string",
+                        "description": "Reason for re-OCR. Default: manual_trigger",
+                        "default": "manual_trigger",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "reocr_region"],
+            },
+        ),
+        Tool(
+            name="list_recent_uploads",
+            description="""List the most recently uploaded images, sorted newest first.
+
+Shows image ID, upload timestamp, image type (SCAN/PHOTO/NATIVE),
+receipt count, dimensions, and merchant names for each receipt.
+
+Use this to find recently uploaded images or check processing status.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Number of recent uploads to return (max 50)",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_receipt_image_url",
+            description="""Get the CDN URL for a receipt image.
+
+Queries the Receipt record in DynamoDB and builds the URL from its cdn_s3_key.
+Returns the primary JPG URL plus any available variants (WebP, AVIF, thumbnail,
+small, medium).
+
+Example response:
+  {"url": "https://dev.tylernorlund.com/assets/{image_id}_RECEIPT_00002.jpg",
+   "variants": {"webp": "...", "thumbnail": "..."}}
+
+Use this to visually inspect a receipt when reviewing OCR quality or labels.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID)",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
+            name="delete_image",
+            description="""Delete an image and ALL its child records from DynamoDB.
+
+Queries every item under PK = IMAGE#{image_id} and batch-deletes them.
+This removes the Image entity plus every child: receipts, lines, words,
+letters, labels, places, summaries, OCR jobs, routing decisions, etc.
+
+Returns a breakdown of entity types and counts before deleting.
+
+By default runs in dry-run mode — set dry_run=false to actually delete.
+
+WARNING: This is IRREVERSIBLE. Verify the image is truly unwanted first
+using list_recent_uploads or get_receipt.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID (UUID) to delete",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), preview what would be deleted without making changes",
+                    },
+                },
+                "required": ["image_id"],
+            },
+        ),
+        Tool(
+            name="list_training_jobs",
+            description="""List LayoutLM training jobs with F1 scores, hyperparameters, and status.
+
+Returns jobs sorted newest-first with:
+- name, status, created_at
+- best_f1, best_epoch (from results)
+- learning_rate, epochs, batch_size, merge_amounts, early_stopping_patience (from config)
+- num_train_samples, num_val_samples
+
+Use status_filter to narrow results (e.g., "succeeded", "running", "failed").""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Maximum number of jobs to return",
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": ["succeeded", "running", "failed", "pending", "cancelled", "interrupted"],
+                        "description": "Filter jobs by status (optional)",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_training_metrics",
+            description="""Get epoch-by-epoch training metrics for a specific training job.
+
+Returns metrics grouped by epoch including:
+- eval_f1, eval_precision, eval_recall, eval_loss
+- loss, learning_rate
+
+Use this to understand how a model's performance evolved during training.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the training job (e.g., 'layoutlm-my-experiment')",
+                    },
+                },
+                "required": ["job_name"],
+            },
+        ),
+        Tool(
+            name="get_active_model",
+            description="""Show which LayoutLM model is currently marked as active for inference.
+
+Returns the active model's name, job_id, best_f1, best_checkpoint_s3_path, and tags.
+The active model is used by the CoreML export pipeline and inference services.""",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="set_active_model",
+            description="""Mark a training job as the active model for inference services.
+
+WARNING: This WRITES to DynamoDB. It clears the active_model tag from the
+currently active job and sets it on the specified job. This affects which
+model is used by the CoreML export pipeline and inference services.
+
+Only use this after confirming the job has good F1 scores and is ready for production.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_name": {
+                        "type": "string",
+                        "description": "Name of the training job to mark as active",
+                    },
+                },
+                "required": ["job_name"],
+            },
+        ),
+        Tool(
+            name="get_label_distribution",
+            description="""Show the distribution of word labels in the training dataset.
+
+Returns how many words have each label type (MERCHANT_NAME, PRODUCT_NAME, etc.)
+broken down by validation status (VALID, INVALID, PENDING, NEEDS_REVIEW, NONE).
+
+Use this to understand training data balance and identify under-represented labels.""",
+            inputSchema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -790,6 +1047,58 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 reasoning=arguments["reasoning"],
                 consolidated_from=arguments.get("consolidated_from"),
             )
+        elif name == "compute_reocr_region":
+            result = await compute_reocr_region_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_ids=arguments["line_ids"],
+                padding=arguments.get("padding", 0.05),
+            )
+        elif name == "trigger_reocr":
+            result = await trigger_reocr_impl(
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                reocr_region=arguments["reocr_region"],
+                reocr_reason=arguments.get("reocr_reason", "manual_trigger"),
+            )
+        elif name == "list_recent_uploads":
+            result = await list_recent_uploads_impl(
+                dynamo_client,
+                limit=arguments.get("limit", 10),
+            )
+        elif name == "get_receipt_image_url":
+            result = await get_receipt_image_url_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+            )
+        elif name == "delete_image":
+            result = await delete_image_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                dry_run=arguments.get("dry_run", True),
+            )
+        elif name == "list_training_jobs":
+            result = await list_training_jobs_impl(
+                dynamo_client,
+                limit=arguments.get("limit", 20),
+                status_filter=arguments.get("status_filter"),
+            )
+        elif name == "get_training_metrics":
+            result = await get_training_metrics_impl(
+                dynamo_client,
+                job_name=arguments["job_name"],
+            )
+        elif name == "get_active_model":
+            result = await get_active_model_impl(dynamo_client)
+        elif name == "set_active_model":
+            result = await set_active_model_impl(
+                dynamo_client,
+                job_name=arguments["job_name"],
+            )
+        elif name == "get_label_distribution":
+            result = await get_label_distribution_impl(dynamo_client)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -987,16 +1296,24 @@ async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dic
         current_line.sort(key=lambda c: c["x"])
         visual_lines.append(current_line)
 
-        # Format as text with inline labels
+        # Format as text with inline labels, showing DynamoDB line_id ranges
         formatted_lines = []
-        for i, line in enumerate(visual_lines):
+        for line in visual_lines:
             line_parts = []
             for w in line:
                 if w["label"]:
                     line_parts.append(f"{w['text']}[{w['label']}]")
                 else:
                     line_parts.append(w["text"])
-            formatted_lines.append(f"Line {i}: {' '.join(line_parts)}")
+            # Show DynamoDB line_id range for this visual line
+            line_ids = sorted({w["word"].line_id for w in line})
+            if len(line_ids) == 1:
+                prefix = f"(line {line_ids[0]})"
+            elif line_ids[-1] - line_ids[0] + 1 == len(line_ids):
+                prefix = f"(lines {line_ids[0]}-{line_ids[-1]})"
+            else:
+                prefix = f"(lines {','.join(str(lid) for lid in line_ids)})"
+            formatted_lines.append(f"{prefix}: {' '.join(line_parts)}")
 
         formatted_receipt = "\n".join(formatted_lines)
 
@@ -1971,6 +2288,97 @@ async def create_word_label_impl(
         return {"error": str(e)}
 
 
+async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
+    """List the most recently uploaded images, sorted newest first."""
+    from datetime import datetime, timezone
+
+    def _to_utc_dt(ts) -> datetime:
+        """Coerce timestamp to aware UTC datetime."""
+        if isinstance(ts, str):
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        else:
+            dt = ts
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    try:
+        limit = min(limit, 50)
+
+        # Paginate through all Image entities
+        all_images = []
+        last_key = None
+        while True:
+            images, last_key = dynamo_client.list_images(
+                limit=1000,
+                last_evaluated_key=last_key,
+            )
+            all_images.extend(images)
+            if last_key is None:
+                break
+
+        # Sort by timestamp_added descending
+        all_images.sort(
+            key=lambda img: _to_utc_dt(img.timestamp_added),
+            reverse=True,
+        )
+
+        # Slice to limit
+        recent = all_images[:limit]
+
+        # For each recent image, get actual receipt IDs via GSI query
+        all_indices = []
+        receipts_by_image: dict[str, list[int]] = {}
+        for img in recent:
+            receipts = dynamo_client.get_receipts_from_image(img.image_id)
+            receipt_ids = [r.receipt_id for r in receipts]
+            receipts_by_image[img.image_id] = receipt_ids
+            for rid in receipt_ids:
+                all_indices.append((img.image_id, rid))
+
+        # Batch-get all ReceiptPlace records in one call
+        places_by_key: dict[str, str] = {}
+        if all_indices:
+            places = dynamo_client.get_receipt_places_by_indices(all_indices)
+            for place in places:
+                key = f"{place.image_id}_{place.receipt_id}"
+                places_by_key[key] = place.merchant_name
+
+        # Build results
+        results = []
+        for img in recent:
+            receipt_ids = receipts_by_image.get(img.image_id, [])
+            receipts_info = []
+            for rid in receipt_ids:
+                key = f"{img.image_id}_{rid}"
+                receipts_info.append({
+                    "receipt_id": rid,
+                    "merchant_name": places_by_key.get(key),
+                })
+
+            results.append({
+                "image_id": img.image_id,
+                "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
+                    timespec="milliseconds"
+                ),
+                "image_type": img.image_type,
+                "receipt_count": len(receipts_info),
+                "width": img.width,
+                "height": img.height,
+                "receipts": receipts_info,
+            })
+
+        return {
+            "total_images": len(all_images),
+            "showing": len(results),
+            "uploads": results,
+        }
+
+    except Exception as e:
+        logger.exception("Error listing recent uploads")
+        return {"error": str(e)}
+
+
 async def _invoke_lambda(function_name: str, payload: dict) -> dict:
     """Invoke a Lambda function and return the parsed response payload."""
     import boto3
@@ -2033,6 +2441,507 @@ async def merge_receipts_impl(
         )
     except Exception as e:
         logger.exception("Error invoking merge-receipt Lambda")
+        return {"error": str(e)}
+
+
+def _receipt_point_to_image(
+    rx: float, ry: float,
+    coeffs: list[float],
+    receipt_width: int, receipt_height: int,
+    image_width: int, image_height: int,
+) -> tuple[float, float]:
+    """Projective forward transform: receipt-relative → full-image Vision.
+
+    Uses the perspective coefficients (receipt-PIL → image-PIL) computed by
+    ``find_perspective_coeffs``, matching the exact transform that the
+    FIRST_PASS warp used.
+    """
+    # Receipt OCR normalised → PIL pixel
+    x_rct = rx * (receipt_width - 1)
+    y_rct = (1.0 - ry) * (receipt_height - 1)
+
+    a, b, c, d, e, f, g, h = coeffs
+    denom = 1.0 + g * x_rct + h * y_rct
+    if abs(denom) < 1e-12:
+        return 0.5, 0.5
+
+    x_img = (a * x_rct + b * y_rct + c) / denom
+    y_img = (d * x_rct + e * y_rct + f) / denom
+
+    # Image PIL pixel → OCR normalised
+    ix = x_img / image_width
+    iy = 1.0 - (y_img / image_height)
+    return max(0.0, min(1.0, ix)), max(0.0, min(1.0, iy))
+
+
+async def compute_reocr_region_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_ids: list[int],
+    padding: float = 0.05,
+) -> dict:
+    """Compute axis-aligned bounding box from receipt line IDs.
+
+    Word bounding boxes are in receipt-relative space (normalised to the
+    warped receipt paper).  The Swift crop needs full-image Vision
+    coordinates, so we transform via the Receipt entity's four-corner
+    perspective bounds.
+    """
+    try:
+        if not isinstance(padding, (int, float)) or padding < 0 or padding > 1:
+            return {"error": f"padding must be between 0 and 1, got {padding}"}
+
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+
+        # Filter words to only those on the requested lines
+        target_line_ids = set(line_ids)
+        words_in_region = [
+            w for w in details.words if w.line_id in target_line_ids
+        ]
+
+        if not words_in_region:
+            return {
+                "error": f"No words found on line_ids {line_ids}",
+                "available_line_ids": sorted({w.line_id for w in details.words}),
+            }
+
+        # Compute axis-aligned bounding box in receipt-relative space
+        min_x = min(w.bounding_box["x"] for w in words_in_region)
+        min_y = min(w.bounding_box["y"] for w in words_in_region)
+        max_x = max(
+            w.bounding_box["x"] + w.bounding_box["width"]
+            for w in words_in_region
+        )
+        max_y = max(
+            w.bounding_box["y"] + w.bounding_box["height"]
+            for w in words_in_region
+        )
+
+        # Always use full width — Vision OCR produces better results with
+        # more horizontal context. Only constrain the vertical range.
+        padded_x = 0.0
+        padded_y = max(0.0, min_y - padding)
+        padded_right = 1.0
+        padded_top = min(1.0, max_y + padding)
+
+        # Transform the four corners of the padded region from
+        # receipt-relative space to full-image Vision coordinates using
+        # the same projective (homography) transform that the FIRST_PASS
+        # warp used.
+        from receipt_upload.geometry.transformations import find_perspective_coeffs
+
+        receipt = details.receipt
+        image = dynamo_client.get_image(image_id)
+
+        src_points = [
+            (receipt.top_left["x"] * image.width,
+             (1.0 - receipt.top_left["y"]) * image.height),
+            (receipt.top_right["x"] * image.width,
+             (1.0 - receipt.top_right["y"]) * image.height),
+            (receipt.bottom_right["x"] * image.width,
+             (1.0 - receipt.bottom_right["y"]) * image.height),
+            (receipt.bottom_left["x"] * image.width,
+             (1.0 - receipt.bottom_left["y"]) * image.height),
+        ]
+        dst_points = [
+            (0.0, 0.0),
+            (float(receipt.width - 1), 0.0),
+            (float(receipt.width - 1), float(receipt.height - 1)),
+            (0.0, float(receipt.height - 1)),
+        ]
+        coeffs = find_perspective_coeffs(src_points, dst_points)
+
+        _pt = _receipt_point_to_image
+        img_corners = [
+            _pt(padded_x, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_y, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_x, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+            _pt(padded_right, padded_top, coeffs,
+                receipt.width, receipt.height, image.width, image.height),
+        ]
+
+        img_min_x = max(0.0, min(c[0] for c in img_corners))
+        img_min_y = max(0.0, min(c[1] for c in img_corners))
+        img_max_x = min(1.0, max(c[0] for c in img_corners))
+        img_max_y = min(1.0, max(c[1] for c in img_corners))
+
+        if img_max_x <= img_min_x or img_max_y <= img_min_y:
+            return {
+                "error": "Computed re-OCR region is empty after transform",
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+
+        region = {
+            "x": round(img_min_x, 6),
+            "y": round(img_min_y, 6),
+            "width": round(img_max_x - img_min_x, 6),
+            "height": round(img_max_y - img_min_y, 6),
+        }
+
+        # Include context: which lines were found, word count
+        found_line_ids = sorted(
+            target_line_ids & {w.line_id for w in details.words}
+        )
+        missing_line_ids = sorted(
+            target_line_ids - {w.line_id for w in details.words}
+        )
+
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "region": region,
+            "lines_included": found_line_ids,
+            "lines_missing": missing_line_ids,
+            "word_count": len(words_in_region),
+        }
+
+    except Exception as e:
+        logger.exception("Error computing re-OCR region")
+        return {"error": str(e)}
+
+
+async def trigger_reocr_impl(
+    image_id: str,
+    receipt_id: int,
+    reocr_region: dict,
+    reocr_reason: str = "manual_trigger",
+) -> dict:
+    """Invoke the trigger-reocr Lambda to start regional re-OCR."""
+    try:
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        return await _invoke_lambda(
+            f"trigger-reocr-{env}-trigger-reocr",
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "reocr_region": reocr_region,
+                "reocr_reason": reocr_reason,
+            },
+        )
+    except Exception as e:
+        logger.exception("Error invoking trigger-reocr Lambda")
+        return {"error": str(e)}
+
+
+async def get_receipt_image_url_impl(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """Build the CDN URL for a receipt image from DynamoDB record."""
+    try:
+        details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        receipt = details.receipt
+
+        env = os.environ.get("PORTFOLIO_ENV", "dev")
+        domain = "dev.tylernorlund.com" if env == "dev" else "tylernorlund.com"
+
+        result: dict[str, Any] = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+        }
+
+        if receipt.cdn_s3_key:
+            result["url"] = f"https://{domain}/{receipt.cdn_s3_key}"
+        else:
+            result["url"] = None
+            result["note"] = "No cdn_s3_key on receipt record"
+
+        # Include all available CDN variants
+        variants = {}
+        if receipt.cdn_webp_s3_key:
+            variants["webp"] = f"https://{domain}/{receipt.cdn_webp_s3_key}"
+        if receipt.cdn_avif_s3_key:
+            variants["avif"] = f"https://{domain}/{receipt.cdn_avif_s3_key}"
+        if receipt.cdn_thumbnail_s3_key:
+            variants["thumbnail"] = f"https://{domain}/{receipt.cdn_thumbnail_s3_key}"
+        if receipt.cdn_small_s3_key:
+            variants["small"] = f"https://{domain}/{receipt.cdn_small_s3_key}"
+        if receipt.cdn_medium_s3_key:
+            variants["medium"] = f"https://{domain}/{receipt.cdn_medium_s3_key}"
+        if variants:
+            result["variants"] = variants
+
+        return result
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def delete_image_impl(
+    dynamo_client, image_id: str, dry_run: bool = True
+) -> dict:
+    """Delete all DynamoDB records under an image partition key."""
+    try:
+        details = dynamo_client.get_image_details(image_id)
+
+        # Build type counts from the structured details
+        type_counts: dict[str, int] = {}
+        for attr in (
+            "images",
+            "lines",
+            "words",
+            "letters",
+            "receipts",
+            "receipt_lines",
+            "receipt_words",
+            "receipt_letters",
+            "receipt_word_labels",
+            "receipt_places",
+            "ocr_jobs",
+            "ocr_routing_decisions",
+        ):
+            items = getattr(details, attr, [])
+            if items:
+                type_counts[attr.upper()] = len(items)
+
+        total = sum(type_counts.values())
+
+        if total == 0:
+            return {"error": f"No items found for image {image_id}"}
+
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+        ]
+
+        if dry_run:
+            return {
+                "image_id": image_id,
+                "dry_run": True,
+                "total_items": total,
+                "breakdown": breakdown,
+                "message": "Re-run with dry_run=false to delete",
+            }
+
+        # Delegate to the DynamoClient method which handles batch delete
+        counts = dynamo_client.delete_image_details(image_id)
+        deleted = sum(counts.values())
+
+        # Use the actual counts from the delete for the breakdown
+        breakdown = [
+            {"entity_type": t, "count": c}
+            for t, c in sorted(counts.items(), key=lambda x: -x[1])
+        ]
+
+        return {
+            "image_id": image_id,
+            "dry_run": False,
+            "deleted": deleted,
+            "breakdown": breakdown,
+        }
+
+    except Exception as e:
+        logger.exception("Error deleting image")
+        return {"error": str(e)}
+
+
+async def list_training_jobs_impl(
+    dynamo_client,
+    limit: int = 20,
+    status_filter: Optional[str] = None,
+) -> dict:
+    """List LayoutLM training jobs with F1 scores, hyperparameters, and status."""
+    try:
+        if status_filter:
+            jobs, _ = dynamo_client.list_jobs_by_status(
+                status=status_filter,
+            )
+        else:
+            jobs, _ = dynamo_client.list_jobs()
+
+        results = []
+        for job in sorted(
+            jobs,
+            key=lambda j: str(j.created_at) if j.created_at else "",
+            reverse=True,
+        ):
+            r = job.results or {}
+            if isinstance(r, str):
+                r = json.loads(r)
+            config = job.job_config or {}
+            if isinstance(config, str):
+                config = json.loads(config)
+            results.append({
+                "name": job.name,
+                "status": job.status,
+                "created_at": str(job.created_at) if job.created_at else None,
+                "best_f1": r.get("best_f1"),
+                "best_epoch": r.get("best_epoch"),
+                "num_train_samples": r.get("num_train_samples"),
+                "num_val_samples": r.get("num_val_samples"),
+                "learning_rate": config.get("learning_rate"),
+                "epochs": config.get("epochs"),
+                "batch_size": config.get("batch_size"),
+                "merge_amounts": config.get("merge_amounts"),
+                "early_stopping_patience": config.get("early_stopping_patience"),
+            })
+
+        return {
+            "total": len(results),
+            "jobs": results[:limit],
+        }
+
+    except Exception as e:
+        logger.exception("Error listing training jobs")
+        return {"error": str(e)}
+
+
+async def get_training_metrics_impl(
+    dynamo_client,
+    job_name: str,
+) -> dict:
+    """Get epoch-by-epoch training metrics for a specific training job."""
+    try:
+        jobs, _ = dynamo_client.get_job_by_name(job_name)
+        if not jobs:
+            return {"error": f"No job found with name: {job_name}"}
+        job = jobs[0]
+
+        metrics, _ = dynamo_client.list_job_metrics(job.job_id)
+
+        # Group by epoch, filter to eval and training metrics
+        by_epoch: dict[int, dict[str, Any]] = {}
+        for m in metrics:
+            if (
+                m.metric_name.startswith("eval_")
+                or m.metric_name in ("loss", "learning_rate")
+            ):
+                epoch = m.epoch if m.epoch is not None else 0
+                if epoch not in by_epoch:
+                    by_epoch[epoch] = {}
+                by_epoch[epoch][m.metric_name] = m.value
+
+        return {
+            "job_name": job.name,
+            "job_id": job.job_id,
+            "status": job.status,
+            "total_metrics": len(metrics),
+            "epochs": dict(sorted(by_epoch.items())),
+        }
+
+    except Exception as e:
+        logger.exception("Error getting training metrics")
+        return {"error": str(e)}
+
+
+async def get_active_model_impl(dynamo_client) -> dict:
+    """Show which model is marked as active for inference."""
+    try:
+        active = dynamo_client.get_active_model_job()
+        if active:
+            r = active.results or {}
+            if isinstance(r, str):
+                r = json.loads(r)
+            return {
+                "name": active.name,
+                "job_id": active.job_id,
+                "best_f1": r.get("best_f1"),
+                "best_checkpoint_s3_path": r.get("best_checkpoint_s3_path"),
+                "tags": active.tags,
+            }
+        else:
+            return {"error": "No active model job found"}
+
+    except Exception as e:
+        logger.exception("Error getting active model")
+        return {"error": str(e)}
+
+
+async def set_active_model_impl(
+    dynamo_client,
+    job_name: str,
+) -> dict:
+    """Mark a training job as the active model for inference services."""
+    try:
+        # Find the job
+        jobs, _ = dynamo_client.get_job_by_name(job_name)
+        if not jobs:
+            return {"error": f"No job found with name: {job_name}"}
+        job = jobs[0]
+
+        # Clear old active model tag
+        old_active = dynamo_client.get_active_model_job()
+        if old_active:
+            old_active.tags = {
+                k: v
+                for k, v in (old_active.tags or {}).items()
+                if k != "active_model"
+            }
+            dynamo_client.update_job(old_active)
+
+        # Set new active model
+        job.tags = {**(job.tags or {}), "active_model": "true"}
+        dynamo_client.update_job(job)
+
+        r = job.results or {}
+        if isinstance(r, str):
+            r = json.loads(r)
+
+        return {
+            "success": True,
+            "name": job.name,
+            "job_id": job.job_id,
+            "best_f1": r.get("best_f1"),
+            "message": f"Set {job.name} as the active model",
+        }
+
+    except Exception as e:
+        logger.exception("Error setting active model")
+        return {"error": str(e)}
+
+
+async def get_label_distribution_impl(dynamo_client) -> dict:
+    """Show the distribution of word labels in the training dataset."""
+    try:
+        from receipt_dynamo.constants import CORE_LABELS
+
+        summary: dict[str, dict[str, int]] = {}
+
+        for label in CORE_LABELS:
+            counts: dict[str, int] = defaultdict(int)
+            last_key = None
+
+            while True:
+                records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                    label=label,
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for record in records:
+                    status = getattr(record, "validation_status", None) or "NONE"
+                    counts[status] += 1
+
+                if last_key is None:
+                    break
+
+            total = sum(counts.values())
+            summary[label] = {
+                "VALID": counts.get("VALID", 0),
+                "INVALID": counts.get("INVALID", 0),
+                "PENDING": counts.get("PENDING", 0),
+                "NEEDS_REVIEW": counts.get("NEEDS_REVIEW", 0),
+                "NONE": counts.get("NONE", 0),
+                "total": total,
+            }
+
+        # Compute grand totals
+        grand_total = sum(s["total"] for s in summary.values())
+        grand_valid = sum(s["VALID"] for s in summary.values())
+
+        return {
+            "labels": summary,
+            "grand_total": grand_total,
+            "grand_valid": grand_valid,
+            "label_count": len(summary),
+        }
+
+    except Exception as e:
+        logger.exception("Error getting label distribution")
         return {"error": str(e)}
 
 

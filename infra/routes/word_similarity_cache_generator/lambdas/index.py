@@ -273,10 +273,23 @@ def assemble_visual_lines(words, labels):
 
 
 def find_price_on_visual_line(target_line_id, words, labels):
-    """Find LINE_TOTAL or UNIT_PRICE on the same visual line."""
+    """Find LINE_TOTAL or UNIT_PRICE on the same visual line.
+
+    Two-pass: first uses `assemble_visual_lines` to group words by
+    y-centroid into rows, then scans the row containing the target
+    line_id for price labels. If that fast path returns nothing, falls
+    back to a wider y-proximity scan over all words.
+
+    The fallback exists because `assemble_visual_lines` uses a tolerance
+    of `max(0.01, median(heights) * 0.75)`, and on receipts with many
+    tight header/payment-info lines the median word height shrinks
+    enough to pull the tolerance below the actual gap between a product
+    line and its price line — splitting a logical row across multiple
+    visual groups and stranding the product line without its price.
+    """
     visual_lines = assemble_visual_lines(words, labels)
 
-    # Find visual line containing target
+    # Pass 1: visual-line lookup (fast path)
     target_visual_line = None
     for vl in visual_lines:
         for ctx in vl:
@@ -286,19 +299,55 @@ def find_price_on_visual_line(target_line_id, words, labels):
         if target_visual_line:
             break
 
-    if not target_visual_line:
-        return None, None
-
-    # Look for price labels
     line_total = None
     unit_price = None
 
-    for ctx in target_visual_line:
-        if ctx["label"]:
-            if ctx["label"].label == "LINE_TOTAL":
-                line_total = ctx["word"].text
-            elif ctx["label"].label == "UNIT_PRICE":
-                unit_price = ctx["word"].text
+    if target_visual_line:
+        for ctx in target_visual_line:
+            if ctx["label"]:
+                if ctx["label"].label == "LINE_TOTAL":
+                    line_total = ctx["word"].text
+                elif ctx["label"].label == "UNIT_PRICE":
+                    unit_price = ctx["word"].text
+
+        if line_total or unit_price:
+            return line_total, unit_price
+
+    # Pass 2: y-centroid proximity fallback. Find the target word's
+    # y-centroid, then sweep ALL words within ~2x the standard tolerance
+    # for a VALID LINE_TOTAL or UNIT_PRICE label.
+    target_y = None
+    for word in words:
+        if word.line_id == target_line_id:
+            target_y = word.calculate_centroid()[1]
+            break
+    if target_y is None:
+        return None, None
+
+    labels_by_word = defaultdict(list)
+    for label in labels:
+        labels_by_word[(label.line_id, label.word_id)].append(label)
+
+    def latest_valid_label(line_id, word_id):
+        history = labels_by_word.get((line_id, word_id), [])
+        valid = [lbl for lbl in history if lbl.validation_status == "VALID"]
+        if not valid:
+            return None
+        valid.sort(key=lambda lbl: str(lbl.timestamp_added), reverse=True)
+        return valid[0]
+
+    Y_FALLBACK_TOLERANCE = 0.025  # ~2x typical tolerance
+    for word in words:
+        cy = word.calculate_centroid()[1]
+        if abs(cy - target_y) > Y_FALLBACK_TOLERANCE:
+            continue
+        lbl = latest_valid_label(word.line_id, word.word_id)
+        if lbl is None:
+            continue
+        if lbl.label == "LINE_TOTAL" and line_total is None:
+            line_total = word.text
+        elif lbl.label == "UNIT_PRICE" and unit_price is None:
+            unit_price = word.text
 
     return line_total, unit_price
 
@@ -620,8 +669,12 @@ def handler(_event, _context):
                 price = line_total or unit_price
                 size = infer_size(product_text, price)
 
-                # Convert lines to dict format
-                lines_dict = [line_to_dict(line) for line in details.lines]
+                # NOTE: details.lines (the full per-receipt line list, ~75 lines
+                # x 69 receipts ~= 2.8 MB across the response) is intentionally
+                # NOT included in the cache entry. WordSimilarity.tsx builds a
+                # cropped image from `receipt` + `bbox` only and never reads
+                # `lines`. Including it inflated the API payload ~20x for no
+                # frontend benefit. See PR notes / type def MilkReceiptData.
 
                 return {
                     "image_id": image_id,
@@ -631,9 +684,9 @@ def handler(_event, _context):
                     "price": price,
                     "size": size,
                     "line_id": milk_line_id,
-                    # Full receipt data for visual display
+                    # Receipt header (image_id, dimensions, CDN keys) — used
+                    # to build the image URL for visual display.
                     "receipt": receipt_to_dict(details.receipt),
-                    "lines": lines_dict,
                     "bbox": bbox,
                     "_timings": timings,
                 }

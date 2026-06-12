@@ -244,6 +244,7 @@ def handler(event, _context):
                     "headers": {
                         "Content-Type": "application/json",
                         "Access-Control-Allow-Origin": "*",
+                        "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
                     },
                 }
 
@@ -321,6 +322,7 @@ def handler(event, _context):
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
             },
         }
 

@@ -243,12 +243,12 @@ def find_businesses_at_address(
 
         # Extract location from geocode result
         # Pydantic models use "latitude"/"longitude"; raw dicts use "lat"/"lng"
-        geometry = geocode_result.get("geometry", {})
-        location = geometry.get("location", {})
-        lat = location.get("lat") if location.get("lat") is not None else location.get("latitude")
-        lng = location.get("lng") if location.get("lng") is not None else location.get("longitude")
+        geometry = geocode_result.get("geometry") or {}
+        location = geometry.get("location") or {}
+        lat = location["lat"] if "lat" in location else location.get("latitude")
+        lng = location["lng"] if "lng" in location else location.get("longitude")
 
-        if not lat or not lng:
+        if lat is None or lng is None:
             return {
                 "found": False,
                 "businesses": [],
@@ -268,7 +268,7 @@ def find_businesses_at_address(
                 "businesses": [],
                 "address_searched": address,
                 "coordinates": {"lat": lat, "lng": lng},
-                "message": f"No businesses found within 50m of address",
+                "message": f"No businesses found within 50m of {address}",
             }
 
         # Format results
@@ -303,7 +303,7 @@ def _format_place_result(place_data: dict[str, Any]) -> dict[str, Any]:
         "business_status": place_data.get("business_status"),
         "rating": place_data.get("rating"),
         "user_ratings_total": place_data.get("user_ratings_total"),
-        "geometry": place_data.get("geometry", {}).get("location"),
+        "geometry": (place_data.get("geometry") or {}).get("location"),
     }
 
 

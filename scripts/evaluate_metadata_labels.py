@@ -51,7 +51,6 @@ def main():
     logger.info("Loading configuration...")
 
     # Import after path setup
-    from receipt_agent.utils.llm_factory import create_llm
     from receipt_agent.agents.label_evaluator.llm_review import (
         apply_llm_decisions,
     )
@@ -114,16 +113,12 @@ def main():
     # =========================================================================
     # Step 2: Evaluate Metadata Labels
     # =========================================================================
-    logger.info("Step 2: Evaluating metadata labels with LLM...")
-
-    # Create LLM
-    llm = create_llm(temperature=0.0)
+    logger.info("Step 2: Evaluating metadata labels...")
 
     # Run evaluation
     decisions = evaluate_metadata_labels(
         visual_lines=visual_lines,
         place=place,
-        llm=llm,
         image_id=args.image_id,
         receipt_id=args.receipt_id,
         merchant_name=merchant_name,

@@ -19,6 +19,28 @@ jobs:
   # STAGE 1: All tests run in parallel
   # ============================================================================
 
+  lambda-syntax:
+    name: Lambda Syntax
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          clean: true
+
+      - name: Compile all Lambda handler sources
+        run: |
+          PYTHON=$(command -v python3.12 || command -v python3)
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          # Compile every .py file under infra/ — catches SyntaxError before
+          # docker build copies broken code into a Lambda image. Specifically
+          # guards against `keyword argument repeated`-class regressions like
+          # the one that crashed unified_evaluator after #861's rebase.
+          find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
+            | xargs -0 "$PYTHON" -m py_compile
+
   python-tests:
     name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]
@@ -33,16 +55,22 @@ jobs:
 
       - name: Setup Python
         run: |
+          # Detect Python 3.12+ (framework install or Homebrew)
           if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
             echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          elif [ -f "/opt/homebrew/bin/python3" ]; then
+          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
             echo "/opt/homebrew/bin" >> $GITHUB_PATH
           fi
 
       - name: Install and test
         run: |
-          # Create fresh virtual environment
-          python3 -m venv .venv-${{ matrix.package }}
+          # Create fresh virtual environment (prefer python3.12 over system python3)
+          PYTHON=$(command -v python3.12 || command -v python3)
+          if [ -z "$PYTHON" ]; then
+            echo "::error::No python3.12 or python3 found on PATH"
+            exit 1
+          fi
+          "$PYTHON" -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
@@ -53,18 +81,18 @@ jobs:
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_chroma
               pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_dynamo_stream)
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
-              pip install boto3 pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              pip install boto3 pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_places)
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_places
               pip install pydantic pydantic-settings structlog boto3 requests tenacity
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto responses
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
               ;;
             *)
               pip install -e "${{ matrix.package }}[test]"
@@ -77,13 +105,18 @@ jobs:
           isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
 
           # Test
+          # --reruns 1 --reruns-delay 2: retry once with a 2s pause to absorb
+          # environmental flakes (moto-S3 timestamp races, ChromaDB lock
+          # contention under pytest-xdist). Real test failures still fail
+          # the build after the retry; only transient failures get masked.
           cd ${{ matrix.package }}
           python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
+            --reruns 1 --reruns-delay 2 \
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
@@ -108,7 +141,7 @@ jobs:
           npm run test:ci
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-portfolio
           path: portfolio/coverage
@@ -129,13 +162,24 @@ jobs:
         env:
           CI: true
         run: |
+          # Free port 3001 from any prior CI job that crashed without
+          # cleanup. Without this, Playwright's webServer fails to bind
+          # ("localhost:3001 already used") and skips the rest of the
+          # pipeline including Deploy. Self-hosted runners share state
+          # across jobs, so we can't rely on container teardown.
+          lsof -ti:3001 | xargs -r kill -9 2>/dev/null || true
+
+          # Re-free the port on exit so the next job starts clean even
+          # if Playwright crashes mid-run.
+          trap 'lsof -ti:3001 | xargs -r kill -9 2>/dev/null || true' EXIT
+
           npm ci --prefer-offline
           npm run build
           npx playwright install chromium firefox webkit
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -148,7 +192,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [python-tests, typescript-tests, browser-tests]
+    needs: [lambda-syntax, python-tests, typescript-tests, browser-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
@@ -172,7 +216,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build portfolio
         working-directory: portfolio

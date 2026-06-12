@@ -18,8 +18,9 @@ Tracing:
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
@@ -66,12 +67,63 @@ HIGH_CONFIDENCE_THRESHOLD = 0.85  # High confidence match
 PHONE_MATCH_BOOST = 0.20  # Boost when normalized phone matches
 ADDRESS_MATCH_BOOST = 0.15  # Boost when normalized address matches
 
+# Minimum token length for merchant name cross-validation
+_MIN_TOKEN_LEN = 3  # Ignore tokens shorter than this (e.g., "A", "of", "&")
+
 
 def _log(msg: str, *args: object) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
     formatted = msg % args if args else msg
     print(f"[MERCHANT_RESOLVER] {formatted}", flush=True)
     logger.info(msg, *args)
+
+
+def tokenize_text(text: str) -> Set[str]:
+    """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
+    return {
+        t
+        for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
+        if len(t) >= _MIN_TOKEN_LEN
+    }
+
+
+def merchant_name_matches_receipt(
+    merchant_name: Optional[str],
+    lines: List[ReceiptLine],
+    n_lines: int = 10,
+) -> bool:
+    """
+    Check whether *merchant_name* has meaningful token overlap with the
+    receipt's OCR text (top *n_lines* lines, where the merchant name
+    usually appears).
+
+    Returns ``True`` (pass) when:
+    - *merchant_name* is empty / None (nothing to validate)
+    - The merchant name has fewer than 2 significant tokens (too short
+      to validate reliably — e.g. "JOi")
+    - At least one significant token from the merchant name appears
+      somewhere in the receipt text
+    """
+    if not merchant_name:
+        return True  # Nothing to validate against
+
+    merchant_tokens = tokenize_text(merchant_name)
+    if len(merchant_tokens) < 2:
+        return True  # Too short to validate reliably
+
+    if not lines:
+        return True  # No receipt text to validate against
+
+    # Build a token set from the top N receipt lines (by y-coordinate)
+    sorted_lines = sorted(
+        lines, key=lambda l: l.calculate_centroid()[1]
+    )
+    receipt_text = " ".join(
+        l.text for l in sorted_lines[:n_lines] if l.text
+    )
+    receipt_tokens = tokenize_text(receipt_text)
+
+    return bool(merchant_tokens & receipt_tokens)
 
 
 @dataclass
@@ -240,6 +292,8 @@ class MerchantResolver:
         """Implementation of resolve() - called within trace context."""
         # Store embeddings cache for use in _similarity_search
         self._line_embeddings = line_embeddings or {}
+        # Store receipt lines for merchant name cross-validation
+        self._receipt_lines = lines
         # Extract contact info from receipt
         phone = self._extract_phone(words)
         address = self._extract_address(words)
@@ -563,42 +617,61 @@ class MerchantResolver:
                 best.total_confidence,
             )
 
-            # Get place_id from DynamoDB for the best match
-            place_id = self._get_place_id_from_dynamo(
-                best.image_id, best.receipt_id
-            )
+            # Cross-validate: reject matches whose merchant name has
+            # zero token overlap with the receipt's OCR text.  This
+            # catches metadata-poisoning and over-representation bugs
+            # (e.g. Sprouts dominating ChromaDB, wrong phone metadata).
+            receipt_lines = getattr(self, "_receipt_lines", [])
+            validated_matches: List[SimilarityMatch] = []
+            for match in matches:
+                if self._merchant_name_matches_receipt(
+                    match.merchant_name, receipt_lines
+                ):
+                    validated_matches.append(match)
+                else:
+                    _log(
+                        "Rejected match: %s — no token overlap with "
+                        "receipt text (sim=%.2f, tier=%s)",
+                        match.merchant_name,
+                        match.total_confidence,
+                        resolution_tier,
+                    )
 
-            if place_id:
-                best.place_id = place_id
-                return MerchantResult(
-                    place_id=place_id,
-                    merchant_name=best.merchant_name,
-                    phone=best.normalized_phone,
-                    address=best.normalized_address,
-                    confidence=best.total_confidence,
-                    resolution_tier=resolution_tier,
-                    source_image_id=best.image_id,
-                    source_receipt_id=best.receipt_id,
-                    similarity_matches=matches[:5],  # Keep top 5 for debugging
+            if not validated_matches:
+                _log(
+                    "All %d matches rejected by OCR cross-validation",
+                    len(matches),
                 )
+                return MerchantResult()
 
-            # No place_id found for best match, try others
-            for match in matches[1:5]:
-                place_id = self._get_place_id_from_dynamo(
+            # Use the best validated match
+            best = validated_matches[0]
+
+            # Try validated matches in order until we find one with
+            # a place_id in DynamoDB
+            for match in validated_matches[:5]:
+                place_id, dynamo_merchant_name = self._get_place_from_dynamo(
                     match.image_id, match.receipt_id
                 )
                 if place_id:
                     match.place_id = place_id
+                    # Prefer DynamoDB merchant_name (authoritative, may be
+                    # corrected via fix-place) over ChromaDB metadata which
+                    # can be stale/poisoned.
+                    merchant_name = (
+                        dynamo_merchant_name
+                        or match.merchant_name
+                    )
                     return MerchantResult(
                         place_id=place_id,
-                        merchant_name=match.merchant_name,
+                        merchant_name=merchant_name,
                         phone=match.normalized_phone,
                         address=match.normalized_address,
                         confidence=match.total_confidence,
                         resolution_tier=resolution_tier,
                         source_image_id=match.image_id,
                         source_receipt_id=match.receipt_id,
-                        similarity_matches=matches[:5],
+                        similarity_matches=validated_matches[:5],
                     )
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -639,6 +712,20 @@ class MerchantResolver:
         ratio = matches / shorter
 
         return ratio >= 0.85  # 85% character match
+
+    @staticmethod
+    def _tokenize(text: str) -> Set[str]:
+        """Extract lowercase alphanumeric tokens from text."""
+        return tokenize_text(text)
+
+    def _merchant_name_matches_receipt(
+        self,
+        merchant_name: Optional[str],
+        lines: List[ReceiptLine],
+        n_lines: int = 10,
+    ) -> bool:
+        """Thin wrapper around module-level :func:`merchant_name_matches_receipt`."""
+        return merchant_name_matches_receipt(merchant_name, lines, n_lines)
 
     def _extract_phone(self, words: List[ReceiptWord]) -> Optional[str]:
         """
@@ -700,31 +787,31 @@ class MerchantResolver:
 
         return None
 
-    def _get_place_id_from_dynamo(
+    def _get_place_from_dynamo(
         self,
         image_id: str,
         receipt_id: int,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Get place_id from DynamoDB for a receipt.
+        Get place_id and merchant_name from DynamoDB for a receipt.
 
         Args:
             image_id: Receipt's image_id
             receipt_id: Receipt's receipt_id
 
         Returns:
-            place_id if found and valid, None otherwise
+            (place_id, merchant_name) tuple. Both may be None.
         """
         try:
             place = self.dynamo.get_receipt_place(image_id, receipt_id)
             if place and place.place_id:
                 if place.place_id not in INVALID_PLACE_IDS:
-                    return place.place_id
+                    return place.place_id, getattr(place, "merchant_name", None)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            _log("Error getting place_id from receipt_place: %s", exc)
+            _log("Error getting place from receipt_place: %s", exc)
             logger.exception("DynamoDB lookup failed")
 
-        return None
+        return None, None
 
     def _extract_merchant_name(
         self, lines: List[ReceiptLine]

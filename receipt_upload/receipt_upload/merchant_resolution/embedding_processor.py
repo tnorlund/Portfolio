@@ -163,9 +163,11 @@ def _run_lines_pipeline_worker(
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         MerchantResult,
+        merchant_name_matches_receipt,
     )
 
     def _do_lines_work() -> Dict[str, Any]:
+        """Run the lines pipeline: merchant resolution, build payload, upsert, upload."""
         # Reconstruct entities from dicts using **unpacking
         lines = [ReceiptLine(**d) for d in lines_data]
         words = [ReceiptWord(**d) for d in words_data]
@@ -222,11 +224,27 @@ def _run_lines_pipeline_worker(
                 for row, emb in zip(visual_rows, row_embeddings, strict=True)
             ]
 
-            # Build row payload with resolved merchant name
+            # Write-time validation: verify merchant_name against
+            # receipt OCR text before writing to ChromaDB.  This
+            # prevents poisoned names from propagating.
+            validated_merchant_name = merchant_result.merchant_name
+            if validated_merchant_name and not merchant_name_matches_receipt(
+                validated_merchant_name, lines
+            ):
+                logging.getLogger(__name__).warning(
+                    "Write-time validation: merchant_name %r rejected "
+                    "— no token overlap with receipt OCR text for %s#%d",
+                    validated_merchant_name,
+                    image_id,
+                    receipt_id,
+                )
+                validated_merchant_name = None
+
+            # Build row payload with validated merchant name
             line_payload = build_row_payload(
                 row_records,
                 words,
-                merchant_name=merchant_result.merchant_name,
+                merchant_name=validated_merchant_name,
             )
 
             # Upsert to local ChromaDB
@@ -247,7 +265,7 @@ def _run_lines_pipeline_worker(
             return {
                 "success": True,
                 "lines_prefix": prefix,
-                "merchant_name": merchant_result.merchant_name,
+                "merchant_name": validated_merchant_name,
                 "place_id": merchant_result.place_id,
                 "resolution_tier": merchant_result.resolution_tier,
                 "confidence": merchant_result.confidence,
