@@ -584,6 +584,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
+    triggerOnce: false,
   });
   const [mounted, setMounted] = useState(false);
   // Tracked as a ref (not state) so flipping it does NOT trigger a re-run
@@ -593,6 +594,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // was scheduled — leaving the segment springs stuck at opacity 0 (an
   // invisible figure-8).
   const hasEnteredRef = useRef(false);
+  const introCompleteRef = useRef(false);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
   const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -653,9 +655,21 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
             }
             return false;
           });
+
+          if (index === segments.length - 1) {
+            introCompleteRef.current = true;
+          }
         }, index * staggerDelay);
         timeoutIds.current.push(id);
       });
+    } else if (!inView && hasEnteredRef.current && !introCompleteRef.current) {
+      clearAllTimeouts();
+      introCompleteRef.current = true;
+      api.start(() => ({
+        opacity: 1,
+        transform: "scale(1)",
+        immediate: true,
+      }));
     } else if (!hasEnteredRef.current) {
       clearAllTimeouts();
       clearPulseAnimation();
@@ -670,25 +684,34 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     return () => clearAllTimeouts();
   }, [inView, mounted, staggerDelay, api, N, segments]);
 
-  // Continuous pulsing animation after all segments have animated in.
-  //
-  // Tracked as a ref (not state) so the pulse keeps running once started,
-  // even if the figure scrolls out of view (inView=false) and back again.
-  // The previous version's cleanup cleared the pulse on every inView flip,
-  // so scrolling away made the loop go static until you scrolled back.
-  // Now we start once on first entry and only clear on unmount.
+  // Continuous pulsing animation after all segments have animated in. Keep the
+  // first-entry state in refs so reveal timers are not cancelled by rerenders,
+  // but stop pulse timers while the figure is offscreen.
   const pulseStartedRef = useRef(false);
+  const hasPulsedRef = useRef(false);
 
   useEffect(() => {
-    if (!inView || !mounted) return;
+    if (!mounted || !hasEnteredRef.current) {
+      clearPulseAnimation();
+      pulseStartedRef.current = false;
+      return;
+    }
+
+    if (!inView) {
+      clearPulseAnimation();
+      pulseStartedRef.current = false;
+      return;
+    }
+
     if (pulseStartedRef.current) return; // already running — don't restart
     pulseStartedRef.current = true;
 
     // Wait for all sections to finish initial animation
-    const totalAnimationTime =
-      segments.length * staggerDelay +
-      INITIAL_STAGGER_SETTLE_MS +
-      PULSE_START_BUFFER_MS;
+    const totalAnimationTime = hasPulsedRef.current
+      ? 0
+      : segments.length * staggerDelay +
+        INITIAL_STAGGER_SETTLE_MS +
+        PULSE_START_BUFFER_MS;
 
     const continuousAnimationTimeout = setTimeout(() => {
       // Start continuous pulsing animation loop
@@ -732,10 +755,15 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
       // Start first pulse immediately, then repeat
       startPulse();
+      hasPulsedRef.current = true;
       pulseIntervalRef.current = setInterval(startPulse, flowDuration);
     }, totalAnimationTime);
 
-    timeoutIds.current.push(continuousAnimationTimeout);
+    return () => {
+      clearTimeout(continuousAnimationTimeout);
+      clearPulseAnimation();
+      pulseStartedRef.current = false;
+    };
   }, [inView, mounted, staggerDelay, flowDuration, api, N, segments]);
 
   // Unmount-only cleanup — clears the pulse when the component goes away.

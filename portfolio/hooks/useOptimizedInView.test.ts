@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { useInView } from 'react-intersection-observer';
-import useOptimizedInView from './useOptimizedInView';
+import useOptimizedInView, { useRevealInView } from './useOptimizedInView';
 
 jest.mock('react-intersection-observer', () => ({
   __esModule: true,
@@ -46,6 +46,25 @@ describe('useOptimizedInView', () => {
     expect(result.current).toBe(mockedReturn);
     expect(mockedUseInView).toHaveBeenCalledWith({
       ...options,
+      fallbackInView: true,
+    });
+  });
+
+  test('useRevealInView keeps live visibility and exposes has-entered state', () => {
+    mockedUseInView.mockReturnValue([mockRefCallback, true, undefined] as unknown as ReturnType<
+      typeof useInView
+    >);
+
+    const { result } = renderHook(() => useRevealInView());
+
+    expect(result.current[0]).toBe(mockRefCallback);
+    expect(result.current[1]).toBe(true);
+    expect(result.current[2]).toBe(true);
+    expect(mockedUseInView).toHaveBeenCalledWith({
+      threshold: 0.3,
+      triggerOnce: false,
+      rootMargin: '100px',
+      skip: false,
       fallbackInView: true,
     });
   });

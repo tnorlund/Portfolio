@@ -39,6 +39,18 @@
   max-width: 100%;
 }
 
+.figureBoundary {
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--figure-intrinsic-size, 600px);
+  overflow: visible;
+}
+
+@supports not (content-visibility: auto) {
+  .figureBoundary {
+    contain: layout style;
+  }
+}
+
 .codeBlock {
   /* Use the global `pre` styling (grey background, padding, monospace), but center and size it nicely */
   width: fit-content;

@@ -8,6 +8,7 @@ import type {
   ReceiptEvidence,
   StructuredReceipt,
 } from "../../../hooks/qaTypes";
+import { useRevealInView } from "../../../hooks/useOptimizedInView";
 
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
@@ -143,6 +144,10 @@ const MIN_STEP_MS = 600;
 const MAX_STEP_MS = 3500;
 
 const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData, onCycleComplete, children }) => {
+  const [flowRef, isVisible] = useRevealInView({
+    threshold: 0.1,
+    rootMargin: "200px",
+  });
   const [activeStep, setActiveStep] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(autoPlay);
   const [showAnswer, setShowAnswer] = React.useState(false);
@@ -156,8 +161,11 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
   React.useEffect(() => {
     setActiveStep(-1);
     setShowAnswer(false);
-    setIsPlaying(autoPlay);
-  }, [questionIndex, autoPlay]);
+  }, [questionIndex]);
+
+  React.useEffect(() => {
+    setIsPlaying(autoPlay && isVisible);
+  }, [autoPlay, isVisible]);
 
   // Compute per-step animation durations from durationMs, scaled proportionally
   const stepDurations = React.useMemo(() => {
@@ -285,12 +293,14 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
 
   return (
     <div
+      ref={flowRef}
       style={{
         fontSize: "0.85rem",
         maxWidth: "1000px",
         margin: "0 auto",
         padding: "0.5rem",
-      }}
+        "--marquee-play-state": isVisible ? "running" : "paused",
+      } as React.CSSProperties}
     >
       {/* Flame Graph Timeline + Node Diagram */}
       {(() => {
@@ -421,7 +431,10 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                   strokeDasharray={circumference}
                   strokeDashoffset={circumference}
                   transform={`rotate(-90 ${cx} ${cy})`}
-                  style={{ animation: `clockFill ${fillDurationSec}s linear forwards` }}
+                  style={{
+                    animation: `clockFill ${fillDurationSec}s linear forwards`,
+                    animationPlayState: isVisible ? "running" : "paused",
+                  }}
                 />
               )}
             </g>
@@ -766,6 +779,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({ autoPlay = true, questionData
                                 overflow: "hidden",
                                 opacity: 0,
                                 animation: `receiptFadeIn 0.4s ease-out ${idx * 80}ms forwards`,
+                                animationPlayState: isVisible ? "running" : "paused",
                               } as React.CSSProperties}
                             >
                               <img

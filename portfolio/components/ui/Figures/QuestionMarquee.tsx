@@ -210,9 +210,11 @@ const DesktopMarquee: React.FC<{
           }
           .marquee-row-left {
             animation: scrollLeft var(--scroll-speed) linear infinite;
+            animation-play-state: var(--marquee-play-state, running);
           }
           .marquee-row-right {
             animation: scrollRight var(--scroll-speed) linear infinite;
+            animation-play-state: var(--marquee-play-state, running);
           }
           .marquee-row:hover {
             animation-play-state: paused;
