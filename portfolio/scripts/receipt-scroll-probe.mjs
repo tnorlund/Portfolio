@@ -76,9 +76,14 @@ async function installApiMocks(page) {
 }
 
 async function main() {
+  const launchArgs = ["--enable-precise-memory-info"];
+  if (process.env.RECEIPT_PROBE_DISABLE_WEB_SECURITY === "1") {
+    launchArgs.push("--disable-web-security");
+  }
+
   const browser = await chromium.launch({
     headless: true,
-    args: ["--enable-precise-memory-info", "--disable-web-security"],
+    args: launchArgs,
   });
 
   try {
@@ -170,7 +175,10 @@ async function main() {
             }
           });
           observer.observe({ entryTypes: ["longtask"] });
-          state.longTaskObserver = observer;
+          Object.defineProperty(window, "__receiptScrollProbeLongTaskObserver", {
+            value: observer,
+            configurable: true,
+          });
         } catch {
           // Long task observation is unavailable in some browsers.
         }

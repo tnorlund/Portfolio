@@ -8,6 +8,8 @@ interface UseOptimizedInViewOptions {
   skip?: boolean;
 }
 
+type UseRevealInViewOptions = Omit<UseOptimizedInViewOptions, "triggerOnce">;
+
 /**
  * Optimized intersection observer hook with performance improvements:
  * - triggerOnce: true by default (prevents repeated calculations)
@@ -38,7 +40,7 @@ export const useOptimizedInView = (options: UseOptimizedInViewOptions = {}) => {
  * revealed. Use this when visual state should remain rendered after first
  * exposure, but timers or springs should pause while the element is offscreen.
  */
-export const useRevealInView = (options: UseOptimizedInViewOptions = {}) => {
+export const useRevealInView = (options: UseRevealInViewOptions = {}) => {
   const {
     threshold = 0.3,
     rootMargin = "100px",

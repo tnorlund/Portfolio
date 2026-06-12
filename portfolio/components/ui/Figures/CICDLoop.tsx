@@ -594,6 +594,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // was scheduled — leaving the segment springs stuck at opacity 0 (an
   // invisible figure-8).
   const hasEnteredRef = useRef(false);
+  const introCompleteRef = useRef(false);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
   const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -654,9 +655,21 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
             }
             return false;
           });
+
+          if (index === segments.length - 1) {
+            introCompleteRef.current = true;
+          }
         }, index * staggerDelay);
         timeoutIds.current.push(id);
       });
+    } else if (!inView && hasEnteredRef.current && !introCompleteRef.current) {
+      clearAllTimeouts();
+      introCompleteRef.current = true;
+      api.start(() => ({
+        opacity: 1,
+        transform: "scale(1)",
+        immediate: true,
+      }));
     } else if (!hasEnteredRef.current) {
       clearAllTimeouts();
       clearPulseAnimation();

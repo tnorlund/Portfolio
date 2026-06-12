@@ -47,7 +47,7 @@
 
 @supports not (content-visibility: auto) {
   .figureBoundary {
-    contain: layout paint style;
+    contain: layout style;
   }
 }
 
