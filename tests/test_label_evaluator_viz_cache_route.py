@@ -79,3 +79,39 @@ def test_receipt_health_issues_execution_query_honors_limit_and_filters(
     assert body["state"] == "all"
     assert body["summary"] == run_payload["summary"]
     assert body["issues"] == [run_payload["issues"][1]]
+
+
+def test_mark_attempted_clears_transient_claim_fields():
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-a",
+                "state": "claimed",
+                "check_id": "financial_math",
+                "claimed_at": "2026-06-12T22:00:00+00:00",
+                "claimed_by": "receipt-label-fixer",
+                "attempt_count": 0,
+                "attempts": [],
+            }
+        ],
+    }
+
+    next_ledger, issue, error = viz_cache._apply_issue_update(
+        ledger,
+        {
+            "action": "mark_attempted",
+            "issue_id": "issue-a",
+            "agent": "receipt-label-fixer",
+            "agent_run_id": "agent-run-1",
+            "attempt_summary": "patched labels",
+        },
+    )
+
+    assert error is None
+    assert issue is not None
+    assert issue["state"] == "awaiting_validation"
+    assert issue["attempt_count"] == 1
+    assert "claimed_at" not in issue
+    assert "claimed_by" not in issue
+    assert next_ledger["summary"]["by_state"] == {"awaiting_validation": 1}

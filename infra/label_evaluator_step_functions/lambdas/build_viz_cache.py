@@ -1217,6 +1217,8 @@ def reconcile_receipt_health_ledger(
                 next_issue.pop("resolved_execution_id", None)
             elif prior_state in {"awaiting_validation", "claimed"}:
                 next_issue["last_validation_execution_id"] = execution_id
+                next_issue.pop("claimed_at", None)
+                next_issue.pop("claimed_by", None)
                 if attempt_count >= max_attempts:
                     next_issue["state"] = "manual_review"
                     next_issue["blocked_reason"] = (

@@ -394,6 +394,8 @@ def _apply_issue_update(
             next_issue["claimed_by"] = body.get("agent", "receipt-label-fixer")
         elif action == "mark_attempted":
             next_issue["state"] = "awaiting_validation"
+            next_issue.pop("claimed_at", None)
+            next_issue.pop("claimed_by", None)
             next_issue["last_attempted_at"] = now_iso
             next_issue["last_attempted_execution_id"] = body.get(
                 "execution_id"
@@ -411,10 +413,14 @@ def _apply_issue_update(
             )
         elif action == "manual_review":
             next_issue["state"] = "manual_review"
+            next_issue.pop("claimed_at", None)
+            next_issue.pop("claimed_by", None)
             next_issue["manual_review_reason"] = body.get("reason")
             next_issue["manual_review_at"] = now_iso
         elif action == "blocked":
             next_issue["state"] = "blocked"
+            next_issue.pop("claimed_at", None)
+            next_issue.pop("claimed_by", None)
             next_issue["blocked_reason"] = body.get("reason")
             next_issue["blocked_at"] = now_iso
         else:
