@@ -13,6 +13,11 @@ const mockedDetect = detectImageFormatSupport as jest.MockedFunction<typeof dete
 describe('useImageDetails', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Empty cache pool so the hook falls back to the random-details endpoint
+    mockedApi.fetchCachedImageDetails.mockResolvedValue({
+      images: [],
+      cached_at: '2026-01-01T00:00:00Z',
+    });
     mockedApi.fetchRandomImageDetails.mockResolvedValue({
       image: { image_id: '1' } as any,
       lines: [],
