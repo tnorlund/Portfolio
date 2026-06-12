@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Image, ImagesApiResponse } from "../../../types/api";
@@ -227,17 +228,12 @@ const ImageStack: React.FC<ImageStackProps> = ({
     triggerOnce: true,
   });
 
-  const [images, setImages] = useState<Image[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [formatSupport, setFormatSupport] = useState<{
     supportsAVIF: boolean;
     supportsWebP: boolean;
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
-  const [loadingRemaining, setLoadingRemaining] = useState(false);
-  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
-  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -305,110 +301,55 @@ const ImageStack: React.FC<ImageStackProps> = ({
     });
   }, []);
 
-  useEffect(() => {
-    const loadInitialImages = async () => {
-      if (!formatSupport) return;
-
-      try {
-        // Load just the initial subset first for faster rendering
-        const response: ImagesApiResponse = await api.fetchImages(
-          Math.min(initialCount, maxImages)
-        );
-
-        if (!response || !response.images) {
-          throw new Error("Invalid response");
-        }
-
-
-        setImages(response.images.slice(0, initialCount));
-        // Store the lastEvaluatedKey for pagination
-        setLastEvaluatedKey(response.lastEvaluatedKey);
-
-        // If we need more images and more data is available, load them after initial render
-        if (initialCount < maxImages && response.lastEvaluatedKey) {
-          setLoadingRemaining(true);
-        }
-      } catch (error) {
-        console.error("Error loading initial images:", error);
-        setError(
-          error instanceof Error ? error.message : "Failed to load images"
-        );
+  // Paginated image loading: a small first page for fast initial render,
+  // then background pages until maxImages. Unmounting stops the page loop.
+  const {
+    data: imagePages,
+    error: queryError,
+    hasNextPage,
+    isFetching,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["images", Math.min(initialCount, maxImages), pageSize],
+    queryFn: async ({ pageParam }) => {
+      const response: ImagesApiResponse = pageParam
+        ? await api.fetchImages(pageSize, pageParam)
+        : await api.fetchImages(Math.min(initialCount, maxImages));
+      if (!response || !response.images) {
+        throw new Error("Invalid response");
       }
-    };
+      return response;
+    },
+    initialPageParam: null as ImagesApiResponse["lastEvaluatedKey"] | null,
+    getNextPageParam: (lastPage) => lastPage.lastEvaluatedKey ?? null,
+    enabled: !!formatSupport,
+  });
 
-    if (formatSupport) {
-      loadInitialImages();
-    }
-  }, [formatSupport, initialCount, maxImages]);
+  const images = useMemo(
+    () =>
+      (imagePages?.pages.flatMap((page) => page.images) ?? []).slice(
+        0,
+        maxImages
+      ),
+    [imagePages, maxImages]
+  );
 
-  // Load remaining images after initial set
+  // Only surface an error if nothing loaded; a failed background page keeps
+  // the images already shown (matches the previous behavior)
+  const error =
+    queryError && images.length === 0
+      ? queryError instanceof Error
+        ? queryError.message
+        : "Failed to load images"
+      : null;
+
+  // Load remaining pages after the initial render until we have maxImages
   useEffect(() => {
-    const loadRemainingImages = async () => {
-      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
-      
-      isLoadingRef.current = true;
-
-      try {
-        // Get current count without modifying state
-        let currentImagesCount = 0;
-        setImages(prevImages => {
-          currentImagesCount = prevImages.length;
-          return prevImages; // Don't modify state, just read it
-        });
-
-        // Check if we already have enough images
-        if (currentImagesCount >= maxImages) {
-          setLoadingRemaining(false);
-          isLoadingRef.current = false;
-          return;
-        }
-
-        // Calculate remaining needed based on actual current count
-        const remainingNeeded = maxImages - currentImagesCount;
-        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
-        
-        // Use the stored lastEvaluatedKey from initial fetch
-        const firstPageResponse = await api.fetchImages(pageSize, lastEvaluatedKey);
-        if (!firstPageResponse || !firstPageResponse.images) {
-          throw new Error("Invalid response");
-        }
-
-        let allNewImages: Image[] = firstPageResponse.images;
-        let currentKey = firstPageResponse.lastEvaluatedKey;
-
-        // If we need more pages, fetch them sequentially
-        if (pagesNeeded > 1 && currentKey) {
-          for (let i = 1; i < pagesNeeded && currentKey; i++) {
-            const response = await api.fetchImages(pageSize, currentKey);
-            if (response && response.images) {
-              allNewImages = [...allNewImages, ...response.images];
-              currentKey = response.lastEvaluatedKey;
-            } else {
-              break;
-            }
-          }
-        }
-
-        // Combine with existing images and trim to maxImages
-        setImages(prevImages => {
-          const combinedImages = [...prevImages, ...allNewImages].slice(0, maxImages);
-          return combinedImages;
-        });
-        setLoadingRemaining(false);
-        isLoadingRef.current = false;
-      } catch (error) {
-        console.error("Error loading remaining images:", error);
-        setLoadingRemaining(false);
-        isLoadingRef.current = false;
-      }
-    };
-
-    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
-      // Delay loading remaining images until after initial render
-      const timer = setTimeout(loadRemainingImages, 100);
+    if (images.length < maxImages && hasNextPage && !isFetching) {
+      const timer = setTimeout(() => fetchNextPage(), 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
+  }, [images.length, maxImages, hasNextPage, isFetching, fetchNextPage]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {

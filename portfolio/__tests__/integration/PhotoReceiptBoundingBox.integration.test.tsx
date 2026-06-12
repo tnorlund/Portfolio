@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { rest, setupServer } from "../../test-utils/msw";
 import React from "react";
 import PhotoReceiptBoundingBox from "../../components/ui/Figures/PhotoReceiptBoundingBox";
+import { createQueryWrapper } from "../../test-utils/queryWrapper";
 import fixtureData from "../../tests/fixtures/target_receipt.json";
 
 jest.mock("../../components/ui/animations", () => ({
@@ -45,7 +46,8 @@ afterAll(() => server.close());
 describe("PhotoReceiptBoundingBox integration", () => {
   test("fetches image details and displays overlays", async () => {
     const fetchSpy = jest.spyOn(global, "fetch");
-    render(<PhotoReceiptBoundingBox />);
+    const { Wrapper } = createQueryWrapper();
+    render(<PhotoReceiptBoundingBox />, { wrapper: Wrapper });
 
     expect(
       await screen.findByTestId("AnimatedConvexHull", {}, { timeout: 10000 })

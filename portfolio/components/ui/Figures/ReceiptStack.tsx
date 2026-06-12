@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
@@ -237,17 +238,12 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     triggerOnce: true,
   });
 
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [formatSupport, setFormatSupport] = useState<{
     supportsAVIF: boolean;
     supportsWebP: boolean;
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
-  const [loadingRemaining, setLoadingRemaining] = useState(false);
-  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
-  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -315,109 +311,55 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     });
   }, []);
 
-  useEffect(() => {
-    const loadInitialReceipts = async () => {
-      if (!formatSupport) return;
-
-      try {
-        // Load just the initial subset first for faster rendering
-        const response: ReceiptApiResponse = await api.fetchReceipts(
-          Math.min(initialCount, maxReceipts)
-        );
-
-        if (!response || !response.receipts) {
-          throw new Error("Invalid response");
-        }
-
-        setReceipts(response.receipts.slice(0, initialCount));
-        // Store the lastEvaluatedKey for pagination
-        setLastEvaluatedKey(response.lastEvaluatedKey);
-
-        // If we need more receipts and more data is available, load them after initial render
-        if (initialCount < maxReceipts && response.lastEvaluatedKey) {
-          setLoadingRemaining(true);
-        }
-      } catch (error) {
-        console.error("Error loading initial receipts:", error);
-        setError(
-          error instanceof Error ? error.message : "Failed to load receipts"
-        );
+  // Paginated receipt loading: a small first page for fast initial render,
+  // then background pages until maxReceipts. Unmounting stops the page loop.
+  const {
+    data: receiptPages,
+    error: queryError,
+    hasNextPage,
+    isFetching,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["receipts", Math.min(initialCount, maxReceipts), pageSize],
+    queryFn: async ({ pageParam }) => {
+      const response: ReceiptApiResponse = pageParam
+        ? await api.fetchReceipts(pageSize, pageParam)
+        : await api.fetchReceipts(Math.min(initialCount, maxReceipts));
+      if (!response || !response.receipts) {
+        throw new Error("Invalid response");
       }
-    };
+      return response;
+    },
+    initialPageParam: null as ReceiptApiResponse["lastEvaluatedKey"] | null,
+    getNextPageParam: (lastPage) => lastPage.lastEvaluatedKey ?? null,
+    enabled: !!formatSupport,
+  });
 
-    if (formatSupport) {
-      loadInitialReceipts();
-    }
-  }, [formatSupport, initialCount, maxReceipts]);
+  const receipts = useMemo(
+    () =>
+      (receiptPages?.pages.flatMap((page) => page.receipts) ?? []).slice(
+        0,
+        maxReceipts
+      ),
+    [receiptPages, maxReceipts]
+  );
 
-  // Load remaining receipts after initial set
+  // Only surface an error if nothing loaded; a failed background page keeps
+  // the receipts already shown (matches the previous behavior)
+  const error =
+    queryError && receipts.length === 0
+      ? queryError instanceof Error
+        ? queryError.message
+        : "Failed to load receipts"
+      : null;
+
+  // Load remaining pages after the initial render until we have maxReceipts
   useEffect(() => {
-    const loadRemainingReceipts = async () => {
-      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
-      
-      isLoadingRef.current = true;
-
-      try {
-        // Get current count without modifying state
-        let currentReceiptsCount = 0;
-        setReceipts(prevReceipts => {
-          currentReceiptsCount = prevReceipts.length;
-          return prevReceipts; // Don't modify state, just read it
-        });
-
-        // Check if we already have enough receipts
-        if (currentReceiptsCount >= maxReceipts) {
-          setLoadingRemaining(false);
-          isLoadingRef.current = false;
-          return;
-        }
-
-        // Calculate remaining needed based on actual current count
-        const remainingNeeded = maxReceipts - currentReceiptsCount;
-        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
-        
-        // Use the stored lastEvaluatedKey from initial fetch
-        const firstPageResponse = await api.fetchReceipts(pageSize, lastEvaluatedKey);
-        if (!firstPageResponse || !firstPageResponse.receipts) {
-          throw new Error("Invalid response");
-        }
-
-        let allNewReceipts: Receipt[] = firstPageResponse.receipts;
-        let currentKey = firstPageResponse.lastEvaluatedKey;
-
-        // If we need more pages, fetch them sequentially
-        if (pagesNeeded > 1 && currentKey) {
-          for (let i = 1; i < pagesNeeded && currentKey; i++) {
-            const response = await api.fetchReceipts(pageSize, currentKey);
-            if (response && response.receipts) {
-              allNewReceipts = [...allNewReceipts, ...response.receipts];
-              currentKey = response.lastEvaluatedKey;
-            } else {
-              break;
-            }
-          }
-        }
-
-        // Combine with existing receipts and trim to maxReceipts
-        setReceipts(prevReceipts => {
-          const combinedReceipts = [...prevReceipts, ...allNewReceipts].slice(0, maxReceipts);
-          return combinedReceipts;
-        });
-        setLoadingRemaining(false);
-        isLoadingRef.current = false;
-      } catch (error) {
-        console.error("Error loading remaining receipts:", error);
-        setLoadingRemaining(false);
-        isLoadingRef.current = false;
-      }
-    };
-
-    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
-      // Delay loading remaining receipts until after initial render
-      const timer = setTimeout(loadRemainingReceipts, 100);
+    if (receipts.length < maxReceipts && hasNextPage && !isFetching) {
+      const timer = setTimeout(() => fetchNextPage(), 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, maxReceipts, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
+  }, [receipts.length, maxReceipts, hasNextPage, isFetching, fetchNextPage]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
