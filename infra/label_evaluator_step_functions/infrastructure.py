@@ -592,6 +592,16 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         f"arn:aws:s3:::{args[1]}/*",
                                     ],
                                 },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["s3:GetObject"],
+                                    "Resource": [
+                                        (
+                                            f"arn:aws:s3:::{args[1]}"
+                                            "/receipt-health/issues/*"
+                                        ),
+                                    ],
+                                },
                             ],
                         }
                     )
