@@ -1,18 +1,25 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { QAQuestionData } from "./qaTypes";
 import { API_CONFIG } from "../services/api/config";
 
-async function fetchQuestion(index: number): Promise<QAQuestionData | null> {
-  try {
-    const res = await fetch(`${API_CONFIG.baseUrl}/qa/visualization?index=${index}`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const questions = json.questions;
-    return questions?.[0] ?? null;
-  } catch {
-    return null;
-  }
+async function fetchQuestion(index: number): Promise<QAQuestionData> {
+  const res = await fetch(
+    `${API_CONFIG.baseUrl}/qa/visualization?index=${index}`
+  );
+  if (!res.ok) throw new Error(`Failed to fetch question ${index}`);
+  const json = await res.json();
+  const question = json.questions?.[0];
+  if (!question) throw new Error(`No question at index ${index}`);
+  return question;
 }
+
+const questionQuery = (index: number) => ({
+  queryKey: ["qa", "question", index],
+  queryFn: () => fetchQuestion(index),
+  // Questions are static content — never refetch one we already have
+  staleTime: Infinity,
+});
 
 function shuffle(arr: number[]): number[] {
   const a = [...arr];
@@ -43,36 +50,32 @@ interface UseQAQueueResult {
  * 2. Shuffles the indices into a random play order.
  * 3. Pre-fetches `prefetchAhead` questions so the next one is ready
  *    by the time the current animation finishes.
- * 4. All fetches share a ref-based cache — revisited questions are instant.
+ * 4. Caching, deduplication and retries are handled by TanStack Query —
+ *    revisited questions are instant, even across remounts.
  * 5. Re-shuffles when the full set has been shown.
  */
 export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
+  const queryClient = useQueryClient();
   const [data, setData] = useState<QAQuestionData | null>(null);
   const [questionIndex, setQuestionIndex] = useState(-1);
   const [totalQuestions, setTotalQuestions] = useState(0);
 
-  const cache = useRef<Map<number, QAQuestionData>>(new Map());
   const order = useRef<number[]>([]);
   const cursor = useRef(0);
-  const inflightRef = useRef<Set<number>>(new Set());
   const latestRequestedIndexRef = useRef<number | null>(null);
 
-  // Pre-fetch upcoming questions into the cache (fire-and-forget)
+  // Pre-fetch upcoming questions into the query cache (fire-and-forget;
+  // prefetchQuery dedupes in-flight requests and swallows errors)
   const prefetch = useCallback(
     (fromCursor: number) => {
       const len = order.current.length;
       if (len === 0) return;
       for (let i = 1; i <= prefetchAhead; i++) {
         const idx = order.current[(fromCursor + i) % len];
-        if (cache.current.has(idx) || inflightRef.current.has(idx)) continue;
-        inflightRef.current.add(idx);
-        fetchQuestion(idx).then((d) => {
-          inflightRef.current.delete(idx);
-          if (d) cache.current.set(idx, d);
-        });
+        queryClient.prefetchQuery(questionQuery(idx));
       }
     },
-    [prefetchAhead],
+    [prefetchAhead, queryClient],
   );
 
   // Load a question by its API index — from cache or fetch
@@ -80,28 +83,39 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
     (idx: number) => {
       latestRequestedIndexRef.current = idx;
       setQuestionIndex(idx);
-      const cached = cache.current.get(idx);
+      const cached = queryClient.getQueryData<QAQuestionData>(
+        questionQuery(idx).queryKey,
+      );
       if (cached) {
         setData(cached);
         return;
       }
       setData(null);
-      fetchQuestion(idx).then((d) => {
-        if (d) {
+      queryClient
+        .fetchQuery(questionQuery(idx))
+        .then((d) => {
           if (latestRequestedIndexRef.current !== idx) return;
-          cache.current.set(idx, d);
           setData(d);
-        }
-      });
+        })
+        .catch(() => {
+          // Leave data null; the next advance/select will retry
+        });
     },
-    [],
+    [queryClient],
   );
 
   // 1. On mount — fetch metadata, shuffle, kick off first question + pre-fetches
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_CONFIG.baseUrl}/qa/visualization`)
-      .then((r) => r.json())
+    queryClient
+      .fetchQuery({
+        queryKey: ["qa", "metadata"],
+        queryFn: async () => {
+          const r = await fetch(`${API_CONFIG.baseUrl}/qa/visualization`);
+          return r.json();
+        },
+        staleTime: Infinity,
+      })
       .then((json) => {
         if (cancelled) return;
         const total: number = json?.metadata?.total_questions ?? 32;

@@ -1,7 +1,8 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AppProps } from "next/app";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import React, { Suspense, useEffect } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { PerformanceProvider } from "../components/providers/PerformanceProvider";
 import "../styles/globals.css";
 
@@ -46,6 +47,21 @@ class ErrorBoundary extends React.Component<
 }
 
 export default function App({ Component, pageProps }: AppProps) {
+  // One QueryClient per app instance (not per render) so the cache survives
+  // page navigations but is never shared across SSR requests
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 5 * 60 * 1000,
+            retry: 1,
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  );
+
   useEffect(() => {
     // Report Web Vitals for Real User Monitoring
     if (typeof window !== 'undefined') {
@@ -96,7 +112,8 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <ErrorBoundary>
-      <PerformanceProvider>
+      <QueryClientProvider client={queryClient}>
+        <PerformanceProvider>
         <Suspense fallback={<div>Loading...</div>}>
           <div>
             <header>
@@ -108,7 +125,8 @@ export default function App({ Component, pageProps }: AppProps) {
             {process.env.NODE_ENV === "development" && <PerformanceOverlay />}
           </div>
         </Suspense>
-      </PerformanceProvider>
+        </PerformanceProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

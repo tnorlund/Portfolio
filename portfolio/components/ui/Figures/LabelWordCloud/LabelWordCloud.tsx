@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSprings, animated, config, to } from "@react-spring/web";
 import { useOptimizedInView } from "../../../../hooks/useOptimizedInView";
 import { api } from "../../../../services/api";
@@ -286,8 +287,12 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
   const width = isMobile ? 500 : propWidth;
   const height = isMobile ? 550 : propHeight;
 
-  const [data, setData] = useState<LabelValidationCountResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data = null, error: queryError } =
+    useQuery<LabelValidationCountResponse>({
+      queryKey: ["labelValidationCount"],
+      queryFn: () => api.fetchLabelValidationCount(),
+    });
+  const error = queryError ? "Failed to load data" : null;
   const [measuredNodes, setMeasuredNodes] = useState<LabelNode[] | null>(null);
 
   // Refs for measuring text
@@ -296,25 +301,6 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
 
   const centerX = width / 2;
   const centerY = height / 2;
-
-  // Fetch label validation counts
-  useEffect(() => {
-    let mounted = true;
-    api
-      .fetchLabelValidationCount()
-      .then((result) => {
-        if (mounted) setData(result);
-      })
-      .catch((err) => {
-        if (mounted) {
-          console.error("Failed to fetch label validation counts:", err);
-          setError("Failed to load data");
-        }
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   // Compute initial nodes (without textFitsInside determined yet)
   const { startNodes, endNodes } = useMemo(() => {

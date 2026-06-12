@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../services/api";
 import type { ImageDetailsApiResponse } from "../types/api";
@@ -12,58 +12,44 @@ interface UseImageDetailsResult {
   loading: boolean;
 }
 
+const fetchImageDetails = async (
+  imageType?: string
+): Promise<ImageDetailsApiResponse> => {
+  // Try to fetch from cache first, then do client-side random selection
+  try {
+    const cached = await api.fetchCachedImageDetails(imageType);
+    if (cached.images && cached.images.length > 0) {
+      const randomIndex = Math.floor(Math.random() * cached.images.length);
+      return cached.images[randomIndex];
+    }
+    // Cache is empty, fall back to real-time API
+    return await api.fetchRandomImageDetails(imageType);
+  } catch {
+    // Cache fetch failed (e.g., 404), fall back to real-time API
+    return await api.fetchRandomImageDetails(imageType);
+  }
+};
+
 export const useImageDetails = (
   imageType?: string
 ): UseImageDetailsResult => {
-  const [imageDetails, setImageDetails] = useState<ImageDetailsApiResponse | null>(null);
-  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, error, isPending } = useQuery({
+    queryKey: ["imageDetails", imageType ?? "all"],
+    queryFn: async () => {
+      const [details, support] = await Promise.all([
+        fetchImageDetails(imageType),
+        detectImageFormatSupport(),
+      ]);
+      return { details, support };
+    },
+  });
 
-  useEffect(() => {
-    let isMounted = true;
-    const load = async () => {
-      try {
-        // Try to fetch from cache first, then do client-side random selection
-        let details: ImageDetailsApiResponse;
-        try {
-          const cached = await api.fetchCachedImageDetails(imageType);
-          if (cached.images && cached.images.length > 0) {
-            // Client-side random selection from cached pool
-            const randomIndex = Math.floor(Math.random() * cached.images.length);
-            details = cached.images[randomIndex];
-          } else {
-            // Cache is empty, fall back to real-time API
-            details = await api.fetchRandomImageDetails(imageType);
-          }
-        } catch (cacheError) {
-          // Cache fetch failed (e.g., 404), fall back to real-time API
-          details = await api.fetchRandomImageDetails(imageType);
-        }
-
-        const support = await detectImageFormatSupport();
-
-        if (isMounted) {
-          setImageDetails(details);
-          setFormatSupport(support);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err as Error);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-    load();
-    return () => {
-      isMounted = false;
-    };
-  }, [imageType]);
-
-  return { imageDetails, formatSupport, error, loading };
+  return {
+    imageDetails: data?.details ?? null,
+    formatSupport: data?.support ?? null,
+    error: error ?? null,
+    loading: isPending,
+  };
 };
 
 export default useImageDetails;
