@@ -353,13 +353,27 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         : "Failed to load receipts"
       : null;
 
-  // Load remaining pages after the initial render until we have maxReceipts
+  // Load remaining pages after the initial render until we have maxReceipts.
+  // A page error stops the loop (after the query's own retry) so a
+  // persistently failing page doesn't refetch indefinitely
   useEffect(() => {
-    if (receipts.length < maxReceipts && hasNextPage && !isFetching) {
+    if (
+      receipts.length < maxReceipts &&
+      hasNextPage &&
+      !isFetching &&
+      !queryError
+    ) {
       const timer = setTimeout(() => fetchNextPage(), 100);
       return () => clearTimeout(timer);
     }
-  }, [receipts.length, maxReceipts, hasNextPage, isFetching, fetchNextPage]);
+  }, [
+    receipts.length,
+    maxReceipts,
+    hasNextPage,
+    isFetching,
+    queryError,
+    fetchNextPage,
+  ]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {

@@ -343,13 +343,27 @@ const ImageStack: React.FC<ImageStackProps> = ({
         : "Failed to load images"
       : null;
 
-  // Load remaining pages after the initial render until we have maxImages
+  // Load remaining pages after the initial render until we have maxImages.
+  // A page error stops the loop (after the query's own retry) so a
+  // persistently failing page doesn't refetch indefinitely
   useEffect(() => {
-    if (images.length < maxImages && hasNextPage && !isFetching) {
+    if (
+      images.length < maxImages &&
+      hasNextPage &&
+      !isFetching &&
+      !queryError
+    ) {
       const timer = setTimeout(() => fetchNextPage(), 100);
       return () => clearTimeout(timer);
     }
-  }, [images.length, maxImages, hasNextPage, isFetching, fetchNextPage]);
+  }, [
+    images.length,
+    maxImages,
+    hasNextPage,
+    isFetching,
+    queryError,
+    fetchNextPage,
+  ]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
