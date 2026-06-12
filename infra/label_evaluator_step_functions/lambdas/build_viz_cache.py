@@ -1,7 +1,7 @@
 """Lambda to build viz-cache directly from evaluator S3 outputs.
 
 Replaces the LangSmith export + EMR Spark pipeline. Reads three S3 prefixes
-written by unified_receipt_evaluator.py and writes two viz-cache prefixes
+written by unified_receipt_evaluator.py and writes three viz-cache prefixes
 matching the TypeScript frontend types.
 
 Input (from Step Function):
@@ -20,6 +20,8 @@ S3 Writes:
     {cache_bucket}/financial-math/metadata.json
     {cache_bucket}/within-receipt/{image_id}_{receipt_id}.json
     {cache_bucket}/within-receipt/metadata.json
+    {cache_bucket}/receipt-health/{image_id}_{receipt_id}.json
+    {cache_bucket}/receipt-health/metadata.json
 """
 
 from __future__ import annotations
@@ -505,6 +507,249 @@ def _build_decision_summary(decisions: list[dict]) -> dict[str, int]:
     }
 
 
+def _check_status_from_summary(summary: dict[str, int]) -> str:
+    """Convert a decision summary to a frontend check status."""
+    total = int(summary.get("total") or 0)
+    if total == 0:
+        return "not_applicable"
+    if int(summary.get("invalid") or 0) > 0:
+        return "fail"
+    if int(summary.get("needs_review") or 0) > 0:
+        return "review"
+    return "pass"
+
+
+def _equation_has_mismatch(equation: dict[str, Any]) -> bool:
+    """Return true when an equation materially fails numeric reconciliation."""
+    diff = equation.get("difference")
+    if diff is None:
+        return False
+    try:
+        return abs(float(diff)) > 0.05
+    except (TypeError, ValueError):
+        return False
+
+
+def _financial_status(financial_math: dict[str, Any]) -> str:
+    """Derive a health status from financial equations and word decisions."""
+    equations = financial_math.get("equations") or []
+    if not equations:
+        return "not_applicable"
+
+    summary = financial_math.get("summary") or {}
+    if summary.get("has_invalid") or any(
+        _equation_has_mismatch(eq) for eq in equations
+    ):
+        return "fail"
+    if summary.get("has_needs_review"):
+        return "review"
+    return "pass"
+
+
+def _status_priority(status: str) -> int:
+    """Order health statuses from least to most severe."""
+    return {
+        "not_applicable": 0,
+        "pass": 1,
+        "review": 2,
+        "fail": 3,
+    }.get(status, 0)
+
+
+def _overall_status(checks: list[dict[str, Any]]) -> str:
+    """Return the most severe applicable status across checks."""
+    if not checks:
+        return "not_applicable"
+    return max(
+        (check.get("status", "not_applicable") for check in checks),
+        key=_status_priority,
+    )
+
+
+def _check_counts(checks: list[dict[str, Any]]) -> dict[str, int]:
+    """Count check statuses for the receipt health summary."""
+    statuses = ["pass", "review", "fail", "not_applicable"]
+    return {
+        status: sum(1 for check in checks if check.get("status") == status)
+        for status in statuses
+    }
+
+
+def _issue_count_for_check(check: dict[str, Any]) -> int:
+    """Count concrete issues represented by one check."""
+    status = check.get("status")
+    if status == "pass":
+        return 0
+    summary = check.get("summary") or {}
+    if "invalid" in summary or "needs_review" in summary:
+        return int(summary.get("invalid") or 0) + int(
+            summary.get("needs_review") or 0
+        )
+    if "mismatched_equations" in summary:
+        return int(summary.get("mismatched_equations") or 0)
+    return 1 if status in {"fail", "review"} else 0
+
+
+def _build_primary_issues(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build compact issue list ordered by severity for the frontend."""
+    issues: list[dict[str, Any]] = []
+    for check in checks:
+        if check.get("status") not in {"fail", "review"}:
+            continue
+        issue_count = _issue_count_for_check(check)
+        result = check.get("result") or "Needs review"
+        issues.append({
+            "check_id": check.get("id"),
+            "status": check.get("status"),
+            "title": check.get("title"),
+            "message": result,
+            "issue_count": issue_count,
+            "summary": result,
+        })
+    return sorted(
+        issues,
+        key=lambda item: (
+            -_status_priority(str(item.get("status"))),
+            -int(item.get("issue_count") or 0),
+        ),
+    )
+
+
+def build_receipt_health_entry(
+    within_entry: dict[str, Any],
+) -> dict[str, Any]:
+    """Build unified receipt-health cache entry from within-receipt data."""
+    place_validation = within_entry["place_validation"]
+    format_validation = within_entry["format_validation"]
+    financial_math = within_entry["financial_math"]
+
+    place_summary = place_validation.get("summary") or {}
+    format_summary = format_validation.get("summary") or {}
+    equations = financial_math.get("equations") or []
+    mismatched_equations = sum(
+        1 for equation in equations if _equation_has_mismatch(equation)
+    )
+
+    checks = [
+        {
+            "id": "merchant_identity",
+            "title": "Merchant Identity",
+            "question": (
+                "Do the merchant, address, phone, and website words agree "
+                "with the stored ReceiptPlace?"
+            ),
+            "status": _check_status_from_summary(place_summary),
+            "validator": "place_validation",
+            "is_llm": place_validation.get("is_llm", False),
+            "duration_seconds": place_validation.get("duration_seconds"),
+            "summary": place_summary,
+            "result": (
+                f"{place_summary.get('valid', 0)} valid, "
+                f"{place_summary.get('invalid', 0)} invalid, "
+                f"{place_summary.get('needs_review', 0)} review"
+            ),
+            "evidence_count": len(place_validation.get("decisions") or []),
+            "what_it_validates": [
+                "merchant name",
+                "street address",
+                "phone number",
+                "website or store hours",
+            ],
+        },
+        {
+            "id": "receipt_format",
+            "title": "Receipt Format",
+            "question": (
+                "Do date, time, payment, coupon, and loyalty labels make "
+                "sense within this receipt?"
+            ),
+            "status": _check_status_from_summary(format_summary),
+            "validator": "format_validation",
+            "is_llm": format_validation.get("is_llm", False),
+            "duration_seconds": format_validation.get("duration_seconds"),
+            "summary": format_summary,
+            "result": (
+                f"{format_summary.get('valid', 0)} valid, "
+                f"{format_summary.get('invalid', 0)} invalid, "
+                f"{format_summary.get('needs_review', 0)} review"
+            ),
+            "evidence_count": len(format_validation.get("decisions") or []),
+            "what_it_validates": [
+                "date",
+                "time",
+                "payment method",
+                "coupon",
+                "loyalty ID",
+            ],
+        },
+        {
+            "id": "financial_math",
+            "title": "Financial Math",
+            "question": (
+                "Do line totals, subtotal, tax, tip, discounts, and grand "
+                "total reconcile?"
+            ),
+            "status": _financial_status(financial_math),
+            "validator": "financial_math",
+            "is_llm": financial_math.get("is_llm", False),
+            "duration_seconds": financial_math.get("duration_seconds"),
+            "summary": {
+                **(financial_math.get("summary") or {}),
+                "mismatched_equations": mismatched_equations,
+            },
+            "result": (
+                f"{len(equations)} equations, "
+                f"{mismatched_equations} mismatches"
+            ),
+            "evidence_count": sum(
+                len(eq.get("involved_words") or []) for eq in equations
+            ),
+            "what_it_validates": [
+                "line item arithmetic",
+                "subtotal",
+                "tax",
+                "tip",
+                "discount",
+                "grand total",
+            ],
+        },
+    ]
+
+    status = _overall_status(checks)
+    counts = _check_counts(checks)
+    issue_count = sum(_issue_count_for_check(check) for check in checks)
+
+    return {
+        "image_id": within_entry.get("image_id"),
+        "receipt_id": within_entry.get("receipt_id"),
+        "merchant_name": within_entry.get("merchant_name"),
+        "trace_id": within_entry.get("trace_id"),
+        "receipt_type": within_entry.get("receipt_type"),
+        "overall_status": status,
+        "summary": {
+            "total_checks": len(checks),
+            "passed": counts["pass"],
+            "needs_review": counts["review"],
+            "failed": counts["fail"],
+            "not_applicable": counts["not_applicable"],
+            "issue_count": issue_count,
+        },
+        "checks": checks,
+        "primary_issues": _build_primary_issues(checks),
+        "place_validation": place_validation,
+        "format_validation": format_validation,
+        "financial_math": financial_math,
+        "words": within_entry.get("words", []),
+        "width": within_entry.get("width", 0),
+        "height": within_entry.get("height", 0),
+        **{
+            key: value
+            for key, value in within_entry.items()
+            if key.startswith("cdn_")
+        },
+    }
+
+
 def _extract_place_info(place: dict | None) -> dict[str, Any] | None:
     """Extract relevant Place fields for the frontend card."""
     if not place:
@@ -664,6 +909,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "execution_id": execution_id,
             "financial_math_count": 0,
             "within_receipt_count": 0,
+            "receipt_health_count": 0,
         }
 
     # 2. Read all files in parallel
@@ -703,6 +949,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # 3. Build cache entries
     financial_math_entries: list[tuple[str, dict]] = []  # (key, data)
     within_receipt_entries: list[tuple[str, dict]] = []
+    receipt_health_entries: list[tuple[str, dict]] = []
 
     for receipt_key, urow in unified_lookup.items():
         image_id, receipt_id = receipt_key
@@ -720,10 +967,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         s3_name = f"within-receipt/{image_id}_{receipt_id}.json"
         within_receipt_entries.append((s3_name, wr_entry))
 
+        # Receipt health (single unified view over place, format, and math)
+        rh_entry = build_receipt_health_entry(wr_entry)
+        s3_name = f"receipt-health/{image_id}_{receipt_id}.json"
+        receipt_health_entries.append((s3_name, rh_entry))
+
     logger.info(
-        "Built %d financial-math, %d within-receipt entries",
+        "Built %d financial-math, %d within-receipt, %d receipt-health entries",
         len(financial_math_entries),
         len(within_receipt_entries),
+        len(receipt_health_entries),
     )
 
     # 4. Write all cache entries + metadata in parallel
@@ -739,12 +992,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "cached_at": now_iso,
         "total_receipts": len(within_receipt_entries),
     }
+    rh_metadata = {
+        "execution_id": execution_id,
+        "cached_at": now_iso,
+        "total_receipts": len(receipt_health_entries),
+    }
 
     write_tasks: list[tuple[str, dict]] = []
     write_tasks.extend(financial_math_entries)
     write_tasks.append(("financial-math/metadata.json", fm_metadata))
     write_tasks.extend(within_receipt_entries)
     write_tasks.append(("within-receipt/metadata.json", wr_metadata))
+    write_tasks.extend(receipt_health_entries)
+    write_tasks.append(("receipt-health/metadata.json", rh_metadata))
 
     logger.info("Writing %d files to s3://%s/", len(write_tasks), cache_bucket)
 
@@ -765,10 +1025,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     elapsed = time.time() - t0
     logger.info(
-        "Completed in %.1fs: %d financial-math, %d within-receipt, %d errors",
+        (
+            "Completed in %.1fs: %d financial-math, %d within-receipt, "
+            "%d receipt-health, %d errors"
+        ),
         elapsed,
         len(financial_math_entries),
         len(within_receipt_entries),
+        len(receipt_health_entries),
         errors,
     )
 
@@ -777,6 +1041,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": execution_id,
         "financial_math_count": len(financial_math_entries),
         "within_receipt_count": len(within_receipt_entries),
+        "receipt_health_count": len(receipt_health_entries),
         "write_errors": errors,
         "duration_seconds": round(elapsed, 1),
     }

@@ -1553,7 +1553,16 @@ if hasattr(api_gateway, "api"):
     )
 
     # Additional label evaluator visualization endpoints (same Lambda, different paths)
-    for viz_name in ["financial_math", "diff", "journey", "patterns", "evidence", "dedup", "within_receipt"]:
+    for viz_name in [
+        "financial_math",
+        "diff",
+        "journey",
+        "patterns",
+        "evidence",
+        "dedup",
+        "within_receipt",
+        "receipt_health",
+    ]:
         _integration = aws.apigatewayv2.Integration(
             f"label_evaluator_{viz_name}_integration",
             api_id=api_gateway.api.id,

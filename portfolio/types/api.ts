@@ -888,3 +888,93 @@ export interface WithinReceiptVerificationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// ============================================================================
+// Receipt Health Visualization Types
+// ============================================================================
+
+export type ReceiptHealthStatus =
+  | "pass"
+  | "review"
+  | "fail"
+  | "not_applicable";
+
+export interface ReceiptHealthSummary {
+  total_checks: number;
+  passed: number;
+  needs_review: number;
+  failed: number;
+  not_applicable: number;
+  issue_count: number;
+}
+
+export interface ReceiptHealthCheck {
+  id: "merchant_identity" | "receipt_format" | "financial_math";
+  title: string;
+  question: string;
+  status: ReceiptHealthStatus;
+  validator: "place_validation" | "format_validation" | "financial_math";
+  is_llm: boolean;
+  duration_seconds: number | null;
+  summary:
+    | {
+        total: number;
+        valid: number;
+        invalid: number;
+        needs_review: number;
+      }
+    | {
+        total_equations: number;
+        has_invalid: boolean;
+        has_needs_review: boolean;
+      };
+  result: string;
+  evidence_count: number;
+  what_it_validates: string[];
+}
+
+export interface ReceiptHealthPrimaryIssue {
+  check_id: ReceiptHealthCheck["id"];
+  title: string;
+  status: ReceiptHealthStatus;
+  message: string;
+  summary?: string;
+  issue_count: number;
+}
+
+export interface ReceiptHealthAggregateStats {
+  total_receipts_in_pool: number;
+  batch_size: number;
+  passed: number;
+  needs_review: number;
+  failed: number;
+  not_applicable: number;
+  receipts_with_issues: number;
+  total_issues: number;
+}
+
+export interface ReceiptHealthReceipt extends WithinReceiptVerificationReceipt {
+  receipt_type?: "itemized" | "service" | "terminal";
+  overall_status: ReceiptHealthStatus;
+  summary: ReceiptHealthSummary;
+  checks: ReceiptHealthCheck[];
+  primary_issues: ReceiptHealthPrimaryIssue[];
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+}
+
+export interface ReceiptHealthResponse {
+  receipts: ReceiptHealthReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: ReceiptHealthAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}

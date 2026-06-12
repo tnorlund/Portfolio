@@ -32,6 +32,7 @@ MAX_BATCH_SIZE = 50
 VIZ_TYPE_PREFIXES = {
     "financial_math": "financial-math/",
     "within_receipt": "within-receipt/",
+    "receipt_health": "receipt-health/",
 }
 
 if not S3_CACHE_BUCKET:
@@ -119,6 +120,30 @@ def _calculate_aggregate_stats(
     """
     if not receipts:
         return {"total_receipts_in_pool": pool_size, "batch_size": 0}
+
+    if receipts and "overall_status" in receipts[0]:
+        statuses = [
+            str(r.get("overall_status") or "not_applicable")
+            for r in receipts
+        ]
+        issue_counts = [
+            int((r.get("summary") or {}).get("issue_count") or 0)
+            for r in receipts
+        ]
+        return {
+            "total_receipts_in_pool": pool_size,
+            "batch_size": len(receipts),
+            "passed": sum(1 for s in statuses if s == "pass"),
+            "needs_review": sum(1 for s in statuses if s == "review"),
+            "failed": sum(1 for s in statuses if s == "fail"),
+            "not_applicable": sum(
+                1 for s in statuses if s == "not_applicable"
+            ),
+            "receipts_with_issues": sum(
+                1 for count in issue_counts if count > 0
+            ),
+            "total_issues": sum(issue_counts),
+        }
 
     issues = [r.get("issues_found", 0) for r in receipts]
     return {
