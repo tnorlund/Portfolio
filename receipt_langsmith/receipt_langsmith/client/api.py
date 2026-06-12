@@ -265,8 +265,8 @@ class LangSmithClient:
         if filters.name_filter:
             # Sanitize name_filter to prevent filter injection
             # Escape backslashes first, then quotes (order matters)
-            sanitized = (
-                filters.name_filter.replace("\\", "\\\\").replace('"', '\\"')
+            sanitized = filters.name_filter.replace("\\", "\\\\").replace(
+                '"', '\\"'
             )
             params["filter"] = f'eq(name, "{sanitized}")'
         if filters.start_time:

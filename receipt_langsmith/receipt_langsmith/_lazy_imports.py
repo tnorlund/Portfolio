@@ -73,4 +73,5 @@ def resolve_pyspark_attr(name: str) -> Any | None:
 
     return None
 
+
 # pylint: enable=import-outside-toplevel

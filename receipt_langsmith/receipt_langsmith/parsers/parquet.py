@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Iterator, Optional, Union
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 import pyarrow
 import pyarrow.parquet as pq
+from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
 
 from receipt_langsmith.entities.base import LangSmithRun

@@ -311,10 +311,9 @@ class LabelValidationSparkProcessor(BaseSparkProcessor):
 
         steps = steps.withColumn("step_type", step_type_expr)
 
-        result = (
-            step_timing_stats(steps, group_cols=["name", "step_type"])
-            .withColumnRenamed("name", "step_name")
-        )
+        result = step_timing_stats(
+            steps, group_cols=["name", "step_type"]
+        ).withColumnRenamed("name", "step_name")
 
         logger.info("Computed step timing")
         return result
@@ -398,9 +397,9 @@ class LabelValidationSparkProcessor(BaseSparkProcessor):
                 F.sum(F.when(F.col("merchant_found"), 1).otherwise(0)).alias(
                     "success_count"
                 ),
-                F.sum(
-                    F.when(~F.col("merchant_found"), 1).otherwise(0)
-                ).alias("failure_count"),
+                F.sum(F.when(~F.col("merchant_found"), 1).otherwise(0)).alias(
+                    "failure_count"
+                ),
                 F.avg(
                     F.when(F.col("merchant_found"), F.col("confidence"))
                 ).alias("avg_confidence"),

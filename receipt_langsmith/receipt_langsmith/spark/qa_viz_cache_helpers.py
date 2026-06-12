@@ -23,9 +23,9 @@ from receipt_langsmith.spark.s3_io import (
     write_metadata_json,
 )
 from receipt_langsmith.spark.utils import (
+    TRACE_BASE_COLUMNS,
     parse_json_object,
     parse_s3_path,
-    TRACE_BASE_COLUMNS,
     to_s3a,
 )
 
@@ -320,12 +320,18 @@ def derive_trace_steps(
             for child in tool_children:
                 if child.get("run_type") == "tool":
                     child_inputs = parse_json_object(child.get("inputs"))
-                    steps.append({
-                        "type": "tools",
-                        "content": child.get("name", "Tool"),
-                        "detail": json.dumps(child_inputs, default=str) if child_inputs else "",
-                        "durationMs": _compute_duration_ms(child),
-                    })
+                    steps.append(
+                        {
+                            "type": "tools",
+                            "content": child.get("name", "Tool"),
+                            "detail": (
+                                json.dumps(child_inputs, default=str)
+                                if child_inputs
+                                else ""
+                            ),
+                            "durationMs": _compute_duration_ms(child),
+                        }
+                    )
             if tool_children:
                 continue
 

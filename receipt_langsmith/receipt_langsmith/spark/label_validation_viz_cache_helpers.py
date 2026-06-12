@@ -15,8 +15,8 @@ from pyspark.sql import functions as F
 
 from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
-    load_json_from_s3,
     ReceiptsCachePointer,
+    load_json_from_s3,
     write_json_with_default,
     write_receipt_cache_index,
     write_receipt_json,
@@ -243,6 +243,7 @@ def extract_validation_traces(
 
 # --- Visualization Building ---
 
+
 def build_viz_receipt(
     root_trace: dict[str, Any],
     validation_traces: list[dict],
@@ -377,6 +378,7 @@ def _prepare_receipt_context(
         root_outputs=root_outputs,
         validation=validation,
     )
+
 
 def _extract_validations(
     validation_traces: list[dict],
@@ -757,7 +759,6 @@ def _resolve_parquet_prefix(
         )
         return None
     return normalized
-
 
 
 def _build_viz_receipts(

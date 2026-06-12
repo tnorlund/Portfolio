@@ -658,7 +658,9 @@ def build_decisions_block(row: dict[str, Any], prefix: str) -> dict[str, Any]:
         receipt_id = row.get("receipt_id", "?")
         logger.warning(
             "Null %s for receipt %s/%s — evaluator may not have run for this prefix",
-            decisions_key, image_id, receipt_id,
+            decisions_key,
+            image_id,
+            receipt_id,
         )
         decisions = {}
     return {
@@ -679,7 +681,9 @@ def build_geometric_block(row: dict[str, Any]) -> dict[str, Any]:
         image_id = row.get("image_id", "?")
         receipt_id = row.get("receipt_id", "?")
         logger.warning(
-            "Null geometric_issues for receipt %s/%s", image_id, receipt_id,
+            "Null geometric_issues for receipt %s/%s",
+            image_id,
+            receipt_id,
         )
         issues = []
     return {
@@ -1056,9 +1060,7 @@ def _load_data_rows(
     try:
         df = read_json_df(spark, data_path)
     except AnalysisException:
-        logger.warning(
-            "Could not read data rows from %s", data_path
-        )
+        logger.warning("Could not read data rows from %s", data_path)
         return []
 
     wanted_cols = (
@@ -1138,9 +1140,7 @@ def _clean_cache_prefix(
     # delete_objects accepts up to 1000 keys per call
     for i in range(0, len(to_delete), 1000):
         batch = to_delete[i : i + 1000]
-        s3_client.delete_objects(
-            Bucket=bucket, Delete={"Objects": batch}
-        )
+        s3_client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
     logger.info(
         "Cleaned %d stale objects from %s/%s/",
         len(to_delete),
@@ -1434,9 +1434,7 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
-                receipts_lookup_path=getattr(
-                    args, "receipts_lookup", None
-                ),
+                receipts_lookup_path=getattr(args, "receipts_lookup", None),
             )
             logger.info("Evaluator viz-cache phase complete")
 
@@ -1449,9 +1447,7 @@ def main() -> int:
                 cache_bucket=args.cache_bucket,
                 execution_id=args.execution_id,
                 batch_bucket=args.batch_bucket,
-                receipts_lookup_path=getattr(
-                    args, "receipts_lookup", None
-                ),
+                receipts_lookup_path=getattr(args, "receipts_lookup", None),
             )
             logger.info("Evaluator viz-cache phase complete")
 

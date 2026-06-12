@@ -113,9 +113,7 @@ def read_parquet_df(
         df = spark.read.option("recursiveFileLookup", "true").parquet(
             spark_path
         )
-    logger.info(
-        "Available columns in parquet: %s", sorted(df.columns)
-    )
+    logger.info("Available columns in parquet: %s", sorted(df.columns))
 
     df = normalize_trace_df(df, options)
     df = df.select(*trace_columns(options))
@@ -141,9 +139,9 @@ def add_metadata_fields(df: DataFrame) -> DataFrame:
         )
         .withColumn(
             "metadata_receipt_id",
-            F.get_json_object(
-                F.col("extra"), "$.metadata.receipt_id"
-            ).cast("int"),
+            F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast(
+                "int"
+            ),
         )
     )
 
@@ -157,9 +155,6 @@ def add_duration_ms(
     """Add duration_ms computed from start/end timestamps."""
     return df.withColumn(
         "duration_ms",
-        (
-            F.col(end_col).cast("double")
-            - F.col(start_col).cast("double")
-        )
+        (F.col(end_col).cast("double") - F.col(start_col).cast("double"))
         * 1000,
     )

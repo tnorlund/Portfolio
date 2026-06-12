@@ -456,9 +456,7 @@ def _build_constellation_data(
 
         result[merchant_name] = entry
 
-    logger.info(
-        "Extracted constellation data for %d merchants", len(result)
-    )
+    logger.info("Extracted constellation data for %d merchants", len(result))
     return result
 
 
@@ -520,11 +518,7 @@ def build_patterns_cache(
         if tid:
             rows_by_trace[tid].append(row)
         # Map merchant -> ReceiptEvaluation trace_ids
-        if (
-            _is_root(row)
-            and row.get("name") == "ReceiptEvaluation"
-            and tid
-        ):
+        if _is_root(row) and row.get("name") == "ReceiptEvaluation" and tid:
             merchant = _extract_merchant_from_extra(row.get("extra"))
             merchant_eval_traces[merchant].append(tid)
 
