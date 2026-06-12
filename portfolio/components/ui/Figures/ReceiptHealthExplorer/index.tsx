@@ -31,6 +31,7 @@ interface EvidenceWord {
 
 const BATCH_SIZE = 12;
 const INITIAL_SEED = 29;
+const MAX_ISSUE_FETCHES = 3;
 
 const CHECK_ORDER: CheckId[] = [
   "merchant_identity",
@@ -371,6 +372,7 @@ export default function ReceiptHealthExplorer() {
   const [activeCheckId, setActiveCheckId] = useState<CheckId>("merchant_identity");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [findingIssue, setFindingIssue] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -400,7 +402,7 @@ export default function ReceiptHealthExplorer() {
         );
         return [...current, ...next];
       });
-      return response.receipts.length;
+      return response.receipts;
     },
     [],
   );
@@ -506,7 +508,7 @@ export default function ReceiptHealthExplorer() {
     try {
       const previousLength = receipts.length;
       const loaded = await loadReceipts(previousLength);
-      if (loaded > 0) {
+      if (loaded.length > 0) {
         setCurrentIndex(previousLength);
       }
     } catch (err) {
@@ -516,6 +518,74 @@ export default function ReceiptHealthExplorer() {
       setLoadingMore(false);
     }
   }, [currentIndex, hasMore, loadReceipts, loadingMore, receipts.length, selectReceipt]);
+
+  const selectFirstIssueCheck = useCallback((receipt: ReceiptHealthReceipt) => {
+    const issueCheckId = receipt.primary_issues[0]?.check_id;
+    if (issueCheckId && receipt.checks.some((check) => check.id === issueCheckId)) {
+      setActiveCheckId(issueCheckId);
+      return;
+    }
+
+    const firstNonPassingCheck = receipt.checks.find((check) =>
+      check.status === "fail" || check.status === "review"
+    );
+    if (firstNonPassingCheck) {
+      setActiveCheckId(firstNonPassingCheck.id);
+    }
+  }, []);
+
+  const goNextIssue = useCallback(async () => {
+    if (findingIssue || loadingMore) return;
+    setFindingIssue(true);
+    try {
+      let searchStart = currentIndex + 1;
+      let loadedReceipts = receipts;
+
+      for (let fetchCount = 0; fetchCount <= MAX_ISSUE_FETCHES; fetchCount += 1) {
+        const issueIndex = loadedReceipts.findIndex(
+          (receipt, index) =>
+            index >= searchStart &&
+            receipt.summary.issue_count > 0 &&
+            !unavailableImageKeys.has(receiptKey(receipt)),
+        );
+
+        if (issueIndex >= 0) {
+          setCurrentIndex(issueIndex);
+          selectFirstIssueCheck(loadedReceipts[issueIndex]);
+          return;
+        }
+
+        if (!hasMore) return;
+
+        const previousLength = loadedReceipts.length;
+        const loaded = await loadReceipts(previousLength);
+        if (loaded.length === 0) return;
+
+        const existing = new Set(
+          loadedReceipts.map((receipt) => receiptKey(receipt)),
+        );
+        loadedReceipts = [
+          ...loadedReceipts,
+          ...loaded.filter((receipt) => !existing.has(receiptKey(receipt))),
+        ];
+        searchStart = previousLength;
+      }
+    } catch (err) {
+      console.error("Failed to find issue receipt:", err);
+      setError(err instanceof Error ? err.message : "Failed to find issue receipt");
+    } finally {
+      setFindingIssue(false);
+    }
+  }, [
+    currentIndex,
+    findingIssue,
+    hasMore,
+    loadReceipts,
+    loadingMore,
+    receipts,
+    selectFirstIssueCheck,
+    unavailableImageKeys,
+  ]);
 
   if (loading) {
     return (
@@ -545,6 +615,13 @@ export default function ReceiptHealthExplorer() {
 
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < receipts.length - 1 || hasMore;
+  const hasLoadedIssueAhead = receipts.some(
+    (receipt, index) =>
+      index > currentIndex &&
+      receipt.summary.issue_count > 0 &&
+      !unavailableImageKeys.has(receiptKey(receipt)),
+  );
+  const canGoNextIssue = hasLoadedIssueAhead || hasMore;
 
   return (
     <div ref={ref} className={styles.container} data-testid="receipt-health-explorer">
@@ -565,6 +642,14 @@ export default function ReceiptHealthExplorer() {
           <span className={styles.issueMetric}>
             {issueLabel(currentReceipt.summary.issue_count)}
           </span>
+          <button
+            type="button"
+            className={styles.issueButton}
+            onClick={goNextIssue}
+            disabled={!canGoNextIssue || findingIssue || loadingMore}
+          >
+            {findingIssue ? "Finding" : "Next issue"}
+          </button>
         </div>
       </div>
 

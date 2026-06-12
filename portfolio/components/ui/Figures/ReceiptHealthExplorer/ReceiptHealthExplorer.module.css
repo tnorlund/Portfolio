@@ -1,4 +1,5 @@
 .container {
+  box-sizing: border-box;
   width: 100%;
   max-width: 1120px;
   margin: 2rem auto;
@@ -65,6 +66,32 @@
   opacity: 0.7;
   text-align: center;
   white-space: nowrap;
+}
+
+.issueButton {
+  min-width: 94px;
+  height: 32px;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.issueButton:hover:not(:disabled),
+.issueButton:focus-visible:not(:disabled) {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+}
+
+.issueButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .body {
@@ -428,6 +455,7 @@
 
 @media (max-width: 640px) {
   .container {
+    width: calc(100% - 1rem);
     padding: 1rem;
   }
 
