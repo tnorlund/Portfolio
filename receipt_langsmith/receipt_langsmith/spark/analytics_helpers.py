@@ -49,9 +49,9 @@ def duration_stats(
     for percentile in percentiles:
         label = f"p{int(percentile * 100)}_duration_ms"
         aggs.append(
-            F.expr(
-                f"percentile_approx(duration_ms, {percentile})"
-            ).alias(label)
+            F.expr(f"percentile_approx(duration_ms, {percentile})").alias(
+                label
+            )
         )
     aggs.extend(
         [

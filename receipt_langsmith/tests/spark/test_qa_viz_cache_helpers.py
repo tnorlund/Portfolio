@@ -14,10 +14,10 @@ from receipt_langsmith.spark.qa_viz_cache_helpers import (
     derive_trace_steps,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build fake run dicts
 # ---------------------------------------------------------------------------
+
 
 def _make_run(
     *,
@@ -51,6 +51,7 @@ def _make_run(
 # ---------------------------------------------------------------------------
 # Test: derive_trace_steps expands ToolNode wrapper children
 # ---------------------------------------------------------------------------
+
 
 class TestDeriveTraceStepsExpandsToolChildren:
     """A depth-1 'tools' wrapper (run_type='chain') with two depth-2 tool runs
@@ -139,6 +140,7 @@ class TestDeriveTraceStepsExpandsToolChildren:
 # Test: derive_trace_steps with all_runs=None skips wrapper (backward compat)
 # ---------------------------------------------------------------------------
 
+
 class TestDeriveTraceStepsNoAllRunsSkipsWrapper:
     """When all_runs is None the 'tools' wrapper is silently skipped."""
 
@@ -167,36 +169,55 @@ class TestDeriveTraceStepsNoAllRunsSkipsWrapper:
 # Test: Agent→tools→agent→tools produces interleaved steps
 # ---------------------------------------------------------------------------
 
+
 class TestDeriveTraceStepsMultipleLoops:
     """Agent→tools→agent→tools pattern produces interleaved steps."""
 
     def test_interleaved_order(self):
         agent1 = _make_run(
-            id="agent-1", name="agent", run_type="chain",
-            parent_run_id="root", dotted_order="1.1",
+            id="agent-1",
+            name="agent",
+            run_type="chain",
+            parent_run_id="root",
+            dotted_order="1.1",
             outputs={"content": "Let me search"},
         )
         tools_wrapper1 = _make_run(
-            id="tools-w1", name="tools", run_type="chain",
-            parent_run_id="root", dotted_order="1.2",
+            id="tools-w1",
+            name="tools",
+            run_type="chain",
+            parent_run_id="root",
+            dotted_order="1.2",
         )
         agent2 = _make_run(
-            id="agent-2", name="agent", run_type="chain",
-            parent_run_id="root", dotted_order="1.3",
+            id="agent-2",
+            name="agent",
+            run_type="chain",
+            parent_run_id="root",
+            dotted_order="1.3",
             outputs={"content": "Found it"},
         )
         tools_wrapper2 = _make_run(
-            id="tools-w2", name="tools", run_type="chain",
-            parent_run_id="root", dotted_order="1.4",
+            id="tools-w2",
+            name="tools",
+            run_type="chain",
+            parent_run_id="root",
+            dotted_order="1.4",
         )
         tool_child1 = _make_run(
-            id="tc1", name="search_receipts", run_type="tool",
-            parent_run_id="tools-w1", dotted_order="1.2.1",
+            id="tc1",
+            name="search_receipts",
+            run_type="tool",
+            parent_run_id="tools-w1",
+            dotted_order="1.2.1",
             inputs={"query": "coffee"},
         )
         tool_child2 = _make_run(
-            id="tc2", name="get_receipt", run_type="tool",
-            parent_run_id="tools-w2", dotted_order="1.4.1",
+            id="tc2",
+            name="get_receipt",
+            run_type="tool",
+            parent_run_id="tools-w2",
+            dotted_order="1.4.1",
             inputs={"id": "r1"},
         )
 
@@ -220,6 +241,7 @@ class TestDeriveTraceStepsMultipleLoops:
 # Test: _classify_run unchanged for existing types
 # ---------------------------------------------------------------------------
 
+
 class TestClassifyRunUnchanged:
     @pytest.mark.parametrize(
         "name,run_type,expected",
@@ -242,24 +264,37 @@ class TestClassifyRunUnchanged:
 # Test: build_question_cache includes tool steps end-to-end
 # ---------------------------------------------------------------------------
 
+
 class TestBuildQuestionCacheIncludesToolSteps:
     def test_tool_steps_in_trace(self):
         _make_run(
-            id="root-1", name="qa_graph", run_type="chain",
-            is_root=True, dotted_order="1",
+            id="root-1",
+            name="qa_graph",
+            run_type="chain",
+            is_root=True,
+            dotted_order="1",
         )
         agent = _make_run(
-            id="agent-1", name="agent", run_type="chain",
-            parent_run_id="root-1", dotted_order="1.1",
+            id="agent-1",
+            name="agent",
+            run_type="chain",
+            parent_run_id="root-1",
+            dotted_order="1.1",
             outputs={"content": "reasoning"},
         )
         tools_wrapper = _make_run(
-            id="tools-w", name="tools", run_type="chain",
-            parent_run_id="root-1", dotted_order="1.2",
+            id="tools-w",
+            name="tools",
+            run_type="chain",
+            parent_run_id="root-1",
+            dotted_order="1.2",
         )
         tool_run = _make_run(
-            id="tool-1", name="search_receipts", run_type="tool",
-            parent_run_id="tools-w", dotted_order="1.2.1",
+            id="tool-1",
+            name="search_receipts",
+            run_type="tool",
+            parent_run_id="tools-w",
+            dotted_order="1.2.1",
             inputs={"query": "groceries"},
         )
 
@@ -289,6 +324,7 @@ class TestBuildQuestionCacheIncludesToolSteps:
 # ---------------------------------------------------------------------------
 # Test: compute_stats still counts depth-2 tools correctly
 # ---------------------------------------------------------------------------
+
 
 class TestComputeStatsStillCorrect:
     def test_tool_invocations_count_depth2(self):
@@ -359,7 +395,10 @@ class _FakeDataFrame:
 
     def select(self, *columns: str) -> "_FakeDataFrame":
         return _FakeDataFrame(
-            [{column: row.get(column) for column in columns} for row in self._rows]
+            [
+                {column: row.get(column) for column in columns}
+                for row in self._rows
+            ]
         )
 
     def toLocalIterator(self):
@@ -408,7 +447,9 @@ def test_read_parquet_traces_retries_with_recursive(monkeypatch):
 
     reader = _FakeReader(fail_plain=True, fail_recursive=False)
     spark = _FakeSparkSession(reader)
-    monkeypatch.setattr(qa_helpers, "AnalysisException", _FakeAnalysisException)
+    monkeypatch.setattr(
+        qa_helpers, "AnalysisException", _FakeAnalysisException
+    )
 
     result = qa_helpers.read_parquet_traces(spark, "s3://bucket/traces/")
 
@@ -424,7 +465,9 @@ def test_read_parquet_traces_returns_none_when_both_reads_fail(monkeypatch):
 
     reader = _FakeReader(fail_plain=True, fail_recursive=True)
     spark = _FakeSparkSession(reader)
-    monkeypatch.setattr(qa_helpers, "AnalysisException", _FakeAnalysisException)
+    monkeypatch.setattr(
+        qa_helpers, "AnalysisException", _FakeAnalysisException
+    )
 
     result = qa_helpers.read_parquet_traces(spark, "s3://bucket/traces/")
 
@@ -438,8 +481,18 @@ def test_collect_root_runs_filters_non_root_rows(monkeypatch):
     monkeypatch.setattr(qa_helpers, "F", _FakeFunctions())
     df = _FakeDataFrame(
         [
-            {"trace_id": "trace-1", "id": "root-1", "inputs": "{}", "is_root": True},
-            {"trace_id": "trace-2", "id": "child-1", "inputs": "{}", "is_root": False},
+            {
+                "trace_id": "trace-1",
+                "id": "root-1",
+                "inputs": "{}",
+                "is_root": True,
+            },
+            {
+                "trace_id": "trace-2",
+                "id": "child-1",
+                "inputs": "{}",
+                "is_root": False,
+            },
         ]
     )
 
@@ -502,12 +555,24 @@ def test_collect_root_runs_enforces_hard_limit(monkeypatch):
     monkeypatch.setattr(qa_helpers, "QA_DRIVER_ROOT_HARD_LIMIT", 1)
     df = _FakeDataFrame(
         [
-            {"trace_id": "trace-1", "id": "root-1", "inputs": "{}", "is_root": True},
-            {"trace_id": "trace-2", "id": "root-2", "inputs": "{}", "is_root": True},
+            {
+                "trace_id": "trace-1",
+                "id": "root-1",
+                "inputs": "{}",
+                "is_root": True,
+            },
+            {
+                "trace_id": "trace-2",
+                "id": "root-2",
+                "inputs": "{}",
+                "is_root": True,
+            },
         ]
     )
 
-    with pytest.raises(RuntimeError, match="root runs driver collection exceeded"):
+    with pytest.raises(
+        RuntimeError, match="root runs driver collection exceeded"
+    ):
         qa_helpers.collect_root_runs(df)
 
 
@@ -551,5 +616,7 @@ def test_collect_traces_enforces_hard_limit(monkeypatch):
         ]
     )
 
-    with pytest.raises(RuntimeError, match="trace rows driver collection exceeded"):
+    with pytest.raises(
+        RuntimeError, match="trace rows driver collection exceeded"
+    ):
         qa_helpers.collect_traces(df)

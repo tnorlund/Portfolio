@@ -18,21 +18,25 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Label sets for each verification pass
-PLACE_LABELS = frozenset({
-    "MERCHANT_NAME",
-    "ADDRESS_LINE",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "STORE_HOURS",
-})
+PLACE_LABELS = frozenset(
+    {
+        "MERCHANT_NAME",
+        "ADDRESS_LINE",
+        "PHONE_NUMBER",
+        "WEBSITE",
+        "STORE_HOURS",
+    }
+)
 
-FORMAT_LABELS = frozenset({
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "LOYALTY_ID",
-})
+FORMAT_LABELS = frozenset(
+    {
+        "DATE",
+        "TIME",
+        "PAYMENT_METHOD",
+        "COUPON",
+        "LOYALTY_ID",
+    }
+)
 
 
 def _parse_json(raw: Any) -> Any:
@@ -105,9 +109,16 @@ def _build_decision_entry(
         "decision": llm_review.get("decision"),
         "confidence": llm_review.get("confidence"),
         "reasoning": llm_review.get("reasoning"),
-        "bbox": _extract_bbox(word) if word else {
-            "x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0,
-        },
+        "bbox": (
+            _extract_bbox(word)
+            if word
+            else {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 0.0,
+                "height": 0.0,
+            }
+        ),
     }
 
 
@@ -139,15 +150,14 @@ def _build_decision_summary(
     """Count V/I/R decisions."""
     total = len(decisions)
     valid = sum(
-        1 for d in decisions
-        if (d.get("decision") or "").upper() == "VALID"
+        1 for d in decisions if (d.get("decision") or "").upper() == "VALID"
     )
     invalid = sum(
-        1 for d in decisions
-        if (d.get("decision") or "").upper() == "INVALID"
+        1 for d in decisions if (d.get("decision") or "").upper() == "INVALID"
     )
     needs_review = sum(
-        1 for d in decisions
+        1
+        for d in decisions
         if (d.get("decision") or "").upper() == "NEEDS_REVIEW"
     )
     return {
@@ -204,14 +214,16 @@ def _build_financial_equations(
     for desc, group in groups.items():
         first_issue = group[0].get("issue", {})
         involved_words = [_build_decision_entry(d, word_lookup) for d in group]
-        equations.append({
-            "issue_type": first_issue.get("issue_type", ""),
-            "description": desc,
-            "expected_value": first_issue.get("expected_value"),
-            "actual_value": first_issue.get("actual_value"),
-            "difference": first_issue.get("difference"),
-            "involved_words": involved_words,
-        })
+        equations.append(
+            {
+                "issue_type": first_issue.get("issue_type", ""),
+                "description": desc,
+                "expected_value": first_issue.get("expected_value"),
+                "actual_value": first_issue.get("actual_value"),
+                "difference": first_issue.get("difference"),
+                "involved_words": involved_words,
+            }
+        )
 
     return equations
 
@@ -243,13 +255,15 @@ def _build_word_list(words: list[dict]) -> list[dict[str, Any]]:
     """Build simplified word list with bboxes for the frontend."""
     result: list[dict[str, Any]] = []
     for w in words:
-        result.append({
-            "text": w.get("text", ""),
-            "label": w.get("label"),
-            "line_id": w.get("line_id"),
-            "word_id": w.get("word_id"),
-            "bbox": _extract_bbox(w),
-        })
+        result.append(
+            {
+                "text": w.get("text", ""),
+                "label": w.get("label"),
+                "line_id": w.get("line_id"),
+                "word_id": w.get("word_id"),
+                "bbox": _extract_bbox(w),
+            }
+        )
     return result
 
 
@@ -359,9 +373,11 @@ def build_within_receipt_cache(
         merchant_name = urow.get("merchant_name", "")
 
         # Lookup data row for place + words + CDN keys
-        data_row = data_lookup.get(
-            (str(image_id), int(receipt_id))
-        ) if receipt_id is not None else None
+        data_row = (
+            data_lookup.get((str(image_id), int(receipt_id)))
+            if receipt_id is not None
+            else None
+        )
 
         # Words and bbox lookup
         raw_words = data_row.get("words", []) if data_row else []
@@ -369,23 +385,30 @@ def build_within_receipt_cache(
 
         # Place data
         place_raw = data_row.get("place") if data_row else None
-        place_parsed = _parse_json(place_raw) if isinstance(place_raw, str) else place_raw
+        place_parsed = (
+            _parse_json(place_raw) if isinstance(place_raw, str) else place_raw
+        )
         place_info = _extract_place_info(place_parsed)
 
         # Parse metadata_all_decisions
         metadata_raw = urow.get("metadata_all_decisions")
-        metadata_decisions = _parse_json(metadata_raw) if metadata_raw else None
+        metadata_decisions = (
+            _parse_json(metadata_raw) if metadata_raw else None
+        )
         if not isinstance(metadata_decisions, list):
             metadata_decisions = []
 
         # Split into place and format
         place_decisions, format_decisions = _split_metadata_decisions(
-            metadata_decisions, word_lookup,
+            metadata_decisions,
+            word_lookup,
         )
 
         # Parse financial_all_decisions from unified row
         financial_raw = urow.get("financial_all_decisions")
-        financial_decisions = _parse_json(financial_raw) if financial_raw else None
+        financial_decisions = (
+            _parse_json(financial_raw) if financial_raw else None
+        )
         if not isinstance(financial_decisions, list):
             financial_decisions = []
 
@@ -393,7 +416,8 @@ def build_within_receipt_cache(
         equations = financial_trace_lookup.get(trace_id, [])
         if not equations and financial_decisions:
             equations = _build_financial_equations(
-                financial_decisions, word_lookup,
+                financial_decisions,
+                word_lookup,
             )
 
         # Duration seconds
@@ -428,8 +452,11 @@ def build_within_receipt_cache(
         cdn_source = lookup_row or data_row
         if cdn_source:
             for key in (
-                "cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key",
-                "cdn_medium_s3_key", "cdn_medium_webp_s3_key",
+                "cdn_s3_key",
+                "cdn_webp_s3_key",
+                "cdn_avif_s3_key",
+                "cdn_medium_s3_key",
+                "cdn_medium_webp_s3_key",
                 "cdn_medium_avif_s3_key",
             ):
                 val = cdn_source.get(key)

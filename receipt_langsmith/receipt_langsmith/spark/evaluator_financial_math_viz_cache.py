@@ -135,7 +135,8 @@ def _build_confirmed_equations(
     expected_value / actual_value are left as None.
     """
     valid_decisions = [
-        d for d in decisions
+        d
+        for d in decisions
         if d.get("llm_review", {}).get("decision") == "VALID"
     ]
     if not valid_decisions:
@@ -229,7 +230,9 @@ def _build_confirmed_equations(
                 line_groups[lid]["LINE_TOTAL"].append(d)
 
         for lid, group in sorted(line_groups.items()):
-            all_d = group["QUANTITY"] + group["UNIT_PRICE"] + group["LINE_TOTAL"]
+            all_d = (
+                group["QUANTITY"] + group["UNIT_PRICE"] + group["LINE_TOTAL"]
+            )
             # Need a LINE_TOTAL (the result) plus at least one operand
             if not group["LINE_TOTAL"]:
                 continue
@@ -257,7 +260,8 @@ def _build_equations(
     """Group decisions by description (equation) and build equation dicts."""
     # Filter out VALID confirmations — they lack equation metadata
     equation_decisions = [
-        d for d in decisions
+        d
+        for d in decisions
         if d.get("llm_review", {}).get("decision") != "VALID"
     ]
 
@@ -412,7 +416,9 @@ def build_financial_math_cache(
 
         # Build equations grouped by description
         equations = _build_equations(output_list, word_lookup)
-        confirmed_equations = _build_confirmed_equations(output_list, word_lookup)
+        confirmed_equations = _build_confirmed_equations(
+            output_list, word_lookup
+        )
         equations.extend(confirmed_equations)
         summary = _build_summary(
             equations, total_confirmed=len(confirmed_equations)
@@ -423,9 +429,7 @@ def build_financial_math_cache(
         width = 0
         height = 0
         if receipt_lookup and receipt_id is not None:
-            lookup_row = receipt_lookup.get(
-                (str(image_id), int(receipt_id))
-            )
+            lookup_row = receipt_lookup.get((str(image_id), int(receipt_id)))
             if lookup_row:
                 for key in (
                     "cdn_s3_key",
@@ -444,7 +448,9 @@ def build_financial_math_cache(
         # Skip receipts with no equations — nothing to visualize.
         if not equations:
             logger.debug(
-                "Skipping %s/%s: no equations to visualize", image_id, receipt_id
+                "Skipping %s/%s: no equations to visualize",
+                image_id,
+                receipt_id,
             )
             continue
 
@@ -459,11 +465,11 @@ def build_financial_math_cache(
                 "summary": summary,
                 "width": width,
                 "height": height,
-                "reocr_region": reocr_lookup.get(
-                    (str(image_id), int(receipt_id))
-                )
-                if receipt_id is not None
-                else None,
+                "reocr_region": (
+                    reocr_lookup.get((str(image_id), int(receipt_id)))
+                    if receipt_id is not None
+                    else None
+                ),
                 **cdn_fields,
             }
         )

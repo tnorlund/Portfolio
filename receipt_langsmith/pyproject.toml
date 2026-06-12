@@ -43,12 +43,22 @@ dev = [
     "pytest>=8.3.0,<10.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-cov>=6.1.0,<8.0.0",
+    "pytest-xdist>=3.6.0,<4.0.0",
+    "pytest-timeout>=2.1.0,<3.0.0",
+    "pytest-rerunfailures>=14.0,<17.0",
     "moto>=5.1.0",
-    "black==26.1.0",
+    "black==26.5.1",
     "pylint>=3.0.0,<5.0.0",
     "mypy>=1.19.0",
     "pyarrow-stubs>=15.0.0",
-    "isort==8.0.0",
+    "isort==8.0.1",
+]
+
+# Lint-only dependencies (installed by CI's lint step)
+lint = [
+    "black==26.5.1",
+    "isort==8.0.1",
 ]
 
 [tool.hatch.build]

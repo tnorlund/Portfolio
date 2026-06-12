@@ -55,7 +55,9 @@ def test_read_parquet_df_retries_with_recursive_lookup(monkeypatch):
 
     reader = _FakeReader(fail_plain=True)
     spark = _FakeSparkSession(reader)
-    monkeypatch.setattr(trace_df_mod, "AnalysisException", _FakeAnalysisException)
+    monkeypatch.setattr(
+        trace_df_mod, "AnalysisException", _FakeAnalysisException
+    )
     monkeypatch.setattr(
         trace_df_mod,
         "normalize_trace_df",
@@ -82,7 +84,9 @@ def test_read_parquet_df_uses_standard_read_when_available(monkeypatch):
 
     reader = _FakeReader(fail_plain=False)
     spark = _FakeSparkSession(reader)
-    monkeypatch.setattr(trace_df_mod, "AnalysisException", _FakeAnalysisException)
+    monkeypatch.setattr(
+        trace_df_mod, "AnalysisException", _FakeAnalysisException
+    )
     monkeypatch.setattr(
         trace_df_mod,
         "normalize_trace_df",

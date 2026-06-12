@@ -111,7 +111,10 @@ def test_diff_cache_accepts_preloaded_rows() -> None:
             ),
         },
         {
-            "name": "currency_evaluation",
+            # metadata_evaluation supplies both words (inputs) and
+            # decisions (outputs); the legacy currency_evaluation span
+            # name was dropped from the diff cache in #860
+            "name": "metadata_evaluation",
             "trace_id": "trace-2",
             "inputs": json.dumps(
                 {
@@ -433,6 +436,9 @@ def test_load_unified_rows_uses_multiline_reader(
         return _FakeDataFrame(unified_rows)
 
     monkeypatch.setattr(merged_job_mod, "read_json_df", _fake_read_json_df)
+    # F.lit requires a live SparkContext; _FakeDataFrame.withColumn ignores
+    # the expression, so stub it to keep the missing-column path exercised
+    monkeypatch.setattr(merged_job_mod.F, "lit", lambda _value: None)
     rows = merged_job_mod._load_unified_rows(
         spark=cast(Any, object()),
         batch_bucket="batch-bucket",
@@ -442,6 +448,8 @@ def test_load_unified_rows_uses_multiline_reader(
     assert len(rows) == 2
     assert rows[0]["image_id"] == "img-1"
     assert isinstance(rows[0]["review_all_decisions"], list)
+    # Columns absent from the source data are backfilled with None
+    assert rows[0]["metadata_all_decisions"] is None
 
 
 def test_load_evaluator_rows_enforces_hard_limit(
@@ -457,7 +465,9 @@ def test_load_evaluator_rows_enforces_hard_limit(
     monkeypatch.setattr(merged_job_mod, "F", _FakeFunctions())
     monkeypatch.setattr(merged_job_mod, "DRIVER_COLLECTION_HARD_LIMIT", 1)
 
-    with pytest.raises(RuntimeError, match="driver collection exceeded hard limit"):
+    with pytest.raises(
+        RuntimeError, match="driver collection exceeded hard limit"
+    ):
         merged_job_mod._load_evaluator_trace_rows(
             cast(Any, spark),
             "s3://input/traces/",

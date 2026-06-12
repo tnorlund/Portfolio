@@ -9,6 +9,7 @@ This module provides:
 
 from receipt_langsmith.parsers.json_fields import parse_extra, parse_json
 from receipt_langsmith.parsers.parquet import ParquetReader
+
 # Label validation helpers (receipt-label-validation project)
 from receipt_langsmith.parsers.trace_helpers import (
     LabelValidationTraceIndex,

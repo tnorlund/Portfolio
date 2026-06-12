@@ -43,10 +43,10 @@ from receipt_langsmith.spark.cli import (
     run_spark_job,
 )
 from receipt_langsmith.spark.qa_viz_cache_helpers import (
-    build_qa_baseline_profile,
     QACacheJobConfig,
     QACacheWriteContext,
     build_cache_files_from_parquet,
+    build_qa_baseline_profile,
     load_question_results,
     load_receipts_lookup,
     qa_cache_config_from_args,

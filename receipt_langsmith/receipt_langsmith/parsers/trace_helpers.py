@@ -253,6 +253,7 @@ def get_relative_timing(
 
     return (start_ms, duration_ms)
 
+
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def load_s3_result(
     s3_client: Any,

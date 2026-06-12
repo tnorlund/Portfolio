@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places, receipt_langsmith]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -93,6 +93,10 @@ jobs:
               pip install --no-deps -e receipt_places
               pip install pydantic pydantic-settings structlog boto3 requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
+              ;;
+            receipt_langsmith)
+              # Standalone package; pyspark extra needed for tests/spark
+              pip install -e "receipt_langsmith[pyspark,dev]"
               ;;
             *)
               pip install -e "${{ matrix.package }}[test]"
