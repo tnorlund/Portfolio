@@ -222,6 +222,37 @@ def _filter_ledger_issues(
     return issues
 
 
+def _filter_run_issues(
+    run_issues: dict[str, Any],
+    query_params: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Filter immutable run issue entries for API consumers."""
+    state = query_params.get("state")
+    check_id = query_params.get("check_id")
+    image_id = query_params.get("image_id")
+
+    issues = []
+    for issue in run_issues.get("issues", []):
+        if check_id and issue.get("check_id") != check_id:
+            continue
+        if image_id and str(issue.get("image_id")) != image_id:
+            continue
+
+        issue_state = issue.get("state")
+        if state and state != "all" and issue_state and issue_state != state:
+            continue
+        issues.append(issue)
+
+    issues.sort(
+        key=lambda issue: (
+            str(issue.get("observed_at") or ""),
+            str(issue.get("merchant_name") or ""),
+            str(issue.get("issue_id") or ""),
+        )
+    )
+    return issues
+
+
 def _summarize_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     """Recalculate compact ledger counts after an API update."""
     by_state: dict[str, int] = {}
@@ -263,11 +294,23 @@ def _handle_receipt_health_issues_get(
                     "execution_id": execution_id,
                 },
             )
+        limit = _parse_limit(
+            query_params,
+            default=10,
+            maximum=MAX_ISSUE_BATCH_SIZE,
+        )
+        issues = _filter_run_issues(run_issues, query_params)
         return _response(
             200,
             {
-                **run_issues,
+                "issues": issues[:limit],
+                "count": min(len(issues), limit),
+                "limit": limit,
+                "state": query_params.get("state", "all"),
+                "summary": run_issues.get("summary", {}),
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "execution_id": run_issues.get("execution_id", execution_id),
+                "cached_at": run_issues.get("cached_at"),
             },
             cache_control="public, max-age=60, s-maxage=60, stale-while-revalidate=300",
         )
