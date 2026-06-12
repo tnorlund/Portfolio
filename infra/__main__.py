@@ -1562,6 +1562,7 @@ if hasattr(api_gateway, "api"):
         "dedup",
         "within_receipt",
         "receipt_health",
+        "receipt_health_issues",
     ]:
         _integration = aws.apigatewayv2.Integration(
             f"label_evaluator_{viz_name}_integration",
@@ -1581,6 +1582,27 @@ if hasattr(api_gateway, "api"):
                 delete_before_replace=True,
             ),
         )
+
+    receipt_health_issues_post_integration = aws.apigatewayv2.Integration(
+        "label_evaluator_receipt_health_issues_post_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    aws.apigatewayv2.Route(
+        "label_evaluator_receipt_health_issues_post_route",
+        api_id=api_gateway.api.id,
+        route_key="POST /label_evaluator/receipt_health_issues",
+        target=receipt_health_issues_post_integration.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
 
     # Label Validation Visualization Cache (uses label_validation_project_name)
     from routes.label_validation_viz_cache import (

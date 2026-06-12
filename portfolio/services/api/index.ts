@@ -17,6 +17,7 @@ import {
   LayoutLMBatchInferenceResponse,
   FinancialMathResponse,
   ReceiptHealthResponse,
+  ReceiptHealthIssuesResponse,
   WithinReceiptVerificationResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
@@ -338,6 +339,43 @@ const baseApi = {
 
     const response = await fetch(
       `${apiUrl}/label_evaluator/receipt_health?${params.toString()}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchReceiptHealthIssues(options: {
+    state?: string;
+    checkId?: string;
+    imageId?: string;
+    executionId?: string;
+    limit?: number;
+  } = {}): Promise<ReceiptHealthIssuesResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    if (options.state) {
+      params.set("state", options.state);
+    }
+    if (options.checkId) {
+      params.set("check_id", options.checkId);
+    }
+    if (options.imageId) {
+      params.set("image_id", options.imageId);
+    }
+    if (options.executionId) {
+      params.set("execution_id", options.executionId);
+    }
+    if (options.limit !== undefined) {
+      params.set("limit", options.limit.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/receipt_health_issues?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

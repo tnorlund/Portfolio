@@ -1,6 +1,6 @@
 import importlib.util
+from copy import deepcopy
 from pathlib import Path
-
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
@@ -15,6 +15,14 @@ build_viz_cache = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(build_viz_cache)
 
 build_receipt_health_entry = build_viz_cache.build_receipt_health_entry
+build_receipt_health_issues = build_viz_cache.build_receipt_health_issues
+build_receipt_health_run_artifacts = (
+    build_viz_cache.build_receipt_health_run_artifacts
+)
+eligible_receipt_health_issues = build_viz_cache.eligible_receipt_health_issues
+reconcile_receipt_health_ledger = (
+    build_viz_cache.reconcile_receipt_health_ledger
+)
 
 
 def _base_within_entry():
@@ -137,3 +145,132 @@ def test_build_receipt_health_entry_passes_when_some_checks_not_applicable():
     assert entry["overall_status"] == "pass"
     assert entry["summary"]["passed"] == 2
     assert entry["summary"]["not_applicable"] == 1
+
+
+def test_build_receipt_health_issues_uses_stable_fingerprints():
+    entry = build_receipt_health_entry(_base_within_entry())
+
+    issues = build_receipt_health_issues(
+        entry,
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+    later_issues = build_receipt_health_issues(
+        entry,
+        execution_id="exec-2",
+        observed_at="2026-01-02T00:00:00+00:00",
+    )
+
+    assert [issue["check_id"] for issue in issues] == [
+        "financial_math",
+        "receipt_format",
+    ]
+    assert issues[0]["status"] == "fail"
+    assert issues[0]["issue_type"] == "GRAND_TOTAL"
+    assert issues[0]["issue_id"] == later_issues[0]["issue_id"]
+    assert issues[1]["status"] == "review"
+    assert issues[1]["issue_id"] == later_issues[1]["issue_id"]
+
+
+def test_build_receipt_health_run_artifacts_summarizes_execution():
+    entry = build_receipt_health_entry(_base_within_entry())
+
+    issues, summary = build_receipt_health_run_artifacts(
+        [entry],
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+
+    assert len(issues) == 2
+    assert summary["execution_id"] == "exec-1"
+    assert summary["total_receipts"] == 1
+    assert summary["total_issues"] == 2
+    assert summary["receipts_with_issues"] == 1
+    assert summary["by_check"]["financial_math"]["fail"] == 1
+    assert summary["by_issue_type"]["GRAND_TOTAL"] == 1
+
+
+def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
+    entry = build_receipt_health_entry(_base_within_entry())
+    run_issues = build_receipt_health_issues(
+        entry,
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+
+    ledger = reconcile_receipt_health_ledger(
+        None,
+        run_issues,
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+
+    assert ledger["summary"]["by_state"] == {"open": 2}
+    assert len(eligible_receipt_health_issues(ledger, limit=10)) == 2
+
+    attempted = deepcopy(ledger)
+    attempted["issues"][0]["state"] = "awaiting_validation"
+    attempted["issues"][0]["attempt_count"] = 1
+    attempted["issues"][0]["last_attempted_execution_id"] = "exec-1"
+
+    still_failing = reconcile_receipt_health_ledger(
+        attempted,
+        run_issues,
+        execution_id="exec-2",
+        observed_at="2026-01-02T00:00:00+00:00",
+    )
+
+    retried_issue = next(
+        issue
+        for issue in still_failing["issues"]
+        if issue["issue_id"] == attempted["issues"][0]["issue_id"]
+    )
+    assert retried_issue["state"] == "open"
+    assert retried_issue["attempt_count"] == 1
+    assert retried_issue["last_validation_execution_id"] == "exec-2"
+
+    resolved = reconcile_receipt_health_ledger(
+        still_failing,
+        [],
+        execution_id="exec-3",
+        observed_at="2026-01-03T00:00:00+00:00",
+    )
+
+    assert resolved["summary"]["by_state"] == {"resolved": 2}
+    assert all(
+        issue["resolved_execution_id"] == "exec-3"
+        for issue in resolved["issues"]
+    )
+
+
+def test_reconcile_receipt_health_ledger_escalates_after_max_attempts():
+    entry = build_receipt_health_entry(_base_within_entry())
+    run_issues = build_receipt_health_issues(
+        entry,
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+    ledger = reconcile_receipt_health_ledger(
+        None,
+        run_issues,
+        execution_id="exec-1",
+        observed_at="2026-01-01T00:00:00+00:00",
+    )
+    ledger["issues"][0]["state"] = "awaiting_validation"
+    ledger["issues"][0]["attempt_count"] = 2
+
+    reconciled = reconcile_receipt_health_ledger(
+        ledger,
+        run_issues,
+        execution_id="exec-2",
+        observed_at="2026-01-02T00:00:00+00:00",
+        max_attempts=2,
+    )
+
+    escalated = next(
+        issue
+        for issue in reconciled["issues"]
+        if issue["issue_id"] == ledger["issues"][0]["issue_id"]
+    )
+    assert escalated["state"] == "manual_review"
+    assert "automated attempts" in escalated["blocked_reason"]

@@ -978,3 +978,59 @@ export interface ReceiptHealthResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+export type ReceiptHealthIssueState =
+  | "open"
+  | "claimed"
+  | "awaiting_validation"
+  | "resolved"
+  | "blocked"
+  | "manual_review";
+
+export interface ReceiptHealthLedgerIssue {
+  issue_id: string;
+  fingerprint: string;
+  execution_id: string;
+  observed_at: string;
+  image_id: string;
+  receipt_id: number;
+  merchant_name?: string;
+  receipt_type?: "itemized" | "service" | "terminal";
+  check_id: ReceiptHealthCheck["id"];
+  check_title: string;
+  validator: ReceiptHealthCheck["validator"];
+  status: ReceiptHealthStatus;
+  issue_type: string;
+  message: string;
+  result?: string;
+  evidence: Array<Record<string, unknown>>;
+  state?: ReceiptHealthIssueState;
+  first_seen_at?: string;
+  first_seen_execution_id?: string;
+  last_seen_at?: string;
+  last_seen_execution_id?: string;
+  occurrence_count?: number;
+  attempt_count?: number;
+  last_attempted_at?: string;
+  last_attempt_summary?: string;
+}
+
+export interface ReceiptHealthLedgerSummary {
+  total_issues: number;
+  by_state: Record<string, number>;
+  by_check: Record<string, number>;
+  eligible_issues: number;
+}
+
+export interface ReceiptHealthIssuesResponse {
+  issues: ReceiptHealthLedgerIssue[];
+  count?: number;
+  limit?: number;
+  state?: string;
+  summary?: ReceiptHealthLedgerSummary | Record<string, unknown>;
+  latest_execution_id?: string;
+  execution_id?: string;
+  updated_at?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}
