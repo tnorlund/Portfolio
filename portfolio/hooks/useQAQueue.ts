@@ -112,6 +112,7 @@ export function useQAQueue(prefetchAhead = 3): UseQAQueueResult {
         queryKey: ["qa", "metadata"],
         queryFn: async () => {
           const r = await fetch(`${API_CONFIG.baseUrl}/qa/visualization`);
+          if (!r.ok) throw new Error("Failed to fetch QA metadata");
           return r.json();
         },
         staleTime: Infinity,
