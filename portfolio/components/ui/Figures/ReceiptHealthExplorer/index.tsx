@@ -3,6 +3,7 @@ import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
 import {
   ReceiptHealthCheck,
+  ReceiptHealthLedgerIssue,
   ReceiptHealthReceipt,
   ReceiptHealthStatus,
   WithinReceiptWordDecision,
@@ -16,10 +17,17 @@ import {
   DEFAULT_LAYOUT_VARS,
   ReceiptFlowLoadingShell,
 } from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
+import {
+  getQueuePosition,
+  getVisibleQueueIndices,
+} from "../ReceiptFlow/receiptFlowUtils";
+import type { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import styles from "./ReceiptHealthExplorer.module.css";
 
 type CheckId = ReceiptHealthCheck["id"];
+type DetailId = CheckId | "issues" | "ledger" | "automation";
 
 interface EvidenceWord {
   key: string;
@@ -32,6 +40,54 @@ interface EvidenceWord {
 const BATCH_SIZE = 12;
 const INITIAL_SEED = 29;
 const MAX_ISSUE_FETCHES = 3;
+const FLOW_LAYOUT_VARS = {
+  ...DEFAULT_LAYOUT_VARS,
+  "--rf-align-items": "center",
+} as React.CSSProperties;
+
+const FLOW_MOCK_SCENARIOS: Array<{
+  label: string;
+  imageId: string;
+  receiptId: number;
+  focus: DetailId;
+}> = [
+  {
+    label: "Clean",
+    imageId: "9afeb902-28ff-436a-b69a-e0f5204eefa8",
+    receiptId: 2,
+    focus: "merchant_identity",
+  },
+  {
+    label: "Merchant",
+    imageId: "7d76a4bf-0deb-433b-9cc1-4561aa818061",
+    receiptId: 1,
+    focus: "merchant_identity",
+  },
+  {
+    label: "Format",
+    imageId: "ac5fd741-29f2-4e05-bf69-9c216ec8a56a",
+    receiptId: 2,
+    focus: "receipt_format",
+  },
+  {
+    label: "Math",
+    imageId: "946ba856-ae61-4428-bbc1-78ba268d6f0e",
+    receiptId: 1,
+    focus: "financial_math",
+  },
+  {
+    label: "Known limit",
+    imageId: "6539deb9-52cc-49a0-81a0-3a64989bee49",
+    receiptId: 4,
+    focus: "automation",
+  },
+  {
+    label: "Consistent",
+    imageId: "129ee4aa-2053-4cd7-8534-a9817f8a3402",
+    receiptId: 2,
+    focus: "automation",
+  },
+];
 
 const CHECK_ORDER: CheckId[] = [
   "merchant_identity",
@@ -73,6 +129,27 @@ const DECISION_COLOR: Record<string, string> = {
   CORRECTED: "var(--color-blue)",
 };
 
+const ISSUE_STATE_LABELS: Record<string, string> = {
+  open: "Open",
+  claimed: "Claimed",
+  awaiting_validation: "Waiting",
+  resolved: "Resolved",
+  blocked: "Blocked",
+  manual_review: "Review",
+  known_limitation: "Known limit",
+};
+
+const PREFLIGHT_LABELS: Record<string, string> = {
+  not_applicable: "N/A",
+  needs_ai_review: "AI review",
+  already_consistent: "Consistent",
+  safe_exact_plan: "Safe plan",
+  math_mismatch: "Math mismatch",
+  known_limitation: "Known limit",
+  reocr_needed: "Re-OCR",
+  evaluator_rule_gap: "Rule gap",
+};
+
 function receiptKey(receipt: ReceiptHealthReceipt): string {
   return `${receipt.image_id}-${receipt.receipt_id}`;
 }
@@ -91,6 +168,25 @@ function statusClass(status: ReceiptHealthStatus): string {
 function issueLabel(count: number): string {
   if (count === 1) return "1 issue";
   return `${count} issues`;
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function isCheckId(detailId: DetailId): detailId is CheckId {
+  return CHECK_ORDER.includes(detailId as CheckId);
+}
+
+function scenarioForReceipt(
+  receipt: ReceiptHealthReceipt | null,
+): (typeof FLOW_MOCK_SCENARIOS)[number] | undefined {
+  if (!receipt) return undefined;
+  return FLOW_MOCK_SCENARIOS.find(
+    (scenario) =>
+      scenario.imageId === receipt.image_id &&
+      scenario.receiptId === receipt.receipt_id,
+  );
 }
 
 function normalizeDecisionWord(
@@ -143,6 +239,49 @@ function evidenceForCheck(
     }
   }
   return Array.from(byWord.values());
+}
+
+function checkMethodLabel(check: ReceiptHealthCheck): string {
+  if (check.id === "financial_math") {
+    return "math rule";
+  }
+
+  return check.is_llm ? "LLM" : "rule";
+}
+
+function checkEvidenceLabel(check: ReceiptHealthCheck): string {
+  return check.id === "financial_math"
+    ? countLabel(check.evidence_count, "label box", "label boxes")
+    : countLabel(check.evidence_count, "box", "boxes");
+}
+
+function mismatchCount(check: ReceiptHealthCheck): number {
+  if (check.id !== "financial_math") return 0;
+  return "mismatched_equations" in check.summary
+    ? (check.summary.mismatched_equations ?? 0)
+    : 0;
+}
+
+function checkDetailValue(check: ReceiptHealthCheck): string {
+  const mismatches = mismatchCount(check);
+  if (mismatches > 0) {
+    return `${STATUS_LABELS[check.status]}: ${countLabel(mismatches, "mismatch")}`;
+  }
+
+  return STATUS_LABELS[check.status];
+}
+
+function checkDetailNote(check: ReceiptHealthCheck): string {
+  const mismatches = mismatchCount(check);
+  if (check.id === "financial_math" && mismatches > 0) {
+    return "Green boxes mean the visible labels are valid. The check fails because the totals still do not reconcile.";
+  }
+
+  if (check.status === "fail" || check.status === "review") {
+    return check.result;
+  }
+
+  return check.question;
 }
 
 function receiptTitle(receipt: ReceiptHealthReceipt): string {
@@ -336,28 +475,617 @@ function Issues({ receipt }: { receipt: ReceiptHealthReceipt }) {
   );
 }
 
-function ReceiptRail({
+function IssueLedger({
+  issues,
+  loading,
+}: {
+  issues: ReceiptHealthLedgerIssue[];
+  loading: boolean;
+}) {
+  return (
+    <div className={styles.ledgerList}>
+      {loading ? (
+        <div className={styles.issueEmpty}>Loading issue state.</div>
+      ) : null}
+      {!loading && issues.length === 0 ? (
+        <div className={styles.issueEmpty}>No ledger state for this receipt.</div>
+      ) : null}
+      {issues.map((issue) => {
+        const preflight = issue.preflight;
+        const classification = preflight?.classification;
+        return (
+          <div key={issue.issue_id} className={styles.ledgerItem}>
+            <div className={styles.ledgerItemHeader}>
+              <span className={styles.ledgerIssueType}>{issue.issue_type}</span>
+              <span className={styles.ledgerState}>
+                {ISSUE_STATE_LABELS[issue.state ?? "open"] ?? issue.state ?? "Open"}
+              </span>
+            </div>
+            <div className={styles.ledgerMessage}>{issue.message}</div>
+            {preflight ? (
+              <div className={styles.preflightRow}>
+                <span className={styles.preflightBadge}>
+                  {PREFLIGHT_LABELS[classification ?? ""] ?? classification}
+                </span>
+                <span className={styles.preflightSummary}>
+                  {preflight.summary}
+                </span>
+              </div>
+            ) : null}
+            {preflight?.is_automation_ready ? (
+              <div className={styles.actionCount}>
+                {preflight.action_count} exact actions
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReceiptHealthFlowQueue({
   receipts,
   currentIndex,
+  formatSupport,
   onSelect,
 }: {
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
+  formatSupport: ImageFormatSupport | null;
   onSelect: (index: number) => void;
 }) {
+  const visibleIndices = useMemo(() => {
+    if (receipts.length === 0) return [];
+
+    const nextIndices = getVisibleQueueIndices(receipts.length, currentIndex, 6, false);
+    if (nextIndices.length > 0) return nextIndices;
+
+    const start = Math.max(0, currentIndex - 6);
+    return Array.from(
+      { length: currentIndex - start },
+      (_, offset) => start + offset,
+    );
+  }, [currentIndex, receipts.length]);
+
+  if (!formatSupport || visibleIndices.length === 0) {
+    return <div className={styles.flowReceiptQueue} />;
+  }
+
   return (
-    <div className={styles.receiptRail} aria-label="Loaded receipts">
-      {receipts.map((receipt, index) => (
-        <button
-          key={`${receipt.image_id}-${receipt.receipt_id}`}
-          type="button"
-          className={`${styles.railDot} ${index === currentIndex ? styles.railDotActive : ""} ${STATUS_CLASS[receipt.overall_status]}`}
-          onClick={() => onSelect(index)}
-          aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
-          aria-current={index === currentIndex ? "true" : undefined}
-        />
-      ))}
+    <div className={styles.flowReceiptQueue} data-rf-queue>
+      {visibleIndices.map((receiptIndex, stackIndex) => {
+        const receipt = receipts[receiptIndex];
+        const imageUrl = getBestImageUrl(receipt, formatSupport, "thumbnail");
+        const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
+        const { rotation, leftOffset } = getQueuePosition(receiptId);
+
+        return (
+          <button
+            key={`${receiptId}-mock-${receiptIndex}`}
+            type="button"
+            className={styles.flowQueuedReceipt}
+            style={{
+              top: `${stackIndex * 20}px`,
+              left: `${10 + leftOffset}px`,
+              transform: `rotate(${rotation}deg)`,
+              zIndex: visibleIndices.length - stackIndex,
+            }}
+            onClick={() => onSelect(receiptIndex)}
+            aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
+          >
+            {imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imageUrl}
+                alt=""
+                className={styles.flowQueuedReceiptImage}
+                onError={(event) => {
+                  const fallback = getJpegFallbackUrl(receipt);
+                  if (event.currentTarget.src !== fallback) {
+                    event.currentTarget.src = fallback;
+                  }
+                }}
+              />
+            ) : null}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function ReceiptHealthFlowReceipt({
+  receipt,
+  activeCheck,
+  onImageUnavailable,
+}: {
+  receipt: ReceiptHealthReceipt;
+  activeCheck: ReceiptHealthCheck;
+  onImageUnavailable: (receipt: ReceiptHealthReceipt) => void;
+}) {
+  const formatSupport = useImageFormatSupport();
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  const imageUrl = useMemo(() => {
+    if (!formatSupport) return null;
+    return getBestImageUrl(receipt, formatSupport, "medium");
+  }, [formatSupport, receipt]);
+
+  const evidence = useMemo(
+    () => evidenceForCheck(receipt, activeCheck.id),
+    [activeCheck.id, receipt],
+  );
+
+  useEffect(() => {
+    setImageFailed(false);
+    setNaturalSize(null);
+  }, [receipt.image_id, receipt.receipt_id]);
+
+  if (!imageUrl || imageFailed) {
+    return <div className={styles.flowReceiptLoading}>Loading...</div>;
+  }
+
+  const width = naturalSize?.width ?? receipt.width;
+  const height = naturalSize?.height ?? receipt.height;
+  const color = STATUS_COLOR[activeCheck.status];
+
+  return (
+    <div className={styles.flowActiveReceipt}>
+      <div className={styles.flowReceiptImageWrapper}>
+        <div className={styles.flowReceiptImageInner}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={receiptTitle(receipt)}
+            width={receipt.width}
+            height={receipt.height}
+            className={styles.flowReceiptImage}
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                setNaturalSize({
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                });
+              }
+            }}
+            onError={(event) => {
+              const fallback = getJpegFallbackUrl(receipt);
+              if (event.currentTarget.src !== fallback) {
+                event.currentTarget.src = fallback;
+                return;
+              }
+              setImageFailed(true);
+              onImageUnavailable(receipt);
+            }}
+          />
+          <svg
+            className={styles.flowSvgOverlay}
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            {evidence.map((word) => {
+              const boxColor = DECISION_COLOR[word.decision ?? ""] ?? color;
+              const x = word.bbox.x * width;
+              const y = (1 - word.bbox.y - word.bbox.height) * height;
+              const w = word.bbox.width * width;
+              const h = word.bbox.height * height;
+
+              return (
+                <rect
+                  key={word.key}
+                  x={x}
+                  y={y}
+                  width={w}
+                  height={h}
+                  rx={2}
+                  fill={boxColor}
+                  fillOpacity={0.22}
+                  stroke={boxColor}
+                  strokeWidth={2}
+                  strokeOpacity={0.72}
+                />
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlowLegendItem({
+  label,
+  value,
+  color,
+  active,
+  onSelect,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  active?: boolean;
+  onSelect?: () => void;
+}) {
+  const content = (
+    <>
+      <span className={styles.flowLegendDot} style={{ backgroundColor: color }} />
+      <span className={styles.flowLegendLabel}>{label}</span>
+      <span className={styles.flowLegendValue}>{value}</span>
+    </>
+  );
+
+  if (!onSelect) {
+    return (
+      <div className={`${styles.flowLegendItem} ${active ? styles.flowLegendActive : ""}`}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${styles.flowLegendItem} ${styles.flowLegendButton} ${active ? styles.flowLegendActive : ""}`}
+      onClick={onSelect}
+    >
+      {content}
+    </button>
+  );
+}
+
+function automationColor(preflight: ReceiptHealthLedgerIssue["preflight"] | undefined): string {
+  if (!preflight) return "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)";
+  if (preflight.is_automation_ready) return "var(--color-green)";
+
+  switch (preflight.classification) {
+    case "evaluator_rule_gap":
+    case "math_mismatch":
+      return "var(--color-red)";
+    case "known_limitation":
+    case "already_consistent":
+      return "var(--color-blue)";
+    case "reocr_needed":
+      return "var(--color-red)";
+    case "not_applicable":
+      return "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)";
+    default:
+      return "var(--color-yellow)";
+  }
+}
+
+function automationDetailValue(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): string {
+  if (loading) return "Loading";
+  if (!preflight) return "No action";
+  if (preflight.is_automation_ready) return "Agent ready";
+
+  switch (preflight.classification) {
+    case "known_limitation":
+    case "already_consistent":
+      return "No label edit";
+    case "evaluator_rule_gap":
+    case "math_mismatch":
+      return "Rule gap";
+    case "reocr_needed":
+      return "Re-OCR";
+    case "needs_ai_review":
+      return "Needs review";
+    case "not_applicable":
+      return "N/A";
+    default:
+      return "Agent hold";
+  }
+}
+
+function automationDetailNote(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+): string {
+  if (!preflight) {
+    return "No deterministic cleanup action is queued for this receipt.";
+  }
+
+  if (preflight.is_automation_ready) {
+    return `${countLabel(preflight.action_count, "exact action")} stored for the cleanup agent.`;
+  }
+
+  switch (preflight.classification) {
+    case "known_limitation":
+    case "already_consistent":
+      return `${preflight.summary} The agent has enough context to avoid retrying this edit, not to change labels.`;
+    case "evaluator_rule_gap":
+    case "math_mismatch":
+      return `${preflight.summary} Keep this out of automation until the inputs or evaluator change.`;
+    case "reocr_needed":
+      return `${preflight.summary} Send this through OCR/parser repair before label cleanup.`;
+    case "needs_ai_review":
+      return `${preflight.summary} No exact deterministic action plan is stored.`;
+    case "not_applicable":
+      return preflight.summary;
+    default:
+      return preflight.summary;
+  }
+}
+
+function ReceiptHealthFlowLegend({
+  receipt,
+  checks,
+  activeCheck,
+  activeDetailId,
+  ledgerIssues,
+  loadingLedgerIssues,
+  onSelectCheck,
+  onSelectDetail,
+}: {
+  receipt: ReceiptHealthReceipt;
+  checks: ReceiptHealthCheck[];
+  activeCheck: ReceiptHealthCheck;
+  activeDetailId: DetailId;
+  ledgerIssues: ReceiptHealthLedgerIssue[];
+  loadingLedgerIssues: boolean;
+  onSelectCheck: (checkId: CheckId) => void;
+  onSelectDetail: (detailId: DetailId) => void;
+}) {
+  const firstPreflight = ledgerIssues.find((issue) => issue.preflight)?.preflight;
+  const firstLedgerIssue = ledgerIssues[0] ?? null;
+  const firstPrimaryIssue = receipt.primary_issues[0] ?? null;
+  const automationLabel = firstPreflight
+    ? (PREFLIGHT_LABELS[firstPreflight.classification] ?? firstPreflight.classification)
+    : loadingLedgerIssues
+      ? "Loading"
+      : "No action";
+  const automationStatusColor = automationColor(firstPreflight);
+
+  return (
+    <aside className={styles.flowEntityLegend}>
+      <div className={styles.flowLegendDesktop}>
+        {checks.map((check) => (
+          <FlowLegendItem
+            key={check.id}
+            label={CHECK_LABELS[check.id]}
+            value={STATUS_LABELS[check.status]}
+            color={STATUS_COLOR[check.status]}
+            active={activeDetailId === check.id}
+            onSelect={() => {
+              onSelectCheck(check.id);
+              onSelectDetail(check.id);
+            }}
+          />
+        ))}
+        <FlowLegendItem
+          label="Issues"
+          value={receipt.summary.issue_count.toString()}
+          color={receipt.summary.issue_count > 0 ? "var(--color-red)" : "var(--color-green)"}
+          active={activeDetailId === "issues"}
+          onSelect={() => onSelectDetail("issues")}
+        />
+        <FlowLegendItem
+          label="Ledger"
+          value={loadingLedgerIssues ? "..." : ledgerIssues.length.toString()}
+          color={ledgerIssues.length > 0 ? "var(--color-yellow)" : "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)"}
+          active={activeDetailId === "ledger"}
+          onSelect={() => onSelectDetail("ledger")}
+        />
+        <FlowLegendItem
+          label="Automation"
+          value={automationLabel}
+          color={automationStatusColor}
+          active={activeDetailId === "automation"}
+          onSelect={() => onSelectDetail("automation")}
+        />
+      </div>
+
+      <div className={styles.flowLegendMobile}>
+        {checks.map((check) => (
+          <FlowLegendItem
+            key={check.id}
+            label={CHECK_LABELS[check.id]}
+            value={STATUS_LABELS[check.status]}
+            color={STATUS_COLOR[check.status]}
+            active={activeDetailId === check.id}
+            onSelect={() => {
+              onSelectCheck(check.id);
+              onSelectDetail(check.id);
+            }}
+          />
+        ))}
+      </div>
+
+      <div className={styles.flowInferenceTime}>
+        <span className={styles.flowInferenceLabel}>
+          {scenarioForReceipt(receipt)?.label ?? receiptTitle(receipt)}
+        </span>
+        {isCheckId(activeDetailId) ? (
+          <>
+            <span className={styles.flowInferenceValue}>
+              {checkDetailValue(activeCheck)}
+            </span>
+            <span className={styles.flowInferenceMeta}>
+              {checkEvidenceLabel(activeCheck)} · {secondsLabel(activeCheck.duration_seconds)} · {checkMethodLabel(activeCheck)}
+            </span>
+            <span className={styles.flowInferenceNote}>
+              {checkDetailNote(activeCheck)}
+            </span>
+          </>
+        ) : null}
+        {activeDetailId === "issues" ? (
+          <>
+            <span className={styles.flowInferenceValue}>
+              {issueLabel(receipt.summary.issue_count)}
+            </span>
+            <span className={styles.flowInferenceMeta}>
+              {firstPrimaryIssue?.message ?? "No primary issues on this receipt."}
+            </span>
+          </>
+        ) : null}
+        {activeDetailId === "ledger" ? (
+          <>
+            <span className={styles.flowInferenceValue}>
+              {loadingLedgerIssues
+                ? "Loading"
+                : firstLedgerIssue
+                  ? (ISSUE_STATE_LABELS[firstLedgerIssue.state ?? "open"] ?? firstLedgerIssue.state ?? "Open")
+                  : "Empty"}
+            </span>
+            <span className={styles.flowInferenceMeta}>
+              {firstLedgerIssue?.message ?? "No durable issue state for this receipt."}
+            </span>
+          </>
+        ) : null}
+        {activeDetailId === "automation" ? (
+          <>
+            <span className={styles.flowInferenceValue}>
+              {automationDetailValue(firstPreflight, loadingLedgerIssues)}
+            </span>
+            <span className={styles.flowInferenceMeta}>
+              {firstPreflight
+                ? (PREFLIGHT_LABELS[firstPreflight.classification] ?? firstPreflight.classification)
+                : automationLabel}
+            </span>
+            <span className={styles.flowInferenceNote}>
+              {automationDetailNote(firstPreflight)}
+            </span>
+          </>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function ReceiptStackNav({
+  receipts,
+  currentIndex,
+  totalCount,
+  formatSupport,
+  canGoPrevious,
+  canGoNext,
+  loadingMore,
+  onPrevious,
+  onNext,
+  onSelect,
+}: {
+  receipts: ReceiptHealthReceipt[];
+  currentIndex: number;
+  totalCount: number;
+  formatSupport: ImageFormatSupport | null;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  loadingMore: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  onSelect: (index: number) => void;
+}) {
+  const maxVisible = 7;
+  const visibleIndices = useMemo(() => {
+    if (receipts.length === 0) return [];
+
+    const nextIndices = getVisibleQueueIndices(
+      receipts.length,
+      currentIndex,
+      maxVisible - 1,
+      false,
+    );
+
+    if (nextIndices.length >= maxVisible - 1 || currentIndex === 0) {
+      return [currentIndex, ...nextIndices];
+    }
+
+    const previousSlots = maxVisible - 1 - nextIndices.length;
+    const previousStart = Math.max(0, currentIndex - previousSlots);
+    const previousIndices = Array.from(
+      { length: currentIndex - previousStart },
+      (_, offset) => previousStart + offset,
+    );
+
+    return [...previousIndices, currentIndex, ...nextIndices];
+  }, [currentIndex, receipts.length]);
+
+  return (
+    <aside className={styles.stackPane} aria-label="Receipt stack">
+      <div className={styles.stackHeader}>
+        <span>Stack</span>
+        <span>{currentIndex + 1}/{totalCount || receipts.length}</span>
+      </div>
+
+      <div className={styles.receiptStackViewport}>
+        {visibleIndices.map((receiptIndex, stackIndex) => {
+          const receipt = receipts[receiptIndex];
+          const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
+          const imageUrl = formatSupport
+            ? getBestImageUrl(receipt, formatSupport, "thumbnail")
+            : null;
+          const { rotation, leftOffset } = getQueuePosition(receiptId);
+          const isActive = receiptIndex === currentIndex;
+          const stackOffset = stackIndex * 42;
+
+          return (
+            <button
+              key={`${receiptId}-${receiptIndex}`}
+              type="button"
+              className={`${styles.stackReceiptButton} ${isActive ? styles.stackReceiptActive : ""}`}
+              style={{
+                top: `${stackOffset}px`,
+                left: `${28 + leftOffset}px`,
+                transform: `rotate(${rotation}deg)`,
+                zIndex: visibleIndices.length - stackIndex,
+              }}
+              onClick={() => onSelect(receiptIndex)}
+              aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
+              aria-current={isActive ? "true" : undefined}
+            >
+              <span className={`${styles.stackStatusPip} ${STATUS_CLASS[receipt.overall_status]}`} />
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className={styles.stackReceiptImage}
+                  onError={(event) => {
+                    const fallback = getJpegFallbackUrl(receipt);
+                    if (event.currentTarget.src !== fallback) {
+                      event.currentTarget.src = fallback;
+                    }
+                  }}
+                />
+              ) : (
+                <span className={styles.stackReceiptPlaceholder}>
+                  {receipt.receipt_id}
+                </span>
+              )}
+              {receipt.summary.issue_count > 0 ? (
+                <span className={styles.stackIssuePill}>
+                  {receipt.summary.issue_count}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={styles.stackControls}>
+        <button
+          type="button"
+          className={styles.navButton}
+          onClick={onPrevious}
+          disabled={!canGoPrevious}
+        >
+          Prev
+        </button>
+        <button
+          type="button"
+          className={styles.navButton}
+          onClick={onNext}
+          disabled={!canGoNext || loadingMore}
+        >
+          {loadingMore ? "Loading" : "Next"}
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -373,6 +1101,9 @@ export default function ReceiptHealthExplorer() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [findingIssue, setFindingIssue] = useState(false);
+  const [ledgerIssues, setLedgerIssues] = useState<ReceiptHealthLedgerIssue[]>([]);
+  const [loadingLedgerIssues, setLoadingLedgerIssues] = useState(false);
+  const [activeDetailId, setActiveDetailId] = useState<DetailId>("merchant_identity");
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -407,13 +1138,38 @@ export default function ReceiptHealthExplorer() {
     [],
   );
 
+  const loadScenarioReceipts = useCallback(async () => {
+    const scenarioResults = await Promise.all(
+      FLOW_MOCK_SCENARIOS.map(async (scenario) => {
+        const response = await api.fetchReceiptHealth(
+          BATCH_SIZE,
+          INITIAL_SEED,
+          0,
+          { imageId: scenario.imageId },
+        );
+        return response.receipts.find(
+          (receipt) => receipt.receipt_id === scenario.receiptId,
+        ) ?? null;
+      }),
+    );
+
+    const scenarioReceipts = scenarioResults.filter(
+      (receipt): receipt is ReceiptHealthReceipt => Boolean(receipt),
+    );
+
+    setTotalCount(scenarioReceipts.length);
+    setHasMore(false);
+    setReceipts(scenarioReceipts);
+    return scenarioReceipts;
+  }, []);
+
   useEffect(() => {
     if (!nearViewport || fetchedInitial.current) return;
     fetchedInitial.current = true;
 
     let cancelled = false;
     setLoading(true);
-    loadReceipts(0)
+    loadScenarioReceipts()
       .catch((err) => {
         if (!cancelled) {
           console.error("Failed to fetch receipt health data:", err);
@@ -429,9 +1185,47 @@ export default function ReceiptHealthExplorer() {
     return () => {
       cancelled = true;
     };
-  }, [loadReceipts, nearViewport]);
+  }, [loadScenarioReceipts, nearViewport]);
 
   const currentReceipt = receipts[currentIndex] ?? null;
+
+  useEffect(() => {
+    if (!currentReceipt) {
+      setLedgerIssues([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingLedgerIssues(true);
+    setLedgerIssues([]);
+    api.fetchReceiptHealthIssues({
+      state: "all",
+      imageId: currentReceipt.image_id,
+      receiptId: currentReceipt.receipt_id,
+      limit: 50,
+    })
+      .then((response) => {
+        if (!cancelled) {
+          setLedgerIssues(response.issues);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch receipt health issues:", err);
+        if (!cancelled) {
+          setLedgerIssues([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingLedgerIssues(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentReceipt]);
+
   const orderedChecks = useMemo(() => {
     if (!currentReceipt) return [];
     return CHECK_ORDER
@@ -456,11 +1250,23 @@ export default function ReceiptHealthExplorer() {
   const selectReceipt = useCallback((index: number) => {
     setCurrentIndex(index);
     const receipt = receipts[index];
+    const scenario = scenarioForReceipt(receipt ?? null);
+    if (scenario) {
+      setActiveDetailId(scenario.focus);
+      if (isCheckId(scenario.focus)) {
+        setActiveCheckId(scenario.focus);
+      } else if (receipt?.checks.some((check) => check.id === "financial_math")) {
+        setActiveCheckId("financial_math");
+      }
+      return;
+    }
+
     const nextCheck = CHECK_ORDER.find((id) =>
       receipt?.checks.some((check) => check.id === id),
     );
     if (nextCheck) {
       setActiveCheckId(nextCheck);
+      setActiveDetailId(nextCheck);
     }
   }, [receipts]);
 
@@ -624,90 +1430,42 @@ export default function ReceiptHealthExplorer() {
   const canGoNextIssue = hasLoadedIssueAhead || hasMore;
 
   return (
-    <div ref={ref} className={styles.container} data-testid="receipt-health-explorer">
-      <div className={styles.header}>
-        <div className={styles.titleBlock}>
-          <div className={styles.kicker}>Receipt Health</div>
-          <h3 className={styles.title}>{receiptTitle(currentReceipt)}</h3>
-          <div className={styles.subhead}>
-            <span>Receipt {currentReceipt.receipt_id}</span>
-            {currentReceipt.receipt_type ? <span>{currentReceipt.receipt_type}</span> : null}
-            <span>{currentIndex + 1} of {totalCount || receipts.length}</span>
-          </div>
-        </div>
-        <div className={styles.headerMetrics}>
-          <span className={statusClass(currentReceipt.overall_status)}>
-            {STATUS_LABELS[currentReceipt.overall_status]}
-          </span>
-          <span className={styles.issueMetric}>
-            {issueLabel(currentReceipt.summary.issue_count)}
-          </span>
-          <button
-            type="button"
-            className={styles.issueButton}
-            onClick={goNextIssue}
-            disabled={!canGoNextIssue || findingIssue || loadingMore}
-          >
-            {findingIssue ? "Finding" : "Next issue"}
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.body}>
-        <div className={styles.visualColumn}>
-          <ReceiptImage
+    <div
+      ref={ref}
+      className={`${styles.container} ${styles.flowMockContainer}`}
+      data-testid="receipt-health-explorer"
+    >
+      <ReceiptFlowShell
+        layoutVars={FLOW_LAYOUT_VARS}
+        isTransitioning={false}
+        queue={
+          <ReceiptHealthFlowQueue
+            receipts={receipts}
+            currentIndex={currentIndex}
+            formatSupport={formatSupport}
+            onSelect={selectReceipt}
+          />
+        }
+        center={
+          <ReceiptHealthFlowReceipt
             receipt={currentReceipt}
             activeCheck={activeCheck}
             onImageUnavailable={handleImageUnavailable}
           />
-          <div className={styles.controls}>
-            <button
-              type="button"
-              className={styles.navButton}
-              onClick={goPrevious}
-              disabled={!canGoPrevious}
-            >
-              Prev
-            </button>
-            <ReceiptRail
-              receipts={receipts}
-              currentIndex={currentIndex}
-              onSelect={selectReceipt}
-            />
-            <button
-              type="button"
-              className={styles.navButton}
-              onClick={goNext}
-              disabled={!canGoNext || loadingMore}
-            >
-              {loadingMore ? "Loading" : "Next"}
-            </button>
-          </div>
-        </div>
-
-        <aside className={styles.inspector}>
-          <HealthSummary receipt={currentReceipt} />
-
-          <div className={styles.checkList}>
-            {orderedChecks.map((check) => (
-              <CheckButton
-                key={check.id}
-                check={check}
-                active={check.id === activeCheck.id}
-                onSelect={() => setActiveCheckId(check.id)}
-              />
-            ))}
-          </div>
-
-          <CheckDetails check={activeCheck} />
-
-          <div className={styles.sectionHeader}>
-            <span>{CHECK_LABELS[activeCheck.id]}</span>
-            <span>{activeCheck.evidence_count} boxes</span>
-          </div>
-          <Issues receipt={currentReceipt} />
-        </aside>
-      </div>
+        }
+        legend={
+          <ReceiptHealthFlowLegend
+            receipt={currentReceipt}
+            checks={orderedChecks}
+            activeCheck={activeCheck}
+            activeDetailId={activeDetailId}
+            ledgerIssues={ledgerIssues}
+            loadingLedgerIssues={loadingLedgerIssues}
+            onSelectCheck={setActiveCheckId}
+            onSelectDetail={setActiveDetailId}
+          />
+        }
+      />
     </div>
   );
 }

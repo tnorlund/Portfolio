@@ -16,13 +16,12 @@ SPEC.loader.exec_module(build_viz_cache)
 
 build_receipt_health_entry = build_viz_cache.build_receipt_health_entry
 build_receipt_health_issues = build_viz_cache.build_receipt_health_issues
-build_receipt_health_run_artifacts = (
-    build_viz_cache.build_receipt_health_run_artifacts
+build_receipt_health_run_artifacts = build_viz_cache.build_receipt_health_run_artifacts
+classify_receipt_health_issue_preflight = (
+    build_viz_cache.classify_receipt_health_issue_preflight
 )
 eligible_receipt_health_issues = build_viz_cache.eligible_receipt_health_issues
-reconcile_receipt_health_ledger = (
-    build_viz_cache.reconcile_receipt_health_ledger
-)
+reconcile_receipt_health_ledger = build_viz_cache.reconcile_receipt_health_ledger
 
 
 def _base_within_entry():
@@ -206,7 +205,7 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
     )
 
     assert ledger["summary"]["by_state"] == {"open": 2}
-    assert len(eligible_receipt_health_issues(ledger, limit=10)) == 2
+    assert len(eligible_receipt_health_issues(ledger, limit=10)) == 0
 
     attempted = deepcopy(ledger)
     attempted["issues"][0]["state"] = "awaiting_validation"
@@ -252,8 +251,7 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
 
     assert resolved["summary"]["by_state"] == {"resolved": 2}
     assert all(
-        issue["resolved_execution_id"] == "exec-3"
-        for issue in resolved["issues"]
+        issue["resolved_execution_id"] == "exec-3" for issue in resolved["issues"]
     )
 
 
@@ -288,3 +286,242 @@ def test_reconcile_receipt_health_ledger_escalates_after_max_attempts():
     )
     assert escalated["state"] == "manual_review"
     assert "automated attempts" in escalated["blocked_reason"]
+
+
+def _financial_issue(message="GRAND_TOTAL ($16.48) = sum(LINE_TOTAL) (0)"):
+    return {
+        "issue_id": "issue-1",
+        "fingerprint": "fp-1",
+        "image_id": "image-1",
+        "receipt_id": 1,
+        "check_id": "financial_math",
+        "message": message,
+    }
+
+
+def _word(line_id, word_id, text):
+    return {"line_id": line_id, "word_id": word_id, "text": text}
+
+
+def _label(line_id, word_id, label, status):
+    return {
+        "line_id": line_id,
+        "word_id": word_id,
+        "label": label,
+        "validation_status": status,
+    }
+
+
+def test_preflight_finds_safe_line_total_grand_total_plan():
+    words = [
+        _word(30, 1, "16.48"),
+        _word(39, 1, "8.49"),
+        _word(42, 1, "7.99"),
+    ]
+    labels = [
+        _label(30, 1, "GRAND_TOTAL", "VALID"),
+        _label(39, 1, "LINE_TOTAL", "INVALID"),
+        _label(39, 1, "UNIT_PRICE", "VALID"),
+        _label(42, 1, "LINE_TOTAL", "INVALID"),
+        _label(42, 1, "UNIT_PRICE", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        _financial_issue(),
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "safe_exact_plan"
+    assert preflight["lane"] == "safe_exact_plan"
+    assert preflight["root_cause"] == "missing_line_totals"
+    assert preflight["is_automation_ready"] is True
+    assert preflight["evidence"]["line_total_sum"] == "16.48"
+    assert [
+        (action["line_id"], action["label"], action["new_status"])
+        for action in preflight["proposed_actions"]
+    ] == [
+        (39, "LINE_TOTAL", "VALID"),
+        (39, "UNIT_PRICE", "INVALID"),
+        (42, "LINE_TOTAL", "VALID"),
+        (42, "UNIT_PRICE", "INVALID"),
+    ]
+
+
+def test_preflight_includes_supporting_subtotal_and_tax_actions():
+    words = [
+        _word(21, 1, "$11.95"),
+        _word(22, 1, "$3.15"),
+        _word(23, 1, "$15.10"),
+        _word(24, 1, "$1.09"),
+        _word(25, 1, "$16.19"),
+    ]
+    labels = [
+        _label(21, 1, "LINE_TOTAL", "INVALID"),
+        _label(21, 1, "UNIT_PRICE", "VALID"),
+        _label(22, 1, "LINE_TOTAL", "INVALID"),
+        _label(22, 1, "UNIT_PRICE", "VALID"),
+        _label(23, 1, "SUBTOTAL", "INVALID"),
+        _label(24, 1, "TAX", "INVALID"),
+        _label(25, 1, "GRAND_TOTAL", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        _financial_issue("GRAND_TOTAL ($16.19) = sum(LINE_TOTAL) (0)"),
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "safe_exact_plan"
+    assert preflight["root_cause"] == "missing_line_totals_with_tax_discount"
+    assert {
+        (action["line_id"], action["label"], action["new_status"])
+        for action in preflight["proposed_actions"]
+    } == {
+        (21, "LINE_TOTAL", "VALID"),
+        (21, "UNIT_PRICE", "INVALID"),
+        (22, "LINE_TOTAL", "VALID"),
+        (22, "UNIT_PRICE", "INVALID"),
+        (23, "SUBTOTAL", "VALID"),
+        (24, "TAX", "VALID"),
+    }
+
+
+def test_preflight_math_mismatch_is_not_automation_ready():
+    words = [
+        _word(1, 1, "3.00"),
+        _word(2, 1, "4.00"),
+        _word(3, 1, "20.00"),
+    ]
+    labels = [
+        _label(1, 1, "LINE_TOTAL", "INVALID"),
+        _label(2, 1, "LINE_TOTAL", "INVALID"),
+        _label(3, 1, "GRAND_TOTAL", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        _financial_issue("GRAND_TOTAL ($20.00) = sum(LINE_TOTAL) (0)"),
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "evaluator_rule_gap"
+    assert preflight["root_cause"] == "line_total_candidates_do_not_reconcile"
+    assert preflight["is_automation_ready"] is False
+
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                **_financial_issue(),
+                "state": "open",
+                "attempt_count": 0,
+                "preflight": preflight,
+            }
+        ],
+    }
+    assert eligible_receipt_health_issues(ledger, limit=10) == []
+
+
+def test_preflight_classifies_metadata_as_review_without_actions():
+    issue = {
+        "issue_id": "issue-merchant",
+        "fingerprint": "fp-merchant",
+        "image_id": "image-1",
+        "receipt_id": 1,
+        "check_id": "merchant_identity",
+        "message": "STORE_HOURS on 'Kitchen' is INVALID",
+        "evidence": [
+            {
+                "line_id": 4,
+                "word_id": 2,
+                "word_text": "Kitchen",
+                "current_label": "STORE_HOURS",
+                "decision": "INVALID",
+            }
+        ],
+    }
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=[_word(4, 2, "Kitchen")],
+        labels=[_label(4, 2, "STORE_HOURS", "INVALID")],
+    )
+
+    assert preflight["classification"] == "needs_ai_review"
+    assert preflight["lane"] == "safe_label_edit_candidate"
+    assert (
+        preflight["root_cause"]
+        == "business_name_token_mislabeled_store_hours"
+    )
+    assert preflight["is_automation_ready"] is False
+    assert preflight["proposed_actions"] == []
+
+
+def test_preflight_classifies_tip_gratuity_as_rule_gap():
+    issue = _financial_issue(
+        "GRAND_TOTAL ($16.19) = sum(LINE_TOTAL) (0) + TAX ($1.09) + TIP ($3.15)"
+    )
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 10,
+                    "word_id": 1,
+                    "word_text": "$3.15",
+                    "current_label": "TIP",
+                    "decision": "INVALID",
+                }
+            ]
+        }
+    ]
+    words = [
+        _word(10, 1, "$3.15"),
+        _word(11, 1, "$16.19"),
+    ]
+    labels = [
+        _label(10, 1, "TIP", "INVALID"),
+        _label(11, 1, "GRAND_TOTAL", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "receipt_structure_rule"
+    assert preflight["root_cause"] == "missing_line_totals_with_tip_gratuity"
+    assert preflight["is_automation_ready"] is False
+
+
+def test_preflight_classifies_malformed_amount_as_reocr_needed():
+    issue = _financial_issue("GRAND_TOTAL ($0,72) = SUBTOTAL ($0.72)")
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 1,
+                    "word_id": 1,
+                    "word_text": "$0,72",
+                    "current_label": "GRAND_TOTAL",
+                    "decision": "INVALID",
+                }
+            ]
+        }
+    ]
+    words = [_word(1, 1, "$0,72")]
+    labels = [_label(1, 1, "GRAND_TOTAL", "INVALID")]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "reocr_needed"
+    assert preflight["lane"] == "reocr_needed"
+    assert preflight["root_cause"] == "malformed_amount_text"
+    assert preflight["is_automation_ready"] is False

@@ -10,6 +10,207 @@
   color: var(--text-color);
 }
 
+.flowMockContainer {
+  max-width: 1000px;
+  padding: 1.5rem;
+  border: 0;
+  border-radius: 12px;
+  contain: paint;
+}
+
+.flowReceiptQueue {
+  width: var(--rf-queue-width, 120px);
+  height: var(--rf-queue-height, 400px);
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.flowQueuedReceipt {
+  position: absolute;
+  width: 100px;
+  padding: 0;
+  border: 1px solid #ccc;
+  background: var(--background-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.flowQueuedReceipt:hover,
+.flowQueuedReceipt:focus-visible {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.5);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+  outline: none;
+}
+
+.flowQueuedReceiptImage {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.flowActiveReceipt {
+  width: 100%;
+  height: 100%;
+}
+
+.flowReceiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flowReceiptImageInner {
+  position: relative;
+  max-height: 500px;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.flowReceiptImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: 500px;
+}
+
+.flowReceiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.flowSvgOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.flowEntityLegend {
+  width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex-shrink: 0;
+  padding: 1rem 0;
+}
+
+.flowLegendDesktop {
+  display: contents;
+}
+
+.flowLegendMobile {
+  display: none;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.flowLegendItem {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  opacity: 0.42;
+  text-align: left;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.flowLegendButton {
+  cursor: pointer;
+}
+
+.flowLegendButton:hover,
+.flowLegendButton:focus-visible,
+.flowLegendActive {
+  opacity: 1;
+  transform: scale(1.04);
+  outline: none;
+}
+
+.flowLegendDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.flowLegendLabel {
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowLegendValue {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  opacity: 0.58;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flowInferenceTime {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--text-color);
+}
+
+.flowInferenceLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.flowInferenceValue {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowInferenceMeta {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.58;
+}
+
+.flowInferenceNote {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
 .header {
   display: flex;
   align-items: flex-start;
@@ -96,9 +297,123 @@
 
 .body {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(300px, 360px);
-  gap: 1.25rem;
-  align-items: stretch;
+  grid-template-columns: 176px minmax(280px, 1fr) minmax(300px, 360px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.stackPane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-self: stretch;
+}
+
+.stackHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+.receiptStackViewport {
+  position: relative;
+  min-height: 416px;
+  overflow: visible;
+}
+
+.stackReceiptButton {
+  position: absolute;
+  width: 112px;
+  height: 152px;
+  padding: 0;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.18);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.stackReceiptButton:hover,
+.stackReceiptButton:focus-visible {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  outline: none;
+}
+
+.stackReceiptActive {
+  border-color: currentColor;
+  box-shadow:
+    0 0 0 2px rgba(var(--background-color-rgb, 255, 255, 255), 0.95),
+    0 0 0 4px rgba(var(--text-color-rgb, 0, 0, 0), 0.28),
+    0 12px 28px rgba(0, 0, 0, 0.2);
+}
+
+.stackReceiptImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.stackReceiptPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.72rem;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.04);
+}
+
+.stackStatusPip {
+  position: absolute;
+  top: 0.42rem;
+  left: 0.42rem;
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.stackIssuePill {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(var(--color-red-rgb), 0.92);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  z-index: 2;
+}
+
+.stackControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
 .visualColumn {
@@ -163,13 +478,6 @@
   opacity: 0.55;
 }
 
-.controls {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) 88px;
-  align-items: center;
-  gap: 0.75rem;
-}
-
 .navButton {
   height: 36px;
   border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
@@ -190,32 +498,6 @@
 .navButton:disabled {
   cursor: not-allowed;
   opacity: 0.35;
-}
-
-.receiptRail {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  overflow: hidden;
-}
-
-.railDot {
-  width: 12px;
-  height: 12px;
-  padding: 0;
-  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.35);
-  border-radius: 50%;
-  opacity: 0.38;
-  cursor: pointer;
-}
-
-.railDotActive {
-  opacity: 1;
-  transform: scale(1.15);
-  outline: 2px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
-  outline-offset: 2px;
 }
 
 .inspector {
@@ -391,6 +673,77 @@
   opacity: 0.56;
 }
 
+.ledgerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ledgerItem {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+}
+
+.ledgerItemHeader,
+.preflightRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.ledgerIssueType {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.58;
+  overflow-wrap: anywhere;
+}
+
+.ledgerState,
+.preflightBadge {
+  flex-shrink: 0;
+  padding: 0.22rem 0.4rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+.ledgerMessage {
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  opacity: 0.76;
+  overflow-wrap: anywhere;
+}
+
+.preflightRow {
+  margin-top: 0.45rem;
+}
+
+.preflightSummary {
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+}
+
+.actionCount {
+  margin-top: 0.35rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.66rem;
+  opacity: 0.55;
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -432,8 +785,100 @@
 }
 
 @media (max-width: 900px) {
+  .flowMockContainer {
+    padding: 1rem;
+  }
+
+  .flowActiveReceipt {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .flowReceiptImageWrapper {
+    height: 100%;
+  }
+
+  .flowReceiptImageInner,
+  .flowReceiptImage {
+    max-height: 380px;
+  }
+
+  .flowEntityLegend {
+    width: 100%;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0;
+  }
+
+  .flowLegendDesktop {
+    display: none;
+  }
+
+  .flowLegendMobile {
+    display: grid;
+  }
+
+  .flowLegendItem {
+    grid-template-columns: 14px minmax(0, auto);
+    width: auto;
+  }
+
+  .flowLegendValue {
+    display: none;
+  }
+
+  .flowInferenceTime {
+    align-items: center;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 0;
+  }
+
+  .flowInferenceValue {
+    font-size: 1.1rem;
+  }
+
   .body {
     grid-template-columns: 1fr;
+  }
+
+  .stackPane {
+    width: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+    order: 1;
+  }
+
+  .receiptStackViewport {
+    display: flex;
+    gap: 0.55rem;
+    min-height: 126px;
+    padding: 0.25rem 0.2rem 0.55rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+  }
+
+  .stackReceiptButton {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    flex: 0 0 78px;
+    width: 78px;
+    height: 108px;
+    transform: none !important;
+    scroll-snap-align: start;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.13);
+  }
+
+  .stackControls {
+    width: min(240px, 100%);
+  }
+
+  .visualColumn {
+    order: 2;
   }
 
   .receiptImageStage,
@@ -447,6 +892,7 @@
   }
 
   .inspector {
+    order: 3;
     max-width: 680px;
     width: 100%;
     margin: 0 auto;
@@ -454,6 +900,28 @@
 }
 
 @media (max-width: 640px) {
+  .flowReceiptImageInner,
+  .flowReceiptImage {
+    max-height: 300px;
+  }
+
+  .flowEntityLegend {
+    gap: 0.5rem;
+  }
+
+  .flowLegendMobile {
+    gap: 0.45rem 1rem;
+  }
+
+  .flowLegendDot {
+    width: 12px;
+    height: 12px;
+  }
+
+  .flowLegendLabel {
+    font-size: 0.75rem;
+  }
+
   .container {
     width: calc(100% - 1rem);
     padding: 1rem;
@@ -467,6 +935,16 @@
     justify-content: flex-start;
   }
 
+  .receiptStackViewport {
+    min-height: 112px;
+  }
+
+  .stackReceiptButton {
+    flex-basis: 70px;
+    width: 70px;
+    height: 98px;
+  }
+
   .receiptImageStage,
   .imageLoading {
     min-height: 360px;
@@ -477,18 +955,8 @@
     max-height: 360px;
   }
 
-  .controls {
-    grid-template-columns: 74px minmax(0, 1fr) 74px;
-    gap: 0.5rem;
-  }
-
   .navButton {
     height: 34px;
     font-size: 0.72rem;
-  }
-
-  .railDot {
-    width: 10px;
-    height: 10px;
   }
 }

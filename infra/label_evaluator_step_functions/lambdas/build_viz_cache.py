@@ -30,6 +30,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -46,6 +47,42 @@ RECEIPT_HEALTH_LEDGER_KEY = "receipt-health/issues/ledger.json"
 RECEIPT_HEALTH_ELIGIBLE_KEY = "receipt-health/issues/eligible.json"
 RECEIPT_HEALTH_CURRENT_KEY = "receipt-health/issues/current.json"
 MAX_LEDGER_ATTEMPTS = 2
+PREFLIGHT_CLASSIFIER_VERSION = "receipt-health-preflight-v1"
+AUTOMATION_READY_PREFLIGHT_CLASSES = frozenset({"safe_exact_plan"})
+PREFLIGHT_SUMMARY_FIELDS = frozenset(
+    {"classification", "lane", "root_cause"}
+)
+
+STRICT_MONEY_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}$")
+AMOUNTISH_RE = re.compile(r"^\$?[\d.,]+$")
+MISSING_LINE_TOTAL_RE = re.compile(
+    r"sum\(LINE_TOTAL\)\s*\(\s*\$?0(?:\.0{1,2})?\s*\)",
+    re.IGNORECASE,
+)
+
+LINE_TOTAL_CONFLICT_LABELS = frozenset(
+    {
+        "GRAND_TOTAL",
+        "SUBTOTAL",
+        "TAX",
+        "TIP",
+        "DISCOUNT",
+        "CASH_BACK",
+        "PAYMENT_METHOD",
+        "LOYALTY_ID",
+    }
+)
+FINANCIAL_AMOUNT_LABELS = frozenset(
+    {
+        "LINE_TOTAL",
+        "UNIT_PRICE",
+        "SUBTOTAL",
+        "TAX",
+        "TIP",
+        "DISCOUNT",
+        "GRAND_TOTAL",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Label sets for within-receipt verification
@@ -69,6 +106,10 @@ FORMAT_LABELS = frozenset(
         "COUPON",
         "LOYALTY_ID",
     }
+)
+
+PREFLIGHT_FINGERPRINT_LABELS = (
+    FINANCIAL_AMOUNT_LABELS | PLACE_LABELS | FORMAT_LABELS
 )
 
 
@@ -765,7 +806,7 @@ def build_receipt_health_entry(
             ),
             "status": _financial_status(financial_math),
             "validator": "financial_math",
-            "is_llm": financial_math.get("is_llm", False),
+            "is_llm": False,
             "duration_seconds": financial_math.get("duration_seconds"),
             "summary": {
                 **(financial_math.get("summary") or {}),
@@ -891,6 +932,883 @@ def _issue_base(
         "result": check.get("result"),
         "evidence": evidence,
     }
+
+
+def _normalized_status(value: Any) -> str:
+    """Return a normalized validation status string."""
+    if value is None:
+        return "NONE"
+    if hasattr(value, "value"):
+        value = value.value
+    return str(value).upper()
+
+
+def _money_cents(text: Any, *, strict: bool = False) -> int | None:
+    """Parse receipt amount text into cents."""
+    if text is None:
+        return None
+    raw = str(text).strip()
+    if strict and not STRICT_MONEY_RE.fullmatch(raw):
+        return None
+    cleaned = raw.replace("$", "").replace(",", "")
+    try:
+        dollars, cents = cleaned.split(".", 1)
+    except ValueError:
+        if strict:
+            return None
+        try:
+            return int(round(float(cleaned) * 100))
+        except (TypeError, ValueError):
+            return None
+    if len(cents) < 2:
+        cents = cents.ljust(2, "0")
+    if len(cents) > 2:
+        cents = cents[:2]
+    try:
+        return int(dollars) * 100 + int(cents)
+    except ValueError:
+        return None
+
+
+def _amount_label(cents: int) -> str:
+    """Format cents as display currency without adding locale behavior."""
+    return f"{cents / 100:.2f}"
+
+
+def _word_text_lookup(
+    words: list[dict[str, Any]],
+) -> dict[tuple[int, int], str]:
+    """Build word text lookup from raw word rows."""
+    lookup: dict[tuple[int, int], str] = {}
+    for word in words:
+        line_id = word.get("line_id")
+        word_id = word.get("word_id")
+        if line_id is None or word_id is None:
+            continue
+        lookup[(int(line_id), int(word_id))] = str(word.get("text") or "")
+    return lookup
+
+
+def _label_records(
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join raw label rows to word text and parsed amounts."""
+    texts = _word_text_lookup(words)
+    records: list[dict[str, Any]] = []
+    for label in labels:
+        line_id = label.get("line_id")
+        word_id = label.get("word_id")
+        label_name = label.get("label")
+        if line_id is None or word_id is None or not label_name:
+            continue
+        key = (int(line_id), int(word_id))
+        text = texts.get(key, "")
+        records.append(
+            {
+                "line_id": int(line_id),
+                "word_id": int(word_id),
+                "label": str(label_name).upper(),
+                "validation_status": _normalized_status(
+                    label.get("validation_status")
+                ),
+                "label_proposed_by": label.get("label_proposed_by"),
+                "text": text,
+                "amount_cents": _money_cents(text),
+                "strict_amount_cents": _money_cents(text, strict=True),
+            }
+        )
+    return records
+
+
+def _records_by_word(
+    records: list[dict[str, Any]],
+) -> dict[tuple[int, int], list[dict[str, Any]]]:
+    """Group label records by word identity."""
+    by_word: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for record in records:
+        key = (int(record["line_id"]), int(record["word_id"]))
+        by_word.setdefault(key, []).append(record)
+    return by_word
+
+
+def _preflight_data_fingerprint(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> str:
+    """Fingerprint the data relevant to a preflight decision."""
+    compact_records = [
+        {
+            "line_id": record.get("line_id"),
+            "word_id": record.get("word_id"),
+            "text": record.get("text"),
+            "label": record.get("label"),
+            "validation_status": record.get("validation_status"),
+        }
+        for record in records
+        if record.get("label") in PREFLIGHT_FINGERPRINT_LABELS
+    ]
+    compact_records.sort(
+        key=lambda item: (
+            int(item.get("line_id") or 0),
+            int(item.get("word_id") or 0),
+            str(item.get("label") or ""),
+        )
+    )
+    return _stable_issue_hash(
+        {
+            "classifier_version": PREFLIGHT_CLASSIFIER_VERSION,
+            "issue_id": issue.get("issue_id"),
+            "message": issue.get("message"),
+            "records": compact_records,
+        }
+    )
+
+
+def _preflight(
+    classification: str,
+    *,
+    summary: str,
+    records: list[dict[str, Any]],
+    issue: dict[str, Any],
+    automation_lane: str = "none",
+    lane: str | None = None,
+    root_cause: str = "unclassified",
+    recommended_next_step: str = "Do not apply automated label writes.",
+    proposed_actions: list[dict[str, Any]] | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the persisted deterministic preflight block."""
+    actions = proposed_actions or []
+    resolved_lane = lane or automation_lane
+    return {
+        "version": PREFLIGHT_CLASSIFIER_VERSION,
+        "classification": classification,
+        "automation_lane": automation_lane,
+        "lane": resolved_lane,
+        "root_cause": root_cause,
+        "recommended_next_step": recommended_next_step,
+        "is_automation_ready": classification
+        in AUTOMATION_READY_PREFLIGHT_CLASSES,
+        "summary": summary,
+        "proposed_actions": actions,
+        "action_count": len(actions),
+        "evidence": evidence or {},
+        "data_fingerprint": _preflight_data_fingerprint(issue, records),
+    }
+
+
+def _amounts_for_label(
+    records: list[dict[str, Any]],
+    label_name: str,
+    *,
+    valid_only: bool = True,
+) -> list[dict[str, Any]]:
+    """Return amount records for a label, optionally requiring VALID status."""
+    result = []
+    for record in records:
+        if record.get("label") != label_name:
+            continue
+        if valid_only and record.get("validation_status") != "VALID":
+            continue
+        amount_cents = record.get("amount_cents")
+        if amount_cents is None:
+            continue
+        result.append(record)
+    return result
+
+
+def _candidate_line_total_records(
+    records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Find invalid LINE_TOTAL records that are safe status-flip candidates."""
+    by_word = _records_by_word(records)
+    valid_grands = {
+        record.get("amount_cents")
+        for record in _amounts_for_label(records, "GRAND_TOTAL")
+    }
+    candidates: list[dict[str, Any]] = []
+    rejected = 0
+    for record in records:
+        if record.get("label") != "LINE_TOTAL":
+            continue
+        if record.get("validation_status") != "INVALID":
+            continue
+        amount_cents = record.get("strict_amount_cents")
+        if amount_cents is None or amount_cents <= 0:
+            rejected += 1
+            continue
+        word_records = by_word.get(
+            (int(record["line_id"]), int(record["word_id"])), []
+        )
+        labels_on_word = {str(item.get("label")) for item in word_records}
+        if labels_on_word & LINE_TOTAL_CONFLICT_LABELS:
+            rejected += 1
+            continue
+        if amount_cents in valid_grands:
+            rejected += 1
+            continue
+        candidates.append(record)
+    return candidates, rejected
+
+
+def _status_flip_action(
+    issue: dict[str, Any],
+    record: dict[str, Any],
+    new_status: str,
+    reasoning: str,
+) -> dict[str, Any]:
+    """Build an exact update_word_label action for the MCP executor."""
+    return {
+        "tool": "update_word_label",
+        "image_id": issue.get("image_id"),
+        "receipt_id": issue.get("receipt_id"),
+        "line_id": record.get("line_id"),
+        "word_id": record.get("word_id"),
+        "label": record.get("label"),
+        "new_status": new_status,
+        "reasoning": reasoning,
+    }
+
+
+def _line_total_actions(
+    issue: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build actions for LINE_TOTAL flips and conflicting UNIT_PRICE labels."""
+    by_word = _records_by_word(records)
+    actions: list[dict[str, Any]] = []
+    for candidate in candidates:
+        actions.append(
+            _status_flip_action(
+                issue,
+                candidate,
+                "VALID",
+                "Preflight math proves this item amount is a line total.",
+            )
+        )
+        word_records = by_word.get(
+            (int(candidate["line_id"]), int(candidate["word_id"])), []
+        )
+        for record in word_records:
+            if (
+                record.get("label") == "UNIT_PRICE"
+                and record.get("validation_status") == "VALID"
+            ):
+                actions.append(
+                    _status_flip_action(
+                        issue,
+                        record,
+                        "INVALID",
+                        "Same amount is used as a proven line total, not a unit price.",
+                    )
+                )
+    return actions
+
+
+def _supporting_record_actions(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build actions for invalid supporting subtotal/tax/tip/discount labels."""
+    actions: list[dict[str, Any]] = []
+    seen: set[tuple[int, int, str]] = set()
+    for record in records:
+        key = (
+            int(record["line_id"]),
+            int(record["word_id"]),
+            str(record["label"]),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        if record.get("validation_status") != "VALID":
+            label_name = str(record.get("label"))
+            actions.append(
+                _status_flip_action(
+                    issue,
+                    record,
+                    "VALID",
+                    f"Preflight math requires this {label_name} amount.",
+                )
+            )
+    return actions
+
+
+def _first_record_with_amount(
+    records: list[dict[str, Any]],
+    amount_cents: int,
+) -> dict[str, Any] | None:
+    """Return the first amount record matching the selected arithmetic path."""
+    for record in records:
+        if record.get("amount_cents") == amount_cents:
+            return record
+    return None
+
+
+def _unique_cents(records: list[dict[str, Any]]) -> list[int]:
+    """Return unique amount cents in input order."""
+    seen: set[int] = set()
+    values: list[int] = []
+    for record in records:
+        amount = record.get("amount_cents")
+        if amount is None or amount in seen:
+            continue
+        seen.add(amount)
+        values.append(int(amount))
+    return values
+
+
+def _issue_evidence(issue: dict[str, Any]) -> dict[str, Any]:
+    """Return the first evidence block attached to an issue."""
+    evidence = issue.get("evidence") or []
+    if evidence and isinstance(evidence[0], dict):
+        return evidence[0]
+    return {}
+
+
+def _issue_involved_words(issue: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return compact word evidence for a ledger issue."""
+    evidence = _issue_evidence(issue)
+    involved = evidence.get("involved_words")
+    if isinstance(involved, list):
+        return [word for word in involved if isinstance(word, dict)]
+    if evidence:
+        return [evidence]
+    return []
+
+
+def _issue_word_labels(issue: dict[str, Any]) -> set[str]:
+    """Return labels referenced by an issue's compact word evidence."""
+    labels: set[str] = set()
+    for word in _issue_involved_words(issue):
+        label = word.get("current_label") or word.get("label")
+        if label:
+            labels.add(str(label).upper())
+    return labels
+
+
+def _issue_contains_label(issue: dict[str, Any], label_name: str) -> bool:
+    """Return true when an issue references a specific label role."""
+    target = label_name.upper()
+    if target in _issue_word_labels(issue):
+        return True
+    return target in str(issue.get("message") or "").upper()
+
+
+def _issue_bad_decisions(issue: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return word evidence whose validation decision is not cleanly valid."""
+    return [
+        word
+        for word in _issue_involved_words(issue)
+        if str(word.get("decision") or "").upper()
+        in {"INVALID", "NEEDS_REVIEW"}
+    ]
+
+
+def _amountish_text_is_malformed(text: Any) -> bool:
+    """Return true for amount-like tokens that are not strict money values."""
+    if text is None:
+        return False
+    raw = str(text).strip()
+    if not raw or not AMOUNTISH_RE.fullmatch(raw):
+        return False
+    if STRICT_MONEY_RE.fullmatch(raw):
+        return False
+    return _money_cents(raw) is None or "." not in raw
+
+
+def _issue_has_malformed_amount(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> bool:
+    """Return true when issue evidence points at malformed amount text."""
+    issue_words = {
+        (word.get("line_id"), word.get("word_id"))
+        for word in _issue_involved_words(issue)
+        if word.get("line_id") is not None and word.get("word_id") is not None
+    }
+    for record in records:
+        if record.get("label") not in FINANCIAL_AMOUNT_LABELS:
+            continue
+        if issue_words and (
+            record.get("line_id"),
+            record.get("word_id"),
+        ) not in issue_words:
+            continue
+        if _amountish_text_is_malformed(record.get("text")):
+            return True
+    for word in _issue_involved_words(issue):
+        label = str(
+            word.get("current_label") or word.get("label") or ""
+        ).upper()
+        if label in FINANCIAL_AMOUNT_LABELS and _amountish_text_is_malformed(
+            word.get("word_text") or word.get("text")
+        ):
+            return True
+    return False
+
+
+def _issue_has_multiple_grand_totals(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> bool:
+    """Return true when more than one grand-total amount is in play."""
+    issue_grand_words = [
+        word
+        for word in _issue_involved_words(issue)
+        if str(word.get("current_label") or word.get("label") or "").upper()
+        == "GRAND_TOTAL"
+    ]
+    if len(issue_grand_words) > 1:
+        return True
+    valid_grands = _amounts_for_label(records, "GRAND_TOTAL")
+    return len(_unique_cents(valid_grands)) > 1
+
+
+def _metadata_root_cause(issue: dict[str, Any]) -> str:
+    """Choose a concrete root-cause code for metadata label issues."""
+    evidence = _issue_evidence(issue)
+    label = str(evidence.get("current_label") or "").upper()
+    text = str(evidence.get("word_text") or "")
+    text_has_digit = any(ch.isdigit() for ch in text)
+
+    if issue.get("check_id") == "merchant_identity":
+        if label == "STORE_HOURS" and not text_has_digit:
+            return "business_name_token_mislabeled_store_hours"
+        if label == "MERCHANT_NAME":
+            return "generic_or_extra_merchant_name_token"
+        if label == "PHONE_NUMBER":
+            return "partial_phone_token"
+        if label == "WEBSITE":
+            return "truncated_website_token"
+        return "merchant_metadata_context_mismatch"
+
+    if issue.get("check_id") == "receipt_format":
+        if label == "TIME":
+            return "partial_time_token"
+        if label == "LOYALTY_ID":
+            return "numeric_token_mislabeled_loyalty_id"
+        if label == "DATE":
+            return "date_token_context_mismatch"
+        if label == "PAYMENT_METHOD":
+            return "payment_method_context_mismatch"
+        return "format_metadata_context_mismatch"
+
+    return "metadata_context_mismatch"
+
+
+def _classify_metadata_issue_preflight(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify merchant/format issues without proposing writes."""
+    root_cause = _metadata_root_cause(issue)
+    return _preflight(
+        "needs_ai_review",
+        summary=(
+            "Metadata label context failed, but no exact deterministic "
+            "write plan is stored yet."
+        ),
+        records=records,
+        issue=issue,
+        automation_lane="ai_review",
+        lane="safe_label_edit_candidate",
+        root_cause=root_cause,
+        recommended_next_step=(
+            "Review neighboring receipt text and store an exact label-status "
+            "action only when the correction is unambiguous."
+        ),
+        evidence={"root_cause": root_cause},
+    )
+
+
+def _terminal_financial_preflight(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    classification: str,
+    lane: str,
+    root_cause: str,
+    summary: str,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a non-write financial preflight classification."""
+    return _preflight(
+        classification,
+        summary=summary,
+        records=records,
+        issue=issue,
+        automation_lane="none"
+        if classification in {"known_limitation", "evaluator_rule_gap"}
+        else "ai_review",
+        lane=lane,
+        root_cause=root_cause,
+        recommended_next_step=(
+            "Do not apply label writes. Route this issue according to its "
+            "root cause before retrying automation."
+        ),
+        evidence=evidence,
+    )
+
+
+def _classify_financial_non_exact_preflight(
+    issue: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    message: str,
+    rejected_candidate_count: int | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Classify financial issues that did not produce an exact write plan."""
+    has_missing_line_total = bool(MISSING_LINE_TOTAL_RE.search(message))
+    has_tip = _issue_contains_label(issue, "TIP")
+    bad_decisions = _issue_bad_decisions(issue)
+
+    if _issue_has_malformed_amount(issue, records):
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="reocr_needed",
+            lane="reocr_needed",
+            root_cause="malformed_amount_text",
+            summary=(
+                "Financial evidence contains amount-like text that cannot be "
+                "trusted as strict money."
+            ),
+            evidence=evidence,
+        )
+
+    if has_tip and has_missing_line_total:
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="receipt_structure_rule",
+            root_cause="missing_line_totals_with_tip_gratuity",
+            summary=(
+                "Missing line totals intersect with tip/gratuity labels; this "
+                "needs a receipt-structure rule before any label write."
+            ),
+            evidence=evidence,
+        )
+
+    if has_tip:
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="receipt_structure_rule",
+            root_cause="tip_gratuity_ambiguity",
+            summary=(
+                "Tip/gratuity evidence can be an actual charged tip or a "
+                "suggested option, so deterministic label writes are blocked."
+            ),
+            evidence=evidence,
+        )
+
+    if _issue_has_multiple_grand_totals(issue, records):
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="evaluator_disambiguation",
+            root_cause="multiple_total_like_amounts",
+            summary=(
+                "More than one grand-total-like amount is present; the "
+                "evaluator needs disambiguation before automation."
+            ),
+            evidence=evidence,
+        )
+
+    if has_missing_line_total:
+        has_tax_or_discount = _issue_contains_label(
+            issue, "TAX"
+        ) or _issue_contains_label(issue, "DISCOUNT")
+        root_cause = (
+            "missing_line_totals_with_tax_discount"
+            if has_tax_or_discount
+            else "missing_line_totals"
+        )
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="needs_ai_review",
+            lane="preflight_candidate_search",
+            root_cause=root_cause,
+            summary=(
+                "No exact existing LINE_TOTAL status-flip plan was found."
+            ),
+            evidence={
+                **(evidence or {}),
+                "rejected_candidate_count": rejected_candidate_count,
+            },
+        )
+
+    if bad_decisions:
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="needs_ai_review",
+            lane="safe_label_edit_candidate",
+            root_cause="wrong_financial_label_role",
+            summary=(
+                "A financial label role is suspect, but no exact stored "
+                "action proves the replacement."
+            ),
+            evidence=evidence,
+        )
+
+    return _terminal_financial_preflight(
+        issue,
+        records,
+        classification="evaluator_rule_gap",
+        lane="evaluator_rule_gap",
+        root_cause="valid_labels_formula_mismatch",
+        summary=(
+            "The visible labels are valid, but the formula still does not "
+            "reconcile."
+        ),
+        evidence=evidence,
+    )
+
+
+def classify_receipt_health_issue_preflight(
+    issue: dict[str, Any],
+    *,
+    words: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify one receipt-health issue before an agent attempts it.
+
+    Only the safe_exact_plan class may produce write actions. Every other
+    classifier output is a terminal routing decision for humans, OCR repair, or
+    evaluator-rule work.
+    """
+    records = _label_records(words, labels)
+    if issue.get("check_id") != "financial_math":
+        return _classify_metadata_issue_preflight(issue, records)
+
+    message = str(issue.get("message") or "")
+    if not MISSING_LINE_TOTAL_RE.search(message):
+        return _classify_financial_non_exact_preflight(
+            issue,
+            records,
+            message=message,
+        )
+
+    valid_line_totals = _amounts_for_label(records, "LINE_TOTAL")
+    if valid_line_totals:
+        return _preflight(
+            "known_limitation",
+            summary=(
+                f"{len(valid_line_totals)} live valid LINE_TOTAL label(s) "
+                "already exist, so the cached issue should not be retried."
+            ),
+            records=records,
+            issue=issue,
+            automation_lane="none",
+            lane="known_limitation",
+            root_cause="already_consistent_labels",
+            recommended_next_step=(
+                "Do not apply label writes unless this data fingerprint changes."
+            ),
+            evidence={
+                "line_total_amounts": [
+                    _amount_label(int(record["amount_cents"]))
+                    for record in valid_line_totals
+                ]
+            },
+        )
+
+    if _issue_contains_label(issue, "TIP"):
+        return _classify_financial_non_exact_preflight(
+            issue,
+            records,
+            message=message,
+        )
+
+    candidates, rejected_count = _candidate_line_total_records(records)
+    if not candidates:
+        return _classify_financial_non_exact_preflight(
+            issue,
+            records,
+            message=message,
+            rejected_candidate_count=rejected_count,
+        )
+
+    line_sum = sum(int(record["strict_amount_cents"]) for record in candidates)
+    valid_grands = _unique_cents(_amounts_for_label(records, "GRAND_TOTAL"))
+    subtotal_records = _amounts_for_label(
+        records, "SUBTOTAL", valid_only=False
+    )
+    tax_records = _amounts_for_label(records, "TAX", valid_only=False)
+    tip_records = _amounts_for_label(records, "TIP", valid_only=False)
+    discount_records = _amounts_for_label(
+        records, "DISCOUNT", valid_only=False
+    )
+
+    evidence = {
+        "line_total_amounts": [
+            _amount_label(int(record["strict_amount_cents"]))
+            for record in candidates
+        ],
+        "line_total_sum": _amount_label(line_sum),
+        "grand_total_amounts": [
+            _amount_label(value) for value in valid_grands
+        ],
+        "subtotal_amounts": [
+            _amount_label(int(record["amount_cents"]))
+            for record in subtotal_records
+            if record.get("amount_cents") is not None
+        ],
+        "rejected_candidate_count": rejected_count,
+    }
+
+    line_actions = _line_total_actions(issue, candidates, records)
+    if line_sum in valid_grands:
+        actions = line_actions
+        return _preflight(
+            "safe_exact_plan",
+            summary=(
+                "Existing LINE_TOTAL candidates sum to visible GRAND_TOTAL "
+                f"{_amount_label(line_sum)}."
+            ),
+            records=records,
+            issue=issue,
+            automation_lane="deterministic",
+            lane="safe_exact_plan",
+            root_cause="missing_line_totals",
+            recommended_next_step=(
+                "Apply the stored update_word_label actions exactly."
+            ),
+            proposed_actions=actions,
+            evidence=evidence,
+        )
+
+    for subtotal in subtotal_records:
+        subtotal_amount = subtotal.get("amount_cents")
+        if subtotal_amount != line_sum:
+            continue
+        taxes = _unique_cents(tax_records) or [0]
+        tips = _unique_cents(tip_records) or [0]
+        discounts = _unique_cents(discount_records) or [0]
+        for tax_amount in taxes:
+            for tip_amount in tips:
+                for discount_amount in discounts:
+                    total = (
+                        int(subtotal_amount)
+                        + int(tax_amount)
+                        + int(tip_amount)
+                        - int(discount_amount)
+                    )
+                    if total not in valid_grands:
+                        continue
+                    support_records = [subtotal]
+                    if tax_amount:
+                        tax_record = _first_record_with_amount(
+                            tax_records, tax_amount
+                        )
+                        if not tax_record:
+                            continue
+                        support_records.append(tax_record)
+                    if tip_amount:
+                        tip_record = _first_record_with_amount(
+                            tip_records, tip_amount
+                        )
+                        if not tip_record:
+                            continue
+                        support_records.append(tip_record)
+                    if discount_amount:
+                        discount_record = _first_record_with_amount(
+                            discount_records, discount_amount
+                        )
+                        if not discount_record:
+                            continue
+                        support_records.append(discount_record)
+                    actions = line_actions + _supporting_record_actions(
+                        issue, support_records
+                    )
+                    evidence["resolved_total"] = _amount_label(total)
+                    return _preflight(
+                        "safe_exact_plan",
+                        summary=(
+                            "Existing LINE_TOTAL candidates match SUBTOTAL "
+                            f"{_amount_label(line_sum)} and reconcile to "
+                            f"GRAND_TOTAL {_amount_label(total)}."
+                        ),
+                        records=records,
+                        issue=issue,
+                        automation_lane="deterministic",
+                        lane="safe_exact_plan",
+                        root_cause=(
+                            "missing_line_totals_with_tax_discount"
+                        ),
+                        recommended_next_step=(
+                            "Apply the stored update_word_label actions exactly."
+                        ),
+                        proposed_actions=actions,
+                        evidence=evidence,
+                    )
+
+    return _preflight(
+        "evaluator_rule_gap",
+        summary=(
+            "Clean LINE_TOTAL candidates exist, but they do not reconcile "
+            "to the visible subtotal/grand total path."
+        ),
+        records=records,
+        issue=issue,
+        automation_lane="none",
+        lane="evaluator_rule_gap",
+        root_cause="line_total_candidates_do_not_reconcile",
+        recommended_next_step=(
+            "Do not apply label writes. Mark as known limitation or update the "
+            "evaluator rule after reviewing the receipt."
+        ),
+        evidence=evidence,
+    )
+
+
+def attach_preflight_classifications(
+    run_issues: list[dict[str, Any]],
+    receipt_data_lookup: dict[tuple[str, int], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach deterministic preflight classification to run issues."""
+    classified: list[dict[str, Any]] = []
+    for issue in run_issues:
+        key = (str(issue.get("image_id")), int(issue.get("receipt_id") or 0))
+        data = receipt_data_lookup.get(key) or {}
+        preflight = classify_receipt_health_issue_preflight(
+            issue,
+            words=data.get("words") or [],
+            labels=data.get("labels") or [],
+        )
+        classified.append({**issue, "preflight": preflight})
+    return classified
+
+
+def summarize_preflight_classifications(
+    issues: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Count preflight classifications in a run or ledger."""
+    return summarize_preflight_field(issues, "classification")
+
+
+def summarize_preflight_field(
+    issues: list[dict[str, Any]],
+    field_name: str,
+) -> dict[str, int]:
+    """Count one persisted preflight field in a run or ledger."""
+    if field_name not in PREFLIGHT_SUMMARY_FIELDS:
+        raise ValueError(f"Unsupported preflight summary field: {field_name}")
+    counts: dict[str, int] = {}
+    for issue in issues:
+        value = (issue.get("preflight") or {}).get(field_name)
+        value = value or "unclassified"
+        counts[str(value)] = counts.get(str(value), 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _metadata_decision_issues(
@@ -1147,6 +2065,12 @@ def build_receipt_health_run_artifacts(
     return issues, summary
 
 
+def _issue_is_automation_ready(issue: dict[str, Any]) -> bool:
+    """Return true when deterministic preflight allows automation."""
+    preflight = issue.get("preflight") or {}
+    return bool(preflight.get("is_automation_ready"))
+
+
 def _summarize_ledger(issues: list[dict[str, Any]]) -> dict[str, Any]:
     """Build compact ledger counts for API responses and dashboards."""
     by_state: dict[str, int] = {}
@@ -1160,13 +2084,35 @@ def _summarize_ledger(issues: list[dict[str, Any]]) -> dict[str, Any]:
         "total_issues": len(issues),
         "by_state": dict(sorted(by_state.items())),
         "by_check": dict(sorted(by_check.items())),
+        "by_preflight_classification": summarize_preflight_classifications(
+            issues
+        ),
+        "by_preflight_lane": summarize_preflight_field(issues, "lane"),
+        "by_preflight_root_cause": summarize_preflight_field(
+            issues, "root_cause"
+        ),
         "eligible_issues": sum(
             1
             for issue in issues
             if issue.get("state") == "open"
             and int(issue.get("attempt_count") or 0) < MAX_LEDGER_ATTEMPTS
+            and _issue_is_automation_ready(issue)
         ),
     }
+
+
+def _known_limitation_should_reopen(
+    previous: dict[str, Any],
+    next_issue: dict[str, Any],
+) -> bool:
+    """Known limitations reopen when the data/classifier fingerprint changes."""
+    previous_fingerprint = previous.get("suppression_fingerprint")
+    next_fingerprint = (next_issue.get("preflight") or {}).get(
+        "data_fingerprint"
+    )
+    if not previous_fingerprint or not next_fingerprint:
+        return False
+    return str(previous_fingerprint) != str(next_fingerprint)
 
 
 def reconcile_receipt_health_ledger(
@@ -1224,6 +2170,16 @@ def reconcile_receipt_health_ledger(
                     )
                 else:
                     next_issue["state"] = "open"
+            elif prior_state == "known_limitation":
+                if _known_limitation_should_reopen(previous, next_issue):
+                    next_issue["state"] = "open"
+                    next_issue["reopened_at"] = observed_at
+                    next_issue["reopened_execution_id"] = execution_id
+                    next_issue["reopened_reason"] = (
+                        "Known limitation fingerprint changed"
+                    )
+                else:
+                    next_issue["state"] = prior_state
             elif prior_state in {"blocked", "manual_review"}:
                 next_issue["state"] = prior_state
             else:
@@ -1294,6 +2250,8 @@ def eligible_receipt_health_issues(
         if issue.get("state") != "open":
             continue
         if int(issue.get("attempt_count") or 0) >= max_attempts:
+            continue
+        if not _issue_is_automation_ready(issue):
             continue
         if check_id and issue.get("check_id") != check_id:
             continue
@@ -1414,7 +2372,7 @@ def build_within_receipt_entry(
             "equations": equations,
             "summary": _build_equation_summary(equations),
             "duration_seconds": financial_duration,
-            "is_llm": True,
+            "is_llm": False,
         },
         "words": _build_word_list(raw_words),
         "width": width,
@@ -1546,6 +2504,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         receipt_health_receipts,
         execution_id=execution_id,
         observed_at=now_iso,
+    )
+    run_issues = attach_preflight_classifications(run_issues, data_lookup)
+    run_summary["by_preflight_classification"] = (
+        summarize_preflight_classifications(run_issues)
+    )
+    run_summary["by_preflight_lane"] = summarize_preflight_field(
+        run_issues, "lane"
+    )
+    run_summary["by_preflight_root_cause"] = summarize_preflight_field(
+        run_issues, "root_cause"
     )
     previous_ledger = _read_json(cache_bucket, RECEIPT_HEALTH_LEDGER_KEY) or {}
     issue_ledger = reconcile_receipt_health_ledger(

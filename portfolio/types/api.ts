@@ -927,6 +927,7 @@ export interface ReceiptHealthCheck {
         total_equations: number;
         has_invalid: boolean;
         has_needs_review: boolean;
+        mismatched_equations?: number;
       };
   result: string;
   evidence_count: number;
@@ -985,7 +986,41 @@ export type ReceiptHealthIssueState =
   | "awaiting_validation"
   | "resolved"
   | "blocked"
-  | "manual_review";
+  | "manual_review"
+  | "known_limitation";
+
+export type ReceiptHealthPreflightClassification =
+  | "needs_ai_review"
+  | "safe_exact_plan"
+  | "known_limitation"
+  | "reocr_needed"
+  | "evaluator_rule_gap";
+
+export interface ReceiptHealthPreflightAction {
+  tool: "update_word_label" | "create_word_label" | "trigger_reocr";
+  image_id?: string;
+  receipt_id?: number;
+  line_id?: number;
+  word_id?: number;
+  label?: string;
+  new_status?: "VALID" | "INVALID" | "NEEDS_REVIEW";
+  reasoning?: string;
+}
+
+export interface ReceiptHealthIssuePreflight {
+  version: string;
+  classification: ReceiptHealthPreflightClassification | string;
+  automation_lane: "deterministic" | "ai_review" | "none" | string;
+  lane: string;
+  root_cause: string;
+  recommended_next_step?: string;
+  is_automation_ready: boolean;
+  summary: string;
+  proposed_actions: ReceiptHealthPreflightAction[];
+  action_count: number;
+  evidence?: Record<string, unknown>;
+  data_fingerprint?: string;
+}
 
 export interface ReceiptHealthLedgerIssue {
   issue_id: string;
@@ -1005,6 +1040,7 @@ export interface ReceiptHealthLedgerIssue {
   result?: string;
   evidence: Array<Record<string, unknown>>;
   state?: ReceiptHealthIssueState;
+  preflight?: ReceiptHealthIssuePreflight;
   first_seen_at?: string;
   first_seen_execution_id?: string;
   last_seen_at?: string;
@@ -1013,12 +1049,17 @@ export interface ReceiptHealthLedgerIssue {
   attempt_count?: number;
   last_attempted_at?: string;
   last_attempt_summary?: string;
+  known_limitation_reason?: string;
+  suppression_fingerprint?: string;
 }
 
 export interface ReceiptHealthLedgerSummary {
   total_issues: number;
   by_state: Record<string, number>;
   by_check: Record<string, number>;
+  by_preflight_classification?: Record<string, number>;
+  by_preflight_lane?: Record<string, number>;
+  by_preflight_root_cause?: Record<string, number>;
   eligible_issues: number;
 }
 

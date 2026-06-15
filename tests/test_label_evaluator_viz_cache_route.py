@@ -115,3 +115,155 @@ def test_mark_attempted_clears_transient_claim_fields():
     assert "claimed_at" not in issue
     assert "claimed_by" not in issue
     assert next_ledger["summary"]["by_state"] == {"awaiting_validation": 1}
+
+
+def test_eligible_filter_requires_ready_financial_preflight(monkeypatch):
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-safe",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "safe_exact_plan",
+                    "is_automation_ready": True,
+                },
+            },
+            {
+                "issue_id": "issue-mismatch",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "math_mismatch",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-merchant",
+                "state": "open",
+                "check_id": "merchant_identity",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "lane": "safe_label_edit_candidate",
+                    "root_cause": "metadata_context_mismatch",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-legacy",
+                "state": "open",
+                "check_id": "receipt_format",
+                "attempt_count": 0,
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_fetch_json_key",
+        lambda key: ledger,
+    )
+
+    response = viz_cache._handle_receipt_health_issues_get(
+        {"state": "eligible", "check_id": "financial_math"}
+    )
+
+    body = json.loads(response["body"])
+    assert [issue["issue_id"] for issue in body["issues"]] == ["issue-safe"]
+
+
+def test_issue_filters_include_preflight_lane_and_root_cause(monkeypatch):
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-rule-gap",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "evaluator_rule_gap",
+                    "lane": "receipt_structure_rule",
+                    "root_cause": "tip_gratuity_ambiguity",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-review",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "lane": "safe_label_edit_candidate",
+                    "root_cause": "wrong_financial_label_role",
+                    "is_automation_ready": False,
+                },
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_fetch_json_key",
+        lambda key: ledger,
+    )
+
+    response = viz_cache._handle_receipt_health_issues_get(
+        {
+            "state": "all",
+            "lane": "receipt_structure_rule",
+            "root_cause": "tip_gratuity_ambiguity",
+        }
+    )
+
+    body = json.loads(response["body"])
+    assert [issue["issue_id"] for issue in body["issues"]] == [
+        "issue-rule-gap"
+    ]
+
+
+def test_known_limitation_records_suppression_fingerprint():
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-a",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "math_mismatch",
+                    "lane": "evaluator_rule_gap",
+                    "root_cause": "line_total_candidates_do_not_reconcile",
+                    "is_automation_ready": False,
+                    "data_fingerprint": "data-fp-1",
+                },
+            }
+        ],
+    }
+
+    next_ledger, issue, error = viz_cache._apply_issue_update(
+        ledger,
+        {
+            "action": "known_limitation",
+            "issue_id": "issue-a",
+            "reason": "No exact label-only correction exists",
+        },
+    )
+
+    assert error is None
+    assert issue is not None
+    assert issue["state"] == "known_limitation"
+    assert issue["suppression_fingerprint"] == "data-fp-1"
+    assert next_ledger["summary"]["by_state"] == {"known_limitation": 1}
+    assert next_ledger["summary"]["by_preflight_lane"] == {
+        "evaluator_rule_gap": 1
+    }
+    assert next_ledger["summary"]["by_preflight_root_cause"] == {
+        "line_total_candidates_do_not_reconcile": 1
+    }

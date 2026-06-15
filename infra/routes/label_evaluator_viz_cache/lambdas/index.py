@@ -30,6 +30,7 @@ MAX_BATCH_SIZE = 50
 RECEIPT_HEALTH_LEDGER_KEY = "receipt-health/issues/ledger.json"
 RECEIPT_HEALTH_ELIGIBLE_KEY = "receipt-health/issues/eligible.json"
 MAX_ISSUE_BATCH_SIZE = 100
+AUTOMATION_READY_PREFLIGHT_CLASSES = frozenset({"safe_exact_plan"})
 
 # Map viz_type (last path segment) to S3 prefix
 VIZ_TYPE_PREFIXES = {
@@ -173,6 +174,9 @@ def _ledger_issue_is_eligible(
         return False
     if int(issue.get("attempt_count") or 0) >= max_attempts:
         return False
+    preflight = issue.get("preflight") or {}
+    if not preflight.get("is_automation_ready"):
+        return False
 
     next_retry_after = issue.get("next_retry_after")
     if next_retry_after:
@@ -195,6 +199,10 @@ def _filter_ledger_issues(
     state = query_params.get("state", "eligible")
     check_id = query_params.get("check_id")
     image_id = query_params.get("image_id")
+    receipt_id = query_params.get("receipt_id")
+    classification = query_params.get("classification")
+    lane = query_params.get("lane")
+    root_cause = query_params.get("root_cause")
     max_attempts = int(ledger.get("max_attempts") or 2)
 
     issues = []
@@ -208,6 +216,22 @@ def _filter_ledger_issues(
         if check_id and issue.get("check_id") != check_id:
             continue
         if image_id and str(issue.get("image_id")) != image_id:
+            continue
+        if receipt_id and str(issue.get("receipt_id")) != receipt_id:
+            continue
+        if (
+            classification
+            and (issue.get("preflight") or {}).get("classification")
+            != classification
+        ):
+            continue
+        if lane and (issue.get("preflight") or {}).get("lane") != lane:
+            continue
+        if (
+            root_cause
+            and (issue.get("preflight") or {}).get("root_cause")
+            != root_cause
+        ):
             continue
         issues.append(issue)
 
@@ -230,12 +254,32 @@ def _filter_run_issues(
     state = query_params.get("state")
     check_id = query_params.get("check_id")
     image_id = query_params.get("image_id")
+    receipt_id = query_params.get("receipt_id")
+    classification = query_params.get("classification")
+    lane = query_params.get("lane")
+    root_cause = query_params.get("root_cause")
 
     issues = []
     for issue in run_issues.get("issues", []):
         if check_id and issue.get("check_id") != check_id:
             continue
         if image_id and str(issue.get("image_id")) != image_id:
+            continue
+        if receipt_id and str(issue.get("receipt_id")) != receipt_id:
+            continue
+        if (
+            classification
+            and (issue.get("preflight") or {}).get("classification")
+            != classification
+        ):
+            continue
+        if lane and (issue.get("preflight") or {}).get("lane") != lane:
+            continue
+        if (
+            root_cause
+            and (issue.get("preflight") or {}).get("root_cause")
+            != root_cause
+        ):
             continue
 
         issue_state = issue.get("state")
@@ -257,6 +301,9 @@ def _summarize_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     """Recalculate compact ledger counts after an API update."""
     by_state: dict[str, int] = {}
     by_check: dict[str, int] = {}
+    by_preflight_classification: dict[str, int] = {}
+    by_preflight_lane: dict[str, int] = {}
+    by_preflight_root_cause: dict[str, int] = {}
     max_attempts = int(ledger.get("max_attempts") or 2)
     issues = ledger.get("issues", [])
 
@@ -265,11 +312,31 @@ def _summarize_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         check_id = str(issue.get("check_id") or "unknown")
         by_state[state] = by_state.get(state, 0) + 1
         by_check[check_id] = by_check.get(check_id, 0) + 1
+        preflight = issue.get("preflight") or {}
+        classification = preflight.get("classification") or "unclassified"
+        lane = preflight.get("lane") or "unclassified"
+        root_cause = preflight.get("root_cause") or "unclassified"
+        by_preflight_classification[str(classification)] = (
+            by_preflight_classification.get(str(classification), 0) + 1
+        )
+        by_preflight_lane[str(lane)] = (
+            by_preflight_lane.get(str(lane), 0) + 1
+        )
+        by_preflight_root_cause[str(root_cause)] = (
+            by_preflight_root_cause.get(str(root_cause), 0) + 1
+        )
 
     return {
         "total_issues": len(issues),
         "by_state": dict(sorted(by_state.items())),
         "by_check": dict(sorted(by_check.items())),
+        "by_preflight_classification": dict(
+            sorted(by_preflight_classification.items())
+        ),
+        "by_preflight_lane": dict(sorted(by_preflight_lane.items())),
+        "by_preflight_root_cause": dict(
+            sorted(by_preflight_root_cause.items())
+        ),
         "eligible_issues": sum(
             1
             for issue in issues
@@ -417,6 +484,17 @@ def _apply_issue_update(
             next_issue.pop("claimed_by", None)
             next_issue["manual_review_reason"] = body.get("reason")
             next_issue["manual_review_at"] = now_iso
+        elif action == "known_limitation":
+            next_issue["state"] = "known_limitation"
+            next_issue.pop("claimed_at", None)
+            next_issue.pop("claimed_by", None)
+            next_issue["known_limitation_reason"] = body.get("reason")
+            next_issue["known_limitation_at"] = now_iso
+            next_issue["suppression_fingerprint"] = (
+                body.get("suppression_fingerprint")
+                or (issue.get("preflight") or {}).get("data_fingerprint")
+                or issue.get("fingerprint")
+            )
         elif action == "blocked":
             next_issue["state"] = "blocked"
             next_issue.pop("claimed_at", None)

@@ -327,7 +327,8 @@ const baseApi = {
   async fetchReceiptHealth(
     batchSize: number = 20,
     seed?: number,
-    offset: number = 0
+    offset: number = 0,
+    options: { imageId?: string } = {}
   ): Promise<ReceiptHealthResponse> {
     const apiUrl = getAPIUrl();
     const params = new URLSearchParams();
@@ -335,6 +336,9 @@ const baseApi = {
     params.set("offset", offset.toString());
     if (seed !== undefined) {
       params.set("seed", seed.toString());
+    }
+    if (options.imageId) {
+      params.set("image_id", options.imageId);
     }
 
     const response = await fetch(
@@ -353,6 +357,8 @@ const baseApi = {
     state?: string;
     checkId?: string;
     imageId?: string;
+    receiptId?: number;
+    classification?: string;
     executionId?: string;
     limit?: number;
   } = {}): Promise<ReceiptHealthIssuesResponse> {
@@ -366,6 +372,12 @@ const baseApi = {
     }
     if (options.imageId) {
       params.set("image_id", options.imageId);
+    }
+    if (options.receiptId !== undefined) {
+      params.set("receipt_id", options.receiptId.toString());
+    }
+    if (options.classification) {
+      params.set("classification", options.classification);
     }
     if (options.executionId) {
       params.set("execution_id", options.executionId);
