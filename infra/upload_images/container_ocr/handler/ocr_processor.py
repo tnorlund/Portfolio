@@ -14,9 +14,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Mapping, Optional, Union
 
+from botocore.exceptions import ClientError
 from PIL import Image as PIL_Image
+from PIL import UnidentifiedImageError
+from PIL.Image import Resampling, Transform
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import (
@@ -44,6 +47,8 @@ from receipt_upload.utils import (
     is_noise_text,
     upload_all_cdn_formats,
 )
+
+from .metrics import emf_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +249,9 @@ class OCRProcessor:
 
     @staticmethod
     def _get_perspective_coeffs(
-        receipt: Receipt, image_width: int, image_height: int,
+        receipt: Receipt,
+        image_width: int,
+        image_height: int,
     ) -> list[float]:
         """Compute perspective coefficients mapping receipt-PIL → image-PIL.
 
@@ -256,14 +263,22 @@ class OCRProcessor:
         so the coordinate mapping is consistent with the original FIRST_PASS warp.
         """
         src_points = [
-            (receipt.top_left["x"] * image_width,
-             (1.0 - receipt.top_left["y"]) * image_height),
-            (receipt.top_right["x"] * image_width,
-             (1.0 - receipt.top_right["y"]) * image_height),
-            (receipt.bottom_right["x"] * image_width,
-             (1.0 - receipt.bottom_right["y"]) * image_height),
-            (receipt.bottom_left["x"] * image_width,
-             (1.0 - receipt.bottom_left["y"]) * image_height),
+            (
+                receipt.top_left["x"] * image_width,
+                (1.0 - receipt.top_left["y"]) * image_height,
+            ),
+            (
+                receipt.top_right["x"] * image_width,
+                (1.0 - receipt.top_right["y"]) * image_height,
+            ),
+            (
+                receipt.bottom_right["x"] * image_width,
+                (1.0 - receipt.bottom_right["y"]) * image_height,
+            ),
+            (
+                receipt.bottom_left["x"] * image_width,
+                (1.0 - receipt.bottom_left["y"]) * image_height,
+            ),
         ]
         dst_points = [
             (0.0, 0.0),
@@ -275,10 +290,13 @@ class OCRProcessor:
 
     @staticmethod
     def _image_point_to_receipt_perspective(
-        ix_norm: float, iy_norm: float,
+        ix_norm: float,
+        iy_norm: float,
         coeffs: list[float],
-        image_width: int, image_height: int,
-        receipt_width: int, receipt_height: int,
+        image_width: int,
+        image_height: int,
+        receipt_width: int,
+        receipt_height: int,
     ) -> tuple[float, float]:
         """Transform a point from image-Vision normalised → receipt-relative.
 
@@ -310,6 +328,150 @@ class OCRProcessor:
         ry = 1.0 - (y_rct / receipt_height)
         return max(0.0, min(1.0, rx)), max(0.0, min(1.0, ry))
 
+    # ------------------------------------------------------------------
+    # CDN generation helpers
+    # ------------------------------------------------------------------
+
+    # Maps a CDN entity field to the key returned by upload_all_cdn_formats.
+    # Both Image and Receipt expose these fields via CDNFieldsMixin.
+    _CDN_KEY_FIELDS: tuple[tuple[str, str], ...] = (
+        ("cdn_s3_key", "jpeg_full"),
+        ("cdn_webp_s3_key", "webp_full"),
+        ("cdn_avif_s3_key", "avif_full"),
+        ("cdn_thumbnail_s3_key", "jpeg_thumbnail"),
+        ("cdn_thumbnail_webp_s3_key", "webp_thumbnail"),
+        ("cdn_thumbnail_avif_s3_key", "avif_thumbnail"),
+        ("cdn_small_s3_key", "jpeg_small"),
+        ("cdn_small_webp_s3_key", "webp_small"),
+        ("cdn_small_avif_s3_key", "avif_small"),
+        ("cdn_medium_s3_key", "jpeg_medium"),
+        ("cdn_medium_webp_s3_key", "webp_medium"),
+        ("cdn_medium_avif_s3_key", "avif_medium"),
+    )
+
+    @classmethod
+    def _apply_cdn_keys(
+        cls,
+        entity: Union[Image, Receipt],
+        cdn_keys: Mapping[str, Optional[str]],
+        bucket: str,
+    ) -> None:
+        """Copy keys from upload_all_cdn_formats onto an Image/Receipt.
+
+        Also records the CDN bucket so the entity carries complete CDN
+        metadata (not just the object keys).
+        """
+        entity.cdn_s3_bucket = bucket
+        for field_name, dict_key in cls._CDN_KEY_FIELDS:
+            setattr(entity, field_name, cdn_keys.get(dict_key))
+
+    @staticmethod
+    def _emit_cdn_failure(
+        kind: str,
+        image_id: str,
+        reason: str,
+        receipt_id: Optional[int] = None,
+    ) -> None:
+        """Log and emit an alarmable EMF metric for a CDN failure.
+
+        A CDN failure used to be swallowed as a warning, leaving the entity
+        persisted with null CDN keys (a permanently blank image). Surfacing
+        it at ERROR with a CloudWatch metric makes the condition visible and
+        repairable instead of silent.
+        """
+        target = image_id if receipt_id is None else f"{image_id}/{receipt_id}"
+        logger.error(
+            "CDN generation failed for %s %s: %s", kind, target, reason
+        )
+        emf_metrics.log_metrics(
+            {"CdnGenerationFailed": 1},
+            dimensions={"EntityKind": kind},
+            properties={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "reason": reason,
+            },
+        )
+
+    def _download_original_image(
+        self, source_bucket: str, source_key: str, image_id: str
+    ) -> Optional[PIL_Image.Image]:
+        """Download and open the original uploaded image, or None on failure."""
+        try:
+            original_path = download_image_from_s3(
+                source_bucket, source_key, image_id, unique_suffix="original"
+            )
+            original = PIL_Image.open(original_path)
+            # Force decode now so a truncated/corrupt download raises here
+            # (caught below) instead of mid-CDN-upload.
+            original.load()
+            return original
+        except (ClientError, OSError, UnidentifiedImageError) as exc:
+            self._emit_cdn_failure(
+                "image", image_id, f"original_download_failed: {exc}"
+            )
+            return None
+
+    def _obtain_receipt_crop(
+        self,
+        receipt: Receipt,
+        source_bucket: str,
+        raw_s3_key: str,
+        image_id: str,
+        receipt_id: int,
+        original_image: Optional[PIL_Image.Image],
+        image_width: int,
+        image_height: int,
+    ) -> Optional[PIL_Image.Image]:
+        """Return the warped receipt crop as a PIL image.
+
+        The primary source is the warped crop the OCR worker uploads to S3.
+        If that object is missing or unreadable, the crop is regenerated
+        in-process from the original image using the receipt's corner
+        geometry, so a missing upload no longer yields a blank receipt.
+        """
+        try:
+            warped_path = download_image_from_s3(
+                source_bucket,
+                raw_s3_key,
+                image_id,
+                unique_suffix=f"receipt_{receipt_id}",
+            )
+            warped = PIL_Image.open(warped_path)
+            # Force decode now so a truncated/corrupt crop falls through to
+            # in-process regeneration instead of failing the CDN upload.
+            warped.load()
+            return warped
+        except (ClientError, OSError, UnidentifiedImageError) as exc:
+            logger.warning(
+                "Warped crop unavailable for %s/%s (%s); regenerating from "
+                "the original image",
+                image_id,
+                receipt_id,
+                exc,
+            )
+
+        if original_image is None or image_width <= 0 or image_height <= 0:
+            return None
+        try:
+            coeffs = self._get_perspective_coeffs(
+                receipt, image_width, image_height
+            )
+            return original_image.transform(
+                (receipt.width, receipt.height),
+                Transform.PERSPECTIVE,
+                coeffs,
+                resample=Resampling.BICUBIC,
+            )
+        except (ValueError, OSError) as exc:
+            logger.warning(
+                "In-process crop generation failed for %s/%s: %s",
+                image_id,
+                receipt_id,
+                exc,
+            )
+            return None
+
     def _apply_region_mapping(
         self,
         receipt_lines: list[ReceiptLine],
@@ -323,8 +485,12 @@ class OCRProcessor:
             entity.bounding_box = self._map_bbox_to_region(
                 entity.bounding_box, region
             )
-            entity.top_left = self._map_point_to_region(entity.top_left, region)
-            entity.top_right = self._map_point_to_region(entity.top_right, region)
+            entity.top_left = self._map_point_to_region(
+                entity.top_left, region
+            )
+            entity.top_right = self._map_point_to_region(
+                entity.top_right, region
+            )
             entity.bottom_left = self._map_point_to_region(
                 entity.bottom_left, region
             )
@@ -334,11 +500,15 @@ class OCRProcessor:
 
     @staticmethod
     def _bbox_center_x(bbox: dict[str, float]) -> float:
-        return float(bbox.get("x", 0.0)) + (float(bbox.get("width", 0.0)) / 2.0)
+        return float(bbox.get("x", 0.0)) + (
+            float(bbox.get("width", 0.0)) / 2.0
+        )
 
     @staticmethod
     def _bbox_center_y(bbox: dict[str, float]) -> float:
-        return float(bbox.get("y", 0.0)) + (float(bbox.get("height", 0.0)) / 2.0)
+        return float(bbox.get("y", 0.0)) + (
+            float(bbox.get("height", 0.0)) / 2.0
+        )
 
     @staticmethod
     def _bbox_containment_ratio(
@@ -482,11 +652,13 @@ class OCRProcessor:
         ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
             {"lines": lines_data}, ocr_job.image_id
         )
-        receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
-            lines=ocr_lines,
-            words=ocr_words,
-            letters=ocr_letters,
-            receipt_id=ocr_job.receipt_id,
+        receipt_lines, receipt_words, receipt_letters = (
+            image_ocr_to_receipt_ocr(
+                lines=ocr_lines,
+                words=ocr_words,
+                letters=ocr_letters,
+                receipt_id=ocr_job.receipt_id,
+            )
         )
         # Step 1: crop-relative → full-image Vision coords
         self._apply_region_mapping(
@@ -499,9 +671,7 @@ class OCRProcessor:
         # must be in the same space for matching and storage.
         # Use the same projective (homography) transform that the
         # FIRST_PASS warp used, so coordinates are exactly consistent.
-        receipt = self.dynamo.get_receipt(
-            ocr_job.image_id, ocr_job.receipt_id
-        )
+        receipt = self.dynamo.get_receipt(ocr_job.image_id, ocr_job.receipt_id)
         image = self.dynamo.get_image(ocr_job.image_id)
         coeffs = self._get_perspective_coeffs(
             receipt, image.width, image.height
@@ -519,19 +689,42 @@ class OCRProcessor:
         # Compute receipt-relative region bounds for candidate filtering
         _pt = self._image_point_to_receipt_perspective
         r_pts = [
-            _pt(region["x"], region["y"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"] + region["width"], region["y"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"], region["y"] + region["height"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"] + region["width"],
+            _pt(
+                region["x"],
+                region["y"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"] + region["width"],
+                region["y"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"],
                 region["y"] + region["height"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"] + region["width"],
+                region["y"] + region["height"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
         ]
         r_xs, r_ys = zip(*r_pts)
         region_x1, region_x2 = min(r_xs), max(r_xs)
@@ -563,9 +756,7 @@ class OCRProcessor:
         candidate_words = [
             word
             for word in existing_words
-            if region_x1
-            <= self._bbox_center_x(word.bounding_box)
-            <= region_x2
+            if region_x1 <= self._bbox_center_x(word.bounding_box) <= region_x2
             and region_y1
             <= self._bbox_center_y(word.bounding_box)
             <= region_y2
@@ -597,16 +788,17 @@ class OCRProcessor:
         # straddle the region boundary may not have been fully visible
         # to Vision, so we leave them alone to avoid data loss.
         _ORPHAN_CONTAINMENT_THRESHOLD = 0.80
-        matched_old_ids = {
-            (ew.line_id, ew.word_id) for _, ew in matches
-        }
+        matched_old_ids = {(ew.line_id, ew.word_id) for _, ew in matches}
         orphaned_words = [
             w
             for w in candidate_words
             if (w.line_id, w.word_id) not in matched_old_ids
             and self._bbox_containment_ratio(
                 w.bounding_box,
-                region_x1, region_y1, region_x2, region_y2,
+                region_x1,
+                region_y1,
+                region_x2,
+                region_y2,
             )
             >= _ORPHAN_CONTAINMENT_THRESHOLD
         ]
@@ -666,10 +858,7 @@ class OCRProcessor:
             # If the text changed but confidence dropped substantially,
             # the crop likely produced a misread — reject.
             confidence_drop = existing_word.confidence - new_word.confidence
-            if (
-                new_word.text != existing_word.text
-                and confidence_drop > 0.15
-            ):
+            if new_word.text != existing_word.text and confidence_drop > 0.15:
                 logger.info(
                     "Rejecting overlay for word %s#%s line=%d word=%d: "
                     "text changed '%s' -> '%s' with confidence drop "
@@ -753,7 +942,10 @@ class OCRProcessor:
             # Track max word_id per line so new words get unique IDs.
             max_word_id: dict[int, int] = {}
             for w in existing_words:
-                if w.line_id not in max_word_id or w.word_id > max_word_id[w.line_id]:
+                if (
+                    w.line_id not in max_word_id
+                    or w.word_id > max_word_id[w.line_id]
+                ):
                     max_word_id[w.line_id] = w.word_id
 
             for new_word in unmatched_new_words:
@@ -761,7 +953,8 @@ class OCRProcessor:
                 if new_word.confidence < 0.5:
                     logger.info(
                         "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
-                        new_word.text, new_word.confidence,
+                        new_word.text,
+                        new_word.confidence,
                     )
                     continue
 
@@ -780,7 +973,9 @@ class OCRProcessor:
                 best_line_id: int | None = None
                 best_overlap = 0.0
                 for lid, (ly_min, ly_max) in line_y_ranges.items():
-                    overlap = max(0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min))
+                    overlap = max(
+                        0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min)
+                    )
                     if overlap > best_overlap:
                         best_overlap = overlap
                         best_line_id = lid
@@ -901,9 +1096,7 @@ class OCRProcessor:
             updated_lookup = {
                 (w.line_id, w.word_id): w for w in words_to_update
             }
-            deleted_ids = {
-                (w.line_id, w.word_id) for w in words_to_delete
-            }
+            deleted_ids = {(w.line_id, w.word_id) for w in words_to_delete}
             added_by_line: dict[int, list[ReceiptWord]] = {}
             for w in words_to_add:
                 added_by_line.setdefault(w.line_id, []).append(w)
@@ -1059,6 +1252,14 @@ class OCRProcessor:
         per_receipt_data: Dict[int, Dict[str, Any]] = {}
         successful_receipts = 0
 
+        # Download the original image once: it backs the image-level CDN and
+        # is the fallback source for regenerating receipt crops in-process.
+        image_width = int(classification.get("image_width", 0) or 0)
+        image_height = int(classification.get("image_height", 0) or 0)
+        original_image = self._download_original_image(
+            ocr_job.s3_bucket, ocr_job.s3_key, image_id
+        )
+
         for receipt_idx, receipt_data in enumerate(receipts):
             try:
                 # Validate required fields exist
@@ -1108,69 +1309,44 @@ class OCRProcessor:
                 bottom_right=bounds["bottom_right"],
             )
 
-            # Process warped receipt image for CDN (multiple sizes and formats)
-            try:
-                warped_image_path = download_image_from_s3(
-                    ocr_job.s3_bucket,
-                    raw_s3_key,
-                    image_id,
-                    unique_suffix=f"receipt_{receipt_id}",
+            # Generate the receipt CDN crop. A failure here is logged and
+            # metered but never silently swallowed: the receipt is still
+            # persisted so OCR data is preserved, and the missing CDN keys
+            # become an alarmable signal rather than a permanent blank image.
+            crop_image = self._obtain_receipt_crop(
+                receipt=receipt,
+                source_bucket=ocr_job.s3_bucket,
+                raw_s3_key=raw_s3_key,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                original_image=original_image,
+                image_width=image_width,
+                image_height=image_height,
+            )
+            if crop_image is None:
+                self._emit_cdn_failure(
+                    "receipt", image_id, "crop_unavailable", receipt_id
                 )
-                warped_image = PIL_Image.open(warped_image_path)
-
-                # Upload to CDN with all sizes and formats
-                # Receipt CDN key: assets/{image_id}/{receipt_id}.jpg etc.
-                receipt_cdn_base_key = f"assets/{image_id}/{receipt_id}"
-                receipt_cdn_keys = upload_all_cdn_formats(
-                    warped_image,
-                    self.site_bucket,
-                    receipt_cdn_base_key,
-                    generate_thumbnails=True,
-                )
-
-                # Update Receipt entity with CDN keys
-                receipt.cdn_s3_key = receipt_cdn_keys.get("jpeg_full")
-                receipt.cdn_webp_s3_key = receipt_cdn_keys.get("webp_full")
-                receipt.cdn_avif_s3_key = receipt_cdn_keys.get("avif_full")
-                receipt.cdn_thumbnail_s3_key = receipt_cdn_keys.get(
-                    "jpeg_thumbnail"
-                )
-                receipt.cdn_thumbnail_webp_s3_key = receipt_cdn_keys.get(
-                    "webp_thumbnail"
-                )
-                receipt.cdn_thumbnail_avif_s3_key = receipt_cdn_keys.get(
-                    "avif_thumbnail"
-                )
-                receipt.cdn_small_s3_key = receipt_cdn_keys.get("jpeg_small")
-                receipt.cdn_small_webp_s3_key = receipt_cdn_keys.get(
-                    "webp_small"
-                )
-                receipt.cdn_small_avif_s3_key = receipt_cdn_keys.get(
-                    "avif_small"
-                )
-                receipt.cdn_medium_s3_key = receipt_cdn_keys.get("jpeg_medium")
-                receipt.cdn_medium_webp_s3_key = receipt_cdn_keys.get(
-                    "webp_medium"
-                )
-                receipt.cdn_medium_avif_s3_key = receipt_cdn_keys.get(
-                    "avif_medium"
-                )
-
-                logger.info(
-                    "Processed receipt %s for CDN: %s -> %s",
-                    receipt_id,
-                    raw_s3_key,
-                    receipt_cdn_base_key,
-                )
-            except (
-                Exception
-            ) as cdn_exc:  # pylint: disable=broad-exception-caught
-                logger.warning(
-                    "Failed to process receipt %s for CDN: %s - %s",
-                    receipt_id,
-                    raw_s3_key,
-                    cdn_exc,
-                )
+            else:
+                try:
+                    receipt_cdn_keys = upload_all_cdn_formats(
+                        crop_image,
+                        self.site_bucket,
+                        f"assets/{image_id}/{receipt_id}",
+                        generate_thumbnails=True,
+                    )
+                    self._apply_cdn_keys(
+                        receipt, receipt_cdn_keys, self.site_bucket
+                    )
+                    logger.info(
+                        "Processed receipt %s for CDN: %s",
+                        receipt_id,
+                        raw_s3_key,
+                    )
+                except (ClientError, OSError) as cdn_exc:
+                    self._emit_cdn_failure(
+                        "receipt", image_id, str(cdn_exc), receipt_id
+                    )
 
             self.dynamo.add_receipt(receipt)
 
@@ -1214,9 +1390,8 @@ class OCRProcessor:
         ocr_routing_decision.updated_at = current_time
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
 
-        # Create Image entity (Swift provides dimensions in classification)
-        image_width = classification.get("image_width", 0)
-        image_height = classification.get("image_height", 0)
+        # Create Image entity (Swift provides dimensions in classification);
+        # image_width/image_height and original_image were resolved above.
         if image_width > 0 and image_height > 0:
             image_entity = Image(
                 image_id=image_id,
@@ -1229,63 +1404,28 @@ class OCRProcessor:
                 receipt_count=successful_receipts,
             )
 
-            # Process original image for CDN (multiple sizes and formats)
-            try:
-                original_image_path = download_image_from_s3(
-                    ocr_job.s3_bucket,
-                    ocr_job.s3_key,
-                    image_id,
-                    unique_suffix="original",
+            # Process original image for CDN (reuse the already-downloaded
+            # original; "original" suffix avoids colliding with receipt keys).
+            if original_image is None:
+                self._emit_cdn_failure(
+                    "image", image_id, "original_unavailable"
                 )
-                original_image = PIL_Image.open(original_image_path)
-
-                # Upload to CDN with all sizes and formats
-                # Use 'original' to avoid collision with receipt CDN keys
-                cdn_base_key = f"assets/{image_id}/original"
-                cdn_keys = upload_all_cdn_formats(
-                    original_image,
-                    self.site_bucket,
-                    cdn_base_key,
-                    generate_thumbnails=True,
-                )
-
-                # Update Image entity with CDN keys
-                image_entity.cdn_s3_key = cdn_keys.get("jpeg_full")
-                image_entity.cdn_webp_s3_key = cdn_keys.get("webp_full")
-                image_entity.cdn_avif_s3_key = cdn_keys.get("avif_full")
-                image_entity.cdn_thumbnail_s3_key = cdn_keys.get(
-                    "jpeg_thumbnail"
-                )
-                image_entity.cdn_thumbnail_webp_s3_key = cdn_keys.get(
-                    "webp_thumbnail"
-                )
-                image_entity.cdn_thumbnail_avif_s3_key = cdn_keys.get(
-                    "avif_thumbnail"
-                )
-                image_entity.cdn_small_s3_key = cdn_keys.get("jpeg_small")
-                image_entity.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
-                image_entity.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
-                image_entity.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
-                image_entity.cdn_medium_webp_s3_key = cdn_keys.get(
-                    "webp_medium"
-                )
-                image_entity.cdn_medium_avif_s3_key = cdn_keys.get(
-                    "avif_medium"
-                )
-
-                logger.info(
-                    "Processed original image for CDN: %s -> %s",
-                    image_id,
-                    cdn_base_key,
-                )
-            except (
-                Exception
-            ) as cdn_exc:  # pylint: disable=broad-exception-caught
-                logger.warning(
-                    "Failed to process original image for CDN: %s - %s",
-                    image_id,
-                    cdn_exc,
-                )
+            else:
+                try:
+                    cdn_keys = upload_all_cdn_formats(
+                        original_image,
+                        self.site_bucket,
+                        f"assets/{image_id}/original",
+                        generate_thumbnails=True,
+                    )
+                    self._apply_cdn_keys(
+                        image_entity, cdn_keys, self.site_bucket
+                    )
+                    logger.info(
+                        "Processed original image for CDN: %s", image_id
+                    )
+                except (ClientError, OSError) as cdn_exc:
+                    self._emit_cdn_failure("image", image_id, str(cdn_exc))
 
             self.dynamo.add_image(image_entity)
             logger.info(
