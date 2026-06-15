@@ -115,8 +115,10 @@ def merchant_name_matches_receipt(
         return True  # No receipt text to validate against
 
     # Build a token set from the top N receipt lines (by y-coordinate)
-    sorted_lines = sorted(lines, key=lambda l: l.calculate_centroid()[1])
-    receipt_text = " ".join(l.text for l in sorted_lines[:n_lines] if l.text)
+    sorted_lines = sorted(lines, key=lambda line: line.calculate_centroid()[1])
+    receipt_text = " ".join(
+        line.text for line in sorted_lines[:n_lines] if line.text
+    )
     receipt_tokens = tokenize_text(receipt_text)
 
     return bool(merchant_tokens & receipt_tokens)
@@ -464,7 +466,9 @@ class MerchantResolver:
         if not lines:
             return None
         # Sort by y-coordinate (top to bottom) and return first
-        sorted_lines = sorted(lines, key=lambda l: l.calculate_centroid()[1])
+        sorted_lines = sorted(
+            lines, key=lambda line: line.calculate_centroid()[1]
+        )
         return sorted_lines[0] if sorted_lines else None
 
     def _similarity_search(
