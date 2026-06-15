@@ -348,6 +348,21 @@ class UploadImages(ComponentResource):
                                         else []
                                     ),
                                 },
+                                {
+                                    # Explicit read access on the image
+                                    # bucket so a GetObject on a missing key
+                                    # returns a clean 404 instead of
+                                    # AccessDenied (requires s3:ListBucket).
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:ListBucket",
+                                    ],
+                                    "Resource": [
+                                        args[3],  # image_bucket
+                                        args[3] + "/*",  # image_bucket/*
+                                    ],
+                                },
                             ]
                             + (
                                 [
