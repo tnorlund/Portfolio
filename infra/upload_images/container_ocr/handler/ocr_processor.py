@@ -244,7 +244,9 @@ class OCRProcessor:
 
     @staticmethod
     def _get_perspective_coeffs(
-        receipt: Receipt, image_width: int, image_height: int,
+        receipt: Receipt,
+        image_width: int,
+        image_height: int,
     ) -> list[float]:
         """Compute perspective coefficients mapping receipt-PIL → image-PIL.
 
@@ -256,14 +258,22 @@ class OCRProcessor:
         so the coordinate mapping is consistent with the original FIRST_PASS warp.
         """
         src_points = [
-            (receipt.top_left["x"] * image_width,
-             (1.0 - receipt.top_left["y"]) * image_height),
-            (receipt.top_right["x"] * image_width,
-             (1.0 - receipt.top_right["y"]) * image_height),
-            (receipt.bottom_right["x"] * image_width,
-             (1.0 - receipt.bottom_right["y"]) * image_height),
-            (receipt.bottom_left["x"] * image_width,
-             (1.0 - receipt.bottom_left["y"]) * image_height),
+            (
+                receipt.top_left["x"] * image_width,
+                (1.0 - receipt.top_left["y"]) * image_height,
+            ),
+            (
+                receipt.top_right["x"] * image_width,
+                (1.0 - receipt.top_right["y"]) * image_height,
+            ),
+            (
+                receipt.bottom_right["x"] * image_width,
+                (1.0 - receipt.bottom_right["y"]) * image_height,
+            ),
+            (
+                receipt.bottom_left["x"] * image_width,
+                (1.0 - receipt.bottom_left["y"]) * image_height,
+            ),
         ]
         dst_points = [
             (0.0, 0.0),
@@ -275,10 +285,13 @@ class OCRProcessor:
 
     @staticmethod
     def _image_point_to_receipt_perspective(
-        ix_norm: float, iy_norm: float,
+        ix_norm: float,
+        iy_norm: float,
         coeffs: list[float],
-        image_width: int, image_height: int,
-        receipt_width: int, receipt_height: int,
+        image_width: int,
+        image_height: int,
+        receipt_width: int,
+        receipt_height: int,
     ) -> tuple[float, float]:
         """Transform a point from image-Vision normalised → receipt-relative.
 
@@ -323,8 +336,12 @@ class OCRProcessor:
             entity.bounding_box = self._map_bbox_to_region(
                 entity.bounding_box, region
             )
-            entity.top_left = self._map_point_to_region(entity.top_left, region)
-            entity.top_right = self._map_point_to_region(entity.top_right, region)
+            entity.top_left = self._map_point_to_region(
+                entity.top_left, region
+            )
+            entity.top_right = self._map_point_to_region(
+                entity.top_right, region
+            )
             entity.bottom_left = self._map_point_to_region(
                 entity.bottom_left, region
             )
@@ -334,11 +351,15 @@ class OCRProcessor:
 
     @staticmethod
     def _bbox_center_x(bbox: dict[str, float]) -> float:
-        return float(bbox.get("x", 0.0)) + (float(bbox.get("width", 0.0)) / 2.0)
+        return float(bbox.get("x", 0.0)) + (
+            float(bbox.get("width", 0.0)) / 2.0
+        )
 
     @staticmethod
     def _bbox_center_y(bbox: dict[str, float]) -> float:
-        return float(bbox.get("y", 0.0)) + (float(bbox.get("height", 0.0)) / 2.0)
+        return float(bbox.get("y", 0.0)) + (
+            float(bbox.get("height", 0.0)) / 2.0
+        )
 
     @staticmethod
     def _bbox_containment_ratio(
@@ -482,11 +503,13 @@ class OCRProcessor:
         ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
             {"lines": lines_data}, ocr_job.image_id
         )
-        receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
-            lines=ocr_lines,
-            words=ocr_words,
-            letters=ocr_letters,
-            receipt_id=ocr_job.receipt_id,
+        receipt_lines, receipt_words, receipt_letters = (
+            image_ocr_to_receipt_ocr(
+                lines=ocr_lines,
+                words=ocr_words,
+                letters=ocr_letters,
+                receipt_id=ocr_job.receipt_id,
+            )
         )
         # Step 1: crop-relative → full-image Vision coords
         self._apply_region_mapping(
@@ -499,16 +522,22 @@ class OCRProcessor:
         # must be in the same space for matching and storage.
         # Use the same projective (homography) transform that the
         # FIRST_PASS warp used, so coordinates are exactly consistent.
-        receipt = self.dynamo.get_receipt(
-            ocr_job.image_id, ocr_job.receipt_id
-        )
+        receipt = self.dynamo.get_receipt(ocr_job.image_id, ocr_job.receipt_id)
         image = self.dynamo.get_image(ocr_job.image_id)
         coeffs = self._get_perspective_coeffs(
             receipt, image.width, image.height
         )
+        c_a, c_b, c_c, c_d, c_e, c_f, c_g, c_h = coeffs
         for entity in receipt_lines + receipt_words + receipt_letters:
             entity.inverse_perspective_transform(
-                *coeffs,
+                c_a,
+                c_b,
+                c_c,
+                c_d,
+                c_e,
+                c_f,
+                c_g,
+                c_h,
                 src_width=receipt.width,
                 src_height=receipt.height,
                 dst_width=image.width,
@@ -519,19 +548,42 @@ class OCRProcessor:
         # Compute receipt-relative region bounds for candidate filtering
         _pt = self._image_point_to_receipt_perspective
         r_pts = [
-            _pt(region["x"], region["y"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"] + region["width"], region["y"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"], region["y"] + region["height"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
-            _pt(region["x"] + region["width"],
+            _pt(
+                region["x"],
+                region["y"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"] + region["width"],
+                region["y"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"],
                 region["y"] + region["height"],
-                coeffs, image.width, image.height,
-                receipt.width, receipt.height),
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
+            _pt(
+                region["x"] + region["width"],
+                region["y"] + region["height"],
+                coeffs,
+                image.width,
+                image.height,
+                receipt.width,
+                receipt.height,
+            ),
         ]
         r_xs, r_ys = zip(*r_pts)
         region_x1, region_x2 = min(r_xs), max(r_xs)
@@ -563,9 +615,7 @@ class OCRProcessor:
         candidate_words = [
             word
             for word in existing_words
-            if region_x1
-            <= self._bbox_center_x(word.bounding_box)
-            <= region_x2
+            if region_x1 <= self._bbox_center_x(word.bounding_box) <= region_x2
             and region_y1
             <= self._bbox_center_y(word.bounding_box)
             <= region_y2
@@ -597,16 +647,17 @@ class OCRProcessor:
         # straddle the region boundary may not have been fully visible
         # to Vision, so we leave them alone to avoid data loss.
         _ORPHAN_CONTAINMENT_THRESHOLD = 0.80
-        matched_old_ids = {
-            (ew.line_id, ew.word_id) for _, ew in matches
-        }
+        matched_old_ids = {(ew.line_id, ew.word_id) for _, ew in matches}
         orphaned_words = [
             w
             for w in candidate_words
             if (w.line_id, w.word_id) not in matched_old_ids
             and self._bbox_containment_ratio(
                 w.bounding_box,
-                region_x1, region_y1, region_x2, region_y2,
+                region_x1,
+                region_y1,
+                region_x2,
+                region_y2,
             )
             >= _ORPHAN_CONTAINMENT_THRESHOLD
         ]
@@ -666,10 +717,7 @@ class OCRProcessor:
             # If the text changed but confidence dropped substantially,
             # the crop likely produced a misread — reject.
             confidence_drop = existing_word.confidence - new_word.confidence
-            if (
-                new_word.text != existing_word.text
-                and confidence_drop > 0.15
-            ):
+            if new_word.text != existing_word.text and confidence_drop > 0.15:
                 logger.info(
                     "Rejecting overlay for word %s#%s line=%d word=%d: "
                     "text changed '%s' -> '%s' with confidence drop "
@@ -753,7 +801,10 @@ class OCRProcessor:
             # Track max word_id per line so new words get unique IDs.
             max_word_id: dict[int, int] = {}
             for w in existing_words:
-                if w.line_id not in max_word_id or w.word_id > max_word_id[w.line_id]:
+                if (
+                    w.line_id not in max_word_id
+                    or w.word_id > max_word_id[w.line_id]
+                ):
                     max_word_id[w.line_id] = w.word_id
 
             for new_word in unmatched_new_words:
@@ -761,7 +812,8 @@ class OCRProcessor:
                 if new_word.confidence < 0.5:
                     logger.info(
                         "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
-                        new_word.text, new_word.confidence,
+                        new_word.text,
+                        new_word.confidence,
                     )
                     continue
 
@@ -780,7 +832,9 @@ class OCRProcessor:
                 best_line_id: int | None = None
                 best_overlap = 0.0
                 for lid, (ly_min, ly_max) in line_y_ranges.items():
-                    overlap = max(0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min))
+                    overlap = max(
+                        0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min)
+                    )
                     if overlap > best_overlap:
                         best_overlap = overlap
                         best_line_id = lid
@@ -901,9 +955,7 @@ class OCRProcessor:
             updated_lookup = {
                 (w.line_id, w.word_id): w for w in words_to_update
             }
-            deleted_ids = {
-                (w.line_id, w.word_id) for w in words_to_delete
-            }
+            deleted_ids = {(w.line_id, w.word_id) for w in words_to_delete}
             added_by_line: dict[int, list[ReceiptWord]] = {}
             for w in words_to_add:
                 added_by_line.setdefault(w.line_id, []).append(w)
@@ -1670,7 +1722,14 @@ class OCRProcessor:
                     "receipt_id": None,  # Multiple receipts
                 }
 
-            logger.error("Unknown image type: %s", image_type)
+            # Defensive fallback: kept in case the ImageType enum gains a
+            # new member or an unexpected value reaches this point at
+            # runtime. mypy proves this unreachable because the three known
+            # ImageType members are each handled above, so the exhaustiveness
+            # check below is intentionally retained for runtime safety.
+            logger.error(  # type: ignore[unreachable]
+                "Unknown image type: %s", image_type
+            )
             self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
