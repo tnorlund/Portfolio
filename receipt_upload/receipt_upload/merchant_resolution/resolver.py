@@ -115,11 +115,9 @@ def merchant_name_matches_receipt(
         return True  # No receipt text to validate against
 
     # Build a token set from the top N receipt lines (by y-coordinate)
-    sorted_lines = sorted(
-        lines, key=lambda l: l.calculate_centroid()[1]
-    )
+    sorted_lines = sorted(lines, key=lambda line: line.calculate_centroid()[1])
     receipt_text = " ".join(
-        l.text for l in sorted_lines[:n_lines] if l.text
+        line.text for line in sorted_lines[:n_lines] if line.text
     )
     receipt_tokens = tokenize_text(receipt_text)
 
@@ -382,9 +380,18 @@ class MerchantResolver:
                 expected_address=address,
                 resolution_tier="chroma_text",
             )
+            # chroma_text is the weakest signal: it matches on the
+            # merchant-name line alone, with no corroborating identifier
+            # (unlike the phone/address tiers). A mid-band embedding neighbor
+            # can therefore be wrong -- e.g. a brand-new merchant landing
+            # ~0.79 from an unrelated one ("Poke Market" -> "Jamba").
+            # result.confidence already includes PHONE/ADDRESS_MATCH_BOOST,
+            # so require HIGH_CONFIDENCE_THRESHOLD: accept only when the text
+            # match is strong on its own OR metadata corroborates it;
+            # otherwise fall through to the Google Places tier.
             if (
                 result.place_id
-                and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
             ):
                 _log(
                     "Tier 1 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
@@ -393,6 +400,14 @@ class MerchantResolver:
                     result.confidence,
                 )
                 return result
+            if result.place_id:
+                _log(
+                    "Tier 1 chroma_text below corroboration bar "
+                    "(%s conf=%.2f < %.2f); deferring to Tier 2",
+                    result.merchant_name,
+                    result.confidence,
+                    HIGH_CONFIDENCE_THRESHOLD,
+                )
 
         # Tier 2: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1 failed, invoking Tier 2: Place ID Finder agent")
@@ -451,7 +466,9 @@ class MerchantResolver:
         if not lines:
             return None
         # Sort by y-coordinate (top to bottom) and return first
-        sorted_lines = sorted(lines, key=lambda l: l.calculate_centroid()[1])
+        sorted_lines = sorted(
+            lines, key=lambda line: line.calculate_centroid()[1]
+        )
         return sorted_lines[0] if sorted_lines else None
 
     def _similarity_search(
@@ -658,10 +675,7 @@ class MerchantResolver:
                     # Prefer DynamoDB merchant_name (authoritative, may be
                     # corrected via fix-place) over ChromaDB metadata which
                     # can be stale/poisoned.
-                    merchant_name = (
-                        dynamo_merchant_name
-                        or match.merchant_name
-                    )
+                    merchant_name = dynamo_merchant_name or match.merchant_name
                     return MerchantResult(
                         place_id=place_id,
                         merchant_name=merchant_name,
@@ -806,7 +820,9 @@ class MerchantResolver:
             place = self.dynamo.get_receipt_place(image_id, receipt_id)
             if place and place.place_id:
                 if place.place_id not in INVALID_PLACE_IDS:
-                    return place.place_id, getattr(place, "merchant_name", None)
+                    return place.place_id, getattr(
+                        place, "merchant_name", None
+                    )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error getting place from receipt_place: %s", exc)
             logger.exception("DynamoDB lookup failed")

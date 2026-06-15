@@ -558,3 +558,60 @@ class TestMerchantResolvingEmbeddingProcessorInit:
             os.environ.get("CHROMADB_WORDS_QUEUE_URL")
             == "https://sqs.us-east-1.amazonaws.com/words"
         )
+
+
+class TestEnrichReceiptPlacePersistsConfidence:
+    """New ReceiptPlace records must persist the resolver's match-quality
+    signals (confidence / validation_status / matched_fields), not drop them
+    to defaults (the bug that stored every chroma place as confidence=0.0)."""
+
+    @pytest.fixture
+    def mock_dynamo_client(self):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ) as MockDynamo:
+            client = MagicMock()
+            MockDynamo.return_value = client
+            yield client
+
+    def _create_place(self, mock_dynamo_client, confidence):
+        # No existing place -> exercises the create path.
+        mock_dynamo_client.get_receipt_place.return_value = None
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ):
+            processor = MerchantResolvingEmbeddingProcessor(
+                table_name="test-table",
+                chromadb_bucket="test-bucket",
+            )
+            processor._enrich_receipt_place(
+                image_id="550e8400-e29b-41d4-a716-446655440000",
+                receipt_id=1,
+                merchant_result=MerchantResult(
+                    place_id="ChIJ_poke",
+                    merchant_name="Poke Market",
+                    address="6815 Tom Rodriguez St, Las Vegas, NV 89113",
+                    phone=None,
+                    confidence=confidence,
+                    resolution_tier="chroma_text",
+                ),
+            )
+        mock_dynamo_client.add_receipt_place.assert_called_once()
+        return mock_dynamo_client.add_receipt_place.call_args[0][0]
+
+    def test_create_persists_confidence_and_matched_fields(
+        self, mock_dynamo_client
+    ):
+        place = self._create_place(mock_dynamo_client, confidence=0.79)
+        assert place.confidence == 0.79
+        # 0.79 < 0.8 -> UNSURE (mirrors fix-place lambda semantics)
+        assert place.validation_status == "UNSURE"
+        # phone was None, so only name + address are recorded
+        assert "merchant_name" in place.matched_fields
+        assert "address" in place.matched_fields
+        assert "phone" not in place.matched_fields
+
+    def test_create_high_confidence_is_matched(self, mock_dynamo_client):
+        place = self._create_place(mock_dynamo_client, confidence=0.9)
+        assert place.confidence == 0.9
+        assert place.validation_status == "MATCHED"

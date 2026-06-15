@@ -57,7 +57,9 @@ class TestMerchantResolverTier1Phone:
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Matching Store")
+        mock_line = MagicMock(
+            spec=ReceiptLine, line_id=1, text="Matching Store"
+        )
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
@@ -896,9 +898,7 @@ class TestGetPlaceFromDynamo:
         mock_place.merchant_name = "Corrected Name"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
-        place_id, merchant_name = resolver._get_place_from_dynamo(
-            "img-1", 1
-        )
+        place_id, merchant_name = resolver._get_place_from_dynamo("img-1", 1)
 
         assert place_id == "ChIJ_test"
         assert merchant_name == "Corrected Name"
@@ -912,9 +912,7 @@ class TestGetPlaceFromDynamo:
         mock_place.merchant_name = None
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
-        place_id, merchant_name = resolver._get_place_from_dynamo(
-            "img-1", 1
-        )
+        place_id, merchant_name = resolver._get_place_from_dynamo("img-1", 1)
 
         assert place_id == "ChIJ_test"
         assert merchant_name is None
@@ -928,9 +926,7 @@ class TestGetPlaceFromDynamo:
         mock_place.merchant_name = "Some Name"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
-        place_id, merchant_name = resolver._get_place_from_dynamo(
-            "img-1", 1
-        )
+        place_id, merchant_name = resolver._get_place_from_dynamo("img-1", 1)
 
         assert place_id is None
         assert merchant_name is None
@@ -1068,6 +1064,97 @@ class TestWriteTimeValidationLogic:
             self._make_line(1, "Sprouts Farmers Market", y=0.1),
             self._make_line(2, "740 N MOORPARK RD", y=0.2),
         ]
-        assert merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
+        assert merchant_name_matches_receipt("Sprouts Farmers Market", lines)
+
+
+class TestMerchantResolverChromaTextGuard:
+    """Tier 1 chroma_text requires corroboration (HIGH_CONFIDENCE_THRESHOLD).
+
+    Regression guard for a brand-new merchant ("Poke Market") being
+    mislabeled as a 0.79 embedding neighbor ("Jamba") on a name-only match
+    with no phone and a non-matching address.
+    """
+
+    @pytest.fixture
+    def mock_dynamo_client(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_places_client(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_lines_client(self):
+        return MagicMock()
+
+    def _setup(self, mock_dynamo_client, mock_places_client):
+        resolver = MerchantResolver(
+            dynamo_client=mock_dynamo_client,
+            places_client=mock_places_client,
         )
+        words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
+        line = MagicMock(spec=ReceiptLine, line_id=1, text="POKE MARKET")
+        line.calculate_centroid.return_value = (0.5, 0.1)
+        return resolver, words, [line], {1: [0.1] * 1536}
+
+    def test_chroma_text_below_high_confidence_defers_to_tier2(
+        self, mock_dynamo_client, mock_places_client, mock_lines_client
+    ):
+        resolver, words, lines, embeds = self._setup(
+            mock_dynamo_client, mock_places_client
+        )
+        weak = MerchantResult(
+            place_id="ChIJ_jamba",
+            merchant_name="Jamba",
+            confidence=0.79,
+            resolution_tier="chroma_text",
+        )
+        tier2 = MerchantResult(
+            place_id="ChIJ_poke",
+            merchant_name="Poke Market",
+            confidence=0.9,
+            resolution_tier="place_id_finder",
+        )
+        with (
+            patch.object(resolver, "_similarity_search", return_value=weak),
+            patch.object(resolver, "_run_place_id_finder", return_value=tier2),
+        ):
+            result = resolver.resolve(
+                lines_client=mock_lines_client,
+                lines=lines,
+                words=words,
+                image_id="img",
+                receipt_id=1,
+                line_embeddings=embeds,
+            )
+        # 0.79 name-only match must NOT win; Tier 2 result is used instead.
+        assert result.place_id == "ChIJ_poke"
+        assert result.merchant_name == "Poke Market"
+        assert result.resolution_tier == "place_id_finder"
+
+    def test_chroma_text_at_high_confidence_is_accepted(
+        self, mock_dynamo_client, mock_places_client, mock_lines_client
+    ):
+        resolver, words, lines, embeds = self._setup(
+            mock_dynamo_client, mock_places_client
+        )
+        strong = MerchantResult(
+            place_id="ChIJ_strong",
+            merchant_name="Strong Match",
+            confidence=0.87,
+            resolution_tier="chroma_text",
+        )
+        with (
+            patch.object(resolver, "_similarity_search", return_value=strong),
+            patch.object(resolver, "_run_place_id_finder") as mock_tier2,
+        ):
+            result = resolver.resolve(
+                lines_client=mock_lines_client,
+                lines=lines,
+                words=words,
+                image_id="img",
+                receipt_id=1,
+                line_embeddings=embeds,
+            )
+        assert result.place_id == "ChIJ_strong"
+        mock_tier2.assert_not_called()
