@@ -9,6 +9,7 @@ export type ReceiptFlowLoadingVariant =
   | "financial"
   | "between"
   | "layoutlm"
+  | "health"
   | "timeline"
   | "qa";
 
@@ -42,7 +43,15 @@ function QueueSkeleton() {
   );
 }
 
-function CenterSkeleton({ message, isError }: { message?: string; isError?: boolean }) {
+function CenterSkeleton({
+  message,
+  isError,
+  variant,
+}: {
+  message?: string;
+  isError?: boolean;
+  variant: ReceiptFlowLoadingVariant;
+}) {
   if (message) {
     return (
       <div
@@ -55,7 +64,12 @@ function CenterSkeleton({ message, isError }: { message?: string; isError?: bool
   }
   return (
     <div className={styles.centerSkeleton}>
-      <div className={styles.receiptPlaceholder} />
+      <div
+        className={[
+          styles.receiptPlaceholder,
+          variant === "health" ? styles.receiptPlaceholderHealth : "",
+        ].filter(Boolean).join(" ")}
+      />
     </div>
   );
 }
@@ -117,6 +131,17 @@ function LegendSkeleton({ variant }: { variant: ReceiptFlowLoadingVariant }) {
           </div>
         </div>
       );
+    case "health":
+      return (
+        <div className={`${styles.legendSkeleton} ${styles.legendHealth}`}>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className={styles.healthRowSkeleton}>
+              <div className={styles.healthLabelSkeleton} />
+              <div className={styles.healthStatusSkeleton} />
+            </div>
+          ))}
+        </div>
+      );
     default:
       return <div className={styles.legendSkeleton} />;
   }
@@ -135,7 +160,7 @@ export const ReceiptFlowLoadingShell: React.FC<ReceiptFlowLoadingShellProps> = (
       layoutVars={mergedLayoutVars}
       isTransitioning={false}
       queue={<QueueSkeleton />}
-      center={<CenterSkeleton message={message} isError={isError} />}
+      center={<CenterSkeleton message={message} isError={isError} variant={variant} />}
       legend={<LegendSkeleton variant={variant} />}
     />
   );

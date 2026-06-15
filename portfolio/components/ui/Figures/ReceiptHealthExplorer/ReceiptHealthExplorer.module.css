@@ -11,7 +11,7 @@
 }
 
 .flowMockContainer {
-  max-width: 1000px;
+  max-width: 1120px;
   padding: 1.5rem;
   border: 0;
   border-radius: 12px;
@@ -57,6 +57,7 @@
 .flowActiveReceipt {
   width: 100%;
   height: 100%;
+  animation: receiptHealthFadeIn 0.28s ease-out both;
 }
 
 .flowReceiptImageWrapper {
@@ -101,12 +102,480 @@
 }
 
 .flowEntityLegend {
-  width: 190px;
+  width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.7rem;
   flex-shrink: 0;
   padding: 1rem 0;
+}
+
+.diagnosisRail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+  width: 100%;
+  color: var(--text-color);
+}
+
+.validationStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+}
+
+.validationPill {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.validationPill:hover,
+.validationPill:focus-visible,
+.validationPillActive {
+  opacity: 1;
+  outline: none;
+}
+
+.validationPillProblem {
+  opacity: 1;
+}
+
+.validationStatusIcon {
+  justify-self: end;
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.validationStatusIcon circle {
+  fill: currentColor;
+}
+
+.validationStatusIcon path,
+.validationStatusIcon line {
+  stroke: #fff;
+}
+
+.validationStatusIcon text {
+  fill: #fff;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.validationLabel {
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.validationExplanation {
+  grid-column: 1 / 2;
+  min-width: 0;
+  margin-top: -0.18rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.28;
+  opacity: 0.58;
+  overflow-wrap: anywhere;
+  text-align: left;
+  animation: receiptHealthTextFadeIn 0.22s ease-out both;
+}
+
+@keyframes receiptHealthFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes receiptHealthTextFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.58;
+  }
+}
+
+.railStatusPass {
+  color: var(--color-green);
+}
+
+.railStatusFail {
+  color: var(--color-red);
+}
+
+.railStatusReview {
+  color: var(--color-yellow);
+}
+
+.railStatusNeutral {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.42);
+}
+
+.diagnosisStatement {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.25rem 0 0.35rem;
+}
+
+.diagnosisKicker {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.diagnosisTitle {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: 0;
+}
+
+.diagnosisBody {
+  font-size: 0.72rem;
+  line-height: 1.36;
+  opacity: 0.68;
+}
+
+.diagnosisEquation {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.68rem;
+  line-height: 1.38;
+  opacity: 0.68;
+  overflow-wrap: anywhere;
+}
+
+.sectionMap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.2rem 0;
+}
+
+.sectionMapRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 14px;
+  opacity: 0.36;
+}
+
+.sectionMapIssue,
+.sectionMapContext {
+  opacity: 1;
+}
+
+.sectionMapLabel {
+  display: none;
+}
+
+.sectionMapRule {
+  position: relative;
+  height: 1px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.22);
+}
+
+.sectionMapMarker {
+  position: absolute;
+  top: 50%;
+  left: var(--marker-left, 56%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: currentColor;
+}
+
+.sectionMapIssue .sectionMapMarker {
+  width: 10px;
+  height: 10px;
+  background: var(--color-red);
+}
+
+.sectionMapContext .sectionMapMarker {
+  border: 1px solid currentColor;
+  background: var(--background-color);
+}
+
+.sectionMapCount {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.55;
+  text-align: right;
+}
+
+.sectionMapEmpty {
+  margin-top: 0.25rem;
+  font-size: 0.62rem;
+  line-height: 1.3;
+  opacity: 0.44;
+}
+
+.lineItemTokenMap {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.38rem;
+  padding: 0.1rem 0 0.2rem;
+}
+
+.evidenceSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+}
+
+.evidenceSummary div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.evidenceSummary strong {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.evidenceSummary span {
+  min-width: 0;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  opacity: 0.7;
+}
+
+.nextAction {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.nextAction span {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.48;
+}
+
+.nextAction strong {
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.lineItemMetric {
+  display: grid;
+  grid-template-rows: 12px auto;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.lineItemMetric span {
+  position: relative;
+  display: block;
+  height: 1px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.18);
+}
+
+.lineItemMetric span::after {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--metric-width, 0%);
+  height: 6px;
+  content: "";
+  transform: translateY(-50%);
+  background: currentColor;
+}
+
+.lineItemMetric strong {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.62;
+}
+
+.lineItemMetricRows {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+}
+
+.lineItemMetricClean {
+  color: var(--color-green);
+}
+
+.lineItemMetricFragment {
+  color: var(--color-yellow);
+}
+
+.lineItemMetricLabeled {
+  color: var(--color-blue);
+}
+
+.railNote {
+  margin: -0.1rem 0 0;
+  font-size: 0.66rem;
+  line-height: 1.38;
+  opacity: 0.58;
+}
+
+.evidenceDisclosure {
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+}
+
+.evidenceDisclosure summary {
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.52;
+}
+
+.evidenceRowsCompact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.evidenceTextLine {
+  font-size: 0.62rem;
+  line-height: 1.34;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+}
+
+.evidenceMetaLine {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.62rem;
+  line-height: 1.3;
+}
+
+.evidenceMetaLine span {
+  font-weight: 800;
+  opacity: 0.46;
+  text-transform: uppercase;
+}
+
+.evidenceMetaLine strong {
+  min-width: 0;
+  font-weight: 750;
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+}
+
+.evidenceRowCompact {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 0.45rem;
+  font-size: 0.62rem;
+  line-height: 1.32;
+}
+
+.evidenceRowCompact span:first-child {
+  font-weight: 750;
+  opacity: 0.5;
+}
+
+.evidenceRowCompact span:last-child {
+  min-width: 0;
+  opacity: 0.66;
+  overflow-wrap: anywhere;
+}
+
+.stateExamples {
+  display: flex;
+  gap: 0.42rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+}
+
+.stateExamplesHeader {
+  display: none;
+}
+
+.stateExampleButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.45rem;
+}
+
+.stateExampleButton {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  cursor: pointer;
+  opacity: 0.46;
+}
+
+.stateExampleButton:hover,
+.stateExampleButton:focus-visible,
+.stateExampleActive {
+  opacity: 1;
+  outline: none;
+}
+
+.stateExampleDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 .flowLegendDesktop {
@@ -208,6 +677,153 @@
 .flowInferenceNote {
   font-size: 0.72rem;
   line-height: 1.35;
+  opacity: 0.72;
+}
+
+.decisionPath {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+}
+
+.decisionHeader,
+.volumeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+.decisionHeader span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.46rem;
+}
+
+.decisionStep {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.decisionStepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+  border-radius: 50%;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.decisionStepBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.decisionStepTitle {
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.decisionStepText {
+  font-size: 0.7rem;
+  line-height: 1.34;
+  opacity: 0.78;
+  overflow-wrap: anywhere;
+}
+
+.decisionSummary {
+  padding: 0.5rem 0 0;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.66;
+}
+
+.rootCauseVolume {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+}
+
+.volumeRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+}
+
+.volumeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 24px;
+  gap: 0.45rem;
+  align-items: center;
+  opacity: 0.66;
+}
+
+.volumeRowActive {
+  opacity: 1;
+}
+
+.volumeLabel {
+  min-width: 0;
+  font-size: 0.64rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.volumeBarTrack {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.09);
+  overflow: hidden;
+}
+
+.volumeBar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--volume-width, 0%);
+  border-radius: inherit;
+  background: currentColor;
+}
+
+.volumeCount {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: right;
   opacity: 0.72;
 }
 
@@ -737,6 +1353,63 @@
   overflow-wrap: anywhere;
 }
 
+.sectionEvidence {
+  margin-top: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.sectionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.sectionChip {
+  padding: 0.2rem 0.38rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.03);
+  font-size: 0.6rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sectionRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 0.45rem;
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.sectionRowLabel {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.sectionRowText {
+  min-width: 0;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.72);
+  overflow-wrap: anywhere;
+}
+
+.sectionContext {
+  font-size: 0.62rem;
+  line-height: 1.3;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.48);
+  overflow-wrap: anywhere;
+}
+
 .actionCount {
   margin-top: 0.35rem;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
@@ -807,37 +1480,44 @@
 
   .flowEntityLegend {
     width: 100%;
-    align-items: center;
+    max-width: 520px;
     gap: 0.75rem;
     padding: 0;
   }
 
-  .flowLegendDesktop {
-    display: none;
+  .diagnosisRail {
+    width: 100%;
   }
 
-  .flowLegendMobile {
-    display: grid;
+  .validationStrip,
+  .evidenceSummary,
+  .nextAction {
+    max-width: 360px;
+    margin-right: auto;
+    margin-left: auto;
+    width: 100%;
   }
 
-  .flowLegendItem {
-    grid-template-columns: 14px minmax(0, auto);
-    width: auto;
+  .diagnosisStatement {
+    text-align: center;
   }
 
-  .flowLegendValue {
-    display: none;
+  .sectionMap,
+  .lineItemTokenMap,
+  .railNote,
+  .evidenceDisclosure,
+  .stateExamples {
+    max-width: 360px;
+    margin-right: auto;
+    margin-left: auto;
   }
 
-  .flowInferenceTime {
+  .stateExamples {
     align-items: center;
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 0;
   }
 
-  .flowInferenceValue {
-    font-size: 1.1rem;
+  .stateExampleButtons {
+    justify-content: center;
   }
 
   .body {
@@ -958,5 +1638,12 @@
   .navButton {
     height: 34px;
     font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowActiveReceipt,
+  .validationExplanation {
+    animation: none;
   }
 }

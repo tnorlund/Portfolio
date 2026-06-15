@@ -63,7 +63,7 @@ const FigureBoundary = ({
   const { ref, inView } = useInView({
     rootMargin: FIGURE_LAZY_ROOT_MARGIN,
     triggerOnce: true,
-    fallbackInView: false,
+    fallbackInView: true,
   });
   const [shouldRender, setShouldRender] = useState(false);
 

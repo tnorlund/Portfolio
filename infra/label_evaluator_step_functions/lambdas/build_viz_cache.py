@@ -47,18 +47,29 @@ RECEIPT_HEALTH_LEDGER_KEY = "receipt-health/issues/ledger.json"
 RECEIPT_HEALTH_ELIGIBLE_KEY = "receipt-health/issues/eligible.json"
 RECEIPT_HEALTH_CURRENT_KEY = "receipt-health/issues/current.json"
 MAX_LEDGER_ATTEMPTS = 2
-PREFLIGHT_CLASSIFIER_VERSION = "receipt-health-preflight-v1"
+PREFLIGHT_CLASSIFIER_VERSION = "receipt-health-preflight-v2"
 AUTOMATION_READY_PREFLIGHT_CLASSES = frozenset({"safe_exact_plan"})
 PREFLIGHT_SUMMARY_FIELDS = frozenset(
     {"classification", "lane", "root_cause"}
 )
 
 STRICT_MONEY_RE = re.compile(r"^\$?\d{1,4}(?:,\d{3})*\.\d{2}$")
+STRICT_MONEY_INLINE_RE = re.compile(
+    r"(?<![\w.])\$?\d{1,4}(?:,\d{3})*\.\d{2}(?![\w.])"
+)
+PRICE_FRAGMENT_RE = re.compile(
+    r"(?<!\w)(?:\$?\d{1,3}\.|[,.]\d{2}|\d{1,3}/\d+\.\d{2})(?!\w)"
+)
 AMOUNTISH_RE = re.compile(r"^\$?[\d.,]+$")
 MISSING_LINE_TOTAL_RE = re.compile(
     r"sum\(LINE_TOTAL\)\s*\(\s*\$?0(?:\.0{1,2})?\s*\)",
     re.IGNORECASE,
 )
+PERCENT_AMOUNT_RE = re.compile(
+    r"\b\d{1,3}(?:\.\d+)?\s*%.*(?:\$|\btip\b|\btotal\b)",
+    re.IGNORECASE,
+)
+NEGATIVE_AMOUNT_RE = re.compile(r"-\s*\$?\d")
 
 LINE_TOTAL_CONFLICT_LABELS = frozenset(
     {
@@ -989,6 +1000,326 @@ def _word_text_lookup(
     return lookup
 
 
+def _word_bbox(word: dict[str, Any]) -> dict[str, float]:
+    """Return a normalized bbox dict from a raw word row."""
+    bbox = word.get("bounding_box") or word.get("bbox") or {}
+    return {
+        "x": float(bbox.get("x") or 0.0),
+        "y": float(bbox.get("y") or 0.0),
+        "width": float(bbox.get("width") or 0.0),
+        "height": float(bbox.get("height") or 0.0),
+    }
+
+
+def _group_words_into_visual_rows(
+    words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group OCR words into visual rows using Y coordinates.
+
+    OCR line IDs can split one printed row into multiple line IDs when text
+    and right-aligned amounts are far apart. This approximates the Chroma
+    row_line_ids signal from raw word coordinates.
+    """
+    positioned: list[dict[str, Any]] = []
+    heights: list[float] = []
+    for word in words:
+        line_id = word.get("line_id")
+        word_id = word.get("word_id")
+        if line_id is None or word_id is None:
+            continue
+        bbox = _word_bbox(word)
+        center_y = bbox["y"] + bbox["height"] / 2
+        positioned.append(
+            {
+                "line_id": int(line_id),
+                "word_id": int(word_id),
+                "text": str(word.get("text") or ""),
+                "x": bbox["x"],
+                "width": bbox["width"],
+                "center_y": center_y,
+                "height": bbox["height"],
+            }
+        )
+        if bbox["height"] > 0:
+            heights.append(bbox["height"])
+
+    if not positioned:
+        return []
+
+    heights.sort()
+    median_height = heights[len(heights) // 2] if heights else 0.012
+    row_threshold = max(0.006, median_height * 0.65)
+    rows: list[dict[str, Any]] = []
+    for word in sorted(positioned, key=lambda item: -item["center_y"]):
+        matched: dict[str, Any] | None = None
+        for row in rows:
+            if abs(float(row["center_y"]) - word["center_y"]) <= row_threshold:
+                matched = row
+                break
+        if matched is None:
+            rows.append(
+                {
+                    "center_y": word["center_y"],
+                    "words": [word],
+                }
+            )
+            continue
+
+        matched["words"].append(word)
+        matched["center_y"] = sum(
+            float(item["center_y"]) for item in matched["words"]
+        ) / len(matched["words"])
+
+    result: list[dict[str, Any]] = []
+    for idx, row in enumerate(sorted(rows, key=lambda item: -item["center_y"])):
+        row_words = sorted(
+            row["words"],
+            key=lambda item: (float(item["x"]), int(item["word_id"])),
+        )
+        line_ids = sorted({int(item["line_id"]) for item in row_words})
+        text = " ".join(item["text"] for item in row_words if item["text"])
+        result.append(
+            {
+                "row_index": idx,
+                "line_ids": line_ids,
+                "text": text,
+                "center_y": row["center_y"],
+                "words": row_words,
+            }
+        )
+    return result
+
+
+def _section_for_row_text(text: str) -> str:
+    """Classify one visual row into a coarse receipt section."""
+    lowered = text.lower()
+    if (
+        "gratuity suggestion" in lowered
+        or "suggested tip" in lowered
+        or "add tips" in lowered
+        or "add tip" in lowered
+        or "custom tips" in lowered
+        or "tip percentages are based" in lowered
+    ):
+        return "tip_suggestions"
+    if re.search(r"\btip\s*:", lowered):
+        return "tip_entry_area"
+    if re.search(r"\bvoid(?:ed)?\b", lowered):
+        return "void_discount"
+    if re.search(r"\bdiscount\b|coupon|promo|reward", lowered):
+        return "discount_or_negative"
+    if re.search(
+        r"\b(card|visa|mastercard|debit|credit|auth|approved|aid:|"
+        r"entry method|transaction|invoice|sequence|app label|amount:)\b",
+        lowered,
+    ):
+        return "payment_summary"
+    if re.search(
+        r"\bsubtotal\b|\btotal\b|balance due|amount due|change\b|tax\b",
+        lowered,
+    ):
+        return "totals"
+    if re.search(
+        r"customer copy|merchant copy|signature|thank you|feedback|survey|"
+        r"returns?|cashier|store:|pos:",
+        lowered,
+    ):
+        return "footer"
+    if NEGATIVE_AMOUNT_RE.search(lowered):
+        return "discount_or_negative"
+    return "item_or_header"
+
+
+def _receipt_section_rows(
+    words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return visual rows with deterministic section labels."""
+    rows = _group_words_into_visual_rows(words)
+    in_tip_suggestions = False
+    for idx, row in enumerate(rows):
+        text = str(row.get("text") or "")
+        section = _section_for_row_text(text)
+        lowered = text.lower()
+        if section == "tip_suggestions":
+            in_tip_suggestions = True
+        elif in_tip_suggestions and PERCENT_AMOUNT_RE.search(text):
+            section = "tip_suggestions"
+        elif in_tip_suggestions and re.search(
+            r"customer copy|merchant copy|thank you|signature|"
+            r"\bpayment\b|\bauth\b",
+            lowered,
+        ):
+            in_tip_suggestions = False
+        context = " ".join(
+            str(candidate.get("text") or "")
+            for candidate in rows[max(0, idx - 2) : min(len(rows), idx + 3)]
+        ).lower()
+        if (
+            "voided item" in context
+            and NEGATIVE_AMOUNT_RE.search(str(row.get("text") or ""))
+        ):
+            section = "void_discount"
+        row["section"] = section
+    return rows
+
+
+def _issue_section_evidence(
+    issue: dict[str, Any],
+    words: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build section evidence for the words referenced by an issue."""
+    rows = _receipt_section_rows(words)
+    line_to_rows: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        for line_id in row.get("line_ids") or []:
+            line_to_rows.setdefault(int(line_id), []).append(row)
+
+    issue_line_ids = {
+        int(word["line_id"])
+        for word in _issue_involved_words(issue)
+        if word.get("line_id") is not None
+    }
+    section_counts: dict[str, int] = {}
+    context_section_counts: dict[str, int] = {}
+    row_examples: list[dict[str, Any]] = []
+    seen_rows: set[int] = set()
+    seen_context_rows: set[int] = set()
+    for line_id in sorted(issue_line_ids):
+        for row in line_to_rows.get(line_id, []):
+            row_index = int(row.get("row_index") or 0)
+            if row_index in seen_rows:
+                continue
+            seen_rows.add(row_index)
+            section = str(row.get("section") or "unknown")
+            section_counts[section] = section_counts.get(section, 0) + 1
+            for context_row in rows[
+                max(0, row_index - 2) : min(len(rows), row_index + 3)
+            ]:
+                context_index = int(context_row.get("row_index") or 0)
+                if context_index in seen_context_rows:
+                    continue
+                seen_context_rows.add(context_index)
+                context_section = str(context_row.get("section") or "unknown")
+                context_section_counts[context_section] = (
+                    context_section_counts.get(context_section, 0) + 1
+                )
+            if len(row_examples) < 6:
+                row_examples.append(
+                    {
+                        "row_index": row_index,
+                        "line_ids": row.get("line_ids") or [],
+                        "section": section,
+                        "text": row.get("text") or "",
+                    }
+                )
+
+    return {
+        "issue_sections": section_counts,
+        "context_sections": context_section_counts,
+        "issue_rows": row_examples,
+        "has_tip_suggestions": section_counts.get("tip_suggestions", 0) > 0,
+        "has_tip_entry_area": (
+            section_counts.get("tip_entry_area", 0) > 0
+            or context_section_counts.get("tip_entry_area", 0) > 0
+        ),
+        "has_void_discount": section_counts.get("void_discount", 0) > 0,
+        "has_payment_summary": (
+            section_counts.get("payment_summary", 0) > 0
+            or context_section_counts.get("payment_summary", 0) > 0
+        ),
+    }
+
+
+def _with_section_evidence(
+    evidence: dict[str, Any] | None,
+    section_evidence: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Merge compact section evidence into a preflight evidence block."""
+    if not section_evidence:
+        return evidence
+    return {
+        **(evidence or {}),
+        "section_evidence": section_evidence,
+    }
+
+
+def _price_tokens_for_row(row: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Return clean and fragmented price-like tokens from a visual row."""
+    clean_tokens: list[str] = []
+    fragment_tokens: list[str] = []
+    for word in row.get("words") or []:
+        text = str(word.get("text") or "").strip()
+        if not text:
+            continue
+        if STRICT_MONEY_RE.fullmatch(text):
+            clean_tokens.append(text)
+            continue
+        if PRICE_FRAGMENT_RE.search(text):
+            fragment_tokens.append(text)
+    return clean_tokens, fragment_tokens
+
+
+def _line_item_amount_evidence(
+    rows: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Summarize visual item rows whose price tokens are incomplete."""
+    first_total_index = len(rows)
+    for row in rows:
+        if row.get("section") in {"totals", "payment_summary"}:
+            first_total_index = int(row.get("row_index") or 0)
+            break
+
+    candidate_lines = {
+        int(record["line_id"])
+        for record in candidates
+        if record.get("line_id") is not None
+    }
+    item_rows: list[dict[str, Any]] = []
+    for row in rows:
+        row_index = int(row.get("row_index") or 0)
+        if row_index >= first_total_index:
+            continue
+        if row.get("section") != "item_or_header":
+            continue
+        clean_tokens, fragment_tokens = _price_tokens_for_row(row)
+        if not clean_tokens and not fragment_tokens:
+            continue
+        text = str(row.get("text") or "")
+        if re.search(r"\b(?:phone|cashier|west|street|ave|road)\b", text, re.I):
+            continue
+        line_ids = [int(value) for value in row.get("line_ids") or []]
+        item_rows.append(
+            {
+                "row_index": row_index,
+                "line_ids": line_ids,
+                "text": text,
+                "clean_amount_tokens": clean_tokens[:4],
+                "fragment_amount_tokens": fragment_tokens[:4],
+                "has_labeled_line_total_candidate": bool(
+                    candidate_lines.intersection(line_ids)
+                ),
+            }
+        )
+
+    clean_count = sum(
+        1 for row in item_rows if row.get("clean_amount_tokens")
+    )
+    fragmented_count = sum(
+        1 for row in item_rows if row.get("fragment_amount_tokens")
+    )
+    labeled_count = sum(
+        1 for row in item_rows if row.get("has_labeled_line_total_candidate")
+    )
+    return {
+        "item_amount_row_count": len(item_rows),
+        "clean_amount_row_count": clean_count,
+        "fragmented_amount_row_count": fragmented_count,
+        "labeled_line_total_row_count": labeled_count,
+        "rows": item_rows[:8],
+    }
+
+
 def _label_records(
     words: list[dict[str, Any]],
     labels: list[dict[str, Any]],
@@ -1035,6 +1366,7 @@ def _records_by_word(
 def _preflight_data_fingerprint(
     issue: dict[str, Any],
     records: list[dict[str, Any]],
+    fingerprint_context: dict[str, Any] | None = None,
 ) -> str:
     """Fingerprint the data relevant to a preflight decision."""
     compact_records = [
@@ -1061,6 +1393,7 @@ def _preflight_data_fingerprint(
             "issue_id": issue.get("issue_id"),
             "message": issue.get("message"),
             "records": compact_records,
+            "context": fingerprint_context or {},
         }
     )
 
@@ -1077,6 +1410,7 @@ def _preflight(
     recommended_next_step: str = "Do not apply automated label writes.",
     proposed_actions: list[dict[str, Any]] | None = None,
     evidence: dict[str, Any] | None = None,
+    fingerprint_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the persisted deterministic preflight block."""
     actions = proposed_actions or []
@@ -1094,7 +1428,9 @@ def _preflight(
         "proposed_actions": actions,
         "action_count": len(actions),
         "evidence": evidence or {},
-        "data_fingerprint": _preflight_data_fingerprint(issue, records),
+        "data_fingerprint": _preflight_data_fingerprint(
+            issue, records, fingerprint_context
+        ),
     }
 
 
@@ -1433,8 +1769,10 @@ def _terminal_financial_preflight(
     root_cause: str,
     summary: str,
     evidence: dict[str, Any] | None = None,
+    section_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a non-write financial preflight classification."""
+    merged_evidence = _with_section_evidence(evidence, section_evidence)
     return _preflight(
         classification,
         summary=summary,
@@ -1449,7 +1787,10 @@ def _terminal_financial_preflight(
             "Do not apply label writes. Route this issue according to its "
             "root cause before retrying automation."
         ),
-        evidence=evidence,
+        evidence=merged_evidence,
+        fingerprint_context=(
+            {"section_evidence": section_evidence} if section_evidence else None
+        ),
     )
 
 
@@ -1460,11 +1801,97 @@ def _classify_financial_non_exact_preflight(
     message: str,
     rejected_candidate_count: int | None = None,
     evidence: dict[str, Any] | None = None,
+    section_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Classify financial issues that did not produce an exact write plan."""
     has_missing_line_total = bool(MISSING_LINE_TOTAL_RE.search(message))
     has_tip = _issue_contains_label(issue, "TIP")
     bad_decisions = _issue_bad_decisions(issue)
+    has_tip_suggestions = bool(
+        (section_evidence or {}).get("has_tip_suggestions")
+    )
+    has_tip_entry_area = bool(
+        (section_evidence or {}).get("has_tip_entry_area")
+    )
+    has_void_discount = bool(
+        (section_evidence or {}).get("has_void_discount")
+    )
+
+    if has_void_discount:
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="receipt_structure_rule",
+            root_cause="void_discount_formula_rule",
+            summary=(
+                "Voided-item or discount section evidence changes the math "
+                "semantics; this needs an evaluator formula rule before any "
+                "label write."
+            ),
+            evidence=evidence,
+            section_evidence=section_evidence,
+        )
+
+    if has_tip_suggestions:
+        if has_tip and has_missing_line_total:
+            return _terminal_financial_preflight(
+                issue,
+                records,
+                classification="evaluator_rule_gap",
+                lane="receipt_structure_rule",
+                root_cause="missing_line_totals_with_tip_gratuity",
+                summary=(
+                    "Missing line totals intersect with tip/gratuity labels; "
+                    "this needs a receipt-structure rule before any label "
+                    "write."
+                ),
+                evidence=evidence,
+                section_evidence=section_evidence,
+            )
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="receipt_structure_rule",
+            root_cause="tip_gratuity_ambiguity",
+            summary=(
+                "Amounts in a tip-suggestion section are selectable options, "
+                "not proof of charged tips or totals."
+            ),
+            evidence=evidence,
+            section_evidence=section_evidence,
+        )
+
+    if has_tip_entry_area:
+        if has_tip and has_missing_line_total:
+            return _terminal_financial_preflight(
+                issue,
+                records,
+                classification="evaluator_rule_gap",
+                lane="receipt_structure_rule",
+                root_cause="missing_line_totals_with_tip_gratuity",
+                summary=(
+                    "Missing line totals intersect with tip/gratuity labels; "
+                    "this needs a receipt-structure rule before any label "
+                    "write."
+                ),
+                evidence=evidence,
+                section_evidence=section_evidence,
+            )
+        return _terminal_financial_preflight(
+            issue,
+            records,
+            classification="evaluator_rule_gap",
+            lane="receipt_structure_rule",
+            root_cause="tip_gratuity_ambiguity",
+            summary=(
+                "Payment/tip-entry section evidence is ambiguous without a "
+                "confirmed charged tip or final total."
+            ),
+            evidence=evidence,
+            section_evidence=section_evidence,
+        )
 
     if _issue_has_malformed_amount(issue, records):
         return _terminal_financial_preflight(
@@ -1478,6 +1905,7 @@ def _classify_financial_non_exact_preflight(
                 "trusted as strict money."
             ),
             evidence=evidence,
+            section_evidence=section_evidence,
         )
 
     if has_tip and has_missing_line_total:
@@ -1492,6 +1920,7 @@ def _classify_financial_non_exact_preflight(
                 "needs a receipt-structure rule before any label write."
             ),
             evidence=evidence,
+            section_evidence=section_evidence,
         )
 
     if has_tip:
@@ -1506,6 +1935,7 @@ def _classify_financial_non_exact_preflight(
                 "suggested option, so deterministic label writes are blocked."
             ),
             evidence=evidence,
+            section_evidence=section_evidence,
         )
 
     if _issue_has_multiple_grand_totals(issue, records):
@@ -1520,6 +1950,7 @@ def _classify_financial_non_exact_preflight(
                 "evaluator needs disambiguation before automation."
             ),
             evidence=evidence,
+            section_evidence=section_evidence,
         )
 
     if has_missing_line_total:
@@ -1544,6 +1975,7 @@ def _classify_financial_non_exact_preflight(
                 **(evidence or {}),
                 "rejected_candidate_count": rejected_candidate_count,
             },
+            section_evidence=section_evidence,
         )
 
     if bad_decisions:
@@ -1558,6 +1990,7 @@ def _classify_financial_non_exact_preflight(
                 "action proves the replacement."
             ),
             evidence=evidence,
+            section_evidence=section_evidence,
         )
 
     return _terminal_financial_preflight(
@@ -1571,6 +2004,7 @@ def _classify_financial_non_exact_preflight(
             "reconcile."
         ),
         evidence=evidence,
+        section_evidence=section_evidence,
     )
 
 
@@ -1590,12 +2024,15 @@ def classify_receipt_health_issue_preflight(
     if issue.get("check_id") != "financial_math":
         return _classify_metadata_issue_preflight(issue, records)
 
+    section_rows = _receipt_section_rows(words)
+    section_evidence = _issue_section_evidence(issue, words)
     message = str(issue.get("message") or "")
     if not MISSING_LINE_TOTAL_RE.search(message):
         return _classify_financial_non_exact_preflight(
             issue,
             records,
             message=message,
+            section_evidence=section_evidence,
         )
 
     valid_line_totals = _amounts_for_label(records, "LINE_TOTAL")
@@ -1622,11 +2059,17 @@ def classify_receipt_health_issue_preflight(
             },
         )
 
-    if _issue_contains_label(issue, "TIP"):
+    if (
+        section_evidence.get("has_tip_suggestions")
+        or section_evidence.get("has_tip_entry_area")
+        or section_evidence.get("has_void_discount")
+        or _issue_contains_label(issue, "TIP")
+    ):
         return _classify_financial_non_exact_preflight(
             issue,
             records,
             message=message,
+            section_evidence=section_evidence,
         )
 
     candidates, rejected_count = _candidate_line_total_records(records)
@@ -1636,6 +2079,7 @@ def classify_receipt_health_issue_preflight(
             records,
             message=message,
             rejected_candidate_count=rejected_count,
+            section_evidence=section_evidence,
         )
 
     line_sum = sum(int(record["strict_amount_cents"]) for record in candidates)
@@ -1665,6 +2109,12 @@ def classify_receipt_health_issue_preflight(
         ],
         "rejected_candidate_count": rejected_count,
     }
+    line_item_evidence = _line_item_amount_evidence(
+        section_rows,
+        candidates,
+    )
+    if line_item_evidence["item_amount_row_count"] > 0:
+        evidence["line_item_amount_evidence"] = line_item_evidence
 
     line_actions = _line_total_actions(issue, candidates, records)
     if line_sum in valid_grands:
@@ -1752,6 +2202,30 @@ def classify_receipt_health_issue_preflight(
                         evidence=evidence,
                     )
 
+    if (
+        line_item_evidence["fragmented_amount_row_count"] > 0
+        and line_item_evidence["item_amount_row_count"]
+        > line_item_evidence["labeled_line_total_row_count"]
+    ):
+        return _preflight(
+            "reocr_needed",
+            summary=(
+                "Visual item rows contain price-like fragments, but clean "
+                "LINE_TOTAL tokens are incomplete."
+            ),
+            records=records,
+            issue=issue,
+            automation_lane="none",
+            lane="reocr_needed",
+            root_cause="line_item_price_tokenization_gap",
+            recommended_next_step=(
+                "Repair OCR/row price tokenization before attempting label "
+                "cleanup."
+            ),
+            evidence=_with_section_evidence(evidence, section_evidence),
+            fingerprint_context={"line_item_amount_evidence": line_item_evidence},
+        )
+
     return _preflight(
         "evaluator_rule_gap",
         summary=(
@@ -1767,7 +2241,7 @@ def classify_receipt_health_issue_preflight(
             "Do not apply label writes. Mark as known limitation or update the "
             "evaluator rule after reviewing the receipt."
         ),
-        evidence=evidence,
+        evidence=_with_section_evidence(evidence, section_evidence),
     )
 
 

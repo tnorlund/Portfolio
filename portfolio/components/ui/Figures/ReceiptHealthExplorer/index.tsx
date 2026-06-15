@@ -4,7 +4,10 @@ import { api } from "../../../../services/api";
 import {
   ReceiptHealthCheck,
   ReceiptHealthLedgerIssue,
+  ReceiptHealthLedgerSummary,
+  ReceiptHealthLineItemAmountEvidence,
   ReceiptHealthReceipt,
+  ReceiptHealthSectionEvidence,
   ReceiptHealthStatus,
   WithinReceiptWordDecision,
 } from "../../../../types/api";
@@ -40,10 +43,17 @@ interface EvidenceWord {
 const BATCH_SIZE = 12;
 const INITIAL_SEED = 29;
 const MAX_ISSUE_FETCHES = 3;
+const AUTO_ROTATE_MS = 5200;
+const MANUAL_ROTATE_PAUSE_MS = 8000;
 const FLOW_LAYOUT_VARS = {
   ...DEFAULT_LAYOUT_VARS,
   "--rf-align-items": "center",
 } as React.CSSProperties;
+
+type LedgerContext = {
+  issues: ReceiptHealthLedgerIssue[];
+  summary: ReceiptHealthLedgerSummary | null;
+};
 
 const FLOW_MOCK_SCENARIOS: Array<{
   label: string;
@@ -76,7 +86,7 @@ const FLOW_MOCK_SCENARIOS: Array<{
     focus: "financial_math",
   },
   {
-    label: "Known limit",
+    label: "OCR gap",
     imageId: "6539deb9-52cc-49a0-81a0-3a64989bee49",
     receiptId: 4,
     focus: "automation",
@@ -148,6 +158,19 @@ const PREFLIGHT_LABELS: Record<string, string> = {
   known_limitation: "Known limit",
   reocr_needed: "Re-OCR",
   evaluator_rule_gap: "Rule gap",
+};
+
+const ROOT_CAUSE_LABELS: Record<string, string> = {
+  already_consistent_labels: "Consistent",
+  business_name_token_mislabeled_store_hours: "Merchant token",
+  line_item_price_tokenization_gap: "Item prices split by OCR",
+  line_total_candidates_do_not_reconcile: "Line totals",
+  malformed_amount_text: "Amount OCR",
+  missing_line_totals: "Line totals",
+  missing_line_totals_with_tax_discount: "Tax path",
+  missing_line_totals_with_tip_gratuity: "Tip path",
+  tip_gratuity_ambiguity: "Tip region",
+  void_discount_formula_rule: "Void/discount",
 };
 
 function receiptKey(receipt: ReceiptHealthReceipt): string {
@@ -475,6 +498,1004 @@ function Issues({ receipt }: { receipt: ReceiptHealthReceipt }) {
   );
 }
 
+function sectionLabel(value: string): string {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function rootCauseLabel(value: string | undefined): string {
+  if (!value) return "No issue";
+  return ROOT_CAUSE_LABELS[value] ?? sectionLabel(value);
+}
+
+function compactText(value: string | null | undefined, fallback: string): string {
+  const text = value?.trim();
+  return text && text.length > 0 ? text : fallback;
+}
+
+function sectionEntries(
+  sections: Record<string, number> | undefined,
+): Array<[string, number]> {
+  if (!sections) return [];
+  return Object.entries(sections)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function SectionEvidence({
+  evidence,
+}: {
+  evidence: ReceiptHealthSectionEvidence | undefined;
+}) {
+  const issueSections = sectionEntries(evidence?.issue_sections);
+  const contextSections = sectionEntries(evidence?.context_sections);
+  const rows = evidence?.issue_rows ?? [];
+
+  if (!evidence || (issueSections.length === 0 && rows.length === 0)) {
+    return null;
+  }
+
+  return (
+    <div className={styles.sectionEvidence}>
+      {issueSections.length > 0 ? (
+        <div className={styles.sectionChips}>
+          {issueSections.map(([section, count]) => (
+            <span key={section} className={styles.sectionChip}>
+              {sectionLabel(section)}
+              {count > 1 ? ` ${count}` : ""}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {rows.length > 0 ? (
+        <div className={styles.sectionRows}>
+          {rows.slice(0, 3).map((row) => (
+            <div
+              key={`${row.row_index}-${row.line_ids.join("-")}`}
+              className={styles.sectionRow}
+            >
+              <span className={styles.sectionRowLabel}>
+                {sectionLabel(row.section)}
+              </span>
+              <span className={styles.sectionRowText}>{row.text}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {contextSections.length > 0 ? (
+        <div className={styles.sectionContext}>
+          Nearby:{" "}
+          {contextSections
+            .slice(0, 3)
+            .map(([section]) => sectionLabel(section))
+            .join(", ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function sortedCountEntries(
+  counts: Record<string, number> | undefined,
+): Array<[string, number]> {
+  if (!counts) return [];
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function hasClassifiedPreflight(issue: ReceiptHealthLedgerIssue): boolean {
+  const classification = issue.preflight?.classification;
+  return Boolean(classification && classification !== "unclassified");
+}
+
+function issueDisplayRank(issue: ReceiptHealthLedgerIssue): number {
+  let rank = 0;
+  if (issue.state !== "resolved") rank += 64;
+  if (issue.preflight) rank += 32;
+  if (hasClassifiedPreflight(issue)) rank += 16;
+  if (issue.preflight?.evidence?.section_evidence) rank += 8;
+  if (issue.preflight?.root_cause) rank += 4;
+  if (issue.preflight?.is_automation_ready) rank += 2;
+  return rank;
+}
+
+function selectDisplayIssue(
+  issues: ReceiptHealthLedgerIssue[],
+  checkId?: CheckId,
+): ReceiptHealthLedgerIssue | null {
+  const candidates = checkId
+    ? issues.filter((issue) => issue.check_id === checkId)
+    : issues;
+  if (candidates.length === 0) return null;
+
+  return [...candidates].sort(
+    (a, b) =>
+      issueDisplayRank(b) - issueDisplayRank(a) ||
+      (b.last_seen_at ?? b.observed_at ?? "").localeCompare(a.last_seen_at ?? a.observed_at ?? ""),
+  )[0] ?? null;
+}
+
+function validationOutcomeLabel(status: ReceiptHealthStatus): string {
+  switch (status) {
+    case "pass":
+      return "VALID";
+    case "fail":
+      return "INVALID";
+    case "review":
+      return "REVIEW";
+    case "not_applicable":
+      return "N/A";
+    default:
+      return "";
+  }
+}
+
+function statusToneClass(status: ReceiptHealthStatus): string {
+  switch (status) {
+    case "pass":
+      return styles.railStatusPass;
+    case "fail":
+      return styles.railStatusFail;
+    case "review":
+      return styles.railStatusReview;
+    case "not_applicable":
+      return styles.railStatusNeutral;
+    default:
+      return "";
+  }
+}
+
+function ValidationStatusIcon({ status }: { status: ReceiptHealthStatus }) {
+  return (
+    <svg
+      className={`${styles.validationStatusIcon} ${statusToneClass(status)}`}
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="7" cy="7" r="6" />
+      {status === "pass" ? (
+        <path
+          d="M4 7 L6 9.4 L10 5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.8"
+        />
+      ) : null}
+      {status === "fail" ? (
+        <g>
+          <line
+            x1="4.5"
+            y1="4.5"
+            x2="9.5"
+            y2="9.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="1.8"
+          />
+          <line
+            x1="9.5"
+            y1="4.5"
+            x2="4.5"
+            y2="9.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="1.8"
+          />
+        </g>
+      ) : null}
+      {status === "review" ? (
+        <text x="7" y="10" textAnchor="middle">
+          ?
+        </text>
+      ) : null}
+      {status === "not_applicable" ? (
+        <line
+          x1="4.4"
+          y1="7"
+          x2="9.6"
+          y2="7"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.8"
+        />
+      ) : null}
+    </svg>
+  );
+}
+
+function issueMessageForRail(
+  receipt: ReceiptHealthReceipt,
+  activeCheck: ReceiptHealthCheck,
+  ledgerIssue: ReceiptHealthLedgerIssue | null,
+): string {
+  const primaryIssue = receipt.primary_issues.find(
+    (issue) => issue.check_id === activeCheck.id,
+  ) ?? receipt.primary_issues[0];
+
+  return compactText(
+    ledgerIssue?.message ?? primaryIssue?.message,
+    activeCheck.result,
+  );
+}
+
+function actionLabel(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): string {
+  if (loading) return "Loading";
+  if (!preflight) return "No stored action";
+  if (preflight.is_automation_ready) {
+    return `${preflight.action_count} exact action${preflight.action_count === 1 ? "" : "s"}`;
+  }
+  switch (preflight.classification) {
+    case "known_limitation":
+    case "already_consistent":
+      return "Do not retry";
+    case "evaluator_rule_gap":
+    case "math_mismatch":
+      return "Hold writes";
+    case "reocr_needed":
+      return "Re-OCR";
+    case "needs_ai_review":
+      return "AI review";
+    default:
+      return "Hold";
+  }
+}
+
+function routeLabel(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): string {
+  if (loading) return "Loading";
+  if (!preflight) return "None";
+  return PREFLIGHT_LABELS[preflight.classification] ?? preflight.classification;
+}
+
+function combinedRouteLabel(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): string {
+  const route = routeLabel(preflight, loading);
+  if (!preflight?.lane) return route;
+
+  const lane = sectionLabel(preflight.lane);
+  const normalizedRoute = route.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedLane = lane.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalizedRoute === normalizedLane) return route;
+  if (normalizedRoute === "knownlimit" && normalizedLane === "knownlimitation") {
+    return route;
+  }
+  return `${route} / ${lane}`;
+}
+
+function diagnosisCopy(
+  receipt: ReceiptHealthReceipt,
+  activeCheck: ReceiptHealthCheck,
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): { title: string; body: string; action: string } {
+  if (receipt.summary.issue_count === 0) {
+    return {
+      title: "Labels validated",
+      body: "Merchant, format, and math agree for this receipt.",
+      action: "No cleanup needed",
+    };
+  }
+
+  if (loading) {
+    return {
+      title: "Checking receipt",
+      body: "Loading the stored validation issue.",
+      action: "Loading",
+    };
+  }
+
+  if (!preflight) {
+    return {
+      title: `${CHECK_LABELS[activeCheck.id]} failed`,
+      body: "This receipt failed validation, but no cleanup route is stored yet.",
+      action: "Hold label writes",
+    };
+  }
+
+  switch (preflight.root_cause) {
+    case "line_item_price_tokenization_gap":
+      return {
+        title: "Item prices split by OCR",
+        body: "Visible item prices were fragmented, so the math check cannot validate line totals.",
+        action: "OCR repair; no label write",
+      };
+    case "tip_gratuity_ambiguity":
+    case "missing_line_totals_with_tip_gratuity":
+      return {
+        title: "Tip area is ambiguous",
+        body: "The receipt shows tip-like numbers that should not be treated as paid totals without review.",
+        action: "Hold label writes",
+      };
+    case "void_discount_formula_rule":
+      return {
+        title: "Void/discount rule gap",
+        body: "The receipt has void or discount rows that need an evaluator rule before cleanup.",
+        action: "Hold label writes",
+      };
+    case "already_consistent_labels":
+      return {
+        title: "Already consistent",
+        body: "The current labels already satisfy this validation issue.",
+        action: "Do not retry",
+      };
+    case "line_total_candidates_do_not_reconcile":
+      return {
+        title: "Line totals do not reconcile",
+        body: "Candidate item totals exist, but they do not add up to the visible total path.",
+        action: "Review rule; no label write",
+      };
+    default:
+      if (preflight.is_automation_ready) {
+        return {
+          title: "Exact label fix found",
+          body: "The stored actions can repair this receipt without inference.",
+          action: `${preflight.action_count} exact label action${preflight.action_count === 1 ? "" : "s"}`,
+        };
+      }
+      return {
+        title: rootCauseLabel(preflight.root_cause),
+        body: preflight.summary,
+        action: actionLabel(preflight, false),
+      };
+  }
+}
+
+function coreOutcomeLabel(
+  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
+  loading: boolean,
+): string {
+  if (loading) return "Checking";
+  if (!preflight) return "No label write";
+  if (preflight.is_automation_ready) return "Safe auto-fix";
+
+  switch (preflight.classification) {
+    case "reocr_needed":
+      return "Needs re-OCR";
+    case "known_limitation":
+      return "Known limitation";
+    case "needs_ai_review":
+      return "Needs AI review";
+    case "already_consistent":
+      return "No label write";
+    default:
+      return "No label write";
+  }
+}
+
+function rootCauseExplanation(
+  rootCause: string | undefined,
+  check: ReceiptHealthCheck,
+  issue: ReceiptHealthLedgerIssue | null,
+): string {
+  switch (rootCause) {
+    case "business_name_token_mislabeled_store_hours":
+      return "Business name token labeled as store hours";
+    case "generic_or_extra_merchant_name_token":
+      return "Extra merchant-name token";
+    case "numeric_token_mislabeled_loyalty_id":
+      return "Number token labeled as loyalty ID";
+    case "partial_phone_token":
+      return "Partial phone token";
+    case "partial_time_token":
+      return "Partial time token";
+    case "truncated_website_token":
+      return "Truncated website token";
+    case "line_item_price_tokenization_gap":
+      return "Item prices split by OCR";
+    case "missing_line_totals_with_tip_gratuity":
+      return "Missing line totals near tip suggestions";
+    case "missing_line_totals_with_tax_discount":
+      return "Missing line totals near tax/discount rows";
+    case "missing_line_totals":
+      return "Missing line totals";
+    case "tip_gratuity_ambiguity":
+      return "Tip area is ambiguous";
+    case "void_discount_formula_rule":
+      return "Void/discount rule gap";
+    case "line_total_candidates_do_not_reconcile":
+      return "Line totals do not reconcile";
+    case "already_consistent_labels":
+      return "Already consistent";
+    default:
+      if (check.id === "merchant_identity") return "Merchant label needs review";
+      if (check.id === "receipt_format") return "Format labels need review";
+      if (check.id === "financial_math") return "Totals do not reconcile";
+      return issue?.message ?? "Validation issue";
+  }
+}
+
+function validationRowExplanation(
+  check: ReceiptHealthCheck,
+  issue: ReceiptHealthLedgerIssue | null,
+  loading: boolean,
+): string | null {
+  if (check.status !== "fail" && check.status !== "review") return null;
+  if (loading && !issue) return null;
+
+  const preflight = issue?.preflight;
+  const reason = rootCauseExplanation(preflight?.root_cause, check, issue);
+  const outcome = coreOutcomeLabel(preflight, false);
+  return `${reason} · ${outcome}`;
+}
+
+function classifiedRootCauseTotal(summary: ReceiptHealthLedgerSummary | null): number {
+  return sortedCountEntries(summary?.by_preflight_root_cause)
+    .filter(([rootCause]) => rootCause !== "unclassified")
+    .reduce((sum, [, count]) => sum + count, 0);
+}
+
+function corpusLabel(
+  summary: ReceiptHealthLedgerSummary | null,
+  rootCause: string | undefined,
+): string {
+  const total = classifiedRootCauseTotal(summary);
+  if (!rootCause || total === 0) return total > 0 ? `${total} classified` : "No corpus count";
+  const count = summary?.by_preflight_root_cause?.[rootCause] ?? 0;
+  return `${count}/${total} like this`;
+}
+
+const RECEIPT_MAP_SECTIONS: Array<{ key: string; label: string }> = [
+  { key: "item_or_header", label: "items" },
+  { key: "totals", label: "totals" },
+  { key: "payment_summary", label: "payment" },
+  { key: "tip_entry_area", label: "tip area" },
+  { key: "void_discount", label: "void" },
+  { key: "footer", label: "footer" },
+];
+
+function SectionMap({
+  evidence,
+}: {
+  evidence: ReceiptHealthSectionEvidence | undefined;
+}) {
+  const issueSections = evidence?.issue_sections ?? {};
+  const contextSections = evidence?.context_sections ?? {};
+  const hasEvidence = Object.values(issueSections).some((count) => count > 0) ||
+    Object.values(contextSections).some((count) => count > 0);
+
+  return (
+    <div className={styles.sectionMap}>
+      {RECEIPT_MAP_SECTIONS.map((section) => {
+        const issueCount = issueSections[section.key] ?? 0;
+        const contextCount = contextSections[section.key] ?? 0;
+        const isIssue = issueCount > 0;
+        const isContext = !isIssue && contextCount > 0;
+
+        return (
+          <div
+            key={section.key}
+            className={`${styles.sectionMapRow} ${isIssue ? styles.sectionMapIssue : ""} ${isContext ? styles.sectionMapContext : ""}`}
+            title={`${section.label}: ${isIssue ? `${issueCount} issue row${issueCount === 1 ? "" : "s"}` : isContext ? `${contextCount} nearby row${contextCount === 1 ? "" : "s"}` : "no evidence"}`}
+          >
+            <span className={styles.sectionMapLabel}>{section.label}</span>
+            <span className={styles.sectionMapRule}>
+              {isIssue || isContext ? (
+                <span
+                  className={styles.sectionMapMarker}
+                  aria-label={isIssue ? `${section.label} issue evidence` : `${section.label} context evidence`}
+                />
+              ) : null}
+            </span>
+            <span className={styles.sectionMapCount}>
+              {isIssue ? issueCount : contextCount || ""}
+            </span>
+          </div>
+        );
+      })}
+      {!hasEvidence ? (
+        <div className={styles.sectionMapEmpty}>-</div>
+      ) : null}
+    </div>
+  );
+}
+
+function LineItemTokenMap({
+  evidence,
+}: {
+  evidence: ReceiptHealthLineItemAmountEvidence | undefined;
+}) {
+  if (!evidence?.item_amount_row_count) return null;
+
+  const metrics = [
+    {
+      key: "rows",
+      value: evidence.item_amount_row_count ?? 0,
+      label: "visual item amount rows",
+      className: styles.lineItemMetricRows,
+    },
+    {
+      key: "clean",
+      value: evidence.clean_amount_row_count ?? 0,
+      label: "clean price tokens",
+      className: styles.lineItemMetricClean,
+    },
+    {
+      key: "fragments",
+      value: evidence.fragmented_amount_row_count ?? 0,
+      label: "fragmented price tokens",
+      className: styles.lineItemMetricFragment,
+    },
+    {
+      key: "labeled",
+      value: evidence.labeled_line_total_row_count ?? 0,
+      label: "labeled LINE_TOTAL candidates",
+      className: styles.lineItemMetricLabeled,
+    },
+  ];
+  const maxValue = Math.max(...metrics.map((metric) => metric.value), 1);
+
+  return (
+    <div
+      className={styles.lineItemTokenMap}
+      aria-label="Line item price token evidence"
+      title={`${evidence.item_amount_row_count ?? 0} item rows, ${evidence.clean_amount_row_count ?? 0} clean prices, ${evidence.fragmented_amount_row_count ?? 0} fragmented prices, ${evidence.labeled_line_total_row_count ?? 0} labeled candidates`}
+    >
+      {metrics.map((metric) => (
+        <span
+          key={metric.key}
+          className={`${styles.lineItemMetric} ${metric.className}`}
+          style={{ "--metric-width": `${Math.max(8, (metric.value / maxValue) * 100)}%` } as React.CSSProperties}
+          title={`${metric.value} ${metric.label}`}
+        >
+          <span />
+          <strong>{metric.value}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ValidationChecks({
+  checks,
+  activeCheck,
+  ledgerIssues,
+  loadingLedgerIssues,
+  onSelectCheck,
+}: {
+  checks: ReceiptHealthCheck[];
+  activeCheck: ReceiptHealthCheck;
+  ledgerIssues: ReceiptHealthLedgerIssue[];
+  loadingLedgerIssues: boolean;
+  onSelectCheck: (checkId: CheckId) => void;
+}) {
+  return (
+    <div className={styles.validationStrip}>
+      {checks.map((check) => {
+        const issue = selectDisplayIssue(ledgerIssues, check.id);
+        const explanation = validationRowExplanation(
+          check,
+          issue,
+          loadingLedgerIssues,
+        );
+        return (
+          <button
+            key={check.id}
+            type="button"
+            className={[
+              styles.validationPill,
+              activeCheck.id === check.id ? styles.validationPillActive : "",
+              explanation ? styles.validationPillProblem : "",
+            ].filter(Boolean).join(" ")}
+            onClick={() => onSelectCheck(check.id)}
+            title={`${CHECK_LABELS[check.id]}: ${validationOutcomeLabel(check.status)}`}
+            aria-label={`${CHECK_LABELS[check.id]} ${validationOutcomeLabel(check.status)}`}
+          >
+            <span className={styles.validationLabel}>{CHECK_LABELS[check.id]}</span>
+            <ValidationStatusIcon status={check.status} />
+            {explanation ? (
+              <span className={styles.validationExplanation}>
+                {explanation}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EvidenceSummary({
+  lineItemEvidence,
+  issueCount,
+}: {
+  lineItemEvidence: ReceiptHealthLineItemAmountEvidence | undefined;
+  issueCount: number;
+}) {
+  if (lineItemEvidence?.item_amount_row_count) {
+    return (
+      <div className={styles.evidenceSummary}>
+        <div>
+          <strong>{lineItemEvidence.item_amount_row_count}</strong>
+          <span>item price rows</span>
+        </div>
+        <div>
+          <strong>{lineItemEvidence.fragmented_amount_row_count ?? 0}</strong>
+          <span>fragmented prices</span>
+        </div>
+        <div>
+          <strong>{lineItemEvidence.labeled_line_total_row_count ?? 0}</strong>
+          <span>usable line total</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.evidenceSummary}>
+      <div>
+        <strong>{issueCount}</strong>
+        <span>{issueCount === 1 ? "validation issue" : "validation issues"}</span>
+      </div>
+    </div>
+  );
+}
+
+function EvidenceRows({
+  sectionEvidence,
+  lineItemEvidence,
+  issueText,
+  summary,
+  route,
+  corpus,
+  children,
+}: {
+  sectionEvidence: ReceiptHealthSectionEvidence | undefined;
+  lineItemEvidence: ReceiptHealthLineItemAmountEvidence | undefined;
+  issueText: string;
+  summary: string | undefined;
+  route: string;
+  corpus: string;
+  children?: React.ReactNode;
+}) {
+  const rows = sectionEvidence?.issue_rows ?? [];
+  const lineItemRows = lineItemEvidence?.rows ?? [];
+  if (rows.length === 0 && lineItemRows.length === 0 && !summary && !issueText && !children) {
+    return null;
+  }
+
+  return (
+    <details className={styles.evidenceDisclosure}>
+      <summary>Details</summary>
+      <div className={styles.evidenceRowsCompact}>
+        {children}
+        {issueText ? (
+          <div className={styles.evidenceTextLine}>{issueText}</div>
+        ) : null}
+        {summary ? (
+          <div className={styles.evidenceTextLine}>{summary}</div>
+        ) : null}
+        <div className={styles.evidenceMetaLine}>
+          <span>Route</span>
+          <strong>{route}</strong>
+        </div>
+        <div className={styles.evidenceMetaLine}>
+          <span>Corpus</span>
+          <strong>{corpus}</strong>
+        </div>
+        <LineItemTokenMap evidence={lineItemEvidence} />
+        <SectionMap evidence={sectionEvidence} />
+        {lineItemRows.slice(0, 4).map((row) => (
+          <div
+            key={`line-item-${row.row_index}-${row.line_ids.join("-")}`}
+            className={styles.evidenceRowCompact}
+          >
+            <span>prices</span>
+            <span>{row.text}</span>
+          </div>
+        ))}
+        {rows.slice(0, 3).map((row) => (
+          <div
+            key={`${row.row_index}-${row.line_ids.join("-")}`}
+            className={styles.evidenceRowCompact}
+          >
+            <span>{sectionLabel(row.section)}</span>
+            <span>{row.text}</span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ScenarioExamples({
+  receipts,
+  currentIndex,
+  onSelectReceipt,
+}: {
+  receipts: ReceiptHealthReceipt[];
+  currentIndex: number;
+  onSelectReceipt: (index: number) => void;
+}) {
+  const examples = FLOW_MOCK_SCENARIOS.map((scenario) => {
+    const index = receipts.findIndex(
+      (receipt) =>
+        receipt.image_id === scenario.imageId &&
+        receipt.receipt_id === scenario.receiptId,
+    );
+    if (index < 0) return null;
+    return { ...scenario, index, receipt: receipts[index] };
+  }).filter((example): example is (typeof FLOW_MOCK_SCENARIOS)[number] & {
+    index: number;
+    receipt: ReceiptHealthReceipt;
+  } => Boolean(example));
+
+  if (examples.length === 0) return null;
+
+  return (
+    <div className={styles.stateExamples}>
+      <div className={styles.stateExamplesHeader}>Examples</div>
+      <div className={styles.stateExampleButtons}>
+        {examples.map((example) => (
+          <button
+            key={`${example.imageId}-${example.receiptId}`}
+            type="button"
+            className={`${styles.stateExampleButton} ${example.index === currentIndex ? styles.stateExampleActive : ""}`}
+            onClick={() => onSelectReceipt(example.index)}
+            aria-label={example.label}
+            title={example.label}
+          >
+            <span className={`${styles.stateExampleDot} ${statusToneClass(example.receipt.overall_status)}`} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DiagnosisRail({
+  receipt,
+  checks,
+  activeCheck,
+  ledgerIssue,
+  ledgerIssues,
+  ledgerSummary,
+  loadingLedgerIssues,
+  receipts,
+  currentIndex,
+  onSelectCheck,
+  onSelectReceipt,
+}: {
+  receipt: ReceiptHealthReceipt;
+  checks: ReceiptHealthCheck[];
+  activeCheck: ReceiptHealthCheck;
+  ledgerIssue: ReceiptHealthLedgerIssue | null;
+  ledgerIssues: ReceiptHealthLedgerIssue[];
+  ledgerSummary: ReceiptHealthLedgerSummary | null;
+  loadingLedgerIssues: boolean;
+  receipts: ReceiptHealthReceipt[];
+  currentIndex: number;
+  onSelectCheck: (checkId: CheckId) => void;
+  onSelectReceipt: (index: number) => void;
+}) {
+  const preflight = ledgerIssue?.preflight;
+  const sectionEvidence = preflight?.evidence?.section_evidence;
+  const lineItemEvidence = preflight?.evidence?.line_item_amount_evidence;
+  const issueText = issueMessageForRail(receipt, activeCheck, ledgerIssue);
+  const route = combinedRouteLabel(preflight, loadingLedgerIssues);
+  const corpus = corpusLabel(ledgerSummary, preflight?.root_cause);
+  const diagnosis = diagnosisCopy(
+    receipt,
+    activeCheck,
+    preflight,
+    loadingLedgerIssues,
+  );
+  const hasIssueContext =
+    receipt.summary.issue_count > 0 ||
+    activeCheck.status === "fail" ||
+    activeCheck.status === "review";
+  const showDebugDetails =
+    Boolean(preflight) ||
+    (hasIssueContext && !loadingLedgerIssues);
+
+  return (
+    <div className={styles.diagnosisRail}>
+      <ValidationChecks
+        checks={checks}
+        activeCheck={activeCheck}
+        ledgerIssues={ledgerIssues}
+        loadingLedgerIssues={loadingLedgerIssues}
+        onSelectCheck={onSelectCheck}
+      />
+
+      {showDebugDetails ? (
+        <EvidenceRows
+          sectionEvidence={sectionEvidence}
+          lineItemEvidence={lineItemEvidence}
+          issueText={issueText}
+          summary={preflight?.summary}
+          route={route}
+          corpus={corpus}
+        >
+          <div className={styles.evidenceMetaLine}>
+            <span>Receipt</span>
+            <strong>{receiptTitle(receipt)}</strong>
+          </div>
+          <div className={styles.evidenceTextLine}>{diagnosis.body}</div>
+          <EvidenceSummary
+            lineItemEvidence={lineItemEvidence}
+            issueCount={receipt.summary.issue_count}
+          />
+          <div className={styles.nextAction}>
+            <span>Next</span>
+            <strong>{diagnosis.action}</strong>
+          </div>
+          <ScenarioExamples
+            receipts={receipts}
+            currentIndex={currentIndex}
+            onSelectReceipt={onSelectReceipt}
+          />
+        </EvidenceRows>
+      ) : null}
+    </div>
+  );
+}
+
+function RootCauseVolume({
+  summary,
+  activeRootCause,
+}: {
+  summary: ReceiptHealthLedgerSummary | null;
+  activeRootCause: string | undefined;
+}) {
+  const allEntries = sortedCountEntries(summary?.by_preflight_root_cause).filter(
+    ([rootCause]) => rootCause !== "unclassified",
+  );
+  const entries = allEntries.slice(0, 5);
+  if (entries.length === 0) return null;
+
+  const maxCount = entries[0]?.[1] ?? 1;
+  const classifiedTotal = allEntries.reduce((sum, [, count]) => sum + count, 0);
+
+  return (
+    <div className={styles.rootCauseVolume}>
+      <div className={styles.volumeHeader}>
+        <span>Root causes</span>
+        <span>{classifiedTotal} classified</span>
+      </div>
+      <div className={styles.volumeRows}>
+        {entries.map(([rootCause, count]) => {
+          const width = maxCount > 0 ? (count / maxCount) * 100 : 0;
+          const isActive = activeRootCause === rootCause;
+          return (
+            <div
+              key={rootCause}
+              className={`${styles.volumeRow} ${isActive ? styles.volumeRowActive : ""}`}
+            >
+              <span className={styles.volumeLabel}>{sectionLabel(rootCause)}</span>
+              <span className={styles.volumeBarTrack}>
+                <span
+                  className={styles.volumeBar}
+                  style={{ "--volume-width": `${width}%` } as React.CSSProperties}
+                />
+              </span>
+              <span className={styles.volumeCount}>{count}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DecisionPath({
+  receipt,
+  activeCheck,
+  ledgerIssue,
+  loadingLedgerIssues,
+}: {
+  receipt: ReceiptHealthReceipt;
+  activeCheck: ReceiptHealthCheck;
+  ledgerIssue: ReceiptHealthLedgerIssue | null;
+  loadingLedgerIssues: boolean;
+}) {
+  const preflight = ledgerIssue?.preflight;
+  const sectionEvidence = preflight?.evidence?.section_evidence;
+  const primaryIssue = receipt.primary_issues.find(
+    (issue) => issue.check_id === activeCheck.id,
+  ) ?? receipt.primary_issues[0];
+  const issueMessage = compactText(
+    ledgerIssue?.message ?? primaryIssue?.message,
+    activeCheck.result,
+  );
+  const routeLabel = preflight
+    ? (PREFLIGHT_LABELS[preflight.classification] ?? preflight.classification)
+    : loadingLedgerIssues
+      ? "Loading"
+      : "No route";
+  const rootCause = preflight?.root_cause
+    ? sectionLabel(preflight.root_cause)
+    : "No root cause";
+  const sectionSummary = sectionEvidence
+    ? compactText(
+        [
+          sectionEntries(sectionEvidence.issue_sections)
+            .slice(0, 2)
+            .map(([section]) => sectionLabel(section))
+            .join(", "),
+          sectionEntries(sectionEvidence.context_sections)
+            .slice(0, 1)
+            .map(([section]) => `near ${sectionLabel(section)}`)
+            .join(", "),
+        ]
+          .filter(Boolean)
+          .join("; "),
+        "Section evidence attached",
+      )
+    : "No section trigger";
+  const actionText = preflight?.is_automation_ready
+    ? `${preflight.action_count} exact action${preflight.action_count === 1 ? "" : "s"}`
+    : preflight
+      ? "Held from writes"
+      : "No stored action";
+
+  return (
+    <div className={styles.decisionPath}>
+      <div className={styles.decisionHeader}>
+        <span>{receiptTitle(receipt)}</span>
+        <span>{CHECK_LABELS[activeCheck.id]}</span>
+      </div>
+      <div className={styles.decisionSteps}>
+        <div className={styles.decisionStep}>
+          <span className={styles.decisionStepIndex}>1</span>
+          <span className={styles.decisionStepBody}>
+            <span className={styles.decisionStepTitle}>Issue</span>
+            <span className={styles.decisionStepText}>{issueMessage}</span>
+          </span>
+        </div>
+        <div className={styles.decisionStep}>
+          <span className={styles.decisionStepIndex}>2</span>
+          <span className={styles.decisionStepBody}>
+            <span className={styles.decisionStepTitle}>Section</span>
+            <span className={styles.decisionStepText}>{sectionSummary}</span>
+          </span>
+        </div>
+        <div className={styles.decisionStep}>
+          <span className={styles.decisionStepIndex}>3</span>
+          <span className={styles.decisionStepBody}>
+            <span className={styles.decisionStepTitle}>Root cause</span>
+            <span className={styles.decisionStepText}>{rootCause}</span>
+          </span>
+        </div>
+        <div className={styles.decisionStep}>
+          <span className={styles.decisionStepIndex}>4</span>
+          <span className={styles.decisionStepBody}>
+            <span className={styles.decisionStepTitle}>Route</span>
+            <span className={styles.decisionStepText}>
+              {routeLabel}
+              {preflight?.lane ? ` · ${sectionLabel(preflight.lane)}` : ""}
+            </span>
+          </span>
+        </div>
+        <div className={styles.decisionStep}>
+          <span className={styles.decisionStepIndex}>5</span>
+          <span className={styles.decisionStepBody}>
+            <span className={styles.decisionStepTitle}>Automation</span>
+            <span className={styles.decisionStepText}>{actionText}</span>
+          </span>
+        </div>
+      </div>
+      {preflight?.summary ? (
+        <div className={styles.decisionSummary}>{preflight.summary}</div>
+      ) : null}
+      <SectionEvidence evidence={sectionEvidence} />
+    </div>
+  );
+}
+
 function IssueLedger({
   issues,
   loading,
@@ -512,6 +1533,9 @@ function IssueLedger({
                 </span>
               </div>
             ) : null}
+            <SectionEvidence
+              evidence={preflight?.evidence?.section_evidence}
+            />
             {preflight?.is_automation_ready ? (
               <div className={styles.actionCount}>
                 {preflight.action_count} exact actions
@@ -816,143 +1840,43 @@ function ReceiptHealthFlowLegend({
   receipt,
   checks,
   activeCheck,
-  activeDetailId,
   ledgerIssues,
+  ledgerSummary,
   loadingLedgerIssues,
+  receipts,
+  currentIndex,
   onSelectCheck,
-  onSelectDetail,
+  onSelectReceipt,
 }: {
   receipt: ReceiptHealthReceipt;
   checks: ReceiptHealthCheck[];
   activeCheck: ReceiptHealthCheck;
-  activeDetailId: DetailId;
   ledgerIssues: ReceiptHealthLedgerIssue[];
+  ledgerSummary: ReceiptHealthLedgerSummary | null;
   loadingLedgerIssues: boolean;
+  receipts: ReceiptHealthReceipt[];
+  currentIndex: number;
   onSelectCheck: (checkId: CheckId) => void;
-  onSelectDetail: (detailId: DetailId) => void;
+  onSelectReceipt: (index: number) => void;
 }) {
-  const firstPreflight = ledgerIssues.find((issue) => issue.preflight)?.preflight;
-  const firstLedgerIssue = ledgerIssues[0] ?? null;
-  const firstPrimaryIssue = receipt.primary_issues[0] ?? null;
-  const automationLabel = firstPreflight
-    ? (PREFLIGHT_LABELS[firstPreflight.classification] ?? firstPreflight.classification)
-    : loadingLedgerIssues
-      ? "Loading"
-      : "No action";
-  const automationStatusColor = automationColor(firstPreflight);
+  const firstLedgerIssue = selectDisplayIssue(ledgerIssues);
+  const activeLedgerIssue = selectDisplayIssue(ledgerIssues, activeCheck.id) ?? firstLedgerIssue;
 
   return (
     <aside className={styles.flowEntityLegend}>
-      <div className={styles.flowLegendDesktop}>
-        {checks.map((check) => (
-          <FlowLegendItem
-            key={check.id}
-            label={CHECK_LABELS[check.id]}
-            value={STATUS_LABELS[check.status]}
-            color={STATUS_COLOR[check.status]}
-            active={activeDetailId === check.id}
-            onSelect={() => {
-              onSelectCheck(check.id);
-              onSelectDetail(check.id);
-            }}
-          />
-        ))}
-        <FlowLegendItem
-          label="Issues"
-          value={receipt.summary.issue_count.toString()}
-          color={receipt.summary.issue_count > 0 ? "var(--color-red)" : "var(--color-green)"}
-          active={activeDetailId === "issues"}
-          onSelect={() => onSelectDetail("issues")}
-        />
-        <FlowLegendItem
-          label="Ledger"
-          value={loadingLedgerIssues ? "..." : ledgerIssues.length.toString()}
-          color={ledgerIssues.length > 0 ? "var(--color-yellow)" : "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)"}
-          active={activeDetailId === "ledger"}
-          onSelect={() => onSelectDetail("ledger")}
-        />
-        <FlowLegendItem
-          label="Automation"
-          value={automationLabel}
-          color={automationStatusColor}
-          active={activeDetailId === "automation"}
-          onSelect={() => onSelectDetail("automation")}
-        />
-      </div>
-
-      <div className={styles.flowLegendMobile}>
-        {checks.map((check) => (
-          <FlowLegendItem
-            key={check.id}
-            label={CHECK_LABELS[check.id]}
-            value={STATUS_LABELS[check.status]}
-            color={STATUS_COLOR[check.status]}
-            active={activeDetailId === check.id}
-            onSelect={() => {
-              onSelectCheck(check.id);
-              onSelectDetail(check.id);
-            }}
-          />
-        ))}
-      </div>
-
-      <div className={styles.flowInferenceTime}>
-        <span className={styles.flowInferenceLabel}>
-          {scenarioForReceipt(receipt)?.label ?? receiptTitle(receipt)}
-        </span>
-        {isCheckId(activeDetailId) ? (
-          <>
-            <span className={styles.flowInferenceValue}>
-              {checkDetailValue(activeCheck)}
-            </span>
-            <span className={styles.flowInferenceMeta}>
-              {checkEvidenceLabel(activeCheck)} · {secondsLabel(activeCheck.duration_seconds)} · {checkMethodLabel(activeCheck)}
-            </span>
-            <span className={styles.flowInferenceNote}>
-              {checkDetailNote(activeCheck)}
-            </span>
-          </>
-        ) : null}
-        {activeDetailId === "issues" ? (
-          <>
-            <span className={styles.flowInferenceValue}>
-              {issueLabel(receipt.summary.issue_count)}
-            </span>
-            <span className={styles.flowInferenceMeta}>
-              {firstPrimaryIssue?.message ?? "No primary issues on this receipt."}
-            </span>
-          </>
-        ) : null}
-        {activeDetailId === "ledger" ? (
-          <>
-            <span className={styles.flowInferenceValue}>
-              {loadingLedgerIssues
-                ? "Loading"
-                : firstLedgerIssue
-                  ? (ISSUE_STATE_LABELS[firstLedgerIssue.state ?? "open"] ?? firstLedgerIssue.state ?? "Open")
-                  : "Empty"}
-            </span>
-            <span className={styles.flowInferenceMeta}>
-              {firstLedgerIssue?.message ?? "No durable issue state for this receipt."}
-            </span>
-          </>
-        ) : null}
-        {activeDetailId === "automation" ? (
-          <>
-            <span className={styles.flowInferenceValue}>
-              {automationDetailValue(firstPreflight, loadingLedgerIssues)}
-            </span>
-            <span className={styles.flowInferenceMeta}>
-              {firstPreflight
-                ? (PREFLIGHT_LABELS[firstPreflight.classification] ?? firstPreflight.classification)
-                : automationLabel}
-            </span>
-            <span className={styles.flowInferenceNote}>
-              {automationDetailNote(firstPreflight)}
-            </span>
-          </>
-        ) : null}
-      </div>
+      <DiagnosisRail
+        receipt={receipt}
+        checks={checks}
+        activeCheck={activeCheck}
+        ledgerIssue={activeLedgerIssue}
+        ledgerIssues={ledgerIssues}
+        ledgerSummary={ledgerSummary}
+        loadingLedgerIssues={loadingLedgerIssues}
+        receipts={receipts}
+        currentIndex={currentIndex}
+        onSelectCheck={onSelectCheck}
+        onSelectReceipt={onSelectReceipt}
+      />
     </aside>
   );
 }
@@ -1090,10 +2014,21 @@ function ReceiptStackNav({
 }
 
 export default function ReceiptHealthExplorer() {
-  const { ref, inView: nearViewport } = useInView({
+  const { ref: lazyRef, inView: nearViewport } = useInView({
     triggerOnce: true,
     rootMargin: "400px",
   });
+  const { ref: activeRef, inView } = useInView({
+    threshold: 0.3,
+    triggerOnce: false,
+  });
+  const setRefs = useCallback(
+    (node?: Element | null) => {
+      lazyRef(node);
+      activeRef(node);
+    },
+    [activeRef, lazyRef],
+  );
 
   const [receipts, setReceipts] = useState<ReceiptHealthReceipt[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1102,8 +2037,8 @@ export default function ReceiptHealthExplorer() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [findingIssue, setFindingIssue] = useState(false);
   const [ledgerIssues, setLedgerIssues] = useState<ReceiptHealthLedgerIssue[]>([]);
+  const [ledgerSummary, setLedgerSummary] = useState<ReceiptHealthLedgerSummary | null>(null);
   const [loadingLedgerIssues, setLoadingLedgerIssues] = useState(false);
-  const [activeDetailId, setActiveDetailId] = useState<DetailId>("merchant_identity");
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -1111,10 +2046,12 @@ export default function ReceiptHealthExplorer() {
     () => new Set(),
   );
   const fetchedInitial = useRef(false);
+  const ledgerContextCacheRef = useRef<Map<string, LedgerContext>>(new Map());
+  const lastManualSelectionRef = useRef(0);
   const formatSupport = useImageFormatSupport();
 
   usePreloadReceiptImages(
-    receipts.slice(currentIndex, currentIndex + 2),
+    receipts,
     formatSupport,
   );
 
@@ -1192,12 +2129,24 @@ export default function ReceiptHealthExplorer() {
   useEffect(() => {
     if (!currentReceipt) {
       setLedgerIssues([]);
+      setLedgerSummary(null);
+      setLoadingLedgerIssues(false);
+      return;
+    }
+
+    const contextKey = receiptKey(currentReceipt);
+    const cachedContext = ledgerContextCacheRef.current.get(contextKey);
+    if (cachedContext) {
+      setLedgerIssues(cachedContext.issues);
+      setLedgerSummary(cachedContext.summary);
+      setLoadingLedgerIssues(false);
       return;
     }
 
     let cancelled = false;
     setLoadingLedgerIssues(true);
     setLedgerIssues([]);
+    setLedgerSummary(null);
     api.fetchReceiptHealthIssues({
       state: "all",
       imageId: currentReceipt.image_id,
@@ -1206,13 +2155,20 @@ export default function ReceiptHealthExplorer() {
     })
       .then((response) => {
         if (!cancelled) {
-          setLedgerIssues(response.issues);
+          const nextContext = {
+            issues: response.issues,
+            summary: response.summary ?? null,
+          };
+          ledgerContextCacheRef.current.set(contextKey, nextContext);
+          setLedgerIssues(nextContext.issues);
+          setLedgerSummary(nextContext.summary);
         }
       })
       .catch((err) => {
         console.error("Failed to fetch receipt health issues:", err);
         if (!cancelled) {
           setLedgerIssues([]);
+          setLedgerSummary(null);
         }
       })
       .finally(() => {
@@ -1247,12 +2203,9 @@ export default function ReceiptHealthExplorer() {
     }
   }, [activeCheck, orderedChecks]);
 
-  const selectReceipt = useCallback((index: number) => {
-    setCurrentIndex(index);
-    const receipt = receipts[index];
+  const focusReceiptCheck = useCallback((receipt: ReceiptHealthReceipt | null | undefined) => {
     const scenario = scenarioForReceipt(receipt ?? null);
     if (scenario) {
-      setActiveDetailId(scenario.focus);
       if (isCheckId(scenario.focus)) {
         setActiveCheckId(scenario.focus);
       } else if (receipt?.checks.some((check) => check.id === "financial_math")) {
@@ -1266,9 +2219,45 @@ export default function ReceiptHealthExplorer() {
     );
     if (nextCheck) {
       setActiveCheckId(nextCheck);
-      setActiveDetailId(nextCheck);
     }
-  }, [receipts]);
+  }, []);
+
+  const selectReceipt = useCallback((index: number, options: { manual?: boolean } = {}) => {
+    const receipt = receipts[index];
+    if (!receipt) return;
+
+    if (options.manual ?? true) {
+      lastManualSelectionRef.current = Date.now();
+    }
+
+    setCurrentIndex(index);
+    focusReceiptCheck(receipt);
+  }, [focusReceiptCheck, receipts]);
+
+  useEffect(() => {
+    if (!inView || loading || receipts.length < 2 || findingIssue || loadingMore) return;
+
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastManualSelectionRef.current < MANUAL_ROTATE_PAUSE_MS) {
+        return;
+      }
+
+      setCurrentIndex((index) => {
+        const nextIndex = (index + 1) % receipts.length;
+        focusReceiptCheck(receipts[nextIndex]);
+        return nextIndex;
+      });
+    }, AUTO_ROTATE_MS);
+
+    return () => window.clearInterval(timer);
+  }, [
+    findingIssue,
+    focusReceiptCheck,
+    inView,
+    loading,
+    loadingMore,
+    receipts,
+  ]);
 
   const handleImageUnavailable = useCallback((receipt: ReceiptHealthReceipt) => {
     setUnavailableImageKeys((current) => {
@@ -1289,7 +2278,7 @@ export default function ReceiptHealthExplorer() {
         index !== currentIndex && !unavailableImageKeys.has(receiptKey(receipt)),
     );
     if (replacementIndex >= 0) {
-      selectReceipt(replacementIndex);
+      selectReceipt(replacementIndex, { manual: false });
     }
   }, [
     currentIndex,
@@ -1300,8 +2289,8 @@ export default function ReceiptHealthExplorer() {
   ]);
 
   const goPrevious = useCallback(() => {
-    setCurrentIndex((index) => Math.max(0, index - 1));
-  }, []);
+    selectReceipt(Math.max(0, currentIndex - 1));
+  }, [currentIndex, selectReceipt]);
 
   const goNext = useCallback(async () => {
     if (currentIndex < receipts.length - 1) {
@@ -1315,7 +2304,9 @@ export default function ReceiptHealthExplorer() {
       const previousLength = receipts.length;
       const loaded = await loadReceipts(previousLength);
       if (loaded.length > 0) {
+        lastManualSelectionRef.current = Date.now();
         setCurrentIndex(previousLength);
+        focusReceiptCheck(loaded[0]);
       }
     } catch (err) {
       console.error("Failed to fetch more receipt health data:", err);
@@ -1323,7 +2314,15 @@ export default function ReceiptHealthExplorer() {
     } finally {
       setLoadingMore(false);
     }
-  }, [currentIndex, hasMore, loadReceipts, loadingMore, receipts.length, selectReceipt]);
+  }, [
+    currentIndex,
+    focusReceiptCheck,
+    hasMore,
+    loadReceipts,
+    loadingMore,
+    receipts.length,
+    selectReceipt,
+  ]);
 
   const selectFirstIssueCheck = useCallback((receipt: ReceiptHealthReceipt) => {
     const issueCheckId = receipt.primary_issues[0]?.check_id;
@@ -1356,6 +2355,7 @@ export default function ReceiptHealthExplorer() {
         );
 
         if (issueIndex >= 0) {
+          lastManualSelectionRef.current = Date.now();
           setCurrentIndex(issueIndex);
           selectFirstIssueCheck(loadedReceipts[issueIndex]);
           return;
@@ -1393,15 +2393,16 @@ export default function ReceiptHealthExplorer() {
     unavailableImageKeys,
   ]);
 
-  if (loading) {
+  if (loading || !formatSupport) {
     return (
-      <div ref={ref} className={styles.container} data-testid="receipt-health-explorer">
+      <div
+        ref={setRefs}
+        className={`${styles.container} ${styles.flowMockContainer}`}
+        data-testid="receipt-health-explorer"
+      >
         <ReceiptFlowLoadingShell
-          variant="within"
-          layoutVars={{
-            ...DEFAULT_LAYOUT_VARS,
-            "--rf-center-height": "560px",
-          } as React.CSSProperties}
+          variant="health"
+          layoutVars={FLOW_LAYOUT_VARS}
         />
       </div>
     );
@@ -1409,9 +2410,14 @@ export default function ReceiptHealthExplorer() {
 
   if (error || !currentReceipt || !activeCheck) {
     return (
-      <div ref={ref} className={styles.container} data-testid="receipt-health-explorer">
+      <div
+        ref={setRefs}
+        className={`${styles.container} ${styles.flowMockContainer}`}
+        data-testid="receipt-health-explorer"
+      >
         <ReceiptFlowLoadingShell
-          variant="within"
+          variant="health"
+          layoutVars={FLOW_LAYOUT_VARS}
           message={error ?? "No receipt health data available"}
           isError={Boolean(error)}
         />
@@ -1431,7 +2437,7 @@ export default function ReceiptHealthExplorer() {
 
   return (
     <div
-      ref={ref}
+      ref={setRefs}
       className={`${styles.container} ${styles.flowMockContainer}`}
       data-testid="receipt-health-explorer"
     >
@@ -1448,6 +2454,7 @@ export default function ReceiptHealthExplorer() {
         }
         center={
           <ReceiptHealthFlowReceipt
+            key={receiptKey(currentReceipt)}
             receipt={currentReceipt}
             activeCheck={activeCheck}
             onImageUnavailable={handleImageUnavailable}
@@ -1458,11 +2465,13 @@ export default function ReceiptHealthExplorer() {
             receipt={currentReceipt}
             checks={orderedChecks}
             activeCheck={activeCheck}
-            activeDetailId={activeDetailId}
             ledgerIssues={ledgerIssues}
+            ledgerSummary={ledgerSummary}
             loadingLedgerIssues={loadingLedgerIssues}
+            receipts={receipts}
+            currentIndex={currentIndex}
             onSelectCheck={setActiveCheckId}
-            onSelectDetail={setActiveDetailId}
+            onSelectReceipt={selectReceipt}
           />
         }
       />

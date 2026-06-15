@@ -299,8 +299,18 @@ def _financial_issue(message="GRAND_TOTAL ($16.48) = sum(LINE_TOTAL) (0)"):
     }
 
 
-def _word(line_id, word_id, text):
-    return {"line_id": line_id, "word_id": word_id, "text": text}
+def _word(line_id, word_id, text, *, x=0.0, y=0.0, height=0.01):
+    return {
+        "line_id": line_id,
+        "word_id": word_id,
+        "text": text,
+        "bounding_box": {
+            "x": x,
+            "y": y,
+            "width": 0.05,
+            "height": height,
+        },
+    }
 
 
 def _label(line_id, word_id, label, status):
@@ -424,6 +434,63 @@ def test_preflight_math_mismatch_is_not_automation_ready():
     assert eligible_receipt_health_issues(ledger, limit=10) == []
 
 
+def test_preflight_classifies_fragmented_item_prices_as_reocr_needed():
+    issue = _financial_issue(
+        "GRAND_TOTAL ($60.25) = sum(LINE_TOTAL) (0) + TAX ($5.05)"
+    )
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 31,
+                    "word_id": 1,
+                    "word_text": "60.25",
+                    "current_label": "GRAND_TOTAL",
+                    "decision": "VALID",
+                },
+                {
+                    "line_id": 28,
+                    "word_id": 1,
+                    "word_text": "5.05",
+                    "current_label": "TAX",
+                    "decision": "VALID",
+                },
+            ]
+        }
+    ]
+    words = [
+        _word(12, 1, "SPONGE", x=0.1, y=0.80),
+        _word(13, 1, "6.", x=0.8, y=0.80),
+        _word(14, 1, "ZIPLOC", x=0.1, y=0.78),
+        _word(15, 1, "8.", x=0.8, y=0.78),
+        _word(18, 1, "WIPES", x=0.1, y=0.76),
+        _word(20, 1, "12.99", x=0.8, y=0.76),
+        _word(25, 1, "TAX", x=0.1, y=0.72),
+        _word(28, 1, "5.05", x=0.8, y=0.72),
+        _word(30, 1, "BALANCE", x=0.1, y=0.70),
+        _word(31, 1, "60.25", x=0.8, y=0.70),
+    ]
+    labels = [
+        _label(20, 1, "LINE_TOTAL", "INVALID"),
+        _label(28, 1, "TAX", "VALID"),
+        _label(31, 1, "GRAND_TOTAL", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "reocr_needed"
+    assert preflight["lane"] == "reocr_needed"
+    assert preflight["root_cause"] == "line_item_price_tokenization_gap"
+    evidence = preflight["evidence"]["line_item_amount_evidence"]
+    assert evidence["item_amount_row_count"] == 3
+    assert evidence["fragmented_amount_row_count"] == 2
+    assert evidence["labeled_line_total_row_count"] == 1
+
+
 def test_preflight_classifies_metadata_as_review_without_actions():
     issue = {
         "issue_id": "issue-merchant",
@@ -495,6 +562,196 @@ def test_preflight_classifies_tip_gratuity_as_rule_gap():
     assert preflight["lane"] == "receipt_structure_rule"
     assert preflight["root_cause"] == "missing_line_totals_with_tip_gratuity"
     assert preflight["is_automation_ready"] is False
+
+
+def test_preflight_uses_decimal_percent_tip_section_for_tax_label():
+    issue = _financial_issue(
+        "GRAND_TOTAL ($17.5) = sum(LINE_TOTAL) (0) + TAX ($3.85)"
+    )
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 24,
+                    "word_id": 1,
+                    "word_text": "$17.5",
+                    "current_label": "GRAND_TOTAL",
+                    "decision": "VALID",
+                },
+                {
+                    "line_id": 45,
+                    "word_id": 3,
+                    "word_text": "$3.85",
+                    "current_label": "TAX",
+                    "decision": "VALID",
+                },
+            ]
+        }
+    ]
+    words = [
+        _word(24, 1, "Amount:", x=0.2, y=0.52),
+        _word(24, 2, "$17.5", x=0.8, y=0.52),
+        _word(36, 1, "Gratuity", x=0.1, y=0.20),
+        _word(36, 2, "Suggestion", x=0.3, y=0.20),
+        _word(45, 1, "22.00%", x=0.1, y=0.05),
+        _word(45, 2, "-", x=0.35, y=0.05),
+        _word(45, 3, "$3.85", x=0.5, y=0.05),
+    ]
+    labels = [
+        _label(24, 2, "GRAND_TOTAL", "VALID"),
+        _label(45, 3, "TAX", "VALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "receipt_structure_rule"
+    assert preflight["root_cause"] == "tip_gratuity_ambiguity"
+    assert preflight["is_automation_ready"] is False
+    assert preflight["evidence"]["section_evidence"][
+        "has_tip_suggestions"
+    ] is True
+
+
+def test_preflight_uses_tip_section_for_suggested_total_options():
+    issue = _financial_issue("GRAND_TOTAL ($3.9,) = SUBTOTAL ($21.68)")
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 39,
+                    "word_id": 3,
+                    "word_text": "$3.9,",
+                    "current_label": "GRAND_TOTAL",
+                    "decision": "INVALID",
+                },
+                {
+                    "line_id": 37,
+                    "word_id": 1,
+                    "word_text": "$21.68",
+                    "current_label": "SUBTOTAL",
+                    "decision": "INVALID",
+                },
+            ]
+        }
+    ]
+    words = [
+        _word(36, 1, "Subtotal", x=0.1, y=0.30),
+        _word(37, 1, "$21.68", x=0.8, y=0.30),
+        _word(38, 1, "ADD", x=0.1, y=0.25),
+        _word(38, 2, "TIPS", x=0.2, y=0.25),
+        _word(39, 1, "18%", x=0.1, y=0.20),
+        _word(39, 2, "(Tips", x=0.25, y=0.20),
+        _word(39, 3, "$3.9,", x=0.45, y=0.20),
+        _word(39, 4, "Total", x=0.6, y=0.20),
+        _word(39, 5, "$25.58)", x=0.75, y=0.20),
+    ]
+    labels = [
+        _label(37, 1, "SUBTOTAL", "INVALID"),
+        _label(39, 3, "GRAND_TOTAL", "INVALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "receipt_structure_rule"
+    assert preflight["root_cause"] == "tip_gratuity_ambiguity"
+
+
+def test_preflight_uses_visual_rows_for_voided_item_formula_gap():
+    issue = _financial_issue(
+        "GRAND_TOTAL ($7.48) = sum(LINE_TOTAL) (3.00 + 3.00 + 1.49 + 2.99) - DISCOUNT (-3.00)"
+    )
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 26,
+                    "word_id": 1,
+                    "word_text": "-3.00",
+                    "current_label": "DISCOUNT",
+                    "decision": "VALID",
+                }
+            ]
+        }
+    ]
+    words = [
+        _word(16, 1, "Voided", x=0.05, y=0.725),
+        _word(16, 2, "Item", x=0.20, y=0.725),
+        _word(17, 1, "BOILER", x=0.05, y=0.713),
+        _word(17, 2, "ONIONS", x=0.20, y=0.713),
+        _word(26, 1, "-3.00", x=0.80, y=0.709),
+    ]
+    labels = [_label(26, 1, "DISCOUNT", "VALID")]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "receipt_structure_rule"
+    assert preflight["root_cause"] == "void_discount_formula_rule"
+    assert preflight["evidence"]["section_evidence"][
+        "has_void_discount"
+    ] is True
+
+
+def test_preflight_uses_tip_entry_area_for_payment_tip_ambiguity():
+    issue = _financial_issue("GRAND_TOTAL ($74.44) = SUBTOTAL (80.49)")
+    issue["evidence"] = [
+        {
+            "involved_words": [
+                {
+                    "line_id": 43,
+                    "word_id": 1,
+                    "word_text": "$74.44",
+                    "current_label": "GRAND_TOTAL",
+                    "decision": "INVALID",
+                },
+                {
+                    "line_id": 54,
+                    "word_id": 2,
+                    "word_text": "80.49",
+                    "current_label": "SUBTOTAL",
+                    "decision": "INVALID",
+                },
+            ]
+        }
+    ]
+    words = [
+        _word(43, 1, "$74.44", x=0.65, y=0.40),
+        _word(50, 1, "Total:", x=0.15, y=0.40),
+        _word(51, 1, "Tip:", x=0.15, y=0.39),
+        _word(54, 1, "Subtotal:", x=0.15, y=0.38),
+        _word(54, 2, "80.49", x=0.65, y=0.38),
+    ]
+    labels = [
+        _label(43, 1, "GRAND_TOTAL", "INVALID"),
+        _label(54, 2, "SUBTOTAL", "INVALID"),
+    ]
+
+    preflight = classify_receipt_health_issue_preflight(
+        issue,
+        words=words,
+        labels=labels,
+    )
+
+    assert preflight["classification"] == "evaluator_rule_gap"
+    assert preflight["lane"] == "receipt_structure_rule"
+    assert preflight["root_cause"] == "tip_gratuity_ambiguity"
+    assert preflight["evidence"]["section_evidence"][
+        "has_tip_entry_area"
+    ] is True
 
 
 def test_preflight_classifies_malformed_amount_as_reocr_needed():

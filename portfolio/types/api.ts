@@ -1007,6 +1007,46 @@ export interface ReceiptHealthPreflightAction {
   reasoning?: string;
 }
 
+export interface ReceiptHealthSectionEvidenceRow {
+  row_index: number;
+  line_ids: number[];
+  section: string;
+  text: string;
+}
+
+export interface ReceiptHealthSectionEvidence {
+  issue_sections?: Record<string, number>;
+  context_sections?: Record<string, number>;
+  issue_rows?: ReceiptHealthSectionEvidenceRow[];
+  has_tip_suggestions?: boolean;
+  has_tip_entry_area?: boolean;
+  has_void_discount?: boolean;
+  has_payment_summary?: boolean;
+}
+
+export interface ReceiptHealthLineItemAmountEvidenceRow {
+  row_index: number;
+  line_ids: number[];
+  text: string;
+  clean_amount_tokens?: string[];
+  fragment_amount_tokens?: string[];
+  has_labeled_line_total_candidate?: boolean;
+}
+
+export interface ReceiptHealthLineItemAmountEvidence {
+  item_amount_row_count?: number;
+  clean_amount_row_count?: number;
+  fragmented_amount_row_count?: number;
+  labeled_line_total_row_count?: number;
+  rows?: ReceiptHealthLineItemAmountEvidenceRow[];
+}
+
+export interface ReceiptHealthPreflightEvidence {
+  section_evidence?: ReceiptHealthSectionEvidence;
+  line_item_amount_evidence?: ReceiptHealthLineItemAmountEvidence;
+  [key: string]: unknown;
+}
+
 export interface ReceiptHealthIssuePreflight {
   version: string;
   classification: ReceiptHealthPreflightClassification | string;
@@ -1018,7 +1058,7 @@ export interface ReceiptHealthIssuePreflight {
   summary: string;
   proposed_actions: ReceiptHealthPreflightAction[];
   action_count: number;
-  evidence?: Record<string, unknown>;
+  evidence?: ReceiptHealthPreflightEvidence;
   data_fingerprint?: string;
 }
 
@@ -1068,7 +1108,7 @@ export interface ReceiptHealthIssuesResponse {
   count?: number;
   limit?: number;
   state?: string;
-  summary?: ReceiptHealthLedgerSummary | Record<string, unknown>;
+  summary?: ReceiptHealthLedgerSummary;
   latest_execution_id?: string;
   execution_id?: string;
   updated_at?: string;
