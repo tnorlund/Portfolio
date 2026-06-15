@@ -70,7 +70,8 @@ def test_apply_cdn_keys_maps_all_fields() -> None:
         "webp_medium": "m.webp",
         "avif_medium": "m.avif",
     }
-    OCRProcessor._apply_cdn_keys(receipt, keys)
+    OCRProcessor._apply_cdn_keys(receipt, keys, "site-bucket")
+    assert receipt.cdn_s3_bucket == "site-bucket"
     assert receipt.cdn_s3_key == "a.jpg"
     assert receipt.cdn_avif_s3_key == "a.avif"
     assert receipt.cdn_thumbnail_webp_s3_key == "t.webp"
@@ -80,7 +81,10 @@ def test_apply_cdn_keys_maps_all_fields() -> None:
 
 def test_apply_cdn_keys_sets_missing_keys_to_none() -> None:
     receipt = _make_receipt()
-    OCRProcessor._apply_cdn_keys(receipt, {"jpeg_full": "a.jpg"})
+    OCRProcessor._apply_cdn_keys(
+        receipt, {"jpeg_full": "a.jpg"}, "site-bucket"
+    )
+    assert receipt.cdn_s3_bucket == "site-bucket"
     assert receipt.cdn_s3_key == "a.jpg"
     assert receipt.cdn_avif_s3_key is None
     assert receipt.cdn_medium_webp_s3_key is None

@@ -354,8 +354,14 @@ class OCRProcessor:
         cls,
         entity: Union[Image, Receipt],
         cdn_keys: Mapping[str, Optional[str]],
+        bucket: str,
     ) -> None:
-        """Copy keys from upload_all_cdn_formats onto an Image/Receipt."""
+        """Copy keys from upload_all_cdn_formats onto an Image/Receipt.
+
+        Also records the CDN bucket so the entity carries complete CDN
+        metadata (not just the object keys).
+        """
+        entity.cdn_s3_bucket = bucket
         for field_name, dict_key in cls._CDN_KEY_FIELDS:
             setattr(entity, field_name, cdn_keys.get(dict_key))
 
@@ -395,7 +401,11 @@ class OCRProcessor:
             original_path = download_image_from_s3(
                 source_bucket, source_key, image_id, unique_suffix="original"
             )
-            return PIL_Image.open(original_path)
+            original = PIL_Image.open(original_path)
+            # Force decode now so a truncated/corrupt download raises here
+            # (caught below) instead of mid-CDN-upload.
+            original.load()
+            return original
         except (ClientError, OSError, UnidentifiedImageError) as exc:
             self._emit_cdn_failure(
                 "image", image_id, f"original_download_failed: {exc}"
@@ -427,7 +437,11 @@ class OCRProcessor:
                 image_id,
                 unique_suffix=f"receipt_{receipt_id}",
             )
-            return PIL_Image.open(warped_path)
+            warped = PIL_Image.open(warped_path)
+            # Force decode now so a truncated/corrupt crop falls through to
+            # in-process regeneration instead of failing the CDN upload.
+            warped.load()
+            return warped
         except (ClientError, OSError, UnidentifiedImageError) as exc:
             logger.warning(
                 "Warped crop unavailable for %s/%s (%s); regenerating from "
@@ -1321,7 +1335,9 @@ class OCRProcessor:
                         f"assets/{image_id}/{receipt_id}",
                         generate_thumbnails=True,
                     )
-                    self._apply_cdn_keys(receipt, receipt_cdn_keys)
+                    self._apply_cdn_keys(
+                        receipt, receipt_cdn_keys, self.site_bucket
+                    )
                     logger.info(
                         "Processed receipt %s for CDN: %s",
                         receipt_id,
@@ -1402,7 +1418,9 @@ class OCRProcessor:
                         f"assets/{image_id}/original",
                         generate_thumbnails=True,
                     )
-                    self._apply_cdn_keys(image_entity, cdn_keys)
+                    self._apply_cdn_keys(
+                        image_entity, cdn_keys, self.site_bucket
+                    )
                     logger.info(
                         "Processed original image for CDN: %s", image_id
                     )
