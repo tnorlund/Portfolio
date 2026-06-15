@@ -676,9 +676,17 @@ class OCRProcessor:
         coeffs = self._get_perspective_coeffs(
             receipt, image.width, image.height
         )
+        c_a, c_b, c_c, c_d, c_e, c_f, c_g, c_h = coeffs
         for entity in receipt_lines + receipt_words + receipt_letters:
             entity.inverse_perspective_transform(
-                *coeffs,
+                c_a,
+                c_b,
+                c_c,
+                c_d,
+                c_e,
+                c_f,
+                c_g,
+                c_h,
                 src_width=receipt.width,
                 src_height=receipt.height,
                 dst_width=image.width,
@@ -1810,7 +1818,14 @@ class OCRProcessor:
                     "receipt_id": None,  # Multiple receipts
                 }
 
-            logger.error("Unknown image type: %s", image_type)
+            # Defensive fallback: kept in case the ImageType enum gains a
+            # new member or an unexpected value reaches this point at
+            # runtime. mypy proves this unreachable because the three known
+            # ImageType members are each handled above, so the exhaustiveness
+            # check below is intentionally retained for runtime safety.
+            logger.error(  # type: ignore[unreachable]
+                "Unknown image type: %s", image_type
+            )
             self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
