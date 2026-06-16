@@ -19,6 +19,7 @@ class PlacesConfig(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Google Places API
@@ -30,6 +31,9 @@ class PlacesConfig(BaseSettings):
     # DynamoDB Configuration
     table_name: str = Field(
         default="receipts",
+        validation_alias=AliasChoices(
+            "RECEIPT_PLACES_TABLE_NAME", "DYNAMODB_TABLE_NAME"
+        ),
         description="DynamoDB table name for caching",
     )
     aws_region: str = Field(
