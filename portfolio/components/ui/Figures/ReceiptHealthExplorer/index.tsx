@@ -20,12 +20,14 @@ import {
   DEFAULT_LAYOUT_VARS,
   ReceiptFlowLoadingShell,
 } from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
   getQueuePosition,
   getVisibleQueueIndices,
 } from "../ReceiptFlow/receiptFlowUtils";
 import type { ImageFormatSupport } from "../ReceiptFlow/types";
+import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
 import styles from "./ReceiptHealthExplorer.module.css";
 
@@ -45,6 +47,9 @@ const INITIAL_SEED = 29;
 const MAX_ISSUE_FETCHES = 3;
 const AUTO_ROTATE_MS = 5200;
 const MANUAL_ROTATE_PAUSE_MS = 8000;
+const TRANSITION_DURATION_MS = 600;
+const FLYING_RECEIPT_MAX_WIDTH = 350;
+const FLYING_RECEIPT_MAX_HEIGHT = 500;
 const FLOW_LAYOUT_VARS = {
   ...DEFAULT_LAYOUT_VARS,
   "--rf-align-items": "center",
@@ -210,6 +215,42 @@ function scenarioForReceipt(
       scenario.imageId === receipt.image_id &&
       scenario.receiptId === receipt.receipt_id,
   );
+}
+
+function preferredCheckIdForReceipt(
+  receipt: ReceiptHealthReceipt | null | undefined,
+): CheckId | null {
+  const scenario = scenarioForReceipt(receipt ?? null);
+  if (scenario) {
+    if (isCheckId(scenario.focus)) return scenario.focus;
+    if (receipt?.checks.some((check) => check.id === "financial_math")) {
+      return "financial_math";
+    }
+  }
+
+  return (
+    CHECK_ORDER.find((id) =>
+      receipt?.checks.some((check) => check.id === id),
+    ) ?? null
+  );
+}
+
+function receiptDisplaySize(receipt: ReceiptHealthReceipt): {
+  displayWidth: number;
+  displayHeight: number;
+} {
+  const sourceWidth = Math.max(receipt.width || FLYING_RECEIPT_MAX_WIDTH, 1);
+  const sourceHeight = Math.max(receipt.height || FLYING_RECEIPT_MAX_HEIGHT, 1);
+  const aspectRatio = sourceWidth / sourceHeight;
+  let displayHeight = Math.min(FLYING_RECEIPT_MAX_HEIGHT, sourceHeight);
+  let displayWidth = displayHeight * aspectRatio;
+
+  if (displayWidth > FLYING_RECEIPT_MAX_WIDTH) {
+    displayWidth = FLYING_RECEIPT_MAX_WIDTH;
+    displayHeight = displayWidth / aspectRatio;
+  }
+
+  return { displayWidth, displayHeight };
 }
 
 function normalizeDecisionWord(
@@ -1072,16 +1113,26 @@ function ValidationChecks({
   loadingLedgerIssues: boolean;
   onSelectCheck: (checkId: CheckId) => void;
 }) {
+  const validationRows = checks.map((check) => {
+    const issue = selectDisplayIssue(ledgerIssues, check.id);
+    const explanation = validationRowExplanation(
+      check,
+      issue,
+      loadingLedgerIssues,
+    );
+    return { check, explanation };
+  });
+  const activeExplanationRow = validationRows.find(
+    ({ check, explanation }) => check.id === activeCheck.id && explanation,
+  );
+  const explanationRow =
+    activeExplanationRow ??
+    validationRows.find(({ explanation }) => Boolean(explanation));
+
   return (
-    <div className={styles.validationStrip}>
-      {checks.map((check) => {
-        const issue = selectDisplayIssue(ledgerIssues, check.id);
-        const explanation = validationRowExplanation(
-          check,
-          issue,
-          loadingLedgerIssues,
-        );
-        return (
+    <>
+      <div className={styles.validationStrip}>
+        {validationRows.map(({ check, explanation }) => (
           <button
             key={check.id}
             type="button"
@@ -1096,15 +1147,28 @@ function ValidationChecks({
           >
             <span className={styles.validationLabel}>{CHECK_LABELS[check.id]}</span>
             <ValidationStatusIcon status={check.status} />
-            {explanation ? (
-              <span className={styles.validationExplanation}>
-                {explanation}
-              </span>
-            ) : null}
           </button>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+      <div
+        className={[
+          styles.validationReasonSlot,
+          !explanationRow ? styles.validationReasonSlotEmpty : "",
+        ].filter(Boolean).join(" ")}
+        aria-live="polite"
+      >
+        {explanationRow ? (
+          <>
+            <span className={styles.validationReasonLabel}>
+              {CHECK_LABELS[explanationRow.check.id]}
+            </span>
+            <span className={styles.validationReasonText}>
+              {explanationRow.explanation}
+            </span>
+          </>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -2042,12 +2106,17 @@ export default function ReceiptHealthExplorer() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionTargetIndex, setTransitionTargetIndex] = useState<number | null>(null);
   const [unavailableImageKeys, setUnavailableImageKeys] = useState<Set<string>>(
     () => new Set(),
   );
   const fetchedInitial = useRef(false);
   const ledgerContextCacheRef = useRef<Map<string, LedgerContext>>(new Map());
   const lastManualSelectionRef = useRef(0);
+  const transitionTimerRef = useRef<number | null>(null);
+  const currentIndexRef = useRef(currentIndex);
+  const receiptsRef = useRef(receipts);
   const formatSupport = useImageFormatSupport();
 
   usePreloadReceiptImages(
@@ -2127,6 +2196,22 @@ export default function ReceiptHealthExplorer() {
   const currentReceipt = receipts[currentIndex] ?? null;
 
   useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    receiptsRef.current = receipts;
+  }, [receipts]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current !== null) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentReceipt) {
       setLedgerIssues([]);
       setLedgerSummary(null);
@@ -2204,59 +2289,67 @@ export default function ReceiptHealthExplorer() {
   }, [activeCheck, orderedChecks]);
 
   const focusReceiptCheck = useCallback((receipt: ReceiptHealthReceipt | null | undefined) => {
-    const scenario = scenarioForReceipt(receipt ?? null);
-    if (scenario) {
-      if (isCheckId(scenario.focus)) {
-        setActiveCheckId(scenario.focus);
-      } else if (receipt?.checks.some((check) => check.id === "financial_math")) {
-        setActiveCheckId("financial_math");
-      }
-      return;
-    }
-
-    const nextCheck = CHECK_ORDER.find((id) =>
-      receipt?.checks.some((check) => check.id === id),
-    );
+    const nextCheck = preferredCheckIdForReceipt(receipt);
     if (nextCheck) {
       setActiveCheckId(nextCheck);
     }
   }, []);
 
   const selectReceipt = useCallback((index: number, options: { manual?: boolean } = {}) => {
-    const receipt = receipts[index];
+    const receipt = receiptsRef.current[index];
     if (!receipt) return;
 
     if (options.manual ?? true) {
       lastManualSelectionRef.current = Date.now();
     }
 
-    setCurrentIndex(index);
-    focusReceiptCheck(receipt);
-  }, [focusReceiptCheck, receipts]);
+    if (index === currentIndexRef.current) {
+      focusReceiptCheck(receipt);
+      return;
+    }
+
+    if (transitionTimerRef.current !== null) return;
+
+    setTransitionTargetIndex(index);
+    setIsTransitioning(true);
+
+    transitionTimerRef.current = window.setTimeout(() => {
+      setCurrentIndex(index);
+      focusReceiptCheck(receipt);
+      setIsTransitioning(false);
+      setTransitionTargetIndex(null);
+      transitionTimerRef.current = null;
+    }, TRANSITION_DURATION_MS);
+  }, [focusReceiptCheck]);
 
   useEffect(() => {
-    if (!inView || loading || receipts.length < 2 || findingIssue || loadingMore) return;
+    if (
+      !inView ||
+      loading ||
+      receipts.length < 2 ||
+      findingIssue ||
+      loadingMore ||
+      isTransitioning
+    ) return;
 
     const timer = window.setInterval(() => {
       if (Date.now() - lastManualSelectionRef.current < MANUAL_ROTATE_PAUSE_MS) {
         return;
       }
 
-      setCurrentIndex((index) => {
-        const nextIndex = (index + 1) % receipts.length;
-        focusReceiptCheck(receipts[nextIndex]);
-        return nextIndex;
-      });
+      const nextIndex = (currentIndexRef.current + 1) % receiptsRef.current.length;
+      selectReceipt(nextIndex, { manual: false });
     }, AUTO_ROTATE_MS);
 
     return () => window.clearInterval(timer);
   }, [
     findingIssue,
-    focusReceiptCheck,
     inView,
+    isTransitioning,
     loading,
     loadingMore,
     receipts,
+    selectReceipt,
   ]);
 
   const handleImageUnavailable = useCallback((receipt: ReceiptHealthReceipt) => {
@@ -2393,6 +2486,61 @@ export default function ReceiptHealthExplorer() {
     unavailableImageKeys,
   ]);
 
+  const getFlyingReceipt = useCallback(
+    (items: ReceiptHealthReceipt[]) => {
+      if (transitionTargetIndex === null) return null;
+      return items[transitionTargetIndex] ?? null;
+    },
+    [transitionTargetIndex],
+  );
+
+  const { flyingItem, showFlying } = useFlyingReceipt(
+    isTransitioning,
+    receipts,
+    currentIndex,
+    getFlyingReceipt,
+  );
+
+  const flyingElement = useMemo(() => {
+    if (!showFlying || !flyingItem || !formatSupport) return null;
+
+    const imageUrl = getBestImageUrl(flyingItem, formatSupport, "medium");
+    if (!imageUrl) return null;
+
+    const { displayWidth, displayHeight } = receiptDisplaySize(flyingItem);
+    const receiptId = `${flyingItem.image_id}_${flyingItem.receipt_id}`;
+
+    return (
+      <FlyingReceipt
+        key={`receipt-health-flying-${receiptKey(flyingItem)}`}
+        imageUrl={imageUrl}
+        displayWidth={displayWidth}
+        displayHeight={displayHeight}
+        receiptId={receiptId}
+        onImageError={(event) => {
+          const fallback = getJpegFallbackUrl(flyingItem);
+          if (event.currentTarget.src !== fallback) {
+            event.currentTarget.src = fallback;
+          }
+        }}
+      />
+    );
+  }, [flyingItem, formatSupport, showFlying]);
+
+  const transitionTargetReceipt =
+    transitionTargetIndex === null ? null : receipts[transitionTargetIndex] ?? null;
+  const transitionTargetCheck = useMemo(() => {
+    if (!transitionTargetReceipt) return null;
+    const preferredCheckId = preferredCheckIdForReceipt(transitionTargetReceipt);
+    return (
+      transitionTargetReceipt.checks.find(
+        (check) => check.id === preferredCheckId,
+      ) ??
+      transitionTargetReceipt.checks[0] ??
+      null
+    );
+  }, [transitionTargetReceipt]);
+
   if (loading || !formatSupport) {
     return (
       <div
@@ -2443,7 +2591,7 @@ export default function ReceiptHealthExplorer() {
     >
       <ReceiptFlowShell
         layoutVars={FLOW_LAYOUT_VARS}
-        isTransitioning={false}
+        isTransitioning={isTransitioning}
         queue={
           <ReceiptHealthFlowQueue
             receipts={receipts}
@@ -2459,6 +2607,17 @@ export default function ReceiptHealthExplorer() {
             activeCheck={activeCheck}
             onImageUnavailable={handleImageUnavailable}
           />
+        }
+        flying={flyingElement}
+        next={
+          isTransitioning && transitionTargetReceipt && transitionTargetCheck ? (
+            <ReceiptHealthFlowReceipt
+              key={`next-${receiptKey(transitionTargetReceipt)}`}
+              receipt={transitionTargetReceipt}
+              activeCheck={transitionTargetCheck}
+              onImageUnavailable={handleImageUnavailable}
+            />
+          ) : null
         }
         legend={
           <ReceiptHealthFlowLegend
