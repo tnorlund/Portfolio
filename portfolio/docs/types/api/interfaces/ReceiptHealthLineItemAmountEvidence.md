@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthLineItemAmountEvidence
 
-Defined in: [types/api.ts:1036](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1036)
+Defined in: [types/api.ts:1036](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1036)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1036](https://github.com/tnorlund/Portfolio/blob/69781
 
 > `optional` **clean\_amount\_row\_count**: `number`
 
-Defined in: [types/api.ts:1038](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1038)
+Defined in: [types/api.ts:1038](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1038)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1038](https://github.com/tnorlund/Portfolio/blob/69781
 
 > `optional` **fragmented\_amount\_row\_count**: `number`
 
-Defined in: [types/api.ts:1039](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1039)
+Defined in: [types/api.ts:1039](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1039)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1039](https://github.com/tnorlund/Portfolio/blob/69781
 
 > `optional` **item\_amount\_row\_count**: `number`
 
-Defined in: [types/api.ts:1037](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1037)
+Defined in: [types/api.ts:1037](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1037)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1037](https://github.com/tnorlund/Portfolio/blob/69781
 
 > `optional` **labeled\_line\_total\_row\_count**: `number`
 
-Defined in: [types/api.ts:1040](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1040)
+Defined in: [types/api.ts:1040](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1040)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: [types/api.ts:1040](https://github.com/tnorlund/Portfolio/blob/69781
 
 > `optional` **rows**: [`ReceiptHealthLineItemAmountEvidenceRow`](ReceiptHealthLineItemAmountEvidenceRow.md)[]
 
-Defined in: [types/api.ts:1041](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1041)
+Defined in: [types/api.ts:1041](https://github.com/tnorlund/Portfolio/blob/41c264a211f17a37b3b107564ceff983adf99878/portfolio/types/api.ts#L1041)
