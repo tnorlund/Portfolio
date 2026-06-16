@@ -3,29 +3,17 @@
 Pure business logic - no Lambda-specific code.
 """
 
-import asyncio
 import json
 import logging
 import os
 import random
 import tempfile
 import time
-from datetime import datetime, timezone
 from functools import wraps
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
 from openai import OpenAI
-from receipt_agent.clients.factory import (
-    create_embed_fn,
-    create_places_client,
-)
-from receipt_agent.config.settings import get_settings
-from receipt_agent.subagents.place_finder import (
-    create_receipt_place_finder_graph,
-    run_receipt_place_finder,
-)
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
@@ -43,7 +31,6 @@ from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
@@ -198,20 +185,7 @@ def retry_openai_api_call(
     return decorator
 
 
-def _propagate_agent_env() -> None:
-    """Ensure receipt_agent settings pick up the base env vars."""
-    env_aliases = [
-        ("OPENAI_API_KEY", "RECEIPT_AGENT_OPENAI_API_KEY"),
-        ("GOOGLE_PLACES_API_KEY", "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY"),
-        ("LANGCHAIN_API_KEY", "RECEIPT_AGENT_LANGCHAIN_API_KEY"),
-        ("LANGCHAIN_PROJECT", "RECEIPT_AGENT_LANGCHAIN_PROJECT"),
-    ]
-    for src, dest in env_aliases:
-        if dest not in os.environ and src in os.environ:
-            os.environ[dest] = os.environ[src]
-
-
-async def _ensure_receipt_place_async(
+def _ensure_receipt_place(
     image_id: str,
     receipt_id: int,
     dynamo_client: DynamoClient,
@@ -219,12 +193,14 @@ async def _ensure_receipt_place_async(
     word_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
 ) -> bool:
-    """Create receipt_place if missing using receipt_agent + local Chroma.
+    """Create receipt_place if missing by delegating to the fix_place Lambda.
 
     Returns:
-        True if place exists or was created; False if the receipt entity
-        is missing (orphaned receipt that can never have a place created).
-        Raises on transient / unexpected errors.
+        True if the place exists or was successfully created.
+        False if the receipt entity is missing (orphaned) or the agent
+        permanently could not identify a merchant.
+        Raises RuntimeError on transient / infrastructure errors so the
+        Step Function can retry.
     """
     try:
         dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -236,7 +212,7 @@ async def _ensure_receipt_place_async(
         return True
     except EntityNotFoundError:
         logger.info(
-            "Receipt place missing; will attempt creation",
+            "Receipt place missing; will attempt creation via fix_place Lambda",
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -249,241 +225,74 @@ async def _ensure_receipt_place_async(
         )
         raise
 
-    _propagate_agent_env()
-    settings = get_settings()
-
+    # Confirm the receipt entity itself exists before invoking the agent.
     try:
-        receipt_details = dynamo_client.get_receipt_details(
-            image_id=image_id,
-            receipt_id=receipt_id,
-        )
+        dynamo_client.get_receipt_details(image_id=image_id, receipt_id=receipt_id)
     except EntityNotFoundError:
         logger.warning(
-            "Receipt entity missing during place creation; "
-            "skipping orphaned receipt",
+            "Receipt entity missing; skipping orphaned receipt",
             image_id=image_id,
             receipt_id=receipt_id,
         )
         return False
 
-    word_records: List[WordEmbeddingRecord] = []
-    if word_results:
-        words_by_key = {
-            (w.line_id, w.word_id): w for w in receipt_details.words
-        }
-        for result in word_results:
-            try:
-                meta = parse_word_custom_id(result["custom_id"])
-            except Exception as parse_error:  # pylint: disable=broad-except
-                logger.warning(
-                    "Skipping word embedding result with invalid custom_id",
-                    custom_id=result.get("custom_id"),
-                    error=str(parse_error),
-                )
-                continue
+    fix_place_fn = os.environ.get("FIX_PLACE_LAMBDA_NAME")
+    if not fix_place_fn:
+        raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
 
-            if (
-                meta["image_id"] != image_id
-                or meta["receipt_id"] != receipt_id
-            ):
-                continue
+    lambda_client = boto3.client("lambda")
+    payload = json.dumps({
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "reason": "Missing place detected during word embedding ingest",
+    }).encode()
 
-            target_word = words_by_key.get((meta["line_id"], meta["word_id"]))
-            if not target_word:
-                logger.warning(
-                    "Word not found for embedding result",
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    line_id=meta["line_id"],
-                    word_id=meta["word_id"],
-                )
-                continue
-
-            word_records.append(
-                WordEmbeddingRecord(
-                    word=target_word,
-                    embedding=result.get("embedding") or [],
-                    batch_id=batch_id,
-                )
-            )
-
-    word_embeddings_map = (
-        {record.chroma_id: record.embedding for record in word_records}
-        if word_records
-        else None
-    )
-
-    chroma_root = Path("/tmp/chroma/place_finder")
-    lines_dir = chroma_root / "lines"
-    words_dir = chroma_root / "words"
-    lines_dir.mkdir(parents=True, exist_ok=True)
-    words_dir.mkdir(parents=True, exist_ok=True)
-
-    chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
-    if chromadb_bucket:
-        try:
-            download_snapshot_atomic(
-                bucket=chromadb_bucket,
-                collection="lines",
-                local_path=str(lines_dir),
-                verify_integrity=False,
-            )
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to download lines snapshot for place finder",
-                error=str(e),
-            )
-        try:
-            download_snapshot_atomic(
-                bucket=chromadb_bucket,
-                collection="words",
-                local_path=str(words_dir),
-                verify_integrity=False,
-            )
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to download words snapshot for place finder",
-                error=str(e),
-            )
-
-    lines_client = ChromaClient(
-        persist_directory=str(lines_dir), mode="write", metadata_only=True
-    )
-    words_client = ChromaClient(
-        persist_directory=str(words_dir), mode="write", metadata_only=True
-    )
-
-    chroma_client = DualChromaClient(lines_client, words_client, logger)
     try:
-        payload = build_word_payload(
-            records=word_records,
-            all_words=receipt_details.words,
-            word_labels=getattr(receipt_details, "labels", []),
-            merchant_name=None,
+        response = lambda_client.invoke(
+            FunctionName=fix_place_fn,
+            InvocationType="RequestResponse",
+            Payload=payload,
+        )
+    except Exception as invoke_err:
+        raise RuntimeError(
+            f"Failed to invoke fix_place Lambda for {image_id}#{receipt_id}: {invoke_err}"
+        ) from invoke_err
+
+    if response.get("FunctionError"):
+        error_body = response["Payload"].read().decode()
+        raise RuntimeError(
+            f"fix_place Lambda error for {image_id}#{receipt_id}: {error_body}"
         )
 
-        if payload["ids"]:
-            collection = chroma_client.get_collection(
-                "words", create_if_missing=True
-            )
-            collection.upsert(
-                ids=payload["ids"],
-                embeddings=payload["embeddings"],
-                documents=payload["documents"],
-                metadatas=payload["metadatas"],
-            )
+    result = json.loads(response["Payload"].read().decode())
 
-        embed_fn = create_embed_fn(settings=settings)
-        places_client = create_places_client(settings=settings)
-
-        graph, state_holder = create_receipt_place_finder_graph(
-            dynamo_client=dynamo_client,
-            chroma_client=chroma_client,
-            embed_fn=embed_fn,
-            places_api=places_client,
-            settings=settings,
-        )
-
-        result = await run_receipt_place_finder(
-            graph=graph,
-            state_holder=state_holder,
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_embeddings=None,
-            word_embeddings=word_embeddings_map,
-            receipt_lines=receipt_details.lines,
-            receipt_words=receipt_details.words,
-        )
-
-        if not result.get("found"):
-            result_type = result.get("type", "agent_decided")
-            if result_type in ("agent_error", "agent_timeout"):
-                # Transient failure — raise so the Lambda fails and Step Functions retries
-                raise RuntimeError(
-                    f"Place finder failed transiently ({result_type}) for "
-                    f"{image_id}#{receipt_id}: {result.get('reasoning', '')}"
-                )
-            # agent_decided: agent ran fully and found nothing — permanently unplaceable
-            logger.warning(
-                "Place finder could not identify merchant; receipt is permanently unplaceable",
-                image_id=image_id,
-                receipt_id=receipt_id,
-                reasoning=result.get("reasoning"),
-            )
-            return False
-
-        merchant_name = result.get("merchant_name") or ""
-        if not merchant_name.strip():
-            logger.warning(
-                "Place finder returned empty merchant_name; receipt is permanently unplaceable",
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
-            return False
-
-        matched_fields = []
-        if result.get("merchant_name"):
-            matched_fields.append("name")
-        if result.get("address"):
-            matched_fields.append("address")
-        if result.get("phone_number"):
-            matched_fields.append("phone")
-        if result.get("place_id"):
-            matched_fields.append("place_id")
-
-        place_entity = ReceiptPlace(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            place_id=result.get("place_id") or "",
-            merchant_name=merchant_name,
-            matched_fields=matched_fields,
-            timestamp=datetime.now(timezone.utc),
-            merchant_category="",
-            formatted_address=result.get("address") or "",
-            phone_number=result.get("phone_number") or "",
-            validated_by="place_finder_agent",
-            reasoning=result.get("reasoning") or "",
-        )
-        dynamo_client.add_receipt_places([place_entity])
-
+    if result.get("success"):
         logger.info(
-            "Created receipt_place via place finder",
+            "Created receipt_place via fix_place Lambda",
             image_id=image_id,
             receipt_id=receipt_id,
-            place_id=place_entity.place_id,
+            merchant=result.get("new_merchant"),
         )
         return True
-    finally:
-        try:
-            chroma_client.close()
-        except Exception as e:
-            logger.debug(
-                "Failed to close chroma_client during cleanup", error=str(e)
-            )
 
-
-def _ensure_receipt_place(
-    image_id: str,
-    receipt_id: int,
-    dynamo_client: DynamoClient,
-    *,
-    word_results: Optional[List[dict]] = None,
-    batch_id: Optional[str] = None,
-) -> bool:
-    """Synchronous wrapper for async place creation.
-
-    Returns:
-        True if place exists or was created; False if the receipt entity
-        is missing (orphaned).  Raises on transient errors.
-    """
-    return asyncio.run(
-        _ensure_receipt_place_async(
+    error_msg = result.get("error", "")
+    # These messages indicate the agent ran fully but could not find the merchant.
+    permanent_phrases = (
+        "agent could not find correct place",
+        "merchant_name is missing",
+        "no google places place_id",
+    )
+    if any(p in error_msg.lower() for p in permanent_phrases):
+        logger.warning(
+            "Place finder could not identify merchant; receipt is permanently unplaceable",
             image_id=image_id,
             receipt_id=receipt_id,
-            dynamo_client=dynamo_client,
-            word_results=word_results,
-            batch_id=batch_id,
+            reasoning=result.get("reasoning"),
         )
+        return False
+
+    raise RuntimeError(
+        f"fix_place Lambda returned failure for {image_id}#{receipt_id}: {error_msg}"
     )
 
 
