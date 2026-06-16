@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthSectionEvidenceRow
 
-Defined in: [types/api.ts:1010](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1010)
+Defined in: [types/api.ts:1010](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1010)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1010](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > **line\_ids**: `number`[]
 
-Defined in: [types/api.ts:1012](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1012)
+Defined in: [types/api.ts:1012](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1012)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1012](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > **row\_index**: `number`
 
-Defined in: [types/api.ts:1011](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1011)
+Defined in: [types/api.ts:1011](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1011)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1011](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > **section**: `string`
 
-Defined in: [types/api.ts:1013](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1013)
+Defined in: [types/api.ts:1013](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1013)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:1013](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > **text**: `string`
 
-Defined in: [types/api.ts:1014](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1014)
+Defined in: [types/api.ts:1014](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1014)

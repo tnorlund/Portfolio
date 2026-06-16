@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthPreflightAction
 
-Defined in: [types/api.ts:999](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L999)
+Defined in: [types/api.ts:999](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L999)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:999](https://github.com/tnorlund/Portfolio/blob/139aa0
 
 > **tool**: `"update_word_label"` \| `"create_word_label"` \| `"trigger_reocr"`
 
-Defined in: [types/api.ts:1000](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1000)
+Defined in: [types/api.ts:1000](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1000)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1000](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **image\_id**: `string`
 
-Defined in: [types/api.ts:1001](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1001)
+Defined in: [types/api.ts:1001](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1001)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1001](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **label**: `string`
 
-Defined in: [types/api.ts:1005](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1005)
+Defined in: [types/api.ts:1005](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1005)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1005](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **line\_id**: `number`
 
-Defined in: [types/api.ts:1003](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1003)
+Defined in: [types/api.ts:1003](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1003)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:1003](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **new\_status**: `"VALID"` \| `"INVALID"` \| `"NEEDS_REVIEW"`
 
-Defined in: [types/api.ts:1006](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1006)
+Defined in: [types/api.ts:1006](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1006)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:1006](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **reasoning**: `string`
 
-Defined in: [types/api.ts:1007](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1007)
+Defined in: [types/api.ts:1007](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1007)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:1007](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **receipt\_id**: `number`
 
-Defined in: [types/api.ts:1002](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1002)
+Defined in: [types/api.ts:1002](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1002)
 
 ***
 
@@ -70,4 +70,4 @@ Defined in: [types/api.ts:1002](https://github.com/tnorlund/Portfolio/blob/139aa
 
 > `optional` **word\_id**: `number`
 
-Defined in: [types/api.ts:1004](https://github.com/tnorlund/Portfolio/blob/139aa0a7839bce94c14632a1e748feee67ea7f3b/portfolio/types/api.ts#L1004)
+Defined in: [types/api.ts:1004](https://github.com/tnorlund/Portfolio/blob/69781c34ca296cfd3712e74ec23e1cc0610c42c4/portfolio/types/api.ts#L1004)
