@@ -287,10 +287,19 @@ async def _ensure_receipt_place_async(
         )
 
         if not result.get("found"):
+            result_type = result.get("type", "agent_decided")
+            if result_type in ("agent_error", "agent_timeout"):
+                # Transient failure — raise so the Lambda fails and Step Functions retries
+                raise RuntimeError(
+                    f"Place finder failed transiently ({result_type}) for "
+                    f"{image_id}#{receipt_id}: {result.get('reasoning', '')}"
+                )
+            # agent_decided: agent ran fully and found nothing — permanently unplaceable
             logger.warning(
                 "Place finder could not identify merchant; receipt is permanently unplaceable",
                 image_id=image_id,
                 receipt_id=receipt_id,
+                reasoning=result.get("reasoning"),
             )
             return False
 
