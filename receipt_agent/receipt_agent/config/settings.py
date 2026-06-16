@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     # ==========================================================================
@@ -80,6 +81,9 @@ class Settings(BaseSettings):
     # ==========================================================================
     dynamo_table_name: str = Field(
         default="receipts",
+        validation_alias=AliasChoices(
+            "RECEIPT_AGENT_DYNAMO_TABLE_NAME", "DYNAMODB_TABLE_NAME"
+        ),
         description="DynamoDB table name",
     )
     aws_region: str = Field(
