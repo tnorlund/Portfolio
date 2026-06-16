@@ -8,7 +8,7 @@
 
 > **circularMeanAngle**(`angle1`, `angle2`): `number`
 
-Defined in: [utils/geometry/basic.ts:97](https://github.com/tnorlund/Portfolio/blob/b5ee8aa125b88ec09b32c096dffb506576e76ca6/portfolio/utils/geometry/basic.ts#L97)
+Defined in: [utils/geometry/basic.ts:97](https://github.com/tnorlund/Portfolio/blob/562a6056f0bf5c8cd31f184ecaa81c91cf84ef34/portfolio/utils/geometry/basic.ts#L97)
 
 Circular mean of two angles (handles ±π wraparound).
 For example, averaging +179° and -179° gives ±180° instead of 0°.
