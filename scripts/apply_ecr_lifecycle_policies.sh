@@ -29,6 +29,11 @@ DRY_RUN=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --region)
+      if [[ $# -lt 2 || -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        echo "Missing value for --region" >&2
+        echo "Usage: $0 [--region REGION] [--dry-run]" >&2
+        exit 1
+      fi
       REGION="$2"
       shift 2
       ;;
