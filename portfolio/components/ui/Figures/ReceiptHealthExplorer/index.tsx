@@ -16,10 +16,7 @@ import {
   getJpegFallbackUrl,
   usePreloadReceiptImages,
 } from "../../../../utils/imageFormat";
-import {
-  DEFAULT_LAYOUT_VARS,
-  ReceiptFlowLoadingShell,
-} from "../ReceiptFlow/ReceiptFlowLoadingShell";
+import { ReceiptFlowLoadingShell } from "../ReceiptFlow/ReceiptFlowLoadingShell";
 import { FlyingReceipt } from "../ReceiptFlow/FlyingReceipt";
 import { ReceiptFlowShell } from "../ReceiptFlow/ReceiptFlowShell";
 import {
@@ -51,7 +48,13 @@ const TRANSITION_DURATION_MS = 600;
 const FLYING_RECEIPT_MAX_WIDTH = 350;
 const FLYING_RECEIPT_MAX_HEIGHT = 500;
 const FLOW_LAYOUT_VARS = {
-  ...DEFAULT_LAYOUT_VARS,
+  "--rf-queue-width": "280px",
+  "--rf-queue-height": "400px",
+  "--rf-center-max-width": "350px",
+  "--rf-center-height": "500px",
+  "--rf-mobile-center-height": "400px",
+  "--rf-mobile-center-height-sm": "320px",
+  "--rf-gap": "1.5rem",
   "--rf-align-items": "center",
 } as React.CSSProperties;
 
@@ -973,6 +976,30 @@ function validationRowExplanation(
   return `${reason} · ${outcome}`;
 }
 
+function ValidationReason({
+  explanation,
+}: {
+  explanation: string | null;
+}) {
+  const hasExplanation = Boolean(explanation);
+  return (
+    <div
+      className={[
+        styles.validationReasonSlot,
+        hasExplanation ? styles.validationReasonSlotVisible : "",
+      ].filter(Boolean).join(" ")}
+      aria-live="polite"
+      aria-hidden={!hasExplanation}
+    >
+      <div className={styles.validationReasonClip}>
+        <div className={styles.validationReasonInner}>
+          {explanation}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function classifiedRootCauseTotal(summary: ReceiptHealthLedgerSummary | null): number {
   return sortedCountEntries(summary?.by_preflight_root_cause)
     .filter(([rootCause]) => rootCause !== "unclassified")
@@ -1122,19 +1149,15 @@ function ValidationChecks({
     );
     return { check, explanation };
   });
-  const activeExplanationRow = validationRows.find(
-    ({ check, explanation }) => check.id === activeCheck.id && explanation,
-  );
-  const explanationRow =
-    activeExplanationRow ??
-    validationRows.find(({ explanation }) => Boolean(explanation));
 
   return (
-    <>
-      <div className={styles.validationStrip}>
-        {validationRows.map(({ check, explanation }) => (
+    <div className={styles.validationStrip}>
+      {validationRows.map(({ check, explanation }) => (
+        <div
+          key={check.id}
+          className={styles.validationRow}
+        >
           <button
-            key={check.id}
             type="button"
             className={[
               styles.validationPill,
@@ -1148,27 +1171,10 @@ function ValidationChecks({
             <span className={styles.validationLabel}>{CHECK_LABELS[check.id]}</span>
             <ValidationStatusIcon status={check.status} />
           </button>
-        ))}
-      </div>
-      <div
-        className={[
-          styles.validationReasonSlot,
-          !explanationRow ? styles.validationReasonSlotEmpty : "",
-        ].filter(Boolean).join(" ")}
-        aria-live="polite"
-      >
-        {explanationRow ? (
-          <>
-            <span className={styles.validationReasonLabel}>
-              {CHECK_LABELS[explanationRow.check.id]}
-            </span>
-            <span className={styles.validationReasonText}>
-              {explanationRow.explanation}
-            </span>
-          </>
-        ) : null}
-      </div>
-    </>
+          <ValidationReason explanation={explanation} />
+        </div>
+      ))}
+    </div>
   );
 }
 
