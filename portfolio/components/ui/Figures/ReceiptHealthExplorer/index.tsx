@@ -2150,6 +2150,7 @@ export default function ReceiptHealthExplorer() {
   const lastManualSelectionRef = useRef(0);
   const transitionTimerRef = useRef<number | null>(null);
   const transitionInFlightRef = useRef(false);
+  const transitionRequestIdRef = useRef(0);
   const isMountedRef = useRef(true);
   const currentIndexRef = useRef(currentIndex);
   const receiptsRef = useRef(receipts);
@@ -2280,6 +2281,7 @@ export default function ReceiptHealthExplorer() {
       if (transitionTimerRef.current !== null) {
         window.clearTimeout(transitionTimerRef.current);
       }
+      transitionRequestIdRef.current += 1;
       transitionInFlightRef.current = false;
     };
   }, []);
@@ -2369,32 +2371,36 @@ export default function ReceiptHealthExplorer() {
 
     if (transitionTimerRef.current !== null || transitionInFlightRef.current) return;
 
+    const transitionRequestId = transitionRequestIdRef.current + 1;
+    transitionRequestIdRef.current = transitionRequestId;
     transitionInFlightRef.current = true;
+    setTransitionLedgerContext(null);
+    setTransitionTargetIndex(index);
+    setIsTransitioning(true);
+
     fetchLedgerContext(receipt)
       .catch((err) => {
         console.warn("Failed to prefetch receipt health issues:", err);
         return null;
       })
       .then((nextContext) => {
-        if (!isMountedRef.current) {
-          transitionInFlightRef.current = false;
-          return;
-        }
-
+        if (
+          !isMountedRef.current ||
+          transitionRequestIdRef.current !== transitionRequestId
+        ) return;
         setTransitionLedgerContext(nextContext);
-        setTransitionTargetIndex(index);
-        setIsTransitioning(true);
-
-        transitionTimerRef.current = window.setTimeout(() => {
-          setCurrentIndex(index);
-          focusReceiptCheck(receipt);
-          setIsTransitioning(false);
-          setTransitionTargetIndex(null);
-          setTransitionLedgerContext(null);
-          transitionTimerRef.current = null;
-          transitionInFlightRef.current = false;
-        }, TRANSITION_DURATION_MS);
       });
+
+    transitionTimerRef.current = window.setTimeout(() => {
+      setCurrentIndex(index);
+      focusReceiptCheck(receipt);
+      setIsTransitioning(false);
+      setTransitionTargetIndex(null);
+      setTransitionLedgerContext(null);
+      transitionRequestIdRef.current += 1;
+      transitionTimerRef.current = null;
+      transitionInFlightRef.current = false;
+    }, TRANSITION_DURATION_MS);
   }, [fetchLedgerContext, focusReceiptCheck]);
 
   useEffect(() => {
