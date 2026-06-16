@@ -322,6 +322,12 @@ def _label(line_id, word_id, label, status):
     }
 
 
+def test_money_cents_preserves_negative_cents_sign():
+    assert build_viz_cache._money_cents("-1.23") == -123
+    assert build_viz_cache._money_cents("-$1.23") == -123
+    assert build_viz_cache._money_cents("-3.00") == -300
+
+
 def test_preflight_finds_safe_line_total_grand_total_plan():
     words = [
         _word(30, 1, "16.48"),

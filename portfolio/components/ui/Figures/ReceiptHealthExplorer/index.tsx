@@ -2153,15 +2153,23 @@ export default function ReceiptHealthExplorer() {
   const loadScenarioReceipts = useCallback(async () => {
     const scenarioResults = await Promise.all(
       FLOW_MOCK_SCENARIOS.map(async (scenario) => {
-        const response = await api.fetchReceiptHealth(
-          BATCH_SIZE,
-          INITIAL_SEED,
-          0,
-          { imageId: scenario.imageId },
-        );
-        return response.receipts.find(
-          (receipt) => receipt.receipt_id === scenario.receiptId,
-        ) ?? null;
+        try {
+          const response = await api.fetchReceiptHealth(
+            BATCH_SIZE,
+            INITIAL_SEED,
+            0,
+            { imageId: scenario.imageId },
+          );
+          return response.receipts.find(
+            (receipt) => receipt.receipt_id === scenario.receiptId,
+          ) ?? null;
+        } catch (err) {
+          console.warn(
+            `Skipping unavailable receipt health scenario ${scenario.label}:`,
+            err,
+          );
+          return null;
+        }
       }),
     );
 
@@ -2169,11 +2177,15 @@ export default function ReceiptHealthExplorer() {
       (receipt): receipt is ReceiptHealthReceipt => Boolean(receipt),
     );
 
+    if (scenarioReceipts.length === 0) {
+      return loadReceipts(0);
+    }
+
     setTotalCount(scenarioReceipts.length);
     setHasMore(false);
     setReceipts(scenarioReceipts);
     return scenarioReceipts;
-  }, []);
+  }, [loadReceipts]);
 
   useEffect(() => {
     if (!nearViewport || fetchedInitial.current) return;

@@ -976,7 +976,11 @@ def _money_cents(text: Any, *, strict: bool = False) -> int | None:
     if len(cents) > 2:
         cents = cents[:2]
     try:
-        return int(dollars) * 100 + int(cents)
+        sign = -1 if dollars.startswith("-") else 1
+        absolute_dollars = dollars.lstrip("+-")
+        if absolute_dollars == "":
+            return None
+        return sign * (int(absolute_dollars) * 100 + int(cents))
     except ValueError:
         return None
 
