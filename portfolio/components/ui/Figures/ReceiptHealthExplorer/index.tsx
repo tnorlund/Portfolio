@@ -1001,8 +1001,8 @@ function ValidationReason({
         hasExplanation ? styles.validationReasonSlotVisible : "",
         muted ? styles.validationReasonSlotMuted : "",
       ].filter(Boolean).join(" ")}
-      aria-live="polite"
-      aria-hidden={!hasExplanation}
+      aria-live={muted ? "off" : "polite"}
+      aria-hidden={muted || !hasExplanation}
     >
       <div className={styles.validationReasonClip}>
         <div
