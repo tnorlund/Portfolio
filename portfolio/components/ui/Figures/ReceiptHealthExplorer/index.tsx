@@ -119,6 +119,15 @@ const CHECK_LABELS: Record<CheckId, string> = {
   financial_math: "Math",
 };
 
+function orderedChecksForReceipt(
+  receipt: ReceiptHealthReceipt | null | undefined,
+): ReceiptHealthCheck[] {
+  if (!receipt) return [];
+  return CHECK_ORDER
+    .map((id) => receipt.checks.find((check) => check.id === id))
+    .filter((check): check is ReceiptHealthCheck => Boolean(check));
+}
+
 const STATUS_LABELS: Record<ReceiptHealthStatus, string> = {
   pass: "Pass",
   review: "Review",
@@ -992,7 +1001,13 @@ function ValidationReason({
       aria-hidden={!hasExplanation}
     >
       <div className={styles.validationReasonClip}>
-        <div className={styles.validationReasonInner}>
+        <div
+          key={explanation ?? "empty"}
+          className={[
+            styles.validationReasonInner,
+            hasExplanation ? styles.validationReasonInnerVisible : "",
+          ].filter(Boolean).join(" ")}
+        >
           {explanation}
         </div>
       </div>
@@ -2286,10 +2301,7 @@ export default function ReceiptHealthExplorer() {
   }, [currentReceipt]);
 
   const orderedChecks = useMemo(() => {
-    if (!currentReceipt) return [];
-    return CHECK_ORDER
-      .map((id) => currentReceipt.checks.find((check) => check.id === id))
-      .filter((check): check is ReceiptHealthCheck => Boolean(check));
+    return orderedChecksForReceipt(currentReceipt);
   }, [currentReceipt]);
 
   const activeCheck = useMemo(() => {
@@ -2547,17 +2559,21 @@ export default function ReceiptHealthExplorer() {
 
   const transitionTargetReceipt =
     transitionTargetIndex === null ? null : receipts[transitionTargetIndex] ?? null;
+  const transitionTargetChecks = useMemo(
+    () => orderedChecksForReceipt(transitionTargetReceipt),
+    [transitionTargetReceipt],
+  );
   const transitionTargetCheck = useMemo(() => {
     if (!transitionTargetReceipt) return null;
     const preferredCheckId = preferredCheckIdForReceipt(transitionTargetReceipt);
     return (
-      transitionTargetReceipt.checks.find(
+      transitionTargetChecks.find(
         (check) => check.id === preferredCheckId,
       ) ??
-      transitionTargetReceipt.checks[0] ??
+      transitionTargetChecks[0] ??
       null
     );
-  }, [transitionTargetReceipt]);
+  }, [transitionTargetChecks, transitionTargetReceipt]);
 
   if (loading || !formatSupport) {
     return (
@@ -2650,6 +2666,22 @@ export default function ReceiptHealthExplorer() {
             onSelectCheck={setActiveCheckId}
             onSelectReceipt={selectReceipt}
           />
+        }
+        nextLegend={
+          isTransitioning && transitionTargetReceipt && transitionTargetCheck ? (
+            <ReceiptHealthFlowLegend
+              receipt={transitionTargetReceipt}
+              checks={transitionTargetChecks}
+              activeCheck={transitionTargetCheck}
+              ledgerIssues={[]}
+              ledgerSummary={null}
+              loadingLedgerIssues={true}
+              receipts={receipts}
+              currentIndex={transitionTargetIndex ?? currentIndex}
+              onSelectCheck={setActiveCheckId}
+              onSelectReceipt={selectReceipt}
+            />
+          ) : null
         }
       />
     </div>

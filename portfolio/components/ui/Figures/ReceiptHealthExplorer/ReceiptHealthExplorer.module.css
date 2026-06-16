@@ -227,12 +227,28 @@
   -webkit-line-clamp: 2;
 }
 
+.validationReasonInnerVisible {
+  animation: validation-reason-text-in 0.22s ease-out both;
+}
+
 .validationReasonSlotVisible {
   max-height: 2.4rem;
   opacity: 0.62;
   transition:
     max-height 0.18s ease,
     opacity 0.14s ease 0.18s;
+}
+
+@keyframes validation-reason-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 0.62;
+    transform: translateY(0);
+  }
 }
 
 @keyframes receipt-health-fade-in {
@@ -1686,6 +1702,7 @@
 
   .validationReasonClip,
   .validationReasonInner {
+    animation: none;
     transition: none;
   }
 }

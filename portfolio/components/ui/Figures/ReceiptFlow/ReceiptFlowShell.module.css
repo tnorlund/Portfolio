@@ -45,6 +45,19 @@
   display: none;
 }
 
+.legendColumn {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.currentLegend {
+  display: contents;
+}
+
+.nextLegend {
+  display: none;
+}
+
 .fade-out {
   animation: fade-out 0.4s ease-out forwards;
 }
@@ -95,6 +108,25 @@
     width: 100%;
     height: 100%;
   }
+
+  .legendColumn {
+    width: 100%;
+  }
+
+  .currentLegend {
+    display: block;
+    width: 100%;
+  }
+
+  .nextLegend {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+    pointer-events: none;
+  }
+
 }
 
 @media (max-width: 480px) {

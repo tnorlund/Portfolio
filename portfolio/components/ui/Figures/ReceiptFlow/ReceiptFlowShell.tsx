@@ -7,6 +7,7 @@ interface ReceiptFlowShellProps {
   legend: React.ReactNode;
   flying?: React.ReactNode;
   next?: React.ReactNode;
+  nextLegend?: React.ReactNode;
   isTransitioning: boolean;
   layoutVars?: React.CSSProperties;
 }
@@ -17,6 +18,7 @@ export const ReceiptFlowShell: React.FC<ReceiptFlowShellProps> = ({
   legend,
   flying,
   next,
+  nextLegend,
   isTransitioning,
   layoutVars,
 }) => {
@@ -38,7 +40,18 @@ export const ReceiptFlowShell: React.FC<ReceiptFlowShellProps> = ({
         ) : null}
       </div>
 
-      {legend}
+      <div className={styles.legendColumn}>
+        <div
+          className={`${styles.currentLegend} ${isTransitioning && nextLegend ? styles["fade-out"] : ""}`}
+        >
+          {legend}
+        </div>
+        {nextLegend ? (
+          <div className={`${styles.nextLegend} ${isTransitioning ? styles["fade-in"] : ""}`}>
+            {nextLegend}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 };
