@@ -42,6 +42,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from botocore.exceptions import ClientError
+
 # LangSmith tracing - ensure traces are flushed before Lambda exits
 try:
     from langsmith.run_trees import get_cached_client as get_langsmith_client
@@ -375,5 +377,18 @@ def _update_receipt_place(
         timestamp=now,
     )
 
-    dynamo_client.add_receipt_place(new_place)
+    try:
+        dynamo_client.add_receipt_place(new_place)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+        # A concurrent invocation (e.g. word vs. line poll) already wrote
+        # the ReceiptPlace. Our agent found the same place, so this is a
+        # success — don't fail just because we lost the write race.
+        logger.info(
+            "ReceiptPlace already created by concurrent invocation for "
+            "%s#%s — treating as success",
+            image_id,
+            receipt_id,
+        )
     return new_place
