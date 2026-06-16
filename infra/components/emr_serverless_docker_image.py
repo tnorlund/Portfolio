@@ -37,6 +37,7 @@ from pulumi_aws.codepipeline import (
     PipelineStageArgs,
 )
 from pulumi_aws.ecr import (
+    LifecyclePolicy,
     Repository,
     RepositoryImageScanningConfigurationArgs,
     RepositoryPolicy,
@@ -215,6 +216,41 @@ class EMRServerlessDockerImage(ComponentResource):
             ),
             force_delete=True,
             opts=ResourceOptions(parent=self),
+        )
+
+        # Lifecycle policy: expire untagged images after 1 day, keep last 10 tagged
+        LifecyclePolicy(
+            f"{self.name}-emr-repo-lifecycle",
+            repository=self.ecr_repo.name,
+            policy=json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": "Expire untagged images after 1 day",
+                            "selection": {
+                                "tagStatus": "untagged",
+                                "countType": "sinceImagePushed",
+                                "countUnit": "days",
+                                "countNumber": 1,
+                            },
+                            "action": {"type": "expire"},
+                        },
+                        {
+                            "rulePriority": 2,
+                            "description": "Keep last 10 tagged images",
+                            "selection": {
+                                "tagStatus": "tagged",
+                                "tagPatternList": ["*"],
+                                "countType": "imageCountMoreThan",
+                                "countNumber": 10,
+                            },
+                            "action": {"type": "expire"},
+                        },
+                    ]
+                }
+            ),
+            opts=ResourceOptions(parent=self.ecr_repo),
         )
 
         # Add ECR repository policy to allow EMR Serverless to pull images
