@@ -4,10 +4,9 @@ Configuration for receipt_places package.
 Uses pydantic-settings for environment variable management.
 """
 
-import os
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,7 +33,8 @@ class PlacesConfig(BaseSettings):
         description="DynamoDB table name for caching",
     )
     aws_region: str = Field(
-        default_factory=lambda: os.environ.get("AWS_REGION", "us-east-1"),
+        default="us-east-1",
+        validation_alias=AliasChoices("RECEIPT_PLACES_AWS_REGION", "AWS_REGION"),
         description="AWS region for DynamoDB",
     )
 

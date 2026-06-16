@@ -4,7 +4,6 @@ Configuration settings for receipt_agent.
 Uses pydantic-settings for environment variable management with validation.
 """
 
-import os
 from functools import lru_cache
 from typing import Literal, Optional
 
@@ -84,7 +83,8 @@ class Settings(BaseSettings):
         description="DynamoDB table name",
     )
     aws_region: str = Field(
-        default_factory=lambda: os.environ.get("AWS_REGION", "us-east-1"),
+        default="us-east-1",
+        validation_alias=AliasChoices("RECEIPT_AGENT_AWS_REGION", "AWS_REGION"),
         description="AWS region for DynamoDB",
     )
 
