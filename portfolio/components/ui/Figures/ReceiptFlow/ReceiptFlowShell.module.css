@@ -109,6 +109,11 @@
     height: 100%;
   }
 
+  .receiptContainer.fade-out {
+    animation: none;
+    opacity: 1;
+  }
+
   .legendColumn {
     width: 100%;
   }
