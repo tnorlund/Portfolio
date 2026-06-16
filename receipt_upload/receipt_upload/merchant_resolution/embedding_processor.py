@@ -30,6 +30,7 @@ import shutil
 import tempfile
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
@@ -55,6 +56,9 @@ from receipt_upload.label_validation import (
     LightweightLabelValidator,
     LLMBatchValidator,
 )
+from receipt_upload.label_validation.label_normalization import (
+    normalize_label_alias,
+)
 from receipt_upload.label_validation.langsmith_logging import (
     log_label_validation,
     log_merchant_resolution,
@@ -65,6 +69,61 @@ from receipt_upload.merchant_resolution.resolver import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_pending_core_labels(
+    dynamo: Any,
+    word_labels: List[ReceiptWordLabel],
+    label_proposed_by: str,
+) -> List[ReceiptWordLabel]:
+    """Remove non-core pending labels before validation starts."""
+    existing_keys = {
+        (label.line_id, label.word_id, label.label) for label in word_labels
+    }
+    pending_core_labels: List[ReceiptWordLabel] = []
+
+    for label in list(word_labels):
+        if label.validation_status != ValidationStatus.PENDING.value:
+            continue
+        if label.label == "O":
+            continue
+        if label.label in CORE_LABELS:
+            pending_core_labels.append(label)
+            continue
+
+        mapped_label = normalize_label_alias(label.label)
+        original_label = label.label
+        dynamo.delete_receipt_word_label(label)
+        word_labels.remove(label)
+
+        if mapped_label is None:
+            continue
+
+        mapped_key = (label.line_id, label.word_id, mapped_label)
+        if mapped_key in existing_keys:
+            continue
+
+        new_label = ReceiptWordLabel(
+            image_id=label.image_id,
+            receipt_id=label.receipt_id,
+            line_id=label.line_id,
+            word_id=label.word_id,
+            label=mapped_label,
+            reasoning=(
+                f"Mapped from non-core label '{original_label}' before "
+                "validation."
+            ),
+            timestamp_added=datetime.now(timezone.utc),
+            validation_status=ValidationStatus.PENDING.value,
+            label_proposed_by=f"{label_proposed_by}:{original_label}",
+            label_consolidated_from=original_label,
+        )
+        dynamo.add_receipt_word_label(new_label)
+        word_labels.append(new_label)
+        existing_keys.add(mapped_key)
+        pending_core_labels.append(new_label)
+
+    return pending_core_labels
 
 
 def _get_traceable():
@@ -392,11 +451,11 @@ def _run_words_pipeline_worker(
             dynamo = DynamoClient(table_name)
             validation_stats: Dict[str, Any] = {}
 
-            pending_labels = [
-                wl
-                for wl in word_labels
-                if wl.validation_status == ValidationStatus.PENDING.value
-            ]
+            pending_labels = _prepare_pending_core_labels(
+                dynamo=dynamo,
+                word_labels=word_labels,
+                label_proposed_by="non_core_label_guard",
+            )
 
             if pending_labels:
                 from receipt_upload.label_validation import ValidationDecision
@@ -1355,14 +1414,12 @@ class MerchantResolvingEmbeddingProcessor:
                 "chroma_validated": 0,
             }
 
-        # Filter to only PENDING labels, excluding "O" (no-label) which don't need validation
-        pending_label_entities = [
-            label
-            for label in word_labels
-            if label.validation_status == ValidationStatus.PENDING.value
-            and label.label
-            != "O"  # Skip "O" labels - they're background/no-label
-        ]
+        # Filter to only valid PENDING CORE labels, excluding "O" (no-label).
+        pending_label_entities = _prepare_pending_core_labels(
+            dynamo=self.dynamo,
+            word_labels=word_labels,
+            label_proposed_by="non_core_label_guard",
+        )
 
         # Count "O" labels for logging
         o_label_count = sum(

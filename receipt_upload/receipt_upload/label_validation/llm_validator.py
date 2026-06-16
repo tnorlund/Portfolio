@@ -25,6 +25,8 @@ from pydantic import BaseModel, Field, ValidationError
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
 
+from .label_normalization import canonical_label_name, normalize_label_alias
+
 logger = logging.getLogger(__name__)
 
 # Enable Langsmith tracing if API key is set
@@ -48,9 +50,9 @@ ConfidenceType = Literal["high", "medium", "low"]
 # Note: Some extra labels are included so Pydantic parsing succeeds if LLM
 # returns them. These are NOT valid final labels:
 #   - AMOUNT: Merged label that needs reclassification
-#   - TIP: LLM sometimes returns this for gratuity amounts
 #   - NEEDS_REVIEW: LLM incorrectly uses this as a label (should be decision)
-# convert_structured_response() handles these by marking them NEEDS_REVIEW.
+#   - PAYMENT_TYPE/CARD_NUMBER/ADDRESS/BUSINESS_NAME: safe aliases
+# convert_structured_response() normalizes these before Dynamo writes.
 LabelType = Literal[
     "MERCHANT_NAME",
     "STORE_HOURS",
@@ -69,14 +71,20 @@ LabelType = Literal[
     "LINE_TOTAL",
     "SUBTOTAL",
     "TAX",
+    "TIP",
     "GRAND_TOTAL",
     "CHANGE",
     "CASH_BACK",
     "REFUND",
     # Invalid labels that LLM sometimes returns - handled in post-processing
     "AMOUNT",
-    "TIP",
+    "ADDRESS",
+    "BUSINESS_NAME",
+    "CARD_NUMBER",
+    "NULL",
+    "PAYMENT_TYPE",
     "NEEDS_REVIEW",
+    "UNLABELED",
 ]
 
 
@@ -117,6 +125,40 @@ class LLMValidationResult:
     label: str  # Final label (original if VALID, corrected if INVALID)
     confidence: str  # "high", "medium", "low"
     reasoning: str
+
+
+def _sanitize_label_decision(
+    candidate_label: Any,
+    original_label: Any,
+    decision: str,
+    reasoning: str,
+) -> tuple[str, str, str]:
+    """Normalize label values before they reach Dynamo write code."""
+    original = canonical_label_name(original_label)
+    candidate = canonical_label_name(candidate_label)
+    mapped_candidate = normalize_label_alias(candidate)
+
+    if mapped_candidate:
+        if mapped_candidate != original:
+            decision = "INVALID"
+            if candidate != mapped_candidate:
+                reasoning = (
+                    f"Mapped non-core label '{candidate}' to "
+                    f"'{mapped_candidate}'. {reasoning}"
+                )
+        return mapped_candidate, decision, reasoning
+
+    if original in CORE_LABELS:
+        decision = "NEEDS_REVIEW"
+        reasoning = f"Invalid label '{candidate}'. {reasoning}"
+        return original, decision, reasoning
+
+    decision = "NEEDS_REVIEW"
+    reasoning = (
+        f"Original label '{original}' and LLM label '{candidate}' are not "
+        f"in CORE_LABELS. {reasoning}"
+    )
+    return original, decision, reasoning
 
 
 def convert_structured_response(
@@ -193,23 +235,12 @@ def convert_structured_response(
         confidence = llm_decision.confidence
         reasoning = llm_decision.reasoning
 
-        if final_label not in CORE_LABELS:
-            logger.warning(
-                "LLM returned invalid label '%s', keeping original '%s'",
-                final_label,
-                label["label"],
-            )
-            final_label = label["label"]
-            if decision_str == "INVALID":
-                decision_str = "NEEDS_REVIEW"
-                reasoning = (
-                    f"Invalid label '{llm_decision.label}'. {reasoning}"
-                )
-
-        # AMOUNT is not a valid CORE_LABEL - force NEEDS_REVIEW if it persists
-        if final_label == "AMOUNT":
-            decision_str = "NEEDS_REVIEW"
-            reasoning = f"AMOUNT requires reclassification to LINE_TOTAL/SUBTOTAL/TAX/GRAND_TOTAL. {reasoning}"
+        final_label, decision_str, reasoning = _sanitize_label_decision(
+            candidate_label=final_label,
+            original_label=label["label"],
+            decision=decision_str,
+            reasoning=reasoning,
+        )
 
         # If INVALID but label unchanged, mark as NEEDS_REVIEW
         if decision_str == "INVALID" and final_label == label["label"]:
@@ -678,20 +709,12 @@ def parse_validation_response(
         confidence = llm_result.get("confidence", "medium")
         reasoning = llm_result.get("reasoning", "")
 
-        # Validate label is in CORE_LABELS
-        if final_label not in CORE_LABELS:
-            logger.warning(
-                "LLM returned invalid label '%s', keeping original '%s'",
-                final_label,
-                label["label"],
-            )
-            final_label = label["label"]
-            # If decision was INVALID but label is invalid, mark as NEEDS_REVIEW
-            if decision == "INVALID":
-                decision = "NEEDS_REVIEW"
-                reasoning = (
-                    f"Invalid label '{llm_result.get('label')}'. {reasoning}"
-                )
+        final_label, decision, reasoning = _sanitize_label_decision(
+            candidate_label=final_label,
+            original_label=label["label"],
+            decision=decision,
+            reasoning=reasoning,
+        )
 
         if decision == "INVALID" and final_label == label["label"]:
             decision = "NEEDS_REVIEW"
