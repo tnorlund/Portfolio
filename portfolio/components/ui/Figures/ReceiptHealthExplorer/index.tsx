@@ -987,28 +987,32 @@ function validationRowExplanation(
 
 function ValidationReason({
   explanation,
+  muted = false,
 }: {
   explanation: string | null;
+  muted?: boolean;
 }) {
   const hasExplanation = Boolean(explanation);
+  const visibleExplanation = muted ? null : explanation;
   return (
     <div
       className={[
         styles.validationReasonSlot,
         hasExplanation ? styles.validationReasonSlotVisible : "",
+        muted ? styles.validationReasonSlotMuted : "",
       ].filter(Boolean).join(" ")}
       aria-live="polite"
       aria-hidden={!hasExplanation}
     >
       <div className={styles.validationReasonClip}>
         <div
-          key={explanation ?? "empty"}
+          key={visibleExplanation ?? (muted ? "muted" : "empty")}
           className={[
             styles.validationReasonInner,
-            hasExplanation ? styles.validationReasonInnerVisible : "",
+            visibleExplanation ? styles.validationReasonInnerVisible : "",
           ].filter(Boolean).join(" ")}
         >
-          {explanation}
+          {visibleExplanation}
         </div>
       </div>
     </div>
@@ -1147,12 +1151,14 @@ function ValidationChecks({
   activeCheck,
   ledgerIssues,
   loadingLedgerIssues,
+  muteExplanations = false,
   onSelectCheck,
 }: {
   checks: ReceiptHealthCheck[];
   activeCheck: ReceiptHealthCheck;
   ledgerIssues: ReceiptHealthLedgerIssue[];
   loadingLedgerIssues: boolean;
+  muteExplanations?: boolean;
   onSelectCheck: (checkId: CheckId) => void;
 }) {
   const validationRows = checks.map((check) => {
@@ -1186,7 +1192,7 @@ function ValidationChecks({
             <span className={styles.validationLabel}>{CHECK_LABELS[check.id]}</span>
             <ValidationStatusIcon status={check.status} />
           </button>
-          <ValidationReason explanation={explanation} />
+          <ValidationReason explanation={explanation} muted={muteExplanations} />
         </div>
       ))}
     </div>
@@ -1351,6 +1357,7 @@ function DiagnosisRail({
   loadingLedgerIssues,
   receipts,
   currentIndex,
+  muteExplanations = false,
   onSelectCheck,
   onSelectReceipt,
 }: {
@@ -1363,6 +1370,7 @@ function DiagnosisRail({
   loadingLedgerIssues: boolean;
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
+  muteExplanations?: boolean;
   onSelectCheck: (checkId: CheckId) => void;
   onSelectReceipt: (index: number) => void;
 }) {
@@ -1393,6 +1401,7 @@ function DiagnosisRail({
         activeCheck={activeCheck}
         ledgerIssues={ledgerIssues}
         loadingLedgerIssues={loadingLedgerIssues}
+        muteExplanations={muteExplanations}
         onSelectCheck={onSelectCheck}
       />
 
@@ -1930,6 +1939,7 @@ function ReceiptHealthFlowLegend({
   loadingLedgerIssues,
   receipts,
   currentIndex,
+  muteExplanations = false,
   onSelectCheck,
   onSelectReceipt,
 }: {
@@ -1941,6 +1951,7 @@ function ReceiptHealthFlowLegend({
   loadingLedgerIssues: boolean;
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
+  muteExplanations?: boolean;
   onSelectCheck: (checkId: CheckId) => void;
   onSelectReceipt: (index: number) => void;
 }) {
@@ -1959,6 +1970,7 @@ function ReceiptHealthFlowLegend({
         loadingLedgerIssues={loadingLedgerIssues}
         receipts={receipts}
         currentIndex={currentIndex}
+        muteExplanations={muteExplanations}
         onSelectCheck={onSelectCheck}
         onSelectReceipt={onSelectReceipt}
       />
@@ -2663,6 +2675,7 @@ export default function ReceiptHealthExplorer() {
             loadingLedgerIssues={loadingLedgerIssues}
             receipts={receipts}
             currentIndex={currentIndex}
+            muteExplanations={isTransitioning}
             onSelectCheck={setActiveCheckId}
             onSelectReceipt={selectReceipt}
           />
@@ -2678,6 +2691,7 @@ export default function ReceiptHealthExplorer() {
               loadingLedgerIssues={true}
               receipts={receipts}
               currentIndex={transitionTargetIndex ?? currentIndex}
+              muteExplanations={true}
               onSelectCheck={setActiveCheckId}
               onSelectReceipt={selectReceipt}
             />
