@@ -2135,6 +2135,7 @@ export default function ReceiptHealthExplorer() {
   const [findingIssue, setFindingIssue] = useState(false);
   const [ledgerIssues, setLedgerIssues] = useState<ReceiptHealthLedgerIssue[]>([]);
   const [ledgerSummary, setLedgerSummary] = useState<ReceiptHealthLedgerSummary | null>(null);
+  const [transitionLedgerContext, setTransitionLedgerContext] = useState<LedgerContext | null>(null);
   const [loadingLedgerIssues, setLoadingLedgerIssues] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -2148,6 +2149,8 @@ export default function ReceiptHealthExplorer() {
   const ledgerContextCacheRef = useRef<Map<string, LedgerContext>>(new Map());
   const lastManualSelectionRef = useRef(0);
   const transitionTimerRef = useRef<number | null>(null);
+  const transitionInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
   const currentIndexRef = useRef(currentIndex);
   const receiptsRef = useRef(receipts);
   const formatSupport = useImageFormatSupport();
@@ -2214,6 +2217,27 @@ export default function ReceiptHealthExplorer() {
     return scenarioReceipts;
   }, [loadReceipts]);
 
+  const fetchLedgerContext = useCallback(async (
+    receipt: ReceiptHealthReceipt,
+  ): Promise<LedgerContext> => {
+    const contextKey = receiptKey(receipt);
+    const cachedContext = ledgerContextCacheRef.current.get(contextKey);
+    if (cachedContext) return cachedContext;
+
+    const response = await api.fetchReceiptHealthIssues({
+      state: "all",
+      imageId: receipt.image_id,
+      receiptId: receipt.receipt_id,
+      limit: 50,
+    });
+    const nextContext = {
+      issues: response.issues,
+      summary: response.summary ?? null,
+    };
+    ledgerContextCacheRef.current.set(contextKey, nextContext);
+    return nextContext;
+  }, []);
+
   useEffect(() => {
     if (!nearViewport || fetchedInitial.current) return;
     fetchedInitial.current = true;
@@ -2249,10 +2273,14 @@ export default function ReceiptHealthExplorer() {
   }, [receipts]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
+      isMountedRef.current = false;
       if (transitionTimerRef.current !== null) {
         window.clearTimeout(transitionTimerRef.current);
       }
+      transitionInFlightRef.current = false;
     };
   }, []);
 
@@ -2264,8 +2292,7 @@ export default function ReceiptHealthExplorer() {
       return;
     }
 
-    const contextKey = receiptKey(currentReceipt);
-    const cachedContext = ledgerContextCacheRef.current.get(contextKey);
+    const cachedContext = ledgerContextCacheRef.current.get(receiptKey(currentReceipt));
     if (cachedContext) {
       setLedgerIssues(cachedContext.issues);
       setLedgerSummary(cachedContext.summary);
@@ -2277,19 +2304,9 @@ export default function ReceiptHealthExplorer() {
     setLoadingLedgerIssues(true);
     setLedgerIssues([]);
     setLedgerSummary(null);
-    api.fetchReceiptHealthIssues({
-      state: "all",
-      imageId: currentReceipt.image_id,
-      receiptId: currentReceipt.receipt_id,
-      limit: 50,
-    })
-      .then((response) => {
+    fetchLedgerContext(currentReceipt)
+      .then((nextContext) => {
         if (!cancelled) {
-          const nextContext = {
-            issues: response.issues,
-            summary: response.summary ?? null,
-          };
-          ledgerContextCacheRef.current.set(contextKey, nextContext);
           setLedgerIssues(nextContext.issues);
           setLedgerSummary(nextContext.summary);
         }
@@ -2310,7 +2327,7 @@ export default function ReceiptHealthExplorer() {
     return () => {
       cancelled = true;
     };
-  }, [currentReceipt]);
+  }, [currentReceipt, fetchLedgerContext]);
 
   const orderedChecks = useMemo(() => {
     return orderedChecksForReceipt(currentReceipt);
@@ -2350,19 +2367,35 @@ export default function ReceiptHealthExplorer() {
       return;
     }
 
-    if (transitionTimerRef.current !== null) return;
+    if (transitionTimerRef.current !== null || transitionInFlightRef.current) return;
 
-    setTransitionTargetIndex(index);
-    setIsTransitioning(true);
+    transitionInFlightRef.current = true;
+    fetchLedgerContext(receipt)
+      .catch((err) => {
+        console.warn("Failed to prefetch receipt health issues:", err);
+        return null;
+      })
+      .then((nextContext) => {
+        if (!isMountedRef.current) {
+          transitionInFlightRef.current = false;
+          return;
+        }
 
-    transitionTimerRef.current = window.setTimeout(() => {
-      setCurrentIndex(index);
-      focusReceiptCheck(receipt);
-      setIsTransitioning(false);
-      setTransitionTargetIndex(null);
-      transitionTimerRef.current = null;
-    }, TRANSITION_DURATION_MS);
-  }, [focusReceiptCheck]);
+        setTransitionLedgerContext(nextContext);
+        setTransitionTargetIndex(index);
+        setIsTransitioning(true);
+
+        transitionTimerRef.current = window.setTimeout(() => {
+          setCurrentIndex(index);
+          focusReceiptCheck(receipt);
+          setIsTransitioning(false);
+          setTransitionTargetIndex(null);
+          setTransitionLedgerContext(null);
+          transitionTimerRef.current = null;
+          transitionInFlightRef.current = false;
+        }, TRANSITION_DURATION_MS);
+      });
+  }, [fetchLedgerContext, focusReceiptCheck]);
 
   useEffect(() => {
     if (
@@ -2686,12 +2719,12 @@ export default function ReceiptHealthExplorer() {
               receipt={transitionTargetReceipt}
               checks={transitionTargetChecks}
               activeCheck={transitionTargetCheck}
-              ledgerIssues={[]}
-              ledgerSummary={null}
-              loadingLedgerIssues={true}
+              ledgerIssues={transitionLedgerContext?.issues ?? []}
+              ledgerSummary={transitionLedgerContext?.summary ?? null}
+              loadingLedgerIssues={!transitionLedgerContext}
               receipts={receipts}
               currentIndex={transitionTargetIndex ?? currentIndex}
-              muteExplanations={true}
+              muteExplanations={false}
               onSelectCheck={setActiveCheckId}
               onSelectReceipt={selectReceipt}
             />
