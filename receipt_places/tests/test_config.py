@@ -18,7 +18,7 @@ class TestPlacesConfig:
         config = PlacesConfig()
 
         assert config.table_name == "receipts"
-        assert config.aws_region == "us-west-2"
+        assert config.aws_region == "us-east-1"
         assert config.cache_ttl_days == 30
         assert config.cache_enabled is True
         assert config.request_timeout == 30
