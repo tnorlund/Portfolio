@@ -83,10 +83,6 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 
-class PlaceFinderError(ValueError):
-    """Raised when place finder fails to produce place data."""
-
-
 s3_client = boto3.client("s3")
 
 
@@ -400,16 +396,21 @@ async def _ensure_receipt_place_async(
         )
 
         if not result.get("found"):
-            raise PlaceFinderError(
-                f"Place finder could not create place data for {image_id}#{receipt_id}"
+            logger.warning(
+                "Place finder could not identify merchant; receipt is permanently unplaceable",
+                image_id=image_id,
+                receipt_id=receipt_id,
             )
+            return False
 
         merchant_name = result.get("merchant_name") or ""
         if not merchant_name.strip():
-            raise PlaceFinderError(
-                "Place finder returned empty merchant_name for "
-                f"{image_id}#{receipt_id}"
+            logger.warning(
+                "Place finder returned empty merchant_name; receipt is permanently unplaceable",
+                image_id=image_id,
+                receipt_id=receipt_id,
             )
+            return False
 
         matched_fields = []
         if result.get("merchant_name"):
