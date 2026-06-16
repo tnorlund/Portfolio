@@ -117,7 +117,7 @@ export const ReceiptHealthExplorer = dynamic(
   () => import("./ReceiptHealthExplorer"),
   {
     ssr: false,
-    loading: () => loadingShell("within"),
+    loading: () => loadingShell("health"),
   }
 );
 export const WithinReceiptVerification = dynamic(

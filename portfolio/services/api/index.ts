@@ -359,6 +359,8 @@ const baseApi = {
     imageId?: string;
     receiptId?: number;
     classification?: string;
+    lane?: string;
+    rootCause?: string;
     executionId?: string;
     limit?: number;
   } = {}): Promise<ReceiptHealthIssuesResponse> {
@@ -378,6 +380,12 @@ const baseApi = {
     }
     if (options.classification) {
       params.set("classification", options.classification);
+    }
+    if (options.lane) {
+      params.set("lane", options.lane);
+    }
+    if (options.rootCause) {
+      params.set("root_cause", options.rootCause);
     }
     if (options.executionId) {
       params.set("execution_id", options.executionId);

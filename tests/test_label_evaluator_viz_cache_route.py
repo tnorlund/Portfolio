@@ -25,7 +25,7 @@ def test_receipt_health_issues_execution_query_honors_limit_and_filters(
 ):
     run_payload = {
         "execution_id": "exec-123",
-        "cached_at": "2026-06-12T22:41:50+00:00",
+        "cached_at": "2026-06-12T22:41:50.000+00:00",
         "summary": {
             "total_issues": 3,
             "by_issue_type": {"GRAND_TOTAL": 2, "SUBTOTAL": 1},
@@ -33,21 +33,21 @@ def test_receipt_health_issues_execution_query_honors_limit_and_filters(
         "issues": [
             {
                 "issue_id": "issue-a",
-                "observed_at": "2026-06-12T22:41:50+00:00",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
                 "image_id": "image-a",
                 "check_id": "financial_math",
                 "merchant_name": "Beta",
             },
             {
                 "issue_id": "issue-b",
-                "observed_at": "2026-06-12T22:41:50+00:00",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
                 "image_id": "image-a",
                 "check_id": "financial_math",
                 "merchant_name": "Alpha",
             },
             {
                 "issue_id": "issue-c",
-                "observed_at": "2026-06-12T22:41:50+00:00",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
                 "image_id": "image-b",
                 "check_id": "merchant_identity",
                 "merchant_name": "Gamma",
@@ -73,7 +73,7 @@ def test_receipt_health_issues_execution_query_honors_limit_and_filters(
     body = json.loads(response["body"])
     assert response["statusCode"] == 200
     assert body["execution_id"] == "exec-123"
-    assert body["cached_at"] == "2026-06-12T22:41:50+00:00"
+    assert body["cached_at"] == "2026-06-12T22:41:50.000+00:00"
     assert body["count"] == 1
     assert body["limit"] == 1
     assert body["state"] == "all"
@@ -89,7 +89,7 @@ def test_mark_attempted_clears_transient_claim_fields():
                 "issue_id": "issue-a",
                 "state": "claimed",
                 "check_id": "financial_math",
-                "claimed_at": "2026-06-12T22:00:00+00:00",
+                "claimed_at": "2026-06-12T22:00:00.000+00:00",
                 "claimed_by": "receipt-label-fixer",
                 "attempt_count": 0,
                 "attempts": [],
@@ -129,6 +129,33 @@ def test_eligible_filter_requires_ready_financial_preflight(monkeypatch):
                 "preflight": {
                     "classification": "safe_exact_plan",
                     "is_automation_ready": True,
+                    "proposed_actions": [
+                        {"action": "update_word_label", "line_id": 1}
+                    ],
+                },
+            },
+            {
+                "issue_id": "issue-safe-without-actions",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "safe_exact_plan",
+                    "is_automation_ready": True,
+                    "proposed_actions": [],
+                },
+            },
+            {
+                "issue_id": "issue-unsafe-class",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "is_automation_ready": True,
+                    "proposed_actions": [
+                        {"action": "update_word_label", "line_id": 2}
+                    ],
                 },
             },
             {

@@ -437,7 +437,10 @@ def _build_equations(
         )
 
     # --- GRAND_TOTAL equation ---
-    if has_grand_total:
+    has_financial_components = (
+        has_subtotal or line_totals or taxes or tips or discounts
+    )
+    if has_grand_total and has_financial_components:
         gt_val = (
             _parse_numeric(grand_totals[0]["word_text"])
             if grand_totals
@@ -2546,7 +2549,13 @@ def build_receipt_health_run_artifacts(
 def _issue_is_automation_ready(issue: dict[str, Any]) -> bool:
     """Return true when deterministic preflight allows automation."""
     preflight = issue.get("preflight") or {}
-    return bool(preflight.get("is_automation_ready"))
+    proposed_actions = preflight.get("proposed_actions") or []
+    return bool(
+        preflight.get("is_automation_ready")
+        and preflight.get("classification")
+        in AUTOMATION_READY_PREFLIGHT_CLASSES
+        and proposed_actions
+    )
 
 
 def _summarize_ledger(issues: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2976,7 +2985,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     # 4. Write all cache entries + metadata in parallel
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     receipt_health_receipts = [entry for _, entry in receipt_health_entries]
     run_issues, run_summary = build_receipt_health_run_artifacts(
         receipt_health_receipts,

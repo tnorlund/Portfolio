@@ -57,7 +57,7 @@
 .flowActiveReceipt {
   width: 100%;
   height: 100%;
-  animation: receiptHealthFadeIn 0.28s ease-out both;
+  animation: receipt-health-fade-in 0.28s ease-out both;
 }
 
 .flowReceiptImageWrapper {
@@ -172,7 +172,7 @@
 }
 
 .validationStatusIcon circle {
-  fill: currentColor;
+  fill: currentcolor;
 }
 
 .validationStatusIcon path,
@@ -235,7 +235,7 @@
     opacity 0.14s ease 0.18s;
 }
 
-@keyframes receiptHealthFadeIn {
+@keyframes receipt-health-fade-in {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -247,7 +247,7 @@
   }
 }
 
-@keyframes receiptHealthTextFadeIn {
+@keyframes receipt-health-text-fade-in {
   from {
     opacity: 0;
   }
@@ -350,7 +350,7 @@
   height: 8px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  background: currentColor;
+  background: currentcolor;
 }
 
 .sectionMapIssue .sectionMapMarker {
@@ -360,7 +360,7 @@
 }
 
 .sectionMapContext .sectionMapMarker {
-  border: 1px solid currentColor;
+  border: 1px solid currentcolor;
   background: var(--background-color);
 }
 
@@ -463,7 +463,7 @@
   height: 6px;
   content: "";
   transform: translateY(-50%);
-  background: currentColor;
+  background: currentcolor;
 }
 
 .lineItemMetric strong {
@@ -610,7 +610,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: currentColor;
+  background: currentcolor;
   flex-shrink: 0;
 }
 
@@ -852,7 +852,7 @@
   inset: 0 auto 0 0;
   width: var(--volume-width, 0%);
   border-radius: inherit;
-  background: currentColor;
+  background: currentcolor;
 }
 
 .volumeCount {
@@ -1006,7 +1006,7 @@
 }
 
 .stackReceiptActive {
-  border-color: currentColor;
+  border-color: currentcolor;
   box-shadow:
     0 0 0 2px rgba(var(--background-color-rgb, 255, 255, 255), 0.95),
     0 0 0 4px rgba(var(--text-color-rgb, 0, 0, 0), 0.28),
@@ -1459,7 +1459,7 @@
   justify-content: center;
   min-width: 52px;
   padding: 0.26rem 0.48rem;
-  border: 1px solid currentColor;
+  border: 1px solid currentcolor;
   border-radius: 999px;
   font-size: 0.64rem;
   font-weight: 800;

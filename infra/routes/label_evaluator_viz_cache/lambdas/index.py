@@ -176,7 +176,13 @@ def _ledger_issue_is_eligible(
     if int(issue.get("attempt_count") or 0) >= max_attempts:
         return False
     preflight = issue.get("preflight") or {}
-    if not preflight.get("is_automation_ready"):
+    proposed_actions = preflight.get("proposed_actions") or []
+    if (
+        not preflight.get("is_automation_ready")
+        or preflight.get("classification")
+        not in AUTOMATION_READY_PREFLIGHT_CLASSES
+        or not proposed_actions
+    ):
         return False
 
     next_retry_after = issue.get("next_retry_after")
@@ -376,7 +382,9 @@ def _handle_receipt_health_issues_get(
                 "limit": limit,
                 "state": query_params.get("state", "all"),
                 "summary": run_issues.get("summary", {}),
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "fetched_at": datetime.now(timezone.utc).isoformat(
+                    timespec="milliseconds"
+                ),
                 "execution_id": run_issues.get("execution_id", execution_id),
                 "cached_at": run_issues.get("cached_at"),
             },
@@ -409,7 +417,9 @@ def _handle_receipt_health_issues_get(
             "summary": ledger.get("summary", {}),
             "latest_execution_id": ledger.get("latest_execution_id"),
             "updated_at": ledger.get("updated_at"),
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "fetched_at": datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            ),
         },
         cache_control="no-store",
     )
@@ -446,7 +456,7 @@ def _apply_issue_update(
         return ledger, None, "issue_id is required"
 
     action = body.get("action", "mark_attempted")
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     updated_issue: dict[str, Any] | None = None
     issues = []
 
@@ -864,7 +874,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "aggregate_stats": aggregate_stats,
             "execution_id": metadata.get("execution_id"),
             "cached_at": metadata.get("cached_at"),
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "fetched_at": datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            ),
         }
 
         logger.info(

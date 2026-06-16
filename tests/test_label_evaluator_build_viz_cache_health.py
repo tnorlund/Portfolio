@@ -146,18 +146,41 @@ def test_build_receipt_health_entry_passes_when_some_checks_not_applicable():
     assert entry["summary"]["not_applicable"] == 1
 
 
+def test_total_only_receipt_math_uses_has_total_equation():
+    equations = build_viz_cache._build_equations(
+        [
+            {
+                "issue": {
+                    "line_id": 1,
+                    "word_id": 1,
+                    "word_text": "$12.34",
+                    "current_label": "GRAND_TOTAL",
+                },
+                "llm_review": {},
+            }
+        ],
+        {},
+    )
+
+    assert len(equations) == 1
+    assert equations[0]["issue_type"] == "HAS_TOTAL"
+    assert equations[0]["expected_value"] == 12.34
+    assert equations[0]["actual_value"] == 12.34
+    assert equations[0]["difference"] == 0
+
+
 def test_build_receipt_health_issues_uses_stable_fingerprints():
     entry = build_receipt_health_entry(_base_within_entry())
 
     issues = build_receipt_health_issues(
         entry,
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
     later_issues = build_receipt_health_issues(
         entry,
         execution_id="exec-2",
-        observed_at="2026-01-02T00:00:00+00:00",
+        observed_at="2026-01-02T00:00:00.000+00:00",
     )
 
     assert [issue["check_id"] for issue in issues] == [
@@ -177,7 +200,7 @@ def test_build_receipt_health_run_artifacts_summarizes_execution():
     issues, summary = build_receipt_health_run_artifacts(
         [entry],
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
 
     assert len(issues) == 2
@@ -194,14 +217,14 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
     run_issues = build_receipt_health_issues(
         entry,
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
 
     ledger = reconcile_receipt_health_ledger(
         None,
         run_issues,
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
 
     assert ledger["summary"]["by_state"] == {"open": 2}
@@ -211,16 +234,16 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
     attempted["issues"][0]["state"] = "awaiting_validation"
     attempted["issues"][0]["attempt_count"] = 1
     attempted["issues"][0]["last_attempted_execution_id"] = "exec-1"
-    attempted["issues"][0]["claimed_at"] = "2026-01-01T00:00:01+00:00"
+    attempted["issues"][0]["claimed_at"] = "2026-01-01T00:00:01.000+00:00"
     attempted["issues"][0]["claimed_by"] = "receipt-label-fixer"
-    attempted["issues"][1]["claimed_at"] = "2026-01-01T00:00:02+00:00"
+    attempted["issues"][1]["claimed_at"] = "2026-01-01T00:00:02.000+00:00"
     attempted["issues"][1]["claimed_by"] = "stale-claim"
 
     still_failing = reconcile_receipt_health_ledger(
         attempted,
         run_issues,
         execution_id="exec-2",
-        observed_at="2026-01-02T00:00:00+00:00",
+        observed_at="2026-01-02T00:00:00.000+00:00",
     )
 
     retried_issue = next(
@@ -246,7 +269,7 @@ def test_reconcile_receipt_health_ledger_tracks_attempts_and_resolution():
         still_failing,
         [],
         execution_id="exec-3",
-        observed_at="2026-01-03T00:00:00+00:00",
+        observed_at="2026-01-03T00:00:00.000+00:00",
     )
 
     assert resolved["summary"]["by_state"] == {"resolved": 2}
@@ -260,13 +283,13 @@ def test_reconcile_receipt_health_ledger_escalates_after_max_attempts():
     run_issues = build_receipt_health_issues(
         entry,
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
     ledger = reconcile_receipt_health_ledger(
         None,
         run_issues,
         execution_id="exec-1",
-        observed_at="2026-01-01T00:00:00+00:00",
+        observed_at="2026-01-01T00:00:00.000+00:00",
     )
     ledger["issues"][0]["state"] = "awaiting_validation"
     ledger["issues"][0]["attempt_count"] = 2
@@ -275,7 +298,7 @@ def test_reconcile_receipt_health_ledger_escalates_after_max_attempts():
         ledger,
         run_issues,
         execution_id="exec-2",
-        observed_at="2026-01-02T00:00:00+00:00",
+        observed_at="2026-01-02T00:00:00.000+00:00",
         max_attempts=2,
     )
 
