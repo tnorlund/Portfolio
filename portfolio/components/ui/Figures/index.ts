@@ -113,6 +113,13 @@ export const FinancialMathOverlay = dynamic(
     loading: () => loadingShell("financial"),
   }
 );
+export const ReceiptHealthExplorer = dynamic(
+  () => import("./ReceiptHealthExplorer"),
+  {
+    ssr: false,
+    loading: () => loadingShell("health"),
+  }
+);
 export const WithinReceiptVerification = dynamic(
   () => import("./WithinReceiptVerification"),
   {

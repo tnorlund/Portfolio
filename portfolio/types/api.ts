@@ -888,3 +888,230 @@ export interface WithinReceiptVerificationResponse {
   cached_at?: string;
   fetched_at?: string;
 }
+
+// ============================================================================
+// Receipt Health Visualization Types
+// ============================================================================
+
+export type ReceiptHealthStatus =
+  | "pass"
+  | "review"
+  | "fail"
+  | "not_applicable";
+
+export interface ReceiptHealthSummary {
+  total_checks: number;
+  passed: number;
+  needs_review: number;
+  failed: number;
+  not_applicable: number;
+  issue_count: number;
+}
+
+export interface ReceiptHealthCheck {
+  id: "merchant_identity" | "receipt_format" | "financial_math";
+  title: string;
+  question: string;
+  status: ReceiptHealthStatus;
+  validator: "place_validation" | "format_validation" | "financial_math";
+  is_llm: boolean;
+  duration_seconds: number | null;
+  summary:
+    | {
+        total: number;
+        valid: number;
+        invalid: number;
+        needs_review: number;
+      }
+    | {
+        total_equations: number;
+        has_invalid: boolean;
+        has_needs_review: boolean;
+        mismatched_equations?: number;
+      };
+  result: string;
+  evidence_count: number;
+  what_it_validates: string[];
+}
+
+export interface ReceiptHealthPrimaryIssue {
+  check_id: ReceiptHealthCheck["id"];
+  title: string;
+  status: ReceiptHealthStatus;
+  message: string;
+  summary?: string;
+  issue_count: number;
+}
+
+export interface ReceiptHealthAggregateStats {
+  total_receipts_in_pool: number;
+  batch_size: number;
+  passed: number;
+  needs_review: number;
+  failed: number;
+  not_applicable: number;
+  receipts_with_issues: number;
+  total_issues: number;
+}
+
+export interface ReceiptHealthReceipt extends WithinReceiptVerificationReceipt {
+  receipt_type?: "itemized" | "service" | "terminal";
+  overall_status: ReceiptHealthStatus;
+  summary: ReceiptHealthSummary;
+  checks: ReceiptHealthCheck[];
+  primary_issues: ReceiptHealthPrimaryIssue[];
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+}
+
+export interface ReceiptHealthResponse {
+  receipts: ReceiptHealthReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: ReceiptHealthAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}
+
+export type ReceiptHealthIssueState =
+  | "open"
+  | "claimed"
+  | "awaiting_validation"
+  | "resolved"
+  | "blocked"
+  | "manual_review"
+  | "known_limitation";
+
+export type ReceiptHealthPreflightClassification =
+  | "needs_ai_review"
+  | "safe_exact_plan"
+  | "known_limitation"
+  | "reocr_needed"
+  | "evaluator_rule_gap";
+
+export interface ReceiptHealthPreflightAction {
+  tool: "update_word_label" | "create_word_label" | "trigger_reocr";
+  image_id?: string;
+  receipt_id?: number;
+  line_id?: number;
+  word_id?: number;
+  label?: string;
+  new_status?: "VALID" | "INVALID" | "NEEDS_REVIEW";
+  reasoning?: string;
+}
+
+export interface ReceiptHealthSectionEvidenceRow {
+  row_index: number;
+  line_ids: number[];
+  section: string;
+  text: string;
+}
+
+export interface ReceiptHealthSectionEvidence {
+  issue_sections?: Record<string, number>;
+  context_sections?: Record<string, number>;
+  issue_rows?: ReceiptHealthSectionEvidenceRow[];
+  has_tip_suggestions?: boolean;
+  has_tip_entry_area?: boolean;
+  has_void_discount?: boolean;
+  has_payment_summary?: boolean;
+}
+
+export interface ReceiptHealthLineItemAmountEvidenceRow {
+  row_index: number;
+  line_ids: number[];
+  text: string;
+  clean_amount_tokens?: string[];
+  fragment_amount_tokens?: string[];
+  has_labeled_line_total_candidate?: boolean;
+}
+
+export interface ReceiptHealthLineItemAmountEvidence {
+  item_amount_row_count?: number;
+  clean_amount_row_count?: number;
+  fragmented_amount_row_count?: number;
+  labeled_line_total_row_count?: number;
+  rows?: ReceiptHealthLineItemAmountEvidenceRow[];
+}
+
+export interface ReceiptHealthPreflightEvidence {
+  section_evidence?: ReceiptHealthSectionEvidence;
+  line_item_amount_evidence?: ReceiptHealthLineItemAmountEvidence;
+  [key: string]: unknown;
+}
+
+export interface ReceiptHealthIssuePreflight {
+  version: string;
+  classification: ReceiptHealthPreflightClassification | string;
+  automation_lane: "deterministic" | "ai_review" | "none" | string;
+  lane: string;
+  root_cause: string;
+  recommended_next_step?: string;
+  is_automation_ready: boolean;
+  summary: string;
+  proposed_actions: ReceiptHealthPreflightAction[];
+  action_count: number;
+  evidence?: ReceiptHealthPreflightEvidence;
+  data_fingerprint?: string;
+}
+
+export interface ReceiptHealthLedgerIssue {
+  issue_id: string;
+  fingerprint: string;
+  execution_id: string;
+  observed_at: string;
+  image_id: string;
+  receipt_id: number;
+  merchant_name?: string;
+  receipt_type?: "itemized" | "service" | "terminal";
+  check_id: ReceiptHealthCheck["id"];
+  check_title: string;
+  validator: ReceiptHealthCheck["validator"];
+  status: ReceiptHealthStatus;
+  issue_type: string;
+  message: string;
+  result?: string;
+  evidence: Array<Record<string, unknown>>;
+  state?: ReceiptHealthIssueState;
+  preflight?: ReceiptHealthIssuePreflight;
+  first_seen_at?: string;
+  first_seen_execution_id?: string;
+  last_seen_at?: string;
+  last_seen_execution_id?: string;
+  occurrence_count?: number;
+  attempt_count?: number;
+  last_attempted_at?: string;
+  last_attempt_summary?: string;
+  known_limitation_reason?: string;
+  suppression_fingerprint?: string;
+}
+
+export interface ReceiptHealthLedgerSummary {
+  total_issues: number;
+  by_state: Record<string, number>;
+  by_check: Record<string, number>;
+  by_preflight_classification?: Record<string, number>;
+  by_preflight_lane?: Record<string, number>;
+  by_preflight_root_cause?: Record<string, number>;
+  eligible_issues: number;
+}
+
+export interface ReceiptHealthIssuesResponse {
+  issues: ReceiptHealthLedgerIssue[];
+  count?: number;
+  limit?: number;
+  state?: string;
+  summary?: ReceiptHealthLedgerSummary;
+  latest_execution_id?: string;
+  execution_id?: string;
+  updated_at?: string;
+  cached_at?: string;
+  fetched_at?: string;
+}

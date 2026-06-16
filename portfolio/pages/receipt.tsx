@@ -16,7 +16,6 @@ import {
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
-  FinancialMathOverlay,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -24,12 +23,12 @@ import {
   PrecisionRecallDartboard,
   QAAgentFlow,
   QuestionMarquee,
+  ReceiptHealthExplorer,
   ReceiptBoundingBoxGrid,
   ReceiptStack,
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   UploadDiagram,
-  WithinReceiptVerification,
   WordSimilarity,
 } from "../components/ui/Figures";
 import {
@@ -64,7 +63,7 @@ const FigureBoundary = ({
   const { ref, inView } = useInView({
     rootMargin: FIGURE_LAZY_ROOT_MARGIN,
     triggerOnce: true,
-    fallbackInView: false,
+    fallbackInView: true,
   });
   const [shouldRender, setShouldRender] = useState(false);
 
@@ -371,32 +370,20 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label.
-        Then cross-check those labels against what we already know. Does the
-        store name match Google Places? Are the dates and phone numbers
-        formatted correctly?
+        Then cross-check those labels against what we already know. The health
+        check looks at the merchant identity, the receipt-specific formats,
+        and the arithmetic on the totals.
       </p>
 
-      <FigureBoundary intrinsicSize="700px">
+      <FigureBoundary intrinsicSize="780px">
         <ClientOnly>
-          <WithinReceiptVerification />
+          <ReceiptHealthExplorer />
         </ClientOnly>
       </FigureBoundary>
 
       <p>
-        Beyond labeling, I also check the math. Does the subtotal plus tax
-        equal the grand total? The system runs these equations on every receipt
-        and flags mismatches.
-      </p>
-
-      <FigureBoundary intrinsicSize="700px">
-        <ClientOnly>
-          <FinancialMathOverlay />
-        </ClientOnly>
-      </FigureBoundary>
-
-      <p>
-        Even with the math checks, the labels weren't perfect. So I corrected
-        the results by asking AI to verify them. And again. And again.
+        Even with those checks, the labels weren't perfect. So I corrected the
+        results by asking AI to verify them. And again. And again.
       </p>
 
       <FigureBoundary intrinsicSize="420px">

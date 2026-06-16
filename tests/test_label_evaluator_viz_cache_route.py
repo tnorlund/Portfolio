@@ -1,0 +1,362 @@
+import importlib.util
+import json
+import os
+from pathlib import Path
+
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+os.environ.setdefault("S3_CACHE_BUCKET", "test-cache-bucket")
+
+MODULE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "infra/routes/label_evaluator_viz_cache/lambdas/index.py"
+)
+spec = importlib.util.spec_from_file_location(
+    "label_evaluator_viz_cache_lambda",
+    MODULE_PATH,
+)
+assert spec is not None
+assert spec.loader is not None
+viz_cache = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(viz_cache)
+
+
+def test_receipt_health_issues_execution_query_honors_limit_and_filters(
+    monkeypatch,
+):
+    run_payload = {
+        "execution_id": "exec-123",
+        "cached_at": "2026-06-12T22:41:50.000+00:00",
+        "summary": {
+            "total_issues": 3,
+            "by_issue_type": {"GRAND_TOTAL": 2, "SUBTOTAL": 1},
+        },
+        "issues": [
+            {
+                "issue_id": "issue-a",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
+                "image_id": "image-a",
+                "check_id": "financial_math",
+                "merchant_name": "Beta",
+            },
+            {
+                "issue_id": "issue-b",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
+                "image_id": "image-a",
+                "check_id": "financial_math",
+                "merchant_name": "Alpha",
+            },
+            {
+                "issue_id": "issue-c",
+                "observed_at": "2026-06-12T22:41:50.000+00:00",
+                "image_id": "image-b",
+                "check_id": "merchant_identity",
+                "merchant_name": "Gamma",
+            },
+        ],
+    }
+
+    def fake_fetch_json_key(key):
+        assert key == "receipt-health/runs/exec-123/issues.json"
+        return run_payload
+
+    monkeypatch.setattr(viz_cache, "_fetch_json_key", fake_fetch_json_key)
+
+    response = viz_cache._handle_receipt_health_issues_get(
+        {
+            "execution_id": "exec-123",
+            "check_id": "financial_math",
+            "image_id": "image-a",
+            "limit": "1",
+        }
+    )
+
+    body = json.loads(response["body"])
+    assert response["statusCode"] == 200
+    assert body["execution_id"] == "exec-123"
+    assert body["cached_at"] == "2026-06-12T22:41:50.000+00:00"
+    assert body["count"] == 1
+    assert body["limit"] == 1
+    assert body["state"] == "all"
+    assert body["summary"] == run_payload["summary"]
+    assert body["issues"] == [run_payload["issues"][1]]
+
+
+def test_mark_attempted_clears_transient_claim_fields():
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-a",
+                "state": "claimed",
+                "check_id": "financial_math",
+                "claimed_at": "2026-06-12T22:00:00.000+00:00",
+                "claimed_by": "receipt-label-fixer",
+                "attempt_count": 0,
+                "attempts": [],
+            }
+        ],
+    }
+
+    next_ledger, issue, error = viz_cache._apply_issue_update(
+        ledger,
+        {
+            "action": "mark_attempted",
+            "issue_id": "issue-a",
+            "agent": "receipt-label-fixer",
+            "agent_run_id": "agent-run-1",
+            "attempt_summary": "patched labels",
+        },
+    )
+
+    assert error is None
+    assert issue is not None
+    assert issue["state"] == "awaiting_validation"
+    assert issue["attempt_count"] == 1
+    assert "claimed_at" not in issue
+    assert "claimed_by" not in issue
+    assert next_ledger["summary"]["by_state"] == {"awaiting_validation": 1}
+
+
+def test_eligible_filter_requires_ready_financial_preflight(monkeypatch):
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-safe",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "safe_exact_plan",
+                    "is_automation_ready": True,
+                    "proposed_actions": [
+                        {"action": "update_word_label", "line_id": 1}
+                    ],
+                },
+            },
+            {
+                "issue_id": "issue-safe-without-actions",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "safe_exact_plan",
+                    "is_automation_ready": True,
+                    "proposed_actions": [],
+                },
+            },
+            {
+                "issue_id": "issue-unsafe-class",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "is_automation_ready": True,
+                    "proposed_actions": [
+                        {"action": "update_word_label", "line_id": 2}
+                    ],
+                },
+            },
+            {
+                "issue_id": "issue-mismatch",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "math_mismatch",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-merchant",
+                "state": "open",
+                "check_id": "merchant_identity",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "lane": "safe_label_edit_candidate",
+                    "root_cause": "metadata_context_mismatch",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-legacy",
+                "state": "open",
+                "check_id": "receipt_format",
+                "attempt_count": 0,
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_fetch_json_key",
+        lambda key: ledger,
+    )
+
+    response = viz_cache._handle_receipt_health_issues_get(
+        {"state": "eligible", "check_id": "financial_math"}
+    )
+
+    body = json.loads(response["body"])
+    assert [issue["issue_id"] for issue in body["issues"]] == ["issue-safe"]
+
+
+def test_issue_filters_include_preflight_lane_and_root_cause(monkeypatch):
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-rule-gap",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "evaluator_rule_gap",
+                    "lane": "receipt_structure_rule",
+                    "root_cause": "tip_gratuity_ambiguity",
+                    "is_automation_ready": False,
+                },
+            },
+            {
+                "issue_id": "issue-review",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "needs_ai_review",
+                    "lane": "safe_label_edit_candidate",
+                    "root_cause": "wrong_financial_label_role",
+                    "is_automation_ready": False,
+                },
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_fetch_json_key",
+        lambda key: ledger,
+    )
+
+    response = viz_cache._handle_receipt_health_issues_get(
+        {
+            "state": "all",
+            "lane": "receipt_structure_rule",
+            "root_cause": "tip_gratuity_ambiguity",
+        }
+    )
+
+    body = json.loads(response["body"])
+    assert [issue["issue_id"] for issue in body["issues"]] == [
+        "issue-rule-gap"
+    ]
+
+
+def test_known_limitation_records_suppression_fingerprint():
+    ledger = {
+        "max_attempts": 2,
+        "issues": [
+            {
+                "issue_id": "issue-a",
+                "state": "open",
+                "check_id": "financial_math",
+                "attempt_count": 0,
+                "preflight": {
+                    "classification": "math_mismatch",
+                    "lane": "evaluator_rule_gap",
+                    "root_cause": "line_total_candidates_do_not_reconcile",
+                    "is_automation_ready": False,
+                    "data_fingerprint": "data-fp-1",
+                },
+            }
+        ],
+    }
+
+    next_ledger, issue, error = viz_cache._apply_issue_update(
+        ledger,
+        {
+            "action": "known_limitation",
+            "issue_id": "issue-a",
+            "reason": "No exact label-only correction exists",
+        },
+    )
+
+    assert error is None
+    assert issue is not None
+    assert issue["state"] == "known_limitation"
+    assert issue["suppression_fingerprint"] == "data-fp-1"
+    assert next_ledger["summary"]["by_state"] == {"known_limitation": 1}
+    assert next_ledger["summary"]["by_preflight_lane"] == {
+        "evaluator_rule_gap": 1
+    }
+    assert next_ledger["summary"]["by_preflight_root_cause"] == {
+        "line_total_candidates_do_not_reconcile": 1
+    }
+
+
+def test_handler_accepts_internal_receipt_health_issue_update(monkeypatch):
+    captured = {}
+
+    def fake_post(event):
+        captured["body"] = json.loads(event["body"])
+        return {"statusCode": 200, "body": json.dumps({"ok": True})}
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_handle_receipt_health_issues_post",
+        fake_post,
+    )
+
+    response = viz_cache.handler(
+        {
+            "operation": "receipt_health_issue_update",
+            "body": {
+                "action": "mark_attempted",
+                "issue_id": "issue-a",
+                "agent": "receipt-label-fixer",
+            },
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert captured["body"] == {
+        "action": "mark_attempted",
+        "issue_id": "issue-a",
+        "agent": "receipt-label-fixer",
+    }
+
+
+def test_handler_accepts_internal_receipt_health_issue_update_fields(
+    monkeypatch,
+):
+    captured = {}
+
+    def fake_post(event):
+        captured["body"] = json.loads(event["body"])
+        return {"statusCode": 200, "body": json.dumps({"ok": True})}
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_handle_receipt_health_issues_post",
+        fake_post,
+    )
+
+    response = viz_cache.handler(
+        {
+            "operation": "receipt_health_issue_update",
+            "action": "manual_review",
+            "issue_id": "issue-a",
+            "reason": "Stored plan was incomplete",
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert captured["body"] == {
+        "action": "manual_review",
+        "issue_id": "issue-a",
+        "reason": "Stored plan was incomplete",
+    }

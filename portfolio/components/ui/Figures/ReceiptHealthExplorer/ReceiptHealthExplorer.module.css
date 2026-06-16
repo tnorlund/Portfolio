@@ -1,0 +1,1691 @@
+.container {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1120px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 8px;
+  background: var(--background-color);
+  color: var(--text-color);
+}
+
+.flowMockContainer {
+  max-width: 1024px;
+  padding: 2rem;
+  border: 0;
+  border-radius: 12px;
+  contain: paint;
+}
+
+.flowReceiptQueue {
+  width: var(--rf-queue-width, 120px);
+  height: var(--rf-queue-height, 400px);
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.flowQueuedReceipt {
+  position: absolute;
+  width: 100px;
+  padding: 0;
+  border: 1px solid #ccc;
+  background: var(--background-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.flowQueuedReceipt:hover,
+.flowQueuedReceipt:focus-visible {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.5);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+  outline: none;
+}
+
+.flowQueuedReceiptImage {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.flowActiveReceipt {
+  width: 100%;
+  height: 100%;
+  animation: receipt-health-fade-in 0.28s ease-out both;
+}
+
+.flowReceiptImageWrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flowReceiptImageInner {
+  position: relative;
+  max-height: 500px;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.flowReceiptImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: 500px;
+  max-width: 100%;
+}
+
+.flowReceiptLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--text-color);
+  opacity: 0.5;
+}
+
+.flowSvgOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.flowEntityLegend {
+  box-sizing: border-box;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  flex-shrink: 0;
+  padding: 1rem;
+}
+
+.diagnosisRail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+  width: 100%;
+  color: var(--text-color);
+}
+
+.validationStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+}
+
+.validationRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.validationPill {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.validationPill:hover,
+.validationPill:focus-visible,
+.validationPillActive {
+  opacity: 1;
+  outline: none;
+}
+
+.validationPillProblem {
+  opacity: 1;
+}
+
+.validationStatusIcon {
+  justify-self: end;
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.validationStatusIcon circle {
+  fill: currentcolor;
+}
+
+.validationStatusIcon path,
+.validationStatusIcon line {
+  stroke: #fff;
+}
+
+.validationStatusIcon text {
+  fill: #fff;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.validationLabel {
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.validationReasonSlot {
+  margin-right: 28px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-height 0.18s ease,
+    opacity 0.12s ease;
+}
+
+.validationReasonClip {
+  height: auto;
+}
+
+.validationReasonInner {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-color);
+  display: -webkit-box;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.validationReasonSlotVisible {
+  max-height: 2.4rem;
+  opacity: 0.62;
+  transition:
+    max-height 0.18s ease,
+    opacity 0.14s ease 0.18s;
+}
+
+@keyframes receipt-health-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes receipt-health-text-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.58;
+  }
+}
+
+.railStatusPass {
+  color: var(--color-green);
+}
+
+.railStatusFail {
+  color: var(--color-red);
+}
+
+.railStatusReview {
+  color: var(--color-yellow);
+}
+
+.railStatusNeutral {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.42);
+}
+
+.diagnosisStatement {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.25rem 0 0.35rem;
+}
+
+.diagnosisKicker {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.diagnosisTitle {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: 0;
+}
+
+.diagnosisBody {
+  font-size: 0.72rem;
+  line-height: 1.36;
+  opacity: 0.68;
+}
+
+.diagnosisEquation {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.68rem;
+  line-height: 1.38;
+  opacity: 0.68;
+  overflow-wrap: anywhere;
+}
+
+.sectionMap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.2rem 0;
+}
+
+.sectionMapRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 14px;
+  opacity: 0.36;
+}
+
+.sectionMapIssue,
+.sectionMapContext {
+  opacity: 1;
+}
+
+.sectionMapLabel {
+  display: none;
+}
+
+.sectionMapRule {
+  position: relative;
+  height: 1px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.22);
+}
+
+.sectionMapMarker {
+  position: absolute;
+  top: 50%;
+  left: var(--marker-left, 56%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: currentcolor;
+}
+
+.sectionMapIssue .sectionMapMarker {
+  width: 10px;
+  height: 10px;
+  background: var(--color-red);
+}
+
+.sectionMapContext .sectionMapMarker {
+  border: 1px solid currentcolor;
+  background: var(--background-color);
+}
+
+.sectionMapCount {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.55;
+  text-align: right;
+}
+
+.sectionMapEmpty {
+  margin-top: 0.25rem;
+  font-size: 0.62rem;
+  line-height: 1.3;
+  opacity: 0.44;
+}
+
+.lineItemTokenMap {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.38rem;
+  padding: 0.1rem 0 0.2rem;
+}
+
+.evidenceSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+}
+
+.evidenceSummary div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.evidenceSummary strong {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.evidenceSummary span {
+  min-width: 0;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  opacity: 0.7;
+}
+
+.nextAction {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.nextAction span {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.48;
+}
+
+.nextAction strong {
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.lineItemMetric {
+  display: grid;
+  grid-template-rows: 12px auto;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.lineItemMetric span {
+  position: relative;
+  display: block;
+  height: 1px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.18);
+}
+
+.lineItemMetric span::after {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--metric-width, 0%);
+  height: 6px;
+  content: "";
+  transform: translateY(-50%);
+  background: currentcolor;
+}
+
+.lineItemMetric strong {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.62;
+}
+
+.lineItemMetricRows {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+}
+
+.lineItemMetricClean {
+  color: var(--color-green);
+}
+
+.lineItemMetricFragment {
+  color: var(--color-yellow);
+}
+
+.lineItemMetricLabeled {
+  color: var(--color-blue);
+}
+
+.railNote {
+  margin: -0.1rem 0 0;
+  font-size: 0.66rem;
+  line-height: 1.38;
+  opacity: 0.58;
+}
+
+.evidenceDisclosure {
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+}
+
+.evidenceDisclosure summary {
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.52;
+}
+
+.evidenceRowsCompact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.evidenceTextLine {
+  font-size: 0.62rem;
+  line-height: 1.34;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+}
+
+.evidenceMetaLine {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.62rem;
+  line-height: 1.3;
+}
+
+.evidenceMetaLine span {
+  font-weight: 800;
+  opacity: 0.46;
+  text-transform: uppercase;
+}
+
+.evidenceMetaLine strong {
+  min-width: 0;
+  font-weight: 750;
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+}
+
+.evidenceRowCompact {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 0.45rem;
+  font-size: 0.62rem;
+  line-height: 1.32;
+}
+
+.evidenceRowCompact span:first-child {
+  font-weight: 750;
+  opacity: 0.5;
+}
+
+.evidenceRowCompact span:last-child {
+  min-width: 0;
+  opacity: 0.66;
+  overflow-wrap: anywhere;
+}
+
+.stateExamples {
+  display: flex;
+  gap: 0.42rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+}
+
+.stateExamplesHeader {
+  display: none;
+}
+
+.stateExampleButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.45rem;
+}
+
+.stateExampleButton {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  cursor: pointer;
+  opacity: 0.46;
+}
+
+.stateExampleButton:hover,
+.stateExampleButton:focus-visible,
+.stateExampleActive {
+  opacity: 1;
+  outline: none;
+}
+
+.stateExampleDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  flex-shrink: 0;
+}
+
+.flowLegendDesktop {
+  display: contents;
+}
+
+.flowLegendMobile {
+  display: none;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.flowLegendItem {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  opacity: 0.42;
+  text-align: left;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.flowLegendButton {
+  cursor: pointer;
+}
+
+.flowLegendButton:hover,
+.flowLegendButton:focus-visible,
+.flowLegendActive {
+  opacity: 1;
+  transform: scale(1.04);
+  outline: none;
+}
+
+.flowLegendDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.flowLegendLabel {
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowLegendValue {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  opacity: 0.58;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flowInferenceTime {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--text-color);
+}
+
+.flowInferenceLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.flowInferenceValue {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowInferenceMeta {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.58;
+}
+
+.flowInferenceNote {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+.decisionPath {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+}
+
+.decisionHeader,
+.volumeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+.decisionHeader span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.46rem;
+}
+
+.decisionStep {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.decisionStepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+  border-radius: 50%;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.decisionStepBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.decisionStepTitle {
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.decisionStepText {
+  font-size: 0.7rem;
+  line-height: 1.34;
+  opacity: 0.78;
+  overflow-wrap: anywhere;
+}
+
+.decisionSummary {
+  padding: 0.5rem 0 0;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.66;
+}
+
+.rootCauseVolume {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+}
+
+.volumeRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+}
+
+.volumeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 24px;
+  gap: 0.45rem;
+  align-items: center;
+  opacity: 0.66;
+}
+
+.volumeRowActive {
+  opacity: 1;
+}
+
+.volumeLabel {
+  min-width: 0;
+  font-size: 0.64rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.volumeBarTrack {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.09);
+  overflow: hidden;
+}
+
+.volumeBar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--volume-width, 0%);
+  border-radius: inherit;
+  background: currentcolor;
+}
+
+.volumeCount {
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: right;
+  opacity: 0.72;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.titleBlock {
+  min-width: 0;
+}
+
+.kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.title {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.25;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.subhead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.58;
+}
+
+.headerMetrics {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.issueMetric {
+  min-width: 70px;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.16);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.7;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.issueButton {
+  min-width: 94px;
+  height: 32px;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.issueButton:hover:not(:disabled),
+.issueButton:focus-visible:not(:disabled) {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+}
+
+.issueButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 176px minmax(280px, 1fr) minmax(300px, 360px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.stackPane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-self: stretch;
+}
+
+.stackHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+.receiptStackViewport {
+  position: relative;
+  min-height: 416px;
+  overflow: visible;
+}
+
+.stackReceiptButton {
+  position: absolute;
+  width: 112px;
+  height: 152px;
+  padding: 0;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.18);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.stackReceiptButton:hover,
+.stackReceiptButton:focus-visible {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  outline: none;
+}
+
+.stackReceiptActive {
+  border-color: currentcolor;
+  box-shadow:
+    0 0 0 2px rgba(var(--background-color-rgb, 255, 255, 255), 0.95),
+    0 0 0 4px rgba(var(--text-color-rgb, 0, 0, 0), 0.28),
+    0 12px 28px rgba(0, 0, 0, 0.2);
+}
+
+.stackReceiptImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.stackReceiptPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.72rem;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.04);
+}
+
+.stackStatusPip {
+  position: absolute;
+  top: 0.42rem;
+  left: 0.42rem;
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.stackIssuePill {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(var(--color-red-rgb), 0.92);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  z-index: 2;
+}
+
+.stackControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.visualColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.receiptImageStage {
+  min-height: 560px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      45deg,
+      rgba(var(--text-color-rgb, 0, 0, 0), 0.025) 25%,
+      transparent 25%,
+      transparent 75%,
+      rgba(var(--text-color-rgb, 0, 0, 0), 0.025) 75%
+    );
+  background-size: 18px 18px;
+  overflow: hidden;
+}
+
+.receiptImageFrame {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 560px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.18);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  background: #fff;
+  overflow: hidden;
+}
+
+.receiptImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 560px;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.imageLoading {
+  min-height: 560px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+  opacity: 0.55;
+}
+
+.navButton {
+  height: 36px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.navButton:hover:not(:disabled),
+.navButton:focus-visible:not(:disabled) {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+}
+
+.navButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.inspector {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.summaryCell {
+  min-width: 0;
+  padding: 0.7rem 0.45rem;
+  text-align: center;
+  border-right: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.1);
+}
+
+.summaryCell:last-child {
+  border-right: 0;
+}
+
+.summaryValue {
+  display: block;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.summaryLabel {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.52;
+}
+
+.checkList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.checkButton {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+}
+
+.checkButton:hover,
+.checkButton:focus-visible {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.32);
+}
+
+.checkButtonActive {
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.45);
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.035);
+}
+
+.checkHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.checkTitle {
+  min-width: 0;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.checkResult {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+.checkMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.45rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.checkDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.2rem;
+}
+
+.checkQuestion {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  opacity: 0.74;
+}
+
+.validatesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.fieldBadge {
+  padding: 0.25rem 0.45rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  opacity: 0.72;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.56;
+}
+
+.issueList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.issueItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+}
+
+.issueMessage {
+  min-width: 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.issueEmpty {
+  padding: 0.65rem 0;
+  font-size: 0.76rem;
+  opacity: 0.56;
+}
+
+.ledgerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ledgerItem {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+}
+
+.ledgerItemHeader,
+.preflightRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.ledgerIssueType {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.58;
+  overflow-wrap: anywhere;
+}
+
+.ledgerState,
+.preflightBadge {
+  flex-shrink: 0;
+  padding: 0.22rem 0.4rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+.ledgerMessage {
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  opacity: 0.76;
+  overflow-wrap: anywhere;
+}
+
+.preflightRow {
+  margin-top: 0.45rem;
+}
+
+.preflightSummary {
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+}
+
+.sectionEvidence {
+  margin-top: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.sectionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.sectionChip {
+  padding: 0.2rem 0.38rem;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.12);
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.03);
+  font-size: 0.6rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sectionRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 0.45rem;
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.sectionRowLabel {
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.52);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.sectionRowText {
+  min-width: 0;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.72);
+  overflow-wrap: anywhere;
+}
+
+.sectionContext {
+  font-size: 0.62rem;
+  line-height: 1.3;
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.48);
+  overflow-wrap: anywhere;
+}
+
+.actionCount {
+  margin-top: 0.35rem;
+  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.66rem;
+  opacity: 0.55;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 0.26rem 0.48rem;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statusPass {
+  background: rgba(var(--color-green-rgb), 0.18);
+  border-color: rgba(var(--color-green-rgb), 0.4);
+  color: var(--color-green);
+}
+
+.statusReview {
+  background: rgba(var(--color-yellow-rgb, 253, 216, 53), 0.18);
+  border-color: rgba(var(--color-yellow-rgb, 253, 216, 53), 0.45);
+  color: color-mix(in srgb, var(--color-yellow) 78%, var(--text-color) 22%);
+}
+
+.statusFail {
+  background: rgba(var(--color-red-rgb), 0.15);
+  border-color: rgba(var(--color-red-rgb), 0.4);
+  color: var(--color-red);
+}
+
+.statusNeutral {
+  background: rgba(var(--text-color-rgb, 0, 0, 0), 0.08);
+  border-color: rgba(var(--text-color-rgb, 0, 0, 0), 0.14);
+  color: rgba(var(--text-color-rgb, 0, 0, 0), 0.7);
+}
+
+@media (max-width: 768px) {
+  .flowMockContainer {
+    padding: 1rem;
+  }
+
+  .flowActiveReceipt {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .flowReceiptImageWrapper {
+    height: 100%;
+  }
+
+  .flowReceiptImageInner,
+  .flowReceiptImage {
+    max-height: 380px;
+  }
+
+  .flowEntityLegend {
+    width: 100%;
+    max-width: 520px;
+    gap: 0.75rem;
+    padding: 0;
+  }
+
+  .diagnosisRail {
+    width: 100%;
+  }
+
+  .validationStrip,
+  .evidenceSummary,
+  .nextAction {
+    max-width: 360px;
+    margin-right: auto;
+    margin-left: auto;
+    width: 100%;
+  }
+
+  .diagnosisStatement {
+    text-align: center;
+  }
+
+  .sectionMap,
+  .lineItemTokenMap,
+  .railNote,
+  .evidenceDisclosure,
+  .stateExamples {
+    max-width: 360px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .stateExamples {
+    align-items: center;
+  }
+
+  .stateExampleButtons {
+    justify-content: center;
+  }
+
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .stackPane {
+    width: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+    order: 1;
+  }
+
+  .receiptStackViewport {
+    display: flex;
+    gap: 0.55rem;
+    min-height: 126px;
+    padding: 0.25rem 0.2rem 0.55rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+  }
+
+  .stackReceiptButton {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    flex: 0 0 78px;
+    width: 78px;
+    height: 108px;
+    transform: none !important;
+    scroll-snap-align: start;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.13);
+  }
+
+  .stackControls {
+    width: min(240px, 100%);
+  }
+
+  .visualColumn {
+    order: 2;
+  }
+
+  .receiptImageStage,
+  .imageLoading {
+    min-height: 460px;
+  }
+
+  .receiptImageFrame,
+  .receiptImage {
+    max-height: 460px;
+  }
+
+  .inspector {
+    order: 3;
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .flowReceiptImageInner,
+  .flowReceiptImage {
+    max-height: 300px;
+  }
+
+  .flowEntityLegend {
+    gap: 0.5rem;
+  }
+
+  .flowLegendMobile {
+    gap: 0.45rem 1rem;
+  }
+
+  .flowLegendDot {
+    width: 12px;
+    height: 12px;
+  }
+
+  .flowLegendLabel {
+    font-size: 0.75rem;
+  }
+
+  .container {
+    width: calc(100% - 1rem);
+    padding: 1rem;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+
+  .headerMetrics {
+    justify-content: flex-start;
+  }
+
+  .receiptStackViewport {
+    min-height: 112px;
+  }
+
+  .stackReceiptButton {
+    flex-basis: 70px;
+    width: 70px;
+    height: 98px;
+  }
+
+  .receiptImageStage,
+  .imageLoading {
+    min-height: 360px;
+  }
+
+  .receiptImageFrame,
+  .receiptImage {
+    max-height: 360px;
+  }
+
+  .navButton {
+    height: 34px;
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowActiveReceipt,
+  .validationReasonSlot {
+    animation: none;
+    transition: none;
+  }
+
+  .validationReasonClip,
+  .validationReasonInner {
+    transition: none;
+  }
+}

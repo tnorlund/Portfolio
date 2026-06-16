@@ -21,12 +21,6 @@ from receipt_langsmith.entities.grouping import (
     GroupingProposal,
     ReceiptBoundary,
 )
-from receipt_langsmith.entities.harmonizer import (
-    HarmonizedField,
-    HarmonizerInputs,
-    HarmonizerOutputs,
-    ReceiptMetadataSummary,
-)
 from receipt_langsmith.entities.label_evaluator import (
     CurrencyEvaluatorInputs,
     CurrencyEvaluatorOutputs,
@@ -146,11 +140,6 @@ __all__ = [
     # Agentic validation
     "AgenticValidationInputs",
     "AgenticValidationOutputs",
-    # Harmonizer
-    "ReceiptMetadataSummary",
-    "HarmonizedField",
-    "HarmonizerInputs",
-    "HarmonizerOutputs",
     # Grouping
     "ReceiptBoundary",
     "GroupingProposal",

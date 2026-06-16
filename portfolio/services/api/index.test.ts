@@ -105,4 +105,29 @@ describe('api service', () => {
       encodeURIComponent(JSON.stringify({ id: 'b' }))
     );
   });
+
+  test('fetchReceiptHealthIssues passes classification filters', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ issues: [] }),
+    });
+
+    await api.fetchReceiptHealthIssues({
+      state: 'all',
+      checkId: 'financial_math',
+      classification: 'evaluator_rule_gap',
+      lane: 'receipt_structure_rule',
+      rootCause: 'tip_gratuity_ambiguity',
+      limit: 25,
+    });
+
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/label_evaluator/receipt_health_issues?');
+    expect(calledUrl).toContain('state=all');
+    expect(calledUrl).toContain('check_id=financial_math');
+    expect(calledUrl).toContain('classification=evaluator_rule_gap');
+    expect(calledUrl).toContain('lane=receipt_structure_rule');
+    expect(calledUrl).toContain('root_cause=tip_gratuity_ambiguity');
+    expect(calledUrl).toContain('limit=25');
+  });
 });
