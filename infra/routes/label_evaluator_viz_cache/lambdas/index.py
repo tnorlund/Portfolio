@@ -31,6 +31,7 @@ RECEIPT_HEALTH_LEDGER_KEY = "receipt-health/issues/ledger.json"
 RECEIPT_HEALTH_ELIGIBLE_KEY = "receipt-health/issues/eligible.json"
 MAX_ISSUE_BATCH_SIZE = 100
 AUTOMATION_READY_PREFLIGHT_CLASSES = frozenset({"safe_exact_plan"})
+INTERNAL_LEDGER_UPDATE_OPERATION = "receipt_health_issue_update"
 
 # Map viz_type (last path segment) to S3 prefix
 VIZ_TYPE_PREFIXES = {
@@ -563,6 +564,33 @@ def _handle_receipt_health_issues_post(
     )
 
 
+def _handle_internal_receipt_health_issue_update(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """Update ledger state from a direct, AWS-authenticated Lambda invoke.
+
+    The public API route is IAM-protected, but the scheduled cleanup routine can
+    invoke this Lambda directly with this operation name when it has AWS
+    credentials. This keeps state mutation out of unsigned public HTTP traffic.
+    """
+    raw_body = event.get("body")
+    if raw_body is None:
+        raw_body = {
+            key: value
+            for key, value in event.items()
+            if key != "operation"
+        }
+
+    if isinstance(raw_body, str):
+        body = raw_body
+    elif isinstance(raw_body, dict):
+        body = json.dumps(raw_body)
+    else:
+        return _response(400, {"error": "body must be an object or JSON string"})
+
+    return _handle_receipt_health_issues_post({"body": body})
+
+
 def _calculate_aggregate_stats(
     receipts: list[dict[str, Any]], pool_size: int
 ) -> dict[str, Any]:
@@ -636,6 +664,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     }
     """
     logger.info("Received event: %s", event)
+
+    if event.get("operation") == INTERNAL_LEDGER_UPDATE_OPERATION:
+        return _handle_internal_receipt_health_issue_update(event)
 
     # Handle API Gateway v2 event format
     try:

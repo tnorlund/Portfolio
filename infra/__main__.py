@@ -1595,6 +1595,7 @@ if hasattr(api_gateway, "api"):
         "label_evaluator_receipt_health_issues_post_route",
         api_id=api_gateway.api.id,
         route_key="POST /label_evaluator/receipt_health_issues",
+        authorization_type="AWS_IAM",
         target=receipt_health_issues_post_integration.id.apply(
             lambda id: f"integrations/{id}"
         ),

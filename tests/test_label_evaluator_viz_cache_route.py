@@ -267,3 +267,69 @@ def test_known_limitation_records_suppression_fingerprint():
     assert next_ledger["summary"]["by_preflight_root_cause"] == {
         "line_total_candidates_do_not_reconcile": 1
     }
+
+
+def test_handler_accepts_internal_receipt_health_issue_update(monkeypatch):
+    captured = {}
+
+    def fake_post(event):
+        captured["body"] = json.loads(event["body"])
+        return {"statusCode": 200, "body": json.dumps({"ok": True})}
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_handle_receipt_health_issues_post",
+        fake_post,
+    )
+
+    response = viz_cache.handler(
+        {
+            "operation": "receipt_health_issue_update",
+            "body": {
+                "action": "mark_attempted",
+                "issue_id": "issue-a",
+                "agent": "receipt-label-fixer",
+            },
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert captured["body"] == {
+        "action": "mark_attempted",
+        "issue_id": "issue-a",
+        "agent": "receipt-label-fixer",
+    }
+
+
+def test_handler_accepts_internal_receipt_health_issue_update_fields(
+    monkeypatch,
+):
+    captured = {}
+
+    def fake_post(event):
+        captured["body"] = json.loads(event["body"])
+        return {"statusCode": 200, "body": json.dumps({"ok": True})}
+
+    monkeypatch.setattr(
+        viz_cache,
+        "_handle_receipt_health_issues_post",
+        fake_post,
+    )
+
+    response = viz_cache.handler(
+        {
+            "operation": "receipt_health_issue_update",
+            "action": "manual_review",
+            "issue_id": "issue-a",
+            "reason": "Stored plan was incomplete",
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert captured["body"] == {
+        "action": "manual_review",
+        "issue_id": "issue-a",
+        "reason": "Stored plan was incomplete",
+    }

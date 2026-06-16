@@ -66,6 +66,11 @@ This component generates cached visualization data for the portfolio website's L
 - **Purpose**: Serves the cached `viz-sample-data.json` to the frontend
 - **Memory**: 256 MB
 - **Timeout**: 30 seconds
+- **Receipt Health Issues**:
+  - `GET /label_evaluator/receipt_health_issues` is public and read-only.
+  - `POST /label_evaluator/receipt_health_issues` requires AWS IAM signing.
+  - Internal automation should update issue state by invoking the API Lambda
+    directly with `operation: receipt_health_issue_update`.
 
 ### Cache Generator Lambda (`cache_generator.py`)
 - **Purpose**: Generates the visualization cache by combining all data sources
