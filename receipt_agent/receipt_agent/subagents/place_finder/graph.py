@@ -564,9 +564,12 @@ async def run_receipt_place_finder(
                 len(result.get("fields_found", [])),
                 result.get("confidence", 0) * 100,
             )
+            # type="agent_decided" — agent ran fully and submitted its conclusion
+            result.setdefault("type", "agent_decided")
             return result
         else:
-            # Agent ended without submitting result
+            # Agent ended without calling submit_place — treat as transient
+            # (LLM may have timed out or stalled; not a definitive "not found")
             logger.warning(
                 "Agent ended without submitting place data for %s#%s",
                 image_id,
@@ -580,6 +583,7 @@ async def run_receipt_place_finder(
                 "address": None,
                 "phone_number": None,
                 "found": False,
+                "type": "agent_timeout",
                 "confidence": 0.0,
                 "reasoning": "Agent did not submit place data result",
                 "fields_found": [],
@@ -595,6 +599,7 @@ async def run_receipt_place_finder(
             "address": None,
             "phone_number": None,
             "found": False,
+            "type": "agent_error",
             "confidence": 0.0,
             "reasoning": f"Error during place finding: {e!s}",
             "fields_found": [],
