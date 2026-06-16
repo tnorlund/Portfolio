@@ -87,6 +87,10 @@ MILK_SIZE_RANGES = {
     "ORG WHOLE MILK": [
         (0, 15.00, "Gallon"),
     ],
+    "ORGANIC WHOLE MILK": [  # full-word OCR variant of ORG WHOLE MILK
+        (0, 7.50, "Half Gallon"),
+        (7.50, 15.00, "Gallon"),
+    ],
     "ORG FF GRASSFED MILK": [
         (0, 15.00, "Half Gallon"),
     ],
@@ -97,11 +101,18 @@ MILK_SIZE_RANGES = {
         (0, 6.00, "Half Gallon"),
         (6.00, 15.00, "Gallon"),
     ],
+    "W WHOLE MILK": [  # OCR partial scan of WHOLE MILK
+        (0, 6.00, "Half Gallon"),
+        (6.00, 15.00, "Gallon"),
+    ],
     "V CRNR WHOLE MILK": [
         (0, 10.00, "Gallon"),
     ],
     "VIT D WHOLE MILK": [
         (0, 10.00, "Gallon"),
+    ],
+    "MILK QUART WHOLE": [  # Trader Joe's OCR word-order variant
+        (0, 15.00, "Quart"),
     ],
 }
 
@@ -305,9 +316,12 @@ def find_price_on_visual_line(target_line_id, words, labels):
     if target_visual_line:
         for ctx in target_visual_line:
             if ctx["label"]:
-                if ctx["label"].label == "LINE_TOTAL":
+                if ctx["label"].label == "LINE_TOTAL" and line_total is None:
                     line_total = ctx["word"].text
-                elif ctx["label"].label == "UNIT_PRICE":
+                elif ctx["label"].label == "UNIT_PRICE" and unit_price is None:
+                    # First-found wins — avoids California food-code letters
+                    # (e.g. "F", "T") that appear after the price and share the
+                    # UNIT_PRICE label but contain no numeric value.
                     unit_price = ctx["word"].text
 
         if line_total or unit_price:
