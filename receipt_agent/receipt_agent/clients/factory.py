@@ -329,12 +329,17 @@ def create_places_client(
                 "receipt_places package required for Places API operations"
             )
 
-        # Create PlacesConfig with our settings
+        # Create PlacesConfig with our settings.
+        # PlacesConfig.aws_region defaults to "us-west-2"; prefer the
+        # Lambda-injected AWS_REGION env var so prod (us-east-1) works
+        # without an extra RECEIPT_PLACES_AWS_REGION env var.
+        aws_region = os.environ.get("AWS_REGION") or settings.aws_region
         places_config = PlacesConfig(
             api_key=key,
             table_name=table,
             cache_enabled=True,
             cache_ttl_days=30,
+            aws_region=aws_region,
         )
 
         # PlacesClient includes built-in caching via CacheManager
