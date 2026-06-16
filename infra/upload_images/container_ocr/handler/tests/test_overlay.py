@@ -26,7 +26,13 @@ if _container_ocr_dir not in sys.path:
     sys.path.insert(0, _container_ocr_dir)
 
 import pytest
-from receipt_dynamo.entities import ReceiptLetter, ReceiptLine, ReceiptWord
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import (
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 # Import OCRProcessor via importlib to avoid pytest's package resolution
 # chain through infra/upload_images/__init__.py (which imports Pulumi).
@@ -129,6 +135,26 @@ def _make_letter(
         angle_degrees=0.0,
         angle_radians=0.0,
         **g,
+    )
+
+
+def _make_label(
+    image_id: str = _IMG_ID,
+    receipt_id: int = 1,
+    line_id: int = 1,
+    word_id: int = 1,
+    label: str = "LINE_TOTAL",
+    validation_status: str = ValidationStatus.VALID.value,
+) -> ReceiptWordLabel:
+    return ReceiptWordLabel(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        line_id=line_id,
+        word_id=word_id,
+        label=label,
+        reasoning="Test label",
+        timestamp_added="2026-01-01T00:00:00+00:00",
+        validation_status=validation_status,
     )
 
 
@@ -523,7 +549,12 @@ class TestUnmatchedWordAddition:
 
         proc.dynamo.list_receipt_words_from_receipt.return_value = existing_words
         proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
-            [SimpleNamespace(line_id=l.line_id, word_id=l.word_id) for l in (labels or [])],
+            [
+                l
+                if hasattr(l, "label")
+                else SimpleNamespace(line_id=l.line_id, word_id=l.word_id)
+                for l in (labels or [])
+            ],
             None,
         )
         proc.dynamo.list_receipt_letters_from_word.return_value = []
@@ -615,6 +646,51 @@ class TestUnmatchedWordAddition:
         assert proc.dynamo.update_receipt_lines.called
         updated_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
         assert any("8.68" in line.text for line in updated_lines)
+
+    def test_changed_word_label_reset_to_pending(self):
+        """When re-OCR changes word text, attached labels need revalidation."""
+        proc = _make_processor()
+        existing = _make_word(
+            text="579199", x=0.1, y=0.5, w=0.15, h=0.05,
+            line_id=1, word_id=1,
+        )
+        new_word = _make_word(
+            text="579.99", x=0.1, y=0.5, w=0.15, h=0.05,
+            line_id=1, word_id=1,
+        )
+        label = _make_label(line_id=1, word_id=1)
+
+        result = self._run_overlay(
+            proc, [existing], [new_word], labels=[label]
+        )
+
+        assert result["labels_revalidated"] == 1
+        proc.dynamo.update_receipt_word_labels.assert_called_once()
+        updated_labels = proc.dynamo.update_receipt_word_labels.call_args[0][0]
+        assert (
+            updated_labels[0].validation_status
+            == ValidationStatus.PENDING.value
+        )
+        assert (
+            updated_labels[0].label_proposed_by
+            == "regional_reocr_revalidation"
+        )
+
+    def test_deleted_word_labels_are_removed(self):
+        """Labels attached to words deleted by re-OCR must not be orphaned."""
+        proc = _make_processor()
+        existing = _make_word(
+            text="GARBLED", x=0.1, y=0.5, w=0.15, h=0.05,
+            line_id=1, word_id=1,
+        )
+        label = _make_label(line_id=1, word_id=1)
+
+        result = self._run_overlay(proc, [existing], [], labels=[label])
+
+        assert result["labels_deleted"] == 1
+        proc.dynamo.delete_receipt_word_labels.assert_called_once()
+        deleted_labels = proc.dynamo.delete_receipt_word_labels.call_args[0][0]
+        assert deleted_labels == [label]
 
 
 # ===========================================================================

@@ -21,7 +21,12 @@ from PIL import Image as PIL_Image
 from PIL import UnidentifiedImageError
 from PIL.Image import Resampling, Transform
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.constants import (
+    ImageType,
+    OCRJobType,
+    OCRStatus,
+    ValidationStatus,
+)
 from receipt_dynamo.entities import (
     Image,
     Letter,
@@ -822,6 +827,7 @@ class OCRProcessor:
         letters_to_delete: list[ReceiptLetter] = []
         letters_to_add: list[ReceiptLetter] = []
         words_rejected = 0
+        changed_word_ids: set[tuple[int, int]] = set()
 
         for new_word, existing_word in matches:
             # Guard 3a: Absolute confidence floor.
@@ -883,6 +889,11 @@ class OCRProcessor:
                 )
                 words_rejected += 1
                 continue
+
+            if new_word.text != existing_word.text:
+                changed_word_ids.add(
+                    (existing_word.line_id, existing_word.word_id)
+                )
 
             existing_word.text = new_word.text
             existing_word.bounding_box = new_word.bounding_box
@@ -1070,10 +1081,41 @@ class OCRProcessor:
                 orphan.word_id,
             )
 
+        deleted_word_ids = {(w.line_id, w.word_id) for w in words_to_delete}
+        labels_to_revalidate = [
+            label
+            for label in labels
+            if (label.line_id, label.word_id) in changed_word_ids
+            and (label.line_id, label.word_id) not in deleted_word_ids
+        ]
+        labels_to_delete = [
+            label
+            for label in labels
+            if (label.line_id, label.word_id) in deleted_word_ids
+        ]
+
+        for label in labels_to_revalidate:
+            label.validation_status = ValidationStatus.PENDING.value
+            label.label_proposed_by = "regional_reocr_revalidation"
+            label.reasoning = (
+                "Regional re-OCR changed this word text; label requires "
+                "revalidation."
+            )
+
+        labels_for_embedding = [
+            label
+            for label in labels
+            if (label.line_id, label.word_id) not in deleted_word_ids
+        ]
+
         if words_to_update:
             self.dynamo.update_receipt_words(words_to_update)
         if words_to_add:
             self.dynamo.add_receipt_words(words_to_add)
+        if labels_to_revalidate:
+            self.dynamo.update_receipt_word_labels(labels_to_revalidate)
+        if labels_to_delete:
+            self.dynamo.delete_receipt_word_labels(labels_to_delete)
         # Delete old letters BEFORE adding replacements. The old letters
         # and new letters can share the same (line_id, word_id, letter_id)
         # keys, so adding first then deleting would clobber the new data.
@@ -1157,7 +1199,9 @@ class OCRProcessor:
                     receipt_id=ocr_job.receipt_id,
                     chromadb_bucket=self.chromadb_bucket,
                     dynamo_client=self.dynamo,
-                    receipt_word_labels=labels if labels else None,
+                    receipt_word_labels=(
+                        labels_for_embedding if labels_for_embedding else None
+                    ),
                 )
                 embedding_result = create_embeddings_and_compaction_run(
                     receipt_lines=all_lines,
@@ -1188,6 +1232,8 @@ class OCRProcessor:
             "words_added": len(words_to_add),
             "words_deleted": len(words_to_delete),
             "words_rejected": words_rejected,
+            "labels_revalidated": len(labels_to_revalidate),
+            "labels_deleted": len(labels_to_delete),
             "lines_rebuilt": len(lines_to_update),
             "compaction_run_id": compaction_run_id,
         }

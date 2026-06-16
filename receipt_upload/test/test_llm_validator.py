@@ -206,6 +206,43 @@ class TestParseValidationResponse:
         assert results[0].label == "GRAND_TOTAL"
         assert "invalid" in results[0].reasoning.lower()
 
+    def test_parse_alias_label_normalized_to_core_label(self):
+        """Known non-core aliases should become valid CORE_LABELS."""
+        pending_labels = [
+            {"line_id": 1, "word_id": 1, "label": "PAYMENT_TYPE"},
+        ]
+
+        response_text = """
+        [
+            {"index": 0, "decision": "VALID", "label": "PAYMENT_TYPE", "confidence": "high", "reasoning": "Card payment"}
+        ]
+        """
+
+        results = parse_validation_response(response_text, pending_labels)
+
+        assert len(results) == 1
+        assert results[0].decision == "INVALID"
+        assert results[0].label == "PAYMENT_METHOD"
+
+    def test_parse_amount_label_requires_review(self):
+        """Ambiguous merged amount labels should not be guessed."""
+        pending_labels = [
+            {"line_id": 1, "word_id": 1, "label": "AMOUNT"},
+        ]
+
+        response_text = """
+        [
+            {"index": 0, "decision": "VALID", "label": "AMOUNT", "confidence": "high", "reasoning": "Looks monetary"}
+        ]
+        """
+
+        results = parse_validation_response(response_text, pending_labels)
+
+        assert len(results) == 1
+        assert results[0].decision == "NEEDS_REVIEW"
+        assert results[0].label == "AMOUNT"
+        assert "not in core_labels" in results[0].reasoning.lower()
+
 
 class TestConvertStructuredResponse:
     """Test the convert_structured_response function with Pydantic models."""
@@ -370,6 +407,30 @@ class TestConvertStructuredResponse:
         # INVALID but same label should become NEEDS_REVIEW
         assert results[0].decision == "NEEDS_REVIEW"
         assert "without a corrected label" in results[0].reasoning.lower()
+
+    def test_convert_alias_label_normalized_to_core_label(self):
+        """Structured responses can normalize safe non-core aliases."""
+        pending_labels = [
+            {"line_id": 1, "word_id": 1, "label": "CARD_NUMBER"},
+        ]
+
+        response = LabelValidationResponse(
+            decisions=[
+                LabelDecision(
+                    index=0,
+                    decision="VALID",
+                    label="CARD_NUMBER",
+                    confidence="high",
+                    reasoning="Card digits",
+                ),
+            ]
+        )
+
+        results = convert_structured_response(response, pending_labels)
+
+        assert len(results) == 1
+        assert results[0].decision == "INVALID"
+        assert results[0].label == "PAYMENT_METHOD"
 
     def test_convert_empty_decisions(self):
         """Test that empty decisions list marks all as NEEDS_REVIEW."""

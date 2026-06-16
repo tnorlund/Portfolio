@@ -15,6 +15,31 @@ public enum ValidationStatus: String {
 /// Represents a label for a word in a receipt line, matching DynamoDB schema.
 /// This mirrors the Python ReceiptWordLabel entity in receipt_dynamo.
 public struct ReceiptWordLabel: Equatable {
+    private static let coreLabels: Set<String> = [
+        "ADDRESS_LINE",
+        "CASH_BACK",
+        "CHANGE",
+        "COUPON",
+        "DATE",
+        "DISCOUNT",
+        "GRAND_TOTAL",
+        "LINE_TOTAL",
+        "LOYALTY_ID",
+        "MERCHANT_NAME",
+        "PAYMENT_METHOD",
+        "PHONE_NUMBER",
+        "PRODUCT_NAME",
+        "QUANTITY",
+        "REFUND",
+        "STORE_HOURS",
+        "SUBTOTAL",
+        "TAX",
+        "TIME",
+        "TIP",
+        "UNIT_PRICE",
+        "WEBSITE",
+    ]
+
     public let imageId: String
     public let receiptId: Int
     public let lineId: Int
@@ -173,11 +198,11 @@ public struct ReceiptWordLabel: Equatable {
                 let rawLabel = linePred.labels[wordIndex]
                 let confidence = linePred.confidences[wordIndex]
 
-                // Strip B-/I- prefix
-                let strippedLabel = stripBIOPrefix(rawLabel)
+                // Strip B-/I- prefix and keep only canonical CORE_LABELS.
+                let strippedLabel = stripBIOPrefix(rawLabel).uppercased()
 
                 // Skip "O" labels (Other/None) - they don't provide meaningful labeling
-                if strippedLabel == "O" {
+                if strippedLabel == "O" || !coreLabels.contains(strippedLabel) {
                     continue
                 }
 
