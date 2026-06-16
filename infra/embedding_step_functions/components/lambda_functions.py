@@ -259,6 +259,11 @@ class LambdaFunctionsComponent(ComponentResource):
                     },
                     {
                         "Effect": "Allow",
+                        "Action": ["lambda:InvokeFunction"],
+                        "Resource": f"arn:aws:lambda:*:*:function:fix-place-{stack}-fix-place",
+                    },
+                    {
+                        "Effect": "Allow",
                         "Action": [
                             "elasticfilesystem:ClientMount",
                             "elasticfilesystem:ClientWrite",
@@ -631,34 +636,7 @@ class LambdaFunctionsComponent(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_BUCKET": self.batch_bucket.bucket,
                 "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",  # Polling Lambdas don't use EFS
-                "GOOGLE_PLACES_API_KEY": portfolio_config.get_secret(
-                    "GOOGLE_PLACES_API_KEY"
-                )
-                or "",
-                "LANGCHAIN_API_KEY": portfolio_config.get_secret(
-                    "LANGCHAIN_API_KEY"
-                )
-                or "",
-                # OpenRouter LLM provider
-                "OPENROUTER_API_KEY": portfolio_config.get_secret(
-                    "OPENROUTER_API_KEY"
-                )
-                or "",
-                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
-                # receipt_agent expects RECEIPT_AGENT_* but we mirror base vars too
-                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY": portfolio_config.get_secret(
-                    "GOOGLE_PLACES_API_KEY"
-                )
-                or "",
-                "RECEIPT_AGENT_LANGCHAIN_API_KEY": portfolio_config.get_secret(
-                    "LANGCHAIN_API_KEY"
-                )
-                or "",
-                "RECEIPT_AGENT_LANGCHAIN_PROJECT": portfolio_config.get(
-                    "LANGCHAIN_PROJECT", "receipt-agent"
-                ),
+                "FIX_PLACE_LAMBDA_NAME": f"fix-place-{stack}-fix-place",
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",
