@@ -13,6 +13,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
+from botocore.config import Config
 from openai import OpenAI
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
@@ -71,6 +72,10 @@ logger = get_operation_logger(__name__)
 
 
 s3_client = boto3.client("s3")
+# fix_place_lambda can run up to 900s; extend read timeout to cover its full budget.
+_fix_place_lambda_client = boto3.client(
+    "lambda", config=Config(read_timeout=910, connect_timeout=10)
+)
 
 
 # Type variable for retry decorator
@@ -240,7 +245,6 @@ def _ensure_receipt_place(
     if not fix_place_fn:
         raise RuntimeError("FIX_PLACE_LAMBDA_NAME environment variable not set")
 
-    lambda_client = boto3.client("lambda")
     payload = json.dumps({
         "image_id": image_id,
         "receipt_id": receipt_id,
@@ -248,7 +252,7 @@ def _ensure_receipt_place(
     }).encode()
 
     try:
-        response = lambda_client.invoke(
+        response = _fix_place_lambda_client.invoke(
             FunctionName=fix_place_fn,
             InvocationType="RequestResponse",
             Payload=payload,
