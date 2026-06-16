@@ -1001,7 +1001,13 @@ function ValidationReason({
       aria-hidden={!hasExplanation}
     >
       <div className={styles.validationReasonClip}>
-        <div className={styles.validationReasonInner}>
+        <div
+          key={explanation ?? "empty"}
+          className={[
+            styles.validationReasonInner,
+            hasExplanation ? styles.validationReasonInnerVisible : "",
+          ].filter(Boolean).join(" ")}
+        >
           {explanation}
         </div>
       </div>
