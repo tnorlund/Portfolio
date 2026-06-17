@@ -204,7 +204,7 @@ export const getBestImageUrl = (
 };
 
 /**
- * Preload full-size and thumbnail images for all receipts so they're
+ * Preload full-size, medium, and thumbnail images for all receipts so they're
  * browser-cached before flying-receipt animations need them.
  * Uses a ref-based set to avoid re-fetching already-preloaded URLs,
  * which keeps it efficient for components that continuously append receipts.
@@ -223,6 +223,12 @@ export const usePreloadReceiptImages = (
         preloadedRef.current.add(fullUrl);
         const img = new Image();
         img.src = fullUrl;
+      }
+      const mediumUrl = getBestImageUrl(image, formatSupport, "medium");
+      if (mediumUrl !== fullUrl && !preloadedRef.current.has(mediumUrl)) {
+        preloadedRef.current.add(mediumUrl);
+        const img = new Image();
+        img.src = mediumUrl;
       }
       const thumbUrl = getBestImageUrl(image, formatSupport, "thumbnail");
       if (thumbUrl !== fullUrl && !preloadedRef.current.has(thumbUrl)) {

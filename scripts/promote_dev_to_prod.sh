@@ -63,15 +63,27 @@ else
   echo ""
 
   echo -e "${GREEN}[2/4] Syncing DynamoDB records (dev → prod)...${NC}"
-  run python3 "$SCRIPT_DIR/copy_dynamodb_dev_to_prod.py"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/copy_dynamodb_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/copy_dynamodb_dev_to_prod.py" --no-dry-run
+  fi
   echo ""
 
   echo -e "${GREEN}[3/4] Syncing OCR jobs (dev → prod)...${NC}"
-  run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py" --no-dry-run
+  fi
   echo ""
 
   echo -e "${GREEN}[4/4] Syncing word labels (dev → prod)...${NC}"
-  run python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py" --no-dry-run --force-dump
+  fi
   echo ""
 fi
 
@@ -87,4 +99,10 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}Done. Prod embedding will run in the background.${NC}"
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "${YELLOW}Done (dry-run — no changes made).${NC}"
+elif [[ "$SKIP_EMBED" == "true" ]]; then
+  echo -e "${GREEN}Done. Embedding skipped (--skip-embed).${NC}"
+else
+  echo -e "${GREEN}Done. Prod embedding will run in the background.${NC}"
+fi

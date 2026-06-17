@@ -9,6 +9,7 @@ interface ReceiptFlowShellProps {
   next?: React.ReactNode;
   nextLegend?: React.ReactNode;
   isTransitioning: boolean;
+  stabilizeLegend?: boolean;
   layoutVars?: React.CSSProperties;
 }
 
@@ -20,8 +21,11 @@ export const ReceiptFlowShell: React.FC<ReceiptFlowShellProps> = ({
   next,
   nextLegend,
   isTransitioning,
+  stabilizeLegend = false,
   layoutVars,
 }) => {
+  const useLegendOverlay = stabilizeLegend || Boolean(nextLegend);
+
   return (
     <div className={styles.mainWrapper} style={layoutVars} data-rf-shell>
       <div className={styles.queuePane}>{queue}</div>
@@ -40,7 +44,9 @@ export const ReceiptFlowShell: React.FC<ReceiptFlowShellProps> = ({
         ) : null}
       </div>
 
-      <div className={styles.legendColumn}>
+      <div
+        className={`${styles.legendColumn} ${useLegendOverlay ? styles.legendColumnOverlay : ""}`}
+      >
         <div
           className={`${styles.currentLegend} ${isTransitioning && nextLegend ? styles["fade-out"] : ""}`}
         >
