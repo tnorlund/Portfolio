@@ -16,6 +16,7 @@ import {
   CICDLoop,
   CodeBuildDiagram,
   DynamoStreamAnimation,
+  EpochEvaluation,
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
@@ -432,6 +433,20 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary intrinsicSize="640px">
         <ClientOnly>
           <TrainingMetricsAnimation />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        The catch with those training graphs is that the model is grading its
+        own homework — the F1 it reports mid-run can latch onto a lucky epoch.
+        So I went back and re-scored every saved checkpoint against the exact
+        same held-out receipts to see which epoch actually generalizes best.
+        It wasn&apos;t the one training picked.
+      </p>
+
+      <FigureBoundary intrinsicSize="720px">
+        <ClientOnly>
+          <EpochEvaluation />
         </ClientOnly>
       </FigureBoundary>
 
