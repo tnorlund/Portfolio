@@ -777,7 +777,9 @@ def handler(_event, _context):
             )
             if r["price"]:
                 try:
-                    summary[key]["prices"].append(float(r["price"]))
+                    summary[key]["prices"].append(
+                        float(str(r["price"]).replace("$", "").replace(",", ""))
+                    )
                 except ValueError:
                     pass
 
