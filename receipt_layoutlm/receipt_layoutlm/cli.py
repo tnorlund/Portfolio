@@ -366,6 +366,72 @@ def main() -> None:
         help="Run continuously until interrupted (default behavior)",
     )
 
+    # Evaluate-checkpoints subcommand: re-score every epoch on the frozen val set
+    eval_p = sub.add_parser(
+        "eval-checkpoints",
+        help=(
+            "Re-evaluate every saved checkpoint of a run on its frozen val "
+            "set to prove which epoch generalizes best"
+        ),
+    )
+    eval_p.add_argument(
+        "--job-name",
+        help="Training job name; run location is resolved via DynamoDB",
+    )
+    eval_p.add_argument(
+        "--run-s3-uri",
+        help=(
+            "Explicit s3://bucket/runs/<job>/ prefix (overrides --job-name "
+            "resolution)"
+        ),
+    )
+    eval_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table (or DYNAMO_TABLE_NAME env)",
+    )
+    eval_p.add_argument(
+        "--region",
+        default=os.getenv("AWS_REGION", "us-east-1"),
+        help="AWS region",
+    )
+    eval_p.add_argument(
+        "--output-dir",
+        default=os.getenv("SM_OUTPUT_DATA_DIR", "./epoch-eval"),
+        help="Local directory for epochs.json + per-receipt JSON",
+    )
+    eval_p.add_argument(
+        "--output-s3-uri",
+        default=None,
+        help="Optional s3://bucket/prefix/ to upload outputs to",
+    )
+    eval_p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the run's recorded random seed (else read run.json)",
+    )
+    eval_p.add_argument(
+        "--max-receipts",
+        type=int,
+        default=None,
+        help="Cap val receipts evaluated (default: full frozen set)",
+    )
+    eval_p.add_argument(
+        "--num-showcase",
+        type=int,
+        default=5,
+        help="Val receipts to persist per epoch for scrubbing (default: 5)",
+    )
+    eval_p.add_argument(
+        "--allow-hash-mismatch",
+        action="store_true",
+        help=(
+            "Proceed even if the reconstructed val set no longer matches the "
+            "run's recorded hash (data drift). Default fails loudly."
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "train":
@@ -534,6 +600,96 @@ def main() -> None:
             dynamo_table=args.dynamo_table,
             region=args.region,
             run_once=args.once,
+        )
+
+    elif args.cmd == "eval-checkpoints":
+        import logging
+        from urllib.parse import urlparse
+
+        from receipt_dynamo import DynamoClient
+
+        from .evaluate_checkpoints import evaluate_run, sync_outputs_to_s3
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
+        if not args.dynamo_table:
+            raise SystemExit(
+                "--dynamo-table or DYNAMO_TABLE_NAME env is required"
+            )
+
+        dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)
+
+        # Resolve the run's S3 location: explicit URI wins, else look it up by
+        # job name (newest match) via the Job entity's storage prefixes.
+        run_s3_uri = args.run_s3_uri
+        job_name = args.job_name
+        if not run_s3_uri:
+            if not job_name:
+                raise SystemExit(
+                    "Provide --run-s3-uri or --job-name to locate the run"
+                )
+            jobs, _ = dyn.get_job_by_name(job_name, limit=1)
+            if not jobs:
+                raise SystemExit(f"No job found with name '{job_name}'")
+            job = jobs[0]
+            run_s3_uri = job.s3_uri_for_prefix("run_root_prefix")
+            if not run_s3_uri:
+                best = (job.results or {}).get("best_checkpoint_s3_path")
+                if best:
+                    # Strip a trailing best/ or checkpoint-*/ to get the run root
+                    trimmed = best.rstrip("/").rsplit("/", 1)[0]
+                    run_s3_uri = trimmed + "/"
+            if not run_s3_uri:
+                raise SystemExit(
+                    f"Could not resolve run S3 location for job '{job_name}'. "
+                    f"Pass --run-s3-uri explicitly."
+                )
+        if not job_name:
+            job_name = run_s3_uri.rstrip("/").rsplit("/", 1)[-1]
+
+        parsed = urlparse(run_s3_uri)
+        bucket = parsed.netloc
+        run_prefix = parsed.path.lstrip("/")
+
+        payload = evaluate_run(
+            dynamo=dyn,
+            bucket=bucket,
+            run_prefix=run_prefix,
+            job_name=job_name,
+            output_dir=args.output_dir,
+            seed=args.seed,
+            max_receipts=args.max_receipts,
+            num_showcase=args.num_showcase,
+            allow_hash_mismatch=args.allow_hash_mismatch,
+        )
+
+        if args.output_s3_uri:
+            sync_outputs_to_s3(args.output_dir, args.output_s3_uri)
+
+        best_epoch = payload.get("best_epoch_heldout")
+        best_ckpt = payload.get("best_checkpoint_heldout")
+        print(
+            json.dumps(
+                {
+                    "job_name": payload["job_name"],
+                    "num_checkpoints": len(payload["epochs"]),
+                    "num_val_receipts": payload["num_val_receipts"],
+                    "val_receipts_hash_verified": payload[
+                        "val_receipts_hash_verified"
+                    ],
+                    "best_epoch_heldout": best_epoch,
+                    "best_checkpoint_heldout": best_ckpt,
+                    "best_epoch_training_reported": payload[
+                        "best_epoch_training_reported"
+                    ],
+                    "output_dir": args.output_dir,
+                    "output_s3_uri": args.output_s3_uri,
+                },
+                indent=2,
+            )
         )
 
 

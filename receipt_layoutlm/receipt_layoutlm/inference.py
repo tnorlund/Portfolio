@@ -10,6 +10,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .data_loader import _box_from_word, _normalize_box_from_extents
 
 
+def _strip_bio(label: str) -> str:
+    """Strip a leading ``B-``/``I-`` prefix from a label (``B-DATE`` -> ``DATE``)."""
+    if label.startswith("B-") or label.startswith("I-"):
+        return label[2:]
+    return label
+
+
 @dataclass
 class LinePrediction:
     line_id: int
@@ -84,6 +91,13 @@ class LayoutLMInference:
         self._label_list: List[str] = list(
             self._model.config.id2label.values()
         )
+        # Base labels the model predicts, derived by stripping BIO prefixes
+        # (e.g. {"ADDRESS", "AMOUNT", "DATE", ...}). normalize_label() needs
+        # this because label_list itself is BIO-prefixed, so a base label like
+        # "DATE" would otherwise never be recognized.
+        self._base_label_set: Set[str] = {
+            _strip_bio(lbl) for lbl in self._label_list if lbl != "O"
+        }
         self._label_merges: Dict[str, List[str]] = {}
         self._reverse_label_map: Dict[str, str] = {}
         self._load_run_config(model_s3_uri)
@@ -160,20 +174,28 @@ class LayoutLMInference:
 
     @property
     def base_labels(self) -> Set[str]:
-        """Set of base labels (excluding O)."""
-        return {lbl for lbl in self._label_list if lbl != "O"}
+        """Set of base labels the model predicts (excluding O, BIO stripped)."""
+        return set(self._base_label_set)
 
     def normalize_label(self, raw_label: str) -> str:
-        """Normalize a raw label to match the model's label set.
+        """Normalize a raw label to the model's base label set.
 
-        Uses label_merges from run.json to map original labels to merged ones.
-        Returns 'O' for unknown labels.
+        A label is recognized if it is one of the model's base labels (after
+        stripping any BIO prefix), or maps to one via the run.json merges.
+        Returns 'O' for anything else.
         """
-        # Already a valid label
+        base = _strip_bio(raw_label)
+
+        # Base label the model directly predicts (e.g. DATE, MERCHANT_NAME).
+        if base in self._base_label_set:
+            return base
+
+        # Fully-qualified label already in the model's list (defensive).
         if raw_label in self._label_list:
             return raw_label
 
-        # Check if it's a label that was merged
+        # Original label that was merged into a base label (e.g. ADDRESS_LINE
+        # -> ADDRESS, LINE_TOTAL -> AMOUNT).
         if raw_label in self._reverse_label_map:
             return self._reverse_label_map[raw_label]
 

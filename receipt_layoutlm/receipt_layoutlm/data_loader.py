@@ -34,6 +34,11 @@ class SplitMetadata:
     target_o_entity_ratio: float
     # v3 image cache directory (set when model_version == "v3")
     image_cache_dir: Optional[str] = None
+    # Full sorted list of validation receipt keys ("image_id#receipt_id").
+    # Persisted so downstream tooling (e.g. per-epoch checkpoint evaluation) can
+    # reproduce the exact held-out set even after the labeled data drifts, which
+    # the hash alone cannot guarantee.
+    val_receipt_keys: Optional[List[str]] = None
 
 
 @dataclass
@@ -676,6 +681,7 @@ def load_datasets(
         entity_lines_total=entity_lines_count,
         target_o_entity_ratio=target_ratio,
         image_cache_dir=image_cache_dir,
+        val_receipt_keys=sorted(val_receipts_list),
     )
 
     # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()
