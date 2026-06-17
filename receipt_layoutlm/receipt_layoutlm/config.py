@@ -30,6 +30,9 @@ class DataConfig:
     merge_amounts: bool = False
     dataset_snapshot_load: Optional[str] = None
     dataset_snapshot_save: Optional[str] = None
+    # S3 URI of the pinned canonical val split (recorded for run lineage so the
+    # Job entity / run.json says which shared val set this run held out).
+    val_keys_s3: Optional[str] = None
 
     def get_effective_label_merges(self) -> Dict[str, List[str]]:
         """Return the effective label merges, combining explicit config and legacy flags.

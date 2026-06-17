@@ -227,6 +227,15 @@ def main() -> None:
         ),
     )
     train_p.add_argument(
+        "--val-keys-s3",
+        default=None,
+        help=(
+            "S3 URI of a JSON file pinning the canonical val receipt keys. "
+            "When set, the run holds out exactly those receipts (shared across "
+            "runs for direct comparability) instead of a random seeded split."
+        ),
+    )
+    train_p.add_argument(
         "--resume-from-s3",
         default=None,
         help=(
@@ -503,6 +512,12 @@ def main() -> None:
         # Optional O:entity ratio for downsampling all-O lines (training only)
         if args.o_entity_ratio is not None:
             os.environ["LAYOUTLM_O_TO_ENTITY_RATIO"] = str(args.o_entity_ratio)
+
+        # Pinned canonical val split (shared across runs for comparability).
+        # Env drives the loader; data_cfg records it for Job-entity lineage.
+        if getattr(args, "val_keys_s3", None):
+            os.environ["LAYOUTLM_VAL_KEYS_S3"] = args.val_keys_s3
+            data_cfg.val_keys_s3 = args.val_keys_s3
 
         # Optional label whitelist
         data_cfg.allowed_labels = (

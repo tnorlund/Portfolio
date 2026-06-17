@@ -134,6 +134,10 @@ def build_train_command(hps: dict) -> list[str]:
     if str(hps.get("eval_heldout_windowed", "")).lower() == "false":
         cmd.append("--no-eval-heldout-windowed")
 
+    # Pinned canonical val split (shared across runs for comparability).
+    if hps.get("val_keys_s3"):
+        cmd.extend(["--val-keys-s3", str(hps["val_keys_s3"])])
+
     # Output path - use SageMaker's model dir
     # The trainer will save here, and SageMaker uploads to S3 automatically
     output_path = hps.get("output_s3_path")
