@@ -39,6 +39,13 @@
   height: 100%;
   pointer-events: none;
   z-index: 10;
+  /* Center the flying receipt via flex so it stays centered at whatever size
+     it clamps to (the column can be narrower than the receipt at small widths).
+     The old margin-based centering assumed a fixed width and broke under
+     clamping. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nextReceipt {

@@ -45,7 +45,8 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receiptId,
   queueItemWidth = 100,
   queueItemLeftInset = 10,
-  borderWidth = 1,
+  // borderWidth is kept in the props interface for API compatibility; the
+  // 1px border is now applied purely in CSS (.flyingReceipt).
   onImageError,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -139,9 +140,6 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 } });
   }, [receiptId]);
 
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
   return (
     <animated.div
       ref={containerRef}
@@ -153,8 +151,6 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
             `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`,
         ),
         opacity: springValues.opacity,
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -162,7 +158,9 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
         src={imageUrl}
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
+        // Width drives size; height comes from aspect-ratio so the frame stays
+        // the receipt's aspect ratio when max-width clamps it at narrow widths.
+        style={{ width: displayWidth, aspectRatio: `${displayWidth} / ${displayHeight}` }}
         onError={onImageError}
       />
     </animated.div>

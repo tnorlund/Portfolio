@@ -1,8 +1,6 @@
-/* Flying receipt - animates from queue to center */
+/* Flying receipt - animates from queue to center (flex-centered by the
+   container, so no absolute positioning / margin offsets are needed). */
 .flyingReceipt {
-  position: absolute;
-  left: 50%;
-  top: 50%;
   transform-origin: center center;
   z-index: 10;
   border: 1px solid #ccc;
@@ -12,16 +10,20 @@
      static receipt on landing. */
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+  /* Clamp to the column width so a too-wide receipt shrinks to fit at narrow
+     widths exactly like the resting receipt does. */
+  max-width: 100%;
 }
 
 .flyingReceiptImage {
   display: block;
   max-height: 500px;
   max-width: 100%;
-  /* contain (not fill) so the image always keeps its natural aspect ratio.
-     At narrow widths the column squeezes the box and max-width clamps its
-     width; with fill that distorts the receipt (and flying vs resting clamp
-     differently, so the aspect ratio visibly shifts on landing). contain
-     renders the image at its true aspect ratio in both states. */
+  /* Height comes from aspect-ratio (set inline), so when max-width clamps the
+     width the height scales with it and the frame keeps the receipt's aspect
+     ratio — no fixed-height letterboxing during flight. */
+  height: auto;
+  /* contain so the image always keeps its natural aspect ratio regardless of
+     how the box is clamped. */
   object-fit: contain;
 }
