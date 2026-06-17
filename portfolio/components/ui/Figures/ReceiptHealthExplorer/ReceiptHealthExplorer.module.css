@@ -83,8 +83,12 @@
 
 .flowReceiptImage {
   display: block;
-  width: auto;
-  height: auto;
+  /* Match the flying receipt's landing box (receiptDisplaySize, exposed as CSS
+     vars on .flowActiveReceipt) so the receipt does not pop from the flown size
+     to a smaller resting size on handoff. Falls back to natural sizing if the
+     vars are unset; mobile overrides back to responsive sizing below. */
+  width: var(--flow-receipt-w, auto);
+  height: var(--flow-receipt-h, auto);
   max-height: 500px;
   max-width: 100%;
 }
@@ -1551,6 +1555,13 @@
   .flowReceiptImageInner,
   .flowReceiptImage {
     max-height: 380px;
+  }
+
+  /* Flying receipt is hidden on mobile, so ignore the desktop match vars and
+     return to natural/responsive sizing. */
+  .flowReceiptImage {
+    width: auto;
+    height: auto;
   }
 
   .flowEntityLegend {
