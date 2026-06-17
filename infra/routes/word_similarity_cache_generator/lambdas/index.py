@@ -62,10 +62,7 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
         if target_word in line.text.upper():
             # Check exclusions
             text_upper = line.text.upper()
-            excluded = any(
-                term in text_upper
-                for term in ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
-            )
+            excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
             if not excluded:
                 return (line.text, line.line_id)
     return None
