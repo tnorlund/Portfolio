@@ -1718,12 +1718,14 @@ function ReceiptHealthFlowQueue({
   currentIndex,
   formatSupport,
   isTransitioning,
+  transitionTargetIndex,
   onSelect,
 }: {
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
   formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
+  transitionTargetIndex: number | null;
   onSelect: (index: number) => void;
 }) {
   const visibleIndices = useMemo(() => {
@@ -1743,6 +1745,14 @@ function ReceiptHealthFlowQueue({
     return <div className={styles.flowReceiptQueue} />;
   }
 
+  // Stack position of the card currently flying to center. For auto-rotate this
+  // is the top card (0); for a manual selection it can be any card deeper in the
+  // stack — the one whose receipt index matches the transition target.
+  const flyingStackIndex =
+    isTransitioning && transitionTargetIndex !== null
+      ? visibleIndices.indexOf(transitionTargetIndex)
+      : -1;
+
   return (
     <div className={styles.flowReceiptQueue} data-rf-queue>
       {visibleIndices.map((receiptIndex, stackIndex) => {
@@ -1751,12 +1761,14 @@ function ReceiptHealthFlowQueue({
         const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptId);
 
-        // The top card (stackIndex 0) is the receipt currently flying to center.
-        // Hide it during the transition so it doesn't sit in the stack as a
-        // duplicate of the flying copy, and slide the rest of the stack up to
-        // fill the gap (mirrors the inference queue's flyingOut behaviour).
-        const isFlying = isTransitioning && stackIndex === 0;
-        const adjustedIndex = isTransitioning ? stackIndex - 1 : stackIndex;
+        // Hide the card that's flying to center so it doesn't sit in the stack
+        // as a duplicate of the flying copy, and slide the cards below it up to
+        // fill the gap (cards above it stay put).
+        const isFlying = stackIndex === flyingStackIndex;
+        const adjustedIndex =
+          flyingStackIndex >= 0 && stackIndex > flyingStackIndex
+            ? stackIndex - 1
+            : stackIndex;
 
         return (
           <button
@@ -2835,6 +2847,7 @@ export default function ReceiptHealthExplorer() {
             currentIndex={currentIndex}
             formatSupport={formatSupport}
             isTransitioning={isTransitioning}
+            transitionTargetIndex={transitionTargetIndex}
             onSelect={selectReceipt}
           />
         }
