@@ -7,6 +7,14 @@ import styles from "./FlyingReceipt.module.css";
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
+// Fly-in duration. Must stay comfortably below the consumers' transition timer
+// (TRANSITION_DURATION ~600ms) so the receipt reaches its exact resting target
+// and holds there before the flying copy is swapped for the static receipt.
+const FLY_DURATION_MS = 500;
+// Decelerating ease — keeps the spring-like "lands softly" feel while
+// guaranteeing the animation reaches its exact endpoint at FLY_DURATION_MS.
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+
 export interface FlyingReceiptProps {
   imageUrl: string;
   displayWidth: number;
@@ -94,10 +102,18 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   // here is what the browser paints on the first frame — starting from the
   // queue position + opacity 0 guarantees no full-size center flash even if the
   // measured-DOM correction lands a frame later.
+  //
+  // A duration-based ease (not a physics spring) is used deliberately: the
+  // consumer swaps the flying copy for the resting receipt on a fixed timer
+  // (~600ms). A physics spring only asymptotes toward its target, so at the
+  // swap it is still ~0.1% short (≈0.5px off-center, scale 0.999), and that
+  // last fraction snaps into place when the resting receipt is revealed — a
+  // subtle "pop". FLY_DURATION_MS is comfortably shorter than the swap timer,
+  // so the receipt reaches its EXACT target and holds there before the handoff.
   const [springValues, api] = useSpring(() => ({
     ...fallbackFrom,
     opacity: 0,
-    config: { tension: 170, friction: 26, clamp: true },
+    config: { duration: FLY_DURATION_MS, easing: easeOutCubic },
   }));
 
   useIsomorphicLayoutEffect(() => {
