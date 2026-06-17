@@ -2477,6 +2477,12 @@ export default function ReceiptHealthExplorer() {
       })
       .then((nextContext) => {
         prefetchedLedgerContext = nextContext;
+        if (
+          isMountedRef.current &&
+          transitionRequestIdRef.current === transitionRequestId
+        ) {
+          setTransitionLedgerContext(nextContext);
+        }
         return nextContext;
       });
     await preloadReceiptImageForTransition(receipt, formatSupport);
