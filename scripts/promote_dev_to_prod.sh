@@ -87,4 +87,10 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}Done. Prod embedding will run in the background.${NC}"
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "${YELLOW}Done (dry-run — no changes made).${NC}"
+elif [[ "$SKIP_EMBED" == "true" ]]; then
+  echo -e "${GREEN}Done. Embedding skipped (--skip-embed).${NC}"
+else
+  echo -e "${GREEN}Done. Prod embedding will run in the background.${NC}"
+fi

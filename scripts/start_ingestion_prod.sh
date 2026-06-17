@@ -68,6 +68,10 @@ case "$WORKFLOW_TYPE" in
   both)
     [[ -z "$LINE_INGEST_ARN" ]] && echo -e "${YELLOW}Warning: line-ingest SF not found${NC}" >&2
     [[ -z "$WORD_INGEST_ARN" ]] && echo -e "${YELLOW}Warning: word-ingest SF not found${NC}" >&2
+    if [[ -z "$LINE_INGEST_ARN" && -z "$WORD_INGEST_ARN" ]]; then
+      echo -e "${RED}Error: neither line-ingest nor word-ingest SF ARN could be resolved${NC}" >&2
+      exit 1
+    fi
     [[ -n "$LINE_INGEST_ARN" ]] && start_sf "$LINE_INGEST_ARN" "line"
     [[ -n "$WORD_INGEST_ARN" ]] && start_sf "$WORD_INGEST_ARN" "word"
     ;;

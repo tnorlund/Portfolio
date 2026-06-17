@@ -85,7 +85,8 @@ MILK_SIZE_RANGES = {
         (8.00, 25.00, "Gallon"),
     ],
     "ORG WHOLE MILK": [
-        (0, 15.00, "Gallon"),
+        (0, 7.50, "Half Gallon"),
+        (7.50, 15.00, "Gallon"),
     ],
     "ORGANIC WHOLE MILK": [  # full-word OCR variant of ORG WHOLE MILK
         (0, 7.50, "Half Gallon"),
