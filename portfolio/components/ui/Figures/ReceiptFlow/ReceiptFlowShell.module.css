@@ -39,6 +39,13 @@
   height: 100%;
   pointer-events: none;
   z-index: 10;
+  /* Center the flying receipt via flex so it stays centered at whatever size
+     it clamps to (the column can be narrower than the receipt at small widths).
+     The old margin-based centering assumed a fixed width and broke under
+     clamping. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nextReceipt {
@@ -50,12 +57,32 @@
   flex-shrink: 0;
 }
 
+.legendColumnOverlay {
+  display: grid;
+  align-items: center;
+  width: var(--rf-legend-width, auto);
+  min-height: var(--rf-legend-height, auto);
+}
+
 .currentLegend {
   display: contents;
 }
 
+.legendColumnOverlay .currentLegend,
+.legendColumnOverlay .nextLegend {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  min-height: var(--rf-legend-stage-height, auto);
+}
+
 .nextLegend {
   display: none;
+}
+
+.legendColumnOverlay .nextLegend {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .fade-out {
@@ -81,6 +108,7 @@
     flex-direction: column;
     gap: 1rem;
     align-items: center;
+    min-height: var(--rf-mobile-shell-height, var(--rf-center-height, 500px));
   }
 
   .queuePane {
@@ -112,20 +140,31 @@
   }
 
   .receiptContainer.fade-out {
-    animation: mobile-flow-content-out 0.14s ease-out forwards;
+    animation: mobile-flow-content-out 0.16s ease-out forwards;
   }
 
   .nextReceipt.fade-in {
-    opacity: 1;
-    animation: none;
+    opacity: 0;
+    animation: mobile-flow-panel-in 0.28s ease-out 0.1s both;
   }
 
   .nextReceipt.fade-in > * {
-    animation: mobile-flow-content-in 0.24s ease-out 0.16s both;
+    animation: mobile-flow-content-rise 0.28s ease-out 0.1s both;
   }
 
   .legendColumn {
     width: 100%;
+    min-height: var(--rf-mobile-legend-height, 9rem);
+  }
+
+  .legendColumnOverlay {
+    height: var(--rf-mobile-legend-height, auto);
+    min-height: var(--rf-mobile-legend-height, 9rem);
+  }
+
+  .legendColumnOverlay .currentLegend,
+  .legendColumnOverlay .nextLegend {
+    min-height: var(--rf-mobile-legend-height, var(--rf-legend-stage-height, auto));
   }
 
   .currentLegend {
@@ -143,23 +182,27 @@
   }
 
   .currentLegend.fade-out {
-    animation: mobile-flow-content-out 0.14s ease-out forwards;
+    animation: mobile-flow-content-out 0.16s ease-out forwards;
   }
 
   .nextLegend.fade-in {
     z-index: 2;
-    opacity: 1;
+    opacity: 0;
     background: var(--background-color, #fff);
-    animation: none;
+    animation: mobile-flow-panel-in 0.28s ease-out 0.1s both;
   }
 
   .nextLegend.fade-in > * {
-    animation: mobile-flow-content-in 0.24s ease-out 0.16s both;
+    animation: mobile-flow-content-rise 0.28s ease-out 0.1s both;
   }
 
 }
 
 @media (max-width: 480px) {
+  .mainWrapper {
+    min-height: var(--rf-mobile-shell-height-sm, var(--rf-mobile-shell-height, var(--rf-center-height, 500px)));
+  }
+
   .centerColumn {
     height: var(--rf-mobile-center-height-sm, 320px);
   }
@@ -175,14 +218,22 @@
   }
 }
 
-@keyframes mobile-flow-content-in {
+@keyframes mobile-flow-panel-in {
   from {
     opacity: 0;
-    transform: translateY(3px);
   }
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes mobile-flow-content-rise {
+  from {
+    transform: translateY(3px);
+  }
+
+  to {
     transform: translateY(0);
   }
 }

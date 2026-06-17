@@ -45,6 +45,7 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from langsmith import traceable
 from pydantic import ValidationError
+from receipt_dynamo.amounts import parse_receipt_amount
 
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
@@ -128,35 +129,7 @@ def extract_number(text: str) -> float | None:
 
     Handles: $1,234.56, (1.23), -1.23, 1.23-, etc.
     """
-    if not text:
-        return None
-
-    # Remove currency symbols and whitespace
-    clean = text.strip()
-    clean = re.sub(r"[$€£¥]", "", clean)
-    clean = clean.replace(",", "")
-
-    # Handle parentheses for negative (accounting format)
-    is_negative = False
-    if clean.startswith("(") and clean.endswith(")"):
-        is_negative = True
-        clean = clean[1:-1]
-
-    # Handle trailing minus
-    if clean.endswith("-"):
-        is_negative = True
-        clean = clean[:-1]
-
-    # Handle leading minus
-    if clean.startswith("-"):
-        is_negative = True
-        clean = clean[1:]
-
-    try:
-        value = float(clean)
-        return -value if is_negative else value
-    except ValueError:
-        return None
+    return parse_receipt_amount(text)
 
 
 def extract_financial_values(
@@ -1375,7 +1348,7 @@ def _rightmost_dollar(lwords: list) -> tuple[float | None, str]:
     """Find the rightmost number with $ or . on a line."""
     for w in reversed(lwords):
         num = extract_number(w.text)
-        if num is not None and ("." in w.text or "$" in w.text):
+        if num is not None and any(mark in w.text for mark in (".", ",", "$")):
             return num, w.text
     return None, ""
 

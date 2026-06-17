@@ -158,13 +158,19 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
           <div
             key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
+            // Used by FlyingReceipt.computeFrom to launch the flight from this
+            // exact card rather than always the top of the stack.
+            data-rf-card-id={receipt.receipt_id}
             style={{
               top: `${stackOffset}px`,
               left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg) translateY(${showItem ? 0 : -50}px)`,
-              opacity: showItem ? 1 : 0,
+              // Hide the top card while it's flying to center (inline opacity
+              // wins over the .flyingOut class, so it must be handled here) so
+              // it doesn't sit in the stack as a duplicate of the flying copy.
+              opacity: isFlying ? 0 : showItem ? 1 : 0,
               zIndex,
-              transition: `transform 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, opacity 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, top 0.4s ease, left 0.4s ease`,
+              transition: `transform 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, opacity ${isFlying ? "0.25s" : "0.6s"} ease-out ${isFlying ? 0 : shouldAnimate ? idx * fadeDelay : 0}ms, top 0.4s ease, left 0.4s ease`,
             }}
           >
             {imageUrl && (

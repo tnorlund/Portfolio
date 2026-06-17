@@ -41,7 +41,7 @@ CHROMA_CLOUD_ENABLED = (
 )
 
 # Exclusion terms for dairy milk filtering
-DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
+DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
 # Pattern to match price-like tokens (used to extract product name from row text)
 def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
@@ -62,10 +62,7 @@ def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
         if target_word in line.text.upper():
             # Check exclusions
             text_upper = line.text.upper()
-            excluded = any(
-                term in text_upper
-                for term in ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
-            )
+            excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
             if not excluded:
                 return (line.text, line.line_id)
     return None
@@ -114,6 +111,22 @@ MILK_SIZE_RANGES = {
     ],
     "MILK QUART WHOLE": [  # Trader Joe's OCR word-order variant
         (0, 15.00, "Quart"),
+    ],
+    "MILK RAW": [  # word-order OCR variant of RAW MILK
+        (0, 8.00, "Half Gallon"),
+        (8.00, 25.00, "Gallon"),
+    ],
+    "MILK RAW WHOLE": [  # word-order OCR variant of RAW WHOLE MILK
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "MILK WHOLE RAW LAT-": [  # truncated OCR variant of RAW WHOLE MILK
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "WHOLE MILK ORG": [  # word-reversed ORG WHOLE MILK
+        (0, 7.50, "Half Gallon"),
+        (7.50, 15.00, "Gallon"),
     ],
 }
 
@@ -761,7 +774,9 @@ def handler(_event, _context):
             )
             if r["price"]:
                 try:
-                    summary[key]["prices"].append(float(r["price"]))
+                    summary[key]["prices"].append(
+                        float(str(r["price"]).replace("$", "").replace(",", ""))
+                    )
                 except ValueError:
                     pass
 

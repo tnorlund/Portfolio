@@ -7,6 +7,14 @@ import styles from "./FlyingReceipt.module.css";
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
+// Fly-in duration. Must stay comfortably below the consumers' transition timer
+// (TRANSITION_DURATION ~600ms) so the receipt reaches its exact resting target
+// and holds there before the flying copy is swapped for the static receipt.
+const FLY_DURATION_MS = 500;
+// Decelerating ease — keeps the spring-like "lands softly" feel while
+// guaranteeing the animation reaches its exact endpoint at FLY_DURATION_MS.
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+
 export interface FlyingReceiptProps {
   imageUrl: string;
   displayWidth: number;
@@ -37,16 +45,29 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receiptId,
   queueItemWidth = 100,
   queueItemLeftInset = 10,
-  borderWidth = 1,
+  // borderWidth is kept in the props interface for API compatibility; the
+  // 1px border is now applied purely in CSS (.flyingReceipt).
   onImageError,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
+  // Starting transform used before the DOM has been measured. It is computed
+  // purely from props so the spring can be *initialized* with it below. This is
+  // what prevents the one-frame "pop-in": without it the spring starts at the
+  // final centered/full-size state and the browser paints that for a frame
+  // before react-spring's rAF scheduler applies the real queue start position.
+  const fallbackFrom = {
+    x: -300,
+    y: -50,
+    scale: queueItemWidth / Math.max(displayWidth, 1),
+    rotate: rotation,
+  };
+
   // Compute the starting transform by measuring the DOM
   const computeFrom = (): { x: number; y: number; scale: number; rotate: number } => {
-    const fallback = { x: -300, y: -50, scale: queueItemWidth / Math.max(displayWidth, 1), rotate: rotation };
+    const fallback = fallbackFrom;
 
     if (typeof window === "undefined" || !containerRef.current) return fallback;
 
@@ -57,16 +78,34 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     const target = shell.querySelector("[data-rf-target]");
     if (!queuePane || !target) return fallback;
 
-    const queueRect = queuePane.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-
-    // Source center: queue pane left + inset + leftOffset + half item width
-    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
-    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
-
     // Target center: center of the flying container
     const targetCenterX = targetRect.left + targetRect.width / 2;
     const targetCenterY = targetRect.top + targetRect.height / 2;
+
+    // Launch from the actual queue card this receipt is flying from, so the
+    // flight lifts off exactly where the thumbnail sits. Prefer the card whose
+    // id matches the flying receipt (handles manually selecting a non-top
+    // card); fall back to the top card. The card's rendered height is far
+    // taller than queueItemWidth, so the old square-item estimate
+    // (queueRect.top + queueItemWidth/2) started the flight well above the card.
+    const sourceCard =
+      queuePane.querySelector(`[data-rf-card-id="${receiptId}"]`) ??
+      queuePane.firstElementChild;
+    if (sourceCard) {
+      const cardRect = sourceCard.getBoundingClientRect();
+      return {
+        x: cardRect.left + cardRect.width / 2 - targetCenterX,
+        y: cardRect.top + cardRect.height / 2 - targetCenterY,
+        scale: queueItemWidth / Math.max(displayWidth, 1),
+        rotate: rotation,
+      };
+    }
+
+    // Fallback: estimate the source from queue-pane geometry.
+    const queueRect = queuePane.getBoundingClientRect();
+    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
+    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
 
     return {
       x: sourceCenterX - targetCenterX,
@@ -76,26 +115,33 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     };
   };
 
-  // We use the imperative API so we can set() the start position synchronously
-  // in useLayoutEffect (before browser paint) and then animate to the end.
+  // Initialize the spring AT the start position (not the final centered state)
+  // and fully transparent. Because react-spring flushes through its own rAF
+  // scheduler rather than synchronously in useLayoutEffect, whatever we set
+  // here is what the browser paints on the first frame — starting from the
+  // queue position + opacity 0 guarantees no full-size center flash even if the
+  // measured-DOM correction lands a frame later.
+  //
+  // A duration-based ease (not a physics spring) is used deliberately: the
+  // consumer swaps the flying copy for the resting receipt on a fixed timer
+  // (~600ms). A physics spring only asymptotes toward its target, so at the
+  // swap it is still ~0.1% short (≈0.5px off-center, scale 0.999), and that
+  // last fraction snaps into place when the resting receipt is revealed — a
+  // subtle "pop". FLY_DURATION_MS is comfortably shorter than the swap timer,
+  // so the receipt reaches its EXACT target and holds there before the handoff.
   const [springValues, api] = useSpring(() => ({
-    x: 0,
-    y: 0,
-    scale: 1,
-    rotate: 0,
-    config: { tension: 170, friction: 26, clamp: true },
+    ...fallbackFrom,
+    opacity: 0,
+    config: { duration: FLY_DURATION_MS, easing: easeOutCubic },
   }));
 
   useIsomorphicLayoutEffect(() => {
     const from = computeFrom();
-    // Jump to start position instantly (before paint)
-    api.set(from);
-    // Animate to center
-    api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0 } });
-  }, [receiptId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
+    // Snap to the measured start position while still hidden...
+    api.set({ ...from, opacity: 0 });
+    // ...then fly to center and fade in together.
+    api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 } });
+  }, [receiptId]);
 
   return (
     <animated.div
@@ -107,8 +153,7 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
           (xVal, yVal, scaleVal, rotateVal) =>
             `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`,
         ),
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
+        opacity: springValues.opacity,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -116,7 +161,9 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
         src={imageUrl}
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
+        // Width drives size; height comes from aspect-ratio so the frame stays
+        // the receipt's aspect ratio when max-width clamps it at narrow widths.
+        style={{ width: displayWidth, aspectRatio: `${displayWidth} / ${displayHeight}` }}
         onError={onImageError}
       />
     </animated.div>
