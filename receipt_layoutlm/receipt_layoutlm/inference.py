@@ -412,10 +412,12 @@ class LayoutLMInference:
                         confidences_per_word.append(0.0)
                         all_probabilities_per_word.append({})
                         continue
-                    # Average logits across this word's subtokens, then softmax
-                    # (matches the original per-line semantics exactly).
-                    avg_logits = seq_logits[token_idxs].mean(dim=0)
-                    probs = softmax(avg_logits, dim=-1)
+                    # Use the FIRST subtoken's logits, then softmax. This
+                    # matches training supervision (the trainer labels a word's
+                    # first subtoken and sets the rest to -100) and the Swift
+                    # on-device path, keeping training/Python/Swift consistent.
+                    first_logits = seq_logits[token_idxs[0]]
+                    probs = softmax(first_logits, dim=-1)
                     conf, pred_id = torch.max(probs, dim=-1)
                     labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
                     confidences_per_word.append(float(conf.item()))
