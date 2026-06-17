@@ -2,8 +2,9 @@
 Shared utilities for financial validation sub-agents.
 """
 
-import re
 from typing import Optional
+
+from receipt_dynamo.amounts import parse_receipt_amount
 
 
 def extract_number(text: str) -> Optional[float]:
@@ -32,26 +33,4 @@ def extract_number(text: str) -> Optional[float]:
         >>> extract_number("invalid")
         None
     """
-    if not text:
-        return None
-
-    # Remove currency symbols and clean up
-    clean_text = re.sub(r"[$€£¥₹]", "", text)
-
-    # Detect accounting-style negatives: (123.45) or -123.45
-    # Check for parentheses wrapping the entire text before cleaning
-    is_negative = text.strip().startswith("(") and text.strip().endswith(")")
-
-    clean_text = re.sub(r"[^\d.,-]", "", clean_text)
-    clean_text = clean_text.replace(",", "")
-
-    # Also check for minus sign in cleaned text
-    if "-" in clean_text:
-        is_negative = True
-    clean_text = clean_text.replace("-", "")
-
-    try:
-        value = float(clean_text)
-        return -value if is_negative else value
-    except ValueError:
-        return None
+    return parse_receipt_amount(text)

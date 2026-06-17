@@ -22,6 +22,10 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, ValidationError
+from receipt_dynamo.amounts import (
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
 
@@ -379,18 +383,14 @@ def _format_receipt_text(
 
 def _compute_currency_context(words: List[Dict[str, Any]]) -> str:
     """Extract currency amounts and compute mathematical hints for AMOUNT reclassification."""
-    # Simple currency pattern
-    currency_pattern = re.compile(r"^\$?\d+\.\d{2}$")
-
     amounts = []
     for word in words:
-        text = word.get("text", "").replace(",", "")
-        if currency_pattern.match(text):
-            try:
-                value = float(text.replace("$", ""))
-                amounts.append((text, value, word.get("line_id", 0)))
-            except ValueError:
-                pass
+        text = word.get("text", "")
+        if not looks_like_receipt_amount(text):
+            continue
+        value = parse_receipt_amount(text)
+        if value is not None:
+            amounts.append((text, value, word.get("line_id", 0)))
 
     if not amounts:
         return "No currency amounts detected."

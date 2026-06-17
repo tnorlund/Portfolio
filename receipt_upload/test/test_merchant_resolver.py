@@ -11,7 +11,8 @@ All external services (ChromaDB, DynamoDB, Places API) are mocked.
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 from receipt_upload.merchant_resolution import (
     MerchantResolver,
@@ -19,6 +20,26 @@ from receipt_upload.merchant_resolution import (
     merchant_name_matches_receipt,
     tokenize_text,
 )
+
+TEST_IMAGE_ID = "00000000-0000-4000-8000-000000000001"
+
+
+def _label(
+    line_id: int,
+    word_id: int,
+    label: str,
+    status: str = ValidationStatus.PENDING.value,
+) -> ReceiptWordLabel:
+    return ReceiptWordLabel(
+        image_id=TEST_IMAGE_ID,
+        receipt_id=1,
+        line_id=line_id,
+        word_id=word_id,
+        label=label,
+        reasoning="test",
+        timestamp_added="2026-01-01T00:00:00.000+00:00",
+        validation_status=status,
+    )
 
 
 class TestMerchantResolverTier1Phone:
@@ -57,9 +78,7 @@ class TestMerchantResolverTier1Phone:
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        mock_line = MagicMock(
-            spec=ReceiptLine, line_id=1, text="Matching Store"
-        )
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Matching Store")
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
@@ -150,9 +169,7 @@ class TestMerchantResolverTier1Phone:
         # Should not find a match (current receipt skipped)
         assert result.place_id is None
 
-    def test_no_phone_extracted_proceeds_to_address(
-        self, resolver, mock_lines_client
-    ):
+    def test_no_phone_extracted_proceeds_to_address(self, resolver, mock_lines_client):
         """Test that missing phone proceeds to address tier."""
         words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
         mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
@@ -317,9 +334,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
         fake_embedding = [0.1] * 1536
         line_embeddings = {1: fake_embedding}
 
-        with patch.object(
-            resolver, "_run_place_id_finder", return_value=tier2_result
-        ):
+        with patch.object(resolver, "_run_place_id_finder", return_value=tier2_result):
             result = resolver.resolve(
                 lines_client=mock_lines_client,
                 lines=lines,
@@ -398,9 +413,7 @@ class TestMerchantResolverHelpers:
 
     def test_extract_phone_returns_none_when_missing(self, resolver):
         """Test phone extraction returns None when no phone."""
-        words = [
-            MagicMock(extracted_data={"type": "address", "value": "123 Main"})
-        ]
+        words = [MagicMock(extracted_data={"type": "address", "value": "123 Main"})]
 
         phone = resolver._extract_phone(words)
         assert phone is None
@@ -428,9 +441,7 @@ class TestMerchantResolverHelpers:
 
     def test_extract_merchant_name_from_first_line(self, resolver):
         """Test merchant name extraction from first line."""
-        mock_line1 = MagicMock(
-            spec=ReceiptLine, line_id=2, text="123 Address St"
-        )
+        mock_line1 = MagicMock(spec=ReceiptLine, line_id=2, text="123 Address St")
         mock_line1.calculate_centroid.return_value = (0.5, 0.3)
         mock_line2 = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
         mock_line2.calculate_centroid.return_value = (0.5, 0.1)
@@ -487,9 +498,7 @@ class TestMerchantResolverOCRCrossValidation:
     def test_matching_merchant_passes(self, resolver):
         """Merchant name shares tokens with receipt text → True."""
         lines = [self._make_line(1, "AIM MAIL CENTER #18")]
-        assert resolver._merchant_name_matches_receipt(
-            "AIM Mail Center", lines
-        )
+        assert resolver._merchant_name_matches_receipt("AIM Mail Center", lines)
 
     def test_non_matching_merchant_fails(self, resolver):
         """No token overlap → False."""
@@ -504,9 +513,7 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(1, "WHOLE FOODS MARKET", y=0.1),
             self._make_line(2, "740 N MOORPARK RD", y=0.2),
         ]
-        assert not resolver._merchant_name_matches_receipt(
-            "Mouthful Eatery", lines
-        )
+        assert not resolver._merchant_name_matches_receipt("Mouthful Eatery", lines)
 
     def test_empty_merchant_name_passes(self, resolver):
         """None/empty merchant name should pass (nothing to validate)."""
@@ -575,9 +582,7 @@ class TestMerchantResolverOCRCrossValidation:
             resolution_tier="place_id_finder_agentic",
         )
 
-        with patch.object(
-            resolver, "_run_place_id_finder", return_value=tier2_result
-        ):
+        with patch.object(resolver, "_run_place_id_finder", return_value=tier2_result):
             result = resolver.resolve(
                 lines_client=mock_lines_client,
                 lines=lines,
@@ -721,9 +726,7 @@ class TestMerchantResolverErrorHandling:
         """Create mock ChromaClient."""
         return MagicMock()
 
-    def test_chroma_query_error_is_handled(
-        self, mock_dynamo_client, mock_lines_client
-    ):
+    def test_chroma_query_error_is_handled(self, mock_dynamo_client, mock_lines_client):
         """Test that ChromaDB query errors are handled gracefully."""
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
@@ -795,9 +798,7 @@ class TestMerchantResolverErrorHandling:
         }
 
         # Mock DynamoDB to raise exception
-        mock_dynamo_client.get_receipt_place.side_effect = Exception(
-            "DynamoDB error"
-        )
+        mock_dynamo_client.get_receipt_place.side_effect = Exception("DynamoDB error")
 
         # Provide pre-cached line embeddings
         fake_embedding = [0.1] * 1536
@@ -903,9 +904,7 @@ class TestGetPlaceFromDynamo:
         assert place_id == "ChIJ_test"
         assert merchant_name == "Corrected Name"
 
-    def test_get_place_from_dynamo_no_merchant_name(
-        self, resolver, mock_dynamo_client
-    ):
+    def test_get_place_from_dynamo_no_merchant_name(self, resolver, mock_dynamo_client):
         """DynamoDB has place_id but no merchant_name → falls back to None."""
         mock_place = MagicMock()
         mock_place.place_id = "ChIJ_test"
@@ -917,9 +916,7 @@ class TestGetPlaceFromDynamo:
         assert place_id == "ChIJ_test"
         assert merchant_name is None
 
-    def test_get_place_from_dynamo_invalid_place_id(
-        self, resolver, mock_dynamo_client
-    ):
+    def test_get_place_from_dynamo_invalid_place_id(self, resolver, mock_dynamo_client):
         """Invalid place_id → (None, None)."""
         mock_place = MagicMock()
         mock_place.place_id = "NO_RESULTS"
@@ -1020,9 +1017,7 @@ class TestModuleLevelFunctions:
     def test_module_level_merchant_name_matches_receipt_fail(self):
         """Module-level function detects no token overlap."""
         lines = [self._make_line(1, "AIM MAIL CENTER #18")]
-        assert not merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
-        )
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
     def test_module_level_merchant_name_matches_receipt_none(self):
         """None merchant name passes."""
@@ -1054,9 +1049,7 @@ class TestWriteTimeValidationLogic:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
         # "Sprouts Farmers Market" has no overlap with "AIM MAIL CENTER"
-        assert not merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
-        )
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
     def test_worker_passes_valid_merchant_name(self):
         """Valid merchant_name passes write-time validation."""
@@ -1158,3 +1151,138 @@ class TestMerchantResolverChromaTextGuard:
             )
         assert result.place_id == "ChIJ_strong"
         mock_tier2.assert_not_called()
+
+
+class TestMerchantResolverLabeledFields:
+    """Tests for MERCHANT_NAME/ADDRESS_LINE resolver hints."""
+
+    def test_labeled_places_search_runs_before_chroma(
+        self,
+    ):
+        dynamo = MagicMock()
+        resolver = MerchantResolver(
+            dynamo_client=dynamo,
+            places_client=MagicMock(),
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="Whole",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=2,
+                text="Foods",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=2,
+                word_id=1,
+                text="123",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=2,
+                word_id=2,
+                text="Main",
+                extracted_data={},
+            ),
+        ]
+        line = MagicMock(spec=ReceiptLine, line_id=1, text="Target")
+        line.calculate_centroid.return_value = (0.5, 0.1)
+        labels = [
+            _label(1, 1, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(1, 2, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(2, 1, "ADDRESS_LINE", ValidationStatus.VALID.value),
+            _label(2, 2, "ADDRESS_LINE", ValidationStatus.VALID.value),
+        ]
+        labeled_result = MerchantResult(
+            place_id="ChIJ_whole_foods",
+            merchant_name="Whole Foods Market",
+            confidence=0.92,
+            resolution_tier="place_id_labeled_fields",
+        )
+
+        with (
+            patch.object(
+                resolver,
+                "_run_labeled_place_search",
+                return_value=labeled_result,
+            ) as labeled_search,
+            patch.object(resolver, "_similarity_search") as chroma_search,
+        ):
+            result = resolver.resolve(
+                lines_client=MagicMock(),
+                lines=[line],
+                words=words,
+                image_id="current-image",
+                receipt_id=1,
+                line_embeddings={1: [0.1] * 1536},
+                word_labels=labels,
+            )
+
+        assert result.place_id == "ChIJ_whole_foods"
+        assert result.resolution_tier == "place_id_labeled_fields"
+        labeled_search.assert_called_once_with(
+            merchant_name="Whole Foods",
+            address="123 Main",
+            phone=None,
+        )
+        chroma_search.assert_not_called()
+
+    def test_pending_labeled_fields_do_not_short_circuit_places(self):
+        dynamo = MagicMock()
+        resolver = MerchantResolver(
+            dynamo_client=dynamo,
+            places_client=MagicMock(),
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="Bad",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=2,
+                text="Hint",
+                extracted_data={},
+            ),
+        ]
+        line = MagicMock(spec=ReceiptLine, line_id=1, text="Actual Receipt")
+        line.calculate_centroid.return_value = (0.5, 0.1)
+        labels = [
+            _label(1, 1, "MERCHANT_NAME"),
+            _label(1, 2, "MERCHANT_NAME"),
+        ]
+
+        with (
+            patch.object(resolver, "_run_labeled_place_search") as labeled_search,
+            patch.object(
+                resolver, "_similarity_search", return_value=MerchantResult()
+            ),
+            patch.object(
+                resolver, "_run_place_id_finder", return_value=MerchantResult()
+            ),
+        ):
+            result = resolver.resolve(
+                lines_client=MagicMock(),
+                lines=[line],
+                words=words,
+                image_id="current-image",
+                receipt_id=1,
+                line_embeddings={1: [0.1] * 1536},
+                word_labels=labels,
+            )
+
+        assert result.place_id is None
+        labeled_search.assert_not_called()

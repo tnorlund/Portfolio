@@ -56,6 +56,9 @@ from receipt_upload.label_validation import (
     LightweightLabelValidator,
     LLMBatchValidator,
 )
+from receipt_upload.label_validation.amount_classifier import (
+    classify_amount_labels,
+)
 from receipt_upload.label_validation.label_normalization import (
     normalize_label_alias,
 )
@@ -75,12 +78,17 @@ def _prepare_pending_core_labels(
     dynamo: Any,
     word_labels: List[ReceiptWordLabel],
     label_proposed_by: str,
+    words: Optional[List[ReceiptWord]] = None,
 ) -> List[ReceiptWordLabel]:
-    """Remove non-core pending labels before validation starts."""
+    """Normalize pending labels before validation starts."""
     existing_keys = {
         (label.line_id, label.word_id, label.label) for label in word_labels
     }
     pending_core_labels: List[ReceiptWordLabel] = []
+    allow_amount_llm_fallback = words is not None
+    amount_classifications = (
+        classify_amount_labels(words, word_labels) if words is not None else {}
+    )
 
     for label in list(word_labels):
         if label.validation_status != ValidationStatus.PENDING.value:
@@ -89,6 +97,45 @@ def _prepare_pending_core_labels(
             continue
         if label.label in CORE_LABELS:
             pending_core_labels.append(label)
+            continue
+
+        if label.label == "AMOUNT":
+            amount_decision = amount_classifications.get(
+                (label.line_id, label.word_id)
+            )
+            if amount_decision is None:
+                # Keep AMOUNT only as transient LLM input. Later write paths
+                # delete it unless the LLM replaces it with a CORE_LABEL.
+                if allow_amount_llm_fallback:
+                    pending_core_labels.append(label)
+                    continue
+                dynamo.delete_receipt_word_label(label)
+                word_labels.remove(label)
+                continue
+
+            original_label = label.label
+            dynamo.delete_receipt_word_label(label)
+            word_labels.remove(label)
+
+            mapped_key = (label.line_id, label.word_id, amount_decision.label)
+            if mapped_key in existing_keys:
+                continue
+
+            new_label = ReceiptWordLabel(
+                image_id=label.image_id,
+                receipt_id=label.receipt_id,
+                line_id=label.line_id,
+                word_id=label.word_id,
+                label=amount_decision.label,
+                reasoning=amount_decision.reason,
+                timestamp_added=datetime.now(timezone.utc),
+                validation_status=ValidationStatus.VALID.value,
+                label_proposed_by=f"{label_proposed_by}:{original_label}:deterministic",
+                label_consolidated_from=original_label,
+            )
+            dynamo.add_receipt_word_label(new_label)
+            word_labels.append(new_label)
+            existing_keys.add(mapped_key)
             continue
 
         mapped_label = normalize_label_alias(label.label)
@@ -124,6 +171,35 @@ def _prepare_pending_core_labels(
         pending_core_labels.append(new_label)
 
     return pending_core_labels
+
+
+def _remove_label_from_list(
+    word_labels: List[ReceiptWordLabel],
+    target: ReceiptWordLabel,
+) -> None:
+    """Remove a label entity from the mutable local label payload list."""
+    for index, label in enumerate(word_labels):
+        if (
+            label.image_id == target.image_id
+            and label.receipt_id == target.receipt_id
+            and label.line_id == target.line_id
+            and label.word_id == target.word_id
+            and label.label == target.label
+        ):
+            word_labels.pop(index)
+            return
+
+
+def _delete_non_core_label(
+    dynamo: Any,
+    word_labels: List[ReceiptWordLabel],
+    label: ReceiptWordLabel,
+) -> None:
+    """Delete a transient non-core label from Dynamo and local payload state."""
+    if label.label in CORE_LABELS:
+        return
+    dynamo.delete_receipt_word_label(label)
+    _remove_label_from_list(word_labels, label)
 
 
 def _get_traceable():
@@ -185,6 +261,7 @@ def _run_lines_pipeline_worker(
     local_lines_dir: str,
     lines_data: List[Dict[str, Any]],
     words_data: List[Dict[str, Any]],
+    word_labels_data: List[Dict[str, Any]],
     row_embeddings: List[List[float]],
     row_line_ids_list: List[List[int]],
     image_id: str,
@@ -217,7 +294,7 @@ def _run_lines_pipeline_worker(
     )
     from receipt_chroma.embedding.records import RowEmbeddingRecord
     from receipt_dynamo import DynamoClient
-    from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+    from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
@@ -230,6 +307,7 @@ def _run_lines_pipeline_worker(
         # Reconstruct entities from dicts using **unpacking
         lines = [ReceiptLine(**d) for d in lines_data]
         words = [ReceiptWord(**d) for d in words_data]
+        word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
 
         # Create ChromaClient in this process
         client = ChromaClient(
@@ -272,6 +350,7 @@ def _run_lines_pipeline_worker(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_embeddings=line_embedding_cache,
+                word_labels=word_labels,
             )
 
             # Group lines into visual rows
@@ -455,6 +534,7 @@ def _run_words_pipeline_worker(
                 dynamo=dynamo,
                 word_labels=word_labels,
                 label_proposed_by="non_core_label_guard",
+                words=words,
             )
 
             if pending_labels:
@@ -483,6 +563,10 @@ def _run_words_pipeline_worker(
                             None,
                         )
                         if not word:
+                            continue
+
+                        if label.label == "AMOUNT":
+                            llm_needed.append((word, label))
                             continue
 
                         result = lightweight_validator.validate_label(
@@ -620,6 +704,14 @@ def _run_words_pipeline_worker(
                                 "NEEDS_REVIEW",
                             ):
                                 if llm_result.decision == "VALID":
+                                    if label.label not in CORE_LABELS:
+                                        _delete_non_core_label(
+                                            dynamo=dynamo,
+                                            word_labels=word_labels,
+                                            label=label,
+                                        )
+                                        llm_validated += 1
+                                        continue
                                     # VALID: just update status on existing label
                                     label.validation_status = (
                                         ValidationStatus.VALID.value
@@ -630,6 +722,14 @@ def _run_words_pipeline_worker(
                                     dynamo.update_receipt_word_label(label)
                                     llm_validated += 1
                                 elif llm_result.decision == "NEEDS_REVIEW":
+                                    if label.label not in CORE_LABELS:
+                                        _delete_non_core_label(
+                                            dynamo=dynamo,
+                                            word_labels=word_labels,
+                                            label=label,
+                                        )
+                                        llm_validated += 1
+                                        continue
                                     label.validation_status = (
                                         ValidationStatus.NEEDS_REVIEW.value
                                     )
@@ -649,16 +749,27 @@ def _run_words_pipeline_worker(
                                     # This enforces the constraint that only CORE_LABELS
                                     # are persisted to DynamoDB
                                     if llm_result.label in CORE_LABELS:
-                                        # 1. Mark old label as INVALID (audit trail)
-                                        label.validation_status = (
-                                            ValidationStatus.INVALID.value
-                                        )
-                                        label.label_proposed_by = "llm_invalid"
-                                        label.reasoning = (
-                                            f"Corrected to {llm_result.label}. "
-                                            f"{llm_result.reasoning or ''}"
-                                        )
-                                        dynamo.update_receipt_word_label(label)
+                                        if label.label in CORE_LABELS:
+                                            # 1. Mark old label as INVALID (audit trail)
+                                            label.validation_status = (
+                                                ValidationStatus.INVALID.value
+                                            )
+                                            label.label_proposed_by = (
+                                                "llm_invalid"
+                                            )
+                                            label.reasoning = (
+                                                f"Corrected to {llm_result.label}. "
+                                                f"{llm_result.reasoning or ''}"
+                                            )
+                                            dynamo.update_receipt_word_label(
+                                                label
+                                            )
+                                        else:
+                                            _delete_non_core_label(
+                                                dynamo=dynamo,
+                                                word_labels=word_labels,
+                                                label=label,
+                                            )
 
                                         # 2. Create new label with corrected value
                                         new_label = ReceiptWordLabel(
@@ -678,8 +789,17 @@ def _run_words_pipeline_worker(
                                         dynamo.add_receipt_word_label(
                                             new_label
                                         )
+                                        word_labels.append(new_label)
                                         llm_validated += 1
                                     else:
+                                        if label.label not in CORE_LABELS:
+                                            _delete_non_core_label(
+                                                dynamo=dynamo,
+                                                word_labels=word_labels,
+                                                label=label,
+                                            )
+                                            llm_validated += 1
+                                            continue
                                         # LLM returned invalid label (AMOUNT, TIP, etc.)
                                         # Mark as NEEDS_REVIEW for human intervention
                                         label.validation_status = (
@@ -695,6 +815,14 @@ def _run_words_pipeline_worker(
                                         dynamo.update_receipt_word_label(label)
                                         llm_validated += 1
                                 else:
+                                    if label.label not in CORE_LABELS:
+                                        _delete_non_core_label(
+                                            dynamo=dynamo,
+                                            word_labels=word_labels,
+                                            label=label,
+                                        )
+                                        llm_validated += 1
+                                        continue
                                     # INVALID but same label - just mark as invalid
                                     label.validation_status = (
                                         ValidationStatus.INVALID.value
@@ -710,6 +838,12 @@ def _run_words_pipeline_worker(
                         logging.getLogger(__name__).warning(
                             f"LLM validation failed: {e}"
                         )
+                        for _, label in llm_needed:
+                            _delete_non_core_label(
+                                dynamo=dynamo,
+                                word_labels=word_labels,
+                                label=label,
+                            )
 
                 validation_stats = {
                     "pending_labels": len(pending_labels),
@@ -1057,6 +1191,7 @@ class MerchantResolvingEmbeddingProcessor:
                     local_lines_dir=local_lines_dir,
                     lines_data=lines_data,
                     words_data=words_data,
+                    word_labels_data=word_labels_data,
                     row_embeddings=row_embeddings,
                     row_line_ids_list=row_line_ids_list,
                     image_id=image_id,
@@ -1419,6 +1554,7 @@ class MerchantResolvingEmbeddingProcessor:
             dynamo=self.dynamo,
             word_labels=word_labels,
             label_proposed_by="non_core_label_guard",
+            words=words,
         )
 
         # Count "O" labels for logging
@@ -1465,6 +1601,10 @@ class MerchantResolvingEmbeddingProcessor:
 
         for label in pending_label_entities:
             try:
+                if label.label == "AMOUNT":
+                    labels_needing_llm.append(label)
+                    continue
+
                 result = similarity_validator.validate_label(
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -1674,6 +1814,12 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"ERROR: LLM validation failed: {e}")
             logger.exception("LLM validation failed")
+            for label in labels_needing_llm:
+                _delete_non_core_label(
+                    dynamo=self.dynamo,
+                    word_labels=word_labels,
+                    label=label,
+                )
             return {
                 "labels_validated": chroma_validated_count,
                 "labels_corrected": 0,
@@ -1729,6 +1875,14 @@ class MerchantResolvingEmbeddingProcessor:
                     ]
 
                 if decision == "VALID":
+                    if label_entity.label not in CORE_LABELS:
+                        _delete_non_core_label(
+                            dynamo=self.dynamo,
+                            word_labels=word_labels,
+                            label=label_entity,
+                        )
+                        validated_count += 1
+                        continue
                     # Keep original label, mark as validated
                     label_entity.validation_status = (
                         ValidationStatus.VALID.value
@@ -1758,6 +1912,14 @@ class MerchantResolvingEmbeddingProcessor:
                     )
 
                 elif decision == "NEEDS_REVIEW":
+                    if label_entity.label not in CORE_LABELS:
+                        _delete_non_core_label(
+                            dynamo=self.dynamo,
+                            word_labels=word_labels,
+                            label=label_entity,
+                        )
+                        validated_count += 1
+                        continue
                     # LLM couldn't decide - mark for human review
                     label_entity.validation_status = (
                         ValidationStatus.NEEDS_REVIEW.value
@@ -1792,18 +1954,35 @@ class MerchantResolvingEmbeddingProcessor:
                 elif decision == "INVALID":
                     # LLM invalidated the label and provided a correction
                     if llm_result.label != label_entity.label:
+                        if llm_result.label not in CORE_LABELS:
+                            _delete_non_core_label(
+                                dynamo=self.dynamo,
+                                word_labels=word_labels,
+                                label=label_entity,
+                            )
+                            validated_count += 1
+                            continue
                         # Invalidate old label (keep for audit trail), create new one
                         from datetime import datetime, timezone
 
-                        # 1. Mark old label as INVALID (audit trail)
-                        label_entity.validation_status = (
-                            ValidationStatus.INVALID.value
-                        )
-                        label_entity.reasoning = (
-                            f"Invalidated by LLM - corrected to {llm_result.label}. "
-                            f"{llm_result.reasoning}"
-                        )
-                        self.dynamo.update_receipt_word_label(label_entity)
+                        if label_entity.label in CORE_LABELS:
+                            # 1. Mark old label as INVALID (audit trail)
+                            label_entity.validation_status = (
+                                ValidationStatus.INVALID.value
+                            )
+                            label_entity.reasoning = (
+                                f"Invalidated by LLM - corrected to {llm_result.label}. "
+                                f"{llm_result.reasoning}"
+                            )
+                            self.dynamo.update_receipt_word_label(
+                                label_entity
+                            )
+                        else:
+                            _delete_non_core_label(
+                                dynamo=self.dynamo,
+                                word_labels=word_labels,
+                                label=label_entity,
+                            )
 
                         # 2. Create new label with corrected value
                         new_label = ReceiptWordLabel(
@@ -1819,6 +1998,7 @@ class MerchantResolvingEmbeddingProcessor:
                             label_consolidated_from=label_entity.label,
                         )
                         self.dynamo.add_receipt_word_label(new_label)
+                        word_labels.append(new_label)
                         corrected_count += 1
 
                         # Log correction to Langsmith
@@ -1844,6 +2024,14 @@ class MerchantResolvingEmbeddingProcessor:
                             f"Corrected {word_id}: {label_entity.label} -> {llm_result.label}"
                         )
                     else:
+                        if label_entity.label not in CORE_LABELS:
+                            _delete_non_core_label(
+                                dynamo=self.dynamo,
+                                word_labels=word_labels,
+                                label=label_entity,
+                            )
+                            validated_count += 1
+                            continue
                         # Same label, just validate it
                         label_entity.validation_status = (
                             ValidationStatus.VALID.value
@@ -1873,6 +2061,14 @@ class MerchantResolvingEmbeddingProcessor:
                         )
 
                 else:
+                    if label_entity.label not in CORE_LABELS:
+                        _delete_non_core_label(
+                            dynamo=self.dynamo,
+                            word_labels=word_labels,
+                            label=label_entity,
+                        )
+                        validated_count += 1
+                        continue
                     label_entity.validation_status = (
                         ValidationStatus.NEEDS_REVIEW.value
                     )
