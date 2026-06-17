@@ -499,3 +499,137 @@ class LayoutLMInference:
                 "model_dir": self._model_dir,
             },
         )
+
+    def predict_receipt_windowed(
+        self,
+        image_id: str,
+        receipt_id: int,
+        words: List[Any],
+        window_size: Optional[int] = None,
+        stride: Optional[int] = None,
+    ) -> InferenceResult:
+        """Run inference over sliding windows that mirror training.
+
+        Training builds examples by sorting a receipt's words by ascending
+        normalized (y, x) and cutting ``window_size``-word windows with
+        ``stride`` step (see
+        ``data_loader._build_receipt_window_examples``). The per-line path used
+        elsewhere instead feeds one line at a time, so the model never sees the
+        multi-line context it was trained on. This method reproduces the
+        training windowing, predicts each window (batched), averages per-label
+        probabilities for words that fall in overlapping windows, and returns
+        the result as per-line ``LinePrediction``s so downstream code is
+        unchanged.
+
+        window_size/stride default to the same env vars training reads
+        (LAYOUTLM_WINDOW_SIZE / LAYOUTLM_WINDOW_STRIDE), so setting them to the
+        values a model trained with makes inference match it exactly.
+        """
+        if window_size is None:
+            window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "250"))
+        if stride is None:
+            stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "200"))
+
+        # Per-receipt extents → normalized boxes (matches training + per-line).
+        max_x = max_y = 0.0
+        raw: List[Tuple[int, int, str, Tuple[float, float, float, float]]] = []
+        for w in words:
+            x0, y0, x1, y1 = _box_from_word(w)
+            max_x = max(max_x, x1)
+            max_y = max(max_y, y1)
+            raw.append((w.line_id, w.word_id, w.text, (x0, y0, x1, y1)))
+
+        if not raw:
+            return InferenceResult(
+                image_id=image_id, receipt_id=receipt_id, lines=[], meta={}
+            )
+
+        items = [
+            (
+                lid,
+                wid,
+                text,
+                _normalize_box_from_extents(
+                    b[0], b[1], b[2], b[3], max_x, max_y
+                ),
+            )
+            for (lid, wid, text, b) in raw
+        ]
+
+        # Order words by ascending normalized (y, x) — the EXACT key training
+        # uses (data_loader._build_receipt_window_examples). NB: boxes come from
+        # Apple Vision (origin bottom-left, y increases upward), so this is not
+        # human top-to-bottom — but matching training is the whole point, so do
+        # NOT "correct" it here without also changing the trainer.
+        order = sorted(
+            range(len(items)),
+            key=lambda i: (items[i][3][1], items[i][3][0]),
+        )
+        ordered = [items[i] for i in order]
+        tokens = [it[2] for it in ordered]
+        boxes = [it[3] for it in ordered]
+        n = len(ordered)
+
+        starts = [0] if n <= window_size else list(range(0, n, stride))
+        win_tokens = [tokens[s : min(s + window_size, n)] for s in starts]
+        win_boxes = [boxes[s : min(s + window_size, n)] for s in starts]
+        win_preds = self.predict_lines(win_tokens, win_boxes)
+
+        # Average per-label probabilities across windows covering each word.
+        prob_sums: List[Optional[Dict[str, float]]] = [None] * n
+        prob_counts: List[int] = [0] * n
+        for wi, s in enumerate(starts):
+            for j, ap in enumerate(win_preds[wi].all_probabilities or []):
+                oi = s + j
+                if oi >= n:
+                    break
+                bucket = prob_sums[oi]
+                if bucket is None:
+                    bucket = {}
+                    prob_sums[oi] = bucket
+                for k, v in ap.items():
+                    bucket[k] = bucket.get(k, 0.0) + v
+                prob_counts[oi] += 1
+
+        # Finalize each word, then regroup into per-line predictions ordered by
+        # word_id (the order downstream token→word matching expects).
+        by_line: Dict[int, List[Tuple[int, str, str, float, Dict[str, float]]]] = {}
+        for oi in range(n):
+            lid, wid, text, _box = ordered[oi]
+            sums = prob_sums[oi]
+            cnt = prob_counts[oi]
+            if not sums or cnt == 0:
+                by_line.setdefault(lid, []).append((wid, text, "O", 0.0, {}))
+                continue
+            probs = {k: v / cnt for k, v in sums.items()}
+            label = max(probs, key=probs.get)
+            by_line.setdefault(lid, []).append(
+                (wid, text, label, probs[label], probs)
+            )
+
+        lines: List[LinePrediction] = []
+        for lid in sorted(by_line):
+            ws = sorted(by_line[lid], key=lambda t: t[0])
+            lines.append(
+                LinePrediction(
+                    line_id=lid,
+                    tokens=[t[1] for t in ws],
+                    boxes=[],
+                    labels=[t[2] for t in ws],
+                    confidences=[t[3] for t in ws],
+                    all_probabilities=[t[4] for t in ws],
+                )
+            )
+
+        return InferenceResult(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            lines=lines,
+            meta={
+                "windowed": True,
+                "window_size": window_size,
+                "stride": stride,
+                "num_windows": len(starts),
+                "num_words": n,
+            },
+        )

@@ -418,16 +418,24 @@ def build_receipt_record(
     Returns ``(record, y_true_lines, y_pred_lines)`` where the two sequence lists
     are per-line BIO tag lists suitable for seqeval entity-level scoring.
     """
-    tokens_per_line, boxes_per_line, line_ids = _receipt_line_inputs(details)
     t0 = time.perf_counter()
-    line_preds = infer.predict_lines(tokens_per_line, boxes_per_line, line_ids)
+    # Default to windowed inference (matches how the model was trained); set
+    # LAYOUTLM_INFERENCE_MODE=per_line to A/B against the legacy per-line path.
+    if os.getenv("LAYOUTLM_INFERENCE_MODE", "windowed") == "windowed":
+        inference_result = infer.predict_receipt_windowed(
+            image_id, receipt_id, details.words
+        )
+    else:
+        tokens_per_line, boxes_per_line, line_ids = _receipt_line_inputs(details)
+        inference_result = InferenceResult(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            lines=infer.predict_lines(
+                tokens_per_line, boxes_per_line, line_ids
+            ),
+            meta={},
+        )
     inference_time_ms = (time.perf_counter() - t0) * 1000.0
-    inference_result = InferenceResult(
-        image_id=image_id,
-        receipt_id=receipt_id,
-        lines=line_preds,
-        meta={},
-    )
 
     # Ground truth (base labels, keyed by (line_id, word_id) since word_id is
     # only unique within a line).
