@@ -424,6 +424,21 @@ def main() -> None:
         help="Val receipts to persist per epoch for scrubbing (default: 5)",
     )
     eval_p.add_argument(
+        "--window-size",
+        type=int,
+        default=None,
+        help=(
+            "Inference window size; overrides the run's recorded value. "
+            "Default: run.json window_size, else 200 (data_loader default)"
+        ),
+    )
+    eval_p.add_argument(
+        "--window-stride",
+        type=int,
+        default=None,
+        help="Inference window stride; overrides the run's recorded value",
+    )
+    eval_p.add_argument(
         "--allow-hash-mismatch",
         action="store_true",
         help=(
@@ -663,6 +678,8 @@ def main() -> None:
             seed=args.seed,
             max_receipts=args.max_receipts,
             num_showcase=args.num_showcase,
+            window_size=args.window_size,
+            window_stride=args.window_stride,
             allow_hash_mismatch=args.allow_hash_mismatch,
         )
 

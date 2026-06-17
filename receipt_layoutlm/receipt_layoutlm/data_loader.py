@@ -39,6 +39,11 @@ class SplitMetadata:
     # reproduce the exact held-out set even after the labeled data drifts, which
     # the hash alone cannot guarantee.
     val_receipt_keys: Optional[List[str]] = None
+    # Sliding-window config used to build training examples. Persisted so
+    # per-epoch evaluation windows inference identically to training (a
+    # different window/stride shifts the F1 curve by inference, not quality).
+    window_size: Optional[int] = None
+    window_stride: Optional[int] = None
 
 
 @dataclass
@@ -682,6 +687,8 @@ def load_datasets(
         target_o_entity_ratio=target_ratio,
         image_cache_dir=image_cache_dir,
         val_receipt_keys=sorted(val_receipts_list),
+        window_size=window_size,
+        window_stride=window_stride,
     )
 
     # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()

@@ -247,6 +247,12 @@ def handler(event, context):
         args += ["--max-receipts", str(event["max_receipts"])]
     if event.get("num_showcase") is not None:
         args += ["--num-showcase", str(event["num_showcase"])]
+    # Window config: forward when the caller knows the run's training values
+    # (runs predating window persistence don't record them in run.json).
+    if event.get("window_size") is not None:
+        args += ["--window-size", str(event["window_size"])]
+    if event.get("window_stride") is not None:
+        args += ["--window-stride", str(event["window_stride"])]
     # Older runs (pre val_receipt_keys persistence) drift, so default to
     # tolerating a hash mismatch unless the caller explicitly forbids it.
     if event.get("allow_hash_mismatch", True):

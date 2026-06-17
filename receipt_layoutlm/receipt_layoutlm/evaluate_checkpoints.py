@@ -658,6 +658,8 @@ def evaluate_run(
     seed: Optional[int] = None,
     max_receipts: Optional[int] = None,
     num_showcase: int = 5,
+    window_size: Optional[int] = None,
+    window_stride: Optional[int] = None,
     allow_hash_mismatch: bool = False,
     s3_client: Any = None,
 ) -> Dict[str, Any]:
@@ -693,6 +695,35 @@ def evaluate_run(
     split_meta = (run_json.get("split_metadata") or {}) if run_json else {}
     recorded_hash = split_meta.get("val_receipts_hash")
     recorded_seed = split_meta.get("random_seed")
+
+    # Window inference exactly as the run trained. Precedence: explicit arg >
+    # the run's recorded window config > env > data_loader defaults (200/150).
+    # Export to env so predict_receipt_windowed (called without window args in
+    # build_receipt_record) uses the resolved values.
+    resolved_ws = (
+        window_size
+        if window_size is not None
+        else split_meta.get("window_size")
+        if split_meta.get("window_size") is not None
+        else int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
+    )
+    resolved_stride = (
+        window_stride
+        if window_stride is not None
+        else split_meta.get("window_stride")
+        if split_meta.get("window_stride") is not None
+        else int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
+    )
+    os.environ["LAYOUTLM_WINDOW_SIZE"] = str(resolved_ws)
+    os.environ["LAYOUTLM_WINDOW_STRIDE"] = str(resolved_stride)
+    logger.info(
+        "Windowed inference config: window_size=%s stride=%s (source: %s)",
+        resolved_ws,
+        resolved_stride,
+        "arg" if window_size is not None
+        else "run.json" if split_meta.get("window_size") is not None
+        else "env/default",
+    )
 
     persisted_keys = split_meta.get("val_receipt_keys")
     if persisted_keys:
@@ -881,6 +912,9 @@ def evaluate_run(
         "label_list": label_list,
         "label_merges": label_merges,
         "metric": "seqeval_entity_f1",
+        "inference_mode": os.getenv("LAYOUTLM_INFERENCE_MODE", "windowed"),
+        "window_size": resolved_ws,
+        "window_stride": resolved_stride,
         "epochs": epoch_entries,
         "best_epoch_heldout": (best_entry["epoch"] if best_entry else None),
         "best_checkpoint_heldout": (

@@ -155,7 +155,9 @@ class LayoutLMInference:
         with open(path, "r") as f:
             config = json.load(f)
 
-        self._label_merges = config.get("label_merges", {})
+        # Runs trained without merges serialize "label_merges": null, so
+        # `.get(..., {})` still yields None — coalesce to {} to avoid a crash.
+        self._label_merges = config.get("label_merges") or {}
 
         # Build reverse mapping: original_label -> merged_label
         for merged_label, original_labels in self._label_merges.items():
@@ -525,10 +527,13 @@ class LayoutLMInference:
         (LAYOUTLM_WINDOW_SIZE / LAYOUTLM_WINDOW_STRIDE), so setting them to the
         values a model trained with makes inference match it exactly.
         """
+        # Default to the trainer's data_loader defaults (NOT 250/200) so an
+        # unconfigured eval scores under the same windowing the model trained
+        # with. Callers should pass the run's actual window config when known.
         if window_size is None:
-            window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "250"))
+            window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
         if stride is None:
-            stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "200"))
+            stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
 
         # Per-receipt extents → normalized boxes (matches training + per-line).
         max_x = max_y = 0.0
