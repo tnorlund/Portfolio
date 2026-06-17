@@ -44,6 +44,7 @@ import json
 import logging
 import os
 import random
+import shutil
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -244,6 +245,51 @@ def list_checkpoints(
     if best is not None:
         checkpoints.append(best)
     return checkpoints
+
+
+# Only these files are needed to load a model for inference. Crucially this
+# excludes optimizer.pt (~900MB) / scheduler.pt / rng_state, which would
+# otherwise be downloaded for every checkpoint.
+_INFERENCE_FILES = (
+    "config.json",
+    "model.safetensors",
+    "pytorch_model.bin",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.txt",
+    "special_tokens_map.json",
+    "preprocessor_config.json",
+)
+
+
+def _download_checkpoint_files(
+    s3: Any,
+    ckpt_s3_uri: str,
+    dest: str,
+    run_json: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Download just the inference files of a checkpoint into ``dest``.
+
+    Also writes ``run.json`` locally so ``LayoutLMInference`` picks up the
+    label-merge config without a second S3 round trip. Skips the large
+    optimizer/scheduler state that is irrelevant to inference.
+    """
+    os.makedirs(dest, exist_ok=True)
+    bucket, prefix = _parse_s3_uri(ckpt_s3_uri)
+    if not prefix.endswith("/"):
+        prefix += "/"
+    for fname in _INFERENCE_FILES:
+        try:
+            s3.download_file(bucket, prefix + fname, os.path.join(dest, fname))
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Most checkpoints have only one of safetensors/bin; missing
+            # optional files are expected.
+            continue
+    if run_json is not None:
+        with open(
+            os.path.join(dest, "run.json"), "w", encoding="utf-8"
+        ) as f:
+            json.dump(run_json, f)
 
 
 def _has_weights(s3: Any, bucket: str, prefix: str) -> bool:
@@ -562,6 +608,38 @@ def _token_accuracy(
 # ----------------------------------------------------------------------------
 
 
+def _score_checkpoint(
+    infer: LayoutLMInference,
+    details_by_receipt: Dict[Tuple[str, int], Any],
+    showcase_keys: List[str],
+    valid_status: Any,
+) -> Tuple[List[List[str]], List[List[str]], Dict[str, Dict[str, Any]]]:
+    """Run one checkpoint over all val receipts; collect sequences + showcase.
+
+    Returns ``(y_true_lines, y_pred_lines, showcase_records)`` where the records
+    dict is keyed by ``"image_id_receipt_id"`` for the showcase subset.
+    """
+    all_true: List[List[str]] = []
+    all_pred: List[List[str]] = []
+    showcase: Dict[str, Dict[str, Any]] = {}
+    for (image_id, receipt_id), details in details_by_receipt.items():
+        try:
+            record, yt, yp = build_receipt_record(
+                infer, details, image_id, receipt_id, valid_status=valid_status
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Inference failed for %s/%s: %s", image_id, receipt_id, e
+            )
+            continue
+        all_true.extend(yt)
+        all_pred.extend(yp)
+        key = f"{image_id}_{receipt_id}"
+        if key in showcase_keys:
+            showcase[key] = record
+    return all_true, all_pred, showcase
+
+
 def evaluate_run(
     *,
     dynamo: Any,
@@ -703,44 +781,29 @@ def evaluate_run(
         step = ckpt["step"]
         logger.info("Evaluating checkpoint %s", name)
         model_cache = os.path.join(output_dir, "_models", name)
-        infer = LayoutLMInference(
-            model_dir=model_cache, model_s3_uri=ckpt["s3_uri"]
-        )
-        if label_list is None:
-            label_list = infer.label_list
-            label_merges = infer.label_merges
+        try:
+            # Pull only inference files (not optimizer state) and load locally.
+            _download_checkpoint_files(
+                s3_client, ckpt["s3_uri"], model_cache, run_json=run_json
+            )
+            infer = LayoutLMInference(model_dir=model_cache)
+            if label_list is None:
+                label_list = infer.label_list
+                label_merges = infer.label_merges
 
-        all_true: List[List[str]] = []
-        all_pred: List[List[str]] = []
-        epoch_num = step_to_epoch.get(step) if step is not None else None
-        epoch_label = (
-            epoch_num
-            if epoch_num is not None
-            else (name if name == "best" else step)
-        )
+            epoch_num = step_to_epoch.get(step) if step is not None else None
+            epoch_label = (
+                epoch_num
+                if epoch_num is not None
+                else (name if name == "best" else step)
+            )
 
-        for (image_id, receipt_id), details in details_by_receipt.items():
-            try:
-                record, yt, yp = build_receipt_record(
-                    infer,
-                    details,
-                    image_id,
-                    receipt_id,
-                    valid_status=valid_status,
-                )
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.warning(
-                    "Inference failed for %s/%s @ %s: %s",
-                    image_id,
-                    receipt_id,
-                    name,
-                    e,
-                )
-                continue
-            all_true.extend(yt)
-            all_pred.extend(yp)
+            all_true, all_pred, showcase = _score_checkpoint(
+                infer, details_by_receipt, showcase_keys, valid_status
+            )
 
-            if f"{image_id}_{receipt_id}" in showcase_keys:
+            for key, record in showcase.items():
+                img, rid = key.rsplit("_", 1)
                 showcase_dir = os.path.join(
                     output_dir, "receipts", f"epoch-{epoch_label}"
                 )
@@ -749,38 +812,38 @@ def evaluate_run(
                 record["checkpoint"] = name
                 record["label_list"] = label_list
                 with open(
-                    os.path.join(
-                        showcase_dir,
-                        f"receipt-{image_id}-{receipt_id}.json",
-                    ),
+                    os.path.join(showcase_dir, f"receipt-{img}-{rid}.json"),
                     "w",
                     encoding="utf-8",
                 ) as f:
                     json.dump(record, f, default=str)
 
-        scores = _seqeval_scores(all_true, all_pred)
-        entry = {
-            "checkpoint": name,
-            "step": step,
-            "epoch": epoch_num,
-            "heldout_f1": scores["f1"],
-            "heldout_precision": scores["precision"],
-            "heldout_recall": scores["recall"],
-            "heldout_metric": scores["metric"],
-            "per_label_f1": scores["per_label_f1"],
-            "token_accuracy": _token_accuracy(all_true, all_pred),
-            "training_reported_f1": (
-                step_to_f1.get(step) if step is not None else None
-            ),
-            "num_receipts_evaluated": len(details_by_receipt),
-        }
-        epoch_entries.append(entry)
-        logger.info(
-            "  %s: held-out F1=%.4f (training reported=%s)",
-            name,
-            entry["heldout_f1"],
-            entry["training_reported_f1"],
-        )
+            scores = _seqeval_scores(all_true, all_pred)
+            entry = {
+                "checkpoint": name,
+                "step": step,
+                "epoch": epoch_num,
+                "heldout_f1": scores["f1"],
+                "heldout_precision": scores["precision"],
+                "heldout_recall": scores["recall"],
+                "heldout_metric": scores["metric"],
+                "per_label_f1": scores["per_label_f1"],
+                "token_accuracy": _token_accuracy(all_true, all_pred),
+                "training_reported_f1": (
+                    step_to_f1.get(step) if step is not None else None
+                ),
+                "num_receipts_evaluated": len(details_by_receipt),
+            }
+            epoch_entries.append(entry)
+            logger.info(
+                "  %s: held-out F1=%.4f (training reported=%s)",
+                name,
+                entry["heldout_f1"],
+                entry["training_reported_f1"],
+            )
+        finally:
+            # Free disk before the next checkpoint (~450MB weights each).
+            shutil.rmtree(model_cache, ignore_errors=True)
 
     # Best epoch by held-out F1, excluding the synthetic "best" alias so the
     # winner is an actual epoch the curve can point at.
