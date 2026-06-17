@@ -38,7 +38,9 @@
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,
-    transform 0.2s ease;
+    transform 0.2s ease,
+    top 0.4s ease,
+    opacity 0.2s ease;
 }
 
 .flowQueuedReceipt:hover,
@@ -88,9 +90,14 @@
      to a smaller resting size on handoff. Falls back to natural sizing if the
      vars are unset; mobile overrides back to responsive sizing below. */
   width: var(--flow-receipt-w, auto);
-  height: var(--flow-receipt-h, auto);
+  height: auto;
+  aspect-ratio: var(--flow-receipt-ar, auto);
   max-height: 500px;
   max-width: 100%;
+  /* contain + aspect-ratio: when the narrow-width column clamps the box width,
+     the height scales with it (aspect-ratio) and the image keeps its true
+     aspect ratio (contain), so it can't distort or shift vs the flying copy. */
+  object-fit: contain;
 }
 
 .flowReceiptLoading {
@@ -108,6 +115,10 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  /* The flying receipt is a plain image with no evidence boxes; the resting
+     receipt adds these highlight rects. Fade them in so they don't pop in the
+     instant the flying copy is swapped for the static receipt. */
+  animation: receipt-health-overlay-fade 0.3s ease-out both;
 }
 
 .flowEntityLegend {
@@ -287,6 +298,16 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes receipt-health-overlay-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 
@@ -1729,6 +1750,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .flowActiveReceipt,
+  .flowSvgOverlay,
   .validationReasonSlot {
     animation: none;
     transition: none;

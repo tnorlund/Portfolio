@@ -45,7 +45,8 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receiptId,
   queueItemWidth = 100,
   queueItemLeftInset = 10,
-  borderWidth = 1,
+  // borderWidth is kept in the props interface for API compatibility; the
+  // 1px border is now applied purely in CSS (.flyingReceipt).
   onImageError,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,16 +78,34 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     const target = shell.querySelector("[data-rf-target]");
     if (!queuePane || !target) return fallback;
 
-    const queueRect = queuePane.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-
-    // Source center: queue pane left + inset + leftOffset + half item width
-    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
-    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
-
     // Target center: center of the flying container
     const targetCenterX = targetRect.left + targetRect.width / 2;
     const targetCenterY = targetRect.top + targetRect.height / 2;
+
+    // Launch from the actual queue card this receipt is flying from, so the
+    // flight lifts off exactly where the thumbnail sits. Prefer the card whose
+    // id matches the flying receipt (handles manually selecting a non-top
+    // card); fall back to the top card. The card's rendered height is far
+    // taller than queueItemWidth, so the old square-item estimate
+    // (queueRect.top + queueItemWidth/2) started the flight well above the card.
+    const sourceCard =
+      queuePane.querySelector(`[data-rf-card-id="${receiptId}"]`) ??
+      queuePane.firstElementChild;
+    if (sourceCard) {
+      const cardRect = sourceCard.getBoundingClientRect();
+      return {
+        x: cardRect.left + cardRect.width / 2 - targetCenterX,
+        y: cardRect.top + cardRect.height / 2 - targetCenterY,
+        scale: queueItemWidth / Math.max(displayWidth, 1),
+        rotate: rotation,
+      };
+    }
+
+    // Fallback: estimate the source from queue-pane geometry.
+    const queueRect = queuePane.getBoundingClientRect();
+    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
+    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
 
     return {
       x: sourceCenterX - targetCenterX,
@@ -124,9 +143,6 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 } });
   }, [receiptId]);
 
-  const totalWidth = displayWidth + borderWidth * 2;
-  const totalHeight = displayHeight + borderWidth * 2;
-
   return (
     <animated.div
       ref={containerRef}
@@ -138,8 +154,6 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
             `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`,
         ),
         opacity: springValues.opacity,
-        marginLeft: -totalWidth / 2,
-        marginTop: -totalHeight / 2,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -147,7 +161,9 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
         src={imageUrl}
         alt="Flying receipt"
         className={styles.flyingReceiptImage}
-        style={{ width: displayWidth, height: displayHeight }}
+        // Width drives size; height comes from aspect-ratio so the frame stays
+        // the receipt's aspect ratio when max-width clamps it at narrow widths.
+        style={{ width: displayWidth, aspectRatio: `${displayWidth} / ${displayHeight}` }}
         onError={onImageError}
       />
     </animated.div>

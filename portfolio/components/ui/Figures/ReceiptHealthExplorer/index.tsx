@@ -1717,11 +1717,15 @@ function ReceiptHealthFlowQueue({
   receipts,
   currentIndex,
   formatSupport,
+  isTransitioning,
+  transitionTargetIndex,
   onSelect,
 }: {
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
   formatSupport: ImageFormatSupport | null;
+  isTransitioning: boolean;
+  transitionTargetIndex: number | null;
   onSelect: (index: number) => void;
 }) {
   const visibleIndices = useMemo(() => {
@@ -1741,6 +1745,14 @@ function ReceiptHealthFlowQueue({
     return <div className={styles.flowReceiptQueue} />;
   }
 
+  // Stack position of the card currently flying to center. For auto-rotate this
+  // is the top card (0); for a manual selection it can be any card deeper in the
+  // stack — the one whose receipt index matches the transition target.
+  const flyingStackIndex =
+    isTransitioning && transitionTargetIndex !== null
+      ? visibleIndices.indexOf(transitionTargetIndex)
+      : -1;
+
   return (
     <div className={styles.flowReceiptQueue} data-rf-queue>
       {visibleIndices.map((receiptIndex, stackIndex) => {
@@ -1749,17 +1761,36 @@ function ReceiptHealthFlowQueue({
         const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptId);
 
+        // Hide the card that's flying to center so it doesn't sit in the stack
+        // as a duplicate of the flying copy, and slide the cards below it up to
+        // fill the gap (cards above it stay put).
+        const isFlying = stackIndex === flyingStackIndex;
+        const adjustedIndex =
+          flyingStackIndex >= 0 && stackIndex > flyingStackIndex
+            ? stackIndex - 1
+            : stackIndex;
+
         return (
           <button
             key={`${receiptId}-mock-${receiptIndex}`}
             type="button"
             className={styles.flowQueuedReceipt}
+            // Used by FlyingReceipt.computeFrom to launch the flight from this
+            // exact card (e.g. when a non-top card is selected manually).
+            data-rf-card-id={receiptId}
             style={{
-              top: `${stackIndex * 20}px`,
+              top: `${Math.max(0, adjustedIndex) * 20}px`,
               left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
+              opacity: isFlying ? 0 : 1,
+              // While hidden (flying to center) the card must not be an invisible
+              // interactive target that intercepts clicks/focus.
+              pointerEvents: isFlying ? "none" : undefined,
               zIndex: visibleIndices.length - stackIndex,
             }}
+            aria-hidden={isFlying}
+            disabled={isFlying}
+            tabIndex={isFlying ? -1 : 0}
             onClick={() => onSelect(receiptIndex)}
             aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
           >
@@ -1837,6 +1868,7 @@ function ReceiptHealthFlowReceipt({
       style={{
         "--flow-receipt-w": `${displayWidth}px`,
         "--flow-receipt-h": `${displayHeight}px`,
+        "--flow-receipt-ar": `${displayWidth} / ${displayHeight}`,
       } as React.CSSProperties}
     >
       <div className={styles.flowReceiptImageWrapper}>
@@ -2814,6 +2846,8 @@ export default function ReceiptHealthExplorer() {
             receipts={receipts}
             currentIndex={currentIndex}
             formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
+            transitionTargetIndex={transitionTargetIndex}
             onSelect={selectReceipt}
           />
         }
