@@ -19,6 +19,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
+from receipt_dynamo.amounts import (
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_dynamo import ReceiptWordLabel
 from receipt_dynamo.entities import ReceiptWord
 
@@ -62,18 +66,12 @@ logger = logging.getLogger(__name__)
 
 def is_currency_amount(text: str) -> bool:
     """Check if text looks like a currency amount."""
-    text = text.strip()
-    # Match $X.XX, X.XX, or X.XX patterns (with optional $ and commas)
-    return bool(re.match(r"^\$?\d{1,3}(,\d{3})*\.\d{2}$", text))
+    return looks_like_receipt_amount(text)
 
 
 def parse_currency_value(text: str) -> Optional[float]:
     """Parse currency text to float value."""
-    text = text.strip().replace("$", "").replace(",", "")
-    try:
-        return float(text)
-    except ValueError:
-        return None
+    return parse_receipt_amount(text)
 
 
 def _group_words_into_ocr_lines(

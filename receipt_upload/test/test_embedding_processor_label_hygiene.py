@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
@@ -18,6 +19,10 @@ def _label(label: str) -> ReceiptWordLabel:
         timestamp_added="2026-01-01T00:00:00+00:00",
         validation_status=ValidationStatus.PENDING.value,
     )
+
+
+def _word(word_id: int, text: str) -> SimpleNamespace:
+    return SimpleNamespace(line_id=1, word_id=word_id, text=text)
 
 
 def test_prepare_pending_core_labels_maps_safe_aliases():
@@ -51,4 +56,46 @@ def test_prepare_pending_core_labels_deletes_ambiguous_labels():
 
     assert pending == []
     dynamo.delete_receipt_word_label.assert_called_once_with(original)
+    dynamo.add_receipt_word_label.assert_not_called()
+
+
+def test_prepare_pending_core_labels_classifies_amount_with_context():
+    dynamo = MagicMock()
+    original = _label("AMOUNT")
+    original.word_id = 2
+    word_labels = [original]
+
+    pending = _prepare_pending_core_labels(
+        dynamo=dynamo,
+        word_labels=word_labels,
+        label_proposed_by="test_guard",
+        words=[_word(1, "Subtotal"), _word(2, "$8,82")],
+    )
+
+    assert pending == []
+    assert original not in word_labels
+    dynamo.delete_receipt_word_label.assert_called_once_with(original)
+    dynamo.add_receipt_word_label.assert_called_once()
+    added = dynamo.add_receipt_word_label.call_args.args[0]
+    assert added.label == "SUBTOTAL"
+    assert added.validation_status == ValidationStatus.VALID.value
+    assert added in word_labels
+
+
+def test_prepare_pending_core_labels_keeps_ambiguous_amount_for_llm_with_context():
+    dynamo = MagicMock()
+    original = _label("AMOUNT")
+    original.word_id = 2
+    word_labels = [original]
+
+    pending = _prepare_pending_core_labels(
+        dynamo=dynamo,
+        word_labels=word_labels,
+        label_proposed_by="test_guard",
+        words=[_word(1, "Random"), _word(2, "$8.82")],
+    )
+
+    assert pending == [original]
+    assert word_labels == [original]
+    dynamo.delete_receipt_word_label.assert_not_called()
     dynamo.add_receipt_word_label.assert_not_called()

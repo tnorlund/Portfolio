@@ -31,7 +31,8 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
 )
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,7 @@ class MerchantResolver:
         image_id: str,
         receipt_id: int,
         line_embeddings: Optional[Dict[int, List[float]]] = None,
+        word_labels: Optional[List[ReceiptWordLabel]] = None,
     ) -> MerchantResult:  # pylint: disable=too-many-positional-arguments
         """
         Resolve merchant information for a receipt.
@@ -249,7 +251,8 @@ class MerchantResolver:
             image_id: Current receipt's image_id
             receipt_id: Current receipt's receipt_id
             line_embeddings: Optional cached embeddings from orchestration
-                             (avoids redundant OpenAI API calls)
+                            (avoids redundant OpenAI API calls)
+            word_labels: Optional labels for MERCHANT_NAME/ADDRESS_LINE hints
 
         Returns:
             MerchantResult with resolved merchant information
@@ -274,6 +277,7 @@ class MerchantResolver:
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_embeddings=line_embeddings,
+                word_labels=word_labels,
             )
 
         return _traced_resolve()
@@ -286,6 +290,7 @@ class MerchantResolver:
         image_id: str,
         receipt_id: int,
         line_embeddings: Optional[Dict[int, List[float]]] = None,
+        word_labels: Optional[List[ReceiptWordLabel]] = None,
     ) -> MerchantResult:
         """Implementation of resolve() - called within trace context."""
         # Store embeddings cache for use in _similarity_search
@@ -293,16 +298,39 @@ class MerchantResolver:
         # Store receipt lines for merchant name cross-validation
         self._receipt_lines = lines
         # Extract contact info from receipt
+        word_labels = word_labels or []
+        labeled_merchant_name = self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME"
+        )
+        labeled_address = self._extract_labeled_text(
+            words, word_labels, "ADDRESS_LINE"
+        )
         phone = self._extract_phone(words)
-        address = self._extract_address(words)
+        address = labeled_address or self._extract_address(words)
 
         _log(
-            "Resolving merchant for %s#%d (phone=%s, address=%s...)",
+            "Resolving merchant for %s#%d (merchant_hint=%s, phone=%s, address=%s...)",
             image_id[:8],
             receipt_id,
+            labeled_merchant_name or "none",
             phone or "none",
             (address[:30] + "...") if address else "none",
         )
+
+        if labeled_merchant_name:
+            result = self._run_labeled_place_search(
+                merchant_name=labeled_merchant_name,
+                address=address,
+                phone=phone,
+            )
+            if result.place_id:
+                _log(
+                    "Labeled fields SUCCESS: %s (place_id=%s, conf=%.2f)",
+                    result.merchant_name,
+                    result.place_id,
+                    result.confidence,
+                )
+                return result
 
         # Tier 1: ChromaDB similarity search with metadata comparison
         # Uses cached embeddings from orchestration to avoid redundant API calls
@@ -412,7 +440,7 @@ class MerchantResolver:
         # Tier 2: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1 failed, invoking Tier 2: Place ID Finder agent")
         result = self._run_place_id_finder(
-            lines_client, lines, words, image_id, receipt_id
+            lines_client, lines, words, image_id, receipt_id, word_labels
         )
 
         if result.place_id:
@@ -741,6 +769,94 @@ class MerchantResolver:
         """Thin wrapper around module-level :func:`merchant_name_matches_receipt`."""
         return merchant_name_matches_receipt(merchant_name, lines, n_lines)
 
+    def _extract_labeled_text(
+        self,
+        words: List[ReceiptWord],
+        word_labels: List[ReceiptWordLabel],
+        label_name: str,
+    ) -> Optional[str]:
+        """Build text from words carrying a usable receipt label."""
+        if not word_labels:
+            return None
+
+        word_lookup = {(w.line_id, w.word_id): w for w in words}
+        labeled_words: list[ReceiptWord] = []
+        excluded_statuses = {
+            ValidationStatus.INVALID.value,
+            ValidationStatus.NEEDS_REVIEW.value,
+        }
+
+        for label in word_labels:
+            if label.label != label_name:
+                continue
+            if label.validation_status in excluded_statuses:
+                continue
+            word = word_lookup.get((label.line_id, label.word_id))
+            if word is not None and word.text:
+                labeled_words.append(word)
+
+        if not labeled_words:
+            return None
+
+        labeled_words.sort(key=lambda w: (w.line_id, w.word_id))
+        text = " ".join(word.text for word in labeled_words)
+        normalized = " ".join(text.split())
+        return normalized if len(normalized) >= 2 else None
+
+    def _run_labeled_place_search(
+        self,
+        merchant_name: str,
+        address: Optional[str],
+        phone: Optional[str],
+    ) -> MerchantResult:
+        """Search Places directly using labeled merchant/address evidence."""
+        if not self.places_client or not merchant_name:
+            return MerchantResult()
+
+        try:
+            from receipt_agent.agents.place_id_finder.tools import (
+                place_id_finder as place_id_finder_module,
+            )
+
+            receipt_record = place_id_finder_module.ReceiptRecord(
+                image_id="",
+                receipt_id=0,
+                merchant_name=merchant_name,
+                address=address,
+                phone=phone,
+            )
+            finder = place_id_finder_module.PlaceIdFinder(
+                dynamo_client=self.dynamo,
+                places_client=self.places_client,
+            )
+            match = finder._search_places_for_receipt(  # pylint: disable=protected-access
+                receipt_record
+            )
+
+            if not match.found or not match.place_id:
+                return MerchantResult()
+
+            confidence = match.confidence
+            if confidence and confidence > 1:
+                confidence = confidence / 100.0
+
+            return MerchantResult(
+                place_id=match.place_id,
+                merchant_name=match.place_name,
+                address=match.place_address,
+                phone=match.place_phone,
+                confidence=confidence or 0.0,
+                resolution_tier="place_id_labeled_fields",
+            )
+        except ImportError as exc:
+            _log("WARNING: receipt_agent import failed: %s", exc)
+            logger.warning("receipt_agent import failed", exc_info=True)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error running labeled Place ID search: %s", exc)
+            logger.exception("Labeled Place ID search failed")
+
+        return MerchantResult()
+
     def _extract_phone(self, words: List[ReceiptWord]) -> Optional[str]:
         """
         Extract normalized 10-digit phone number from words.
@@ -857,6 +973,7 @@ class MerchantResolver:
         words: List[ReceiptWord],
         image_id: str,
         receipt_id: int,
+        word_labels: Optional[List[ReceiptWordLabel]] = None,
     ) -> MerchantResult:
         """
         Run Place ID Finder agent to search Google Places API.
@@ -894,6 +1011,7 @@ class MerchantResolver:
                 words=words,
                 image_id=image_id,
                 receipt_id=receipt_id,
+                word_labels=word_labels,
             )
 
         return _traced_place_id_finder()
@@ -905,6 +1023,7 @@ class MerchantResolver:
         words: List[ReceiptWord],
         image_id: str,
         receipt_id: int,
+        word_labels: Optional[List[ReceiptWordLabel]] = None,
     ) -> MerchantResult:
         """Implementation of _run_place_id_finder - called within trace context."""
         import asyncio  # pylint: disable=import-outside-toplevel
@@ -1079,9 +1198,14 @@ class MerchantResolver:
             )
 
             # Extract merchant info from lines/words for the finder
-            merchant_name = self._extract_merchant_name(lines)
+            word_labels = word_labels or []
+            merchant_name = self._extract_labeled_text(
+                words, word_labels, "MERCHANT_NAME"
+            ) or self._extract_merchant_name(lines)
             phone = self._extract_phone(words)
-            address = self._extract_address(words)
+            address = self._extract_labeled_text(
+                words, word_labels, "ADDRESS_LINE"
+            ) or self._extract_address(words)
 
             # Create a ReceiptRecord for the finder
             receipt_record = place_id_finder_module.ReceiptRecord(

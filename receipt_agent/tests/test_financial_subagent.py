@@ -17,6 +17,11 @@ from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
 
 
+def test_extract_number_handles_decimal_comma():
+    assert financial_subagent.extract_number("$8,82") == 8.82
+    assert financial_subagent.extract_number("19,96") == 19.96
+
+
 def _make_word(
     text: str,
     line_id: int,
@@ -148,7 +153,9 @@ def test_strict_mode_skips_text_parsing_fallback(monkeypatch):
 # =============================================================================
 
 
-def _fv(label: str, value: float, line_index: int = 0, text: str = "") -> FinancialValue:
+def _fv(
+    label: str, value: float, line_index: int = 0, text: str = ""
+) -> FinancialValue:
     """Shortcut to build a FinancialValue without needing a real WordContext."""
     return FinancialValue(
         word_context=None,
@@ -291,9 +298,7 @@ class TestFilterJunkValuesNAtPrice:
         }
         result = filter_junk_values(values)
         assert "QUANTITY" in result
-        qty_on_line5 = [
-            fv for fv in result["QUANTITY"] if fv.line_index == 5
-        ]
+        qty_on_line5 = [fv for fv in result["QUANTITY"] if fv.line_index == 5]
         assert len(qty_on_line5) == 1
         assert qty_on_line5[0].numeric_value == 2.0
 
@@ -308,9 +313,7 @@ class TestFilterJunkValuesNAtPrice:
             ],
         }
         result = filter_junk_values(values)
-        qty_on_line5 = [
-            fv for fv in result["QUANTITY"] if fv.line_index == 5
-        ]
+        qty_on_line5 = [fv for fv in result["QUANTITY"] if fv.line_index == 5]
         assert len(qty_on_line5) == 1
 
     def test_normal_unit_price_unchanged(self):
