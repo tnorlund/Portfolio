@@ -8,12 +8,22 @@ from typing import Iterable
 
 from receipt_dynamo.amounts import parse_receipt_amount
 
-
 _TOTAL_RE = re.compile(r"\b(total|amount\s+due|balance|authorized)\b", re.I)
 _SUBTOTAL_RE = re.compile(r"\bsub[-\s]?total\b", re.I)
 _TAX_RE = re.compile(r"\b(tax|vat)\b", re.I)
+_NON_PAYMENT_SUMMARY_RE = re.compile(
+    r"\b("
+    r"savings?|discounts?|refunds?|returns?|coupons?|promos?|"
+    r"promotion|rewards?|loyalty|cash\s+back|cashback|store\s+credit"
+    r")\b",
+    re.I,
+)
 _SUMMARY_RE = re.compile(
-    r"\b(total|sub[-\s]?total|tax|vat|amount\s+due|balance|authorized)\b",
+    r"\b("
+    r"total|sub[-\s]?total|tax|vat|amount\s+due|balance|authorized|"
+    r"savings?|discounts?|refunds?|returns?|coupons?|promos?|"
+    r"promotion|rewards?|loyalty|cash\s+back|cashback|store\s+credit"
+    r")\b",
     re.I,
 )
 
@@ -65,7 +75,7 @@ def classify_amount_labels(
                 label="TAX",
                 reason="AMOUNT appeared on a tax line.",
             )
-        elif _TOTAL_RE.search(line_text):
+        elif _is_grand_total_line(line_text):
             decisions[key] = AmountClassification(
                 label="GRAND_TOTAL",
                 reason="AMOUNT appeared on a total/amount-due line.",
@@ -99,7 +109,10 @@ def _amount_candidates(
     for label in word_labels:
         if getattr(label, "label", None) != "AMOUNT":
             continue
-        key = (getattr(label, "line_id", None), getattr(label, "word_id", None))
+        key = (
+            getattr(label, "line_id", None),
+            getattr(label, "word_id", None),
+        )
         if key in seen:
             continue
         word = word_lookup.get(key)
@@ -182,6 +195,12 @@ def _classify_summary_equation(
                 )
 
     return additions
+
+
+def _is_grand_total_line(line_text: str) -> bool:
+    return bool(_TOTAL_RE.search(line_text)) and not bool(
+        _NON_PAYMENT_SUMMARY_RE.search(line_text)
+    )
 
 
 def _classify_line_totals(

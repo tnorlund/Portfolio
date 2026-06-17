@@ -24,7 +24,12 @@ from receipt_upload.merchant_resolution import (
 TEST_IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 
 
-def _label(line_id: int, word_id: int, label: str) -> ReceiptWordLabel:
+def _label(
+    line_id: int,
+    word_id: int,
+    label: str,
+    status: str = ValidationStatus.PENDING.value,
+) -> ReceiptWordLabel:
     return ReceiptWordLabel(
         image_id=TEST_IMAGE_ID,
         receipt_id=1,
@@ -32,8 +37,8 @@ def _label(line_id: int, word_id: int, label: str) -> ReceiptWordLabel:
         word_id=word_id,
         label=label,
         reasoning="test",
-        timestamp_added="2026-01-01T00:00:00+00:00",
-        validation_status=ValidationStatus.PENDING.value,
+        timestamp_added="2026-01-01T00:00:00.000+00:00",
+        validation_status=status,
     )
 
 
@@ -1192,10 +1197,10 @@ class TestMerchantResolverLabeledFields:
         line = MagicMock(spec=ReceiptLine, line_id=1, text="Target")
         line.calculate_centroid.return_value = (0.5, 0.1)
         labels = [
-            _label(1, 1, "MERCHANT_NAME"),
-            _label(1, 2, "MERCHANT_NAME"),
-            _label(2, 1, "ADDRESS_LINE"),
-            _label(2, 2, "ADDRESS_LINE"),
+            _label(1, 1, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(1, 2, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(2, 1, "ADDRESS_LINE", ValidationStatus.VALID.value),
+            _label(2, 2, "ADDRESS_LINE", ValidationStatus.VALID.value),
         ]
         labeled_result = MerchantResult(
             place_id="ChIJ_whole_foods",
@@ -1230,3 +1235,54 @@ class TestMerchantResolverLabeledFields:
             phone=None,
         )
         chroma_search.assert_not_called()
+
+    def test_pending_labeled_fields_do_not_short_circuit_places(self):
+        dynamo = MagicMock()
+        resolver = MerchantResolver(
+            dynamo_client=dynamo,
+            places_client=MagicMock(),
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="Bad",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=2,
+                text="Hint",
+                extracted_data={},
+            ),
+        ]
+        line = MagicMock(spec=ReceiptLine, line_id=1, text="Actual Receipt")
+        line.calculate_centroid.return_value = (0.5, 0.1)
+        labels = [
+            _label(1, 1, "MERCHANT_NAME"),
+            _label(1, 2, "MERCHANT_NAME"),
+        ]
+
+        with (
+            patch.object(resolver, "_run_labeled_place_search") as labeled_search,
+            patch.object(
+                resolver, "_similarity_search", return_value=MerchantResult()
+            ),
+            patch.object(
+                resolver, "_run_place_id_finder", return_value=MerchantResult()
+            ),
+        ):
+            result = resolver.resolve(
+                lines_client=MagicMock(),
+                lines=[line],
+                words=words,
+                image_id="current-image",
+                receipt_id=1,
+                line_embeddings={1: [0.1] * 1536},
+                word_labels=labels,
+            )
+
+        assert result.place_id is None
+        labeled_search.assert_not_called()

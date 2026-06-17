@@ -1,8 +1,9 @@
-from unittest.mock import MagicMock
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_upload.merchant_resolution.embedding_processor import (
     _prepare_pending_core_labels,
 )
@@ -16,7 +17,7 @@ def _label(label: str) -> ReceiptWordLabel:
         word_id=1,
         label=label,
         reasoning="test",
-        timestamp_added="2026-01-01T00:00:00+00:00",
+        timestamp_added="2026-01-01T00:00:00.000+00:00",
         validation_status=ValidationStatus.PENDING.value,
     )
 

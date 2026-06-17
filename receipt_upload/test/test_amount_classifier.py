@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_upload.label_validation.amount_classifier import (
     classify_amount_labels,
 )
@@ -21,7 +22,7 @@ def _amount(line_id: int, word_id: int) -> ReceiptWordLabel:
         word_id=word_id,
         label="AMOUNT",
         reasoning="test",
-        timestamp_added="2026-01-01T00:00:00+00:00",
+        timestamp_added="2026-01-01T00:00:00.000+00:00",
         validation_status=ValidationStatus.PENDING.value,
     )
 
@@ -53,6 +54,19 @@ def test_classifies_keyword_and_exact_math_amounts():
 def test_leaves_ambiguous_amount_unclassified():
     words = [_word(1, 1, "Random"), _word(1, 2, "$8.82")]
     labels = [_amount(1, 2)]
+
+    result = classify_amount_labels(words, labels)
+
+    assert result == {}
+
+
+def test_leaves_savings_total_unclassified():
+    words = [
+        _word(1, 1, "Total"),
+        _word(1, 2, "Savings"),
+        _word(1, 3, "$5.00"),
+    ]
+    labels = [_amount(1, 3)]
 
     result = classify_amount_labels(words, labels)
 

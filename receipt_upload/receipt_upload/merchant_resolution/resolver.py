@@ -300,10 +300,10 @@ class MerchantResolver:
         # Extract contact info from receipt
         word_labels = word_labels or []
         labeled_merchant_name = self._extract_labeled_text(
-            words, word_labels, "MERCHANT_NAME"
+            words, word_labels, "MERCHANT_NAME", require_valid=True
         )
         labeled_address = self._extract_labeled_text(
-            words, word_labels, "ADDRESS_LINE"
+            words, word_labels, "ADDRESS_LINE", require_valid=True
         )
         phone = self._extract_phone(words)
         address = labeled_address or self._extract_address(words)
@@ -774,6 +774,8 @@ class MerchantResolver:
         words: List[ReceiptWord],
         word_labels: List[ReceiptWordLabel],
         label_name: str,
+        *,
+        require_valid: bool = False,
     ) -> Optional[str]:
         """Build text from words carrying a usable receipt label."""
         if not word_labels:
@@ -788,6 +790,11 @@ class MerchantResolver:
 
         for label in word_labels:
             if label.label != label_name:
+                continue
+            if (
+                require_valid
+                and label.validation_status != ValidationStatus.VALID.value
+            ):
                 continue
             if label.validation_status in excluded_statuses:
                 continue
@@ -1228,13 +1235,16 @@ class MerchantResolver:
             )
 
             if match.found and match.place_id:
+                confidence = match.confidence
+                if confidence and confidence > 1:
+                    confidence = confidence / 100.0
+
                 return MerchantResult(
                     place_id=match.place_id,
                     merchant_name=match.place_name,
                     address=match.place_address,
                     phone=match.place_phone,
-                    confidence=match.confidence
-                    / 100.0,  # Convert 0-100 to 0-1
+                    confidence=confidence or 0.0,
                     resolution_tier="place_id_finder",
                 )
 
