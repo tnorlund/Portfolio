@@ -38,7 +38,10 @@ class EpochEvalInfra(ComponentResource):
         dynamodb_table_name: Input[str],
         region: str,
         account_id: str,
-        instance_type: str = "ml.g4dn.xlarge",
+        # GPU processing-job quotas (ml.g4dn/g5/p3) are 0 on this account, so
+        # default to a high-core CPU instance that has quota. Override per
+        # invocation via the trigger event's "instance_type".
+        instance_type: str = "ml.c5.9xlarge",
         enable_auto_trigger: bool = False,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -264,7 +267,7 @@ def handler(event, context):
             }
         },
         "StoppingCondition": {
-            "MaxRuntimeInSeconds": int(event.get("max_runtime_seconds", 7200))
+            "MaxRuntimeInSeconds": int(event.get("max_runtime_seconds", 10800))
         },
         "Environment": {
             "DYNAMO_TABLE_NAME": table,
