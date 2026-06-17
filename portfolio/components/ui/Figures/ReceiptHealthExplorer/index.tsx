@@ -52,8 +52,14 @@ const FLOW_LAYOUT_VARS = {
   "--rf-queue-height": "400px",
   "--rf-center-max-width": "350px",
   "--rf-center-height": "500px",
+  "--rf-legend-width": "280px",
+  "--rf-legend-height": "500px",
+  "--rf-legend-stage-height": "280px",
   "--rf-mobile-center-height": "400px",
   "--rf-mobile-center-height-sm": "320px",
+  "--rf-mobile-legend-height": "212px",
+  "--rf-mobile-shell-height": "628px",
+  "--rf-mobile-shell-height-sm": "548px",
   "--rf-gap": "1.5rem",
   "--rf-align-items": "center",
 } as React.CSSProperties;
@@ -2784,6 +2790,7 @@ export default function ReceiptHealthExplorer() {
       <ReceiptFlowShell
         layoutVars={FLOW_LAYOUT_VARS}
         isTransitioning={isTransitioning}
+        stabilizeLegend
         queue={
           <ReceiptHealthFlowQueue
             receipts={receipts}

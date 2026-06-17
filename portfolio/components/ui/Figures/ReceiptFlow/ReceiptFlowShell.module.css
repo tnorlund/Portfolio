@@ -50,12 +50,32 @@
   flex-shrink: 0;
 }
 
+.legendColumnOverlay {
+  display: grid;
+  align-items: center;
+  width: var(--rf-legend-width, auto);
+  min-height: var(--rf-legend-height, auto);
+}
+
 .currentLegend {
   display: contents;
 }
 
+.legendColumnOverlay .currentLegend,
+.legendColumnOverlay .nextLegend {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  min-height: var(--rf-legend-stage-height, auto);
+}
+
 .nextLegend {
   display: none;
+}
+
+.legendColumnOverlay .nextLegend {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .fade-out {
@@ -81,6 +101,7 @@
     flex-direction: column;
     gap: 1rem;
     align-items: center;
+    min-height: var(--rf-mobile-shell-height, var(--rf-center-height, 500px));
   }
 
   .queuePane {
@@ -126,7 +147,17 @@
 
   .legendColumn {
     width: 100%;
-    min-height: 9rem;
+    min-height: var(--rf-mobile-legend-height, 9rem);
+  }
+
+  .legendColumnOverlay {
+    height: var(--rf-mobile-legend-height, auto);
+    min-height: var(--rf-mobile-legend-height, 9rem);
+  }
+
+  .legendColumnOverlay .currentLegend,
+  .legendColumnOverlay .nextLegend {
+    min-height: var(--rf-mobile-legend-height, var(--rf-legend-stage-height, auto));
   }
 
   .currentLegend {
@@ -161,6 +192,10 @@
 }
 
 @media (max-width: 480px) {
+  .mainWrapper {
+    min-height: var(--rf-mobile-shell-height-sm, var(--rf-mobile-shell-height, var(--rf-center-height, 500px)));
+  }
+
   .centerColumn {
     height: var(--rf-mobile-center-height-sm, 320px);
   }
