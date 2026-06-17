@@ -1820,12 +1820,24 @@ function ReceiptHealthFlowReceipt({
   const height = naturalSize?.height ?? receipt.height;
   const color = STATUS_COLOR[activeCheck.status];
 
+  // Size the resting receipt with the SAME function the flying receipt uses
+  // (receiptDisplaySize). Exposed as CSS vars so the desktop box matches the
+  // flying receipt's landing box exactly — otherwise the receipt visibly pops
+  // from the flown size to a (medium-image, max-width-clamped) resting size on
+  // handoff. Mobile overrides these vars back to responsive sizing in CSS
+  // (the flying receipt is hidden on mobile, so no match is required there).
+  const { displayWidth, displayHeight } = receiptDisplaySize(receipt);
+
   return (
     <div
       className={[
         styles.flowActiveReceipt,
         suppressIntro ? styles.flowActiveReceiptNoIntro : "",
       ].filter(Boolean).join(" ")}
+      style={{
+        "--flow-receipt-w": `${displayWidth}px`,
+        "--flow-receipt-h": `${displayHeight}px`,
+      } as React.CSSProperties}
     >
       <div className={styles.flowReceiptImageWrapper}>
         <div className={styles.flowReceiptImageInner}>
