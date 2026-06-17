@@ -41,7 +41,7 @@ CHROMA_CLOUD_ENABLED = (
 )
 
 # Exclusion terms for dairy milk filtering
-DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
+DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
 # Pattern to match price-like tokens (used to extract product name from row text)
 def find_milk_line(lines, target_word: str = "MILK") -> tuple[str, int] | None:
