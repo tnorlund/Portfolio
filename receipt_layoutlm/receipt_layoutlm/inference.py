@@ -575,7 +575,20 @@ class LayoutLMInference:
         boxes = [it[3] for it in ordered]
         n = len(ordered)
 
-        starts = [0] if n <= window_size else list(range(0, n, stride))
+        # Replicate the trainer's start sequence EXACTLY: step by stride but
+        # stop as soon as a window reaches the end, so we don't emit an extra
+        # short trailing window the trainer never produced (and over-weight the
+        # tail in overlap averaging). See data_loader._build_receipt_window_examples.
+        if n <= window_size:
+            starts = [0]
+        else:
+            starts = []
+            s = 0
+            while s < n:
+                starts.append(s)
+                if s + window_size >= n:
+                    break
+                s += stride
         win_tokens = [tokens[s : min(s + window_size, n)] for s in starts]
         win_boxes = [boxes[s : min(s + window_size, n)] for s in starts]
         win_preds = self.predict_lines(win_tokens, win_boxes)
