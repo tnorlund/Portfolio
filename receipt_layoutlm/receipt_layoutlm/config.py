@@ -83,3 +83,8 @@ class TrainingConfig:
     auto_export_coreml: bool = False
     coreml_quantize: Optional[str] = "float16"
     model_version: str = ModelVersion.V1.value
+    # Run the windowed held-out eval in-process after each epoch's checkpoint
+    # is saved, emitting epochs.json live (the viz cache) on the training GPU —
+    # no separate Processing job needed for new runs. Best-effort: failures are
+    # logged and never interrupt training. Disable to skip the per-epoch cost.
+    eval_heldout_windowed: bool = True

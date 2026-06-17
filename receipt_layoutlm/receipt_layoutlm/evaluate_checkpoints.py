@@ -1008,3 +1008,176 @@ def sync_outputs_to_s3(
                 ExtraArgs={"ContentType": "application/json"},
             )
     logger.info("Synced outputs to %s", output_s3_uri)
+
+
+# ---------------------------------------------------------------------------
+# Live (in-training) evaluation
+#
+# The standalone ``evaluate_run`` spins up a separate Processing job that
+# re-downloads every checkpoint. But during training the model, the frozen val
+# set, and the GPU are already hot — so the trainer can score each epoch's
+# just-saved checkpoint in-process and emit the same ``epochs.json`` live. These
+# helpers expose the per-checkpoint primitives for that path; they reuse the
+# exact scoring used by ``evaluate_run`` so live and retro numbers match.
+# ---------------------------------------------------------------------------
+
+
+def load_val_details(
+    dynamo: Any, val_keys: List[Tuple[str, int]]
+) -> Dict[Tuple[str, int], Any]:
+    """Load ``ReceiptDetails`` for the given (image_id, receipt_id) val keys."""
+    details_by_receipt: Dict[Tuple[str, int], Any] = {}
+    for (image_id, receipt_id) in val_keys:
+        try:
+            details_by_receipt[(image_id, receipt_id)] = (
+                dynamo.get_receipt_details(image_id, receipt_id)
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to load val receipt %s/%s: %s",
+                image_id,
+                receipt_id,
+                e,
+            )
+    return details_by_receipt
+
+
+def evaluate_live_checkpoint(
+    checkpoint_dir: str,
+    details_by_receipt: Dict[Tuple[str, int], Any],
+    *,
+    output_dir: str,
+    step: Optional[int],
+    epoch_num: Optional[int],
+    training_reported_f1: Optional[float],
+    showcase_keys: List[str],
+    valid_status: Any,
+) -> Tuple[Dict[str, Any], List[str], Dict[str, List[str]]]:
+    """Score one just-saved checkpoint dir against pre-loaded val receipts.
+
+    Loads ``LayoutLMInference`` from the checkpoint dir (same as the standalone
+    path → identical numbers), runs windowed inference, writes showcase records
+    under ``output_dir/receipts/epoch-<n>/``, and returns
+    ``(entry, label_list, label_merges)`` where ``entry`` matches the shape of
+    ``evaluate_run``'s epoch entries.
+    """
+    infer = LayoutLMInference(model_dir=checkpoint_dir)
+    label_list = infer.label_list
+    label_merges = infer.label_merges
+
+    all_true, all_pred, showcase, inf_times = _score_checkpoint(
+        infer, details_by_receipt, showcase_keys, valid_status
+    )
+
+    epoch_label = epoch_num if epoch_num is not None else step
+    checkpoint_name = (
+        f"checkpoint-{step}" if step is not None else "live"
+    )
+    for key, record in showcase.items():
+        img, rid = key.rsplit("_", 1)
+        showcase_dir = os.path.join(
+            output_dir, "receipts", f"epoch-{epoch_label}"
+        )
+        os.makedirs(showcase_dir, exist_ok=True)
+        record["epoch"] = epoch_num
+        record["checkpoint"] = checkpoint_name
+        record["label_list"] = label_list
+        with open(
+            os.path.join(showcase_dir, f"receipt-{img}-{rid}.json"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(record, f, default=str)
+
+    scores = _seqeval_scores(all_true, all_pred)
+    entry = {
+        "checkpoint": checkpoint_name,
+        "step": step,
+        "epoch": epoch_num,
+        "heldout_f1": scores["f1"],
+        "heldout_precision": scores["precision"],
+        "heldout_recall": scores["recall"],
+        "heldout_metric": scores["metric"],
+        "per_label_f1": scores["per_label_f1"],
+        "token_accuracy": _token_accuracy(all_true, all_pred),
+        "training_reported_f1": training_reported_f1,
+        "num_receipts_evaluated": len(details_by_receipt),
+        "avg_inference_ms": (
+            round(sum(inf_times) / len(inf_times), 2) if inf_times else None
+        ),
+        "total_inference_ms": (
+            round(sum(inf_times), 2) if inf_times else None
+        ),
+    }
+
+    # Free the inference model promptly — during training this runs alongside
+    # the (much larger) training model + optimizer state on the same GPU.
+    del infer
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+
+    return entry, label_list, label_merges
+
+
+def write_epochs_json_live(
+    output_dir: str,
+    *,
+    job_name: str,
+    run_s3_uri: str,
+    epoch_entries: List[Dict[str, Any]],
+    label_list: Optional[List[str]],
+    label_merges: Optional[Dict[str, List[str]]],
+    window_size: int,
+    window_stride: int,
+    val_set_source: str,
+    val_hash: Optional[str],
+    num_val_receipts: int,
+    seed: Optional[int],
+    showcase_keys: List[str],
+    best_reported: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Assemble + write ``epochs.json`` from accumulated live entries.
+
+    Produces the SAME payload shape as ``evaluate_run`` so the API and viz are
+    unchanged. Kept as a focused writer (rather than refactoring the working
+    ``evaluate_run``) — the key set must stay in sync with that function.
+    """
+    scored = [e for e in epoch_entries if e.get("checkpoint") != "best"]
+    best_entry = (
+        max(scored, key=lambda e: e["heldout_f1"]) if scored else None
+    )
+    payload = {
+        "job_name": job_name,
+        "run_s3_uri": run_s3_uri,
+        "val_set_source": val_set_source,
+        "val_receipts_hash": val_hash,
+        "val_receipts_hash_recorded": val_hash,
+        "val_receipts_hash_verified": True,
+        "num_val_receipts": num_val_receipts,
+        "random_seed": int(seed) if seed is not None else None,
+        "label_list": label_list,
+        "label_merges": label_merges,
+        "metric": "seqeval_entity_f1",
+        "inference_mode": os.getenv("LAYOUTLM_INFERENCE_MODE", "windowed"),
+        "window_size": window_size,
+        "window_stride": window_stride,
+        "compute": _device_info(),
+        "epochs": epoch_entries,
+        "best_epoch_heldout": (best_entry["epoch"] if best_entry else None),
+        "best_checkpoint_heldout": (
+            best_entry["checkpoint"] if best_entry else None
+        ),
+        "best_epoch_training_reported": best_reported,
+        "showcase_receipt_keys": showcase_keys,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(
+        os.path.join(output_dir, "epochs.json"), "w", encoding="utf-8"
+    ) as f:
+        json.dump(payload, f, indent=2, default=str)
+    return payload

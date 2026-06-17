@@ -218,6 +218,15 @@ def main() -> None:
         help="Quantization mode for CoreML export (default: float16).",
     )
     train_p.add_argument(
+        "--no-eval-heldout-windowed",
+        action="store_true",
+        help=(
+            "Disable the in-training windowed held-out eval (which emits "
+            "epochs.json live). On by default; pass this to skip the "
+            "per-epoch eval cost."
+        ),
+    )
+    train_p.add_argument(
         "--resume-from-s3",
         default=None,
         help=(
@@ -511,6 +520,8 @@ def main() -> None:
         train_cfg.output_s3_path = args.output_s3_path
         train_cfg.auto_export_coreml = args.export_coreml
         train_cfg.coreml_quantize = args.coreml_quantize
+        if getattr(args, "no_eval_heldout_windowed", False):
+            train_cfg.eval_heldout_windowed = False
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
         if args.resume_from_s3:
             from .resume import sync_resume_checkpoint
