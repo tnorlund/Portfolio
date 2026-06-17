@@ -44,9 +44,21 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
 
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
+  // Starting transform used before the DOM has been measured. It is computed
+  // purely from props so the spring can be *initialized* with it below. This is
+  // what prevents the one-frame "pop-in": without it the spring starts at the
+  // final centered/full-size state and the browser paints that for a frame
+  // before react-spring's rAF scheduler applies the real queue start position.
+  const fallbackFrom = {
+    x: -300,
+    y: -50,
+    scale: queueItemWidth / Math.max(displayWidth, 1),
+    rotate: rotation,
+  };
+
   // Compute the starting transform by measuring the DOM
   const computeFrom = (): { x: number; y: number; scale: number; rotate: number } => {
-    const fallback = { x: -300, y: -50, scale: queueItemWidth / Math.max(displayWidth, 1), rotate: rotation };
+    const fallback = fallbackFrom;
 
     if (typeof window === "undefined" || !containerRef.current) return fallback;
 
@@ -76,23 +88,25 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     };
   };
 
-  // We use the imperative API so we can set() the start position synchronously
-  // in useLayoutEffect (before browser paint) and then animate to the end.
+  // Initialize the spring AT the start position (not the final centered state)
+  // and fully transparent. Because react-spring flushes through its own rAF
+  // scheduler rather than synchronously in useLayoutEffect, whatever we set
+  // here is what the browser paints on the first frame — starting from the
+  // queue position + opacity 0 guarantees no full-size center flash even if the
+  // measured-DOM correction lands a frame later.
   const [springValues, api] = useSpring(() => ({
-    x: 0,
-    y: 0,
-    scale: 1,
-    rotate: 0,
+    ...fallbackFrom,
+    opacity: 0,
     config: { tension: 170, friction: 26, clamp: true },
   }));
 
   useIsomorphicLayoutEffect(() => {
     const from = computeFrom();
-    // Jump to start position instantly (before paint)
-    api.set(from);
-    // Animate to center
-    api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0 } });
-  }, [receiptId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Snap to the measured start position while still hidden...
+    api.set({ ...from, opacity: 0 });
+    // ...then fly to center and fade in together.
+    api.start({ to: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 } });
+  }, [receiptId]);
 
   const totalWidth = displayWidth + borderWidth * 2;
   const totalHeight = displayHeight + borderWidth * 2;
@@ -107,6 +121,7 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
           (xVal, yVal, scaleVal, rotateVal) =>
             `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`,
         ),
+        opacity: springValues.opacity,
         marginLeft: -totalWidth / 2,
         marginTop: -totalHeight / 2,
       }}
