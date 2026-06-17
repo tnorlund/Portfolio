@@ -158,6 +158,9 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
           <div
             key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
+            // Used by FlyingReceipt.computeFrom to launch the flight from this
+            // exact card rather than always the top of the stack.
+            data-rf-card-id={receipt.receipt_id}
             style={{
               top: `${stackOffset}px`,
               left: `${10 + leftOffset}px`,

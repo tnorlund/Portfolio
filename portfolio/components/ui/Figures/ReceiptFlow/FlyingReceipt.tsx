@@ -83,14 +83,17 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     const targetCenterX = targetRect.left + targetRect.width / 2;
     const targetCenterY = targetRect.top + targetRect.height / 2;
 
-    // Launch from the actual top card of the stack when it's available, so the
-    // flying receipt lifts off exactly where the thumbnail sits. The card's
-    // rendered height is far taller than queueItemWidth, so the old
-    // square-item estimate (queueRect.top + queueItemWidth/2) started the
-    // flight well above the card.
-    const topCard = queuePane.firstElementChild;
-    if (topCard) {
-      const cardRect = topCard.getBoundingClientRect();
+    // Launch from the actual queue card this receipt is flying from, so the
+    // flight lifts off exactly where the thumbnail sits. Prefer the card whose
+    // id matches the flying receipt (handles manually selecting a non-top
+    // card); fall back to the top card. The card's rendered height is far
+    // taller than queueItemWidth, so the old square-item estimate
+    // (queueRect.top + queueItemWidth/2) started the flight well above the card.
+    const sourceCard =
+      queuePane.querySelector(`[data-rf-card-id="${receiptId}"]`) ??
+      queuePane.firstElementChild;
+    if (sourceCard) {
+      const cardRect = sourceCard.getBoundingClientRect();
       return {
         x: cardRect.left + cardRect.width / 2 - targetCenterX,
         y: cardRect.top + cardRect.height / 2 - targetCenterY,

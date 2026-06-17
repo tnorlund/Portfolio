@@ -1763,14 +1763,22 @@ function ReceiptHealthFlowQueue({
             key={`${receiptId}-mock-${receiptIndex}`}
             type="button"
             className={styles.flowQueuedReceipt}
+            // Used by FlyingReceipt.computeFrom to launch the flight from this
+            // exact card (e.g. when a non-top card is selected manually).
+            data-rf-card-id={receiptId}
             style={{
               top: `${Math.max(0, adjustedIndex) * 20}px`,
               left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               opacity: isFlying ? 0 : 1,
+              // While hidden (flying to center) the card must not be an invisible
+              // interactive target that intercepts clicks/focus.
+              pointerEvents: isFlying ? "none" : undefined,
               zIndex: visibleIndices.length - stackIndex,
             }}
             aria-hidden={isFlying}
+            disabled={isFlying}
+            tabIndex={isFlying ? -1 : 0}
             onClick={() => onSelect(receiptIndex)}
             aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
           >
