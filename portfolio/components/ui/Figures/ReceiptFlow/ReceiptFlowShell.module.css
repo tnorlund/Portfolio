@@ -112,20 +112,21 @@
   }
 
   .receiptContainer.fade-out {
-    animation: mobile-flow-content-out 0.14s ease-out forwards;
+    animation: mobile-flow-content-out 0.16s ease-out forwards;
   }
 
   .nextReceipt.fade-in {
-    opacity: 1;
-    animation: none;
+    opacity: 0;
+    animation: mobile-flow-panel-in 0.28s ease-out 0.1s both;
   }
 
   .nextReceipt.fade-in > * {
-    animation: mobile-flow-content-in 0.24s ease-out 0.16s both;
+    animation: mobile-flow-content-rise 0.28s ease-out 0.1s both;
   }
 
   .legendColumn {
     width: 100%;
+    min-height: 9rem;
   }
 
   .currentLegend {
@@ -143,18 +144,18 @@
   }
 
   .currentLegend.fade-out {
-    animation: mobile-flow-content-out 0.14s ease-out forwards;
+    animation: mobile-flow-content-out 0.16s ease-out forwards;
   }
 
   .nextLegend.fade-in {
     z-index: 2;
-    opacity: 1;
+    opacity: 0;
     background: var(--background-color, #fff);
-    animation: none;
+    animation: mobile-flow-panel-in 0.28s ease-out 0.1s both;
   }
 
   .nextLegend.fade-in > * {
-    animation: mobile-flow-content-in 0.24s ease-out 0.16s both;
+    animation: mobile-flow-content-rise 0.28s ease-out 0.1s both;
   }
 
 }
@@ -175,14 +176,22 @@
   }
 }
 
-@keyframes mobile-flow-content-in {
+@keyframes mobile-flow-panel-in {
   from {
     opacity: 0;
-    transform: translateY(3px);
   }
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes mobile-flow-content-rise {
+  from {
+    transform: translateY(3px);
+  }
+
+  to {
     transform: translateY(0);
   }
 }

@@ -60,6 +60,10 @@
   animation: receipt-health-fade-in 0.28s ease-out both;
 }
 
+.flowActiveReceiptNoIntro {
+  animation: none;
+}
+
 .flowReceiptImageWrapper {
   position: relative;
   width: 100%;
@@ -110,6 +114,14 @@
   gap: 0.7rem;
   flex-shrink: 0;
   padding: 1rem;
+}
+
+.flowEntityLegendNoIntro .validationReasonSlotVisible {
+  transition: none;
+}
+
+.flowEntityLegendNoIntro .validationReasonInnerVisible {
+  animation: none;
 }
 
 .diagnosisRail {

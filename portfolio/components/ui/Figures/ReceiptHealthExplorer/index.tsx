@@ -63,6 +63,72 @@ type LedgerContext = {
   summary: ReceiptHealthLedgerSummary | null;
 };
 
+const emptyLedgerContext: LedgerContext = {
+  issues: [],
+  summary: null,
+};
+
+function imageUrlMatches(src: string, target: string): boolean {
+  if (!src) return false;
+
+  try {
+    return src === new URL(target, window.location.href).href;
+  } catch {
+    return src === target;
+  }
+}
+
+function setReceiptImageFallback(image: HTMLImageElement, fallbackUrl: string): boolean {
+  if (imageUrlMatches(image.currentSrc || image.src, fallbackUrl)) {
+    return false;
+  }
+
+  image.src = fallbackUrl;
+  return true;
+}
+
+function preloadReceiptImageForTransition(
+  receipt: ReceiptHealthReceipt,
+  formatSupport: ImageFormatSupport,
+): Promise<void> {
+  const imageUrl = getBestImageUrl(receipt, formatSupport, "medium");
+  const fallbackUrl = getJpegFallbackUrl(receipt);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let attemptedFallback = imageUrl === fallbackUrl;
+    const image = new Image();
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const timeout = window.setTimeout(finish, 2500);
+    const finishAndClear = () => {
+      window.clearTimeout(timeout);
+      finish();
+    };
+
+    image.onload = () => {
+      const decode = image.decode?.();
+      if (decode) {
+        decode.then(finishAndClear).catch(finishAndClear);
+        return;
+      }
+      finishAndClear();
+    };
+    image.onerror = () => {
+      if (!attemptedFallback) {
+        attemptedFallback = true;
+        image.src = fallbackUrl;
+        return;
+      }
+      finishAndClear();
+    };
+    image.src = imageUrl;
+  });
+}
+
 const FLOW_MOCK_SCENARIOS: Array<{
   label: string;
   imageId: string;
@@ -419,8 +485,7 @@ function ReceiptImage({
           }}
           onError={(event) => {
             const fallback = getJpegFallbackUrl(receipt);
-            if (event.currentTarget.src !== fallback) {
-              event.currentTarget.src = fallback;
+            if (setReceiptImageFallback(event.currentTarget, fallback)) {
               return;
             }
             setImageFailed(true);
@@ -1700,9 +1765,7 @@ function ReceiptHealthFlowQueue({
                 className={styles.flowQueuedReceiptImage}
                 onError={(event) => {
                   const fallback = getJpegFallbackUrl(receipt);
-                  if (event.currentTarget.src !== fallback) {
-                    event.currentTarget.src = fallback;
-                  }
+                  setReceiptImageFallback(event.currentTarget, fallback);
                 }}
               />
             ) : null}
@@ -1716,18 +1779,20 @@ function ReceiptHealthFlowQueue({
 function ReceiptHealthFlowReceipt({
   receipt,
   activeCheck,
+  formatSupport,
+  suppressIntro = false,
   onImageUnavailable,
 }: {
   receipt: ReceiptHealthReceipt;
   activeCheck: ReceiptHealthCheck;
+  formatSupport: ImageFormatSupport;
+  suppressIntro?: boolean;
   onImageUnavailable: (receipt: ReceiptHealthReceipt) => void;
 }) {
-  const formatSupport = useImageFormatSupport();
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
 
   const imageUrl = useMemo(() => {
-    if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport, "medium");
   }, [formatSupport, receipt]);
 
@@ -1750,7 +1815,12 @@ function ReceiptHealthFlowReceipt({
   const color = STATUS_COLOR[activeCheck.status];
 
   return (
-    <div className={styles.flowActiveReceipt}>
+    <div
+      className={[
+        styles.flowActiveReceipt,
+        suppressIntro ? styles.flowActiveReceiptNoIntro : "",
+      ].filter(Boolean).join(" ")}
+    >
       <div className={styles.flowReceiptImageWrapper}>
         <div className={styles.flowReceiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1771,8 +1841,7 @@ function ReceiptHealthFlowReceipt({
             }}
             onError={(event) => {
               const fallback = getJpegFallbackUrl(receipt);
-              if (event.currentTarget.src !== fallback) {
-                event.currentTarget.src = fallback;
+              if (setReceiptImageFallback(event.currentTarget, fallback)) {
                 return;
               }
               setImageFailed(true);
@@ -1940,6 +2009,7 @@ function ReceiptHealthFlowLegend({
   receipts,
   currentIndex,
   muteExplanations = false,
+  suppressIntro = false,
   onSelectCheck,
   onSelectReceipt,
 }: {
@@ -1952,6 +2022,7 @@ function ReceiptHealthFlowLegend({
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
   muteExplanations?: boolean;
+  suppressIntro?: boolean;
   onSelectCheck: (checkId: CheckId) => void;
   onSelectReceipt: (index: number) => void;
 }) {
@@ -1959,7 +2030,12 @@ function ReceiptHealthFlowLegend({
   const activeLedgerIssue = selectDisplayIssue(ledgerIssues, activeCheck.id) ?? firstLedgerIssue;
 
   return (
-    <aside className={styles.flowEntityLegend}>
+    <aside
+      className={[
+        styles.flowEntityLegend,
+        suppressIntro ? styles.flowEntityLegendNoIntro : "",
+      ].filter(Boolean).join(" ")}
+    >
       <DiagnosisRail
         receipt={receipt}
         checks={checks}
@@ -2068,9 +2144,7 @@ function ReceiptStackNav({
                   className={styles.stackReceiptImage}
                   onError={(event) => {
                     const fallback = getJpegFallbackUrl(receipt);
-                    if (event.currentTarget.src !== fallback) {
-                      event.currentTarget.src = fallback;
-                    }
+                    setReceiptImageFallback(event.currentTarget, fallback);
                   }}
                 />
               ) : (
@@ -2142,11 +2216,13 @@ export default function ReceiptHealthExplorer() {
   const [totalCount, setTotalCount] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTargetIndex, setTransitionTargetIndex] = useState<number | null>(null);
+  const [promotedReceiptKey, setPromotedReceiptKey] = useState<string | null>(null);
   const [unavailableImageKeys, setUnavailableImageKeys] = useState<Set<string>>(
     () => new Set(),
   );
   const fetchedInitial = useRef(false);
   const ledgerContextCacheRef = useRef<Map<string, LedgerContext>>(new Map());
+  const ledgerContextRequestCacheRef = useRef<Map<string, Promise<LedgerContext>>>(new Map());
   const lastManualSelectionRef = useRef(0);
   const transitionTimerRef = useRef<number | null>(null);
   const transitionInFlightRef = useRef(false);
@@ -2225,18 +2301,27 @@ export default function ReceiptHealthExplorer() {
     const cachedContext = ledgerContextCacheRef.current.get(contextKey);
     if (cachedContext) return cachedContext;
 
-    const response = await api.fetchReceiptHealthIssues({
+    const pendingContext = ledgerContextRequestCacheRef.current.get(contextKey);
+    if (pendingContext) return pendingContext;
+
+    const contextRequest = api.fetchReceiptHealthIssues({
       state: "all",
       imageId: receipt.image_id,
       receiptId: receipt.receipt_id,
       limit: 50,
+    }).then((response) => {
+      const nextContext = {
+        issues: response.issues,
+        summary: response.summary ?? null,
+      };
+      ledgerContextCacheRef.current.set(contextKey, nextContext);
+      return nextContext;
+    }).finally(() => {
+      ledgerContextRequestCacheRef.current.delete(contextKey);
     });
-    const nextContext = {
-      issues: response.issues,
-      summary: response.summary ?? null,
-    };
-    ledgerContextCacheRef.current.set(contextKey, nextContext);
-    return nextContext;
+
+    ledgerContextRequestCacheRef.current.set(contextKey, contextRequest);
+    return contextRequest;
   }, []);
 
   useEffect(() => {
@@ -2356,9 +2441,9 @@ export default function ReceiptHealthExplorer() {
     }
   }, []);
 
-  const selectReceipt = useCallback((index: number, options: { manual?: boolean } = {}) => {
+  const selectReceipt = useCallback(async (index: number, options: { manual?: boolean } = {}) => {
     const receipt = receiptsRef.current[index];
-    if (!receipt) return;
+    if (!receipt || !formatSupport) return;
 
     if (options.manual ?? true) {
       lastManualSelectionRef.current = Date.now();
@@ -2375,25 +2460,48 @@ export default function ReceiptHealthExplorer() {
     transitionRequestIdRef.current = transitionRequestId;
     transitionInFlightRef.current = true;
     setTransitionLedgerContext(null);
+    setTransitionTargetIndex(null);
+
+    let prefetchedLedgerContext =
+      ledgerContextCacheRef.current.get(receiptKey(receipt)) ?? null;
+    const ledgerContextPromise = fetchLedgerContext(receipt)
+      .catch((err): LedgerContext => {
+        console.warn("Failed to prefetch receipt health issues:", err);
+        return emptyLedgerContext;
+      })
+      .then((nextContext) => {
+        prefetchedLedgerContext = nextContext;
+        return nextContext;
+      });
+    await preloadReceiptImageForTransition(receipt, formatSupport);
+
+    if (
+      !isMountedRef.current ||
+      transitionRequestIdRef.current !== transitionRequestId
+    ) {
+      transitionInFlightRef.current = false;
+      return;
+    }
+
+    setPromotedReceiptKey(null);
+    setTransitionLedgerContext(prefetchedLedgerContext ?? emptyLedgerContext);
     setTransitionTargetIndex(index);
     setIsTransitioning(true);
 
-    fetchLedgerContext(receipt)
-      .catch((err) => {
-        console.warn("Failed to prefetch receipt health issues:", err);
-        return null;
-      })
-      .then((nextContext) => {
-        if (
-          !isMountedRef.current ||
-          transitionRequestIdRef.current !== transitionRequestId
-        ) return;
-        setTransitionLedgerContext(nextContext);
-      });
-
     transitionTimerRef.current = window.setTimeout(() => {
+      const nextReceiptKey = receiptKey(receipt);
+      if (prefetchedLedgerContext) {
+        setLedgerIssues(prefetchedLedgerContext.issues);
+        setLedgerSummary(prefetchedLedgerContext.summary);
+        setLoadingLedgerIssues(false);
+      } else {
+        setLedgerIssues([]);
+        setLedgerSummary(null);
+        setLoadingLedgerIssues(true);
+      }
       setCurrentIndex(index);
       focusReceiptCheck(receipt);
+      setPromotedReceiptKey(nextReceiptKey);
       setIsTransitioning(false);
       setTransitionTargetIndex(null);
       setTransitionLedgerContext(null);
@@ -2401,7 +2509,8 @@ export default function ReceiptHealthExplorer() {
       transitionTimerRef.current = null;
       transitionInFlightRef.current = false;
     }, TRANSITION_DURATION_MS);
-  }, [fetchLedgerContext, focusReceiptCheck]);
+    void ledgerContextPromise;
+  }, [fetchLedgerContext, focusReceiptCheck, formatSupport]);
 
   useEffect(() => {
     if (
@@ -2600,9 +2709,7 @@ export default function ReceiptHealthExplorer() {
         receiptId={receiptId}
         onImageError={(event) => {
           const fallback = getJpegFallbackUrl(flyingItem);
-          if (event.currentTarget.src !== fallback) {
-            event.currentTarget.src = fallback;
-          }
+          setReceiptImageFallback(event.currentTarget, fallback);
         }}
       />
     );
@@ -2690,6 +2797,8 @@ export default function ReceiptHealthExplorer() {
             key={receiptKey(currentReceipt)}
             receipt={currentReceipt}
             activeCheck={activeCheck}
+            formatSupport={formatSupport}
+            suppressIntro={promotedReceiptKey === receiptKey(currentReceipt)}
             onImageUnavailable={handleImageUnavailable}
           />
         }
@@ -2700,6 +2809,7 @@ export default function ReceiptHealthExplorer() {
               key={`next-${receiptKey(transitionTargetReceipt)}`}
               receipt={transitionTargetReceipt}
               activeCheck={transitionTargetCheck}
+              formatSupport={formatSupport}
               onImageUnavailable={handleImageUnavailable}
             />
           ) : null
@@ -2715,6 +2825,7 @@ export default function ReceiptHealthExplorer() {
             receipts={receipts}
             currentIndex={currentIndex}
             muteExplanations={isTransitioning}
+            suppressIntro={promotedReceiptKey === receiptKey(currentReceipt)}
             onSelectCheck={setActiveCheckId}
             onSelectReceipt={selectReceipt}
           />
