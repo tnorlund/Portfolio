@@ -15,6 +15,9 @@ import {
   MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
+  EpochEvaluationResponse,
+  EpochEvaluationJobsResponse,
+  EpochEvaluationReceiptRecord,
   FinancialMathResponse,
   ReceiptHealthResponse,
   ReceiptHealthIssuesResponse,
@@ -264,6 +267,52 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/jobs/featured/training-metrics?collapse_bio=true`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  // List training jobs that have a per-epoch evaluation available.
+  async fetchEpochEvaluationJobs(): Promise<EpochEvaluationJobsResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(`${apiUrl}/layoutlm_epochs`, fetchConfig);
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  // The held-out F1 curve (and training-reported comparison) for one run.
+  async fetchEpochEvaluation(job: string): Promise<EpochEvaluationResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/layoutlm_epochs?job=${encodeURIComponent(job)}`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  // A single per-(epoch, receipt) showcase record for the scrubber.
+  async fetchEpochEvaluationReceipt(
+    job: string,
+    receiptPath: string
+  ): Promise<EpochEvaluationReceiptRecord> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams({ job, receipt_path: receiptPath });
+    const response = await fetch(
+      `${apiUrl}/layoutlm_epochs?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

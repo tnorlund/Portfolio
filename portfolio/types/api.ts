@@ -476,6 +476,68 @@ export interface LayoutLMBatchInferenceResponse {
   legacy_mode?: boolean;
 }
 
+// Per-Epoch Checkpoint Evaluation Types
+// Produced by the eval-checkpoints SageMaker Processing job and served by
+// GET /layoutlm_epochs. Each entry re-scores one checkpoint on the run's
+// frozen validation set, so the curve proves which epoch generalizes best.
+
+export interface EpochEvaluationEntry {
+  checkpoint: string;
+  step: number | null;
+  epoch: number | null;
+  heldout_f1: number;
+  heldout_precision: number;
+  heldout_recall: number;
+  heldout_metric: string;
+  per_label_f1: Record<string, number>;
+  token_accuracy: number;
+  // The value training reported for this epoch from inside the loop (for
+  // comparison against the honest held-out re-evaluation). May be null.
+  training_reported_f1: number | null;
+  num_receipts_evaluated: number;
+}
+
+export interface EpochEvaluationResponse {
+  job_name: string;
+  run_s3_uri: string;
+  // "persisted_val_receipt_keys" (drift-proof) or "reconstructed_from_seed".
+  val_set_source: string;
+  val_receipts_hash: string;
+  val_receipts_hash_recorded: string | null;
+  val_receipts_hash_verified: boolean;
+  num_val_receipts: number;
+  random_seed: number | null;
+  label_list: string[] | null;
+  label_merges: Record<string, string[]>;
+  metric: string;
+  epochs: EpochEvaluationEntry[];
+  best_epoch_heldout: number | null;
+  best_checkpoint_heldout: string | null;
+  best_epoch_training_reported: number | null;
+  showcase_receipt_keys: string[];
+  generated_at: string;
+}
+
+export interface EpochEvaluationJobsResponse {
+  jobs: string[];
+}
+
+// Per-(epoch, receipt) showcase record for the epoch scrubber. The `original`
+// block matches LayoutLMReceiptInference so the same receipt+bbox rendering
+// applies.
+export interface EpochEvaluationReceiptRecord {
+  receipt_id: string;
+  epoch: number | null;
+  checkpoint: string;
+  label_list: string[];
+  original: {
+    receipt: LayoutLMReceiptInference["original"]["receipt"];
+    words: LayoutLMReceiptWord[];
+    predictions: LayoutLMPrediction[];
+  };
+  inference_time_ms: number;
+}
+
 // Label Evaluator Visualization Types
 
 export interface LabelEvaluatorWord {
