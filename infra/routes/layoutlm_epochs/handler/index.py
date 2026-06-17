@@ -1,10 +1,15 @@
 """Lambda handler serving per-epoch checkpoint-evaluation results from S3.
 
-Reads artifacts written by the ``eval-checkpoints`` SageMaker Processing job,
-which live in the training bucket under ``epoch-eval/<job>/``:
+Reads per-epoch eval artifacts from EITHER location:
+  - ``epoch-eval/<job>/`` — written by the standalone ``eval-checkpoints``
+    SageMaker Processing job (retro-eval of a finished run).
+  - ``runs/<job>/`` — written live DURING training by the in-trainer held-out
+    eval callback (no separate job). Same ``epochs.json`` shape.
 
-    epoch-eval/<job>/epochs.json
-    epoch-eval/<job>/receipts/epoch-<n>/receipt-<image_id>-<receipt_id>.json
+    <prefix>/<job>/epochs.json
+    <prefix>/<job>/receipts/epoch-<n>/receipt-<image_id>-<receipt_id>.json
+
+The standalone copy is preferred when both exist.
 
 Query parameters:
     (none)              -> list job names that have an epochs.json
@@ -24,7 +29,9 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 S3_CACHE_BUCKET = os.environ["S3_CACHE_BUCKET"]
-PREFIX = "epoch-eval/"
+# Standalone Processing-job evals, preferred when both exist; then live
+# in-training evals written under each run's prefix.
+PREFIXES = ("epoch-eval/", "runs/")
 
 s3_client = boto3.client("s3")
 
@@ -50,24 +57,41 @@ def _resp(status, body, extra_headers=None):
     }
 
 
+def _job_prefix(job):
+    """Return the prefix holding this job's epochs.json (standalone preferred
+    over the in-training live copy), or None if neither exists."""
+    for pfx in PREFIXES:
+        try:
+            s3_client.head_object(
+                Bucket=S3_CACHE_BUCKET, Key=f"{pfx}{job}/epochs.json"
+            )
+            return pfx
+        except ClientError:
+            continue
+    return None
+
+
 def _list_jobs():
-    """Return job names that have an epochs.json under the eval prefix."""
-    jobs = []
+    """Return job names that have an epochs.json under either prefix."""
+    jobs = {}
     paginator = s3_client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(
-        Bucket=S3_CACHE_BUCKET, Prefix=PREFIX, Delimiter="/"
-    ):
-        for cp in page.get("CommonPrefixes", []) or []:
-            job = cp["Prefix"][len(PREFIX):].rstrip("/")
-            try:
-                s3_client.head_object(
-                    Bucket=S3_CACHE_BUCKET,
-                    Key=f"{PREFIX}{job}/epochs.json",
-                )
-                jobs.append(job)
-            except ClientError:
-                continue
-    return jobs
+    for pfx in PREFIXES:
+        for page in paginator.paginate(
+            Bucket=S3_CACHE_BUCKET, Prefix=pfx, Delimiter="/"
+        ):
+            for cp in page.get("CommonPrefixes", []) or []:
+                job = cp["Prefix"][len(pfx):].rstrip("/")
+                if job in jobs:
+                    continue  # already found (standalone wins)
+                try:
+                    s3_client.head_object(
+                        Bucket=S3_CACHE_BUCKET,
+                        Key=f"{pfx}{job}/epochs.json",
+                    )
+                    jobs[job] = pfx
+                except ClientError:
+                    continue
+    return sorted(jobs)
 
 
 def _get_json(key):
@@ -93,13 +117,17 @@ def handler(event, _context):
         if not job:
             return _resp(200, {"jobs": _list_jobs()}, _CACHE)
 
+        prefix = _job_prefix(job)
+        if prefix is None:
+            return _resp(404, {"error": f"Not found for job '{job}'"})
+
         # Guard against path traversal: confine reads to this job's prefix.
         if receipt_path:
             if ".." in receipt_path or receipt_path.startswith("/"):
                 return _resp(400, {"error": "invalid receipt_path"})
-            key = f"{PREFIX}{job}/{receipt_path}"
+            key = f"{prefix}{job}/{receipt_path}"
         else:
-            key = f"{PREFIX}{job}/epochs.json"
+            key = f"{prefix}{job}/epochs.json"
 
         return _resp(200, _get_json(key), _CACHE)
 

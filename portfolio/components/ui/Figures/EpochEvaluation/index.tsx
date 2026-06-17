@@ -454,35 +454,68 @@ interface EpochEvaluationProps {
 const fmtPct = (v: number | null | undefined): string =>
   v == null ? "—" : `${(v * 100).toFixed(1)}%`;
 
+// Default to the newest experiment (highest -vNN), so the latest run shows
+// first instead of the alphabetically-first one.
+const pickDefaultJob = (jobs: string[]): string => {
+  const vnum = (j: string) => {
+    const m = j.match(/-v(\d+)/);
+    return m ? parseInt(m[1], 10) : -1;
+  };
+  return [...jobs].sort((a, b) => vnum(b) - vnum(a) || (a < b ? 1 : -1))[0];
+};
+
 const EpochEvaluation: React.FC<EpochEvaluationProps> = ({ job }) => {
   const { ref, inView } = useInView({ triggerOnce: true, rootMargin: "200px" });
   const [data, setData] = useState<EpochEvaluationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedEpoch, setSelectedEpoch] = useState<number | null>(null);
-  const fetched = useRef(false);
+  const [jobs, setJobs] = useState<string[]>([]);
+  const [selectedJob, setSelectedJob] = useState<string | null>(job ?? null);
+  const jobsFetched = useRef(false);
 
+  // Fetch the job list once (unless an explicit job prop is given).
   useEffect(() => {
-    if (!inView || fetched.current) return;
-    fetched.current = true;
-    (async () => {
-      try {
-        let jobName = job;
-        if (!jobName) {
-          const { jobs } = await api.fetchEpochEvaluationJobs();
-          if (!jobs.length) {
-            setError("No epoch evaluations available yet.");
-            return;
-          }
-          jobName = jobs[0];
+    if (!inView || jobsFetched.current) return;
+    jobsFetched.current = true;
+    if (job) {
+      setSelectedJob(job);
+      return;
+    }
+    api
+      .fetchEpochEvaluationJobs()
+      .then(({ jobs }) => {
+        if (!jobs.length) {
+          setError("No epoch evaluations available yet.");
+          return;
         }
-        const resp = await api.fetchEpochEvaluation(jobName);
+        setJobs(jobs);
+        setSelectedJob(pickDefaultJob(jobs));
+      })
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Failed to load.")
+      );
+  }, [inView, job]);
+
+  // Fetch the selected job's curve (re-runs when you switch jobs).
+  useEffect(() => {
+    if (!selectedJob) return;
+    let cancelled = false;
+    setData(null);
+    api
+      .fetchEpochEvaluation(selectedJob)
+      .then((resp) => {
+        if (cancelled) return;
         setData(resp);
         setSelectedEpoch(resp.best_epoch_heldout ?? null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load.");
-      }
-    })();
-  }, [inView, job]);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "Failed to load.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJob]);
 
   // Epochs with a real epoch number, sorted — the curve excludes the
   // synthetic "best" alias (epoch null).
@@ -527,7 +560,22 @@ const EpochEvaluation: React.FC<EpochEvaluationProps> = ({ job }) => {
         <span className={styles.title}>
           Which epoch actually generalizes best?
         </span>
-        <span className={styles.jobName}>{data.job_name}</span>
+        {jobs.length > 1 ? (
+          <select
+            className={styles.jobSelect}
+            value={selectedJob ?? ""}
+            onChange={(e) => setSelectedJob(e.target.value)}
+            aria-label="Select training run"
+          >
+            {jobs.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className={styles.jobName}>{data.job_name}</span>
+        )}
         {data.compute?.device === "cuda" && (
           <span className={styles.computeBadge}>
             ⚡ GPU{data.compute.instance_type
