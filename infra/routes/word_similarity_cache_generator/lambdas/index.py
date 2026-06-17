@@ -115,6 +115,22 @@ MILK_SIZE_RANGES = {
     "MILK QUART WHOLE": [  # Trader Joe's OCR word-order variant
         (0, 15.00, "Quart"),
     ],
+    "MILK RAW": [  # word-order OCR variant of RAW MILK
+        (0, 8.00, "Half Gallon"),
+        (8.00, 25.00, "Gallon"),
+    ],
+    "MILK RAW WHOLE": [  # word-order OCR variant of RAW WHOLE MILK
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "MILK WHOLE RAW LAT-": [  # truncated OCR variant of RAW WHOLE MILK
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "WHOLE MILK ORG": [  # word-reversed ORG WHOLE MILK
+        (0, 7.50, "Half Gallon"),
+        (7.50, 15.00, "Gallon"),
+    ],
 }
 
 # Initialize clients

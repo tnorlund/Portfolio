@@ -67,11 +67,19 @@ else
   echo ""
 
   echo -e "${GREEN}[3/4] Syncing OCR jobs (dev → prod)...${NC}"
-  run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py" --no-dry-run
+  fi
   echo ""
 
   echo -e "${GREEN}[4/4] Syncing word labels (dev → prod)...${NC}"
-  run python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py"
+  else
+    python3 "$SCRIPT_DIR/sync_labels_dev_to_prod.py" --no-dry-run
+  fi
   echo ""
 fi
 
