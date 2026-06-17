@@ -38,10 +38,11 @@ class EpochEvalInfra(ComponentResource):
         dynamodb_table_name: Input[str],
         region: str,
         account_id: str,
-        # GPU processing-job quotas (ml.g4dn/g5/p3) are 0 on this account, so
-        # default to a high-core CPU instance that has quota. Override per
-        # invocation via the trigger event's "instance_type".
-        instance_type: str = "ml.c5.9xlarge",
+        # GPU processing-job quota (ml.g4dn.xlarge) was granted, so default to
+        # GPU — the full checkpoint sweep runs in ~10 min vs ~hours on CPU.
+        # Override per invocation via the trigger event's "instance_type"
+        # (e.g. ml.c5.9xlarge if GPU quota is ever exhausted).
+        instance_type: str = "ml.g4dn.xlarge",
         enable_auto_trigger: bool = False,
         opts: Optional[ResourceOptions] = None,
     ):
