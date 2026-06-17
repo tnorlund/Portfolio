@@ -528,6 +528,15 @@ const EpochEvaluation: React.FC<EpochEvaluationProps> = ({ job }) => {
           Which epoch actually generalizes best?
         </span>
         <span className={styles.jobName}>{data.job_name}</span>
+        {data.compute?.device === "cuda" && (
+          <span className={styles.computeBadge}>
+            ⚡ GPU{data.compute.instance_type
+              ? ` · ${data.compute.instance_type}`
+              : data.compute.gpu_name
+                ? ` · ${data.compute.gpu_name}`
+                : ""}
+          </span>
+        )}
       </div>
 
       <div className={styles.legend}>
@@ -603,6 +612,25 @@ const EpochEvaluation: React.FC<EpochEvaluationProps> = ({ job }) => {
             </span>
             <span className={styles.metricSub}>
               {selectedEntry.num_receipts_evaluated} receipts
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.metricLabel}>Inference</span>
+            <span className={styles.metricValue}>
+              {selectedEntry.avg_inference_ms != null
+                ? `${selectedEntry.avg_inference_ms.toFixed(0)} ms`
+                : "—"}
+            </span>
+            <span className={styles.metricSub}>
+              {data.compute?.device === "cuda"
+                ? `per receipt · GPU${
+                    data.compute.gpu_name ? ` · ${data.compute.gpu_name}` : ""
+                  }`
+                : `per receipt${
+                    data.compute?.device
+                      ? ` · ${data.compute.device.toUpperCase()}`
+                      : ""
+                  }`}
             </span>
           </div>
 

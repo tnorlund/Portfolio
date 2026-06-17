@@ -621,15 +621,20 @@ def _score_checkpoint(
     details_by_receipt: Dict[Tuple[str, int], Any],
     showcase_keys: List[str],
     valid_status: Any,
-) -> Tuple[List[List[str]], List[List[str]], Dict[str, Dict[str, Any]]]:
+) -> Tuple[
+    List[List[str]], List[List[str]], Dict[str, Dict[str, Any]], List[float]
+]:
     """Run one checkpoint over all val receipts; collect sequences + showcase.
 
-    Returns ``(y_true_lines, y_pred_lines, showcase_records)`` where the records
-    dict is keyed by ``"image_id_receipt_id"`` for the showcase subset.
+    Returns ``(y_true_lines, y_pred_lines, showcase_records, inference_times_ms)``
+    where the records dict is keyed by ``"image_id_receipt_id"`` for the
+    showcase subset and ``inference_times_ms`` is the per-receipt windowed
+    inference wall-time (used to surface device throughput in the viz).
     """
     all_true: List[List[str]] = []
     all_pred: List[List[str]] = []
     showcase: Dict[str, Dict[str, Any]] = {}
+    inference_times_ms: List[float] = []
     for (image_id, receipt_id), details in details_by_receipt.items():
         try:
             record, yt, yp = build_receipt_record(
@@ -642,10 +647,42 @@ def _score_checkpoint(
             continue
         all_true.extend(yt)
         all_pred.extend(yp)
+        t = record.get("inference_time_ms")
+        if isinstance(t, (int, float)):
+            inference_times_ms.append(float(t))
         key = f"{image_id}_{receipt_id}"
         if key in showcase_keys:
             showcase[key] = record
-    return all_true, all_pred, showcase
+    return all_true, all_pred, showcase, inference_times_ms
+
+
+def _device_info() -> Dict[str, Any]:
+    """Best-effort descriptor of the compute the eval ran on.
+
+    Lets the viz label the timing as GPU vs CPU (and name the GPU), so the
+    "faster GPU times" are self-describing rather than a bare millisecond count.
+    """
+    info: Dict[str, Any] = {
+        "device": "unknown",
+        "gpu_name": None,
+        # Set by the Processing job / trainer when known (see infra component).
+        "instance_type": os.getenv("EVAL_INSTANCE_TYPE")
+        or os.getenv("SM_CURRENT_INSTANCE_TYPE"),
+    }
+    try:
+        import torch  # heavy dep; imported lazily
+
+        if torch.cuda.is_available():
+            info["device"] = "cuda"
+            try:
+                info["gpu_name"] = torch.cuda.get_device_name(0)
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+        else:
+            info["device"] = "cpu"
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+    return info
 
 
 def evaluate_run(
@@ -837,7 +874,7 @@ def evaluate_run(
                 else (name if name == "best" else step)
             )
 
-            all_true, all_pred, showcase = _score_checkpoint(
+            all_true, all_pred, showcase, inf_times = _score_checkpoint(
                 infer, details_by_receipt, showcase_keys, valid_status
             )
 
@@ -872,6 +909,14 @@ def evaluate_run(
                     step_to_f1.get(step) if step is not None else None
                 ),
                 "num_receipts_evaluated": len(details_by_receipt),
+                "avg_inference_ms": (
+                    round(sum(inf_times) / len(inf_times), 2)
+                    if inf_times
+                    else None
+                ),
+                "total_inference_ms": (
+                    round(sum(inf_times), 2) if inf_times else None
+                ),
             }
             epoch_entries.append(entry)
             logger.info(
@@ -915,6 +960,7 @@ def evaluate_run(
         "inference_mode": os.getenv("LAYOUTLM_INFERENCE_MODE", "windowed"),
         "window_size": resolved_ws,
         "window_stride": resolved_stride,
+        "compute": _device_info(),
         "epochs": epoch_entries,
         "best_epoch_heldout": (best_entry["epoch"] if best_entry else None),
         "best_checkpoint_heldout": (

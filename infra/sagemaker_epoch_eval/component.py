@@ -279,6 +279,9 @@ def handler(event, context):
         "Environment": {
             "DYNAMO_TABLE_NAME": table,
             "AWS_REGION": region,
+            # Surfaced in epochs.json so the viz can label the timing with the
+            # exact instance (e.g. ml.g4dn.xlarge) the eval ran on.
+            "EVAL_INSTANCE_TYPE": instance_type,
         },
         "Tags": [
             {"Key": "purpose", "Value": "layoutlm-epoch-eval"},

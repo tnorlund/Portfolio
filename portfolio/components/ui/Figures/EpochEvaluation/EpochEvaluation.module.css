@@ -26,6 +26,19 @@
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+.computeBadge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-green, #3aa757);
+  background: color-mix(in srgb, var(--color-green, #3aa757) 12%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--color-green, #3aa757) 35%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 .legend {
   display: flex;
   gap: 16px;

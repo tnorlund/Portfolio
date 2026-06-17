@@ -495,6 +495,17 @@ export interface EpochEvaluationEntry {
   // comparison against the honest held-out re-evaluation). May be null.
   training_reported_f1: number | null;
   num_receipts_evaluated: number;
+  // Windowed-inference wall-time for this checkpoint over the val set. Avg is
+  // per-receipt; null on older caches generated before timing was recorded.
+  avg_inference_ms: number | null;
+  total_inference_ms: number | null;
+}
+
+// Compute the eval ran on, so timing can be labeled GPU vs CPU.
+export interface EpochEvaluationCompute {
+  device: string; // "cuda" | "cpu" | "unknown"
+  gpu_name: string | null;
+  instance_type: string | null;
 }
 
 export interface EpochEvaluationResponse {
@@ -510,6 +521,8 @@ export interface EpochEvaluationResponse {
   label_list: string[] | null;
   label_merges: Record<string, string[]>;
   metric: string;
+  // Present on caches generated after timing was added; absent on older ones.
+  compute?: EpochEvaluationCompute;
   epochs: EpochEvaluationEntry[];
   best_epoch_heldout: number | null;
   best_checkpoint_heldout: string | null;
