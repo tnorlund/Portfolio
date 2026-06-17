@@ -1717,11 +1717,13 @@ function ReceiptHealthFlowQueue({
   receipts,
   currentIndex,
   formatSupport,
+  isTransitioning,
   onSelect,
 }: {
   receipts: ReceiptHealthReceipt[];
   currentIndex: number;
   formatSupport: ImageFormatSupport | null;
+  isTransitioning: boolean;
   onSelect: (index: number) => void;
 }) {
   const visibleIndices = useMemo(() => {
@@ -1749,17 +1751,26 @@ function ReceiptHealthFlowQueue({
         const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
         const { rotation, leftOffset } = getQueuePosition(receiptId);
 
+        // The top card (stackIndex 0) is the receipt currently flying to center.
+        // Hide it during the transition so it doesn't sit in the stack as a
+        // duplicate of the flying copy, and slide the rest of the stack up to
+        // fill the gap (mirrors the inference queue's flyingOut behaviour).
+        const isFlying = isTransitioning && stackIndex === 0;
+        const adjustedIndex = isTransitioning ? stackIndex - 1 : stackIndex;
+
         return (
           <button
             key={`${receiptId}-mock-${receiptIndex}`}
             type="button"
             className={styles.flowQueuedReceipt}
             style={{
-              top: `${stackIndex * 20}px`,
+              top: `${Math.max(0, adjustedIndex) * 20}px`,
               left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
+              opacity: isFlying ? 0 : 1,
               zIndex: visibleIndices.length - stackIndex,
             }}
+            aria-hidden={isFlying}
             onClick={() => onSelect(receiptIndex)}
             aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
           >
@@ -2814,6 +2825,7 @@ export default function ReceiptHealthExplorer() {
             receipts={receipts}
             currentIndex={currentIndex}
             formatSupport={formatSupport}
+            isTransitioning={isTransitioning}
             onSelect={selectReceipt}
           />
         }

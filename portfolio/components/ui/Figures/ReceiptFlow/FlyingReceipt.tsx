@@ -77,16 +77,31 @@ export const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     const target = shell.querySelector("[data-rf-target]");
     if (!queuePane || !target) return fallback;
 
-    const queueRect = queuePane.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-
-    // Source center: queue pane left + inset + leftOffset + half item width
-    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
-    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
-
     // Target center: center of the flying container
     const targetCenterX = targetRect.left + targetRect.width / 2;
     const targetCenterY = targetRect.top + targetRect.height / 2;
+
+    // Launch from the actual top card of the stack when it's available, so the
+    // flying receipt lifts off exactly where the thumbnail sits. The card's
+    // rendered height is far taller than queueItemWidth, so the old
+    // square-item estimate (queueRect.top + queueItemWidth/2) started the
+    // flight well above the card.
+    const topCard = queuePane.firstElementChild;
+    if (topCard) {
+      const cardRect = topCard.getBoundingClientRect();
+      return {
+        x: cardRect.left + cardRect.width / 2 - targetCenterX,
+        y: cardRect.top + cardRect.height / 2 - targetCenterY,
+        scale: queueItemWidth / Math.max(displayWidth, 1),
+        rotate: rotation,
+      };
+    }
+
+    // Fallback: estimate the source from queue-pane geometry.
+    const queueRect = queuePane.getBoundingClientRect();
+    const sourceCenterX = queueRect.left + queueItemLeftInset + leftOffset + queueItemWidth / 2;
+    const sourceCenterY = queueRect.top + queueItemWidth / 2; // top of queue stack
 
     return {
       x: sourceCenterX - targetCenterX,
