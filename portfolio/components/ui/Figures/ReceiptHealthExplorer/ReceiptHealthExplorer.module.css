@@ -90,9 +90,14 @@
      to a smaller resting size on handoff. Falls back to natural sizing if the
      vars are unset; mobile overrides back to responsive sizing below. */
   width: var(--flow-receipt-w, auto);
-  height: var(--flow-receipt-h, auto);
+  height: auto;
+  aspect-ratio: var(--flow-receipt-ar, auto);
   max-height: 500px;
   max-width: 100%;
+  /* contain + aspect-ratio: when the narrow-width column clamps the box width,
+     the height scales with it (aspect-ratio) and the image keeps its true
+     aspect ratio (contain), so it can't distort or shift vs the flying copy. */
+  object-fit: contain;
 }
 
 .flowReceiptLoading {

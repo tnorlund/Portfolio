@@ -18,8 +18,10 @@
   display: block;
   max-height: 500px;
   max-width: 100%;
-  /* Resting receipts render the image with the default object-fit: fill (the
-     box is already the receipt's aspect ratio). Match it so the image is not
-     fit differently (contain vs fill) between the flying and landed states. */
-  object-fit: fill;
+  /* contain (not fill) so the image always keeps its natural aspect ratio.
+     At narrow widths the column squeezes the box and max-width clamps its
+     width; with fill that distorts the receipt (and flying vs resting clamp
+     differently, so the aspect ratio visibly shifts on landing). contain
+     renders the image at its true aspect ratio in both states. */
+  object-fit: contain;
 }

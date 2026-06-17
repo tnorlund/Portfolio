@@ -1848,6 +1848,7 @@ function ReceiptHealthFlowReceipt({
       style={{
         "--flow-receipt-w": `${displayWidth}px`,
         "--flow-receipt-h": `${displayHeight}px`,
+        "--flow-receipt-ar": `${displayWidth} / ${displayHeight}`,
       } as React.CSSProperties}
     >
       <div className={styles.flowReceiptImageWrapper}>
