@@ -316,87 +316,122 @@ class LayoutLMInference:
         boxes must be LayoutLM-style per-subtoken bboxes after alignment or
         per-word boxes (we align internally to subtokens by repeating word boxes).
         """
-        results: List[LinePrediction] = []
         tok = self._tokenizer
         model = self._model
         device = self._device
+        torch = self._torch
+        id2label = model.config.id2label
+        id2label_items = list(id2label.items())
 
-        for idx, (tokens, word_boxes) in enumerate(
-            zip(tokens_per_line, boxes_per_line)
-        ):
+        n = len(tokens_per_line)
+        results: List[Optional[LinePrediction]] = [None] * n
+        if n == 0:
+            return []
+
+        # Each line is an independent LayoutLM sequence, but they were
+        # previously run one forward at a time — for a ~40-line receipt that's
+        # ~40 tiny GPU launches. Batch them (capped, so a huge receipt doesn't
+        # blow up memory) into single padded forwards instead. Padded positions
+        # are masked, so per-token outputs are identical to the per-line path.
+        MAX_LINES_PER_BATCH = 64
+
+        def _empty(idx: int) -> LinePrediction:
+            return LinePrediction(
+                line_id=(line_ids[idx] if line_ids else idx),
+                tokens=tokens_per_line[idx],
+                boxes=boxes_per_line[idx],
+                labels=[],
+                confidences=[],
+                all_probabilities=[],
+            )
+
+        for start in range(0, n, MAX_LINES_PER_BATCH):
+            end = min(start + MAX_LINES_PER_BATCH, n)
+            # Lines with no tokens can't be tokenized; emit them as empty.
+            members = [
+                i for i in range(start, end) if len(tokens_per_line[i]) > 0
+            ]
+            for i in range(start, end):
+                if len(tokens_per_line[i]) == 0:
+                    results[i] = _empty(i)
+            if not members:
+                continue
+
             enc = tok(
-                tokens,
+                [tokens_per_line[i] for i in members],
                 is_split_into_words=True,
                 truncation=True,
                 padding="longest",
                 return_attention_mask=True,
             )
-            wids = enc.word_ids()
-            bbox_aligned = [
-                [0, 0, 0, 0] if wid is None else word_boxes[wid]
-                for wid in wids
-            ]
+            bbox_batch: List[List[List[int]]] = []
+            word_ids_per_member: List[List[Optional[int]]] = []
+            for bi, line_idx in enumerate(members):
+                wids = enc.word_ids(batch_index=bi)
+                word_ids_per_member.append(wids)
+                wb = boxes_per_line[line_idx]
+                bbox_batch.append(
+                    [[0, 0, 0, 0] if wid is None else wb[wid] for wid in wids]
+                )
 
             inputs = {
-                "input_ids": self._torch.tensor(
-                    [enc["input_ids"]], device=device
+                "input_ids": torch.tensor(enc["input_ids"], device=device),
+                "attention_mask": torch.tensor(
+                    enc["attention_mask"], device=device
                 ),
-                "attention_mask": self._torch.tensor(
-                    [enc["attention_mask"]], device=device
-                ),
-                "bbox": self._torch.tensor([bbox_aligned], device=device),
+                "bbox": torch.tensor(bbox_batch, device=device),
             }
-            with self._torch.no_grad():
-                logits = model(**inputs).logits  # [1, seq_len, num_labels]
-            id2label = model.config.id2label
+            with torch.no_grad():
+                logits = model(**inputs).logits  # [B, seq_len, num_labels]
+            # Move raw logits to CPU once. The per-word aggregation below does
+            # thousands of scalar reads; against a GPU tensor each forces a sync,
+            # far slower than the matmul it follows. Aggregating logits (then
+            # softmax per word) keeps this bit-equivalent to the per-line path.
+            logits_batch = logits.cpu()
+            softmax = torch.nn.functional.softmax
 
-            # Aggregate logits per word (average over subtokens), compute softmax
-            seq_logits = logits[0]  # [seq_len, num_labels]
+            for bi, line_idx in enumerate(members):
+                wids = word_ids_per_member[bi]
+                seq_logits = logits_batch[bi]  # [seq_len, num_labels]
+                word_to_token_indices: Dict[int, List[int]] = {}
+                for j, wid in enumerate(wids):
+                    if wid is None:
+                        continue
+                    word_to_token_indices.setdefault(int(wid), []).append(j)
 
-            # Collect token indices per word id
-            word_to_token_indices: Dict[int, List[int]] = {}
-            for i, wid in enumerate(wids):
-                if wid is None:
-                    continue
-                word_to_token_indices.setdefault(int(wid), []).append(i)
+                word_boxes = boxes_per_line[line_idx]
+                labels_per_word: List[str] = []
+                confidences_per_word: List[float] = []
+                all_probabilities_per_word: List[Dict[str, float]] = []
+                for wid in range(len(word_boxes)):
+                    token_idxs = word_to_token_indices.get(wid, [])
+                    if not token_idxs:
+                        labels_per_word.append("O")
+                        confidences_per_word.append(0.0)
+                        all_probabilities_per_word.append({})
+                        continue
+                    # Average logits across this word's subtokens, then softmax
+                    # (matches the original per-line semantics exactly).
+                    avg_logits = seq_logits[token_idxs].mean(dim=0)
+                    probs = softmax(avg_logits, dim=-1)
+                    conf, pred_id = torch.max(probs, dim=-1)
+                    labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
+                    confidences_per_word.append(float(conf.item()))
+                    probs_list = probs.tolist()
+                    all_probabilities_per_word.append(
+                        {name: probs_list[lid] for lid, name in id2label_items}
+                    )
 
-            labels_per_word: List[str] = []
-            confidences_per_word: List[float] = []
-            all_probabilities_per_word: List[Dict[str, float]] = []
-            for wid in range(len(word_boxes)):
-                token_idxs = word_to_token_indices.get(wid, [])
-                if not token_idxs:
-                    # If tokenizer dropped the word (rare), fallback to zeros
-                    labels_per_word.append("O")
-                    confidences_per_word.append(0.0)
-                    all_probabilities_per_word.append({})
-                    continue
-                # Average logits across subtokens of this word
-                stacked = self._torch.stack(
-                    [seq_logits[i] for i in token_idxs]
-                )
-                avg_logits = stacked.mean(dim=0)
-                probs = self._torch.nn.functional.softmax(avg_logits, dim=-1)
-                conf, pred_id = self._torch.max(probs, dim=-1)
-                labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
-                confidences_per_word.append(float(conf.item()))
-
-                # Store all class probabilities
-                word_probs: Dict[str, float] = {}
-                for label_id, label_name in id2label.items():
-                    word_probs[label_name] = float(probs[label_id].item())
-                all_probabilities_per_word.append(word_probs)
-
-            results.append(
-                LinePrediction(
-                    line_id=(line_ids[idx] if line_ids else idx),
-                    tokens=tokens,
+                results[line_idx] = LinePrediction(
+                    line_id=(line_ids[line_idx] if line_ids else line_idx),
+                    tokens=tokens_per_line[line_idx],
                     boxes=word_boxes,
                     labels=labels_per_word,
                     confidences=confidences_per_word,
                     all_probabilities=all_probabilities_per_word,
                 )
-            )
+
+        return [r if r is not None else _empty(i) for i, r in enumerate(results)]
 
         return results
 
