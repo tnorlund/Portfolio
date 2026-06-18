@@ -6,7 +6,7 @@
 
 # Interface: EpochEvaluationJobsResponse
 
-Defined in: [types/api.ts:536](https://github.com/tnorlund/Portfolio/blob/aacbb0e5f11d74efaba6eb3c404b1b2ca4ab9603/portfolio/types/api.ts#L536)
+Defined in: [types/api.ts:536](https://github.com/tnorlund/Portfolio/blob/e7d85ffe885b75b10e6285dbc8d1cea8391d51d9/portfolio/types/api.ts#L536)
 
 ## Properties
 
@@ -14,4 +14,4 @@ Defined in: [types/api.ts:536](https://github.com/tnorlund/Portfolio/blob/aacbb0
 
 > **jobs**: `string`[]
 
-Defined in: [types/api.ts:537](https://github.com/tnorlund/Portfolio/blob/aacbb0e5f11d74efaba6eb3c404b1b2ca4ab9603/portfolio/types/api.ts#L537)
+Defined in: [types/api.ts:537](https://github.com/tnorlund/Portfolio/blob/e7d85ffe885b75b10e6285dbc8d1cea8391d51d9/portfolio/types/api.ts#L537)
