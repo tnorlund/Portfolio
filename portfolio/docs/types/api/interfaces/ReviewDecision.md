@@ -6,7 +6,7 @@
 
 # Interface: ReviewDecision
 
-Defined in: [types/api.ts:607](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L607)
+Defined in: [types/api.ts:607](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L607)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:607](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **consensus\_score**: `number`
 
-Defined in: [types/api.ts:610](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L610)
+Defined in: [types/api.ts:610](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L610)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:610](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **evidence**: [`ReviewEvidence`](ReviewEvidence.md)[]
 
-Defined in: [types/api.ts:622](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L622)
+Defined in: [types/api.ts:622](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L622)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:622](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **image\_id**: `string`
 
-Defined in: [types/api.ts:608](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L608)
+Defined in: [types/api.ts:608](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L608)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:608](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **issue**: `object`
 
-Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L612)
+Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L612)
 
 #### current\_label
 
@@ -78,7 +78,7 @@ Defined in: [types/api.ts:612](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **llm\_review**: `object`
 
-Defined in: [types/api.ts:623](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L623)
+Defined in: [types/api.ts:623](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L623)
 
 #### confidence
 
@@ -102,7 +102,7 @@ Defined in: [types/api.ts:623](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:609](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L609)
+Defined in: [types/api.ts:609](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L609)
 
 ***
 
@@ -110,4 +110,4 @@ Defined in: [types/api.ts:609](https://github.com/tnorlund/Portfolio/blob/deb76b
 
 > **similar\_word\_count**: `number`
 
-Defined in: [types/api.ts:611](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L611)
+Defined in: [types/api.ts:611](https://github.com/tnorlund/Portfolio/blob/4cd50b8b48d72a70774a4e032cf908d00b5ca52b/portfolio/types/api.ts#L611)
