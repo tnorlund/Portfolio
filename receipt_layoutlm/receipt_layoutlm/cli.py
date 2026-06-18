@@ -236,6 +236,24 @@ def main() -> None:
         ),
     )
     train_p.add_argument(
+        "--scope",
+        choices=["full", "line_items"],
+        default="full",
+        help=(
+            "Training scope. 'full' (default) trains on the whole receipt. "
+            "'line_items' crops each receipt to its line-item band (between the "
+            "header and totals anchor labels) for a focused second-pass model."
+        ),
+    )
+    train_p.add_argument(
+        "--receipt-allowlist-s3",
+        default=None,
+        help=(
+            "S3 URI of a JSON file ({\"receipt_keys\": [\"img#rec\", ...]}) "
+            "restricting training/eval to a curated subset of receipts."
+        ),
+    )
+    train_p.add_argument(
         "--resume-from-s3",
         default=None,
         help=(
@@ -518,6 +536,12 @@ def main() -> None:
         if getattr(args, "val_keys_s3", None):
             os.environ["LAYOUTLM_VAL_KEYS_S3"] = args.val_keys_s3
             data_cfg.val_keys_s3 = args.val_keys_s3
+
+        # Scoped second-pass training: crop to the line-item band + curated subset.
+        if getattr(args, "scope", "full") and args.scope != "full":
+            os.environ["LAYOUTLM_SCOPE"] = args.scope
+        if getattr(args, "receipt_allowlist_s3", None):
+            os.environ["LAYOUTLM_RECEIPT_ALLOWLIST_S3"] = args.receipt_allowlist_s3
 
         # Optional label whitelist
         data_cfg.allowed_labels = (
