@@ -138,6 +138,14 @@ def build_train_command(hps: dict) -> list[str]:
     if hps.get("val_keys_s3"):
         cmd.extend(["--val-keys-s3", str(hps["val_keys_s3"])])
 
+    # Scoped second-pass training: line-item band crop + curated receipt subset.
+    if hps.get("scope"):
+        cmd.extend(["--scope", str(hps["scope"])])
+    if hps.get("receipt_allowlist_s3"):
+        cmd.extend(
+            ["--receipt-allowlist-s3", str(hps["receipt_allowlist_s3"])]
+        )
+
     # Output path - use SageMaker's model dir
     # The trainer will save here, and SageMaker uploads to S3 automatically
     output_path = hps.get("output_s3_path")

@@ -405,6 +405,75 @@ def _load_fixed_val_keys() -> Optional[set]:
     return set(keys) if keys else None
 
 
+def _load_receipt_allowlist() -> Optional[set]:
+    """Load a curated receipt allowlist from ``LAYOUTLM_RECEIPT_ALLOWLIST_S3``.
+
+    When set, training/eval is restricted to ONLY these receipts (used for the
+    scoped line-item model, which trains on a hand-curated, arithmetic-consistent
+    subset rather than the full corpus). JSON: ``{"receipt_keys": [...]}`` or a
+    bare list of ``"<image_id>#<receipt_id:05d>"`` keys. Returns None when unset.
+    """
+    uri = os.getenv("LAYOUTLM_RECEIPT_ALLOWLIST_S3")
+    if not uri:
+        return None
+    import json
+    from urllib.parse import urlparse
+
+    boto3 = importlib.import_module("boto3")
+    p = urlparse(uri)
+    obj = boto3.client("s3").get_object(
+        Bucket=p.netloc, Key=p.path.lstrip("/")
+    )
+    data = json.loads(obj["Body"].read().decode("utf-8"))
+    keys = data.get("receipt_keys") if isinstance(data, dict) else data
+    return set(keys) if keys else None
+
+
+# Anchor labels used to dynamically bound the line-item region per receipt.
+_LI_HEADER_ANCHORS = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS"}
+_LI_TOTALS_ANCHORS = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
+
+
+def _crop_to_line_item_band(
+    words: List["WordInfo"],
+    label_map: Dict[Tuple[str, int, int, int], List[str]],
+    img_id: str,
+    rec_id: int,
+) -> List["WordInfo"]:
+    """Crop a receipt's words to the line-item band (between header & totals).
+
+    Mirrors the deterministic second-pass window: bound by the receipt's OWN
+    anchor labels (read from the RAW ``label_map`` so a focused ``allowed_labels``
+    doesn't hide them), keep words whose y-centroid falls strictly between the
+    header and totals bands, and drop the anchor words themselves. Returns [] when
+    the receipt can't be bounded (no totals anchor) — those receipts are skipped.
+    """
+    import statistics
+
+    def cy(wi: "WordInfo") -> float:
+        return (wi.bbox[1] + wi.bbox[3]) / 2.0
+
+    def raw(wi: "WordInfo") -> set:
+        return set(label_map.get((img_id, rec_id, wi.line_id, wi.word_id), []))
+
+    totals = [cy(wi) for wi in words if raw(wi) & _LI_TOTALS_ANCHORS]
+    if not totals:
+        return []
+    tc = statistics.median(totals)
+    header = [cy(wi) for wi in words if raw(wi) & _LI_HEADER_ANCHORS]
+    if not header:
+        merch = [cy(wi) for wi in words if "MERCHANT_NAME" in raw(wi)]
+        if not merch:
+            return []
+        header = [max(merch, key=lambda y: abs(y - tc))]
+    hc = statistics.median(header)
+    lo, hi = min(hc, tc), max(hc, tc)
+    excl = _LI_HEADER_ANCHORS | _LI_TOTALS_ANCHORS
+    return [
+        wi for wi in words if lo < cy(wi) < hi and not (raw(wi) & excl)
+    ]
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
@@ -438,6 +507,15 @@ def load_datasets(
         key = (lbl.image_id, lbl.receipt_id, lbl.line_id, lbl.word_id)
         label_map.setdefault(key, []).append(lbl.label)
         receipts_with_labels.add((lbl.image_id, lbl.receipt_id))
+
+    # Curated receipt allowlist (scoped model trains on a hand-picked subset).
+    receipt_allowlist = _load_receipt_allowlist()
+    if receipt_allowlist:
+        receipts_with_labels = {
+            (i, r)
+            for (i, r) in receipts_with_labels
+            if f"{i}#{r:05d}" in receipt_allowlist
+        }
 
     # Fetch ALL words for receipts that have any VALID labels, so unlabeled tokens become 'O'
     words: List[Any] = []
@@ -539,8 +617,16 @@ def load_datasets(
     examples: List[LineExample] = []
     window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
     window_stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
+    scope = os.getenv("LAYOUTLM_SCOPE", "full")
 
     for (img_id, rec_id), words_in_receipt in receipt_words.items():
+        if scope == "line_items":
+            # Second-pass scope: train only on the line-item band of each receipt.
+            words_in_receipt = _crop_to_line_item_band(
+                words_in_receipt, label_map, img_id, rec_id
+            )
+            if not words_in_receipt:
+                continue
         receipt_key = f"{img_id}#{rec_id:05d}"
         examples.extend(
             _build_receipt_window_examples(
