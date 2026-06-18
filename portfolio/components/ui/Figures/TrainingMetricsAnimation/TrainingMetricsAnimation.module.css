@@ -389,10 +389,9 @@
   flex-direction: column;
   gap: 0.5rem;
   width: fit-content;
-  /* Never let a wide matrix force the whole figure (and the sparkline that
-     measures it) past the viewport — scroll within the box instead. */
+  /* The ~10-family matrix fits the figure on its own (no scroll); cap at the
+     parent so it can never force the figure past the viewport. */
   max-width: 100%;
-  overflow-x: auto;
 
   /* Responsive sizing via CSS custom properties (avoids SSR hydration issues) */
   --matrix-cell-size: 34px;
