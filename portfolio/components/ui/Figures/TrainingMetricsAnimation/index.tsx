@@ -696,7 +696,6 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
                 onClick={drill ? () => setExpanded(drill) : undefined}
               >
                 {view.labels[i]}
-                {drill ? " ▸" : ""}
               </div>
 
               {/* Cells */}

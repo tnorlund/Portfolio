@@ -427,9 +427,10 @@
   cursor: pointer;
   opacity: 1;
   font-weight: 700;
+  color: var(--color-link, var(--color-blue));
 }
 .matrixAxisLabelClickable:hover {
-  color: var(--color-link, var(--color-blue));
+  text-decoration: underline;
 }
 
 .matrixBack {
