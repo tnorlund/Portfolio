@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthLineItemAmountEvidenceRow
 
-Defined in: [types/api.ts:1104](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1104)
+Defined in: [types/api.ts:1104](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1104)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1104](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > **line\_ids**: `number`[]
 
-Defined in: [types/api.ts:1106](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1106)
+Defined in: [types/api.ts:1106](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1106)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1106](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > **row\_index**: `number`
 
-Defined in: [types/api.ts:1105](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1105)
+Defined in: [types/api.ts:1105](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1105)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1105](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > **text**: `string`
 
-Defined in: [types/api.ts:1107](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1107)
+Defined in: [types/api.ts:1107](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1107)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1107](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > `optional` **clean\_amount\_tokens**: `string`[]
 
-Defined in: [types/api.ts:1108](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1108)
+Defined in: [types/api.ts:1108](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1108)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:1108](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > `optional` **fragment\_amount\_tokens**: `string`[]
 
-Defined in: [types/api.ts:1109](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1109)
+Defined in: [types/api.ts:1109](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1109)
 
 ***
 
@@ -54,4 +54,4 @@ Defined in: [types/api.ts:1109](https://github.com/tnorlund/Portfolio/blob/e6fc8
 
 > `optional` **has\_labeled\_line\_total\_candidate**: `boolean`
 
-Defined in: [types/api.ts:1110](https://github.com/tnorlund/Portfolio/blob/e6fc8648801217382ea31ef1a80589759d598282/portfolio/types/api.ts#L1110)
+Defined in: [types/api.ts:1110](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L1110)
