@@ -389,6 +389,10 @@
   flex-direction: column;
   gap: 0.5rem;
   width: fit-content;
+  /* Never let a wide matrix force the whole figure (and the sparkline that
+     measures it) past the viewport — scroll within the box instead. */
+  max-width: 100%;
+  overflow-x: auto;
 
   /* Responsive sizing via CSS custom properties (avoids SSR hydration issues) */
   --matrix-cell-size: 34px;
@@ -418,6 +422,35 @@
   writing-mode: vertical-rl;
   text-orientation: mixed;
   transform: rotate(180deg);
+}
+
+.matrixAxisLabelClickable {
+  cursor: pointer;
+  opacity: 1;
+  font-weight: 700;
+}
+.matrixAxisLabelClickable:hover {
+  color: var(--color-link, var(--color-blue));
+}
+
+.matrixBack {
+  font-size: 0.72rem;
+  color: var(--color-link, var(--color-blue));
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+  width: fit-content;
+}
+.matrixBack:hover {
+  text-decoration: underline;
+}
+
+.matrixHint {
+  font-size: 0.62rem;
+  color: var(--color-text-muted, #888);
+  opacity: 0.7;
 }
 
 .matrixCell {

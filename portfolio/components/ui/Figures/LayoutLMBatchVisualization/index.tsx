@@ -287,15 +287,26 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
   return (
     <div className={styles.entityLegend}>
-      {/* Desktop: full legend (hidden on mobile via CSS) */}
+      {/* Desktop: taxonomy-family legend (hidden on mobile via CSS) — 9 groups
+          instead of one row per granular label. */}
       <div className={styles.legendDesktop}>
-        {ENTITY_TYPES.map((entityType) => (
-          <LegendItem
-            key={entityType}
-            entityType={entityType}
-            isRevealed={revealedEntityTypes.has(entityType)}
-          />
-        ))}
+        {MOBILE_LEGEND_GROUPS.map((group) => {
+          const isRevealed = group.types.some((t) =>
+            revealedEntityTypes.has(t)
+          );
+          return (
+            <div
+              key={group.label}
+              className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
+            >
+              <div
+                className={styles.legendDot}
+                style={{ backgroundColor: group.color }}
+              />
+              <span className={styles.legendLabel}>{group.label}</span>
+            </div>
+          );
+        })}
       </div>
       {/* Mobile: grouped legend (hidden on desktop via CSS) */}
       <div className={styles.legendMobile}>
