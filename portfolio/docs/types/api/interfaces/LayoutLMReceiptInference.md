@@ -6,83 +6,15 @@
 
 # Interface: LayoutLMReceiptInference
 
-Defined in: [types/api.ts:424](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L424)
+Defined in: [types/api.ts:424](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L424)
 
 ## Properties
-
-### cached\_at
-
-> **cached\_at**: `string`
-
-Defined in: [types/api.ts:458](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L458)
-
-***
-
-### entities\_summary
-
-> **entities\_summary**: [`LayoutLMEntitiesSummary`](LayoutLMEntitiesSummary.md)
-
-Defined in: [types/api.ts:456](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L456)
-
-***
 
 ### inference\_time\_ms
 
 > **inference\_time\_ms**: `number`
 
-Defined in: [types/api.ts:457](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L457)
-
-***
-
-### metrics
-
-> **metrics**: `object`
-
-Defined in: [types/api.ts:443](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L443)
-
-#### correct\_predictions
-
-> **correct\_predictions**: `number`
-
-#### overall\_accuracy
-
-> **overall\_accuracy**: `number`
-
-#### total\_words
-
-> **total\_words**: `number`
-
-#### per\_label\_f1?
-
-> `optional` **per\_label\_f1**: `Record`\<`string`, `number`\>
-
-#### per\_label\_precision?
-
-> `optional` **per\_label\_precision**: `Record`\<`string`, `number`\>
-
-#### per\_label\_recall?
-
-> `optional` **per\_label\_recall**: `Record`\<`string`, `number`\>
-
-***
-
-### model\_info
-
-> **model\_info**: `object`
-
-Defined in: [types/api.ts:451](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L451)
-
-#### device
-
-> **device**: `string`
-
-#### model\_name
-
-> **model\_name**: `string`
-
-#### s3\_uri
-
-> **s3\_uri**: `string`
+Defined in: [types/api.ts:459](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L459)
 
 ***
 
@@ -90,7 +22,7 @@ Defined in: [types/api.ts:451](https://github.com/tnorlund/Portfolio/blob/b74581
 
 > **original**: `object`
 
-Defined in: [types/api.ts:426](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L426)
+Defined in: [types/api.ts:426](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L426)
 
 #### predictions
 
@@ -154,4 +86,72 @@ Defined in: [types/api.ts:426](https://github.com/tnorlund/Portfolio/blob/b74581
 
 > **receipt\_id**: `string`
 
-Defined in: [types/api.ts:425](https://github.com/tnorlund/Portfolio/blob/b7458114a7de00b182f2971eb5f8f11dcbabb9d8/portfolio/types/api.ts#L425)
+Defined in: [types/api.ts:425](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L425)
+
+***
+
+### cached\_at?
+
+> `optional` **cached\_at**: `string`
+
+Defined in: [types/api.ts:460](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L460)
+
+***
+
+### entities\_summary?
+
+> `optional` **entities\_summary**: [`LayoutLMEntitiesSummary`](LayoutLMEntitiesSummary.md)
+
+Defined in: [types/api.ts:458](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L458)
+
+***
+
+### metrics?
+
+> `optional` **metrics**: `object`
+
+Defined in: [types/api.ts:445](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L445)
+
+#### correct\_predictions
+
+> **correct\_predictions**: `number`
+
+#### overall\_accuracy
+
+> **overall\_accuracy**: `number`
+
+#### total\_words
+
+> **total\_words**: `number`
+
+#### per\_label\_f1?
+
+> `optional` **per\_label\_f1**: `Record`\<`string`, `number`\>
+
+#### per\_label\_precision?
+
+> `optional` **per\_label\_precision**: `Record`\<`string`, `number`\>
+
+#### per\_label\_recall?
+
+> `optional` **per\_label\_recall**: `Record`\<`string`, `number`\>
+
+***
+
+### model\_info?
+
+> `optional` **model\_info**: `object`
+
+Defined in: [types/api.ts:453](https://github.com/tnorlund/Portfolio/blob/faea9b9c08941ae9be43baf8768c5cfa8d5b4fe8/portfolio/types/api.ts#L453)
+
+#### device
+
+> **device**: `string`
+
+#### model\_name
+
+> **model\_name**: `string`
+
+#### s3\_uri
+
+> **s3\_uri**: `string`
