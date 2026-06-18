@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { getCdnBaseUrl } from "./cdnBase";
 
 export interface FormatSupport {
   supportsAVIF: boolean;
@@ -144,9 +145,7 @@ export const getBestImageUrl = (
   size: ImageSize = 'full',
 ): string => {
   const baseUrl =
-    process.env.NODE_ENV === "development"
-      ? "https://dev.tylernorlund.com"
-      : "https://www.tylernorlund.com";
+    getCdnBaseUrl();
 
   // Cascade requested size through smaller-to-larger fallbacks so that a
   // 'thumbnail' request never silently falls back to the FULL-SIZE asset
@@ -246,8 +245,6 @@ export const usePreloadReceiptImages = (
  */
 export const getJpegFallbackUrl = (image: ImageFormats): string => {
   const baseUrl =
-    process.env.NODE_ENV === "development"
-      ? "https://dev.tylernorlund.com"
-      : "https://www.tylernorlund.com";
+    getCdnBaseUrl();
   return `${baseUrl}/${image.cdn_s3_key}`;
 };

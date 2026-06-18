@@ -1,4 +1,5 @@
 import React from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import ReactMarkdown from "react-markdown";
 import { useSpring, animated, config } from "@react-spring/web";
 import type {
@@ -132,7 +133,7 @@ const STEP_CONFIG: Record<StepType, { color: string; label: string; icon: string
   synthesize: { color: "var(--color-red)", label: "Synthesize", icon: "✓", node: "5", description: "Composing the final answer with evidence citations" },
 };
 
-const CDN_BASE = "https://dev.tylernorlund.com";
+const CDN_BASE = getCdnBaseUrl();
 
 /** Default step duration (ms) when durationMs is not available */
 const DEFAULT_STEP_MS = 1500;

@@ -73,16 +73,13 @@ export const detectImageFormatSupport = (): Promise<FormatSupport> => {
 };
 
 import type { Image } from "../types/api";
-
-const isDevelopment = process.env.NODE_ENV === "development";
+import { getCdnBaseUrl } from "./cdnBase";
 
 export const getBestImageUrl = (
   image: Image,
   formatSupport: FormatSupport
 ): string => {
-  const baseUrl = isDevelopment
-    ? "https://dev.tylernorlund.com"
-    : "https://www.tylernorlund.com";
+  const baseUrl = getCdnBaseUrl();
 
   if (formatSupport.supportsAVIF && image.cdn_avif_s3_key) {
     return `${baseUrl}/${image.cdn_avif_s3_key}`;
