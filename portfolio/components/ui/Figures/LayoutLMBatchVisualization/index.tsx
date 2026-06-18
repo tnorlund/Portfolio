@@ -27,17 +27,41 @@ const emptyStringSet = new Set<string>();
 
 // Normalize ADDRESS_LINE to ADDRESS for display purposes
 const normalizeLabel = (label: string): string => {
-  if (label === "ADDRESS_LINE") return "ADDRESS";
+  // Keep granular labels as-is (LABEL_COLORS covers both ADDRESS and
+  // ADDRESS_LINE, the currency roles, QUANTITY, etc.).
   return label;
 };
 
-// Label colors for hybrid model
+// Charge shades (green family) — GRAND_TOTAL boldest, then medium, then light.
+const CHARGE_GREEN = "var(--color-green)";
+const CHARGE_GREEN_MED = "color-mix(in srgb, var(--color-green) 72%, white)";
+const CHARGE_GREEN_LIGHT = "color-mix(in srgb, var(--color-green) 48%, white)";
+
+// Label colors. New model is granular: currency split into charges (green
+// family) vs credits (teal), plus QUANTITY (cyan) and ADDRESS_LINE.
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
   TIME: "var(--color-blue)",
-  AMOUNT: "var(--color-green)",
-  ADDRESS: "var(--color-red)",
+  // Charges — green family
+  GRAND_TOTAL: CHARGE_GREEN,
+  SUBTOTAL: CHARGE_GREEN_MED,
+  TAX: CHARGE_GREEN_MED,
+  LINE_TOTAL: CHARGE_GREEN_MED,
+  UNIT_PRICE: CHARGE_GREEN_LIGHT,
+  AMOUNT: CHARGE_GREEN, // legacy merged label (back-compat)
+  // Credits / money back — teal
+  DISCOUNT: "var(--color-teal)",
+  COUPON: "var(--color-teal)",
+  TIP: "var(--color-teal)",
+  CHANGE: "var(--color-teal)",
+  CASH_BACK: "var(--color-teal)",
+  REFUND: "var(--color-teal)",
+  // Quantity (a count, not a dollar amount)
+  QUANTITY: "var(--color-cyan)",
+  // Address / contact
+  ADDRESS_LINE: "var(--color-red)",
+  ADDRESS: "var(--color-red)", // back-compat
   PHONE_NUMBER: "var(--color-pink)",
   WEBSITE: "var(--color-purple)",
   STORE_HOURS: "var(--color-orange)",
@@ -50,7 +74,20 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   MERCHANT_NAME: "Merchant",
   DATE: "Date",
   TIME: "Time",
+  GRAND_TOTAL: "Total",
+  SUBTOTAL: "Subtotal",
+  TAX: "Tax",
+  LINE_TOTAL: "Line total",
+  UNIT_PRICE: "Unit price",
   AMOUNT: "Amount",
+  DISCOUNT: "Discount",
+  COUPON: "Coupon",
+  TIP: "Tip",
+  CHANGE: "Change",
+  CASH_BACK: "Cash back",
+  REFUND: "Refund",
+  QUANTITY: "Qty",
+  ADDRESS_LINE: "Address",
   ADDRESS: "Address",
   PHONE_NUMBER: "Phone",
   WEBSITE: "Website",
@@ -58,28 +95,49 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   PAYMENT_METHOD: "Payment",
 };
 
-// Entity types in order (grouped by color for visual clarity)
+// Entity types in order (grouped by color family for visual clarity)
 const ENTITY_TYPES = [
   "MERCHANT_NAME",
   "DATE",
   "TIME",
-  "AMOUNT",
-  "ADDRESS",
+  "GRAND_TOTAL",
+  "SUBTOTAL",
+  "TAX",
+  "LINE_TOTAL",
+  "UNIT_PRICE",
+  "DISCOUNT",
+  "TIP",
+  "CHANGE",
+  "QUANTITY",
+  "ADDRESS_LINE",
   "PHONE_NUMBER",
   "WEBSITE",
   "STORE_HOURS",
   "PAYMENT_METHOD",
 ];
 
-// Mobile legend groups - combine same-colored labels
+// Legend groups — taxonomy families. `title` (hover) carries the breakdown so
+// the labels stay short.
 const MOBILE_LEGEND_GROUPS = [
-  { color: "var(--color-yellow)", label: "Merchant", types: ["MERCHANT_NAME"] },
-  { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
-  { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
-  { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
-  { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
-  { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
-  { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
+  { color: "var(--color-yellow)", label: "Merchant", title: "Merchant name", types: ["MERCHANT_NAME"] },
+  { color: "var(--color-blue)", label: "Date / Time", title: "Date · Time", types: ["DATE", "TIME"] },
+  {
+    color: CHARGE_GREEN,
+    label: "Charges",
+    title: "Total · Subtotal · Tax · Line total · Unit price",
+    types: ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL", "UNIT_PRICE", "AMOUNT"],
+  },
+  {
+    color: "var(--color-teal)",
+    label: "Credits",
+    title: "Discount · Coupon · Tip · Change · Cash back · Refund",
+    types: ["DISCOUNT", "COUPON", "TIP", "CHANGE", "CASH_BACK", "REFUND"],
+  },
+  { color: "var(--color-cyan)", label: "Quantity", title: "Quantity", types: ["QUANTITY"] },
+  { color: "var(--color-red)", label: "Address", title: "Address line", types: ["ADDRESS", "ADDRESS_LINE"] },
+  { color: "var(--color-pink)", label: "Phone", title: "Phone number", types: ["PHONE_NUMBER"] },
+  { color: "var(--color-purple)", label: "Website", title: "Website", types: ["WEBSITE"] },
+  { color: "var(--color-orange)", label: "Hours / Payment", title: "Store hours · Payment method", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
 
 // Animation timing
@@ -232,15 +290,27 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
   return (
     <div className={styles.entityLegend}>
-      {/* Desktop: full legend (hidden on mobile via CSS) */}
+      {/* Desktop: taxonomy-family legend (hidden on mobile via CSS) — 9 groups
+          instead of one row per granular label. */}
       <div className={styles.legendDesktop}>
-        {ENTITY_TYPES.map((entityType) => (
-          <LegendItem
-            key={entityType}
-            entityType={entityType}
-            isRevealed={revealedEntityTypes.has(entityType)}
-          />
-        ))}
+        {MOBILE_LEGEND_GROUPS.map((group) => {
+          const isRevealed = group.types.some((t) =>
+            revealedEntityTypes.has(t)
+          );
+          return (
+            <div
+              key={group.label}
+              title={group.title}
+              className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
+            >
+              <div
+                className={styles.legendDot}
+                style={{ backgroundColor: group.color }}
+              />
+              <span className={styles.legendLabel}>{group.label}</span>
+            </div>
+          );
+        })}
       </div>
       {/* Mobile: grouped legend (hidden on desktop via CSS) */}
       <div className={styles.legendMobile}>
@@ -249,6 +319,7 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
           return (
             <div
               key={group.label}
+              title={group.title}
               className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
             >
               <div className={styles.legendDot} style={{ backgroundColor: group.color }} />
@@ -322,44 +393,14 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             className={styles.receiptImage}
           />
 
-          {/* SVG overlay for bounding boxes and scan line */}
-          {/* Use unique IDs per receipt to avoid conflicts during crossfade */}
+          {/* SVG overlay for the labeled bounding boxes. The old red scan
+              line was removed — inference is now ~15ms, so labels appear
+              effectively instantly. */}
           <svg
             className={styles.svgOverlay}
             viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
             preserveAspectRatio="none"
           >
-            {/* Scan line - positioned in image coordinates */}
-            <defs>
-              <linearGradient id={`scanLineGradient-${receipt.receipt_id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="transparent" />
-                <stop offset="20%" stopColor="var(--color-red)" />
-                <stop offset="80%" stopColor="var(--color-red)" />
-                <stop offset="100%" stopColor="transparent" />
-              </linearGradient>
-            </defs>
-            {/* Only show scan line when scanProgress > 0 to avoid flash at top during transitions */}
-            {scanProgress > 0 && (
-              <>
-                {/* Soft glow behind scan line (no GPU-expensive blur filter) */}
-                <rect
-                  x="0"
-                  y={(scanProgress / 100) * receiptData.height - receiptData.height * 0.008}
-                  width={receiptData.width}
-                  height={Math.max(receiptData.height * 0.02, 8)}
-                  fill={`url(#scanLineGradient-${receipt.receipt_id})`}
-                  opacity={0.3}
-                />
-                <rect
-                  x="0"
-                  y={(scanProgress / 100) * receiptData.height}
-                  width={receiptData.width}
-                  height={Math.max(receiptData.height * 0.005, 3)}
-                  fill={`url(#scanLineGradient-${receipt.receipt_id})`}
-                />
-              </>
-            )}
-
             {/* Bounding boxes */}
             {visiblePredictions.map((pred, idx) => {
               const key = `${pred.line_id}_${pred.word_id}`;

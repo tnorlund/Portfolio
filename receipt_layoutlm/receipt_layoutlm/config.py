@@ -30,6 +30,9 @@ class DataConfig:
     merge_amounts: bool = False
     dataset_snapshot_load: Optional[str] = None
     dataset_snapshot_save: Optional[str] = None
+    # S3 URI of the pinned canonical val split (recorded for run lineage so the
+    # Job entity / run.json says which shared val set this run held out).
+    val_keys_s3: Optional[str] = None
 
     def get_effective_label_merges(self) -> Dict[str, List[str]]:
         """Return the effective label merges, combining explicit config and legacy flags.
@@ -83,3 +86,8 @@ class TrainingConfig:
     auto_export_coreml: bool = False
     coreml_quantize: Optional[str] = "float16"
     model_version: str = ModelVersion.V1.value
+    # Run the windowed held-out eval in-process after each epoch's checkpoint
+    # is saved, emitting epochs.json live (the viz cache) on the training GPU —
+    # no separate Processing job needed for new runs. Best-effort: failures are
+    # logged and never interrupt training. Disable to skip the per-epoch cost.
+    eval_heldout_windowed: bool = True

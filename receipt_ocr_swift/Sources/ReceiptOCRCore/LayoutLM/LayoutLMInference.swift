@@ -46,6 +46,19 @@ public class LayoutLMInference {
     /// Whether this model requires image input (v3)
     public let requiresImageInput: Bool
 
+    /// Sliding-window config for inference. Must match how the model was
+    /// trained (data_loader._build_receipt_window_examples): words are sorted
+    /// into reading order and cut into `windowSize`-word windows stepped by
+    /// `windowStride`, so the model sees the multi-line context it trained on
+    /// instead of one packed line at a time. Overridable via
+    /// LAYOUTLM_WINDOW_SIZE / LAYOUTLM_WINDOW_STRIDE.
+    public let windowSize: Int
+    public let windowStride: Int
+
+    /// When false (LAYOUTLM_INFERENCE_MODE=line_packed) falls back to the
+    /// legacy greedy line-packing path. Default is windowed.
+    public let useWindowedInference: Bool
+
     // MARK: - Initialization
 
     /// Initialize from a model bundle directory.
@@ -102,6 +115,15 @@ public class LayoutLMInference {
         self.config = try LayoutLMConfig.load(from: configURL)
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
         self.requiresImageInput = model.modelDescription.inputDescriptionsByName.keys.contains("pixel_values")
+
+        let env = ProcessInfo.processInfo.environment
+        // Defaults MUST match the Python trainer/data_loader defaults (200/150),
+        // not 250/200 — a model trained at 200/150 must run windowed the same way.
+        self.windowSize = env["LAYOUTLM_WINDOW_SIZE"].flatMap { Int($0) } ?? 200
+        self.windowStride = env["LAYOUTLM_WINDOW_STRIDE"].flatMap { Int($0) } ?? 150
+        // Windowed unless explicitly some other mode (matches Python, where any
+        // value other than "windowed" — e.g. "per_line" — disables windowing).
+        self.useWindowedInference = (env["LAYOUTLM_INFERENCE_MODE"] ?? "windowed") == "windowed"
 
         // Load tokenizer — use BPE for v3 (tokenizer.json), WordPiece for v1 (vocab.txt)
         let tokenizerJsonURL = bundlePath.appendingPathComponent("tokenizer.json")
@@ -183,6 +205,11 @@ public class LayoutLMInference {
     /// - Returns: Array of LinePrediction results
     public func predict(lines: [Line], receiptImageData: Data? = nil) throws -> [LinePrediction] {
         guard !lines.isEmpty else { return [] }
+
+        // Default: window like training (multi-line reading-order context).
+        if useWindowedInference {
+            return try predictWindowed(lines: lines, receiptImageData: receiptImageData)
+        }
 
         // Compute bbox extents for the entire receipt
         let (maxX, maxY) = BboxNormalizer.computeExtents(lines: lines)
@@ -270,6 +297,186 @@ public class LayoutLMInference {
                 allProbabilities: nil
             )
         }
+    }
+
+    /// Windowed prediction that mirrors training.
+    ///
+    /// Flattens every word across all OCR lines, sorts them into reading order
+    /// by ascending normalized (y, x) — the EXACT key the trainer uses
+    /// (data_loader._build_receipt_window_examples; note Apple Vision boxes are
+    /// bottom-left origin, so this is intentionally not human top-to-bottom) —
+    /// cuts `windowSize`-word windows stepped by `windowStride`, runs each
+    /// window through CoreML, averages per-label probabilities for words that
+    /// fall in overlapping windows, and regroups the result back into per-line
+    /// `LinePrediction`s so the worker is unchanged.
+    private func predictWindowed(lines: [Line], receiptImageData: Data?) throws -> [LinePrediction] {
+        let empty = LinePrediction(tokens: [], labels: [], confidences: [], allProbabilities: nil)
+
+        // Flatten words, tracking each word's (line, position-in-line).
+        var allWords: [Word] = []
+        var flatLine: [Int] = []
+        var flatPos: [Int] = []
+        for (li, line) in lines.enumerated() {
+            for (pi, w) in line.words.enumerated() {
+                allWords.append(w)
+                flatLine.append(li)
+                flatPos.append(pi)
+            }
+        }
+        if allWords.isEmpty { return lines.map { _ in empty } }
+
+        // Per-receipt extents → normalized boxes + texts (same as the per-line path).
+        let (maxX, maxY) = BboxNormalizer.computeExtents(words: allWords)
+        let (texts, nboxes) = BboxNormalizer.normalizeWords(allWords, maxX: maxX, maxY: maxY)
+
+        // Reading order: ascending normalized y0 (box[1]) then x0 (box[0]).
+        let order = Array(0..<allWords.count).sorted { a, b in
+            if nboxes[a][1] != nboxes[b][1] { return nboxes[a][1] < nboxes[b][1] }
+            return nboxes[a][0] < nboxes[b][0]
+        }
+        let n = order.count
+        let oTexts = order.map { texts[$0] }
+        let oBoxes = order.map { nboxes[$0] }
+
+        // Window starts — replicate the trainer's loop exactly: step by stride,
+        // stop as soon as a window reaches the end (no extra short trailing window).
+        var starts: [Int] = []
+        if n <= windowSize {
+            starts = [0]
+        } else {
+            var s = 0
+            while s < n {
+                starts.append(s)
+                if s + windowSize >= n { break }
+                s += windowStride
+            }
+        }
+
+        let pixelValues: MLMultiArray? = try {
+            guard requiresImageInput else { return nil }
+            guard let imageData = receiptImageData else { return createGrayPixelValues() }
+            return try createPixelValues(from: imageData)
+        }()
+
+        // Accumulate per-(ordered-index) probability dicts across the windows
+        // covering each word, then average — matches predict_receipt_windowed.
+        var probSums = Array(repeating: [String: Float](), count: n)
+        var counts = [Int](repeating: 0, count: n)
+        for s in starts {
+            let end = min(s + windowSize, n)
+            let winProbs = try runWindowProbs(
+                words: Array(oTexts[s..<end]),
+                bboxes: Array(oBoxes[s..<end]),
+                pixelValues: pixelValues
+            )
+            for (j, dict) in winProbs.enumerated() where !dict.isEmpty {
+                let oi = s + j
+                for (k, v) in dict { probSums[oi][k, default: 0] += v }
+                counts[oi] += 1
+            }
+        }
+
+        // Finalize each word and scatter back to its (line, position).
+        var lineTokens = lines.map { [String](repeating: "", count: $0.words.count) }
+        var lineLabels = lines.map { [String](repeating: "O", count: $0.words.count) }
+        var lineConf = lines.map { [Float](repeating: 0, count: $0.words.count) }
+        var lineProbs = lines.map { [[String: Float]](repeating: [:], count: $0.words.count) }
+        for flatIdx in 0..<allWords.count {
+            lineTokens[flatLine[flatIdx]][flatPos[flatIdx]] = texts[flatIdx]
+        }
+        for oi in 0..<n {
+            let flatIdx = order[oi]
+            let li = flatLine[flatIdx], pi = flatPos[flatIdx]
+            if counts[oi] == 0 { continue }
+            let c = Float(counts[oi])
+            var bestLabel = "O"
+            var bestProb: Float = -1
+            var dict: [String: Float] = [:]
+            for (k, v) in probSums[oi] {
+                let avg = v / c
+                dict[k] = avg
+                if avg > bestProb { bestProb = avg; bestLabel = k }
+            }
+            lineLabels[li][pi] = bestLabel
+            lineConf[li][pi] = bestProb < 0 ? 0 : bestProb
+            lineProbs[li][pi] = dict
+        }
+
+        return lines.enumerated().map { (li, line) in
+            line.words.isEmpty ? empty : LinePrediction(
+                tokens: lineTokens[li],
+                labels: lineLabels[li],
+                confidences: lineConf[li],
+                allProbabilities: lineProbs[li]
+            )
+        }
+    }
+
+    /// Run one window of words through CoreML and return per-word softmax
+    /// probability dicts (using the first subtoken per word, matching the
+    /// trainer's first-subtoken supervision). Empty dict = word dropped by the
+    /// tokenizer.
+    private func runWindowProbs(
+        words: [String],
+        bboxes: [[Int32]],
+        pixelValues: MLMultiArray?
+    ) throws -> [[String: Float]] {
+        guard !words.isEmpty else { return [] }
+
+        let tokenResult = tokenizer(words, true, true)
+        var bboxTensor: [[Int32]] = []
+        for wordId in tokenResult.wordIds {
+            if let wid = wordId, wid < bboxes.count {
+                bboxTensor.append(bboxes[wid])
+            } else {
+                bboxTensor.append([0, 0, 0, 0])
+            }
+        }
+
+        let seqLength = tokenResult.inputIds.count
+        let inputIds = try createMultiArray(from: tokenResult.inputIds, shape: [1, seqLength])
+        let attentionMask = try createMultiArray(from: tokenResult.attentionMask, shape: [1, seqLength])
+        let tokenTypeIds = try createMultiArray(from: tokenResult.tokenTypeIds, shape: [1, seqLength])
+        let bbox = try createBboxMultiArray(from: bboxTensor, shape: [1, seqLength, 4])
+        let inputFeatures = LayoutLMInput(
+            input_ids: inputIds,
+            attention_mask: attentionMask,
+            bbox: bbox,
+            token_type_ids: tokenTypeIds,
+            pixel_values: pixelValues
+        )
+        let output = try model.prediction(from: inputFeatures)
+        guard let logits = output.featureValue(for: "logits")?.multiArrayValue else {
+            throw LayoutLMError.outputNotFound
+        }
+        let numLabels = logits.shape[2].intValue
+
+        var wordToFirstToken: [Int: Int] = [:]
+        for (tokenIdx, wordId) in tokenResult.wordIds.enumerated() {
+            if let wid = wordId, wordToFirstToken[wid] == nil {
+                wordToFirstToken[wid] = tokenIdx
+            }
+        }
+
+        var result: [[String: Float]] = []
+        for wordIdx in 0..<words.count {
+            guard let tokenIdx = wordToFirstToken[wordIdx] else {
+                result.append([:])
+                continue
+            }
+            var wordLogits = [Float](repeating: 0, count: numLabels)
+            for labelIdx in 0..<numLabels {
+                wordLogits[labelIdx] = logits[tokenIdx * numLabels + labelIdx].floatValue
+            }
+            let probs = softmax(wordLogits)
+            var dict: [String: Float] = [:]
+            for labelIdx in 0..<numLabels {
+                let p = probs[labelIdx]
+                dict[config.labelName(for: labelIdx)] = p.isNaN ? 0 : p
+            }
+            result.append(dict)
+        }
+        return result
     }
 
     /// Count tokens for a list of words (without special tokens or padding).

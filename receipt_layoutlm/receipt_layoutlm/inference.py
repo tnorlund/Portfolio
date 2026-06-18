@@ -10,6 +10,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .data_loader import _box_from_word, _normalize_box_from_extents
 
 
+def _strip_bio(label: str) -> str:
+    """Strip a leading ``B-``/``I-`` prefix from a label (``B-DATE`` -> ``DATE``)."""
+    if label.startswith("B-") or label.startswith("I-"):
+        return label[2:]
+    return label
+
+
 @dataclass
 class LinePrediction:
     line_id: int
@@ -84,6 +91,13 @@ class LayoutLMInference:
         self._label_list: List[str] = list(
             self._model.config.id2label.values()
         )
+        # Base labels the model predicts, derived by stripping BIO prefixes
+        # (e.g. {"ADDRESS", "AMOUNT", "DATE", ...}). normalize_label() needs
+        # this because label_list itself is BIO-prefixed, so a base label like
+        # "DATE" would otherwise never be recognized.
+        self._base_label_set: Set[str] = {
+            _strip_bio(lbl) for lbl in self._label_list if lbl != "O"
+        }
         self._label_merges: Dict[str, List[str]] = {}
         self._reverse_label_map: Dict[str, str] = {}
         self._load_run_config(model_s3_uri)
@@ -141,7 +155,9 @@ class LayoutLMInference:
         with open(path, "r") as f:
             config = json.load(f)
 
-        self._label_merges = config.get("label_merges", {})
+        # Runs trained without merges serialize "label_merges": null, so
+        # `.get(..., {})` still yields None — coalesce to {} to avoid a crash.
+        self._label_merges = config.get("label_merges") or {}
 
         # Build reverse mapping: original_label -> merged_label
         for merged_label, original_labels in self._label_merges.items():
@@ -160,20 +176,28 @@ class LayoutLMInference:
 
     @property
     def base_labels(self) -> Set[str]:
-        """Set of base labels (excluding O)."""
-        return {lbl for lbl in self._label_list if lbl != "O"}
+        """Set of base labels the model predicts (excluding O, BIO stripped)."""
+        return set(self._base_label_set)
 
     def normalize_label(self, raw_label: str) -> str:
-        """Normalize a raw label to match the model's label set.
+        """Normalize a raw label to the model's base label set.
 
-        Uses label_merges from run.json to map original labels to merged ones.
-        Returns 'O' for unknown labels.
+        A label is recognized if it is one of the model's base labels (after
+        stripping any BIO prefix), or maps to one via the run.json merges.
+        Returns 'O' for anything else.
         """
-        # Already a valid label
+        base = _strip_bio(raw_label)
+
+        # Base label the model directly predicts (e.g. DATE, MERCHANT_NAME).
+        if base in self._base_label_set:
+            return base
+
+        # Fully-qualified label already in the model's list (defensive).
         if raw_label in self._label_list:
             return raw_label
 
-        # Check if it's a label that was merged
+        # Original label that was merged into a base label (e.g. ADDRESS_LINE
+        # -> ADDRESS, LINE_TOTAL -> AMOUNT).
         if raw_label in self._reverse_label_map:
             return self._reverse_label_map[raw_label]
 
@@ -294,89 +318,124 @@ class LayoutLMInference:
         boxes must be LayoutLM-style per-subtoken bboxes after alignment or
         per-word boxes (we align internally to subtokens by repeating word boxes).
         """
-        results: List[LinePrediction] = []
         tok = self._tokenizer
         model = self._model
         device = self._device
+        torch = self._torch
+        id2label = model.config.id2label
+        id2label_items = list(id2label.items())
 
-        for idx, (tokens, word_boxes) in enumerate(
-            zip(tokens_per_line, boxes_per_line)
-        ):
+        n = len(tokens_per_line)
+        results: List[Optional[LinePrediction]] = [None] * n
+        if n == 0:
+            return []
+
+        # Each line is an independent LayoutLM sequence, but they were
+        # previously run one forward at a time — for a ~40-line receipt that's
+        # ~40 tiny GPU launches. Batch them (capped, so a huge receipt doesn't
+        # blow up memory) into single padded forwards instead. Padded positions
+        # are masked, so per-token outputs are identical to the per-line path.
+        MAX_LINES_PER_BATCH = 64
+
+        def _empty(idx: int) -> LinePrediction:
+            return LinePrediction(
+                line_id=(line_ids[idx] if line_ids else idx),
+                tokens=tokens_per_line[idx],
+                boxes=boxes_per_line[idx],
+                labels=[],
+                confidences=[],
+                all_probabilities=[],
+            )
+
+        for start in range(0, n, MAX_LINES_PER_BATCH):
+            end = min(start + MAX_LINES_PER_BATCH, n)
+            # Lines with no tokens can't be tokenized; emit them as empty.
+            members = [
+                i for i in range(start, end) if len(tokens_per_line[i]) > 0
+            ]
+            for i in range(start, end):
+                if len(tokens_per_line[i]) == 0:
+                    results[i] = _empty(i)
+            if not members:
+                continue
+
             enc = tok(
-                tokens,
+                [tokens_per_line[i] for i in members],
                 is_split_into_words=True,
                 truncation=True,
                 padding="longest",
                 return_attention_mask=True,
             )
-            wids = enc.word_ids()
-            bbox_aligned = [
-                [0, 0, 0, 0] if wid is None else word_boxes[wid]
-                for wid in wids
-            ]
+            bbox_batch: List[List[List[int]]] = []
+            word_ids_per_member: List[List[Optional[int]]] = []
+            for bi, line_idx in enumerate(members):
+                wids = enc.word_ids(batch_index=bi)
+                word_ids_per_member.append(wids)
+                wb = boxes_per_line[line_idx]
+                bbox_batch.append(
+                    [[0, 0, 0, 0] if wid is None else wb[wid] for wid in wids]
+                )
 
             inputs = {
-                "input_ids": self._torch.tensor(
-                    [enc["input_ids"]], device=device
+                "input_ids": torch.tensor(enc["input_ids"], device=device),
+                "attention_mask": torch.tensor(
+                    enc["attention_mask"], device=device
                 ),
-                "attention_mask": self._torch.tensor(
-                    [enc["attention_mask"]], device=device
-                ),
-                "bbox": self._torch.tensor([bbox_aligned], device=device),
+                "bbox": torch.tensor(bbox_batch, device=device),
             }
-            with self._torch.no_grad():
-                logits = model(**inputs).logits  # [1, seq_len, num_labels]
-            id2label = model.config.id2label
+            with torch.no_grad():
+                logits = model(**inputs).logits  # [B, seq_len, num_labels]
+            # Move raw logits to CPU once. The per-word aggregation below does
+            # thousands of scalar reads; against a GPU tensor each forces a sync,
+            # far slower than the matmul it follows. Aggregating logits (then
+            # softmax per word) keeps this bit-equivalent to the per-line path.
+            logits_batch = logits.cpu()
+            softmax = torch.nn.functional.softmax
 
-            # Aggregate logits per word (average over subtokens), compute softmax
-            seq_logits = logits[0]  # [seq_len, num_labels]
+            for bi, line_idx in enumerate(members):
+                wids = word_ids_per_member[bi]
+                seq_logits = logits_batch[bi]  # [seq_len, num_labels]
+                word_to_token_indices: Dict[int, List[int]] = {}
+                for j, wid in enumerate(wids):
+                    if wid is None:
+                        continue
+                    word_to_token_indices.setdefault(int(wid), []).append(j)
 
-            # Collect token indices per word id
-            word_to_token_indices: Dict[int, List[int]] = {}
-            for i, wid in enumerate(wids):
-                if wid is None:
-                    continue
-                word_to_token_indices.setdefault(int(wid), []).append(i)
+                word_boxes = boxes_per_line[line_idx]
+                labels_per_word: List[str] = []
+                confidences_per_word: List[float] = []
+                all_probabilities_per_word: List[Dict[str, float]] = []
+                for wid in range(len(word_boxes)):
+                    token_idxs = word_to_token_indices.get(wid, [])
+                    if not token_idxs:
+                        labels_per_word.append("O")
+                        confidences_per_word.append(0.0)
+                        all_probabilities_per_word.append({})
+                        continue
+                    # Use the FIRST subtoken's logits, then softmax. This
+                    # matches training supervision (the trainer labels a word's
+                    # first subtoken and sets the rest to -100) and the Swift
+                    # on-device path, keeping training/Python/Swift consistent.
+                    first_logits = seq_logits[token_idxs[0]]
+                    probs = softmax(first_logits, dim=-1)
+                    conf, pred_id = torch.max(probs, dim=-1)
+                    labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
+                    confidences_per_word.append(float(conf.item()))
+                    probs_list = probs.tolist()
+                    all_probabilities_per_word.append(
+                        {name: probs_list[lid] for lid, name in id2label_items}
+                    )
 
-            labels_per_word: List[str] = []
-            confidences_per_word: List[float] = []
-            all_probabilities_per_word: List[Dict[str, float]] = []
-            for wid in range(len(word_boxes)):
-                token_idxs = word_to_token_indices.get(wid, [])
-                if not token_idxs:
-                    # If tokenizer dropped the word (rare), fallback to zeros
-                    labels_per_word.append("O")
-                    confidences_per_word.append(0.0)
-                    all_probabilities_per_word.append({})
-                    continue
-                # Average logits across subtokens of this word
-                stacked = self._torch.stack(
-                    [seq_logits[i] for i in token_idxs]
-                )
-                avg_logits = stacked.mean(dim=0)
-                probs = self._torch.nn.functional.softmax(avg_logits, dim=-1)
-                conf, pred_id = self._torch.max(probs, dim=-1)
-                labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
-                confidences_per_word.append(float(conf.item()))
-
-                # Store all class probabilities
-                word_probs: Dict[str, float] = {}
-                for label_id, label_name in id2label.items():
-                    word_probs[label_name] = float(probs[label_id].item())
-                all_probabilities_per_word.append(word_probs)
-
-            results.append(
-                LinePrediction(
-                    line_id=(line_ids[idx] if line_ids else idx),
-                    tokens=tokens,
+                results[line_idx] = LinePrediction(
+                    line_id=(line_ids[line_idx] if line_ids else line_idx),
+                    tokens=tokens_per_line[line_idx],
                     boxes=word_boxes,
                     labels=labels_per_word,
                     confidences=confidences_per_word,
                     all_probabilities=all_probabilities_per_word,
                 )
-            )
 
-        return results
+        return [r if r is not None else _empty(i) for i, r in enumerate(results)]
 
     def predict_receipt_from_dynamo(
         self,
@@ -440,5 +499,155 @@ class LayoutLMInference:
                 ),
                 "s3_uri_used": self._s3_uri_used,
                 "model_dir": self._model_dir,
+            },
+        )
+
+    def predict_receipt_windowed(
+        self,
+        image_id: str,
+        receipt_id: int,
+        words: List[Any],
+        window_size: Optional[int] = None,
+        stride: Optional[int] = None,
+    ) -> InferenceResult:
+        """Run inference over sliding windows that mirror training.
+
+        Training builds examples by sorting a receipt's words by ascending
+        normalized (y, x) and cutting ``window_size``-word windows with
+        ``stride`` step (see
+        ``data_loader._build_receipt_window_examples``). The per-line path used
+        elsewhere instead feeds one line at a time, so the model never sees the
+        multi-line context it was trained on. This method reproduces the
+        training windowing, predicts each window (batched), averages per-label
+        probabilities for words that fall in overlapping windows, and returns
+        the result as per-line ``LinePrediction``s so downstream code is
+        unchanged.
+
+        window_size/stride default to the same env vars training reads
+        (LAYOUTLM_WINDOW_SIZE / LAYOUTLM_WINDOW_STRIDE), so setting them to the
+        values a model trained with makes inference match it exactly.
+        """
+        # Default to the trainer's data_loader defaults (NOT 250/200) so an
+        # unconfigured eval scores under the same windowing the model trained
+        # with. Callers should pass the run's actual window config when known.
+        if window_size is None:
+            window_size = int(os.getenv("LAYOUTLM_WINDOW_SIZE", "200"))
+        if stride is None:
+            stride = int(os.getenv("LAYOUTLM_WINDOW_STRIDE", "150"))
+
+        # Per-receipt extents → normalized boxes (matches training + per-line).
+        max_x = max_y = 0.0
+        raw: List[Tuple[int, int, str, Tuple[float, float, float, float]]] = []
+        for w in words:
+            x0, y0, x1, y1 = _box_from_word(w)
+            max_x = max(max_x, x1)
+            max_y = max(max_y, y1)
+            raw.append((w.line_id, w.word_id, w.text, (x0, y0, x1, y1)))
+
+        if not raw:
+            return InferenceResult(
+                image_id=image_id, receipt_id=receipt_id, lines=[], meta={}
+            )
+
+        items = [
+            (
+                lid,
+                wid,
+                text,
+                _normalize_box_from_extents(
+                    b[0], b[1], b[2], b[3], max_x, max_y
+                ),
+            )
+            for (lid, wid, text, b) in raw
+        ]
+
+        # Order words by ascending normalized (y, x) — the EXACT key training
+        # uses (data_loader._build_receipt_window_examples). NB: boxes come from
+        # Apple Vision (origin bottom-left, y increases upward), so this is not
+        # human top-to-bottom — but matching training is the whole point, so do
+        # NOT "correct" it here without also changing the trainer.
+        order = sorted(
+            range(len(items)),
+            key=lambda i: (items[i][3][1], items[i][3][0]),
+        )
+        ordered = [items[i] for i in order]
+        tokens = [it[2] for it in ordered]
+        boxes = [it[3] for it in ordered]
+        n = len(ordered)
+
+        # Replicate the trainer's start sequence EXACTLY: step by stride but
+        # stop as soon as a window reaches the end, so we don't emit an extra
+        # short trailing window the trainer never produced (and over-weight the
+        # tail in overlap averaging). See data_loader._build_receipt_window_examples.
+        if n <= window_size:
+            starts = [0]
+        else:
+            starts = []
+            s = 0
+            while s < n:
+                starts.append(s)
+                if s + window_size >= n:
+                    break
+                s += stride
+        win_tokens = [tokens[s : min(s + window_size, n)] for s in starts]
+        win_boxes = [boxes[s : min(s + window_size, n)] for s in starts]
+        win_preds = self.predict_lines(win_tokens, win_boxes)
+
+        # Average per-label probabilities across windows covering each word.
+        prob_sums: List[Optional[Dict[str, float]]] = [None] * n
+        prob_counts: List[int] = [0] * n
+        for wi, s in enumerate(starts):
+            for j, ap in enumerate(win_preds[wi].all_probabilities or []):
+                oi = s + j
+                if oi >= n:
+                    break
+                bucket = prob_sums[oi]
+                if bucket is None:
+                    bucket = {}
+                    prob_sums[oi] = bucket
+                for k, v in ap.items():
+                    bucket[k] = bucket.get(k, 0.0) + v
+                prob_counts[oi] += 1
+
+        # Finalize each word, then regroup into per-line predictions ordered by
+        # word_id (the order downstream token→word matching expects).
+        by_line: Dict[int, List[Tuple[int, str, str, float, Dict[str, float]]]] = {}
+        for oi in range(n):
+            lid, wid, text, _box = ordered[oi]
+            sums = prob_sums[oi]
+            cnt = prob_counts[oi]
+            if not sums or cnt == 0:
+                by_line.setdefault(lid, []).append((wid, text, "O", 0.0, {}))
+                continue
+            probs = {k: v / cnt for k, v in sums.items()}
+            label = max(probs, key=probs.get)
+            by_line.setdefault(lid, []).append(
+                (wid, text, label, probs[label], probs)
+            )
+
+        lines: List[LinePrediction] = []
+        for lid in sorted(by_line):
+            ws = sorted(by_line[lid], key=lambda t: t[0])
+            lines.append(
+                LinePrediction(
+                    line_id=lid,
+                    tokens=[t[1] for t in ws],
+                    boxes=[],
+                    labels=[t[2] for t in ws],
+                    confidences=[t[3] for t in ws],
+                    all_probabilities=[t[4] for t in ws],
+                )
+            )
+
+        return InferenceResult(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            lines=lines,
+            meta={
+                "windowed": True,
+                "window_size": window_size,
+                "stride": stride,
+                "num_windows": len(starts),
+                "num_words": n,
             },
         )

@@ -440,7 +440,9 @@ export interface LayoutLMReceiptInference {
     words: LayoutLMReceiptWord[];
     predictions: LayoutLMPrediction[];
   };
-  metrics: {
+  // Present on the legacy generated cache; absent on records sourced from the
+  // per-epoch eval (the viz only reads `original` + `inference_time_ms`).
+  metrics?: {
     overall_accuracy: number;
     total_words: number;
     correct_predictions: number;
@@ -448,14 +450,14 @@ export interface LayoutLMReceiptInference {
     per_label_precision?: Record<string, number>;
     per_label_recall?: Record<string, number>;
   };
-  model_info: {
+  model_info?: {
     model_name: string;
     device: string;
     s3_uri: string;
   };
-  entities_summary: LayoutLMEntitiesSummary;
+  entities_summary?: LayoutLMEntitiesSummary;
   inference_time_ms: number;
-  cached_at: string;
+  cached_at?: string;
 }
 
 export interface LayoutLMAggregateStats {
@@ -474,6 +476,81 @@ export interface LayoutLMBatchInferenceResponse {
   aggregate_stats: LayoutLMAggregateStats;
   fetched_at: string;
   legacy_mode?: boolean;
+}
+
+// Per-Epoch Checkpoint Evaluation Types
+// Produced by the eval-checkpoints SageMaker Processing job and served by
+// GET /layoutlm_epochs. Each entry re-scores one checkpoint on the run's
+// frozen validation set, so the curve proves which epoch generalizes best.
+
+export interface EpochEvaluationEntry {
+  checkpoint: string;
+  step: number | null;
+  epoch: number | null;
+  heldout_f1: number;
+  heldout_precision: number;
+  heldout_recall: number;
+  heldout_metric: string;
+  per_label_f1: Record<string, number>;
+  token_accuracy: number;
+  // The value training reported for this epoch from inside the loop (for
+  // comparison against the honest held-out re-evaluation). May be null.
+  training_reported_f1: number | null;
+  num_receipts_evaluated: number;
+  // Windowed-inference wall-time for this checkpoint over the val set. Avg is
+  // per-receipt; null on older caches generated before timing was recorded.
+  avg_inference_ms: number | null;
+  total_inference_ms: number | null;
+}
+
+// Compute the eval ran on, so timing can be labeled GPU vs CPU.
+export interface EpochEvaluationCompute {
+  device: string; // "cuda" | "cpu" | "unknown"
+  gpu_name: string | null;
+  instance_type: string | null;
+}
+
+export interface EpochEvaluationResponse {
+  job_name: string;
+  run_s3_uri: string;
+  // "persisted_val_receipt_keys" (drift-proof) or "reconstructed_from_seed".
+  val_set_source: string;
+  val_receipts_hash: string;
+  val_receipts_hash_recorded: string | null;
+  val_receipts_hash_verified: boolean;
+  num_val_receipts: number;
+  random_seed: number | null;
+  label_list: string[] | null;
+  label_merges: Record<string, string[]>;
+  metric: string;
+  // Present on caches generated after timing was added; absent on older ones.
+  compute?: EpochEvaluationCompute;
+  epochs: EpochEvaluationEntry[];
+  best_epoch_heldout: number | null;
+  best_checkpoint_heldout: string | null;
+  best_epoch_training_reported: number | null;
+  showcase_receipt_keys: string[];
+  generated_at: string;
+}
+
+export interface EpochEvaluationJobsResponse {
+  jobs: string[];
+}
+
+// Per-(epoch, receipt) showcase record for the epoch scrubber. The `original`
+// block matches LayoutLMReceiptInference so the same receipt+bbox rendering
+// applies.
+export interface EpochEvaluationReceiptRecord {
+  receipt_id: string;
+  epoch: number | null;
+  checkpoint: string;
+  label_list: string[];
+  original: {
+    receipt: LayoutLMReceiptInference["original"]["receipt"];
+    words: LayoutLMReceiptWord[];
+    predictions: LayoutLMPrediction[];
+  };
+  inference_time_ms: number;
 }
 
 // Label Evaluator Visualization Types

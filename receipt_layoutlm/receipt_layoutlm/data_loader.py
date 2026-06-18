@@ -34,6 +34,16 @@ class SplitMetadata:
     target_o_entity_ratio: float
     # v3 image cache directory (set when model_version == "v3")
     image_cache_dir: Optional[str] = None
+    # Full sorted list of validation receipt keys ("image_id#receipt_id").
+    # Persisted so downstream tooling (e.g. per-epoch checkpoint evaluation) can
+    # reproduce the exact held-out set even after the labeled data drifts, which
+    # the hash alone cannot guarantee.
+    val_receipt_keys: Optional[List[str]] = None
+    # Sliding-window config used to build training examples. Persisted so
+    # per-epoch evaluation windows inference identically to training (a
+    # different window/stride shifts the F1 curve by inference, not quality).
+    window_size: Optional[int] = None
+    window_stride: Optional[int] = None
 
 
 @dataclass
@@ -370,6 +380,31 @@ def download_receipt_images(
     return cache_dir
 
 
+def _load_fixed_val_keys() -> Optional[set]:
+    """Load a PINNED canonical val set from ``LAYOUTLM_VAL_KEYS_S3``.
+
+    The env var points at a JSON file (``{"val_receipt_keys": [...]}`` or a bare
+    list) of ``"<image_id>#<receipt_id:05d>"`` keys. When set, every run holds
+    out exactly these receipts (those present in its data) and trains on the
+    rest — making runs directly comparable instead of each drawing its own
+    random split. Returns None when unset (fall back to the seeded split).
+    """
+    uri = os.getenv("LAYOUTLM_VAL_KEYS_S3")
+    if not uri:
+        return None
+    import json
+    from urllib.parse import urlparse
+
+    boto3 = importlib.import_module("boto3")
+    p = urlparse(uri)
+    obj = boto3.client("s3").get_object(
+        Bucket=p.netloc, Key=p.path.lstrip("/")
+    )
+    data = json.loads(obj["Body"].read().decode("utf-8"))
+    keys = data.get("val_receipt_keys") if isinstance(data, dict) else data
+    return set(keys) if keys else None
+
+
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
@@ -544,19 +579,34 @@ def load_datasets(
         features=features,
     )
 
-    # Receipt-level split (90/10) by unique (image_id, receipt_id)
-    # Use provided seed or generate one for reproducibility
-    if random_seed is None:
-        random_seed = random.randint(0, 2**31 - 1)
-    random.seed(random_seed)
-
+    # Receipt-level split by unique (image_id, receipt_id).
     unique_receipts = sorted(
         {ex.receipt_key for ex in examples}
     )  # Sort for determinism
-    random.shuffle(unique_receipts)
-    cut = max(1, int(len(unique_receipts) * 0.9))
-    train_receipts_list = unique_receipts[:cut]
-    val_receipts_list = unique_receipts[cut:]
+    fixed_val = _load_fixed_val_keys()
+    if fixed_val:
+        # Pinned canonical val set: hold out exactly these receipts (those
+        # present in this run's data); train on everything else. Every run is
+        # then directly comparable. Seed is recorded but not used for the split.
+        if random_seed is None:
+            random_seed = 0
+        # Seed the global PRNG even though the split is deterministic — the
+        # downstream O-only line downsampling consumes random.random(), so two
+        # pinned-val runs must seed identically to keep the SAME training lines.
+        random.seed(random_seed)
+        val_receipts_list = [r for r in unique_receipts if r in fixed_val]
+        train_receipts_list = [
+            r for r in unique_receipts if r not in fixed_val
+        ]
+    else:
+        # Use provided seed or generate one for reproducibility
+        if random_seed is None:
+            random_seed = random.randint(0, 2**31 - 1)
+        random.seed(random_seed)
+        random.shuffle(unique_receipts)
+        cut = max(1, int(len(unique_receipts) * 0.9))
+        train_receipts_list = unique_receipts[:cut]
+        val_receipts_list = unique_receipts[cut:]
     train_receipts = set(train_receipts_list)
     val_receipts = set(val_receipts_list)
 
@@ -676,6 +726,9 @@ def load_datasets(
         entity_lines_total=entity_lines_count,
         target_o_entity_ratio=target_ratio,
         image_cache_dir=image_cache_dir,
+        val_receipt_keys=sorted(val_receipts_list),
+        window_size=window_size,
+        window_stride=window_stride,
     )
 
     # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()

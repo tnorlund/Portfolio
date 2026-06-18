@@ -27,6 +27,7 @@ lambda_role: Optional[aws.iam.Role] = None
 
 def create_layoutlm_inference_lambda(
     cache_bucket_name: Input[str],
+    training_bucket_name: Input[str],
 ) -> aws.lambda_.Function:
     """Create the LayoutLM inference API Lambda function.
 
@@ -63,8 +64,8 @@ def create_layoutlm_inference_lambda(
     s3_policy = aws.iam.RolePolicy(
         f"api_{ROUTE_NAME}_s3_policy",
         role=lambda_role.id,
-        policy=Output.from_input(cache_bucket_name).apply(
-            lambda bucket: json.dumps(
+        policy=Output.all(cache_bucket_name, training_bucket_name).apply(
+            lambda buckets: json.dumps(
                 {
                     "Version": "2012-10-17",
                     "Statement": [
@@ -72,8 +73,12 @@ def create_layoutlm_inference_lambda(
                             "Effect": "Allow",
                             "Action": ["s3:GetObject", "s3:ListBucket"],
                             "Resource": [
-                                f"arn:aws:s3:::{bucket}/*",
-                                f"arn:aws:s3:::{bucket}",
+                                arn
+                                for b in buckets
+                                for arn in (
+                                    f"arn:aws:s3:::{b}/*",
+                                    f"arn:aws:s3:::{b}",
+                                )
                             ],
                         }
                     ],
@@ -102,10 +107,11 @@ def create_layoutlm_inference_lambda(
         ),
         handler="index.handler",
         layers=[dynamo_layer.arn] if dynamo_layer.arn else None,
-        environment=Output.from_input(cache_bucket_name).apply(
-            lambda bucket: aws.lambda_.FunctionEnvironmentArgs(
+        environment=Output.all(cache_bucket_name, training_bucket_name).apply(
+            lambda buckets: aws.lambda_.FunctionEnvironmentArgs(
                 variables={
-                    "S3_CACHE_BUCKET": bucket,
+                    "S3_CACHE_BUCKET": buckets[0],
+                    "TRAINING_BUCKET": buckets[1],
                 }
             )
         ),

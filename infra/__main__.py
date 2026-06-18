@@ -507,6 +507,28 @@ if enable_sagemaker:
         "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
     )
     pulumi.export("layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip")
+
+    # Per-epoch checkpoint evaluation. Reuses the training container image and
+    # execution role to launch an ephemeral SageMaker Processing job that scores
+    # every checkpoint on the frozen val set. Auto-trigger on training
+    # completion is opt-in (ml-training:auto-epoch-eval) to avoid surprise GPU
+    # cost.
+    from sagemaker_epoch_eval import EpochEvalInfra
+
+    epoch_eval = EpochEvalInfra(
+        "layoutlm-epoch-eval",
+        ecr_repo_url=sagemaker_training.ecr_repo.repository_url,
+        sagemaker_role_arn=sagemaker_training.sagemaker_role.arn,
+        output_bucket=sagemaker_training.output_bucket.bucket,
+        dynamodb_table_name=dynamodb_table.name,
+        region=aws.get_region().name,
+        account_id=aws.get_caller_identity().account_id,
+        enable_auto_trigger=ml_cfg.get_bool("auto-epoch-eval") or False,
+    )
+    pulumi.export(
+        "layoutlm_epoch_eval_trigger_lambda",
+        epoch_eval.trigger_lambda.arn,
+    )
 else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
@@ -543,6 +565,7 @@ if layoutlm_training_bucket_name is not None:
     # No placeholder bucket names - only use the real bucket
     layoutlm_inference_lambda = create_layoutlm_inference_lambda(
         cache_bucket_name=layoutlm_cache_generator.cache_bucket.id,
+        training_bucket_name=layoutlm_training_bucket_name,
     )
 
     # Export the Lambda so api_gateway.py can use it
@@ -550,6 +573,16 @@ if layoutlm_training_bucket_name is not None:
     import routes.layoutlm_inference.infra as inference_module
 
     inference_module.layoutlm_inference_lambda = layoutlm_inference_lambda
+
+    # Per-epoch evaluation API: serves epoch-eval/ artifacts from the training
+    # bucket (written by the eval-checkpoints Processing job).
+    from routes.layoutlm_epochs.infra import create_layoutlm_epochs_lambda
+    import routes.layoutlm_epochs.infra as epochs_module
+
+    layoutlm_epochs_lambda = create_layoutlm_epochs_lambda(
+        cache_bucket_name=layoutlm_training_bucket_name,
+    )
+    epochs_module.layoutlm_epochs_lambda = layoutlm_epochs_lambda
 
     # Create API Gateway route for layoutlm_inference
     # This must be done here after Lambda is created, not in api_gateway.py
@@ -594,6 +627,37 @@ if layoutlm_training_bucket_name is not None:
             "layoutlm_inference_lambda_permission",
             action="lambda:InvokeFunction",
             function=layoutlm_inference_lambda.name,
+            principal="apigateway.amazonaws.com",
+            source_arn=api_gateway.api.execution_arn.apply(
+                lambda arn: f"{arn}/*/*"
+            ),
+        )
+
+        # Route for the per-epoch evaluation API.
+        integration_layoutlm_epochs = aws.apigatewayv2.Integration(
+            "layoutlm_epochs_lambda_integration",
+            api_id=api_gateway.api.id,
+            integration_type="AWS_PROXY",
+            integration_uri=layoutlm_epochs_lambda.invoke_arn,
+            integration_method="POST",
+            payload_format_version="2.0",
+        )
+        route_layoutlm_epochs = aws.apigatewayv2.Route(
+            "layoutlm_epochs_route",
+            api_id=api_gateway.api.id,
+            route_key="GET /layoutlm_epochs",
+            target=integration_layoutlm_epochs.id.apply(
+                lambda id: f"integrations/{id}"
+            ),
+            opts=pulumi.ResourceOptions(
+                replace_on_changes=["route_key", "target"],
+                delete_before_replace=True,
+            ),
+        )
+        lambda_permission_layoutlm_epochs = aws.lambda_.Permission(
+            "layoutlm_epochs_lambda_permission",
+            action="lambda:InvokeFunction",
+            function=layoutlm_epochs_lambda.name,
             principal="apigateway.amazonaws.com",
             source_arn=api_gateway.api.execution_arn.apply(
                 lambda arn: f"{arn}/*/*"

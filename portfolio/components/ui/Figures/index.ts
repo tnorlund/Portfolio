@@ -98,6 +98,10 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
+export const EpochEvaluation = dynamic(
+  () => import("./EpochEvaluation"),
+  { ssr: false }
+);
 export const LabelWordCloud = dynamic(
   () => import("./LabelWordCloud"),
   { ssr: false }

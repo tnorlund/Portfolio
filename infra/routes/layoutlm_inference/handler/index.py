@@ -1,15 +1,22 @@
-"""Lambda handler for serving LayoutLM inference cache.
+"""Lambda handler for serving LayoutLM inference results to the viz.
 
-This Lambda function serves batches of cached LayoutLM inference results from S3.
-It randomly selects receipts from the cache pool to provide variety for the visualization.
+Primary source: the per-epoch eval showcase records the trainer/eval already
+produce with the BEST model (windowed inference, real GPU ``inference_time_ms``)
+under ``<prefix>/<run>/receipts/epoch-<best>/`` in the training bucket. We serve
+the newest run's best held-out epoch, so the viz tracks the latest experiment
+with fast, real times instead of a separately-generated (slow, stale) cache.
+
+Falls back to the legacy ``layoutlm-inference-cache/`` pool if the training
+source is unavailable.
 """
 
 import json
 import logging
 import os
 import random
+import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
@@ -19,6 +26,11 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
+# Training bucket holding per-epoch eval records (runs/<job>/ + epoch-eval/<job>/)
+TRAINING_BUCKET = os.environ.get("TRAINING_BUCKET")
+# Standalone Processing-job evals preferred when both exist (matches the
+# layoutlm_epochs handler); fall back to the live in-training copy.
+EPOCH_PREFIXES = ("epoch-eval/", "runs/")
 CACHE_PREFIX = "layoutlm-inference-cache/receipts/"
 LEGACY_CACHE_KEY = "layoutlm-inference-cache/latest.json"
 BATCH_SIZE = 5  # Number of receipts to return per request
@@ -28,6 +40,95 @@ if not S3_CACHE_BUCKET:
 
 # Initialize S3 client
 s3_client = boto3.client("s3")
+
+
+def _vnum(job: str) -> int:
+    m = re.search(r"-v(\d+)", job)
+    return int(m.group(1)) if m else -1
+
+
+def _newest_eval_run() -> Tuple[Optional[str], Optional[str]]:
+    """Find the newest run (highest -vNN) with an epochs.json, and its prefix."""
+    runs: Dict[str, str] = {}
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for pfx in EPOCH_PREFIXES:
+        for page in paginator.paginate(
+            Bucket=TRAINING_BUCKET, Prefix=pfx, Delimiter="/"
+        ):
+            for cp in page.get("CommonPrefixes", []) or []:
+                run = cp["Prefix"][len(pfx):].rstrip("/")
+                if run in runs:
+                    continue
+                try:
+                    s3_client.head_object(
+                        Bucket=TRAINING_BUCKET, Key=f"{pfx}{run}/epochs.json"
+                    )
+                    runs[run] = pfx
+                except ClientError:
+                    continue
+    if not runs:
+        return None, None
+    best = sorted(runs, key=lambda r: (_vnum(r), r))[-1]
+    return best, runs[best]
+
+
+def _best_epoch_records(run: str, prefix: str) -> Tuple[List[Dict[str, Any]], Any]:
+    """Read the run's best held-out epoch showcase receipt records."""
+    epochs = json.loads(
+        s3_client.get_object(
+            Bucket=TRAINING_BUCKET, Key=f"{prefix}{run}/epochs.json"
+        )["Body"].read()
+    )
+    best_epoch = epochs.get("best_epoch_heldout")
+    if best_epoch is None:
+        scored = [e for e in epochs.get("epochs", []) if e.get("epoch") is not None]
+        best_epoch = (
+            max(scored, key=lambda e: e.get("heldout_f1", 0))["epoch"]
+            if scored
+            else None
+        )
+    if best_epoch is None:
+        return [], None
+    rec_prefix = f"{prefix}{run}/receipts/epoch-{best_epoch}/"
+    records: List[Dict[str, Any]] = []
+    for page in s3_client.get_paginator("list_objects_v2").paginate(
+        Bucket=TRAINING_BUCKET, Prefix=rec_prefix
+    ):
+        for obj in page.get("Contents", []):
+            if obj.get("Key", "").endswith(".json"):
+                try:
+                    records.append(
+                        json.loads(
+                            s3_client.get_object(
+                                Bucket=TRAINING_BUCKET, Key=obj["Key"]
+                            )["Body"].read()
+                        )
+                    )
+                except ClientError:
+                    logger.exception("Error fetching %s", obj["Key"])
+    return records, best_epoch
+
+
+def _agg_from_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate stats from eval records (accuracy from per-word is_correct)."""
+    times = [r.get("inference_time_ms", 0) for r in records]
+    accs, total_words = [], 0
+    for r in records:
+        preds = (r.get("original") or {}).get("predictions") or []
+        if preds:
+            accs.append(sum(1 for p in preds if p.get("is_correct")) / len(preds))
+            total_words += len(preds)
+    avg_t = sum(times) / len(times) if times else 0.0
+    return {
+        "avg_accuracy": sum(accs) / len(accs) if accs else 0.0,
+        "min_accuracy": min(accs) if accs else 0.0,
+        "max_accuracy": max(accs) if accs else 0.0,
+        "avg_inference_time_ms": round(avg_t, 2),
+        "total_receipts_in_pool": len(records),
+        "batch_size": len(records),
+        "total_words_processed": total_words,
+        "estimated_throughput_per_hour": round(3600 * 1000 / avg_t) if avg_t else 0,
+    }
 
 
 def _list_cached_receipts() -> List[str]:
@@ -227,8 +328,46 @@ def handler(event, _context):
             },
         }
 
+    # Primary: serve the newest run's best-epoch eval records (best model,
+    # windowed inference, real GPU times) from the training bucket.
+    if TRAINING_BUCKET:
+        try:
+            run, prefix = _newest_eval_run()
+            if run:
+                records, best_epoch = _best_epoch_records(run, prefix)
+                if records:
+                    logger.info(
+                        "Serving %d records from %s epoch %s",
+                        len(records),
+                        run,
+                        best_epoch,
+                    )
+                    return {
+                        "statusCode": 200,
+                        "body": json.dumps(
+                            {
+                                "receipts": records,
+                                "aggregate_stats": _agg_from_records(records),
+                                "fetched_at": datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
+                                "source_run": run,
+                                "source_epoch": best_epoch,
+                            },
+                            default=str,
+                        ),
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "Access-Control-Allow-Origin": "*",
+                            "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+                        },
+                    }
+            logger.warning("No eval records in training bucket; using legacy cache")
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Training-source read failed; using legacy cache")
+
     try:
-        # List all cached receipts
+        # Fallback: legacy cached-receipt pool.
         logger.info("Listing cached receipts from %s", CACHE_PREFIX)
         cached_keys = _list_cached_receipts()
 

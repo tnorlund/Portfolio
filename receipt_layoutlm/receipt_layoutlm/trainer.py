@@ -9,7 +9,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from functools import partial
 from glob import glob
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from receipt_dynamo import DynamoClient
@@ -843,6 +843,157 @@ class ReceiptLayoutLMTrainer:
                     except Exception as e:
                         print(f"⚠️  Failed to sync checkpoint to S3: {e}")
 
+            class _HeldoutEvalCallback(TrainerCallback):  # type: ignore
+                """Run the windowed held-out eval after each saved checkpoint.
+
+                Reuses the in-process model/data/GPU to emit ``epochs.json`` (the
+                viz cache) live — no separate Processing job. Entirely
+                best-effort: any failure logs a warning and training proceeds.
+                """
+
+                def __init__(
+                    self,
+                    *,
+                    output_dir: str,
+                    dynamo_client: Any,
+                    val_keys: List[Tuple[str, int]],
+                    val_hash: Optional[str],
+                    seed: Optional[int],
+                    window_size: int,
+                    window_stride: int,
+                    job_name: str,
+                    s3_bucket: str | None,
+                    s3_prefix: str | None,
+                    valid_status: str = "VALID",
+                    num_showcase: int = 5,
+                ) -> None:
+                    self.output_dir = output_dir
+                    self.dynamo = dynamo_client
+                    self.val_keys = val_keys
+                    self.val_hash = val_hash
+                    self.seed = seed
+                    self.window_size = window_size
+                    self.window_stride = window_stride
+                    self.job_name = job_name
+                    self.s3_bucket = s3_bucket
+                    self.s3_prefix = s3_prefix
+                    self.valid_status = valid_status
+                    self.num_showcase = num_showcase
+                    self._details = None  # lazy-loaded once
+                    self._showcase_keys: List[str] = []
+                    # Seed from any epochs.json already on disk so a managed-spot
+                    # resume (SageMaker re-hydrates output_dir from S3) keeps the
+                    # pre-resume F1 curve instead of overwriting it with one entry.
+                    self._entries: List[dict] = []
+                    try:
+                        ep_path = os.path.join(output_dir, "epochs.json")
+                        if os.path.exists(ep_path):
+                            with open(ep_path, "r", encoding="utf-8") as f:
+                                prior = json.load(f)
+                            self._entries = [
+                                e
+                                for e in (prior.get("epochs") or [])
+                                if e.get("checkpoint") != "best"
+                            ]
+                    except Exception as e:  # noqa: BLE001
+                        print(f"⚠️  Could not seed epochs.json: {e}")
+
+                def _ensure_details(self) -> None:
+                    if self._details is not None:
+                        return
+                    from receipt_layoutlm import evaluate_checkpoints as ec
+
+                    # Pin the inference window to the values training used so the
+                    # held-out scoring matches the model's training distribution.
+                    os.environ["LAYOUTLM_WINDOW_SIZE"] = str(self.window_size)
+                    os.environ["LAYOUTLM_WINDOW_STRIDE"] = str(
+                        self.window_stride
+                    )
+                    self._details = ec.load_val_details(
+                        self.dynamo, self.val_keys
+                    )
+                    self._showcase_keys = [
+                        f"{i}_{r}"
+                        for (i, r) in self.val_keys[: self.num_showcase]
+                    ]
+
+                def on_save(self, args, state, control, **kwargs):  # type: ignore[override]
+                    del control, kwargs
+                    try:
+                        from receipt_layoutlm import evaluate_checkpoints as ec
+
+                        self._ensure_details()
+                        if not self._details:
+                            return
+                        checkpoint_dir = os.path.join(
+                            args.output_dir,
+                            f"checkpoint-{state.global_step}",
+                        )
+                        if not os.path.exists(checkpoint_dir):
+                            return
+
+                        epoch_num = (
+                            int(round(state.epoch))
+                            if state.epoch is not None
+                            else None
+                        )
+                        reported = None
+                        for log in reversed(state.log_history or []):
+                            if "eval_f1" in log:
+                                reported = log["eval_f1"]
+                                break
+
+                        entry, _ll, _lm = ec.evaluate_live_checkpoint(
+                            checkpoint_dir,
+                            self._details,
+                            output_dir=self.output_dir,
+                            step=state.global_step,
+                            epoch_num=epoch_num,
+                            training_reported_f1=reported,
+                            showcase_keys=self._showcase_keys,
+                            valid_status=self.valid_status,
+                        )
+                        self._entries.append(entry)
+                        run_s3_uri = (
+                            f"s3://{self.s3_bucket}/{self.s3_prefix}"
+                            if self.s3_bucket and self.s3_prefix
+                            else ""
+                        )
+                        ec.write_epochs_json_live(
+                            self.output_dir,
+                            job_name=self.job_name,
+                            run_s3_uri=run_s3_uri,
+                            epoch_entries=self._entries,
+                            label_list=_ll,
+                            label_merges=_lm,
+                            window_size=self.window_size,
+                            window_stride=self.window_stride,
+                            val_set_source="persisted_val_receipt_keys",
+                            val_hash=self.val_hash,
+                            num_val_receipts=len(self._details),
+                            seed=self.seed,
+                            showcase_keys=self._showcase_keys,
+                        )
+                        print(
+                            f"📈 Live held-out eval epoch {epoch_num}: "
+                            f"F1={entry['heldout_f1']:.4f} "
+                            f"({entry.get('avg_inference_ms')}ms/receipt)"
+                        )
+                        # Sync epochs.json + showcase receipts to S3.
+                        if self.s3_bucket and self.s3_prefix:
+                            try:
+                                ec.sync_outputs_to_s3(
+                                    self.output_dir,
+                                    f"s3://{self.s3_bucket}/{self.s3_prefix}",
+                                )
+                            except Exception as se:  # noqa: BLE001
+                                print(
+                                    f"⚠️  Failed to sync epochs.json: {se}"
+                                )
+                    except Exception as e:  # noqa: BLE001
+                        # Never let the held-out eval break training.
+                        print(f"⚠️  Live held-out eval failed: {e}")
+
             # Parse S3 config for per-epoch checkpoint syncing
             s3_bucket = None
             s3_prefix = None
@@ -868,6 +1019,47 @@ class ReceiptLayoutLMTrainer:
                     s3_prefix=s3_prefix,
                 )
             )
+
+            # Live held-out eval (emits epochs.json during training). Needs the
+            # persisted val keys; older split logic without them is skipped.
+            val_keys_raw = (
+                getattr(split_metadata, "val_receipt_keys", None)
+                if split_metadata
+                else None
+            )
+            if (
+                self.training_config.eval_heldout_windowed
+                and val_keys_raw
+            ):
+                parsed_val_keys: List[Tuple[str, int]] = []
+                for k in val_keys_raw:
+                    try:
+                        img, rid = k.split("#")
+                        parsed_val_keys.append((img, int(rid)))
+                    except (ValueError, AttributeError):
+                        continue
+                callbacks.append(
+                    _HeldoutEvalCallback(
+                        output_dir=output_dir,
+                        dynamo_client=self.dynamo,
+                        val_keys=parsed_val_keys,
+                        val_hash=getattr(
+                            split_metadata, "val_receipts_hash", None
+                        ),
+                        seed=getattr(split_metadata, "random_seed", None),
+                        window_size=(
+                            getattr(split_metadata, "window_size", None) or 200
+                        ),
+                        window_stride=(
+                            getattr(split_metadata, "window_stride", None)
+                            or 150
+                        ),
+                        job_name=job_name,
+                        s3_bucket=s3_bucket,
+                        s3_prefix=s3_prefix,
+                        valid_status=self.data_config.validation_status,
+                    )
+                )
         except AttributeError:
             # Older transformers versions may lack TrainerCallback
             pass
