@@ -6,7 +6,7 @@
 
 # Interface: WithinReceiptWord
 
-Defined in: [types/api.ts:925](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L925)
+Defined in: [types/api.ts:925](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L925)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:925](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **bbox**: `object`
 
-Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L930)
+Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L930)
 
 #### height
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:930](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **label**: `string` \| `null`
 
-Defined in: [types/api.ts:927](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L927)
+Defined in: [types/api.ts:927](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L927)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:927](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:928](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L928)
+Defined in: [types/api.ts:928](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L928)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:928](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **text**: `string`
 
-Defined in: [types/api.ts:926](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L926)
+Defined in: [types/api.ts:926](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L926)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [types/api.ts:926](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **word\_id**: `number`
 
-Defined in: [types/api.ts:929](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L929)
+Defined in: [types/api.ts:929](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L929)

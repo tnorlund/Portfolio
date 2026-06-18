@@ -6,7 +6,7 @@
 
 # Interface: MilkSummaryRow
 
-Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L269)
+Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L269)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **avg\_price**: `number` \| `null`
 
-Defined in: [types/api.ts:274](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L274)
+Defined in: [types/api.ts:274](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L274)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:274](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **count**: `number`
 
-Defined in: [types/api.ts:273](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L273)
+Defined in: [types/api.ts:273](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L273)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:273](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **merchant**: `string`
 
-Defined in: [types/api.ts:270](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L270)
+Defined in: [types/api.ts:270](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L270)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:270](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **product**: `string`
 
-Defined in: [types/api.ts:271](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L271)
+Defined in: [types/api.ts:271](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L271)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:271](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **receipts**: `object`[]
 
-Defined in: [types/api.ts:276](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L276)
+Defined in: [types/api.ts:276](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L276)
 
 #### image\_id
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:276](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **size**: `string`
 
-Defined in: [types/api.ts:272](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L272)
+Defined in: [types/api.ts:272](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L272)
 
 ***
 
@@ -70,4 +70,4 @@ Defined in: [types/api.ts:272](https://github.com/tnorlund/Portfolio/blob/fcde25
 
 > **total**: `number` \| `null`
 
-Defined in: [types/api.ts:275](https://github.com/tnorlund/Portfolio/blob/fcde25575967ec0a76fcc4aee11880f2a2a9d9ad/portfolio/types/api.ts#L275)
+Defined in: [types/api.ts:275](https://github.com/tnorlund/Portfolio/blob/deb76bb88afd8900e4b759aa92665a46da68b66a/portfolio/types/api.ts#L275)
