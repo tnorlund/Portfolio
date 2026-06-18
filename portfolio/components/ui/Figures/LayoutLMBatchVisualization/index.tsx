@@ -38,7 +38,7 @@ const CHARGE_GREEN_MED = "color-mix(in srgb, var(--color-green) 72%, white)";
 const CHARGE_GREEN_LIGHT = "color-mix(in srgb, var(--color-green) 48%, white)";
 
 // Label colors. New model is granular: currency split into charges (green
-// family) vs credits (cyan), plus QUANTITY (lime) and ADDRESS_LINE.
+// family) vs credits (teal), plus QUANTITY (cyan) and ADDRESS_LINE.
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
@@ -50,15 +50,15 @@ const LABEL_COLORS: Record<string, string> = {
   LINE_TOTAL: CHARGE_GREEN_MED,
   UNIT_PRICE: CHARGE_GREEN_LIGHT,
   AMOUNT: CHARGE_GREEN, // legacy merged label (back-compat)
-  // Credits / money back — cyan
-  DISCOUNT: "var(--color-cyan)",
-  COUPON: "var(--color-cyan)",
-  TIP: "var(--color-cyan)",
-  CHANGE: "var(--color-cyan)",
-  CASH_BACK: "var(--color-cyan)",
-  REFUND: "var(--color-cyan)",
+  // Credits / money back — teal
+  DISCOUNT: "var(--color-teal)",
+  COUPON: "var(--color-teal)",
+  TIP: "var(--color-teal)",
+  CHANGE: "var(--color-teal)",
+  CASH_BACK: "var(--color-teal)",
+  REFUND: "var(--color-teal)",
   // Quantity (a count, not a dollar amount)
-  QUANTITY: "var(--color-lime)",
+  QUANTITY: "var(--color-cyan)",
   // Address / contact
   ADDRESS_LINE: "var(--color-red)",
   ADDRESS: "var(--color-red)", // back-compat
@@ -126,11 +126,11 @@ const MOBILE_LEGEND_GROUPS = [
     types: ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL", "UNIT_PRICE", "AMOUNT"],
   },
   {
-    color: "var(--color-cyan)",
+    color: "var(--color-teal)",
     label: "Credits (discount · tip · change)",
     types: ["DISCOUNT", "COUPON", "TIP", "CHANGE", "CASH_BACK", "REFUND"],
   },
-  { color: "var(--color-lime)", label: "Quantity", types: ["QUANTITY"] },
+  { color: "var(--color-cyan)", label: "Quantity", types: ["QUANTITY"] },
   { color: "var(--color-red)", label: "Address", types: ["ADDRESS", "ADDRESS_LINE"] },
   { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
   { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
