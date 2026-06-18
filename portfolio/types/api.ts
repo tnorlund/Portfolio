@@ -440,7 +440,9 @@ export interface LayoutLMReceiptInference {
     words: LayoutLMReceiptWord[];
     predictions: LayoutLMPrediction[];
   };
-  metrics: {
+  // Present on the legacy generated cache; absent on records sourced from the
+  // per-epoch eval (the viz only reads `original` + `inference_time_ms`).
+  metrics?: {
     overall_accuracy: number;
     total_words: number;
     correct_predictions: number;
@@ -448,14 +450,14 @@ export interface LayoutLMReceiptInference {
     per_label_precision?: Record<string, number>;
     per_label_recall?: Record<string, number>;
   };
-  model_info: {
+  model_info?: {
     model_name: string;
     device: string;
     s3_uri: string;
   };
-  entities_summary: LayoutLMEntitiesSummary;
+  entities_summary?: LayoutLMEntitiesSummary;
   inference_time_ms: number;
-  cached_at: string;
+  cached_at?: string;
 }
 
 export interface LayoutLMAggregateStats {

@@ -565,6 +565,7 @@ if layoutlm_training_bucket_name is not None:
     # No placeholder bucket names - only use the real bucket
     layoutlm_inference_lambda = create_layoutlm_inference_lambda(
         cache_bucket_name=layoutlm_cache_generator.cache_bucket.id,
+        training_bucket_name=layoutlm_training_bucket_name,
     )
 
     # Export the Lambda so api_gateway.py can use it
