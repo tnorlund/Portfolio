@@ -116,25 +116,28 @@ const ENTITY_TYPES = [
   "PAYMENT_METHOD",
 ];
 
-// Mobile legend groups - combine same-colored labels into taxonomy families
+// Legend groups — taxonomy families. `title` (hover) carries the breakdown so
+// the labels stay short.
 const MOBILE_LEGEND_GROUPS = [
-  { color: "var(--color-yellow)", label: "Merchant", types: ["MERCHANT_NAME"] },
-  { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
+  { color: "var(--color-yellow)", label: "Merchant", title: "Merchant name", types: ["MERCHANT_NAME"] },
+  { color: "var(--color-blue)", label: "Date / Time", title: "Date · Time", types: ["DATE", "TIME"] },
   {
     color: CHARGE_GREEN,
-    label: "Charges (total · subtotal · tax · line · unit)",
+    label: "Charges",
+    title: "Total · Subtotal · Tax · Line total · Unit price",
     types: ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL", "UNIT_PRICE", "AMOUNT"],
   },
   {
     color: "var(--color-teal)",
-    label: "Credits (discount · tip · change)",
+    label: "Credits",
+    title: "Discount · Coupon · Tip · Change · Cash back · Refund",
     types: ["DISCOUNT", "COUPON", "TIP", "CHANGE", "CASH_BACK", "REFUND"],
   },
-  { color: "var(--color-cyan)", label: "Quantity", types: ["QUANTITY"] },
-  { color: "var(--color-red)", label: "Address", types: ["ADDRESS", "ADDRESS_LINE"] },
-  { color: "var(--color-pink)", label: "Phone", types: ["PHONE_NUMBER"] },
-  { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
-  { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
+  { color: "var(--color-cyan)", label: "Quantity", title: "Quantity", types: ["QUANTITY"] },
+  { color: "var(--color-red)", label: "Address", title: "Address line", types: ["ADDRESS", "ADDRESS_LINE"] },
+  { color: "var(--color-pink)", label: "Phone", title: "Phone number", types: ["PHONE_NUMBER"] },
+  { color: "var(--color-purple)", label: "Website", title: "Website", types: ["WEBSITE"] },
+  { color: "var(--color-orange)", label: "Hours / Payment", title: "Store hours · Payment method", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
 
 // Animation timing
@@ -297,6 +300,7 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
           return (
             <div
               key={group.label}
+              title={group.title}
               className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
             >
               <div
@@ -315,6 +319,7 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
           return (
             <div
               key={group.label}
+              title={group.title}
               className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
             >
               <div className={styles.legendDot} style={{ backgroundColor: group.color }} />
