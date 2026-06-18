@@ -6,7 +6,7 @@
 
 # Interface: LabelEvaluatorDecision
 
-Defined in: [types/api.ts:582](https://github.com/tnorlund/Portfolio/blob/7ae1b2b26a8e8c041807a9acd2582776e2ffad27/portfolio/types/api.ts#L582)
+Defined in: [types/api.ts:582](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L582)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:582](https://github.com/tnorlund/Portfolio/blob/7ae1b2
 
 > **image\_id**: `string`
 
-Defined in: [types/api.ts:583](https://github.com/tnorlund/Portfolio/blob/7ae1b2b26a8e8c041807a9acd2582776e2ffad27/portfolio/types/api.ts#L583)
+Defined in: [types/api.ts:583](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L583)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:583](https://github.com/tnorlund/Portfolio/blob/7ae1b2
 
 > **issue**: `object`
 
-Defined in: [types/api.ts:585](https://github.com/tnorlund/Portfolio/blob/7ae1b2b26a8e8c041807a9acd2582776e2ffad27/portfolio/types/api.ts#L585)
+Defined in: [types/api.ts:585](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L585)
 
 #### current\_label
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:585](https://github.com/tnorlund/Portfolio/blob/7ae1b2
 
 > **llm\_review**: `object`
 
-Defined in: [types/api.ts:591](https://github.com/tnorlund/Portfolio/blob/7ae1b2b26a8e8c041807a9acd2582776e2ffad27/portfolio/types/api.ts#L591)
+Defined in: [types/api.ts:591](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L591)
 
 #### confidence
 
@@ -70,4 +70,4 @@ Defined in: [types/api.ts:591](https://github.com/tnorlund/Portfolio/blob/7ae1b2
 
 > **receipt\_id**: `number`
 
-Defined in: [types/api.ts:584](https://github.com/tnorlund/Portfolio/blob/7ae1b2b26a8e8c041807a9acd2582776e2ffad27/portfolio/types/api.ts#L584)
+Defined in: [types/api.ts:584](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L584)
