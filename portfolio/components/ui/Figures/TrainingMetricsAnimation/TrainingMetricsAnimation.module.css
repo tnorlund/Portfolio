@@ -619,12 +619,11 @@
     max-width: 80px;
   }
 
-  /* Smaller per-label bars */
-  .perLabelContainer {
-    width: 100%;
-    max-width: 340px;
-    margin: 0 auto;
-    gap: 0.35rem;
+  /* Drop the per-label bars + their legend on mobile — keep the F1 gauge and
+     the confusion matrix (the focus on small screens). */
+  .perLabelContainer,
+  .barLegend {
+    display: none;
   }
 
   .labelRow {

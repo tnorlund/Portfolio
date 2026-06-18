@@ -654,7 +654,7 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
 
   return (
     <div className={styles.matrixContainer}>
-      {expanded ? (
+      {expanded && (
         <button
           type="button"
           className={styles.matrixBack}
@@ -662,8 +662,6 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
         >
           ← all families · {expandedFull}
         </button>
-      ) : (
-        <div className={styles.matrixHint}>tap a ▸ group to drill in</div>
       )}
       <div
         className={styles.matrixGrid}
