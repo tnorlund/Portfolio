@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMBatchInferenceResponse
 
-Defined in: [types/api.ts:474](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L474)
+Defined in: [types/api.ts:474](https://github.com/tnorlund/Portfolio/blob/79f97f95af9cab55714897e99ffdffa4dc035c94/portfolio/types/api.ts#L474)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:474](https://github.com/tnorlund/Portfolio/blob/1aa89f
 
 > **aggregate\_stats**: [`LayoutLMAggregateStats`](LayoutLMAggregateStats.md)
 
-Defined in: [types/api.ts:476](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L476)
+Defined in: [types/api.ts:476](https://github.com/tnorlund/Portfolio/blob/79f97f95af9cab55714897e99ffdffa4dc035c94/portfolio/types/api.ts#L476)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:476](https://github.com/tnorlund/Portfolio/blob/1aa89f
 
 > **fetched\_at**: `string`
 
-Defined in: [types/api.ts:477](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L477)
+Defined in: [types/api.ts:477](https://github.com/tnorlund/Portfolio/blob/79f97f95af9cab55714897e99ffdffa4dc035c94/portfolio/types/api.ts#L477)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:477](https://github.com/tnorlund/Portfolio/blob/1aa89f
 
 > **receipts**: [`LayoutLMReceiptInference`](LayoutLMReceiptInference.md)[]
 
-Defined in: [types/api.ts:475](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L475)
+Defined in: [types/api.ts:475](https://github.com/tnorlund/Portfolio/blob/79f97f95af9cab55714897e99ffdffa4dc035c94/portfolio/types/api.ts#L475)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:475](https://github.com/tnorlund/Portfolio/blob/1aa89f
 
 > `optional` **legacy\_mode**: `boolean`
 
-Defined in: [types/api.ts:478](https://github.com/tnorlund/Portfolio/blob/1aa89ff6d8e3fef601595e7dd218aa2af2e74749/portfolio/types/api.ts#L478)
+Defined in: [types/api.ts:478](https://github.com/tnorlund/Portfolio/blob/79f97f95af9cab55714897e99ffdffa4dc035c94/portfolio/types/api.ts#L478)
