@@ -138,23 +138,38 @@ def propose_line_item_labels(
         monies = sorted([w for w in row if _is_money(w.text)], key=xl)
         if not monies:
             continue
-        line_total = monies[-1]
+        # A line total must be a real price (a full token, or the "$3." left half
+        # of a split) — never a bare two-digit token, which is usually a quantity.
+        line_total = next(
+            (m for m in reversed(monies) if _FULL.match(m.text) or _DOT.match(m.text)),
+            None,
+        )
+        if line_total is None:
+            continue
         group = [line_total]
-        for m in monies[:-1]:                       # split-price recovery
+        group_keys = {(line_total.line_id, line_total.word_id)}
+        for m in monies:                            # split-price recovery
+            if (m.line_id, m.word_id) in group_keys:
+                continue
             if abs(xl(m) - xl(line_total)) < 0.14 and (
-                _DOT.match(m.text) or _FRAG.match(m.text)
-                or _DOT.match(line_total.text) or _FRAG.match(line_total.text)
+                _DOT.match(m.text) or _FRAG.match(m.text) or _DOT.match(line_total.text)
             ):
                 group.append(m)
+                group_keys.add((m.line_id, m.word_id))
         for m in group:
             proposals[(m.line_id, m.word_id)] = "LINE_TOTAL"
         full = next((m for m in group if _FULL.match(m.text)), None)
         if full and (val := _amount(full.text)) is not None:
             line_vals.append(val)
         if any(w.text in ("@", "x", "X") for w in row):   # N @ $X -> unit price
-            for m in monies:
-                if xl(m) < xl(line_total) and (m.line_id, m.word_id) not in proposals:
-                    proposals[(m.line_id, m.word_id)] = "UNIT_PRICE"
+            for m in monies:                        # only real price tokens, not the qty
+                key = (m.line_id, m.word_id)
+                if (
+                    key not in group_keys
+                    and xl(m) < xl(line_total)
+                    and (_FULL.match(m.text) or _DOT.match(m.text))
+                ):
+                    proposals[key] = "UNIT_PRICE"
         for w in row:                                # product = text left of price
             if xl(w) < xl(line_total) and _has_letters(w.text) and not _is_money(w.text):
                 proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
@@ -183,7 +198,7 @@ def propose_line_item_labels(
     by_key = {(w.line_id, w.word_id): w for w in placed}
     out: List[ReceiptWordLabel] = []
     for key, label in proposals.items():
-        if label in label_map.get(key, set()):       # already labeled this way
+        if label_map.get(key):       # word already carries a label — don't double-label
             continue
         w0 = by_key.get(key)
         if w0 is None:

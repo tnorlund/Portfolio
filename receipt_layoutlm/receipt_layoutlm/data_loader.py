@@ -426,7 +426,10 @@ def _load_receipt_allowlist() -> Optional[set]:
     )
     data = json.loads(obj["Body"].read().decode("utf-8"))
     keys = data.get("receipt_keys") if isinstance(data, dict) else data
-    return set(keys) if keys else None
+    # When the env var IS set we always return a set (possibly empty), so an
+    # empty/failed curation filters to nothing instead of silently falling back
+    # to the full corpus. None is reserved for "env var unset".
+    return set(keys or [])
 
 
 # Anchor labels used to dynamically bound the line-item region per receipt.
@@ -509,8 +512,10 @@ def load_datasets(
         receipts_with_labels.add((lbl.image_id, lbl.receipt_id))
 
     # Curated receipt allowlist (scoped model trains on a hand-picked subset).
+    # `is not None` so an explicitly-empty allowlist filters to nothing rather
+    # than silently training on the full corpus.
     receipt_allowlist = _load_receipt_allowlist()
-    if receipt_allowlist:
+    if receipt_allowlist is not None:
         receipts_with_labels = {
             (i, r)
             for (i, r) in receipts_with_labels
