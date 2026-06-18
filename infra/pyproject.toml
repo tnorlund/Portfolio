@@ -13,7 +13,7 @@ dependencies = [
     "pulumi-docker-build>=0.0.12",  # Used for Docker image building
     # Lambda Layer Version Update Tool dependencies
     "boto3>=1.43.32,<1.44.0",
-    "PyYAML>=6.0",
+    "PyYAML>=6.0.3",
 ]
 
 [project.optional-dependencies]
