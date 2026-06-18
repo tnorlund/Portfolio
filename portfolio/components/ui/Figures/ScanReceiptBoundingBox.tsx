@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 
 import { animated, useSpring, useTransition } from "@react-spring/web";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -7,8 +8,6 @@ import { getBestImageUrl } from "../../../utils/imageFormat";
 import AnimatedLineBox from "../animations/AnimatedLineBox";
 import ReceiptBoundingBoxFrame from "./ReceiptBoundingBoxFrame";
 import type { CropViewBox } from "./utils/smartCrop";
-
-const isDevelopment = process.env.NODE_ENV === "development";
 
 // AnimatedReceipt: component for receipt bounding box and centroid animation
 interface AnimatedReceiptProps {
@@ -143,9 +142,7 @@ const ImageBoundingBox: React.FC = () => {
     firstImage && formatSupport && isClient
       ? getBestImageUrl(firstImage, formatSupport, 'medium')
       : firstImage
-        ? `${isDevelopment
-          ? "https://dev.tylernorlund.com"
-          : "https://www.tylernorlund.com"
+        ? `${getCdnBaseUrl()
         }/${firstImage.cdn_s3_key}`
         : "";
 

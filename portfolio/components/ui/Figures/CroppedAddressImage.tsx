@@ -1,4 +1,5 @@
 import NextImage from "next/image";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import React, { useMemo, useState, useCallback } from "react";
 import { Line, Receipt, AddressBoundingBox } from "../../../types/api";
 import { getBestImageUrl } from "../../../utils/imageFormat";
@@ -139,9 +140,7 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
 
   // Get image URL
   const baseUrl =
-    process.env.NODE_ENV === "development"
-      ? "https://dev.tylernorlund.com"
-      : "https://www.tylernorlund.com";
+    getCdnBaseUrl();
   const imageSrc = formatSupport
     ? getBestImageUrl(receipt, formatSupport, "medium")
     : receipt.cdn_medium_s3_key

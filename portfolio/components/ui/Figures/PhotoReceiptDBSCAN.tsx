@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import { type Point as ApiPoint } from "../../../types/api";
 import { useTransition, animated } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 import useImageDetails from "../../../hooks/useImageDetails";
 import useReceiptClustering, { calculateEpsilonFromLines } from "../../../hooks/useReceiptClustering";
-
-const isDevelopment = process.env.NODE_ENV === "development";
 
 const colors = [
   "var(--color-red)",
@@ -129,9 +128,7 @@ const PhotoReceiptDBSCAN: React.FC = () => {
       ? getBestImageUrl(firstImage, formatSupport)
       : firstImage
       ? `${
-          isDevelopment
-            ? "https://dev.tylernorlund.com"
-            : "https://www.tylernorlund.com"
+          getCdnBaseUrl()
         }/${firstImage.cdn_s3_key}`
       : "";
 

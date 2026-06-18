@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 
 import { animated, useTransition } from "@react-spring/web";
 import useImageDetails from "../../../hooks/useImageDetails";
@@ -16,8 +17,6 @@ import {
 } from "../animations";
 import { getAnimationConfig } from "./animationConfig";
 import ReceiptBoundingBoxFrame from "./ReceiptBoundingBoxFrame";
-
-const isDevelopment = process.env.NODE_ENV === "development";
 
 /**
  * Display a random photo image with animated overlays that illustrate
@@ -109,9 +108,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
     firstImage && formatSupport && isClient
       ? getBestImageUrl(firstImage, formatSupport, "medium")
       : firstImage
-        ? `${isDevelopment
-          ? "https://dev.tylernorlund.com"
-          : "https://www.tylernorlund.com"
+        ? `${getCdnBaseUrl()
         }/${firstImage.cdn_s3_key}`
         : "";
 

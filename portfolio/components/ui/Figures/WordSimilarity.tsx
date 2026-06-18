@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../services/api";
 import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData, MilkSimilarityTiming } from "../../../types/api";
@@ -305,9 +306,7 @@ const WordSimilarity: React.FC = () => {
   }
 
   const baseUrl =
-    process.env.NODE_ENV === "development"
-      ? "https://dev.tylernorlund.com"
-      : "https://www.tylernorlund.com";
+    getCdnBaseUrl();
 
   // Helper function to calculate crop region from bbox
   const calculateCropRegion = (

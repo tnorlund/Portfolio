@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { getCdnBaseUrl } from "../../../utils/cdnBase";
 import { api } from "../../../services/api";
 import { AddressBoundingBox, AddressSimilarityResponse } from "../../../types/api";
 import {
@@ -229,9 +230,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
   }
 
   const baseUrl =
-    process.env.NODE_ENV === "development"
-      ? "https://dev.tylernorlund.com"
-      : "https://www.tylernorlund.com";
+    getCdnBaseUrl();
 
   // Helper function to calculate crop region from bbox or lines
   const calculateCropRegion = (
