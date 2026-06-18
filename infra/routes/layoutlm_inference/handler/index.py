@@ -28,7 +28,9 @@ logger.setLevel(logging.INFO)
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
 # Training bucket holding per-epoch eval records (runs/<job>/ + epoch-eval/<job>/)
 TRAINING_BUCKET = os.environ.get("TRAINING_BUCKET")
-EPOCH_PREFIXES = ("runs/", "epoch-eval/")
+# Standalone Processing-job evals preferred when both exist (matches the
+# layoutlm_epochs handler); fall back to the live in-training copy.
+EPOCH_PREFIXES = ("epoch-eval/", "runs/")
 CACHE_PREFIX = "layoutlm-inference-cache/receipts/"
 LEGACY_CACHE_KEY = "layoutlm-inference-cache/latest.json"
 BATCH_SIZE = 5  # Number of receipts to return per request

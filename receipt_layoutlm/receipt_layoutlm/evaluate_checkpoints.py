@@ -982,9 +982,12 @@ def evaluate_run(
 def sync_outputs_to_s3(
     output_dir: str, output_s3_uri: str, s3_client: Any = None
 ) -> None:
-    """Upload ``epochs.json`` and the ``receipts/`` tree to an S3 prefix.
+    """Upload ONLY the eval artifacts (``epochs.json`` + the ``receipts/`` tree)
+    to an S3 prefix.
 
-    The model cache under ``_models/`` is skipped — it's just checkpoint weights.
+    Deliberately scoped: in the in-training path ``output_dir`` is the HF Trainer
+    output dir, which also holds multi-GB ``checkpoint-*/`` binaries (synced
+    separately) and ``_models/`` checkpoint weights — none of which belong here.
     """
     if s3_client is None:
         boto3 = importlib.import_module("boto3")
@@ -995,19 +998,24 @@ def sync_outputs_to_s3(
 
     for root, _dirs, files in os.walk(output_dir):
         rel_root = os.path.relpath(root, output_dir)
-        if rel_root.split(os.sep)[0] == "_models":
+        top = rel_root.split(os.sep)[0]
+        # Only the top-level epochs.json and everything under receipts/.
+        if top not in (".", "receipts"):
             continue
         for fname in files:
+            if top == "." and fname != "epochs.json":
+                continue
             local_path = os.path.join(root, fname)
             rel = os.path.relpath(local_path, output_dir).replace(os.sep, "/")
-            key = f"{prefix}{rel}"
-            s3_client.upload_file(
-                local_path,
-                bucket,
-                key,
-                ExtraArgs={"ContentType": "application/json"},
+            extra = (
+                {"ContentType": "application/json"}
+                if fname.endswith(".json")
+                else None
             )
-    logger.info("Synced outputs to %s", output_s3_uri)
+            s3_client.upload_file(
+                local_path, bucket, f"{prefix}{rel}", ExtraArgs=extra
+            )
+    logger.info("Synced eval outputs to %s", output_s3_uri)
 
 
 # ---------------------------------------------------------------------------

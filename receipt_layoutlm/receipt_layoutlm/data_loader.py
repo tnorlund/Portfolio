@@ -590,6 +590,10 @@ def load_datasets(
         # then directly comparable. Seed is recorded but not used for the split.
         if random_seed is None:
             random_seed = 0
+        # Seed the global PRNG even though the split is deterministic — the
+        # downstream O-only line downsampling consumes random.random(), so two
+        # pinned-val runs must seed identically to keep the SAME training lines.
+        random.seed(random_seed)
         val_receipts_list = [r for r in unique_receipts if r in fixed_val]
         train_receipts_list = [
             r for r in unique_receipts if r not in fixed_val

@@ -881,7 +881,22 @@ class ReceiptLayoutLMTrainer:
                     self.num_showcase = num_showcase
                     self._details = None  # lazy-loaded once
                     self._showcase_keys: List[str] = []
+                    # Seed from any epochs.json already on disk so a managed-spot
+                    # resume (SageMaker re-hydrates output_dir from S3) keeps the
+                    # pre-resume F1 curve instead of overwriting it with one entry.
                     self._entries: List[dict] = []
+                    try:
+                        ep_path = os.path.join(output_dir, "epochs.json")
+                        if os.path.exists(ep_path):
+                            with open(ep_path, "r", encoding="utf-8") as f:
+                                prior = json.load(f)
+                            self._entries = [
+                                e
+                                for e in (prior.get("epochs") or [])
+                                if e.get("checkpoint") != "best"
+                            ]
+                    except Exception as e:  # noqa: BLE001
+                        print(f"⚠️  Could not seed epochs.json: {e}")
 
                 def _ensure_details(self) -> None:
                     if self._details is not None:

@@ -437,8 +437,6 @@ class LayoutLMInference:
 
         return [r if r is not None else _empty(i) for i, r in enumerate(results)]
 
-        return results
-
     def predict_receipt_from_dynamo(
         self,
         dynamo_client: Any,

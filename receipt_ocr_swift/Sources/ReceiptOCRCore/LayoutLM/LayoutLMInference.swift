@@ -117,9 +117,13 @@ public class LayoutLMInference {
         self.requiresImageInput = model.modelDescription.inputDescriptionsByName.keys.contains("pixel_values")
 
         let env = ProcessInfo.processInfo.environment
-        self.windowSize = env["LAYOUTLM_WINDOW_SIZE"].flatMap { Int($0) } ?? 250
-        self.windowStride = env["LAYOUTLM_WINDOW_STRIDE"].flatMap { Int($0) } ?? 200
-        self.useWindowedInference = (env["LAYOUTLM_INFERENCE_MODE"] ?? "windowed") != "line_packed"
+        // Defaults MUST match the Python trainer/data_loader defaults (200/150),
+        // not 250/200 — a model trained at 200/150 must run windowed the same way.
+        self.windowSize = env["LAYOUTLM_WINDOW_SIZE"].flatMap { Int($0) } ?? 200
+        self.windowStride = env["LAYOUTLM_WINDOW_STRIDE"].flatMap { Int($0) } ?? 150
+        // Windowed unless explicitly some other mode (matches Python, where any
+        // value other than "windowed" — e.g. "per_line" — disables windowing).
+        self.useWindowedInference = (env["LAYOUTLM_INFERENCE_MODE"] ?? "windowed") == "windowed"
 
         // Load tokenizer — use BPE for v3 (tokenizer.json), WordPiece for v1 (vocab.txt)
         let tokenizerJsonURL = bundlePath.appendingPathComponent("tokenizer.json")
