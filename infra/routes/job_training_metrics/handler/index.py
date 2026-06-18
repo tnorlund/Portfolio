@@ -7,6 +7,7 @@ Returns F1 scores, confusion matrices, and per-label metrics for a training job.
 import json
 import logging
 import os
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -38,6 +39,28 @@ FEATURED_JOB_ID = os.environ.get(
 )
 
 
+def _resolve_newest_layoutlm_job(client: "DynamoClient") -> Optional[str]:
+    """Return the job_id of the newest ``layoutlm-vNN`` run (highest version),
+    so the confusion matrix tracks the SAME model the inference viz auto-picks.
+    Falls back to None on any error (caller then uses FEATURED_JOB_ID)."""
+    try:
+        jobs, _ = client.list_jobs(limit=500)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("list_jobs failed; falling back to FEATURED_JOB_ID")
+        return None
+
+    def vnum(name: Optional[str]) -> int:
+        m = re.search(r"-v(\d+)", name or "")
+        return int(m.group(1)) if m else -1
+
+    cands = [j for j in jobs if vnum(getattr(j, "name", "")) >= 0]
+    if not cands:
+        return None
+    best = max(cands, key=lambda j: (vnum(j.name), j.created_at or ""))
+    logger.info("Newest layoutlm job: %s (%s)", best.name, best.job_id)
+    return best.job_id
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Get training metrics for a specific job.
@@ -62,10 +85,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 400, "Missing required path parameter: job_id"
             )
 
-        # Support "featured" as a special job_id alias
-        if job_id == "featured":
-            logger.info("Resolved featured -> %s", FEATURED_JOB_ID)
-            job_id = FEATURED_JOB_ID
+        # "featured" is resolved after the client is created (below) so it can
+        # track the newest run dynamically.
 
         # Parse query parameters
         query_params = event.get("queryStringParameters") or {}
@@ -88,6 +109,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         client = DynamoClient(
             table_name=DYNAMODB_TABLE_NAME, region="us-east-1"
         )
+
+        # Resolve "featured" to the newest layoutlm run — the same model the
+        # inference viz auto-selects — falling back to the configured default.
+        if job_id == "featured":
+            job_id = _resolve_newest_layoutlm_job(client) or FEATURED_JOB_ID
+            logger.info("Resolved featured -> %s", job_id)
 
         # Get job metadata
         try:
