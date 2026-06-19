@@ -63,17 +63,17 @@ const CLOUDFRONT_BEACON_PARAM_KEYS = [
   "quick_jump",
 ];
 
-type AnalyticsParams = Record<
+export type AnalyticsParams = Record<
   string,
   string | number | boolean | undefined
 >;
 
-type AnalyticsEventMeta = {
+export type AnalyticsEventMeta = {
   sessionId: string;
   eventId: string;
 };
 
-type WebVitalMetric = {
+export type WebVitalMetric = {
   name: string;
   value: number;
   delta: number;
