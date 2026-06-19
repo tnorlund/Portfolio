@@ -9,6 +9,12 @@ from dynamo_db import dynamodb_table
 
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
 ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://tylernorlund.com",
+    "https://www.tylernorlund.com",
+    "https://dev.tylernorlund.com",
+]
 
 lambda_role = aws.iam.Role(
     f"api_{ROUTE_NAME}_lambda_role",
@@ -89,6 +95,7 @@ reader_summary_lambda = aws.lambda_.Function(
         "variables": {
             "READER_SUMMARY_TABLE_NAME": dynamodb_table.name,
             "MINIMUM_SAMPLE_SIZE": "5",
+            "ALLOWED_ORIGINS": ",".join(ALLOWED_ORIGINS),
         }
     },
     memory_size=256,

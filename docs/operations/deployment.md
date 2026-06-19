@@ -237,7 +237,9 @@ reaches the bottom of a long page. The Lambda writes per-page
 records into the existing DynamoDB table, without persisting the session
 ID. It then returns the current average when the sample is large enough.
 Exclude `reader_summary` events where `quick_jump` is true from
-reader-average calculations.
+reader-average calculations. The writer is guarded by an allowed-origin
+check in the Lambda, endpoint-specific API Gateway throttling, and a
+regional WAF rate-based rule scoped to `POST /reader_summary`.
 
 `/analytics/reader-baselines.json` remains a static fallback for pages
 that cannot reach the API.

@@ -14,6 +14,21 @@ logger.setLevel(logging.INFO)
 
 TABLE_NAME = os.environ["READER_SUMMARY_TABLE_NAME"]
 MINIMUM_SAMPLE_SIZE = int(os.environ.get("MINIMUM_SAMPLE_SIZE", "5"))
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        ",".join(
+            [
+                "http://localhost:3000",
+                "https://tylernorlund.com",
+                "https://www.tylernorlund.com",
+                "https://dev.tylernorlund.com",
+            ]
+        ),
+    ).split(",")
+    if origin.strip()
+}
 EVENT_TTL_SECONDS = 60 * 60 * 24 * 30
 MAX_PATH_LENGTH = 180
 MAX_ID_LENGTH = 120
@@ -32,6 +47,34 @@ def response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
         },
         "body": json.dumps(body),
     }
+
+
+def get_header(headers: Dict[str, Any], name: str) -> Optional[str]:
+    target = name.lower()
+
+    for key, value in headers.items():
+        if key.lower() == target and value:
+            return str(value)
+
+    return None
+
+
+def has_allowed_origin(event: Dict[str, Any]) -> bool:
+    headers = event.get("headers") or {}
+    origin = get_header(headers, "origin")
+
+    if origin:
+        return origin in ALLOWED_ORIGINS
+
+    referer = get_header(headers, "referer")
+    if not referer:
+        return False
+
+    return any(
+        referer == allowed_origin
+        or referer.startswith(f"{allowed_origin}/")
+        for allowed_origin in ALLOWED_ORIGINS
+    )
 
 
 def decimal_to_int(value: Any) -> int:
@@ -291,6 +334,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     if method != "POST":
         return response(405, {"error": "Method not allowed"})
+
+    if not has_allowed_origin(event):
+        return response(403, {"error": "Forbidden"})
 
     payload, validation_error = validate_payload(parse_body(event))
 

@@ -72,6 +72,7 @@ def make_event(**overrides):
 
     return {
         "requestContext": {"http": {"method": "POST"}},
+        "headers": {"origin": "https://tylernorlund.com"},
         "body": json.dumps(payload),
     }
 
@@ -119,4 +120,54 @@ def test_handler_marks_fast_scroll_as_quick_jump(monkeypatch):
     assert response["statusCode"] == 200
     assert body["quickJump"] is True
     assert body["counted"] is False
+    assert len(fake_table.update_items) == 0
+
+
+def test_handler_accepts_allowed_referer(monkeypatch):
+    fake_table = FakeTable()
+    monkeypatch.setattr(index, "table", fake_table)
+
+    event = make_event()
+    event["headers"] = {
+        "referer": "https://tylernorlund.com/receipt",
+    }
+
+    response = index.handler(event, None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 200
+    assert body["counted"] is True
+    assert len(fake_table.put_items) == 1
+    assert len(fake_table.update_items) == 1
+
+
+def test_handler_rejects_untrusted_origin(monkeypatch):
+    fake_table = FakeTable()
+    monkeypatch.setattr(index, "table", fake_table)
+
+    event = make_event()
+    event["headers"] = {"origin": "https://attacker.example"}
+
+    response = index.handler(event, None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 403
+    assert body["error"] == "Forbidden"
+    assert len(fake_table.put_items) == 0
+    assert len(fake_table.update_items) == 0
+
+
+def test_handler_rejects_missing_origin(monkeypatch):
+    fake_table = FakeTable()
+    monkeypatch.setattr(index, "table", fake_table)
+
+    event = make_event()
+    event["headers"] = {}
+
+    response = index.handler(event, None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 403
+    assert body["error"] == "Forbidden"
+    assert len(fake_table.put_items) == 0
     assert len(fake_table.update_items) == 0
