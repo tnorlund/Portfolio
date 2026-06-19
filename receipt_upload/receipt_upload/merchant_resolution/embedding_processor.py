@@ -545,7 +545,30 @@ def _run_words_pipeline_worker(
             from receipt_upload.line_items import (
                 propose_line_item_labels,
                 propose_product_names,
+                reclassify_mislabeled_totals,
             )
+
+            # First-pass models emit SUBTOTAL/TAX when line totals coincidentally
+            # sum to the grand total and no Subtotal/Tax keyword anchors a real
+            # totals block (the Trader Joe's IMG_2826 case). Reclassify those
+            # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
+            # (Σ line totals == GRAND_TOTAL only with them counted as line items).
+            # Human VALID/INVALID labels are never touched.
+            for old_label, new_label in reclassify_mislabeled_totals(
+                words, word_labels
+            ):
+                # Invalidate (don't delete) the mislabeled total — preserves the
+                # audit trail and is consistent with "INVALID currency labels are
+                # deliberate" — then add the arithmetic-confirmed LINE_TOTAL.
+                old_label.validation_status = ValidationStatus.INVALID.value
+                old_label.reasoning = (
+                    f"Reclassified to LINE_TOTAL by {new_label.label_proposed_by}: "
+                    "this price is a line-item total, not a receipt total "
+                    "(arithmetic reconciliation)."
+                )
+                dynamo.update_receipt_word_label(old_label)
+                dynamo.add_receipt_word_label(new_label)
+                word_labels.append(new_label)
 
             for li_label in propose_line_item_labels(words, word_labels):
                 dynamo.add_receipt_word_label(li_label)
