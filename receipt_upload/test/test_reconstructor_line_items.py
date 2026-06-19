@@ -164,6 +164,32 @@ def test_locks_existing_line_total_against_llm_correction():
     assert [(l.line_id, l.word_id) for l in locked] == [(12, 1)]
 
 
+def test_single_item_total_not_reclassified():
+    """A lone mislabeled total that equals the grand total must NOT reclassify.
+
+    Single-item cafe receipt (the IMG_2827 case): one item, and the model tags
+    "Total 10.83" as SUBTOTAL. With no second line total, 10.83 == GRAND_TOTAL is
+    just the total restated — reclassifying it to a phantom LINE_TOTAL would be
+    wrong. The >=2-line-totals guard must make this a no-op.
+    """
+    P = ValidationStatus.PENDING.value
+    words = [
+        _w(1, 1, "CAFE", 0.30, 0.95),
+        _w(5, 1, "BREAKFAST", 0.10, 0.80),
+        _w(5, 2, "BURRITO", 0.24, 0.80),
+        _w(5, 3, "9.99", 0.72, 0.80),
+        _w(8, 1, "Total", 0.10, 0.60),
+        _w(8, 2, "10.83", 0.72, 0.60),     # model mislabels this SUBTOTAL
+        _w(12, 1, "10.83", 0.72, 0.50),    # the real grand total
+    ]
+    labels = [
+        _label(1, 1, "MERCHANT_NAME"),
+        _label(8, 2, "SUBTOTAL", P),
+        _label(12, 1, "GRAND_TOTAL", P),
+    ]
+    assert reclassify_mislabeled_totals(words, labels) == ([], [])
+
+
 def test_reclassification_is_arithmetic_gated_on_grand_total():
     """No GRAND_TOTAL value -> nothing to reconcile against -> no override."""
     words = _trader_joes_words()

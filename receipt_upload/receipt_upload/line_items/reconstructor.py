@@ -182,12 +182,23 @@ def reclassify_mislabeled_totals(
     tol = 0.02
     reconciled_as_is = abs(l_clean - grand) <= tol
     reconciled_with_candidates = abs(l_clean + cand_sum - grand) <= tol
+    # The reconciled line-item set must contain at least TWO line totals. A single
+    # price that equals the whole grand total (with no other line totals) is far
+    # more likely a mislabeled *total* than a lone line item — e.g. a one-item
+    # cafe receipt where the model tags "Total 10.83" as SUBTOTAL. Requiring >=2
+    # keeps us from "reconciling" such a receipt into a phantom line item.
+    line_total_count = len({k for k in lt_keys if k in by_key}) + len(candidates)
     # Normal receipt: the real line items already sum to a labeled SUBTOTAL value.
     subtotal_vals = [v for _, lab, v in candidates if lab.label == "SUBTOTAL"]
     is_normal_receipt = l_clean > 0 and any(
         abs(l_clean - s) <= tol for s in subtotal_vals
     )
-    if reconciled_as_is or is_normal_receipt or not reconciled_with_candidates:
+    if (
+        reconciled_as_is
+        or is_normal_receipt
+        or not reconciled_with_candidates
+        or line_total_count < 2
+    ):
         return [], []
 
     total_lt = round(l_clean + cand_sum, 2)
