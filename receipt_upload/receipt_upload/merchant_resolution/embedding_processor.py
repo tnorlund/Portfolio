@@ -542,7 +542,10 @@ def _run_words_pipeline_worker(
             # bounds the line-item region by the receipt's own header/totals anchor
             # labels and labels by column. Emitted as PENDING so the Chroma + LLM
             # validators below confirm them, same as any other proposed label.
-            from receipt_upload.line_items import propose_line_item_labels
+            from receipt_upload.line_items import (
+                propose_line_item_labels,
+                propose_product_names,
+            )
 
             for li_label in propose_line_item_labels(words, word_labels):
                 dynamo.add_receipt_word_label(li_label)
@@ -552,6 +555,17 @@ def _run_words_pipeline_worker(
                 # Chroma + LLM validators.
                 if li_label.validation_status == ValidationStatus.PENDING.value:
                     pending_labels.append(li_label)
+
+            # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
+            # catches product names that share an OCR row with a price. A kNN over
+            # validated product words (UNSCOPED — merchant-scoping hurts recall)
+            # proposes the rest as PENDING for the validators to confirm.
+            for pn_label in propose_product_names(
+                words, word_labels, client, word_embedding_cache
+            ):
+                dynamo.add_receipt_word_label(pn_label)
+                word_labels.append(pn_label)
+                pending_labels.append(pn_label)
 
             if pending_labels:
                 from receipt_upload.label_validation import ValidationDecision

@@ -99,7 +99,13 @@ def propose_line_item_labels(
     totals = [cy(w) for w in placed if raw(w) & _TOTALS]
     if not totals:
         return []
-    tc = statistics.median(totals)
+    # Anchor the line-item band's bottom edge on GRAND_TOTAL when present — it's
+    # the true bottom of the items. SUBTOTAL/TAX can be mislabeled line-item
+    # prices (the model emits them when two line totals coincidentally sum to the
+    # grand total and there's no Subtotal/Tax keyword), which would otherwise
+    # collapse the band onto the items themselves.
+    grand = [cy(w) for w in placed if "GRAND_TOTAL" in raw(w)]
+    tc = statistics.median(grand) if grand else statistics.median(totals)
     header = [cy(w) for w in placed if raw(w) & _HEADER]
     if not header:
         merch = [cy(w) for w in placed if "MERCHANT_NAME" in raw(w)]
@@ -136,6 +142,48 @@ def propose_line_item_labels(
     line_vals: List[float] = []
     for row in rows:
         monies = sorted([w for w in row if _is_money(w.text)], key=xl)
+        at = next((w for w in row if w.text in ("@", "x", "X")), None)
+
+        # --- "N @ $X" unit-price row -------------------------------------
+        # The integer before "@" is QUANTITY and the price right after "@" is
+        # UNIT_PRICE. The row's LINE_TOTAL is usually on the product row above,
+        # so a SINGLE price after "@" is the unit price (NOT a line total);
+        # only a SECOND, rightmost price on the row is the line total
+        # (e.g. "2 @ 1.50  3.00").
+        if at is not None:
+            at_x = xl(at)
+            prices_right = [
+                m
+                for m in monies
+                if xl(m) > at_x and (_FULL.match(m.text) or _DOT.match(m.text))
+            ]
+            qty = next(
+                (
+                    w
+                    for w in sorted(row, key=xl, reverse=True)
+                    if xl(w) < at_x and re.fullmatch(r"\d{1,3}", w.text)
+                ),
+                None,
+            )
+            if qty is not None:
+                proposals[(qty.line_id, qty.word_id)] = "QUANTITY"
+            if len(prices_right) >= 2:
+                lt = prices_right[-1]
+                proposals[(lt.line_id, lt.word_id)] = "LINE_TOTAL"
+                if (v := _amount(lt.text)) is not None:
+                    line_vals.append(v)
+                for m in prices_right[:-1]:
+                    proposals[(m.line_id, m.word_id)] = "UNIT_PRICE"
+            elif len(prices_right) == 1:
+                proposals[(prices_right[0].line_id, prices_right[0].word_id)] = (
+                    "UNIT_PRICE"
+                )
+            for w in row:                            # product = text left of "@"
+                if xl(w) < at_x and _has_letters(w.text) and not _is_money(w.text):
+                    proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
+            continue
+
+        # --- normal product row ------------------------------------------
         if not monies:
             continue
         # A line total must be a real price (a full token, or the "$3." left half
@@ -161,15 +209,6 @@ def propose_line_item_labels(
         full = next((m for m in group if _FULL.match(m.text)), None)
         if full and (val := _amount(full.text)) is not None:
             line_vals.append(val)
-        if any(w.text in ("@", "x", "X") for w in row):   # N @ $X -> unit price
-            for m in monies:                        # only real price tokens, not the qty
-                key = (m.line_id, m.word_id)
-                if (
-                    key not in group_keys
-                    and xl(m) < xl(line_total)
-                    and (_FULL.match(m.text) or _DOT.match(m.text))
-                ):
-                    proposals[key] = "UNIT_PRICE"
         for w in row:                                # product = text left of price
             if xl(w) < xl(line_total) and _has_letters(w.text) and not _is_money(w.text):
                 proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
