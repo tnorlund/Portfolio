@@ -293,14 +293,26 @@ def _text_conflicts(label_obs, members) -> List[Conflict]:
     )
 
 
+def _label_key(o: LabelObs, scope: str):
+    """Identity used to compare labels across copies.
+
+    within_image groups are PIXEL-aligned, so two equal tokens at different
+    positions are distinct slots — key on (pos, label). cross_image groups have
+    independent OCR, so positions don't correspond — key on (word_text, label).
+    """
+    if scope == "within_image":
+        return (o.pos, o.effective_label)
+    return (o.word_text, o.effective_label)
+
+
 def _text_overlap_pct(
-    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext
+    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext, scope: str
 ) -> Optional[float]:
-    """(word_text, label) overlap between survivor and the rest (cross-OCR safe)."""
+    """Label overlap between survivor and the rest (position-aware within-image)."""
 
     def pairs(m):
         return {
-            (o.word_text, o.effective_label)
+            _label_key(o, scope)
             for o in label_obs.get(m.key, [])
             if o.is_canonical
         }
@@ -320,10 +332,10 @@ def _text_overlap_pct(
 
 
 def _labels_only_on_nonsurvivor(
-    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext
+    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext, scope: str
 ) -> List[Dict]:
     surv_pairs = {
-        (o.word_text, o.effective_label)
+        _label_key(o, scope)
         for o in label_obs.get(survivor.key, [])
         if o.is_canonical
     }
@@ -332,7 +344,7 @@ def _labels_only_on_nonsurvivor(
         if m.key == survivor.key:
             continue
         for o in label_obs.get(m.key, []):
-            if o.is_canonical and (o.word_text, o.effective_label) not in surv_pairs:
+            if o.is_canonical and _label_key(o, scope) not in surv_pairs:
                 out.append(
                     {
                         "member": m.key_str,
@@ -462,8 +474,8 @@ def build_merge_dossiers(
             conflicts = _text_conflicts(labels_by_receipt, members)
 
         union = _label_union(labels_by_receipt, members)
-        only_non = _labels_only_on_nonsurvivor(labels_by_receipt, members, survivor)
-        overlap = _text_overlap_pct(labels_by_receipt, members, survivor)
+        only_non = _labels_only_on_nonsurvivor(labels_by_receipt, members, survivor, scope)
+        overlap = _text_overlap_pct(labels_by_receipt, members, survivor, scope)
         junk = [
             {"member": m.key_str, "junk_labels": m.junk_labels}
             for m in members

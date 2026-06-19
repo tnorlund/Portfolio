@@ -98,6 +98,26 @@ def test_labels_only_on_nonsurvivor_surfaced():
     assert d.deterministic_action == "consolidate_then_drop"
 
 
+def test_within_image_lost_label_is_position_aware():
+    # repeated token "$9.99" at two positions; survivor labels 5:5, dropped labels
+    # 8:8 — the 8:8 label IS a real positional gap and must be surfaced (not
+    # suppressed by the equal (word_text,label) on a different occurrence).
+    receipts = [_r("a", 1, "S"), _r("a", 2, "S")]
+    words = {
+        ("a", 1): {(1, 1): "x", (5, 5): "$9.99", (8, 8): "$9.99"},
+        ("a", 2): {(1, 1): "x", (5, 5): "$9.99", (8, 8): "$9.99"},
+    }
+    labels = {
+        ("a", 1): [_obs("DATE", 1, 1, "x", "VALID"), _obs("LINE_TOTAL", 5, 5, "$9.99", "VALID")],
+        ("a", 2): [_obs("LINE_TOTAL", 8, 8, "$9.99", "VALID")],  # OTHER occurrence
+    }
+    d = build_merge_dossiers(receipts, words, labels)[0]
+    assert d.survivor_suggested == "a#1"
+    lost_pos = {x["pos"] for x in d.labels_only_on_nonsurvivor}
+    assert "8:8" in lost_pos  # positional gap surfaced
+    assert d.deterministic_action == "consolidate_then_drop"
+
+
 def test_clean_group_is_drop_redundant():
     receipts = [_r("a", 1, "S"), _r("a", 2, "S")]
     words = {("a", 1): {(1, 1): "ACME"}, ("a", 2): {(1, 1): "ACME"}}
