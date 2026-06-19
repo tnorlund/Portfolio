@@ -50,6 +50,8 @@ cd portfolio
 npm install
 
 # Build production bundle
+NEXT_PUBLIC_GA_MEASUREMENT_ID=G-7TT64C825N \
+NEXT_PUBLIC_GTM_ID=GTM-PBZWT6NS \
 npm run build
 
 # Deploy to S3

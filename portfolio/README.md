@@ -158,7 +158,11 @@ The app includes a performance overlay in development showing:
 
 - CloudFront metrics for CDN performance
 - Lambda function duration tracking
-- Client-side Web Vitals collection (planned)
+- Google Analytics / Google Tag Manager via public build variables:
+  - `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  - `NEXT_PUBLIC_GTM_ID`
+- Client-side events for route changes, Web Vitals, and scroll-depth
+  thresholds (`25`, `50`, `75`, `90`)
 
 ## 🎯 Performance Optimizations
 
