@@ -1286,3 +1286,80 @@ class TestMerchantResolverLabeledFields:
 
         assert result.place_id is None
         labeled_search.assert_not_called()
+
+    def test_resolve_labeled_fields_runs_on_validated_labels(self):
+        """Second-chance path: VALID MERCHANT_NAME/ADDRESS drive the Places search."""
+        resolver = MerchantResolver(
+            dynamo_client=MagicMock(),
+            places_client=MagicMock(),
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord, line_id=1, word_id=1, text="Whole",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord, line_id=1, word_id=2, text="Foods",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord, line_id=2, word_id=1, text="123",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord, line_id=2, word_id=2, text="Main",
+                extracted_data={},
+            ),
+        ]
+        labels = [
+            _label(1, 1, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(1, 2, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(2, 1, "ADDRESS_LINE", ValidationStatus.VALID.value),
+            _label(2, 2, "ADDRESS_LINE", ValidationStatus.VALID.value),
+        ]
+        labeled_result = MerchantResult(
+            place_id="ChIJ_whole_foods",
+            merchant_name="Whole Foods Market",
+            confidence=0.95,
+            resolution_tier="place_id_labeled_fields",
+        )
+        with patch.object(
+            resolver, "_run_labeled_place_search", return_value=labeled_result
+        ) as labeled_search:
+            result = resolver.resolve_labeled_fields(words, labels)
+
+        labeled_search.assert_called_once_with(
+            merchant_name="Whole Foods",
+            address="123 Main",
+            phone=None,
+        )
+        assert result.place_id == "ChIJ_whole_foods"
+        assert result.resolution_tier == "place_id_labeled_fields"
+
+    def test_resolve_labeled_fields_requires_validated_merchant_name(self):
+        """A PENDING (unvalidated) merchant name must NOT trigger Places."""
+        resolver = MerchantResolver(
+            dynamo_client=MagicMock(),
+            places_client=MagicMock(),
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord, line_id=1, word_id=1, text="Bad",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord, line_id=1, word_id=2, text="Hint",
+                extracted_data={},
+            ),
+        ]
+        labels = [
+            _label(1, 1, "MERCHANT_NAME"),  # PENDING
+            _label(1, 2, "MERCHANT_NAME"),
+        ]
+        with patch.object(
+            resolver, "_run_labeled_place_search"
+        ) as labeled_search:
+            result = resolver.resolve_labeled_fields(words, labels)
+
+        labeled_search.assert_not_called()
+        assert result.place_id is None

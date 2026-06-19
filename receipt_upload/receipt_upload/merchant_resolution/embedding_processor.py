@@ -343,15 +343,24 @@ def _run_lines_pipeline_worker(
                 places_client=places_client,
             )
 
-            merchant_result = resolver.resolve(
-                lines_client=client,
-                lines=lines,
-                words=words,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                line_embeddings=line_embedding_cache,
-                word_labels=word_labels,
-            )
+            # Capture the resolver's stdout (its `_log` print()s, incl. the
+            # Tier-1/Tier-2 attempts) so the main process can re-emit it. A
+            # ProcessPoolExecutor child's stdout does NOT reach CloudWatch on its
+            # own, which is why merchant resolution was previously unobservable.
+            import contextlib
+            import io as _io
+
+            resolver_log_buf = _io.StringIO()
+            with contextlib.redirect_stdout(resolver_log_buf):
+                merchant_result = resolver.resolve(
+                    lines_client=client,
+                    lines=lines,
+                    words=words,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    line_embeddings=line_embedding_cache,
+                    word_labels=word_labels,
+                )
 
             # Group lines into visual rows
             visual_rows = group_lines_into_visual_rows(lines)
@@ -422,6 +431,7 @@ def _run_lines_pipeline_worker(
                     }
                     for m in (merchant_result.similarity_matches or [])[:5]
                 ],
+                "resolver_logs": resolver_log_buf.getvalue(),
             }
         finally:
             client.close()
@@ -1297,6 +1307,15 @@ class MerchantResolvingEmbeddingProcessor:
                     lines_result = lines_future.result()
                     lines_prefix = lines_result.get("lines_prefix")
 
+                    # Surface the lines-pipeline subprocess's merchant-resolution
+                    # logs (captured in the worker) — these don't reach CloudWatch
+                    # on their own.
+                    resolver_logs = lines_result.get("resolver_logs")
+                    if resolver_logs:
+                        for _ln in resolver_logs.splitlines():
+                            if _ln.strip():
+                                _log(f"[lines-pipeline] {_ln}")
+
                     # Reconstruct MerchantResult from serializable dict
                     if lines_result.get("success"):
                         # Import here to avoid circular import
@@ -1365,6 +1384,45 @@ class MerchantResolvingEmbeddingProcessor:
                     words_prefix = None
 
             _log("Phase 2 complete: parallel pipelines finished")
+
+            # Second-chance merchant resolution. The resolver's strong labeled
+            # Places search needs VALID MERCHANT_NAME/ADDRESS, but the first pass
+            # (in the lines pipeline) ran CONCURRENTLY with label validation, so it
+            # saw only the model's PENDING labels and skipped that path. Now that
+            # the words pipeline has validated and persisted the labels, re-attempt
+            # the labeled Places search with the now-VALID labels — the same path
+            # fix_place uses to resolve obvious merchants. This only fires when the
+            # first pass found nothing, so it never overrides a confident match.
+            if (
+                not merchant_result.place_id
+                and self.merchant_resolver.places_client
+                and words
+            ):
+                try:
+                    validated_labels, _ = (
+                        self.dynamo.list_receipt_word_labels_for_receipt(
+                            image_id, receipt_id
+                        )
+                    )
+                    second = self.merchant_resolver.resolve_labeled_fields(
+                        words, validated_labels
+                    )
+                    if second.place_id:
+                        _log(
+                            "Second-chance labeled resolution SUCCESS: "
+                            f"{second.merchant_name} "
+                            f"(place_id={second.place_id}, "
+                            f"conf={(second.confidence or 0.0):.2f})"
+                        )
+                        merchant_result = second
+                    else:
+                        _log(
+                            "Second-chance labeled resolution: no match "
+                            "(no validated merchant name or no Places hit)"
+                        )
+                except Exception as exc:  # pylint: disable=broad-except
+                    _log(f"Second-chance labeled resolution failed: {exc}")
+                    logger.exception("Second-chance labeled resolution error")
 
             # =================================================================
             # PHASE 3: Create compaction run (after both deltas uploaded)

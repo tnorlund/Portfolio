@@ -282,6 +282,39 @@ class MerchantResolver:
 
         return _traced_resolve()
 
+    def resolve_labeled_fields(
+        self,
+        words: List[ReceiptWord],
+        word_labels: List[ReceiptWordLabel],
+    ) -> MerchantResult:
+        """Resolve a merchant from VALIDATED MERCHANT_NAME/ADDRESS via Google Places.
+
+        A targeted "second-chance" for the upload pipeline. The main ``resolve()``
+        runs concurrently with label validation, so its strong labeled Places
+        fast path — which requires VALID labels — is skipped on the first pass
+        (the model's MERCHANT_NAME/ADDRESS are still PENDING then). Once
+        validation has run, callers invoke this to re-attempt ONLY that labeled
+        Places search using the now-VALID labels — the same path ``fix_place``
+        uses to resolve obvious merchants.
+
+        Requires a VALID ``MERCHANT_NAME`` (never trusts PENDING model output, so
+        the #959 "don't short-circuit on unvalidated hints" guarantee holds).
+        Returns an empty ``MerchantResult`` when there is no validated merchant
+        name or no Places match.
+        """
+        merchant_name = self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME", require_valid=True
+        )
+        if not merchant_name:
+            return MerchantResult()
+        address = self._extract_labeled_text(
+            words, word_labels, "ADDRESS_LINE", require_valid=True
+        ) or self._extract_address(words)
+        phone = self._extract_phone(words)
+        return self._run_labeled_place_search(
+            merchant_name=merchant_name, address=address, phone=phone
+        )
+
     def _resolve_impl(
         self,
         lines_client: ChromaClient,
