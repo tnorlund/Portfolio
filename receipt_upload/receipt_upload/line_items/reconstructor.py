@@ -61,7 +61,9 @@ def _amount(t: str) -> float | None:
 
 def reclassify_mislabeled_totals(
     words: List, existing_labels: List[ReceiptWordLabel]
-) -> List[Tuple[ReceiptWordLabel, ReceiptWordLabel]]:
+) -> Tuple[
+    List[Tuple[ReceiptWordLabel, ReceiptWordLabel]], List[ReceiptWordLabel]
+]:
     """Reclassify PENDING ``SUBTOTAL``/``TAX`` labels that are actually line totals.
 
     The first-pass model emits ``SUBTOTAL``/``TAX`` when two (or more) line totals
@@ -82,12 +84,28 @@ def reclassify_mislabeled_totals(
       labeled subtotal (the normal-receipt case, where SUBTOTAL == Σ items and
       SUBTOTAL + TAX == GRAND_TOTAL is the definition, not a mislabel).
 
+    When the reconciliation fires, the arithmetic is the *authority* on the
+    line-item totals, so it also reports the receipt's existing ``LINE_TOTAL``
+    labels that participate in the sum. Callers must lock those VALID and pull
+    them (along with the invalidated SUBTOTAL/TAX) out of the pending set, or the
+    downstream Chroma/LLM validators will "correct" a real line total back to
+    TAX using the very same coincidental arithmetic that caused the mislabel.
+
     Returns:
-        ``(old_label, new_label)`` pairs. Callers should **invalidate**
-        ``old_label`` (mark it ``INVALID`` — keeping it as an audit trail, since
-        deliberate INVALID currency labels are how we record "this isn't that
-        total") and add ``new_label`` (a ``LINE_TOTAL``, status ``VALID`` since
-        arithmetic confirms it, ``label_proposed_by="arithmetic_totals_reclass"``).
+        ``(reclassifications, locked_line_totals)`` where:
+
+        * ``reclassifications`` is a list of ``(old_label, new_label)`` pairs.
+          Callers should **invalidate** ``old_label`` (mark it ``INVALID`` —
+          keeping it as an audit trail, since deliberate INVALID currency labels
+          are how we record "this isn't that total"), drop it from the pending
+          set, and add ``new_label`` (a ``LINE_TOTAL``, status ``VALID`` since
+          arithmetic confirms it, ``label_proposed_by="arithmetic_totals_reclass"``).
+        * ``locked_line_totals`` is the list of existing ``LINE_TOTAL`` label
+          objects that participate in the reconciled sum. Callers should mark
+          them ``VALID`` and drop them from the pending set so the validators
+          cannot override them.
+
+        Both lists are empty when no override is warranted.
     """
     label_objs: Dict[Tuple[int, int], List[ReceiptWordLabel]] = {}
     for lab in existing_labels:
@@ -104,7 +122,7 @@ def reclassify_mislabeled_totals(
         if (w.line_id, w.word_id) in pos
     }
     if not by_key:
-        return []
+        return [], []
 
     def cy(k: Tuple[int, int]) -> float:
         return pos[k][1]
@@ -118,7 +136,7 @@ def reclassify_mislabeled_totals(
         v for v in (_amount(by_key[k].text) for k in grand_keys) if v is not None
     ]
     if not grand_vals:
-        return []
+        return [], []
     grand = max(grand_vals)
     tc = statistics.median([cy(k) for k in grand_keys])
 
@@ -142,7 +160,7 @@ def reclassify_mislabeled_totals(
                 candidates.append((k, lab, val))
                 break
     if not candidates:
-        return []
+        return [], []
 
     # Clean line-total mass: existing LINE_TOTAL labels + what geometry recovers
     # with the current (SUBTOTAL/TAX-excluding) band.
@@ -170,13 +188,13 @@ def reclassify_mislabeled_totals(
         abs(l_clean - s) <= tol for s in subtotal_vals
     )
     if reconciled_as_is or is_normal_receipt or not reconciled_with_candidates:
-        return []
+        return [], []
 
     total_lt = round(l_clean + cand_sum, 2)
-    out: List[Tuple[ReceiptWordLabel, ReceiptWordLabel]] = []
+    reclassifications: List[Tuple[ReceiptWordLabel, ReceiptWordLabel]] = []
     for k, old, _val in candidates:
         w0 = by_key[k]
-        out.append(
+        reclassifications.append(
             (
                 old,
                 ReceiptWordLabel(
@@ -197,7 +215,20 @@ def reclassify_mislabeled_totals(
                 ),
             )
         )
-    return out
+
+    # The arithmetic is the authority: lock the receipt's existing LINE_TOTAL
+    # labels that participate in the reconciled sum so the Chroma/LLM validators
+    # can't "correct" a real line total back to TAX via the same coincidental
+    # arithmetic that caused the mislabel.
+    cand_keys = {k for k, _, _ in candidates}
+    locked_line_totals = [
+        lab
+        for k, labs in label_objs.items()
+        if k in lt_keys and k not in cand_keys
+        for lab in labs
+        if lab.label == "LINE_TOTAL"
+    ]
+    return reclassifications, locked_line_totals
 
 
 def propose_line_item_labels(

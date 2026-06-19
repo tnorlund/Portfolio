@@ -89,18 +89,27 @@ def _model_labels():
     ]
 
 
-def _run_pipeline():
+def _run_pipeline(labels=None):
     """Mirror the upload pipeline: reclassify mislabeled totals, then geometry."""
     words = _trader_joes_words()
-    labels = _model_labels()
+    labels = list(_model_labels() if labels is None else labels)
 
-    # Stage 1: arithmetic-gated reclassification of mislabeled SUBTOTAL/TAX.
-    for old, new in reclassify_mislabeled_totals(words, labels):
-        labels = [l for l in labels if l is not old]
+    # Stage 1: arithmetic-gated reclassification of mislabeled SUBTOTAL/TAX,
+    # plus locking the existing line totals the arithmetic confirms.
+    reclassifications, locked = reclassify_mislabeled_totals(words, labels)
+    for old, new in reclassifications:
+        old.validation_status = ValidationStatus.INVALID.value
         labels.append(new)
+    for lt in locked:
+        lt.validation_status = ValidationStatus.VALID.value
 
-    # Stage 2: geometry line-item recovery over the corrected label set.
-    by_key = {(l.line_id, l.word_id): l for l in labels}
+    # Stage 2: geometry line-item recovery over the corrected label set. The
+    # active label for a word is its non-INVALID one (a word may carry an
+    # INVALID SUBTOTAL alongside a VALID LINE_TOTAL).
+    by_key = {}
+    for l in labels:
+        if l.validation_status != ValidationStatus.INVALID.value:
+            by_key[(l.line_id, l.word_id)] = l
     for p in propose_line_item_labels(words, labels):
         by_key[(p.line_id, p.word_id)] = p
     return by_key
@@ -130,11 +139,36 @@ def test_quantity_and_unit_price_from_at_row():
     assert p[(10, 3)].label != "LINE_TOTAL"
 
 
+def test_locks_existing_line_total_against_llm_correction():
+    """Production case: the model labels one item LINE_TOTAL and the other SUBTOTAL.
+
+    Reclassify the SUBTOTAL ($4.29) and *lock* the existing LINE_TOTAL ($1.38)
+    so the LLM validator can't "correct" it to TAX (the bug observed on the live
+    IMG_2826 upload).
+    """
+    P = ValidationStatus.PENDING.value
+    labels = [
+        _label(2, 1, "ADDRESS_LINE"),
+        _label(1, 1, "MERCHANT_NAME"),
+        _label(11, 1, "SUBTOTAL", P),     # $4.29 mislabeled
+        _label(12, 1, "LINE_TOTAL", P),   # $1.38 model got this one right
+        _label(13, 1, "GRAND_TOTAL", P),
+    ]
+    words = _trader_joes_words()
+    reclassifications, locked = reclassify_mislabeled_totals(words, labels)
+    # $4.29 SUBTOTAL -> LINE_TOTAL
+    assert [(o.label, n.label) for o, n in reclassifications] == [
+        ("SUBTOTAL", "LINE_TOTAL")
+    ]
+    # $1.38's existing LINE_TOTAL is returned for locking (so it survives the LLM).
+    assert [(l.line_id, l.word_id) for l in locked] == [(12, 1)]
+
+
 def test_reclassification_is_arithmetic_gated_on_grand_total():
     """No GRAND_TOTAL value -> nothing to reconcile against -> no override."""
     words = _trader_joes_words()
     labels = [l for l in _model_labels() if l.label != "GRAND_TOTAL"]
-    assert reclassify_mislabeled_totals(words, labels) == []
+    assert reclassify_mislabeled_totals(words, labels) == ([], [])
 
 
 def test_normal_receipt_subtotal_tax_not_reclassified():
@@ -165,7 +199,7 @@ def test_normal_receipt_subtotal_tax_not_reclassified():
         _label(8, 2, "TAX", ValidationStatus.PENDING.value),
         _label(9, 2, "GRAND_TOTAL", ValidationStatus.PENDING.value),
     ]
-    assert reclassify_mislabeled_totals(words, labels) == []
+    assert reclassify_mislabeled_totals(words, labels) == ([], [])
 
 
 def test_human_validated_totals_never_overridden():
@@ -175,4 +209,4 @@ def test_human_validated_totals_never_overridden():
     for l in labels:
         if l.label in ("SUBTOTAL", "TAX"):
             l.validation_status = ValidationStatus.VALID.value
-    assert reclassify_mislabeled_totals(words, labels) == []
+    assert reclassify_mislabeled_totals(words, labels) == ([], [])

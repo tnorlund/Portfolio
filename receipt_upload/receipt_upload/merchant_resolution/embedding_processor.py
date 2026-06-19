@@ -554,9 +554,10 @@ def _run_words_pipeline_worker(
             # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
             # (Σ line totals == GRAND_TOTAL only with them counted as line items).
             # Human VALID/INVALID labels are never touched.
-            for old_label, new_label in reclassify_mislabeled_totals(
-                words, word_labels
-            ):
+            reclassifications, locked_line_totals = (
+                reclassify_mislabeled_totals(words, word_labels)
+            )
+            for old_label, new_label in reclassifications:
                 # Invalidate (don't delete) the mislabeled total — preserves the
                 # audit trail and is consistent with "INVALID currency labels are
                 # deliberate" — then add the arithmetic-confirmed LINE_TOTAL.
@@ -567,8 +568,21 @@ def _run_words_pipeline_worker(
                     "(arithmetic reconciliation)."
                 )
                 dynamo.update_receipt_word_label(old_label)
+                # Drop the invalidated total from the pending set so the Chroma/LLM
+                # validators don't re-validate it back to SUBTOTAL/TAX.
+                _remove_label_from_list(pending_labels, old_label)
                 dynamo.add_receipt_word_label(new_label)
                 word_labels.append(new_label)
+            for lt_label in locked_line_totals:
+                # Arithmetic confirms these are line totals; lock them VALID and
+                # pull them from pending so the LLM can't "correct" them to TAX.
+                lt_label.validation_status = ValidationStatus.VALID.value
+                lt_label.label_proposed_by = "arithmetic_totals_reclass"
+                lt_label.reasoning = (
+                    "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
+                )
+                dynamo.update_receipt_word_label(lt_label)
+                _remove_label_from_list(pending_labels, lt_label)
 
             for li_label in propose_line_item_labels(words, word_labels):
                 dynamo.add_receipt_word_label(li_label)
