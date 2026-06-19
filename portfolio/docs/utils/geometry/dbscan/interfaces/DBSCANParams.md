@@ -6,7 +6,7 @@
 
 # Interface: DBSCANParams
 
-Defined in: [utils/geometry/dbscan.ts:3](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/geometry/dbscan.ts#L3)
+Defined in: [utils/geometry/dbscan.ts:3](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/geometry/dbscan.ts#L3)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/geometry/dbscan.ts:3](https://github.com/tnorlund/Portfolio/b
 
 > **epsilon**: `number`
 
-Defined in: [utils/geometry/dbscan.ts:4](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/geometry/dbscan.ts#L4)
+Defined in: [utils/geometry/dbscan.ts:4](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/geometry/dbscan.ts#L4)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/geometry/dbscan.ts:4](https://github.com/tnorlund/Portfolio/b
 
 > **minPoints**: `number`
 
-Defined in: [utils/geometry/dbscan.ts:5](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/geometry/dbscan.ts#L5)
+Defined in: [utils/geometry/dbscan.ts:5](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/geometry/dbscan.ts#L5)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [utils/geometry/dbscan.ts:5](https://github.com/tnorlund/Portfolio/b
 
 > `optional` **distanceFunction**: (`a`, `b`) => `number`
 
-Defined in: [utils/geometry/dbscan.ts:6](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/geometry/dbscan.ts#L6)
+Defined in: [utils/geometry/dbscan.ts:6](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/geometry/dbscan.ts#L6)
 
 #### Parameters
 

@@ -8,7 +8,7 @@
 
 > **WebVitalMetric** = `object`
 
-Defined in: [utils/analytics.ts:76](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L76)
+Defined in: [utils/analytics.ts:76](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L76)
 
 ## Properties
 
@@ -16,7 +16,7 @@ Defined in: [utils/analytics.ts:76](https://github.com/tnorlund/Portfolio/blob/3
 
 > **delta**: `number`
 
-Defined in: [utils/analytics.ts:79](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L79)
+Defined in: [utils/analytics.ts:79](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L79)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [utils/analytics.ts:79](https://github.com/tnorlund/Portfolio/blob/3
 
 > **id**: `string`
 
-Defined in: [utils/analytics.ts:80](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L80)
+Defined in: [utils/analytics.ts:80](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L80)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [utils/analytics.ts:80](https://github.com/tnorlund/Portfolio/blob/3
 
 > **name**: `string`
 
-Defined in: [utils/analytics.ts:77](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L77)
+Defined in: [utils/analytics.ts:77](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L77)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: [utils/analytics.ts:77](https://github.com/tnorlund/Portfolio/blob/3
 
 > **value**: `number`
 
-Defined in: [utils/analytics.ts:78](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L78)
+Defined in: [utils/analytics.ts:78](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L78)
 
 ***
 
@@ -48,4 +48,4 @@ Defined in: [utils/analytics.ts:78](https://github.com/tnorlund/Portfolio/blob/3
 
 > `optional` **navigationType**: `string`
 
-Defined in: [utils/analytics.ts:81](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/utils/analytics.ts#L81)
+Defined in: [utils/analytics.ts:81](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/utils/analytics.ts#L81)

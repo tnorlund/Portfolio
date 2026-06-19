@@ -6,7 +6,7 @@
 
 # Interface: ReceiptApiResponse
 
-Defined in: [types/api.ts:95](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L95)
+Defined in: [types/api.ts:95](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/types/api.ts#L95)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:95](https://github.com/tnorlund/Portfolio/blob/34677af
 
 > **receipts**: [`Receipt`](Receipt.md)[]
 
-Defined in: [types/api.ts:96](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L96)
+Defined in: [types/api.ts:96](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/types/api.ts#L96)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [types/api.ts:96](https://github.com/tnorlund/Portfolio/blob/34677af
 
 > `optional` **lastEvaluatedKey**: `any`
 
-Defined in: [types/api.ts:97](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L97)
+Defined in: [types/api.ts:97](https://github.com/tnorlund/Portfolio/blob/500e92ae90b42e2b028c3ad982d98fb922f7e06d/portfolio/types/api.ts#L97)
