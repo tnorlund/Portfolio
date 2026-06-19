@@ -41,12 +41,15 @@ def build_report(table: str) -> dict:
             None, getattr(su, "merchant_name", None)
         )
         # Require a real (>0) total — a $0.00 total is an unparsed value, not a
-        # reliable key, and would falsely group same-merchant same-day receipts.
-        if mkey and grand_total and float(grand_total) > 0 and date is not None:
+        # reliable key — and a non-null item_count, else the signature ends in
+        # "|None" and falsely groups receipts. Tolerate malformed totals.
+        try:
+            gt = float(grand_total) if grand_total is not None else None
+        except (TypeError, ValueError):
+            gt = None
+        if mkey and gt and gt > 0 and date is not None and item_count is not None:
             dstr = date.date().isoformat() if hasattr(date, "date") else str(date)[:10]
-            signature_lookup[key] = (
-                f"{mkey}|{round(float(grand_total), 2)}|{dstr}|{item_count}"
-            )
+            signature_lookup[key] = f"{mkey}|{round(gt, 2)}|{dstr}|{item_count}"
 
     return detect_duplicates(receipts, signature_lookup)
 
@@ -70,10 +73,10 @@ def main() -> None:
         f"{s['signature_candidate_receipts']} candidate receipts"
     )
 
-    print(f"\n  sample Tier-0 exact groups:")
+    print("\n  sample Tier-0 exact groups:")
     for g in rep["exact_groups"][: args.samples]:
         print(f"    keep {g.keeper} <- dup {g.duplicates}  ({g.signature})")
-    print(f"\n  sample Tier-1 signature candidates (REVIEW):")
+    print("\n  sample Tier-1 signature candidates (REVIEW):")
     for g in rep["signature_candidate_groups"][: args.samples]:
         print(f"    keep {g.keeper} <- {g.duplicates}  sig={g.signature}")
 

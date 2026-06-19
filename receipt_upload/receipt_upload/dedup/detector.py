@@ -50,15 +50,21 @@ def _pick_keeper(records: List) -> object:
 
 
 def find_exact_duplicates(receipts: List) -> List[DupGroup]:
-    """Tier 0: group receipts that share an identical raw-pixel ``sha256``."""
-    by_sha: Dict[str, List] = {}
+    """Tier 0: group receipts with identical raw-pixel ``sha256`` AND dimensions.
+
+    The stored sha hashes ``image.tobytes()`` only, so identical bytes across
+    *different* dimensions (e.g. blank/uniform failed crops of equal area) would
+    otherwise be auto-merged as duplicates. Keying on ``(sha, width, height)``
+    keeps that safe; true duplicates share dimensions anyway.
+    """
+    by_key: Dict[Tuple, List] = {}
     for r in receipts:
         sha = getattr(r, "sha256", None)
         if sha:
-            by_sha.setdefault(sha, []).append(r)
+            by_key.setdefault((sha, r.width, r.height), []).append(r)
 
     groups: List[DupGroup] = []
-    for sha, records in by_sha.items():
+    for (sha, _w, _h), records in by_key.items():
         keys = {_key(r) for r in records}
         if len(keys) < 2:
             continue

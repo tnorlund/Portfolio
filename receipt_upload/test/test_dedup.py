@@ -29,11 +29,17 @@ def test_exact_groups_only_when_multiple_distinct_receipts():
     assert {g.keeper, *g.duplicates} == {("a", 1), ("b", 1)}
 
 
-def test_exact_keeper_is_highest_resolution():
+def test_exact_requires_matching_dimensions():
+    # identical sha but different dimensions == blank/failed crop collision, not a
+    # real duplicate (tobytes-only hash) -> must NOT be grouped/auto-merged
     receipts = [_r("a", 1, "S1", 50, 50), _r("b", 1, "S1", 200, 200)]
+    assert find_exact_duplicates(receipts) == []
+
+
+def test_exact_groups_same_dims_and_picks_keeper():
+    receipts = [_r("a", 1, "S1", 100, 100), _r("b", 1, "S1", 100, 100)]
     g = find_exact_duplicates(receipts)[0]
-    assert g.keeper == ("b", 1)        # larger image kept
-    assert g.duplicates == [("a", 1)]
+    assert {g.keeper, *g.duplicates} == {("a", 1), ("b", 1)}
 
 
 def test_signature_excludes_pairs_already_exact():

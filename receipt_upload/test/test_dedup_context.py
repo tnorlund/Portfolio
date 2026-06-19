@@ -32,16 +32,16 @@ def test_within_vs_cross_image_scope():
     assert cross[0].scope == "cross_image"
 
 
-def test_survivor_prefers_label_quality_over_resolution():
-    # b#1 is lower resolution but has a validated canonical label -> survives
-    receipts = [_r("a", 1, "S", 999, 999), _r("b", 1, "S", 10, 10)]
+def test_survivor_prefers_label_quality():
+    # same dims (real dups always match dims); b#1 has a validated label -> survives
+    receipts = [_r("a", 1, "S", 100, 100), _r("b", 1, "S", 100, 100)]
     labels = {
         ("a", 1): [],
         ("b", 1): [_obs("MERCHANT_NAME", 1, 1, "ACME", status="VALID")],
     }
     words = {("a", 1): {(1, 1): "ACME"}, ("b", 1): {(1, 1): "ACME"}}
     d = build_merge_dossiers(receipts, words, labels)[0]
-    assert d.survivor_suggested == "b#1"  # label quality beats resolution
+    assert d.survivor_suggested == "b#1"  # label quality decides the survivor
     # survivor has labels, so the empty-survivor warning must NOT fire
     assert not any("0 canonical labels" in n for n in d.notes)
 

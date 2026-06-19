@@ -31,7 +31,7 @@ def _is_valid(status) -> bool:
 
 @dataclass
 class GapFill:
-    locus: str  # "line:word" (within_image) or word_text (cross_image)
+    locus: str  # survivor "line:word" target (concrete for BOTH scopes)
     word_text: str
     label: str
     from_member: str
@@ -45,7 +45,7 @@ class MergeResolution:
     survivor_label_count: int
     receipts_to_drop: List[str]
     gap_fills: List[GapFill]
-    skipped_gap_disagreements: List[dict]  # dropped copies VALID-disagree on a gap word
+    skipped_gaps: List[dict]  # gap words not auto-filled, with a reason
     action: str  # drop_redundant | consolidate_then_drop
     notes: List[str] = field(default_factory=list)
 
@@ -59,48 +59,67 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     sm = members[survivor]
     drop = sorted(k for k in members if k != survivor)
 
-    def locus_of(o: dict) -> str:
-        return o["pos"] if d.scope == "within_image" else o["word_text"]
-
-    # words the survivor already labels canonically -> survivor wins there
-    survivor_labeled = {
-        locus_of(o) for o in sm.labels if o.get("kind") == "canonical"
+    # A survivor word is OCCUPIED if it already has ANY meaningful label
+    # (canonical OR legacy) — we never adjudicate over the survivor's own label.
+    occupied = {
+        o["pos"] for o in sm.labels if o.get("kind") in ("canonical", "legacy")
     }
-    # words the survivor actually contains (for cross-image membership check;
-    # within-image copies are byte-identical so any dropped locus exists here too)
-    survivor_words = set(sm.text.split())
 
-    # collect VALID canonical labels from dropped copies on survivor gap words
+    def survivor_target(o: dict):
+        """The survivor (line:word) a dropped observation should land on, or None.
+
+        within_image: pixels are identical, so the same pos is the exact target.
+        cross_image: match by full (untruncated) word text, but ONLY when that
+        text occurs EXACTLY ONCE in the survivor — otherwise the target is
+        ambiguous (repeated token) and we refuse to guess.
+        """
+        if d.scope == "within_image":
+            return o["pos"]
+        positions = sm.word_index.get(o["word_text"])
+        if not positions or len(positions) != 1:
+            return None
+        return positions[0]
+
+    # collect VALID canonical labels from dropped copies, keyed by survivor target
     candidates: Dict[str, List[dict]] = {}
+    skipped: List[dict] = []
     for k in drop:
         for o in members[k].labels:
             if o.get("kind") != "canonical" or not _is_valid(o.get("validation_status")):
                 continue
-            locus = locus_of(o)
-            if locus in survivor_labeled:
-                continue  # survivor already labels this word -> keep survivor's
-            if d.scope == "cross_image" and o["word_text"] not in survivor_words:
-                continue  # survivor doesn't even have this word
-            candidates.setdefault(locus, []).append(
+            tp = survivor_target(o)
+            if tp is None:
+                skipped.append(
+                    {
+                        "word_text": o["word_text"],
+                        "label": o["canonical_label"],
+                        "from_member": k,
+                        "reason": "no_unique_survivor_target",
+                    }
+                )
+                continue
+            if tp in occupied:
+                continue  # survivor already labels this word -> survivor wins
+            candidates.setdefault(tp, []).append(
                 {"label": o["canonical_label"], "from": k, "word_text": o["word_text"]}
             )
 
     gap_fills: List[GapFill] = []
-    skipped: List[dict] = []
-    for locus, cs in candidates.items():
+    for pos, cs in candidates.items():
         labels = {c["label"] for c in cs}
         if len(labels) == 1:
             c = cs[0]
             gap_fills.append(
-                GapFill(locus=locus, word_text=c["word_text"], label=c["label"], from_member=c["from"])
+                GapFill(locus=pos, word_text=c["word_text"], label=c["label"], from_member=c["from"])
             )
         else:
-            # dropped copies VALID-disagree on a survivor gap word: don't guess.
+            # dropped copies VALID-disagree on the same survivor word: don't guess.
             skipped.append(
                 {
-                    "locus": locus,
+                    "locus": pos,
                     "word_text": cs[0]["word_text"],
                     "candidates": sorted(labels),
+                    "reason": "valid_disagreement",
                 }
             )
 
@@ -112,8 +131,8 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
         )
     if skipped:
         notes.append(
-            f"{len(skipped)} gap word(s) had VALID disagreement across dropped "
-            f"copies and were left unlabeled (optional label-quality pass)."
+            f"{len(skipped)} gap label(s) left unfilled (ambiguous target or VALID "
+            f"disagreement) — optional label-quality pass."
         )
     action = "consolidate_then_drop" if gap_fills else "drop_redundant"
 
@@ -124,7 +143,7 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
         survivor_label_count=sm.n_canonical_labels,
         receipts_to_drop=drop,
         gap_fills=gap_fills,
-        skipped_gap_disagreements=skipped,
+        skipped_gaps=skipped,
         action=action,
         notes=notes,
     )

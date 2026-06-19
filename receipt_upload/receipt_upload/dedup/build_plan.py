@@ -28,7 +28,7 @@ def main() -> None:
 
     drop = sum(len(r.receipts_to_drop) for r in resolutions)
     gaps = sum(len(r.gap_fills) for r in resolutions)
-    skipped = sum(len(r.skipped_gap_disagreements) for r in resolutions)
+    skipped = sum(len(r.skipped_gaps) for r in resolutions)
     clean = sum(1 for r in resolutions if r.action == "drop_redundant")
 
     print(f"[{args.env}] {len(receipts)} receipts")
@@ -37,7 +37,7 @@ def main() -> None:
           f"{sum(1 for r in resolutions if r.scope == 'cross_image')})")
     print(f"  receipts to drop (redundant copies): {drop}")
     print(f"  VALID gap-fill labels migrated onto survivors: {gaps}")
-    print(f"  gap words skipped (VALID disagreement): {skipped}")
+    print(f"  gap labels skipped (ambiguous target / disagreement): {skipped}")
     print(f"  groups needing no gap-fill (drop_redundant): {clean}")
     print("\n  sample groups:")
     for r in sorted(resolutions, key=lambda x: -len(x.gap_fills))[:6]:

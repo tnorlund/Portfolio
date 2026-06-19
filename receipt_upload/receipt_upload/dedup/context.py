@@ -49,14 +49,14 @@ _SAFE_ALIASES: Dict[str, str] = {
     "ITEM_NAME": "PRODUCT_NAME",
     "ITEM_DESCRIPTION": "PRODUCT_NAME",
     "ITEM_QUANTITY": "QUANTITY",
-    "ITEM_PRICE": "UNIT_PRICE",
     "ITEM_TOTAL": "LINE_TOTAL",
     "TENDER": "PAYMENT_METHOD",
 }
 # Meaningful but AMBIGUOUS legacy labels — a word genuinely carries this concept
-# but it can map to >1 canonical label, so the LLM must decide with receipt
-# context (never auto-mapped).
-_AMBIGUOUS_LEGACY = {"AMOUNT", "TOTAL", "ITEM"}
+# but it can map to >1 canonical label, so it is NOT auto-mapped (left for an
+# optional label-quality pass). ITEM_PRICE is ambiguous: an "item price" can be a
+# per-unit UNIT_PRICE or the extended LINE_TOTAL shown on the line.
+_AMBIGUOUS_LEGACY = {"AMOUNT", "TOTAL", "ITEM", "ITEM_PRICE"}
 # Looks like a raw value rather than a label name (e.g. "4453.62", "$3.266EA").
 _NUMBERISH = re.compile(r"^[\$\d.,()%/x\- ]*\d[\$\d.,()%/x\- ]*$", re.IGNORECASE)
 
@@ -143,6 +143,8 @@ class MemberContext:
     junk_labels: List[str]
     same_image_as_group: bool
     labels: List[Dict] = field(default_factory=list)  # per-word observations
+    # full (UNtruncated) word_text -> ["line:word", ...]; for gap-fill targeting
+    word_index: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
     def key(self) -> Key:
@@ -353,6 +355,11 @@ def _build_member(
     group_image_id: str,
 ) -> MemberContext:
     text = " ".join(t for _, t in sorted(words.items()))
+    # full word index (NOT truncated) for membership + unique-target gap-fills
+    word_index: Dict[str, List[str]] = {}
+    for (ln, wd), t in words.items():
+        if t:
+            word_index.setdefault(t, []).append(f"{ln}:{wd}")
     canonical = [o for o in obs if o.is_canonical]
     junk = sorted({o.label for o in obs if o.is_junk})
     counts: Dict[str, int] = {}
@@ -373,6 +380,7 @@ def _build_member(
         label_counts=dict(sorted(counts.items())),
         junk_labels=junk,
         same_image_as_group=(r.image_id == group_image_id),
+        word_index=word_index,
         labels=[
             {
                 "pos": o.pos,
@@ -408,14 +416,17 @@ def build_merge_dossiers(
     labels_by_receipt
         ``{(image_id, receipt_id): [LabelObs, ...]}``.
     """
-    by_sha: Dict[str, List] = {}
+    # Key on (sha256, width, height): identical raw-pixel bytes only prove a true
+    # duplicate when the dimensions match too — same tobytes() across different
+    # dims can collide for blank/uniform failed crops (sha hashes pixels only).
+    by_sha: Dict[Tuple, List] = {}
     for r in receipts:
         sha = getattr(r, "sha256", None)
         if sha:
-            by_sha.setdefault(sha, []).append(r)
+            by_sha.setdefault((sha, r.width, r.height), []).append(r)
 
     dossiers: List[MergeDossier] = []
-    for sha, recs in by_sha.items():
+    for (sha, _w, _h), recs in by_sha.items():
         keys = {(r.image_id, r.receipt_id) for r in recs}
         if len(keys) < 2:
             continue  # not a duplicate

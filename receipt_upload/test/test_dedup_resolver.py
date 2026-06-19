@@ -75,8 +75,60 @@ def test_gap_disagreement_left_unlabeled():
     res = _resolve(receipts, words, labels)
     assert res.survivor == "a#1"  # most labels
     assert res.gap_fills == []
-    assert len(res.skipped_gap_disagreements) == 1
-    assert set(res.skipped_gap_disagreements[0]["candidates"]) == {"LINE_TOTAL", "UNIT_PRICE"}
+    dis = [s for s in res.skipped_gaps if s["reason"] == "valid_disagreement"]
+    assert len(dis) == 1
+    assert set(dis[0]["candidates"]) == {"LINE_TOTAL", "UNIT_PRICE"}
+
+
+def test_survivor_legacy_label_is_occupied_not_a_gap():
+    # survivor labels $5.90 as legacy AMOUNT; a dropped VALID GRAND_TOTAL must NOT
+    # be migrated over it (that would adjudicate the survivor's own label).
+    receipts = [_r("a", 1, "S"), _r("a", 2, "S")]
+    words = {("a", 1): {(1, 1): "M", (3, 4): "$5.90"}, ("a", 2): {(1, 1): "M", (3, 4): "$5.90"}}
+    labels = {
+        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID"),
+                   _obs("DATE", 7, 7, "x", "VALID"),
+                   _obs("AMOUNT", 3, 4, "$5.90", "VALID")],  # legacy -> occupies 3:4
+        ("a", 2): [_obs("GRAND_TOTAL", 3, 4, "$5.90", "VALID")],
+    }
+    res = _resolve(receipts, words, labels)
+    assert res.survivor == "a#1"
+    assert all(gf.locus != "3:4" for gf in res.gap_fills)
+
+
+def test_cross_image_repeated_token_not_auto_filled():
+    # survivor has "$9.99" twice -> ambiguous target -> refuse to guess
+    receipts = [_r("a", 1, "S"), _r("b", 1, "S")]
+    words = {
+        ("a", 1): {(1, 1): "M", (2, 2): "$9.99", (5, 5): "$9.99"},  # repeated token
+        ("b", 1): {(1, 1): "M", (2, 2): "$9.99"},
+    }
+    labels = {
+        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID")],
+        ("b", 1): [_obs("LINE_TOTAL", 2, 2, "$9.99", "VALID")],
+    }
+    res = _resolve(receipts, words, labels)
+    assert res.gap_fills == []  # can't safely target which $9.99
+    assert any(s["reason"] == "no_unique_survivor_target" for s in res.skipped_gaps)
+
+
+def test_cross_image_gap_fill_targets_concrete_position():
+    # unique token -> gap-fill carries the SURVIVOR's (line:word) target, not the
+    # dropped copy's. survivor a#1 is unambiguous (2 validated labels).
+    receipts = [_r("a", 1, "S"), _r("b", 1, "S")]
+    words = {
+        ("a", 1): {(1, 1): "M", (7, 7): "D", (4, 2): "TAX"},
+        ("b", 1): {(9, 9): "M", (3, 3): "TAX"},
+    }
+    labels = {
+        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID"), _obs("DATE", 7, 7, "D", "VALID")],
+        ("b", 1): [_obs("TAX", 3, 3, "TAX", "VALID")],
+    }
+    res = _resolve(receipts, words, labels)
+    assert res.survivor == "a#1"
+    assert len(res.gap_fills) == 1
+    assert res.gap_fills[0].locus == "4:2"  # the survivor's TAX word, not b's "3:3"
+    assert res.gap_fills[0].label == "TAX"
 
 
 def test_legacy_alias_gap_fill_uses_canonical():
