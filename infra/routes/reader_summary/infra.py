@@ -37,13 +37,24 @@ lambda_policy = aws.iam.Policy(
                 "Statement": [
                     {
                         "Effect": "Allow",
+                        "Action": "dynamodb:DescribeTable",
+                        "Resource": arn,
+                    },
+                    {
+                        "Effect": "Allow",
                         "Action": [
-                            "dynamodb:DescribeTable",
                             "dynamodb:GetItem",
                             "dynamodb:PutItem",
                             "dynamodb:UpdateItem",
                         ],
                         "Resource": arn,
+                        "Condition": {
+                            "ForAllValues:StringLike": {
+                                "dynamodb:LeadingKeys": [
+                                    "READER_SUMMARY#*"
+                                ]
+                            }
+                        },
                     }
                 ],
             }

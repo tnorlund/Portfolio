@@ -94,6 +94,7 @@ def test_handler_counts_valid_reader_summary(monkeypatch):
     assert fake_table.put_items[0]["Item"]["PK"].startswith(
         "READER_SUMMARY#EVENT#"
     )
+    assert "analytics_session_id" not in fake_table.put_items[0]["Item"]
 
 
 def test_handler_does_not_double_count_duplicate_event(monkeypatch):

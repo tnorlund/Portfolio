@@ -164,13 +164,15 @@ The app includes a performance overlay in development showing:
 - Client-side events for route changes, Web Vitals, scroll-depth
   thresholds (`25`, `50`, `75`, `90`), and reader pace at the
   bottom of long pages
-- Anonymous `analytics_session_id` / `analytics_event_id` values are
+- Pseudonymous `analytics_session_id` / `analytics_event_id` values are
   sent to GA/GTM and to `/analytics/pixel.txt` so GA events can be
   joined to CloudFront request logs without storing user-identifying
   data in the app
 - Long-page reader comparisons are submitted to `POST /reader_summary`,
-  which updates anonymous per-page aggregates in the existing DynamoDB
-  table and returns the current average when the sample is large enough
+  which updates per-page aggregates and short-lived event dedupe records
+  in the existing DynamoDB table. The aggregate API does not persist the
+  session ID and returns the current average when the sample is large
+  enough
 
 ## 🎯 Performance Optimizations
 

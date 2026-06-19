@@ -228,4 +228,30 @@ describe("analytics utilities", () => {
     expect(window.dataLayer).toHaveLength(1);
     expect(window.fetch).not.toHaveBeenCalled();
   });
+
+  test("external CloudFront beacon path is ignored", () => {
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "https://example.com/analytics/pixel.txt",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+
+    expect(window.dataLayer).toHaveLength(1);
+    expect(window.fetch).not.toHaveBeenCalled();
+  });
+
+  test("relative CloudFront beacon path stays same-origin", () => {
+    const analytics = loadAnalytics({
+      NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH:
+        "/custom/pixel.txt?source=analytics",
+    });
+
+    analytics.trackEvent("page_view", { page_path: "/receipt" });
+
+    const beaconUrl = new URL((window.fetch as jest.Mock).mock.calls[0][0]);
+    expect(beaconUrl.origin).toBe(window.location.origin);
+    expect(beaconUrl.pathname).toBe("/custom/pixel.txt");
+    expect(beaconUrl.searchParams.get("source")).toBe("analytics");
+  });
 });

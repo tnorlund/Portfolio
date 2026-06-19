@@ -63,7 +63,6 @@ export interface ImageCountApiResponse {
 
 export interface ReaderSummaryRequest {
   page_path: string;
-  analytics_session_id: string;
   analytics_event_id: string;
   time_to_bottom_ms: number;
   active_scroll_ms: number;

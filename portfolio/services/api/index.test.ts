@@ -43,7 +43,6 @@ describe('api service', () => {
 
     const payload = {
       page_path: '/receipt',
-      analytics_session_id: 'ses_123',
       analytics_event_id: 'evt_456',
       time_to_bottom_ms: 90000,
       active_scroll_ms: 88000,

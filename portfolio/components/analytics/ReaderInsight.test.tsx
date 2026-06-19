@@ -168,7 +168,6 @@ describe("ReaderInsight", () => {
     await waitFor(() =>
       expect(mockedApi.submitReaderSummary).toHaveBeenCalledWith({
         page_path: "/receipt?source=test",
-        analytics_session_id: "ses_reader",
         analytics_event_id: "evt_reader",
         time_to_bottom_ms: 61000,
         active_scroll_ms: 60000,

@@ -13,7 +13,6 @@ import {
   ReaderSummaryResponse,
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
-  WordSimilarityResponse,
   MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,

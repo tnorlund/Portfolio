@@ -225,18 +225,19 @@ After deployment:
 
 ## Analytics Join Notes
 
-The portfolio sends anonymous `analytics_session_id` and
+The portfolio sends pseudonymous `analytics_session_id` and
 `analytics_event_id` parameters to GA/GTM and to the static
 `/analytics/pixel.txt` beacon. CloudFront standard logs capture that
 beacon request and query string, which makes GA4 BigQuery events
 joinable to CloudFront request logs without adding a runtime API.
 
 Reader-speed comparisons call `POST /reader_summary` after a visitor
-reaches the bottom of a long page. The Lambda writes anonymous
-`READER_SUMMARY#...` aggregate and dedupe records into the existing
-DynamoDB table, then returns the current average when the sample is
-large enough. Exclude `reader_summary` events where `quick_jump` is true
-from reader-average calculations.
+reaches the bottom of a long page. The Lambda writes per-page
+`READER_SUMMARY#...` aggregate records plus short-lived event dedupe
+records into the existing DynamoDB table, without persisting the session
+ID. It then returns the current average when the sample is large enough.
+Exclude `reader_summary` events where `quick_jump` is true from
+reader-average calculations.
 
 `/analytics/reader-baselines.json` remains a static fallback for pages
 that cannot reach the API.

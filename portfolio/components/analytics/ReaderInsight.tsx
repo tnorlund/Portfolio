@@ -269,7 +269,6 @@ export default function ReaderInsight() {
     api
       .submitReaderSummary({
         page_path: router.asPath,
-        analytics_session_id: analyticsMeta.sessionId,
         analytics_event_id: analyticsMeta.eventId,
         time_to_bottom_ms: timeToBottomMs,
         active_scroll_ms: activeScrollMs,

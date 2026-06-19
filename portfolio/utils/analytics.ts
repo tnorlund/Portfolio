@@ -1,9 +1,47 @@
-export const GA_MEASUREMENT_ID =
-  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim();
-export const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID?.trim();
-export const CLOUDFRONT_ANALYTICS_BEACON_PATH =
-  process.env.NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH?.trim() ||
-  "/analytics/pixel.txt";
+const DEFAULT_CLOUDFRONT_ANALYTICS_BEACON_PATH = "/analytics/pixel.txt";
+
+function getPublicAnalyticsId(
+  value: string | undefined,
+  pattern: RegExp
+): string | undefined {
+  const id = value?.trim();
+  return id && pattern.test(id) ? id : undefined;
+}
+
+function getCloudFrontBeaconPath(value: string | undefined): string {
+  const path = value?.trim();
+
+  if (!path) {
+    return DEFAULT_CLOUDFRONT_ANALYTICS_BEACON_PATH;
+  }
+
+  if (path === "disabled") {
+    return "disabled";
+  }
+
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    return "disabled";
+  }
+
+  try {
+    const url = new URL(path, "https://tylernorlund.com");
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "disabled";
+  }
+}
+
+export const GA_MEASUREMENT_ID = getPublicAnalyticsId(
+  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+  /^G-[A-Z0-9-]+$/
+);
+export const GTM_ID = getPublicAnalyticsId(
+  process.env.NEXT_PUBLIC_GTM_ID,
+  /^GTM-[A-Z0-9]+$/
+);
+export const CLOUDFRONT_ANALYTICS_BEACON_PATH = getCloudFrontBeaconPath(
+  process.env.NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH
+);
 
 const SCROLL_THRESHOLDS = [25, 50, 75, 90];
 const ANALYTICS_SESSION_ID_KEY = "tnor.analyticsSessionId";
@@ -185,6 +223,10 @@ function sendCloudFrontBeacon(
       CLOUDFRONT_ANALYTICS_BEACON_PATH,
       window.location.origin
     );
+
+    if (url.origin !== window.location.origin) {
+      return;
+    }
 
     appendBeaconParam(url, "v", 1);
     appendBeaconParam(url, "event", event);

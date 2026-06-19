@@ -29,7 +29,6 @@ def response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
         },
         "body": json.dumps(body),
     }
@@ -193,10 +192,6 @@ def validate_payload(
         payload.get("analytics_event_id"),
         f"missing-{int(time.time() * 1000)}",
     )
-    analytics_session_id = clean_id(
-        payload.get("analytics_session_id"),
-        "unknown-session",
-    )
     time_to_bottom_ms = bounded_int(
         payload.get("time_to_bottom_ms"),
         minimum=1,
@@ -231,7 +226,6 @@ def validate_payload(
     return {
         "page_path": page_path,
         "analytics_event_id": analytics_event_id,
-        "analytics_session_id": analytics_session_id,
         "time_to_bottom_ms": time_to_bottom_ms,
         "active_scroll_ms": active_scroll_ms,
         "scrollable_pixels": scrollable_pixels,
@@ -257,9 +251,6 @@ def update_summary(valid_payload: Dict[str, Any]) -> bool:
                 "PK": event_key,
                 "SK": "DEDUP",
                 "page_path": valid_payload["page_path"],
-                "analytics_session_id": valid_payload[
-                    "analytics_session_id"
-                ],
                 "created_at": now_iso,
                 "TYPE": "READER_SUMMARY_EVENT",
                 "time_to_live": now + EVENT_TTL_SECONDS,
