@@ -6,7 +6,7 @@
 
 # Interface: MilkSimilarityTiming
 
-Defined in: [types/api.ts:298](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L298)
+Defined in: [types/api.ts:329](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L329)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:298](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **chromadb\_fetch\_all\_ms**: `number`
 
-Defined in: [types/api.ts:306](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L306)
+Defined in: [types/api.ts:337](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L337)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:306](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **chromadb\_init\_ms**: `number`
 
-Defined in: [types/api.ts:305](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L305)
+Defined in: [types/api.ts:336](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L336)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:305](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **dynamo\_fetch\_total\_ms**: `number`
 
-Defined in: [types/api.ts:308](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L308)
+Defined in: [types/api.ts:339](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L339)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:308](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **filter\_lines\_ms**: `number`
 
-Defined in: [types/api.ts:307](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L307)
+Defined in: [types/api.ts:338](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L338)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:307](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **parallel\_workers**: `number`
 
-Defined in: [types/api.ts:310](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L310)
+Defined in: [types/api.ts:341](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L341)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:310](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > **total\_ms**: `number`
 
-Defined in: [types/api.ts:309](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L309)
+Defined in: [types/api.ts:340](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L340)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:309](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > `optional` **cloud\_connect\_ms**: `number`
 
-Defined in: [types/api.ts:302](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L302)
+Defined in: [types/api.ts:333](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L333)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:302](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > `optional` **dynamo\_details**: `object`
 
-Defined in: [types/api.ts:311](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L311)
+Defined in: [types/api.ts:342](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L342)
 
 #### avg\_ms
 
@@ -102,7 +102,7 @@ Defined in: [types/api.ts:311](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > `optional` **s3\_download\_ms**: `number`
 
-Defined in: [types/api.ts:300](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L300)
+Defined in: [types/api.ts:331](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L331)
 
 ***
 
@@ -110,7 +110,7 @@ Defined in: [types/api.ts:300](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > `optional` **use\_chroma\_cloud**: `boolean`
 
-Defined in: [types/api.ts:303](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L303)
+Defined in: [types/api.ts:334](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L334)
 
 ***
 
@@ -118,7 +118,7 @@ Defined in: [types/api.ts:303](https://github.com/tnorlund/Portfolio/blob/bb3f19
 
 > `optional` **visual\_line\_assembly**: `object`
 
-Defined in: [types/api.ts:319](https://github.com/tnorlund/Portfolio/blob/bb3f190ea3d03a4e798cb27ab52f1e41bc2912cc/portfolio/types/api.ts#L319)
+Defined in: [types/api.ts:350](https://github.com/tnorlund/Portfolio/blob/34677af8cb26e8bde41f91cf4b5b7525c32fb097/portfolio/types/api.ts#L350)
 
 #### avg\_ms
 

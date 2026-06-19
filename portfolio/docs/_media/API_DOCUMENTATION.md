@@ -158,6 +158,10 @@ Common HTTP status codes:
 The API implements rate limiting with:
 - Burst limit: 10,000 requests
 - Sustained rate: 20,000 requests per second
+- `POST /reader_summary` burst limit: 10 requests
+- `POST /reader_summary` sustained rate: 2 requests per second
+- `POST /reader_summary` WAF limit: 100 matching requests per IP per
+  5-minute window
 
 ## CORS
 
