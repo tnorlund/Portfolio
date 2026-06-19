@@ -23,6 +23,7 @@ from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda
 from routes.random_image_details.infra import random_image_details_lambda
 from routes.random_receipt_details.infra import random_receipt_details_lambda
+from routes.reader_summary.infra import reader_summary_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
 
@@ -33,6 +34,12 @@ from routes.receipts.infra import receipts_lambda
 stack = pulumi.get_stack()
 
 BASE_DOMAIN = "tylernorlund.com"
+ALLOWED_API_ORIGINS = [
+    "http://localhost:3000",
+    "https://tylernorlund.com",
+    "https://www.tylernorlund.com",
+    "https://dev.tylernorlund.com",
+]
 
 # For "prod" => api.tylernorlund.com
 # otherwise   => dev-api.tylernorlund.com
@@ -48,20 +55,9 @@ api = aws.apigatewayv2.Api(
     "my-api",
     protocol_type="HTTP",
     cors_configuration=aws.apigatewayv2.ApiCorsConfigurationArgs(
-        allow_origins=[
-            "http://localhost:3000",
-            "https://tylernorlund.com",
-            "https://www.tylernorlund.com",
-            "https://dev.tylernorlund.com",
-        ],
+        allow_origins=ALLOWED_API_ORIGINS,
         allow_methods=["GET", "POST"],
-        allow_headers=[
-            "Content-Type",
-            "Authorization",
-            "X-Amz-Date",
-            "X-Amz-Security-Token",
-            "X-Amz-Content-Sha256",
-        ],
+        allow_headers=["Content-Type"],
         expose_headers=["Content-Type"],
         allow_credentials=True,
         max_age=3600,
@@ -445,6 +441,36 @@ lambda_permission_ai_usage = aws.lambda_.Permission(
 )
 
 
+# /reader_summary
+integration_reader_summary = aws.apigatewayv2.Integration(
+    "reader_summary_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=reader_summary_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_reader_summary = aws.apigatewayv2.Route(
+    "reader_summary_route",
+    api_id=api.id,
+    route_key="POST /reader_summary",
+    target=integration_reader_summary.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_reader_summary = aws.lambda_.Permission(
+    "reader_summary_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=reader_summary_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
 # /jobs/{job_id}/training-metrics
 integration_job_training_metrics = aws.apigatewayv2.Integration(
     "job_training_metrics_lambda_integration",
@@ -496,6 +522,14 @@ stage = aws.apigatewayv2.Stage(
         throttling_rate_limit=20000,
         detailed_metrics_enabled=True,
     ),
+    route_settings=[
+        aws.apigatewayv2.StageRouteSettingArgs(
+            route_key="POST /reader_summary",
+            throttling_burst_limit=10,
+            throttling_rate_limit=2,
+            detailed_metrics_enabled=True,
+        )
+    ],
     access_log_settings=aws.apigatewayv2.StageAccessLogSettingsArgs(
         destination_arn=log_group.arn,
         format=(
@@ -513,6 +547,86 @@ stage = aws.apigatewayv2.Stage(
             "}"
         ),
     ),
+)
+
+reader_summary_web_acl = aws.wafv2.WebAcl(
+    "reader-summary-api-web-acl",
+    scope="REGIONAL",
+    default_action={"allow": {}},
+    description="Rate limit public reader-summary aggregate writes",
+    visibility_config={
+        "cloudwatch_metrics_enabled": True,
+        "metric_name": "ReaderSummaryApiWebAcl",
+        "sampled_requests_enabled": True,
+    },
+    rules=[
+        {
+            "name": "ReaderSummaryPostRateLimit",
+            "priority": 0,
+            "action": {"block": {}},
+            "statement": {
+                "rate_based_statement": {
+                    "aggregate_key_type": "IP",
+                    "evaluation_window_sec": 300,
+                    "limit": 100,
+                    "scope_down_statement": {
+                        "and_statement": {
+                            "statements": [
+                                {
+                                    "byte_match_statement": {
+                                        "field_to_match": {"method": {}},
+                                        "positional_constraint": "EXACTLY",
+                                        "search_string": "POST",
+                                        "text_transformation": [
+                                            {
+                                                "priority": 0,
+                                                "type": "NONE",
+                                            }
+                                        ],
+                                    }
+                                },
+                                {
+                                    "byte_match_statement": {
+                                        "field_to_match": {"uri_path": {}},
+                                        "positional_constraint": "EXACTLY",
+                                        "search_string": "/reader_summary",
+                                        "text_transformation": [
+                                            {
+                                                "priority": 0,
+                                                "type": "NONE",
+                                            }
+                                        ],
+                                    }
+                                },
+                            ]
+                        }
+                    },
+                }
+            },
+            "visibility_config": {
+                "cloudwatch_metrics_enabled": True,
+                "metric_name": "ReaderSummaryPostRateLimit",
+                "sampled_requests_enabled": True,
+            },
+        }
+    ],
+    tags={"environment": stack},
+)
+
+api_stage_arn = pulumi.Output.concat(
+    "arn:aws:apigateway:",
+    aws.config.region,
+    "::/apis/",
+    api.id,
+    "/stages/",
+    stage.name,
+)
+
+reader_summary_web_acl_association = aws.wafv2.WebAclAssociation(
+    "reader-summary-api-web-acl-association",
+    resource_arn=api_stage_arn,
+    web_acl_arn=reader_summary_web_acl.arn,
+    opts=pulumi.ResourceOptions(depends_on=[stage]),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────────

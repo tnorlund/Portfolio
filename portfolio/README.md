@@ -158,7 +158,21 @@ The app includes a performance overlay in development showing:
 
 - CloudFront metrics for CDN performance
 - Lambda function duration tracking
-- Client-side Web Vitals collection (planned)
+- Google Analytics / Google Tag Manager via public build variables:
+  - `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  - `NEXT_PUBLIC_GTM_ID`
+- Client-side events for route changes, Web Vitals, scroll-depth
+  thresholds (`25`, `50`, `75`, `90`), and reader pace at the
+  bottom of long pages
+- Pseudonymous `analytics_session_id` / `analytics_event_id` values are
+  sent to GA/GTM and to `/analytics/pixel.txt` so GA events can be
+  joined to CloudFront request logs without storing user-identifying
+  data in the app
+- Long-page reader comparisons are submitted to `POST /reader_summary`,
+  which updates per-page aggregates and short-lived event dedupe records
+  in the existing DynamoDB table. The aggregate API does not persist the
+  session ID and returns the current average when the sample is large
+  enough
 
 ## 🎯 Performance Optimizations
 

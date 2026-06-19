@@ -5,6 +5,14 @@ import pulumi_aws as aws
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
+config = pulumi.Config("portfolio")
+cloudfront_log_retention_days = (
+    config.get_int("cloudFrontLogRetentionDays") or 90
+)
+google_analytics_measurement_id = (
+    config.get("googleAnalyticsMeasurementId") or ""
+)
+google_tag_manager_id = config.get("googleTagManagerId") or ""
 
 # Our base domain
 BASE_DOMAIN = "tylernorlund.com"
@@ -119,6 +127,55 @@ public_access_block = aws.s3.BucketPublicAccessBlock(
     ignore_public_acls=True,
     block_public_policy=True,
     restrict_public_buckets=True,
+)
+
+########################
+# 5b) CloudFront Standard Log Bucket
+########################
+cloudfront_logs_bucket = aws.s3.Bucket(
+    "cloudfrontLogsBucket",
+    force_destroy=False,
+)
+
+cloudfront_logs_bucket_ownership = aws.s3.BucketOwnershipControls(
+    "cloudfrontLogsBucket-ownership",
+    bucket=cloudfront_logs_bucket.id,
+    rule={"objectOwnership": "BucketOwnerPreferred"},
+)
+
+cloudfront_logs_bucket_acl = aws.s3.BucketAcl(
+    "cloudfrontLogsBucket-acl",
+    bucket=cloudfront_logs_bucket.id,
+    acl="log-delivery-write",
+    opts=pulumi.ResourceOptions(
+        depends_on=[cloudfront_logs_bucket_ownership]
+    ),
+)
+
+cloudfront_logs_public_access_block = aws.s3.BucketPublicAccessBlock(
+    "cloudfrontLogsBucket-publicAccessBlock",
+    bucket=cloudfront_logs_bucket.id,
+    block_public_acls=True,
+    block_public_policy=True,
+    ignore_public_acls=False,
+    restrict_public_buckets=True,
+)
+
+cloudfront_logs_lifecycle = aws.s3.BucketLifecycleConfiguration(
+    "cloudfrontLogsBucket-lifecycle",
+    bucket=cloudfront_logs_bucket.id,
+    rules=[
+        aws.s3.BucketLifecycleConfigurationRuleArgs(
+            id="expire-cloudfront-standard-logs",
+            status="Enabled",
+            filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                prefix="cloudfront/",
+            ),
+            expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                days=cloudfront_log_retention_days,
+            ),
+        )
+    ],
 )
 
 ########################
@@ -282,6 +339,11 @@ cdn = aws.cloudfront.Distribution(
     ],
     enabled=True,
     default_root_object="index.html",
+    logging_config=aws.cloudfront.DistributionLoggingConfigArgs(
+        bucket=cloudfront_logs_bucket.bucket_domain_name,
+        include_cookies=False,
+        prefix=f"cloudfront/{stack}/",
+    ),
     # HTTP/3 support for faster connection establishment
     http_version="http2and3",
     # Optimized cache behaviors for different content types
@@ -410,7 +472,9 @@ cdn = aws.cloudfront.Distribution(
     # Add all domain names in 'aliases'
     aliases=site_domains,
     # Ensure the cert is fully validated before creating the distribution
-    opts=pulumi.ResourceOptions(depends_on=[certificate_validation]),
+    opts=pulumi.ResourceOptions(
+        depends_on=[certificate_validation, cloudfront_logs_bucket_acl]
+    ),
 )
 
 pulumi.export("cdn_distribution_id", cdn.id)
@@ -471,4 +535,12 @@ for domain in site_domains:
 # 9) Exports
 ########################
 pulumi.export("cdn_bucket_name", site_bucket.bucket)
+pulumi.export("cloudfront_logs_bucket_name", cloudfront_logs_bucket.bucket)
+pulumi.export(
+    "cloudfront_log_retention_days", cloudfront_log_retention_days
+)
 pulumi.export("domains", site_domains)
+pulumi.export(
+    "google_analytics_measurement_id", google_analytics_measurement_id
+)
+pulumi.export("google_tag_manager_id", google_tag_manager_id)

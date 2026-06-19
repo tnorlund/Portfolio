@@ -19,6 +19,52 @@ describe('api service', () => {
     expect(result).toEqual({ count: 5 });
   });
 
+  test('submitReaderSummary posts reader timing payload', async () => {
+    const response = {
+      accepted: true,
+      counted: true,
+      quickJump: false,
+      pagePath: '/receipt',
+      minimumSampleSize: 5,
+      comparison: {
+        sampleSize: 7,
+        averageTimeToBottomMs: 120000,
+        readerDeltaPercent: 20,
+      },
+      aggregate: {
+        sampleSize: 8,
+        averageTimeToBottomMs: 115000,
+      },
+    };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(response),
+    });
+
+    const payload = {
+      page_path: '/receipt',
+      analytics_event_id: 'evt_456',
+      time_to_bottom_ms: 90000,
+      active_scroll_ms: 88000,
+      page_height: 12000,
+      scrollable_pixels: 10800,
+      screens_per_minute: 2.3,
+      quick_jump: false,
+    };
+
+    const result = await api.submitReaderSummary(payload);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.tylernorlund.com/reader_summary',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(payload),
+        keepalive: true,
+      })
+    );
+    expect(result).toEqual(response);
+  });
+
   test('fetchReceipts sends params', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

@@ -50,6 +50,9 @@ cd portfolio
 npm install
 
 # Build production bundle
+NEXT_PUBLIC_GA_MEASUREMENT_ID=G-7TT64C825N \
+NEXT_PUBLIC_GTM_ID=GTM-PBZWT6NS \
+NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt \
 npm run build
 
 # Deploy to S3
@@ -219,3 +222,24 @@ After deployment:
 2. Set up billing alerts
 3. Review resource utilization
 4. Optimize unused resources
+
+## Analytics Join Notes
+
+The portfolio sends pseudonymous `analytics_session_id` and
+`analytics_event_id` parameters to GA/GTM and to the static
+`/analytics/pixel.txt` beacon. CloudFront standard logs capture that
+beacon request and query string, which makes GA4 BigQuery events
+joinable to CloudFront request logs without adding a runtime API.
+
+Reader-speed comparisons call `POST /reader_summary` after a visitor
+reaches the bottom of a long page. The Lambda writes per-page
+`READER_SUMMARY#...` aggregate records plus short-lived event dedupe
+records into the existing DynamoDB table, without persisting the session
+ID. It then returns the current average when the sample is large enough.
+Exclude `reader_summary` events where `quick_jump` is true from
+reader-average calculations. The writer is guarded by an allowed-origin
+check in the Lambda, endpoint-specific API Gateway throttling, and a
+regional WAF rate-based rule scoped to `POST /reader_summary`.
+
+`/analytics/reader-baselines.json` remains a static fallback for pages
+that cannot reach the API.

@@ -61,6 +61,37 @@ export interface ImageCountApiResponse {
   count: number;
 }
 
+export interface ReaderSummaryRequest {
+  page_path: string;
+  analytics_event_id: string;
+  time_to_bottom_ms: number;
+  active_scroll_ms: number;
+  page_height: number;
+  scrollable_pixels: number;
+  screens_per_minute: number;
+  quick_jump: boolean;
+}
+
+export interface ReaderSummaryBaseline {
+  sampleSize: number;
+  averageTimeToBottomMs: number | null;
+  averageActiveScrollMs?: number | null;
+  averageScreensPerMinute?: number | null;
+  updatedAt?: string | null;
+}
+
+export interface ReaderSummaryResponse {
+  accepted: boolean;
+  counted: boolean;
+  quickJump: boolean;
+  pagePath: string;
+  minimumSampleSize: number;
+  comparison: ReaderSummaryBaseline & {
+    readerDeltaPercent: number | null;
+  };
+  aggregate: ReaderSummaryBaseline;
+}
+
 export interface ReceiptApiResponse {
   receipts: Receipt[];
   lastEvaluatedKey?: any;

@@ -2,9 +2,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AppProps } from "next/app";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import React, { Suspense, useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import React, {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import ReaderInsight from "../components/analytics/ReaderInsight";
 import { PerformanceProvider } from "../components/providers/PerformanceProvider";
 import "../styles/globals.css";
+import {
+  initializeScrollDepthTracking,
+  trackPageView,
+  trackWebVital,
+} from "../utils/analytics";
 
 // Dynamically import the performance overlay to avoid SSR issues
 const PerformanceOverlay = dynamic(
@@ -47,6 +59,8 @@ class ErrorBoundary extends React.Component<
 }
 
 export default function App({ Component, pageProps }: AppProps) {
+  const router = useRouter();
+  const hasTrackedInitialPageView = useRef(false);
   // One QueryClient per app instance (not per render) so the cache survives
   // page navigations but is never shared across SSR requests
   const [queryClient] = useState(
@@ -63,6 +77,29 @@ export default function App({ Component, pageProps }: AppProps) {
   );
 
   useEffect(() => {
+    if (!router.isReady || hasTrackedInitialPageView.current) {
+      return;
+    }
+
+    hasTrackedInitialPageView.current = true;
+    trackPageView(router.asPath);
+  }, [router.asPath, router.isReady]);
+
+  useEffect(() => {
+    const handleRouteChange = (url: string) => {
+      trackPageView(url);
+    };
+
+    router.events.on("routeChangeComplete", handleRouteChange);
+
+    return () => {
+      router.events.off("routeChangeComplete", handleRouteChange);
+    };
+  }, [router.events]);
+
+  useEffect(() => initializeScrollDepthTracking(), []);
+
+  useEffect(() => {
     // Report Web Vitals for Real User Monitoring
     if (typeof window !== 'undefined') {
       import('web-vitals').then(({ onCLS, onINP, onFCP, onLCP, onTTFB }) => {
@@ -72,8 +109,13 @@ export default function App({ Component, pageProps }: AppProps) {
             console.log(metric);
           }
 
-          // Send to analytics endpoint in production
-          if (process.env.NODE_ENV === 'production') {
+          trackWebVital(metric);
+
+          // Keep support for a future first-party analytics endpoint.
+          // The current static export does not serve /api/analytics itself.
+          const analyticsEndpoint =
+            process.env.NEXT_PUBLIC_ANALYTICS_ENDPOINT;
+          if (process.env.NODE_ENV === 'production' && analyticsEndpoint) {
             const body = JSON.stringify({
               name: metric.name,
               value: metric.value,
@@ -86,10 +128,10 @@ export default function App({ Component, pageProps }: AppProps) {
 
             // Use sendBeacon if available for reliability
             if (navigator.sendBeacon) {
-              navigator.sendBeacon('/api/analytics', body);
+              navigator.sendBeacon(analyticsEndpoint, body);
             } else {
               // Fallback to fetch
-              fetch('/api/analytics', {
+              fetch(analyticsEndpoint, {
                 method: 'POST',
                 body,
                 headers: { 'Content-Type': 'application/json' },
@@ -122,6 +164,7 @@ export default function App({ Component, pageProps }: AppProps) {
               </h1>
             </header>
             <Component {...pageProps} />
+            <ReaderInsight />
             {process.env.NODE_ENV === "development" && <PerformanceOverlay />}
           </div>
         </Suspense>
