@@ -305,26 +305,38 @@ def update_summary(valid_payload: Dict[str, Any]) -> bool:
             return False
         raise
 
-    table.update_item(
-        Key={
-            "PK": page_key,
-            "SK": "SUMMARY",
-        },
-        UpdateExpression=(
-            "SET updated_at = :updated_at "
-            "ADD sample_size :one, "
-            "total_time_to_bottom_ms :time_to_bottom, "
-            "total_active_scroll_ms :active_scroll, "
-            "total_screens_per_minute :screens_per_minute"
-        ),
-        ExpressionAttributeValues={
-            ":one": 1,
-            ":time_to_bottom": valid_payload["time_to_bottom_ms"],
-            ":active_scroll": valid_payload["active_scroll_ms"],
-            ":screens_per_minute": valid_payload["screens_per_minute"],
-            ":updated_at": now_iso,
-        },
-    )
+    try:
+        table.update_item(
+            Key={
+                "PK": page_key,
+                "SK": "SUMMARY",
+            },
+            UpdateExpression=(
+                "SET updated_at = :updated_at "
+                "ADD sample_size :one, "
+                "total_time_to_bottom_ms :time_to_bottom, "
+                "total_active_scroll_ms :active_scroll, "
+                "total_screens_per_minute :screens_per_minute"
+            ),
+            ExpressionAttributeValues={
+                ":one": 1,
+                ":time_to_bottom": valid_payload["time_to_bottom_ms"],
+                ":active_scroll": valid_payload["active_scroll_ms"],
+                ":screens_per_minute": valid_payload["screens_per_minute"],
+                ":updated_at": now_iso,
+            },
+        )
+    except Exception:
+        try:
+            table.delete_item(
+                Key={
+                    "PK": event_key,
+                    "SK": "DEDUP",
+                }
+            )
+        except Exception:
+            logger.exception("Failed to roll back reader-summary dedupe marker")
+        raise
 
     return True
 

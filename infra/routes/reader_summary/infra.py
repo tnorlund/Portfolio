@@ -49,6 +49,7 @@ lambda_policy = aws.iam.Policy(
                     {
                         "Effect": "Allow",
                         "Action": [
+                            "dynamodb:DeleteItem",
                             "dynamodb:GetItem",
                             "dynamodb:PutItem",
                             "dynamodb:UpdateItem",

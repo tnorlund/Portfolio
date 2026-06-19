@@ -9,10 +9,12 @@ from . import index  # noqa: E402
 
 
 class FakeTable:
-    def __init__(self, *, duplicate=False):
+    def __init__(self, *, duplicate=False, fail_update=False):
         self.duplicate = duplicate
+        self.fail_update = fail_update
         self.put_items = []
         self.update_items = []
+        self.delete_items = []
         self.get_calls = 0
 
     def get_item(self, Key):
@@ -54,7 +56,21 @@ class FakeTable:
         self.put_items.append(kwargs)
 
     def update_item(self, **kwargs):
+        if self.fail_update:
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "ProvisionedThroughputExceededException",
+                        "Message": "throttled",
+                    }
+                },
+                "UpdateItem",
+            )
+
         self.update_items.append(kwargs)
+
+    def delete_item(self, **kwargs):
+        self.delete_items.append(kwargs)
 
 
 def make_event(**overrides):
@@ -108,6 +124,28 @@ def test_handler_does_not_double_count_duplicate_event(monkeypatch):
     assert response["statusCode"] == 200
     assert body["counted"] is False
     assert len(fake_table.update_items) == 0
+    assert len(fake_table.delete_items) == 0
+
+
+def test_handler_rolls_back_dedupe_marker_when_update_fails(monkeypatch):
+    fake_table = FakeTable(fail_update=True)
+    monkeypatch.setattr(index, "table", fake_table)
+
+    response = index.handler(make_event(), None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 500
+    assert body["error"] == "Failed to update reader summary."
+    assert len(fake_table.put_items) == 1
+    assert len(fake_table.update_items) == 0
+    assert fake_table.delete_items == [
+        {
+            "Key": {
+                "PK": "READER_SUMMARY#EVENT#evt_456",
+                "SK": "DEDUP",
+            }
+        }
+    ]
 
 
 def test_handler_marks_fast_scroll_as_quick_jump(monkeypatch):
