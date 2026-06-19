@@ -52,6 +52,7 @@ npm install
 # Build production bundle
 NEXT_PUBLIC_GA_MEASUREMENT_ID=G-7TT64C825N \
 NEXT_PUBLIC_GTM_ID=GTM-PBZWT6NS \
+NEXT_PUBLIC_CLOUDFRONT_ANALYTICS_BEACON_PATH=/analytics/pixel.txt \
 npm run build
 
 # Deploy to S3
@@ -221,3 +222,17 @@ After deployment:
 2. Set up billing alerts
 3. Review resource utilization
 4. Optimize unused resources
+
+## Analytics Join Notes
+
+The portfolio sends anonymous `analytics_session_id` and
+`analytics_event_id` parameters to GA/GTM and to the static
+`/analytics/pixel.txt` beacon. CloudFront standard logs capture that
+beacon request and query string, which makes GA4 BigQuery events
+joinable to CloudFront request logs without adding a runtime API.
+
+Reader-speed comparisons use `/analytics/reader-baselines.json`. The
+file is intentionally static so it can be updated by a future CI job
+from GA4 BigQuery aggregates without adding an always-on service.
+Exclude `reader_summary` events where `quick_jump` is true when
+computing the average reader baseline.

@@ -161,8 +161,13 @@ The app includes a performance overlay in development showing:
 - Google Analytics / Google Tag Manager via public build variables:
   - `NEXT_PUBLIC_GA_MEASUREMENT_ID`
   - `NEXT_PUBLIC_GTM_ID`
-- Client-side events for route changes, Web Vitals, and scroll-depth
-  thresholds (`25`, `50`, `75`, `90`)
+- Client-side events for route changes, Web Vitals, scroll-depth
+  thresholds (`25`, `50`, `75`, `90`), and reader pace at the
+  bottom of long pages
+- Anonymous `analytics_session_id` / `analytics_event_id` values are
+  sent to GA/GTM and to `/analytics/pixel.txt` so GA events can be
+  joined to CloudFront request logs without storing user-identifying
+  data in the app
 
 ## 🎯 Performance Optimizations
 

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "minimumSampleSize": 5,
+  "default": {
+    "sampleSize": 0
+  },
+  "pages": {}
+}

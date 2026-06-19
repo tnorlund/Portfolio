@@ -3,7 +3,13 @@ import type { AppProps } from "next/app";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import React, { Suspense, useEffect, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import ReaderInsight from "../components/analytics/ReaderInsight";
 import { PerformanceProvider } from "../components/providers/PerformanceProvider";
 import "../styles/globals.css";
 import {
@@ -54,6 +60,7 @@ class ErrorBoundary extends React.Component<
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
+  const hasTrackedInitialPageView = useRef(false);
   // One QueryClient per app instance (not per render) so the cache survives
   // page navigations but is never shared across SSR requests
   const [queryClient] = useState(
@@ -68,6 +75,15 @@ export default function App({ Component, pageProps }: AppProps) {
         },
       })
   );
+
+  useEffect(() => {
+    if (!router.isReady || hasTrackedInitialPageView.current) {
+      return;
+    }
+
+    hasTrackedInitialPageView.current = true;
+    trackPageView(router.asPath);
+  }, [router.asPath, router.isReady]);
 
   useEffect(() => {
     const handleRouteChange = (url: string) => {
@@ -148,6 +164,7 @@ export default function App({ Component, pageProps }: AppProps) {
               </h1>
             </header>
             <Component {...pageProps} />
+            <ReaderInsight />
             {process.env.NODE_ENV === "development" && <PerformanceOverlay />}
           </div>
         </Suspense>
