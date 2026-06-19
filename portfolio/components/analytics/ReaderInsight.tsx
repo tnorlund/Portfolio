@@ -1,5 +1,6 @@
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../../services/api";
 import {
   getAnalyticsSessionPageViews,
   trackEvent,
@@ -134,6 +135,8 @@ export default function ReaderInsight() {
   const hasTrackedSummaryRef = useRef(false);
   const [hasPageDepth, setHasPageDepth] = useState(false);
   const [baseline, setBaseline] = useState<ReaderBaseline | null>(null);
+  const [liveBaseline, setLiveBaseline] =
+    useState<ReaderBaseline | null>(null);
   const [result, setResult] = useState<ReaderResult | null>(null);
 
   useEffect(() => {
@@ -145,6 +148,7 @@ export default function ReaderInsight() {
     firstScrollAtRef.current = null;
     hasTrackedSummaryRef.current = false;
     setResult(null);
+    setLiveBaseline(null);
 
     const updatePageDepth = () => {
       setHasPageDepth(getScrollableDistance() >= MIN_SCROLLABLE_DISTANCE);
@@ -248,7 +252,7 @@ export default function ReaderInsight() {
 
     setResult(nextResult);
 
-    trackEvent("reader_summary", {
+    const eventParams = {
       page_path: router.asPath,
       time_to_bottom_ms: timeToBottomMs,
       active_scroll_ms: activeScrollMs,
@@ -259,7 +263,32 @@ export default function ReaderInsight() {
       baseline_sample_size: baseline?.sampleSize,
       session_page_views: sessionPageViews,
       quick_jump: quickJump,
-    });
+    };
+    const analyticsMeta = trackEvent("reader_summary", eventParams);
+
+    api
+      .submitReaderSummary({
+        page_path: router.asPath,
+        analytics_session_id: analyticsMeta.sessionId,
+        analytics_event_id: analyticsMeta.eventId,
+        time_to_bottom_ms: timeToBottomMs,
+        active_scroll_ms: activeScrollMs,
+        page_height: pageHeight,
+        scrollable_pixels: scrollablePixels,
+        screens_per_minute: Number(screensPerMinute.toFixed(2)),
+        quick_jump: quickJump,
+      })
+      .then((response) => {
+        setLiveBaseline({
+          averageTimeToBottomMs:
+            response.comparison.averageTimeToBottomMs ?? undefined,
+          sampleSize: response.comparison.sampleSize,
+          updatedAt: response.aggregate.updatedAt ?? undefined,
+        });
+      })
+      .catch(() => {
+        // The local result and GA/CloudFront events are still useful.
+      });
   }, [baseline, router.asPath]);
 
   useEffect(() => {
@@ -289,10 +318,11 @@ export default function ReaderInsight() {
     return null;
   }
 
+  const effectiveBaseline = liveBaseline ?? baseline;
   const comparisonText = result
-    ? getComparisonText(result, baseline)
+    ? getComparisonText(result, effectiveBaseline)
     : "Calculating your read.";
-  const baselineSampleSize = baseline?.sampleSize ?? 0;
+  const baselineSampleSize = effectiveBaseline?.sampleSize ?? 0;
 
   return (
     <section

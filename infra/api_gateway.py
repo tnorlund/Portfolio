@@ -23,6 +23,7 @@ from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda
 from routes.random_image_details.infra import random_image_details_lambda
 from routes.random_receipt_details.infra import random_receipt_details_lambda
+from routes.reader_summary.infra import reader_summary_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
 
@@ -440,6 +441,36 @@ lambda_permission_ai_usage = aws.lambda_.Permission(
     "ai_usage_lambda_permission",
     action="lambda:InvokeFunction",
     function=ai_usage_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+# /reader_summary
+integration_reader_summary = aws.apigatewayv2.Integration(
+    "reader_summary_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=reader_summary_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_reader_summary = aws.apigatewayv2.Route(
+    "reader_summary_route",
+    api_id=api.id,
+    route_key="POST /reader_summary",
+    target=integration_reader_summary.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_reader_summary = aws.lambda_.Permission(
+    "reader_summary_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=reader_summary_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

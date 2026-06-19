@@ -231,8 +231,12 @@ The portfolio sends anonymous `analytics_session_id` and
 beacon request and query string, which makes GA4 BigQuery events
 joinable to CloudFront request logs without adding a runtime API.
 
-Reader-speed comparisons use `/analytics/reader-baselines.json`. The
-file is intentionally static so it can be updated by a future CI job
-from GA4 BigQuery aggregates without adding an always-on service.
-Exclude `reader_summary` events where `quick_jump` is true when
-computing the average reader baseline.
+Reader-speed comparisons call `POST /reader_summary` after a visitor
+reaches the bottom of a long page. The Lambda writes anonymous
+`READER_SUMMARY#...` aggregate and dedupe records into the existing
+DynamoDB table, then returns the current average when the sample is
+large enough. Exclude `reader_summary` events where `quick_jump` is true
+from reader-average calculations.
+
+`/analytics/reader-baselines.json` remains a static fallback for pages
+that cannot reach the API.

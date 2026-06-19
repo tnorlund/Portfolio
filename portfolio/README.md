@@ -168,6 +168,9 @@ The app includes a performance overlay in development showing:
   sent to GA/GTM and to `/analytics/pixel.txt` so GA events can be
   joined to CloudFront request logs without storing user-identifying
   data in the app
+- Long-page reader comparisons are submitted to `POST /reader_summary`,
+  which updates anonymous per-page aggregates in the existing DynamoDB
+  table and returns the current average when the sample is large enough
 
 ## 🎯 Performance Optimizations
 

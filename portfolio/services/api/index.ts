@@ -9,6 +9,8 @@ import {
   ReceiptApiResponse,
   ImageCountApiResponse,
   ImagesApiResponse,
+  ReaderSummaryRequest,
+  ReaderSummaryResponse,
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
   WordSimilarityResponse,
@@ -32,6 +34,26 @@ const fetchConfig = {
 
 // API calls that go directly to external APIs
 const baseApi = {
+  async submitReaderSummary(
+    payload: ReaderSummaryRequest
+  ): Promise<ReaderSummaryResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(`${apiUrl}/reader_summary`, {
+      method: "POST",
+      headers: API_CONFIG.headers,
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to submit reader summary: ${response.statusText}`
+      );
+    }
+
+    return response.json();
+  },
+
   async fetchImageCount(): Promise<ImageCountApiResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(`${apiUrl}/image_count`, fetchConfig);
