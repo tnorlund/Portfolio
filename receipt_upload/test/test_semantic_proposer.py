@@ -87,3 +87,40 @@ def test_does_not_propose_for_already_labeled_words():
     anchors = anchors + [_anchor(8, 1, "PRODUCT_NAME")]
     out = propose_product_names(words, anchors, _FakeClient(), embeddings)
     assert (8, 1) not in {(l.line_id, l.word_id) for l in out}
+
+
+def _pending(line_id, word_id, label, status):
+    return ReceiptWordLabel(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        line_id=line_id,
+        word_id=word_id,
+        label=label,
+        reasoning="model",
+        timestamp_added="2026-01-01T00:00:00.000+00:00",
+        validation_status=status,
+    )
+
+
+def test_o_label_word_is_still_a_candidate():
+    """A word carrying only a pending ``O`` label is effectively unlabeled.
+
+    The first-pass model can tag product words ``O``; those must still be open to
+    semantic PRODUCT_NAME recovery (an ``O`` label should not block this pass).
+    """
+    words, anchors, embeddings = _setup()
+    anchors = anchors + [_pending(8, 1, "O", ValidationStatus.PENDING.value)]
+    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    assert keys_has(out, 8, 1)
+
+
+def test_invalid_only_word_is_still_a_candidate():
+    """A word whose only label is INVALID is effectively unlabeled."""
+    words, anchors, embeddings = _setup()
+    anchors = anchors + [_pending(8, 1, "PRODUCT_NAME", ValidationStatus.INVALID.value)]
+    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    assert keys_has(out, 8, 1)
+
+
+def keys_has(out, line_id, word_id):
+    return (line_id, word_id) in {(l.line_id, l.word_id) for l in out}

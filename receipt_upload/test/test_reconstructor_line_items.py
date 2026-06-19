@@ -74,17 +74,18 @@ def _trader_joes_words():
 
 
 def _model_labels():
-    """The first-pass model's PENDING output for IMG_2826 — the production set.
+    """The first-pass model's PENDING output for IMG_2826 — the verified prod set.
 
-    The line totals are MISLABELED as SUBTOTAL/TAX (no Subtotal/Tax keyword, and
-    4.29 + 1.38 == 5.67 fools the model).
+    On the real upload the model tagged $4.29 (milk) as SUBTOTAL and got $1.38
+    (banana) right as LINE_TOTAL. 4.29 + 1.38 == 5.67 (the grand total) is what
+    lets the arithmetic recover the mislabeled SUBTOTAL.
     """
     return [
         _label(2, 1, "ADDRESS_LINE"),
         _label(2, 2, "ADDRESS_LINE"),
         _label(1, 1, "MERCHANT_NAME"),
-        _label(11, 1, "SUBTOTAL", ValidationStatus.PENDING.value),  # $4.29 (milk)
-        _label(12, 1, "TAX", ValidationStatus.PENDING.value),       # $1.38 (banana)
+        _label(11, 1, "SUBTOTAL", ValidationStatus.PENDING.value),    # $4.29 (milk)
+        _label(12, 1, "LINE_TOTAL", ValidationStatus.PENDING.value),  # $1.38 (banana)
         _label(13, 1, "GRAND_TOTAL", ValidationStatus.PENDING.value),
     ]
 
@@ -190,11 +191,83 @@ def test_single_item_total_not_reclassified():
     assert reclassify_mislabeled_totals(words, labels) == ([], [])
 
 
+def test_real_tax_without_subtotal_not_reclassified():
+    """Σ(items) + TAX == GRAND_TOTAL with no SUBTOTAL must NOT touch the TAX.
+
+    The normal-receipt identity (items + tax = total) would otherwise reconcile
+    and corrupt a legitimate TAX into a LINE_TOTAL. We only ever consider
+    SUBTOTAL candidates, so excluding the tax leaves the sum short -> abstain.
+    """
+    P = ValidationStatus.PENDING.value
+    words = [
+        _w(1, 1, "SHOP", 0.30, 0.95),
+        _w(5, 1, "APPLE", 0.10, 0.80),
+        _w(5, 2, "$5.00", 0.72, 0.80),
+        _w(6, 1, "BREAD", 0.10, 0.76),
+        _w(6, 2, "$3.00", 0.72, 0.76),
+        _w(8, 1, "Tax", 0.10, 0.60),
+        _w(8, 2, "$0.64", 0.72, 0.60),
+        _w(9, 1, "Total", 0.10, 0.54),
+        _w(9, 2, "$8.64", 0.72, 0.54),
+    ]
+    labels = [
+        _label(1, 1, "MERCHANT_NAME"),
+        _label(5, 2, "LINE_TOTAL", P),
+        _label(6, 2, "LINE_TOTAL", P),
+        _label(8, 2, "TAX", P),          # real tax, model missed SUBTOTAL
+        _label(9, 2, "GRAND_TOTAL", P),
+    ]
+    assert reclassify_mislabeled_totals(words, labels) == ([], [])
+
+
+def test_invalid_line_total_not_locked_or_counted():
+    """An INVALID LINE_TOTAL must not feed the arithmetic nor be resurfaced VALID."""
+    P = ValidationStatus.PENDING.value
+    words = _trader_joes_words()
+    labels = [
+        _label(1, 1, "MERCHANT_NAME"),
+        _label(11, 1, "SUBTOTAL", P),    # $4.29
+        _label(12, 1, "LINE_TOTAL", ValidationStatus.INVALID.value),  # $1.38 rejected
+        _label(13, 1, "GRAND_TOTAL", P),
+    ]
+    reclassifications, locked = reclassify_mislabeled_totals(words, labels)
+    # With $1.38 INVALID it can't count toward the sum (4.29 != 5.67) -> abstain,
+    # and it is never returned for locking.
+    assert reclassifications == []
+    assert locked == []
+
+
 def test_reclassification_is_arithmetic_gated_on_grand_total():
     """No GRAND_TOTAL value -> nothing to reconcile against -> no override."""
     words = _trader_joes_words()
     labels = [l for l in _model_labels() if l.label != "GRAND_TOTAL"]
     assert reclassify_mislabeled_totals(words, labels) == ([], [])
+
+
+def test_x_marker_in_product_or_pack_not_unit_price_row():
+    """'x'/'X' tokens in product/pack text must not trigger the unit-price branch.
+
+    "VITAMIN X $9.99" and "12 X 355ML $6.99": the lone price is the LINE_TOTAL,
+    not a UNIT_PRICE. The marker only counts when an integer qty is immediately
+    left and a price immediately right (e.g. "6 @ $0.23").
+    """
+    # VITAMIN X $9.99 -> $9.99 is a LINE_TOTAL, X is part of the name.
+    words = [
+        _w(1, 1, "STORE", 0.30, 0.95),
+        _w(2, 1, "2716", 0.20, 0.90),
+        _w(5, 1, "VITAMIN", 0.10, 0.70),
+        _w(5, 2, "X", 0.30, 0.70),
+        _w(5, 3, "$9.99", 0.72, 0.70),
+        _w(9, 1, "$9.99", 0.72, 0.50),
+    ]
+    labels = [
+        _anchor(2, 1, "ADDRESS_LINE"),
+        _anchor(1, 1, "MERCHANT_NAME"),
+        _anchor(9, 1, "GRAND_TOTAL"),
+    ]
+    p = {(x.line_id, x.word_id): x for x in propose_line_item_labels(words, labels)}
+    assert p[(5, 3)].label == "LINE_TOTAL"
+    assert (5, 2) not in p or p[(5, 2)].label != "UNIT_PRICE"
 
 
 def test_normal_receipt_subtotal_tax_not_reclassified():

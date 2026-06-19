@@ -96,7 +96,16 @@ def propose_product_names(
         words_client: ChromaClient exposing ``.query(collection_name=..., ...)``.
         word_embeddings: cached embeddings keyed by ``(line_id, word_id)``.
     """
-    labeled = {(l.line_id, l.word_id) for l in existing_labels}
+    # A word counts as "already labeled" only if it carries a real, non-rejected
+    # core label. A pending ``O`` (background) label or an INVALID-only label
+    # leaves the word effectively unlabeled — exactly the tokens this pass should
+    # be free to fill with PRODUCT_NAME.
+    labeled = {
+        (l.line_id, l.word_id)
+        for l in existing_labels
+        if l.label != "O"
+        and l.validation_status != ValidationStatus.INVALID.value
+    }
     label_at = {(l.line_id, l.word_id): l.label for l in existing_labels}
 
     header = [_cy(w) for w in words if label_at.get((w.line_id, w.word_id)) in _HEADER]

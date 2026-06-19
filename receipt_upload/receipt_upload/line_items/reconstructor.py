@@ -140,8 +140,15 @@ def reclassify_mislabeled_totals(
     grand = max(grand_vals)
     tc = statistics.median([cy(k) for k in grand_keys])
 
-    # Candidate mislabels: PENDING SUBTOTAL/TAX money words sitting above the
+    # Candidate mislabels: PENDING SUBTOTAL money words sitting above the
     # grand-total row (header is high-y, totals low-y; "above" means larger cy).
+    #
+    # We deliberately consider ONLY SUBTOTAL, never TAX. A real receipt's
+    # Σ(items) + TAX == GRAND_TOTAL is its *definition*, so a TAX candidate would
+    # "reconcile" on every normal receipt and we'd corrupt real tax labels. By
+    # excluding TAX from the candidate sum, a receipt that has a genuine tax can
+    # never reconcile (the sum falls short by exactly the tax), so we abstain —
+    # arithmetic alone cannot tell a mislabeled line item from a real tax.
     candidates: List[Tuple[Tuple[int, int], ReceiptWordLabel, float]] = []
     for k, labs in label_objs.items():
         if k not in by_key or cy(k) <= tc:
@@ -154,7 +161,7 @@ def reclassify_mislabeled_totals(
             continue
         for lab in labs:
             if (
-                lab.label in ("SUBTOTAL", "TAX")
+                lab.label == "SUBTOTAL"
                 and lab.validation_status == ValidationStatus.PENDING.value
             ):
                 candidates.append((k, lab, val))
@@ -162,12 +169,18 @@ def reclassify_mislabeled_totals(
     if not candidates:
         return [], []
 
-    # Clean line-total mass: existing LINE_TOTAL labels + what geometry recovers
-    # with the current (SUBTOTAL/TAX-excluding) band.
+    # Clean line-total mass: existing (non-INVALID) LINE_TOTAL labels + what
+    # geometry recovers with the current (SUBTOTAL/TAX-excluding) band. INVALID
+    # line totals are deliberate rejections — they must not feed the arithmetic
+    # nor be resurrected to VALID by the locking step below.
     lt_keys = {
         k
         for k, labs in label_objs.items()
-        if any(l.label == "LINE_TOTAL" for l in labs)
+        if any(
+            l.label == "LINE_TOTAL"
+            and l.validation_status != ValidationStatus.INVALID.value
+            for l in labs
+        )
     }
     lt_keys |= {
         (p.line_id, p.word_id)
@@ -238,6 +251,7 @@ def reclassify_mislabeled_totals(
         if k in lt_keys and k not in cand_keys
         for lab in labs
         if lab.label == "LINE_TOTAL"
+        and lab.validation_status != ValidationStatus.INVALID.value
     ]
     return reclassifications, locked_line_totals
 
@@ -326,14 +340,32 @@ def propose_line_item_labels(
     line_vals: List[float] = []
     for row in rows:
         monies = sorted([w for w in row if _is_money(w.text)], key=xl)
-        at = next((w for w in row if w.text in ("@", "x", "X")), None)
-
         # --- "N @ $X" unit-price row -------------------------------------
-        # The integer before "@" is QUANTITY and the price right after "@" is
-        # UNIT_PRICE. The row's LINE_TOTAL is usually on the product row above,
-        # so a SINGLE price after "@" is the unit price (NOT a line total);
-        # only a SECOND, rightmost price on the row is the line total
-        # (e.g. "2 @ 1.50  3.00").
+        # A unit-price row's marker (@, x, X) must sit DIRECTLY between an integer
+        # quantity (immediate left) and a price (immediate right). Requiring that
+        # adjacency stops product/pack tokens like "VITAMIN X $9.99" or
+        # "12 X 355ML $6.99" from being mis-read as unit-price rows (where the
+        # lone price is the LINE_TOTAL, not a unit price). The integer before the
+        # marker is QUANTITY and the price right after is UNIT_PRICE; the row's
+        # LINE_TOTAL is usually on the product row above, so a SINGLE price after
+        # the marker is the unit price (NOT a line total) — only a SECOND,
+        # rightmost price on the row is the line total (e.g. "2 @ 1.50  3.00").
+        row_x = sorted(row, key=xl)
+        at = None
+        qty = None
+        for i, w in enumerate(row_x):
+            if w.text in ("@", "x", "X"):
+                left = row_x[i - 1] if i > 0 else None
+                right = row_x[i + 1] if i + 1 < len(row_x) else None
+                if (
+                    left is not None
+                    and re.fullmatch(r"\d{1,3}", left.text)
+                    and right is not None
+                    and (_FULL.match(right.text) or _DOT.match(right.text))
+                ):
+                    at, qty = w, left
+                    break
+
         if at is not None:
             at_x = xl(at)
             prices_right = [
@@ -341,16 +373,7 @@ def propose_line_item_labels(
                 for m in monies
                 if xl(m) > at_x and (_FULL.match(m.text) or _DOT.match(m.text))
             ]
-            qty = next(
-                (
-                    w
-                    for w in sorted(row, key=xl, reverse=True)
-                    if xl(w) < at_x and re.fullmatch(r"\d{1,3}", w.text)
-                ),
-                None,
-            )
-            if qty is not None:
-                proposals[(qty.line_id, qty.word_id)] = "QUANTITY"
+            proposals[(qty.line_id, qty.word_id)] = "QUANTITY"
             if len(prices_right) >= 2:
                 lt = prices_right[-1]
                 proposals[(lt.line_id, lt.word_id)] = "LINE_TOTAL"
