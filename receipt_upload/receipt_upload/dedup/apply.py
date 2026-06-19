@@ -94,17 +94,22 @@ def _now_iso() -> str:
 
 
 def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
-            source: str = "dedup-merge") -> dict:
+            source: str = "dedup-merge", backup_path: Optional[str] = None) -> dict:
     """Apply the plan. DRY-RUN unless ``apply=True``.
 
-    Dry-run performs NO reads or writes and needs no ``dynamo`` client; it just
-    reports what would happen.
+    Dry-run performs NO reads or writes and needs no ``dynamo`` client.
+
+    When ``apply=True`` and ``backup_path`` is given, a complete restore file is
+    written BEFORE any mutation: the raw DynamoDB item of every entity about to be
+    deleted plus the key of every label about to be added. ``rollback()`` consumes
+    that file to fully reverse the operation.
     """
     report = {
         "dry_run": not apply,
         "labels_added": 0,
         "receipts_deleted": 0,
         "children_deleted": 0,
+        "backup_path": None,
         "errors": [],
     }
 
@@ -119,31 +124,28 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-    # 1) gap-fill labels onto survivors (VALID; provenance recorded)
-    for a in plan.label_adds:
-        label = ReceiptWordLabel(
-            image_id=a.image_id,
-            receipt_id=a.receipt_id,
-            line_id=a.line_id,
-            word_id=a.word_id,
-            label=a.label,
-            reasoning=f"dedup merge: VALID gap-fill migrated from {a.from_member}",
-            timestamp_added=_now_iso(),
-            validation_status=ValidationStatus.VALID.value,
-            label_proposed_by=source,
-            label_consolidated_from=a.from_member,
+    # Build label entities up front (needed for both backup keys and the writes).
+    labels_to_add = [
+        (
+            a,
+            ReceiptWordLabel(
+                image_id=a.image_id,
+                receipt_id=a.receipt_id,
+                line_id=a.line_id,
+                word_id=a.word_id,
+                label=a.label,
+                reasoning=f"dedup merge: VALID gap-fill migrated from {a.from_member}",
+                timestamp_added=_now_iso(),
+                validation_status=ValidationStatus.VALID.value,
+                label_proposed_by=source,
+                label_consolidated_from=a.from_member,
+            ),
         )
-        try:
-            dynamo.add_receipt_word_label(label)
-            report["labels_added"] += 1
-        except Exception:
-            try:
-                dynamo.update_receipt_word_label(label)
-                report["labels_added"] += 1
-            except Exception as e:  # pragma: no cover - surfaced, not raised
-                report["errors"].append(f"label {a.image_id}#{a.receipt_id} {a.label}: {e}")
+        for a in plan.label_adds
+    ]
 
-    # 2) delete redundant receipts + children. Letters aren't on GSI4, so scan once.
+    # Gather every entity to delete (letters aren't on GSI4 -> scan once) BEFORE
+    # mutating, so the backup is complete and the deletes are a pure replay.
     letters_by_receipt = {}
     if plan.receipt_drops:
         lek = None
@@ -154,9 +156,50 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
             if not lek:
                 break
 
+    drop_bundles = []  # (drop, receipt, labels, words, lines, letters, metadata)
     for d in plan.receipt_drops:
+        det = dynamo.get_receipt_details(d.image_id, d.receipt_id)
+        lts = letters_by_receipt.get((d.image_id, d.receipt_id), [])
+        md = None
         try:
-            det = dynamo.get_receipt_details(d.image_id, d.receipt_id)
+            md = dynamo.get_receipt_metadata(d.image_id, d.receipt_id)
+        except Exception:
+            md = None  # no metadata for this receipt
+        drop_bundles.append((d, det, lts, md))
+
+    # ---- BACKUP (before any mutation) ----
+    if backup_path:
+        backup = {
+            "table": getattr(dynamo, "table_name", None),
+            "created_at": _now_iso(),
+            "deleted_items": [],
+            "added_label_keys": [],
+        }
+        for (_d, det, lts, md) in drop_bundles:
+            ents = [det.receipt, *det.labels, *det.words, *det.lines, *lts]
+            if md:
+                ents.append(md)
+            backup["deleted_items"].extend(e.to_item() for e in ents)
+        backup["added_label_keys"] = [lbl.key for _a, lbl in labels_to_add]
+        with open(backup_path, "w") as f:
+            json.dump(backup, f)
+        report["backup_path"] = backup_path
+
+    # ---- 1) gap-fill labels onto survivors ----
+    for a, label in labels_to_add:
+        try:
+            dynamo.add_receipt_word_label(label)
+            report["labels_added"] += 1
+        except Exception:
+            try:
+                dynamo.update_receipt_word_label(label)
+                report["labels_added"] += 1
+            except Exception as e:  # pragma: no cover - surfaced, not raised
+                report["errors"].append(f"label {a.image_id}#{a.receipt_id} {a.label}: {e}")
+
+    # ---- 2) delete redundant receipts + children (never the parent Image) ----
+    for d, det, lts, md in drop_bundles:
+        try:
             n = 0
             if det.labels:
                 dynamo.delete_receipt_word_labels(det.labels); n += len(det.labels)
@@ -164,16 +207,11 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
                 dynamo.delete_receipt_words(det.words); n += len(det.words)
             if det.lines:
                 dynamo.delete_receipt_lines(det.lines); n += len(det.lines)
-            lts = letters_by_receipt.get((d.image_id, d.receipt_id), [])
             if lts:
                 dynamo.delete_receipt_letters(lts); n += len(lts)
-            try:
-                md = dynamo.get_receipt_metadata(d.image_id, d.receipt_id)
-                if md:
-                    dynamo.delete_receipt_metadata(md); n += 1
-            except Exception:
-                pass  # no metadata for this receipt
-            dynamo.delete_receipt(det.receipt)  # never delete the parent Image
+            if md:
+                dynamo.delete_receipt_metadata(md); n += 1
+            dynamo.delete_receipt(det.receipt)
             report["receipts_deleted"] += 1
             report["children_deleted"] += n
         except Exception as e:  # pragma: no cover
@@ -182,13 +220,49 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
     return report
 
 
+def rollback(backup_path: str, dynamo) -> dict:
+    """Reverse an apply: re-put every deleted item, delete every added label."""
+    with open(backup_path) as f:
+        data = json.load(f)
+    table = getattr(dynamo, "table_name", None) or data.get("table")
+    report = {"restored_items": 0, "removed_labels": 0, "errors": []}
+    for item in data.get("deleted_items", []):
+        try:
+            dynamo._client.put_item(TableName=table, Item=item)
+            report["restored_items"] += 1
+        except Exception as e:  # pragma: no cover
+            report["errors"].append(f"restore: {e}")
+    for key in data.get("added_label_keys", []):
+        try:
+            dynamo._client.delete_item(TableName=table, Key=key)
+            report["removed_labels"] += 1
+        except Exception as e:  # pragma: no cover
+            report["errors"].append(f"remove label: {e}")
+    return report
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--plan", required=True, help="merge plan JSON from build_plan")
-    ap.add_argument("--env", choices=["dev", "prod"], help="required only with --apply")
+    ap.add_argument("--plan", help="merge plan JSON from build_plan (dry-run/apply)")
+    ap.add_argument("--env", choices=["dev", "prod"], help="required with --apply/--rollback")
     ap.add_argument("--apply", action="store_true", help="ACTUALLY mutate (default: dry-run)")
+    ap.add_argument("--backup", help="restore-file path (default: auto next to --plan)")
+    ap.add_argument("--rollback", help="reverse a prior apply using its restore file")
     args = ap.parse_args()
 
+    if args.rollback:
+        if not args.env:
+            raise SystemExit("--rollback requires --env")
+        from receipt_dynamo import DynamoClient
+        from receipt_upload.dedup.dossiers import ENV_TABLE
+
+        dynamo = DynamoClient(ENV_TABLE[args.env])
+        report = rollback(args.rollback, dynamo)
+        print(f"ROLLED BACK: {json.dumps(report, indent=2)}")
+        return
+
+    if not args.plan:
+        raise SystemExit("--plan is required")
     resolutions = json.load(open(args.plan))
     plan = plan_operations(resolutions)
     s = summarize(plan)
@@ -206,12 +280,15 @@ def main() -> None:
 
     if not args.env:
         raise SystemExit("--apply requires --env")
-    from receipt_upload.dedup.dossiers import ENV_TABLE
     from receipt_dynamo import DynamoClient
+    from receipt_upload.dedup.dossiers import ENV_TABLE
 
+    backup_path = args.backup or f"{args.plan}.restore_{args.env}_{_now_iso().replace(':', '')}.json"
     dynamo = DynamoClient(ENV_TABLE[args.env])
-    report = execute(plan, dynamo, apply=True)
+    report = execute(plan, dynamo, apply=True, backup_path=backup_path)
     print(f"\nAPPLIED: {json.dumps(report, indent=2)}")
+    print(f"\nRollback with:\n  python -m receipt_upload.dedup.apply "
+          f"--env {args.env} --rollback {backup_path}")
 
 
 if __name__ == "__main__":
