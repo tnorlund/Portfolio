@@ -29,6 +29,7 @@ _FRAG = re.compile(r"^\d{2}$")                       # "99"   (split, right half
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS"}
 _TOTALS = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
 _PROPOSED_BY = "geometry_line_items"
+_RECLASS_BY = "arithmetic_totals_reclass"
 
 
 def _xy(word) -> Tuple[float, float] | None:
@@ -58,6 +59,208 @@ def _amount(t: str) -> float | None:
         return None
 
 
+def reclassify_mislabeled_totals(
+    words: List, existing_labels: List[ReceiptWordLabel]
+) -> Tuple[
+    List[Tuple[ReceiptWordLabel, ReceiptWordLabel]], List[ReceiptWordLabel]
+]:
+    """Reclassify PENDING ``SUBTOTAL``/``TAX`` labels that are actually line totals.
+
+    The first-pass model emits ``SUBTOTAL``/``TAX`` when two (or more) line totals
+    coincidentally sum to the grand total and there is no Subtotal/Tax keyword to
+    anchor a real totals block (e.g. the Trader Joe's IMG_2826 case: ``$4.29`` and
+    ``$1.38`` for milk + bananas sum to the ``$5.67`` grand total). Those prices
+    belong to product rows, not a totals block.
+
+    We override **only when arithmetic proves it** — never on geometry alone — and
+    only for ``PENDING`` labels, so deliberate human ``VALID``/``INVALID`` currency
+    labels are left untouched. The gate:
+
+    * a ``GRAND_TOTAL`` with a numeric value exists;
+    * the candidate sits *above* the grand-total row (inside the item region);
+    * Σ(line totals) reconciles to the grand total **only** when the candidates
+      are counted as line totals — i.e. it does not already reconcile without
+      them, and the receipt's existing line totals do not already sum to a
+      labeled subtotal (the normal-receipt case, where SUBTOTAL == Σ items and
+      SUBTOTAL + TAX == GRAND_TOTAL is the definition, not a mislabel).
+
+    When the reconciliation fires, the arithmetic is the *authority* on the
+    line-item totals, so it also reports the receipt's existing ``LINE_TOTAL``
+    labels that participate in the sum. Callers must lock those VALID and pull
+    them (along with the invalidated SUBTOTAL/TAX) out of the pending set, or the
+    downstream Chroma/LLM validators will "correct" a real line total back to
+    TAX using the very same coincidental arithmetic that caused the mislabel.
+
+    Returns:
+        ``(reclassifications, locked_line_totals)`` where:
+
+        * ``reclassifications`` is a list of ``(old_label, new_label)`` pairs.
+          Callers should **invalidate** ``old_label`` (mark it ``INVALID`` —
+          keeping it as an audit trail, since deliberate INVALID currency labels
+          are how we record "this isn't that total"), drop it from the pending
+          set, and add ``new_label`` (a ``LINE_TOTAL``, status ``VALID`` since
+          arithmetic confirms it, ``label_proposed_by="arithmetic_totals_reclass"``).
+        * ``locked_line_totals`` is the list of existing ``LINE_TOTAL`` label
+          objects that participate in the reconciled sum. Callers should mark
+          them ``VALID`` and drop them from the pending set so the validators
+          cannot override them.
+
+        Both lists are empty when no override is warranted.
+    """
+    label_objs: Dict[Tuple[int, int], List[ReceiptWordLabel]] = {}
+    for lab in existing_labels:
+        label_objs.setdefault((lab.line_id, lab.word_id), []).append(lab)
+
+    pos: Dict[Tuple[int, int], Tuple[float, float]] = {}
+    for w in words:
+        xy = _xy(w)
+        if xy is not None:
+            pos[(w.line_id, w.word_id)] = xy
+    by_key = {
+        (w.line_id, w.word_id): w
+        for w in words
+        if (w.line_id, w.word_id) in pos
+    }
+    if not by_key:
+        return [], []
+
+    def cy(k: Tuple[int, int]) -> float:
+        return pos[k][1]
+
+    grand_keys = [
+        k
+        for k, labs in label_objs.items()
+        if k in by_key
+        and any(
+            lab.label == "GRAND_TOTAL"
+            and lab.validation_status != ValidationStatus.INVALID.value
+            for lab in labs
+        )
+    ]
+    grand_vals = [
+        v for v in (_amount(by_key[k].text) for k in grand_keys) if v is not None
+    ]
+    if not grand_vals:
+        return [], []
+    grand = max(grand_vals)
+    tc = statistics.median([cy(k) for k in grand_keys])
+
+    # Candidate mislabels: PENDING SUBTOTAL money words sitting above the
+    # grand-total row (header is high-y, totals low-y; "above" means larger cy).
+    #
+    # We deliberately consider ONLY SUBTOTAL, never TAX. A real receipt's
+    # Σ(items) + TAX == GRAND_TOTAL is its *definition*, so a TAX candidate would
+    # "reconcile" on every normal receipt and we'd corrupt real tax labels. By
+    # excluding TAX from the candidate sum, a receipt that has a genuine tax can
+    # never reconcile (the sum falls short by exactly the tax), so we abstain —
+    # arithmetic alone cannot tell a mislabeled line item from a real tax.
+    candidates: List[Tuple[Tuple[int, int], ReceiptWordLabel, float]] = []
+    for k, labs in label_objs.items():
+        if k not in by_key or cy(k) <= tc:
+            continue
+        word = by_key[k]
+        if not _is_money(word.text):
+            continue
+        val = _amount(word.text)
+        if val is None:
+            continue
+        for lab in labs:
+            if (
+                lab.label == "SUBTOTAL"
+                and lab.validation_status == ValidationStatus.PENDING.value
+            ):
+                candidates.append((k, lab, val))
+                break
+    if not candidates:
+        return [], []
+
+    # Clean line-total mass: existing (non-INVALID) LINE_TOTAL labels + what
+    # geometry recovers with the current (SUBTOTAL/TAX-excluding) band. INVALID
+    # line totals are deliberate rejections — they must not feed the arithmetic
+    # nor be resurrected to VALID by the locking step below.
+    lt_keys = {
+        k
+        for k, labs in label_objs.items()
+        if any(
+            lab.label == "LINE_TOTAL"
+            and lab.validation_status != ValidationStatus.INVALID.value
+            for lab in labs
+        )
+    }
+    lt_keys |= {
+        (p.line_id, p.word_id)
+        for p in propose_line_item_labels(words, existing_labels)
+        if p.label == "LINE_TOTAL"
+    }
+    l_clean = round(
+        sum((_amount(by_key[k].text) or 0.0) for k in lt_keys if k in by_key), 2
+    )
+    cand_sum = round(sum(v for _, _, v in candidates), 2)
+
+    tol = 0.02
+    reconciled_as_is = abs(l_clean - grand) <= tol
+    reconciled_with_candidates = abs(l_clean + cand_sum - grand) <= tol
+    # The reconciled line-item set must contain at least TWO line totals. A single
+    # price that equals the whole grand total (with no other line totals) is far
+    # more likely a mislabeled *total* than a lone line item — e.g. a one-item
+    # cafe receipt where the model tags "Total 10.83" as SUBTOTAL. Requiring >=2
+    # keeps us from "reconciling" such a receipt into a phantom line item.
+    line_total_count = len({k for k in lt_keys if k in by_key}) + len(candidates)
+    # Normal receipt: the real line items already sum to a labeled SUBTOTAL value.
+    subtotal_vals = [v for _, lab, v in candidates if lab.label == "SUBTOTAL"]
+    is_normal_receipt = l_clean > 0 and any(
+        abs(l_clean - s) <= tol for s in subtotal_vals
+    )
+    if (
+        reconciled_as_is
+        or is_normal_receipt
+        or not reconciled_with_candidates
+        or line_total_count < 2
+    ):
+        return [], []
+
+    total_lt = round(l_clean + cand_sum, 2)
+    reclassifications: List[Tuple[ReceiptWordLabel, ReceiptWordLabel]] = []
+    for k, old, _val in candidates:
+        w0 = by_key[k]
+        reclassifications.append(
+            (
+                old,
+                ReceiptWordLabel(
+                    image_id=w0.image_id,
+                    receipt_id=w0.receipt_id,
+                    line_id=k[0],
+                    word_id=k[1],
+                    label="LINE_TOTAL",
+                    reasoning=(
+                        f"Arithmetic reclassification: model-proposed {old.label} "
+                        f"is a line-item total — Σ line totals ({total_lt:.2f}) "
+                        f"equals GRAND_TOTAL ({grand:.2f}) only when this price is "
+                        f"counted as a line item."
+                    ),
+                    timestamp_added=datetime.now(timezone.utc),
+                    validation_status=ValidationStatus.VALID.value,
+                    label_proposed_by=_RECLASS_BY,
+                ),
+            )
+        )
+
+    # The arithmetic is the authority: lock the receipt's existing LINE_TOTAL
+    # labels that participate in the reconciled sum so the Chroma/LLM validators
+    # can't "correct" a real line total back to TAX via the same coincidental
+    # arithmetic that caused the mislabel.
+    cand_keys = {k for k, _, _ in candidates}
+    locked_line_totals = [
+        lab
+        for k, labs in label_objs.items()
+        if k in lt_keys and k not in cand_keys
+        for lab in labs
+        if lab.label == "LINE_TOTAL"
+        and lab.validation_status != ValidationStatus.INVALID.value
+    ]
+    return reclassifications, locked_line_totals
+
+
 def propose_line_item_labels(
     words: List, existing_labels: List[ReceiptWordLabel]
 ) -> List[ReceiptWordLabel]:
@@ -74,8 +277,19 @@ def propose_line_item_labels(
         ``label_proposed_by="geometry_line_items"``) for words that don't already
         carry that label. Empty when the region can't be bounded.
     """
+    # ``label_map`` holds only ACTIVE (non-INVALID) labels: they drive the band,
+    # totals anchors, and exclusions. A word whose SUBTOTAL was invalidated and
+    # replaced by a VALID LINE_TOTAL (arithmetic reclassification) must read as a
+    # line item here — not be excluded by its stale SUBTOTAL — so its product row
+    # can still yield PRODUCT_NAME. ``labeled_any`` tracks EVERY labeled word
+    # (incl. INVALID) and gates output so we never resurrect a deliberately
+    # rejected label as a fresh PENDING proposal.
     label_map: Dict[Tuple[int, int], Set[str]] = {}
+    labeled_any: Set[Tuple[int, int]] = set()
     for lab in existing_labels:
+        labeled_any.add((lab.line_id, lab.word_id))
+        if lab.validation_status == ValidationStatus.INVALID.value:
+            continue
         label_map.setdefault((lab.line_id, lab.word_id), set()).add(lab.label)
 
     pos: Dict[Tuple[int, int], Tuple[float, float]] = {}
@@ -99,7 +313,13 @@ def propose_line_item_labels(
     totals = [cy(w) for w in placed if raw(w) & _TOTALS]
     if not totals:
         return []
-    tc = statistics.median(totals)
+    # Anchor the line-item band's bottom edge on GRAND_TOTAL when present — it's
+    # the true bottom of the items. SUBTOTAL/TAX can be mislabeled line-item
+    # prices (the model emits them when two line totals coincidentally sum to the
+    # grand total and there's no Subtotal/Tax keyword), which would otherwise
+    # collapse the band onto the items themselves.
+    grand = [cy(w) for w in placed if "GRAND_TOTAL" in raw(w)]
+    tc = statistics.median(grand) if grand else statistics.median(totals)
     header = [cy(w) for w in placed if raw(w) & _HEADER]
     if not header:
         merch = [cy(w) for w in placed if "MERCHANT_NAME" in raw(w)]
@@ -136,6 +356,57 @@ def propose_line_item_labels(
     line_vals: List[float] = []
     for row in rows:
         monies = sorted([w for w in row if _is_money(w.text)], key=xl)
+        # --- "N @ $X" unit-price row -------------------------------------
+        # A unit-price row's marker (@, x, X) must sit DIRECTLY between an integer
+        # quantity (immediate left) and a price (immediate right). Requiring that
+        # adjacency stops product/pack tokens like "VITAMIN X $9.99" or
+        # "12 X 355ML $6.99" from being mis-read as unit-price rows (where the
+        # lone price is the LINE_TOTAL, not a unit price). The integer before the
+        # marker is QUANTITY and the price right after is UNIT_PRICE; the row's
+        # LINE_TOTAL is usually on the product row above, so a SINGLE price after
+        # the marker is the unit price (NOT a line total) — only a SECOND,
+        # rightmost price on the row is the line total (e.g. "2 @ 1.50  3.00").
+        row_x = sorted(row, key=xl)
+        at = None
+        qty = None
+        for i, w in enumerate(row_x):
+            if w.text in ("@", "x", "X"):
+                left = row_x[i - 1] if i > 0 else None
+                right = row_x[i + 1] if i + 1 < len(row_x) else None
+                if (
+                    left is not None
+                    and re.fullmatch(r"\d{1,3}", left.text)
+                    and right is not None
+                    and (_FULL.match(right.text) or _DOT.match(right.text))
+                ):
+                    at, qty = w, left
+                    break
+
+        if at is not None:
+            at_x = xl(at)
+            prices_right = [
+                m
+                for m in monies
+                if xl(m) > at_x and (_FULL.match(m.text) or _DOT.match(m.text))
+            ]
+            proposals[(qty.line_id, qty.word_id)] = "QUANTITY"
+            if len(prices_right) >= 2:
+                lt = prices_right[-1]
+                proposals[(lt.line_id, lt.word_id)] = "LINE_TOTAL"
+                if (v := _amount(lt.text)) is not None:
+                    line_vals.append(v)
+                for m in prices_right[:-1]:
+                    proposals[(m.line_id, m.word_id)] = "UNIT_PRICE"
+            elif len(prices_right) == 1:
+                proposals[(prices_right[0].line_id, prices_right[0].word_id)] = (
+                    "UNIT_PRICE"
+                )
+            for w in row:                            # product = text left of "@"
+                if xl(w) < at_x and _has_letters(w.text) and not _is_money(w.text):
+                    proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
+            continue
+
+        # --- normal product row ------------------------------------------
         if not monies:
             continue
         # A line total must be a real price (a full token, or the "$3." left half
@@ -161,15 +432,6 @@ def propose_line_item_labels(
         full = next((m for m in group if _FULL.match(m.text)), None)
         if full and (val := _amount(full.text)) is not None:
             line_vals.append(val)
-        if any(w.text in ("@", "x", "X") for w in row):   # N @ $X -> unit price
-            for m in monies:                        # only real price tokens, not the qty
-                key = (m.line_id, m.word_id)
-                if (
-                    key not in group_keys
-                    and xl(m) < xl(line_total)
-                    and (_FULL.match(m.text) or _DOT.match(m.text))
-                ):
-                    proposals[key] = "UNIT_PRICE"
         for w in row:                                # product = text left of price
             if xl(w) < xl(line_total) and _has_letters(w.text) and not _is_money(w.text):
                 proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
@@ -198,8 +460,8 @@ def propose_line_item_labels(
     by_key = {(w.line_id, w.word_id): w for w in placed}
     out: List[ReceiptWordLabel] = []
     for key, label in proposals.items():
-        if label_map.get(key):       # word already carries a label — don't double-label
-            continue
+        if key in labeled_any:       # word already carries a label (incl. INVALID)
+            continue                  # — don't double-label or resurrect a rejection
         w0 = by_key.get(key)
         if w0 is None:
             continue

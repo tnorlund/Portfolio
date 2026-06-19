@@ -542,7 +542,47 @@ def _run_words_pipeline_worker(
             # bounds the line-item region by the receipt's own header/totals anchor
             # labels and labels by column. Emitted as PENDING so the Chroma + LLM
             # validators below confirm them, same as any other proposed label.
-            from receipt_upload.line_items import propose_line_item_labels
+            from receipt_upload.line_items import (
+                propose_line_item_labels,
+                propose_product_names,
+                reclassify_mislabeled_totals,
+            )
+
+            # First-pass models emit SUBTOTAL/TAX when line totals coincidentally
+            # sum to the grand total and no Subtotal/Tax keyword anchors a real
+            # totals block (the Trader Joe's IMG_2826 case). Reclassify those
+            # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
+            # (Σ line totals == GRAND_TOTAL only with them counted as line items).
+            # Human VALID/INVALID labels are never touched.
+            reclassifications, locked_line_totals = (
+                reclassify_mislabeled_totals(words, word_labels)
+            )
+            for old_label, new_label in reclassifications:
+                # Invalidate (don't delete) the mislabeled total — preserves the
+                # audit trail and is consistent with "INVALID currency labels are
+                # deliberate" — then add the arithmetic-confirmed LINE_TOTAL.
+                old_label.validation_status = ValidationStatus.INVALID.value
+                old_label.reasoning = (
+                    f"Reclassified to LINE_TOTAL by {new_label.label_proposed_by}: "
+                    "this price is a line-item total, not a receipt total "
+                    "(arithmetic reconciliation)."
+                )
+                dynamo.update_receipt_word_label(old_label)
+                # Drop the invalidated total from the pending set so the Chroma/LLM
+                # validators don't re-validate it back to SUBTOTAL/TAX.
+                _remove_label_from_list(pending_labels, old_label)
+                dynamo.add_receipt_word_label(new_label)
+                word_labels.append(new_label)
+            for lt_label in locked_line_totals:
+                # Arithmetic confirms these are line totals; lock them VALID and
+                # pull them from pending so the LLM can't "correct" them to TAX.
+                lt_label.validation_status = ValidationStatus.VALID.value
+                lt_label.label_proposed_by = "arithmetic_totals_reclass"
+                lt_label.reasoning = (
+                    "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
+                )
+                dynamo.update_receipt_word_label(lt_label)
+                _remove_label_from_list(pending_labels, lt_label)
 
             for li_label in propose_line_item_labels(words, word_labels):
                 dynamo.add_receipt_word_label(li_label)
@@ -552,6 +592,17 @@ def _run_words_pipeline_worker(
                 # Chroma + LLM validators.
                 if li_label.validation_status == ValidationStatus.PENDING.value:
                     pending_labels.append(li_label)
+
+            # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
+            # catches product names that share an OCR row with a price. A kNN over
+            # validated product words (UNSCOPED — merchant-scoping hurts recall)
+            # proposes the rest as PENDING for the validators to confirm.
+            for pn_label in propose_product_names(
+                words, word_labels, client, word_embedding_cache
+            ):
+                dynamo.add_receipt_word_label(pn_label)
+                word_labels.append(pn_label)
+                pending_labels.append(pn_label)
 
             if pending_labels:
                 from receipt_upload.label_validation import ValidationDecision
