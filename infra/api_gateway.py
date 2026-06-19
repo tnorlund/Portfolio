@@ -547,6 +547,7 @@ stage = aws.apigatewayv2.Stage(
             "}"
         ),
     ),
+    opts=pulumi.ResourceOptions(depends_on=[route_reader_summary]),
 )
 
 reader_summary_web_acl = aws.wafv2.WebAcl(
