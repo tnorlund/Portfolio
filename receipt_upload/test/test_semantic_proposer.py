@@ -69,7 +69,7 @@ def _setup():
 def test_proposes_product_name_for_unlabeled_in_band_word():
     words, anchors, embeddings = _setup()
     out = propose_product_names(words, anchors, _FakeClient(), embeddings)
-    keys = {(l.line_id, l.word_id): l for l in out}
+    keys = {(lab.line_id, lab.word_id): lab for lab in out}
     assert (8, 1) in keys and keys[(8, 1)].label == "PRODUCT_NAME"
     assert keys[(8, 1)].validation_status == ValidationStatus.PENDING.value
     # money tokens are never proposed as product names
@@ -86,7 +86,7 @@ def test_does_not_propose_for_already_labeled_words():
     words, anchors, embeddings = _setup()
     anchors = anchors + [_anchor(8, 1, "PRODUCT_NAME")]
     out = propose_product_names(words, anchors, _FakeClient(), embeddings)
-    assert (8, 1) not in {(l.line_id, l.word_id) for l in out}
+    assert (8, 1) not in {(lab.line_id, lab.word_id) for lab in out}
 
 
 def _pending(line_id, word_id, label, status):
@@ -123,4 +123,4 @@ def test_invalid_only_word_is_still_a_candidate():
 
 
 def keys_has(out, line_id, word_id):
-    return (line_id, word_id) in {(l.line_id, l.word_id) for l in out}
+    return (line_id, word_id) in {(lab.line_id, lab.word_id) for lab in out}

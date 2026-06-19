@@ -108,9 +108,9 @@ def _run_pipeline(labels=None):
     # active label for a word is its non-INVALID one (a word may carry an
     # INVALID SUBTOTAL alongside a VALID LINE_TOTAL).
     by_key = {}
-    for l in labels:
-        if l.validation_status != ValidationStatus.INVALID.value:
-            by_key[(l.line_id, l.word_id)] = l
+    for lab in labels:
+        if lab.validation_status != ValidationStatus.INVALID.value:
+            by_key[(lab.line_id, lab.word_id)] = lab
     for p in propose_line_item_labels(words, labels):
         by_key[(p.line_id, p.word_id)] = p
     return by_key
@@ -162,7 +162,7 @@ def test_locks_existing_line_total_against_llm_correction():
         ("SUBTOTAL", "LINE_TOTAL")
     ]
     # $1.38's existing LINE_TOTAL is returned for locking (so it survives the LLM).
-    assert [(l.line_id, l.word_id) for l in locked] == [(12, 1)]
+    assert [(lab.line_id, lab.word_id) for lab in locked] == [(12, 1)]
 
 
 def test_single_item_total_not_reclassified():
@@ -240,7 +240,7 @@ def test_invalid_line_total_not_locked_or_counted():
 def test_reclassification_is_arithmetic_gated_on_grand_total():
     """No GRAND_TOTAL value -> nothing to reconcile against -> no override."""
     words = _trader_joes_words()
-    labels = [l for l in _model_labels() if l.label != "GRAND_TOTAL"]
+    labels = [lab for lab in _model_labels() if lab.label != "GRAND_TOTAL"]
     assert reclassify_mislabeled_totals(words, labels) == ([], [])
 
 
@@ -261,9 +261,9 @@ def test_x_marker_in_product_or_pack_not_unit_price_row():
         _w(9, 1, "$9.99", 0.72, 0.50),
     ]
     labels = [
-        _anchor(2, 1, "ADDRESS_LINE"),
-        _anchor(1, 1, "MERCHANT_NAME"),
-        _anchor(9, 1, "GRAND_TOTAL"),
+        _label(2, 1, "ADDRESS_LINE"),
+        _label(1, 1, "MERCHANT_NAME"),
+        _label(9, 1, "GRAND_TOTAL"),
     ]
     p = {(x.line_id, x.word_id): x for x in propose_line_item_labels(words, labels)}
     assert p[(5, 3)].label == "LINE_TOTAL"
@@ -305,7 +305,7 @@ def test_human_validated_totals_never_overridden():
     """VALID (human-confirmed) SUBTOTAL/TAX are deliberate and must be left alone."""
     words = _trader_joes_words()
     labels = _model_labels()
-    for l in labels:
-        if l.label in ("SUBTOTAL", "TAX"):
-            l.validation_status = ValidationStatus.VALID.value
+    for lab in labels:
+        if lab.label in ("SUBTOTAL", "TAX"):
+            lab.validation_status = ValidationStatus.VALID.value
     assert reclassify_mislabeled_totals(words, labels) == ([], [])

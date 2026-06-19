@@ -130,7 +130,12 @@ def reclassify_mislabeled_totals(
     grand_keys = [
         k
         for k, labs in label_objs.items()
-        if any(l.label == "GRAND_TOTAL" for l in labs) and k in by_key
+        if k in by_key
+        and any(
+            lab.label == "GRAND_TOTAL"
+            and lab.validation_status != ValidationStatus.INVALID.value
+            for lab in labs
+        )
     ]
     grand_vals = [
         v for v in (_amount(by_key[k].text) for k in grand_keys) if v is not None
@@ -177,9 +182,9 @@ def reclassify_mislabeled_totals(
         k
         for k, labs in label_objs.items()
         if any(
-            l.label == "LINE_TOTAL"
-            and l.validation_status != ValidationStatus.INVALID.value
-            for l in labs
+            lab.label == "LINE_TOTAL"
+            and lab.validation_status != ValidationStatus.INVALID.value
+            for lab in labs
         )
     }
     lt_keys |= {
@@ -272,8 +277,19 @@ def propose_line_item_labels(
         ``label_proposed_by="geometry_line_items"``) for words that don't already
         carry that label. Empty when the region can't be bounded.
     """
+    # ``label_map`` holds only ACTIVE (non-INVALID) labels: they drive the band,
+    # totals anchors, and exclusions. A word whose SUBTOTAL was invalidated and
+    # replaced by a VALID LINE_TOTAL (arithmetic reclassification) must read as a
+    # line item here — not be excluded by its stale SUBTOTAL — so its product row
+    # can still yield PRODUCT_NAME. ``labeled_any`` tracks EVERY labeled word
+    # (incl. INVALID) and gates output so we never resurrect a deliberately
+    # rejected label as a fresh PENDING proposal.
     label_map: Dict[Tuple[int, int], Set[str]] = {}
+    labeled_any: Set[Tuple[int, int]] = set()
     for lab in existing_labels:
+        labeled_any.add((lab.line_id, lab.word_id))
+        if lab.validation_status == ValidationStatus.INVALID.value:
+            continue
         label_map.setdefault((lab.line_id, lab.word_id), set()).add(lab.label)
 
     pos: Dict[Tuple[int, int], Tuple[float, float]] = {}
@@ -444,8 +460,8 @@ def propose_line_item_labels(
     by_key = {(w.line_id, w.word_id): w for w in placed}
     out: List[ReceiptWordLabel] = []
     for key, label in proposals.items():
-        if label_map.get(key):       # word already carries a label — don't double-label
-            continue
+        if key in labeled_any:       # word already carries a label (incl. INVALID)
+            continue                  # — don't double-label or resurrect a rejection
         w0 = by_key.get(key)
         if w0 is None:
             continue
