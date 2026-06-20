@@ -1028,6 +1028,27 @@ class TestModuleLevelFunctions:
         """Empty lines list passes (no receipt text to validate against)."""
         assert merchant_name_matches_receipt("Sprouts Farmers Market", [])
 
+    def test_matches_header_merchant_name_with_footer_heavy_receipt(self):
+        """Header merchant name (high y) must match even with a long low-y footer.
+
+        Regression for the Whole Foods case: the previous top-N-lowest-y window
+        landed entirely on the footer and rejected the header merchant name.
+        """
+        lines = [
+            self._make_line(1, "WHOLE FOODS", y=0.96),
+            self._make_line(2, "MARKET", y=0.90),
+            self._make_line(3, "100 S Green Valley Pkwy", y=0.85),
+            # a long footer block at LOW y, none of it the merchant name
+            self._make_line(10, "RETURNS require proof of purchase", y=0.20),
+            self._make_line(11, "Go to: http://www.wfm.com/feedback", y=0.15),
+            self._make_line(12, "ENTER FOR A CHANCE TO WIN", y=0.10),
+            self._make_line(13, "63011021995168288061920260", y=0.05),
+            self._make_line(14, "BVZXH4LVDL", y=0.02),
+        ]
+        assert merchant_name_matches_receipt("Whole Foods Market", lines)
+        # a genuinely wrong merchant still gets rejected
+        assert not merchant_name_matches_receipt("Trader Joe's", lines)
+
 
 class TestWriteTimeValidationLogic:
     """Test the merchant_name_matches_receipt helper used by write-time validation.

@@ -91,20 +91,29 @@ def tokenize_text(text: str) -> Set[str]:
 def merchant_name_matches_receipt(
     merchant_name: Optional[str],
     lines: List[ReceiptLine],
-    n_lines: int = 10,
+    n_lines: Optional[int] = None,  # retained for API compat; no longer windows
 ) -> bool:
     """
     Check whether *merchant_name* has meaningful token overlap with the
-    receipt's OCR text (top *n_lines* lines, where the merchant name
-    usually appears).
+    receipt's OCR text.
+
+    The whole receipt is scanned: a merchant name can appear in the header
+    (e.g. "WHOLE FOODS MARKET") OR the footer (website / "thank you for shopping
+    at X" / loyalty blurb). A previous version only looked at the *N lowest-y*
+    lines, which — for the common bottom-origin layout where the header sits at
+    HIGH y — landed entirely on the footer and rejected valid header merchant
+    names (observed: "Whole Foods Market" nulled to None despite the header
+    clearly reading WHOLE FOODS MARKET).
 
     Returns ``True`` (pass) when:
     - *merchant_name* is empty / None (nothing to validate)
     - The merchant name has fewer than 2 significant tokens (too short
       to validate reliably — e.g. "JOi")
     - At least one significant token from the merchant name appears
-      somewhere in the receipt text
+      anywhere in the receipt text
     """
+    del n_lines  # accepted for backward compatibility; intentionally unused
+
     if not merchant_name:
         return True  # Nothing to validate against
 
@@ -115,11 +124,8 @@ def merchant_name_matches_receipt(
     if not lines:
         return True  # No receipt text to validate against
 
-    # Build a token set from the top N receipt lines (by y-coordinate)
-    sorted_lines = sorted(lines, key=lambda line: line.calculate_centroid()[1])
-    receipt_text = " ".join(
-        line.text for line in sorted_lines[:n_lines] if line.text
-    )
+    # Token set from the ENTIRE receipt (header + body + footer).
+    receipt_text = " ".join(line.text for line in lines if line.text)
     receipt_tokens = tokenize_text(receipt_text)
 
     return bool(merchant_tokens & receipt_tokens)
