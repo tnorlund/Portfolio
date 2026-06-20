@@ -1,11 +1,18 @@
 """
 Merchant resolution for receipt processing.
 
-Two-tier resolution strategy:
-1. Tier 1 (ChromaDB Similarity): Query ChromaDB lines collection by embedding
-   similarity, then compare normalized metadata (phone, address) to boost
-   confidence. This handles OCR errors like "Westlake" vs "Mestlake".
-2. Tier 2 (Fallback): Use Place ID Finder agent to search Google Places API
+Places-first resolution ladder:
+1. Tier 1 (Google Places): search by the Apple-NLP phone/address (with the
+   merchant name as a text hint), then validate the result against the receipt's
+   own phone/address. Phone is a unique business key, so this is the
+   authoritative path. It needs no validated labels (phone/address come straight
+   from OCR data detectors), so it leads even at upload time.
+2. Tier 2 (ChromaDB similarity fallback): reuse a previously-resolved similar
+   receipt's place_id when Places returns nothing — fuzzy "seen-before" that
+   covers OCR-garbled or no-phone/no-address receipts. Boosts by normalized
+   phone/address metadata; handles OCR errors like "Westlake" vs "Mestlake".
+3. Tier 3 (Place ID Finder agent): infer the merchant when neither phone/address
+   nor a similar receipt resolves (e.g. a website URL → merchant name).
 
 The ChromaDB query uses the snapshot+delta pre-merged clients from
 create_embeddings_and_compaction_run(), enabling immediate similarity search
@@ -91,7 +98,9 @@ def tokenize_text(text: str) -> Set[str]:
 def merchant_name_matches_receipt(
     merchant_name: Optional[str],
     lines: List[ReceiptLine],
-    n_lines: Optional[int] = None,  # retained for API compat; no longer windows
+    n_lines: Optional[
+        int
+    ] = None,  # retained for API compat; no longer windows
 ) -> bool:
     """
     Check whether *merchant_name* has meaningful token overlap with the
@@ -169,10 +178,11 @@ class MerchantResult:
 
 class MerchantResolver:
     """
-    Resolves merchant information using two-tier strategy.
+    Resolves merchant information using a Places-first ladder.
 
-    Tier 1: ChromaDB embedding similarity search with metadata comparison
-    Tier 2: Place ID Finder agent for Google Places API search
+    Tier 1: Google Places by NLP phone/address (name as hint), result validated
+    Tier 2: ChromaDB embedding-similarity fallback (fuzzy "seen-before")
+    Tier 3: Place ID Finder agent (infer merchant from receipt content)
     """
 
     def __init__(
@@ -288,39 +298,6 @@ class MerchantResolver:
 
         return _traced_resolve()
 
-    def resolve_labeled_fields(
-        self,
-        words: List[ReceiptWord],
-        word_labels: List[ReceiptWordLabel],
-    ) -> MerchantResult:
-        """Resolve a merchant from VALIDATED MERCHANT_NAME/ADDRESS via Google Places.
-
-        A targeted "second-chance" for the upload pipeline. The main ``resolve()``
-        runs concurrently with label validation, so its strong labeled Places
-        fast path — which requires VALID labels — is skipped on the first pass
-        (the model's MERCHANT_NAME/ADDRESS are still PENDING then). Once
-        validation has run, callers invoke this to re-attempt ONLY that labeled
-        Places search using the now-VALID labels — the same path ``fix_place``
-        uses to resolve obvious merchants.
-
-        Requires a VALID ``MERCHANT_NAME`` (never trusts PENDING model output, so
-        the #959 "don't short-circuit on unvalidated hints" guarantee holds).
-        Returns an empty ``MerchantResult`` when there is no validated merchant
-        name or no Places match.
-        """
-        merchant_name = self._extract_labeled_text(
-            words, word_labels, "MERCHANT_NAME", require_valid=True
-        )
-        if not merchant_name:
-            return MerchantResult()
-        address = self._extract_labeled_text(
-            words, word_labels, "ADDRESS_LINE", require_valid=True
-        ) or self._extract_address(words)
-        phone = self._extract_phone(words)
-        return self._run_labeled_place_search(
-            merchant_name=merchant_name, address=address, phone=phone
-        )
-
     def _resolve_impl(
         self,
         lines_client: ChromaClient,
@@ -336,49 +313,66 @@ class MerchantResolver:
         self._line_embeddings = line_embeddings or {}
         # Store receipt lines for merchant name cross-validation
         self._receipt_lines = lines
-        # Extract contact info from receipt
+        # Extract contact info from receipt. Phone and address come from Apple
+        # NLP (extracted_data) and the merchant-name hint from the model's label
+        # — ALL available immediately, with no dependency on label validation,
+        # so resolution can lead with Google Places at upload time.
         word_labels = word_labels or []
-        labeled_merchant_name = self._extract_labeled_text(
-            words, word_labels, "MERCHANT_NAME", require_valid=True
-        )
-        labeled_address = self._extract_labeled_text(
-            words, word_labels, "ADDRESS_LINE", require_valid=True
-        )
         phone = self._extract_phone(words)
-        address = labeled_address or self._extract_address(words)
+        address = self._extract_address(words) or self._extract_labeled_text(
+            words, word_labels, "ADDRESS_LINE", require_valid=False
+        )
+        # Name HINT only (used for the Places text query / agentic). Prefer a
+        # VALID label, else the model's PENDING MERCHANT_NAME, else the top line.
+        merchant_hint = self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME", require_valid=True
+        ) or self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME", require_valid=False
+        )
+        if not merchant_hint:
+            merchant_line = self._get_merchant_line(lines)
+            merchant_hint = merchant_line.text if merchant_line else None
 
         _log(
-            "Resolving merchant for %s#%d (merchant_hint=%s, phone=%s, address=%s...)",
+            "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
             image_id[:8],
             receipt_id,
-            labeled_merchant_name or "none",
+            merchant_hint or "none",
             phone or "none",
             (address[:30] + "...") if address else "none",
         )
 
-        if labeled_merchant_name:
+        # Tier 1: Google Places, keyed on the Apple-NLP phone/address (with the
+        # name as a text-query hint). Phone is a unique business identifier and
+        # the result is validated against the receipt's own phone/address, so
+        # this is the authoritative path. It needs no validated labels, so it
+        # leads at upload time — superseding the old "labeled fast path" that was
+        # inert because it required VALID labels that don't exist yet here.
+        if phone or address:
             result = self._run_labeled_place_search(
-                merchant_name=labeled_merchant_name,
+                merchant_name=merchant_hint,
                 address=address,
                 phone=phone,
             )
             if result.place_id:
                 _log(
-                    "Labeled fields SUCCESS: %s (place_id=%s, conf=%.2f)",
+                    "Tier 1 SUCCESS (Places): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
                     result.place_id,
                     result.confidence,
                 )
                 return result
 
-        # Tier 1: ChromaDB similarity search with metadata comparison
-        # Uses cached embeddings from orchestration to avoid redundant API calls
+        # Tier 2: ChromaDB similarity fallback — reuse a previously-resolved
+        # similar receipt's place_id when Places returns nothing (fuzzy
+        # "seen-before"; covers OCR-garbled or no-phone/no-address receipts).
+        # Uses cached embeddings from orchestration to avoid redundant API calls.
         # Try phone line first (most reliable identifier)
         if phone:
             phone_line = self._get_line_for_phone(words, lines, phone)
             if phone_line:
                 _log(
-                    "Tier 1: Similarity search for phone line: %s",
+                    "Tier 2: Similarity search for phone line: %s",
                     phone_line.text,
                 )
                 result = self._similarity_search(
@@ -395,7 +389,7 @@ class MerchantResolver:
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
                 ):
                     _log(
-                        "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
+                        "Tier 2 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
                         result.place_id,
                         result.confidence,
@@ -407,7 +401,7 @@ class MerchantResolver:
             address_line = self._get_line_for_address(words, lines, address)
             if address_line:
                 _log(
-                    "Tier 1: Similarity search for address line: %s",
+                    "Tier 2: Similarity search for address line: %s",
                     address_line.text,
                 )
                 result = self._similarity_search(
@@ -424,7 +418,7 @@ class MerchantResolver:
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
                 ):
                     _log(
-                        "Tier 1 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
+                        "Tier 2 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
                         result.place_id,
                         result.confidence,
@@ -435,7 +429,7 @@ class MerchantResolver:
         merchant_line = self._get_merchant_line(lines)
         if merchant_line:
             _log(
-                "Tier 1: Similarity search for merchant line: %s",
+                "Tier 2: Similarity search for merchant line: %s",
                 merchant_line.text,
             )
             result = self._similarity_search(
@@ -461,7 +455,7 @@ class MerchantResolver:
                 and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
             ):
                 _log(
-                    "Tier 1 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
+                    "Tier 2 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
                     result.place_id,
                     result.confidence,
@@ -469,28 +463,28 @@ class MerchantResolver:
                 return result
             if result.place_id:
                 _log(
-                    "Tier 1 chroma_text below corroboration bar "
-                    "(%s conf=%.2f < %.2f); deferring to Tier 2",
+                    "Tier 2 chroma_text below corroboration bar "
+                    "(%s conf=%.2f < %.2f); deferring to Tier 3",
                     result.merchant_name,
                     result.confidence,
                     HIGH_CONFIDENCE_THRESHOLD,
                 )
 
         # Tier 2: Fall back to Place ID Finder agent (Google Places API)
-        _log("Tier 1 failed, invoking Tier 2: Place ID Finder agent")
+        _log("Tier 1/2 failed, invoking Tier 3: Place ID Finder agent")
         result = self._run_place_id_finder(
             lines_client, lines, words, image_id, receipt_id, word_labels
         )
 
         if result.place_id:
             _log(
-                "Tier 2 SUCCESS: Found merchant via Place ID Finder: %s "
+                "Tier 3 SUCCESS: Found merchant via Place ID Finder: %s "
                 "(place_id=%s)",
                 result.merchant_name,
                 result.place_id,
             )
         else:
-            _log("Tier 2: No merchant found")
+            _log("Tier 3: No merchant found")
 
         return result
 
@@ -851,12 +845,18 @@ class MerchantResolver:
 
     def _run_labeled_place_search(
         self,
-        merchant_name: str,
+        merchant_name: Optional[str],
         address: Optional[str],
         phone: Optional[str],
     ) -> MerchantResult:
-        """Search Places directly using labeled merchant/address evidence."""
-        if not self.places_client or not merchant_name:
+        """Search Places directly using receipt evidence (phone/address/name).
+
+        Phone and address are the authoritative keys (a phone lookup returns the
+        exact business); ``merchant_name`` is only a text-query hint. Runs as long
+        as ANY of phone/address/name is present — a phone- or address-only receipt
+        resolves without a labeled name.
+        """
+        if not self.places_client or not (merchant_name or address or phone):
             return MerchantResult()
 
         try:
