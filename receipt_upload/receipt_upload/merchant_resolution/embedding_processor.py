@@ -67,6 +67,44 @@ from receipt_upload.merchant_resolution.resolver import (
 logger = logging.getLogger(__name__)
 
 
+def _chroma_cloud_config() -> Optional[Dict[str, str]]:
+    """Return Chroma Cloud connection config from env, or None if not enabled.
+
+    When set, the upload path queries the persistent Chroma Cloud DB instead of
+    downloading the ~674MB S3 snapshot per receipt. The batch step functions keep
+    using the local S3 snapshot (high query volume would hammer Cloud's rate
+    limits); the snapshot+delta+compaction machinery stays and keeps BOTH
+    backends in sync. Reads here are low-volume (~tens of queries/receipt).
+    """
+    if os.environ.get("CHROMA_CLOUD_ENABLED", "").strip().lower() != "true":
+        return None
+    api_key = (os.environ.get("CHROMA_CLOUD_API_KEY") or "").strip()
+    tenant = (os.environ.get("CHROMA_CLOUD_TENANT") or "").strip()
+    database = (os.environ.get("CHROMA_CLOUD_DATABASE") or "").strip()
+    if not (api_key and tenant and database):
+        return None
+    return {"api_key": api_key, "tenant": tenant, "database": database}
+
+
+def _make_read_client(
+    local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]
+):
+    """Build a ChromaClient for READS: Chroma Cloud when configured, else the
+    local S3 snapshot at ``local_dir``."""
+    if cloud_cfg:
+        return ChromaClient(
+            mode="read",
+            cloud_api_key=cloud_cfg["api_key"],
+            cloud_tenant=cloud_cfg["tenant"],
+            cloud_database=cloud_cfg["database"],
+        )
+    return ChromaClient(
+        persist_directory=local_dir,
+        mode="write",
+        metadata_only=True,
+    )
+
+
 def _prepare_pending_core_labels(
     dynamo: Any,
     word_labels: List[ReceiptWordLabel],
@@ -299,12 +337,11 @@ def _run_lines_pipeline_worker(
         words = [ReceiptWord(**d) for d in words_data]
         word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
 
-        # Create ChromaClient in this process
-        client = ChromaClient(
-            persist_directory=local_lines_dir,
-            mode="write",
-            metadata_only=True,
-        )
+        # READ client: Chroma Cloud when enabled (no snapshot download), else the
+        # local S3 snapshot. The delta WRITE below is self-contained (builds its
+        # own dir from the payload), so cloud mode needs no local snapshot.
+        cloud_cfg = _chroma_cloud_config()
+        client = _make_read_client(local_lines_dir, cloud_cfg)
 
         try:
             # Build embedding cache: all lines in a row share the same embedding
@@ -384,8 +421,12 @@ def _run_lines_pipeline_worker(
                 merchant_name=validated_merchant_name,
             )
 
-            # Upsert to local ChromaDB
-            client.upsert_vectors(collection_name="lines", **line_payload)
+            # Upsert into the local snapshot client (skip in cloud mode — the
+            # read client is Cloud and the delta upload below is self-contained).
+            if not cloud_cfg:
+                client.upsert_vectors(
+                    collection_name="lines", **line_payload
+                )
 
             # Upload delta to S3
             import boto3
@@ -503,12 +544,11 @@ def _run_words_pipeline_worker(
         words = [ReceiptWord(**d) for d in words_data]
         word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
 
-        # Create ChromaClient in this process
-        client = ChromaClient(
-            persist_directory=local_words_dir,
-            mode="write",
-            metadata_only=True,
-        )
+        # READ client: Chroma Cloud when enabled (no snapshot download), else the
+        # local S3 snapshot. Label validation queries this; the delta WRITE below
+        # is self-contained, so cloud mode needs no local snapshot.
+        cloud_cfg = _chroma_cloud_config()
+        client = _make_read_client(local_words_dir, cloud_cfg)
 
         try:
             # Build embedding cache
@@ -917,8 +957,12 @@ def _run_words_pipeline_worker(
                 merchant_name=None,
             )
 
-            # Upsert to local ChromaDB
-            client.upsert_vectors(collection_name="words", **word_payload)
+            # Upsert into the local snapshot client (skip in cloud mode — the
+            # read client is Cloud and the delta upload below is self-contained).
+            if not cloud_cfg:
+                client.upsert_vectors(
+                    collection_name="words", **word_payload
+                )
 
             # Upload delta to S3
             import boto3
@@ -1159,6 +1203,10 @@ class MerchantResolvingEmbeddingProcessor:
                 "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
             )
 
+            # When Chroma Cloud is enabled, the workers query Cloud for reads, so
+            # skip the ~30s/receipt S3 snapshot download (still embed — those are
+            # the query vectors).
+            cloud_cfg = _chroma_cloud_config()
             (
                 local_lines_dir,
                 local_words_dir,
@@ -1172,10 +1220,12 @@ class MerchantResolvingEmbeddingProcessor:
                 s3_client=self.s3_client,
                 openai_client=openai_client,
                 model=model,
+                skip_snapshot_download=bool(cloud_cfg),
             )
             _log(
-                f"Phase 1 complete: downloaded snapshots and generated embeddings "
-                f"(rows={len(row_embeddings)}, words={len(word_embeddings_list)})"
+                "Phase 1 complete: generated embeddings "
+                f"(rows={len(row_embeddings)}, words={len(word_embeddings_list)}); "
+                f"snapshot_download={'SKIPPED (Chroma Cloud)' if cloud_cfg else 'S3'}"
             )
         except Exception as e:
             _log(f"ERROR: Failed to download/embed: {e}")

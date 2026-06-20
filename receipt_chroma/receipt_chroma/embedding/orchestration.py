@@ -21,7 +21,7 @@ import uuid
 from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import boto3
 from openai import OpenAI
@@ -271,31 +271,37 @@ def _download_and_embed_parallel(
     s3_client: "S3Client",
     openai_client: OpenAI,
     model: str,
-) -> tuple[str, str, list[list[float]], list[list[int]], list[list[float]]]:
+    skip_snapshot_download: bool = False,
+) -> tuple[
+    Optional[str],
+    Optional[str],
+    list[list[float]],
+    list[list[int]],
+    list[list[float]],
+]:
     """
-    Run all 4 I/O operations in parallel.
+    Run the I/O operations in parallel.
 
     Uses ContextThreadPoolExecutor from langsmith.utils to automatically
     propagate trace context to child threads, enabling proper trace nesting.
 
+    Args:
+        skip_snapshot_download: When True, do NOT download the lines/words
+            snapshots from S3 (returns ``None`` for both local dirs). Use this
+            when the caller queries a persistent Chroma backend (e.g. Chroma
+            Cloud) instead of a local snapshot — it removes the largest cost in
+            the upload path (~30s/receipt for the ~674MB words snapshot). The
+            embeddings are still generated (they're the query vectors).
+
     Returns:
         Tuple of (lines_dir, words_dir, row_embeddings, row_line_ids_list,
-        word_embeddings)
+        word_embeddings). ``lines_dir``/``words_dir`` are ``None`` when
+        ``skip_snapshot_download`` is True.
     """
     thread_pool_class = _get_context_thread_pool_executor()
 
     with thread_pool_class(max_workers=4) as executor:
         futures = {
-            executor.submit(
-                _download_lines_snapshot,
-                chromadb_bucket,
-                s3_client,
-            ): "download_lines",
-            executor.submit(
-                _download_words_snapshot,
-                chromadb_bucket,
-                s3_client,
-            ): "download_words",
             executor.submit(
                 _embed_rows,
                 openai_client,
@@ -309,6 +315,17 @@ def _download_and_embed_parallel(
                 model,
             ): "embed_words",
         }
+        if not skip_snapshot_download:
+            futures[
+                executor.submit(
+                    _download_lines_snapshot, chromadb_bucket, s3_client
+                )
+            ] = "download_lines"
+            futures[
+                executor.submit(
+                    _download_words_snapshot, chromadb_bucket, s3_client
+                )
+            ] = "download_words"
 
         results: dict[str, Any] = {}
         for future in as_completed(futures):
@@ -324,8 +341,16 @@ def _download_and_embed_parallel(
     row_embeddings, row_line_ids_list = results["embed_rows"]
 
     return (
-        results["download_lines"]["local_path"],
-        results["download_words"]["local_path"],
+        (
+            results["download_lines"]["local_path"]
+            if "download_lines" in results
+            else None
+        ),
+        (
+            results["download_words"]["local_path"]
+            if "download_words" in results
+            else None
+        ),
         row_embeddings,
         row_line_ids_list,
         results["embed_words"],

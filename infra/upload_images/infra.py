@@ -34,6 +34,12 @@ google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
+# Chroma Cloud: the upload path queries Cloud (no per-receipt snapshot download).
+# Batch step functions keep using the local S3 snapshot.
+chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
+chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
+chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 stack = pulumi.get_stack()
 
@@ -481,6 +487,11 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
+                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
@@ -695,6 +706,11 @@ class UploadImages(ComponentResource):
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
+                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
