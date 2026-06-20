@@ -56,6 +56,41 @@ def _parse_locus(s: str) -> Tuple[int, int]:
     return int(ln), int(wd)
 
 
+def _receipt_subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
+    """Every raw DynamoDB item under one receipt's SK-subtree.
+
+    A receipt and ALL its children share ``PK = IMAGE#{image_id}`` and an SK that
+    is exactly ``RECEIPT#{rid:05d}`` (the Receipt) or begins with
+    ``RECEIPT#{rid:05d}#`` (words, lines, letters, labels, place, summary,
+    validation/analysis records, compaction runs, ...). Zero-padding guarantees
+    the prefix cannot match a sibling receipt (``00004`` is not a prefix of
+    ``00012``/``00040``). We additionally hard-filter on the exact rid token as a
+    belt-and-suspenders guard, so this can never touch another receipt.
+    """
+    pk = f"IMAGE#{image_id}"
+    sk_prefix = f"RECEIPT#{receipt_id:05d}"
+    want = f"{receipt_id:05d}"
+    out, lek = [], None
+    while True:
+        kw = dict(
+            TableName=dynamo.table_name,
+            KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
+            ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+            ExpressionAttributeValues={":pk": {"S": pk}, ":sk": {"S": sk_prefix}},
+        )
+        if lek:
+            kw["ExclusiveStartKey"] = lek
+        resp = dynamo._client.query(**kw)
+        for it in resp.get("Items", []):
+            parts = it["SK"]["S"].split("#")
+            if len(parts) >= 2 and parts[0] == "RECEIPT" and parts[1] == want:
+                out.append(it)
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+    return out
+
+
 def plan_operations(resolutions: List[dict]) -> ExecutionPlan:
     """Pure: derive the concrete add/drop operations from a merge plan."""
     plan = ExecutionPlan()
@@ -144,28 +179,14 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         for a in plan.label_adds
     ]
 
-    # Gather every entity to delete (letters aren't on GSI4 -> scan once) BEFORE
-    # mutating, so the backup is complete and the deletes are a pure replay.
-    letters_by_receipt = {}
-    if plan.receipt_drops:
-        lek = None
-        while True:
-            letters, lek = dynamo.list_receipt_letters(last_evaluated_key=lek)
-            for lt in letters:
-                letters_by_receipt.setdefault((lt.image_id, lt.receipt_id), []).append(lt)
-            if not lek:
-                break
-
-    drop_bundles = []  # (drop, receipt, labels, words, lines, letters, metadata)
+    # Gather each dropped receipt's COMPLETE SK-subtree (Receipt + every child
+    # type) BEFORE mutating, so the backup is complete and deletes are a pure
+    # replay. The subtree query also catches letters/place/summary/validation/
+    # analysis records that the old per-entity cascade missed.
+    drop_subtrees = []  # (drop, [raw items])
     for d in plan.receipt_drops:
-        det = dynamo.get_receipt_details(d.image_id, d.receipt_id)
-        lts = letters_by_receipt.get((d.image_id, d.receipt_id), [])
-        md = None
-        try:
-            md = dynamo.get_receipt_metadata(d.image_id, d.receipt_id)
-        except Exception:
-            md = None  # no metadata for this receipt
-        drop_bundles.append((d, det, lts, md))
+        items = _receipt_subtree_items(dynamo, d.image_id, d.receipt_id)
+        drop_subtrees.append((d, items))
 
     # ---- BACKUP (before any mutation) ----
     if backup_path:
@@ -175,11 +196,8 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
             "deleted_items": [],
             "added_label_keys": [],
         }
-        for (_d, det, lts, md) in drop_bundles:
-            ents = [det.receipt, *det.labels, *det.words, *det.lines, *lts]
-            if md:
-                ents.append(md)
-            backup["deleted_items"].extend(e.to_item() for e in ents)
+        for (_d, items) in drop_subtrees:
+            backup["deleted_items"].extend(items)
         backup["added_label_keys"] = [lbl.key for _a, lbl in labels_to_add]
         with open(backup_path, "w") as f:
             json.dump(backup, f)
@@ -197,23 +215,18 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
             except Exception as e:  # pragma: no cover - surfaced, not raised
                 report["errors"].append(f"label {a.image_id}#{a.receipt_id} {a.label}: {e}")
 
-    # ---- 2) delete redundant receipts + children (never the parent Image) ----
-    for d, det, lts, md in drop_bundles:
+    # ---- 2) delete each dropped receipt's full subtree (never the parent Image) ----
+    for d, items in drop_subtrees:
+        had_receipt = any(it.get("TYPE", {}).get("S") == "RECEIPT" for it in items)
         try:
-            n = 0
-            if det.labels:
-                dynamo.delete_receipt_word_labels(det.labels); n += len(det.labels)
-            if det.words:
-                dynamo.delete_receipt_words(det.words); n += len(det.words)
-            if det.lines:
-                dynamo.delete_receipt_lines(det.lines); n += len(det.lines)
-            if lts:
-                dynamo.delete_receipt_letters(lts); n += len(lts)
-            if md:
-                dynamo.delete_receipt_metadata(md); n += 1
-            dynamo.delete_receipt(det.receipt)
-            report["receipts_deleted"] += 1
-            report["children_deleted"] += n
+            for it in items:
+                dynamo._client.delete_item(
+                    TableName=dynamo.table_name,
+                    Key={"PK": it["PK"], "SK": it["SK"]},
+                )
+            report["children_deleted"] += max(0, len(items) - (1 if had_receipt else 0))
+            if had_receipt:
+                report["receipts_deleted"] += 1
         except Exception as e:  # pragma: no cover
             report["errors"].append(f"drop {d.image_id}#{d.receipt_id}: {e}")
 
