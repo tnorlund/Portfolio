@@ -20,39 +20,9 @@
   line-height: 1.45;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 1rem;
-  margin: 1rem 0 0;
-}
-
-.metric {
-  min-width: 0;
-  padding-left: 0.75rem;
-  border-left: 2px solid rgba(var(--text-color-rgb), 0.18);
-}
-
-.metric dt {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: rgba(var(--text-color-rgb), 0.64);
-}
-
-.metric dd {
-  margin: 0.15rem 0 0;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
 @media (max-width: 480px) {
   .readerInsight {
     margin-top: 2rem;
     padding: 1rem 1rem 0;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

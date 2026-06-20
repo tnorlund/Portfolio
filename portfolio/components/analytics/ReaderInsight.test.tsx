@@ -193,9 +193,9 @@ describe("ReaderInsight", () => {
         "You reached the bottom 49% faster than the average reader."
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("1m 01s")).toBeInTheDocument();
-    expect(screen.getByText("4.2 screens/min")).toBeInTheDocument();
-    expect(screen.getByText("12 reads")).toBeInTheDocument();
+    expect(screen.queryByText("Your time")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active pace")).not.toBeInTheDocument();
+    expect(screen.queryByText("Average sample")).not.toBeInTheDocument();
   });
 
   test("marks short active scrolling as a quick jump and keeps fallback UI", async () => {
@@ -222,11 +222,11 @@ describe("ReaderInsight", () => {
       )
     );
 
-    expect(screen.getByText("Quick jump")).toBeInTheDocument();
-    expect(screen.getByText("Collecting")).toBeInTheDocument();
+    expect(screen.queryByText("Quick jump")).not.toBeInTheDocument();
+    expect(screen.queryByText("Collecting")).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        "You reached the bottom in 2s. The average will appear here after a few completed reads."
+        "You reached the bottom in 2s. The average will appear here after 5 previous completed reads."
       )
     ).toBeInTheDocument();
   });
