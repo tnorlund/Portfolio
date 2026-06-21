@@ -50,3 +50,4 @@ config:
   portfolio:CHROMA_CLOUD_TENANT: cf5b7019-a74c-4416-96cc-9578906bfc52
   portfolio:CHROMA_CLOUD_DATABASE: receipt_dev
   portfolio:CHROMA_CLOUD_ENABLED: "true"
+  portfolio:LLM_VALIDATION_ASYNC: "true"
