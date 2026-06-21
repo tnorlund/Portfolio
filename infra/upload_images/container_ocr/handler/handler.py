@@ -231,7 +231,10 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     import boto3
     from receipt_dynamo import DynamoClient
 
-    from receipt_upload.label_validation.llm_runner import apply_async_payload
+    from receipt_upload.label_validation.llm_runner import (
+        apply_async_payload,
+        resync_corrected_labels_to_chroma,
+    )
 
     body = json.loads(record["body"])
     bucket = body["s3_bucket"]
@@ -251,12 +254,32 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     payload = json.loads(obj["Body"].read())
 
     dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
+    # grok decisions -> DynamoDB (raises on LLM failure -> SQS redrive/DLQ).
     validated = apply_async_payload(payload, dynamo)
     _log(
         "Async LLM validation complete: image=%s validated=%s",
         image_id,
         validated,
     )
+
+    # Best-effort: push the corrected labels into Chroma via a corrective delta +
+    # compaction run. The grok decisions are already durable in DynamoDB, so a
+    # failure here must NOT fail the record (which would redrive and re-run grok).
+    try:
+        resync_run_id = resync_corrected_labels_to_chroma(payload, dynamo)
+        if resync_run_id:
+            _log(
+                "Async LLM Chroma resync: image=%s compaction_run=%s",
+                image_id,
+                resync_run_id,
+            )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _log(
+            "WARNING: Chroma resync failed for image=%s (%s); "
+            "labels are correct in DynamoDB, Chroma converges on next compaction",
+            image_id,
+            exc,
+        )
 
     # Best-effort cleanup of the staged payload (idempotent if already gone).
     try:

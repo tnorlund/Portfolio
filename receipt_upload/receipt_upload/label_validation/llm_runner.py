@@ -386,9 +386,14 @@ def build_async_payload(
 ) -> Dict[str, Any]:
     """Build a self-contained, JSON-safe payload for the async consumer.
 
-    Carries everything ``apply_llm_results`` needs — no Chroma, no embeddings on
-    the consumer side.
+    Carries everything ``apply_llm_results`` needs (no Chroma on the consumer
+    side for the grok step), PLUS the grok-affected words + their embeddings so
+    the consumer can emit a corrective Chroma delta for its decisions (see
+    ``resync_corrected_labels_to_chroma``). The embeddings are large but go via
+    S3, not SQS.
     """
+    from dataclasses import asdict
+
     llm_words_context = build_words_context(words)
     pending_labels_data, similar_evidence = build_pending_and_evidence(
         llm_needed=llm_needed,
@@ -397,8 +402,18 @@ def build_async_payload(
         lightweight_validator=lightweight_validator,
         word_embedding_cache=word_embedding_cache,
     )
+    # Affected words + aligned embeddings (only those we actually have a vector
+    # for) so the consumer can rebuild a words payload with the FINAL labels.
+    affected_words: List[Dict[str, Any]] = []
+    affected_embeddings: List[List[float]] = []
+    for word, _label in llm_needed:
+        emb = word_embedding_cache.get((word.line_id, word.word_id))
+        if emb is None:
+            continue
+        affected_words.append(asdict(word))
+        affected_embeddings.append(emb)
     return {
-        "version": 1,
+        "version": 2,
         "image_id": image_id,
         "receipt_id": receipt_id,
         "table_name": table_name,
@@ -407,6 +422,11 @@ def build_async_payload(
         "pending_labels_data": pending_labels_data,
         "similar_evidence": similar_evidence,
         "needed_labels": [_label_to_jsonable(label) for _word, label in llm_needed],
+        # Filled in by the producer's main process before enqueue (Phase 3b):
+        "lines_prefix": None,
+        "chromadb_bucket": None,
+        "affected_words": affected_words,
+        "affected_embeddings": affected_embeddings,
     }
 
 
@@ -433,3 +453,76 @@ def apply_async_payload(payload: Dict[str, Any], dynamo: Any) -> int:
         merchant_name=payload.get("merchant_name"),
         raise_on_failure=True,
     )
+
+
+def resync_corrected_labels_to_chroma(
+    payload: Dict[str, Any], dynamo: Any
+) -> Optional[str]:
+    """Propagate the consumer's grok decisions into Chroma via a corrective delta.
+
+    ``apply_async_payload`` writes the corrected labels to DynamoDB (the source of
+    truth), but the producer's initial words delta carried the PRE-grok PENDING
+    labels and the DynamoDB-stream label updater no-ops when the word embedding
+    isn't in Chroma yet. So we build a small words delta for ONLY the grok-affected
+    words — with their now-final labels re-read from DynamoDB and the embeddings
+    carried in the payload — and create a compaction run that merges it. The
+    affected words' label metadata in Chroma is upserted to the corrected state;
+    the producer's still-present lines delta is re-merged idempotently.
+
+    Best-effort: returns the new compaction run_id, or None when the payload lacks
+    the resync data (older payloads) or there is nothing to resync. Raises only on
+    an unexpected error so the caller can decide whether to swallow it (the grok
+    corrections are already durable in DynamoDB regardless).
+    """
+    lines_prefix = payload.get("lines_prefix")
+    chromadb_bucket = payload.get("chromadb_bucket")
+    affected_words_data = payload.get("affected_words") or []
+    affected_embeddings = payload.get("affected_embeddings") or []
+    if not (lines_prefix and chromadb_bucket and affected_words_data):
+        return None  # nothing to resync (e.g. a v1 payload or no embeddings)
+
+    # Heavy imports only on the path that actually resyncs.
+    import uuid
+
+    import boto3
+    from receipt_chroma import (
+        build_words_payload,
+        create_compaction_run,
+        upload_words_delta,
+    )
+    from receipt_dynamo.entities import ReceiptWord
+
+    image_id = payload["image_id"]
+    receipt_id = payload["receipt_id"]
+    words = [ReceiptWord(**d) for d in affected_words_data]
+    affected_keys = {(w.line_id, w.word_id) for w in words}
+
+    # Re-read the FINAL label state for the affected words (post-grok) so the
+    # delta reflects corrections/invalidations, not the stale payload snapshot.
+    all_labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    final_labels = [
+        lab for lab in all_labels if (lab.line_id, lab.word_id) in affected_keys
+    ]
+
+    word_payload, _ = build_words_payload(
+        receipt_words=words,
+        word_embeddings_list=affected_embeddings,
+        word_labels=final_labels,
+        merchant_name=payload.get("merchant_name"),
+    )
+    run_id = str(uuid.uuid4())
+    words_prefix = upload_words_delta(
+        word_payload=word_payload,
+        run_id=run_id,
+        chromadb_bucket=chromadb_bucket,
+        s3_client=boto3.client("s3"),
+    )
+    create_compaction_run(
+        run_id=run_id,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        lines_prefix=lines_prefix,
+        words_prefix=words_prefix,
+        dynamo_client=dynamo,
+    )
+    return run_id
