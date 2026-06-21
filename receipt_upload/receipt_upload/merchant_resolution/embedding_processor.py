@@ -26,7 +26,6 @@ Tracing:
 
 import logging
 import os
-import re
 import shutil
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -67,6 +66,9 @@ from receipt_upload.label_validation.llm_runner import (
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
+)
+from receipt_upload.merchant_resolution.resolver import (
+    redact_pii as _redact_pii,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,22 +141,8 @@ def _enqueue_async_llm_validation(
 _GEOMETRY_SPATIAL_ROLES = {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
 _GEOMETRY_PROPOSER = "geometry_line_items"
 
-# Mask PII in resolver diagnostic logs before re-emitting them to CloudWatch.
-# The resolver prints phone/address pulled from the receipt for matching; those
-# are PII and must not land in centralized logs in the clear.
-_PHONE_FIELD_RE = re.compile(r"(phone=)[^\s,)]+")
-_ADDRESS_FIELD_RE = re.compile(r"(address=)[^)]*")
-_PHONE_NUM_RE = re.compile(r"\b\d{3}[-.\s]\d{3}[-.\s]?\d{4}\b")
-_DIGIT_RUN_RE = re.compile(r"\b\d{10,}\b")
-
-
-def _redact_pii(text: str) -> str:
-    """Mask phone/address values in a resolver log line."""
-    text = _PHONE_FIELD_RE.sub(r"\1<redacted>", text)
-    text = _ADDRESS_FIELD_RE.sub(r"\1<redacted>", text)
-    text = _PHONE_NUM_RE.sub("<redacted-phone>", text)
-    text = _DIGIT_RUN_RE.sub("<redacted-phone>", text)
-    return text
+# Resolver logs are already PII-redacted at the source (resolver._log); the
+# replay loop re-applies redact_pii (imported above) as defense-in-depth.
 
 
 def _chroma_cloud_config() -> Optional[Dict[str, str]]:
@@ -176,7 +164,9 @@ def _chroma_cloud_config() -> Optional[Dict[str, str]]:
     return {"api_key": api_key, "tenant": tenant, "database": database}
 
 
-def _make_read_client(local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]):
+def _make_read_client(
+    local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]
+):
     """Build a ChromaClient for READS: Chroma Cloud when configured, else the
     local S3 snapshot at ``local_dir``."""
     if cloud_cfg:
@@ -219,7 +209,9 @@ def _prepare_pending_core_labels(
             continue
 
         if label.label == "AMOUNT":
-            amount_decision = amount_classifications.get((label.line_id, label.word_id))
+            amount_decision = amount_classifications.get(
+                (label.line_id, label.word_id)
+            )
             if amount_decision is None:
                 # Keep AMOUNT only as transient LLM input. Later write paths
                 # delete it unless the LLM replaces it with a CORE_LABEL.
@@ -274,7 +266,8 @@ def _prepare_pending_core_labels(
             word_id=label.word_id,
             label=mapped_label,
             reasoning=(
-                f"Mapped from non-core label '{original_label}' before " "validation."
+                f"Mapped from non-core label '{original_label}' before "
+                "validation."
             ),
             timestamp_added=datetime.now(timezone.utc),
             validation_status=ValidationStatus.PENDING.value,
@@ -459,7 +452,9 @@ def _run_lines_pipeline_worker(
             import io as _io
             import multiprocessing
 
-            in_subprocess = multiprocessing.current_process().name != "MainProcess"
+            in_subprocess = (
+                multiprocessing.current_process().name != "MainProcess"
+            )
             resolver_log_buf = _io.StringIO()
             capture_cm = (
                 contextlib.redirect_stdout(resolver_log_buf)
@@ -567,7 +562,9 @@ def _run_lines_pipeline_worker(
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            project = os.environ.get(
+                "LANGCHAIN_PROJECT", "receipt-label-validation"
+            )
             log.info(
                 "[LINES_WORKER] Setting up tracing: project=%s, headers=%s",
                 project,
@@ -687,8 +684,8 @@ def _run_words_pipeline_worker(
             # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
             # (Σ line totals == GRAND_TOTAL only with them counted as line items).
             # Human VALID/INVALID labels are never touched.
-            reclassifications, locked_line_totals = reclassify_mislabeled_totals(
-                words, word_labels
+            reclassifications, locked_line_totals = (
+                reclassify_mislabeled_totals(words, word_labels)
             )
             for old_label, new_label in reclassifications:
                 # Invalidate (don't delete) the mislabeled total — preserves the
@@ -711,9 +708,7 @@ def _run_words_pipeline_worker(
                 # pull them from pending so the LLM can't "correct" them to TAX.
                 lt_label.validation_status = ValidationStatus.VALID.value
                 lt_label.label_proposed_by = "arithmetic_totals_reclass"
-                lt_label.reasoning = (
-                    "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
-                )
+                lt_label.reasoning = "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
                 dynamo.update_receipt_word_label(lt_label)
                 _remove_label_from_list(pending_labels, lt_label)
 
@@ -723,7 +718,10 @@ def _run_words_pipeline_worker(
                 # Arithmetic-verified line items (Σ line_total = receipt total) are
                 # already VALID; only route the unverified PENDING ones through the
                 # Chroma + LLM validators.
-                if li_label.validation_status == ValidationStatus.PENDING.value:
+                if (
+                    li_label.validation_status
+                    == ValidationStatus.PENDING.value
+                ):
                     pending_labels.append(li_label)
 
             # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
@@ -784,10 +782,13 @@ def _run_words_pipeline_worker(
                             # Update the label object with validation results
                             label.validation_status = (
                                 ValidationStatus.VALID.value
-                                if result.decision == ValidationDecision.AUTO_VALIDATE
+                                if result.decision
+                                == ValidationDecision.AUTO_VALIDATE
                                 else ValidationStatus.INVALID.value
                             )
-                            label.label_proposed_by = f"chroma_{result.decision.value}"
+                            label.label_proposed_by = (
+                                f"chroma_{result.decision.value}"
+                            )
                             dynamo.update_receipt_word_label(label)
                             chroma_validated += 1
                         else:
@@ -801,9 +802,12 @@ def _run_words_pipeline_worker(
                             # stuck PENDING forever).
                             if (
                                 label.label in _GEOMETRY_SPATIAL_ROLES
-                                and label.label_proposed_by == _GEOMETRY_PROPOSER
+                                and label.label_proposed_by
+                                == _GEOMETRY_PROPOSER
                             ):
-                                label.validation_status = ValidationStatus.VALID.value
+                                label.validation_status = (
+                                    ValidationStatus.VALID.value
+                                )
                                 label.label_proposed_by = "geometry_trusted"
                                 dynamo.update_receipt_word_label(label)
                                 chroma_validated += 1
@@ -943,7 +947,9 @@ def _run_words_pipeline_worker(
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            project = os.environ.get(
+                "LANGCHAIN_PROJECT", "receipt-label-validation"
+            )
             log.info(
                 "[WORDS_WORKER] Setting up tracing: project=%s, headers=%s",
                 project,
@@ -1012,7 +1018,9 @@ class MerchantResolvingEmbeddingProcessor:
             try:
                 from receipt_places import PlacesClient
 
-                self.places_client = PlacesClient(api_key=google_places_api_key)
+                self.places_client = PlacesClient(
+                    api_key=google_places_api_key
+                )
             except ImportError:
                 _log("WARNING: receipt_places not available")
 
@@ -1099,9 +1107,15 @@ class MerchantResolvingEmbeddingProcessor:
         """
         # Fetch lines/words if not provided
         if lines is None or words is None:
-            lines = self.dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
-            words = self.dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
-            _log(f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB")
+            lines = self.dynamo.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+            words = self.dynamo.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
+            _log(
+                f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB"
+            )
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
@@ -1135,7 +1149,9 @@ class MerchantResolvingEmbeddingProcessor:
             from openai import OpenAI
 
             openai_client = OpenAI()
-            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+            model = os.environ.get(
+                "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+            )
 
             # When Chroma Cloud is enabled, the workers query Cloud for reads, so
             # skip the ~30s/receipt S3 snapshot download (still embed — those are
@@ -1224,7 +1240,9 @@ class MerchantResolvingEmbeddingProcessor:
             executor_class = _get_phase2_executor_class()
             executor_name = executor_class.__name__
             with executor_class(max_workers=2) as executor:
-                _log(f"Submitting lines and words pipelines to {executor_name}")
+                _log(
+                    f"Submitting lines and words pipelines to {executor_name}"
+                )
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
@@ -1294,9 +1312,15 @@ class MerchantResolvingEmbeddingProcessor:
                                     receipt_id=m["receipt_id"],
                                     merchant_name=m.get("merchant_name"),
                                     normalized_phone=m.get("normalized_phone"),
-                                    normalized_address=m.get("normalized_address"),
-                                    embedding_similarity=m["embedding_similarity"],
-                                    metadata_boost=m.get("metadata_boost", 0.0),
+                                    normalized_address=m.get(
+                                        "normalized_address"
+                                    ),
+                                    embedding_similarity=m[
+                                        "embedding_similarity"
+                                    ],
+                                    metadata_boost=m.get(
+                                        "metadata_boost", 0.0
+                                    ),
                                     place_id=m.get("place_id"),
                                 )
                                 for m in lines_result["similarity_matches"]
@@ -1305,12 +1329,18 @@ class MerchantResolvingEmbeddingProcessor:
                         merchant_result = MerchantResult(
                             merchant_name=lines_result.get("merchant_name"),
                             place_id=lines_result.get("place_id"),
-                            resolution_tier=lines_result.get("resolution_tier"),
+                            resolution_tier=lines_result.get(
+                                "resolution_tier"
+                            ),
                             confidence=lines_result.get("confidence"),
                             phone=lines_result.get("phone"),
                             address=lines_result.get("address"),
-                            source_image_id=lines_result.get("source_image_id"),
-                            source_receipt_id=lines_result.get("source_receipt_id"),
+                            source_image_id=lines_result.get(
+                                "source_image_id"
+                            ),
+                            source_receipt_id=lines_result.get(
+                                "source_receipt_id"
+                            ),
                             similarity_matches=similarity_matches,
                         )
                 except Exception as e:
@@ -1357,7 +1387,9 @@ class MerchantResolvingEmbeddingProcessor:
                 )
                 _log(f"Phase 3 complete: created compaction run {run_id}")
             else:
-                _log("WARNING: Skipping compaction run - missing delta prefixes")
+                _log(
+                    "WARNING: Skipping compaction run - missing delta prefixes"
+                )
                 compaction_run = None
 
             # =================================================================
@@ -1512,7 +1544,9 @@ class MerchantResolvingEmbeddingProcessor:
 
                 if merchant_result.merchant_name:
                     if not place.merchant_name:
-                        updates["merchant_name"] = merchant_result.merchant_name
+                        updates["merchant_name"] = (
+                            merchant_result.merchant_name
+                        )
 
                 if merchant_result.address:
                     if not place.formatted_address:
@@ -1565,7 +1599,9 @@ class MerchantResolvingEmbeddingProcessor:
                         matched_fields=matched_fields,
                     )
                     self.dynamo.add_receipt_place(new_place)
-                    _log(f"Created new receipt place for {image_id}#{receipt_id}")
+                    _log(
+                        f"Created new receipt place for {image_id}#{receipt_id}"
+                    )
                 elif merchant_result.place_id:
                     # Have place_id but no merchant_name - log for debugging
                     # This can happen when ChromaDB matches don't have merchant_name
