@@ -442,81 +442,122 @@ def build_merge_dossiers(
         keys = {(r.image_id, r.receipt_id) for r in recs}
         if len(keys) < 2:
             continue  # not a duplicate
-
-        image_ids = {r.image_id for r in recs}
-        group_image_id = sorted(image_ids)[0]
-        members = [
-            _build_member(
-                r,
-                words_by_receipt.get((r.image_id, r.receipt_id), {}),
-                labels_by_receipt.get((r.image_id, r.receipt_id), []),
-                group_image_id,
-            )
-            for r in recs
-        ]
-        # de-dup member list by key (same receipt could appear once)
-        seen, uniq = set(), []
-        for m in members:
-            if m.key not in seen:
-                seen.add(m.key)
-                uniq.append(m)
-        members = uniq
-
-        scope = "within_image" if len(image_ids) == 1 else "cross_image"
-        ranking = _rank_survivors(members)
-        survivor_key = ranking[0]["key"]
-        survivor = next(m for m in members if m.key_str == survivor_key)
-
-        # pixel-aligned (same OCR) -> positional conflicts; else text conflicts
-        if scope == "within_image":
-            conflicts = _positional_conflicts(labels_by_receipt, members)
-        else:
-            conflicts = _text_conflicts(labels_by_receipt, members)
-
-        union = _label_union(labels_by_receipt, members)
-        only_non = _labels_only_on_nonsurvivor(labels_by_receipt, members, survivor, scope)
-        overlap = _text_overlap_pct(labels_by_receipt, members, survivor, scope)
-        junk = [
-            {"member": m.key_str, "junk_labels": m.junk_labels}
-            for m in members
-            if m.junk_labels
-        ]
-
-        notes: List[str] = []
-        if scope == "within_image":
-            notes.append(
-                f"Segmenter mis-split parent image {group_image_id} into "
-                f"{len(members)} byte-identical crops of one receipt."
-            )
-        clean = not conflicts and not only_non and not junk
-        action = "drop_redundant" if clean else "consolidate_then_drop"
-        if any(m.junk_labels for m in members):
-            notes.append("Non-canonical 'junk' labels present; strip on merge.")
-        if survivor.n_canonical_labels == 0:
-            notes.append(
-                "Suggested survivor has 0 canonical labels — labels live on a "
-                "non-survivor; consolidation is mandatory."
-            )
-
-        dossiers.append(
-            MergeDossier(
-                group_id=f"{sha[:12]}_{scope}",
-                anchor="receipt_sha256",
-                scope=scope,
-                trust="auto",
-                sha256=sha,
-                members=members,
-                label_union=union,
-                conflicts=conflicts,
-                labels_only_on_nonsurvivor=only_non,
-                junk_flags=junk,
-                survivor_ranking=ranking,
-                survivor_suggested=survivor_key,
-                label_overlap_pct=overlap,
-                deterministic_action=action,
-                notes=notes,
-            )
+        d = _assemble_dossier(
+            recs, words_by_receipt, labels_by_receipt, anchor="receipt_sha256",
+            sha256=sha,
         )
+        if d is not None:
+            dossiers.append(d)
 
     dossiers.sort(key=lambda d: (d.scope, -len(d.members), d.sha256))
     return dossiers
+
+
+def _assemble_dossier(
+    recs: List,
+    words_by_receipt: Dict[Key, Dict[Tuple[int, int], str]],
+    labels_by_receipt: Dict[Key, List[LabelObs]],
+    *,
+    anchor: str,
+    sha256: str = "",
+    group_id: Optional[str] = None,
+) -> Optional[MergeDossier]:
+    """Build one dossier from a set of receipt entities (any grouping criterion)."""
+    image_ids = {r.image_id for r in recs}
+    group_image_id = sorted(image_ids)[0]
+    members = [
+        _build_member(
+            r,
+            words_by_receipt.get((r.image_id, r.receipt_id), {}),
+            labels_by_receipt.get((r.image_id, r.receipt_id), []),
+            group_image_id,
+        )
+        for r in recs
+    ]
+    seen, uniq = set(), []
+    for m in members:
+        if m.key not in seen:
+            seen.add(m.key)
+            uniq.append(m)
+    members = uniq
+    if len(members) < 2:
+        return None
+
+    scope = "within_image" if len(image_ids) == 1 else "cross_image"
+    ranking = _rank_survivors(members)
+    survivor_key = ranking[0]["key"]
+    survivor = next(m for m in members if m.key_str == survivor_key)
+
+    if scope == "within_image":
+        conflicts = _positional_conflicts(labels_by_receipt, members)
+    else:
+        conflicts = _text_conflicts(labels_by_receipt, members)
+
+    union = _label_union(labels_by_receipt, members)
+    only_non = _labels_only_on_nonsurvivor(labels_by_receipt, members, survivor, scope)
+    overlap = _text_overlap_pct(labels_by_receipt, members, survivor, scope)
+    junk = [
+        {"member": m.key_str, "junk_labels": m.junk_labels}
+        for m in members
+        if m.junk_labels
+    ]
+
+    notes: List[str] = []
+    if scope == "within_image" and anchor == "receipt_sha256":
+        notes.append(
+            f"Segmenter mis-split parent image {group_image_id} into "
+            f"{len(members)} byte-identical crops of one receipt."
+        )
+    clean = not conflicts and not only_non and not junk
+    action = "drop_redundant" if clean else "consolidate_then_drop"
+    if any(m.junk_labels for m in members):
+        notes.append("Non-canonical 'junk' labels present; strip on merge.")
+    if survivor.n_canonical_labels == 0:
+        notes.append(
+            "Suggested survivor has 0 canonical labels — labels live on a "
+            "non-survivor; consolidation is mandatory."
+        )
+
+    gid = group_id or f"{(sha256 or members[0].image_id)[:12]}_{scope}"
+    return MergeDossier(
+        group_id=gid,
+        anchor=anchor,
+        scope=scope,
+        trust="auto" if anchor == "receipt_sha256" else "confirmed",
+        sha256=sha256,
+        members=members,
+        label_union=union,
+        conflicts=conflicts,
+        labels_only_on_nonsurvivor=only_non,
+        junk_flags=junk,
+        survivor_ranking=ranking,
+        survivor_suggested=survivor_key,
+        label_overlap_pct=overlap,
+        deterministic_action=action,
+        notes=notes,
+    )
+
+
+def build_dossiers_for_groups(
+    groups: List[List[Key]],
+    receipts_by_key: Dict[Key, object],
+    words_by_receipt: Dict[Key, Dict[Tuple[int, int], str]],
+    labels_by_receipt: Dict[Key, List[LabelObs]],
+    *,
+    anchor: str = "transaction_identity",
+) -> List[MergeDossier]:
+    """Build dossiers from EXPLICIT receipt groups (e.g. confirmed cross-image
+    near-duplicates) rather than sha256-grouping. Survivor is chosen by label
+    quality exactly as for the byte-identical path; gap-fills are text-based."""
+    out: List[MergeDossier] = []
+    for g in groups:
+        recs = [receipts_by_key[k] for k in g if k in receipts_by_key]
+        if len(recs) < 2:
+            continue
+        d = _assemble_dossier(
+            recs, words_by_receipt, labels_by_receipt, anchor=anchor,
+            group_id=f"{recs[0].image_id[:8]}_near",
+        )
+        if d is not None:
+            out.append(d)
+    return out
