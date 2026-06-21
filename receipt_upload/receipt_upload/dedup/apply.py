@@ -57,34 +57,56 @@ def _parse_locus(s: str) -> Tuple[int, int]:
 
 
 def _receipt_subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
-    """Every raw DynamoDB item under one receipt's SK-subtree.
+    """Every raw DynamoDB item owned by one receipt.
 
-    A receipt and ALL its children share ``PK = IMAGE#{image_id}`` and an SK that
-    is exactly ``RECEIPT#{rid:05d}`` (the Receipt) or begins with
-    ``RECEIPT#{rid:05d}#`` (words, lines, letters, labels, place, summary,
-    validation/analysis records, compaction runs, ...). Zero-padding guarantees
-    the prefix cannot match a sibling receipt (``00004`` is not a prefix of
-    ``00012``/``00040``). We additionally hard-filter on the exact rid token as a
-    belt-and-suspenders guard, so this can never touch another receipt.
+    Most children share ``PK = IMAGE#{image_id}`` with an SK ``RECEIPT#{rid}#...``,
+    but the rid is sometimes ZERO-PADDED (``RECEIPT#00001``) and sometimes NOT
+    (``ReceiptChatGPTValidation`` uses ``RECEIPT#1#...``), so we scan the broad
+    ``RECEIPT#`` prefix and hard-filter on the rid token (padded OR unpadded) —
+    this both catches the unpadded records and prevents sibling bleed. Some
+    receipt-scoped records also live in a DIFFERENT partition (``ReceiptField`` is
+    ``PK=FIELD#...``); those are found via GSI1 (``GSI1PK=IMAGE#{id}``,
+    ``GSI1SK=RECEIPT#{rid:05d}#FIELD#...``).
     """
     pk = f"IMAGE#{image_id}"
-    sk_prefix = f"RECEIPT#{receipt_id:05d}"
-    want = f"{receipt_id:05d}"
+    padded, unpadded = f"{receipt_id:05d}", str(receipt_id)
     out, lek = [], None
+    # main table: all receipt-scoped items under IMAGE# (padded or unpadded rid)
     while True:
         kw = dict(
             TableName=dynamo.table_name,
             KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
             ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-            ExpressionAttributeValues={":pk": {"S": pk}, ":sk": {"S": sk_prefix}},
+            ExpressionAttributeValues={":pk": {"S": pk}, ":sk": {"S": "RECEIPT#"}},
         )
         if lek:
             kw["ExclusiveStartKey"] = lek
         resp = dynamo._client.query(**kw)
         for it in resp.get("Items", []):
             parts = it["SK"]["S"].split("#")
-            if len(parts) >= 2 and parts[0] == "RECEIPT" and parts[1] == want:
+            if len(parts) >= 2 and parts[0] == "RECEIPT" and parts[1] in (padded, unpadded):
                 out.append(it)
+        lek = resp.get("LastEvaluatedKey")
+        if not lek:
+            break
+    # FIELD# partition: ReceiptField records, located via GSI1 (keys projected).
+    lek = None
+    while True:
+        try:
+            kw = dict(
+                TableName=dynamo.table_name,
+                IndexName="GSI1",
+                KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
+                ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
+                ExpressionAttributeValues={
+                    ":pk": {"S": pk}, ":sk": {"S": f"RECEIPT#{padded}#FIELD#"}},
+            )
+            if lek:
+                kw["ExclusiveStartKey"] = lek
+            resp = dynamo._client.query(**kw)
+        except Exception:
+            break  # no GSI1 / no field records
+        out.extend(resp.get("Items", []))
         lek = resp.get("LastEvaluatedKey")
         if not lek:
             break

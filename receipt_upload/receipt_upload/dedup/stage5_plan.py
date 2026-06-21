@@ -86,9 +86,11 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
             _word_list(words_by, k), totals.get(k), merchants.get(k)
         )
 
-    # build the denylist from the full candidate universe (every member of every group)
-    universe = {tuple(k) for g in groups for k in g if tuple(k) in rec}
-    denylist = frequent_ids([fp(k) for k in universe])
+    # Build the recurring-id denylist over the FULL loaded table (`rec`), not just
+    # the supplied group subset — otherwise a terminal/card/AID that recurs across
+    # the corpus but appears only twice in `--groups` would not be denylisted, and
+    # two different visits sharing it could be approved as a near-dup.
+    denylist = frequent_ids([fp(k) for k in rec])
 
     kept, rejected = [], []
     for g in groups:
