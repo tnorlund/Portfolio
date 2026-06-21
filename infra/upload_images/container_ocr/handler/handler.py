@@ -72,20 +72,22 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     embedding_skipped_count = 0
     total_ocr_duration = 0.0
     total_embedding_duration = 0.0
+    # Messages to redrive (the llm-validation mapping reports these so SQS
+    # retries / DLQs them instead of silently deleting on a swallowed error).
+    batch_item_failures: list[Dict[str, str]] = []
+    llm_validation_failures = 0
 
     for record in event.get("Records", []):
+        # Two queues feed this Lambda. An async LLM-validation message is a
+        # small pointer ({s3_bucket, s3_key, image_id, receipt_id}) with no
+        # "job_id"; route it to the deferred grok runner. Everything else is
+        # an OCR job.
+        is_llm_record = _is_llm_validation_record(record)
         try:
-            # Two queues feed this Lambda. An async LLM-validation message is a
-            # small pointer ({s3_bucket, s3_key, image_id, receipt_id}) with no
-            # "job_id"; route it to the deferred grok runner. Everything else is
-            # an OCR job.
-            if _is_llm_validation_record(record):
+            if is_llm_record:
                 result = _process_llm_validation_record(record)
                 results.append(result)
-                if result.get("success"):
-                    success_count += 1
-                else:
-                    error_count += 1
+                success_count += 1
                 continue
 
             result = _process_single_record(record, image_type_counts)
@@ -125,6 +127,13 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             )
             results.append({"success": False, "error": str(exc)})
             error_count += 1
+            if is_llm_record:
+                # Report for redrive instead of swallowing — otherwise the
+                # message is deleted and the labels stay PENDING forever.
+                llm_validation_failures += 1
+                mid = record.get("messageId")
+                if mid:
+                    batch_item_failures.append({"itemIdentifier": mid})
 
     # Record aggregated metrics
     execution_time = time.time() - start_time
@@ -139,6 +148,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             "UploadLambdaEmbeddingSuccess": embedding_success_count,
             "UploadLambdaEmbeddingFailed": embedding_failed_count,
             "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
+            # Deferred-grok consumer failures (redriven to DLQ). Alarm on >0 so a
+            # grok/OpenRouter outage or bad payload is never silently dropped.
+            "UploadLambdaLLMValidationFailed": llm_validation_failures,
         }
     )
 
@@ -183,8 +195,12 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     # This ensures all validation/merchant resolution decisions are logged
     flush_traces()
 
+    # The llm-validation mapping has ReportBatchItemFailures enabled, so SQS
+    # redrives any messageId returned here (and DLQs it after maxReceiveCount).
+    # The OCR-results mapping does not enable it, so this field is ignored there.
     return {
         "statusCode": 200,
+        "batchItemFailures": batch_item_failures,
         "body": json.dumps(
             {
                 "message": "OCR results processed",

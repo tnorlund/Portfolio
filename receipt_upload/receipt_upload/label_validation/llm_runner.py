@@ -154,14 +154,25 @@ def apply_llm_results(
     dynamo: Any,
     word_labels: List[ReceiptWordLabel],
     merchant_name: Optional[str] = None,
+    raise_on_failure: bool = False,
 ) -> int:
     """Run the LLM validator over the pending labels and persist the decisions.
 
-    Verbatim port of the previously inline block. Returns the number of labels
-    the LLM resolved. On any LLM failure the transient (non-core) labels are
-    cleaned up, identical to the original behavior.
+    Returns the number of labels the LLM resolved.
+
+    ``raise_on_failure`` controls what happens when the LLM call itself fails:
+
+    * ``False`` (sync upload path): swallow the error and clean up the transient
+      (non-core) labels — the upload must still succeed; identical to the
+      original inline behavior.
+    * ``True`` (async consumer): re-raise so the caller can report a batch-item
+      failure and SQS redrives the message. The pending labels are left intact
+      (NOT cleaned up) so the retry can validate them — never silently dropped.
     """
     from receipt_agent.constants import CORE_LABELS
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityAlreadyExistsError,
+    )
 
     from receipt_upload.label_validation.llm_validator import (
         LLMBatchValidator,
@@ -250,7 +261,12 @@ def apply_llm_results(
                             label_proposed_by=f"llm_corrected:{label.label}",
                             label_consolidated_from=label.label,
                         )
-                        dynamo.add_receipt_word_label(new_label)
+                        try:
+                            dynamo.add_receipt_word_label(new_label)
+                        except EntityAlreadyExistsError:
+                            # Idempotent on redelivery: a prior attempt already
+                            # created this corrected label. Treat as done.
+                            pass
                         word_labels.append(new_label)
                         llm_validated += 1
                     else:
@@ -289,6 +305,10 @@ def apply_llm_results(
         import logging
 
         logging.getLogger(__name__).warning("LLM validation failed: %s", e)
+        if raise_on_failure:
+            # Async consumer: don't clean up — leave the pending labels intact
+            # and propagate so SQS redrives (and eventually DLQs) the message.
+            raise
         for label in needed_labels:
             _delete_non_core_label(
                 dynamo=dynamo,
@@ -391,7 +411,12 @@ def build_async_payload(
 
 
 def apply_async_payload(payload: Dict[str, Any], dynamo: Any) -> int:
-    """Run grok + persist for a payload produced by ``build_async_payload``."""
+    """Run grok + persist for a payload produced by ``build_async_payload``.
+
+    Raises on LLM failure so the consumer Lambda can report a batch-item failure
+    (SQS redrives, then DLQs) instead of silently dropping the validation and
+    leaving labels at PENDING.
+    """
     needed_labels = [_label_from_jsonable(d) for d in payload.get("needed_labels", [])]
     # A local working list so _delete_non_core_label has something to mutate;
     # the authoritative writes go straight to DynamoDB inside apply_llm_results.
@@ -406,4 +431,5 @@ def apply_async_payload(payload: Dict[str, Any], dynamo: Any) -> int:
         dynamo=dynamo,
         word_labels=word_labels,
         merchant_name=payload.get("merchant_name"),
+        raise_on_failure=True,
     )

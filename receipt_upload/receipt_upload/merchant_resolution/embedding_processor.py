@@ -823,10 +823,15 @@ def _run_words_pipeline_worker(
                             llm_deferred = len(llm_needed)
                         except Exception as e:
                             # Never leave labels dangling PENDING: if the hand-off
-                            # fails, validate inline.
+                            # fails, validate inline. Distinct marker so a log
+                            # metric filter can alarm — a systemic enqueue failure
+                            # (dropped queue URL, tightened IAM) would otherwise
+                            # silently revert the latency win with no signal.
                             logger.warning(
-                                "Async LLM hand-off failed (%s); "
-                                "running validation inline",
+                                "[LLM_ASYNC_FALLBACK] enqueue failed for "
+                                "%s#%s (%s); running validation inline",
+                                image_id,
+                                receipt_id,
                                 e,
                             )
                             llm_validated = run_llm_validation_sync(

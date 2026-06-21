@@ -45,23 +45,61 @@ def _keys(labels):
     return {(l.line_id, l.word_id) for l in labels}
 
 
-def test_keeps_lowest_invalidates_equal_value_duplicates():
+_PENDING = ValidationStatus.PENDING.value
+
+
+def test_all_pending_keeps_lowest_invalidates_rest():
     # y is bottom-origin: header high-y, the final total prints lowest (smallest y).
     words = [
         _w(40, 1, "$43.94", 0.72, 0.30),  # "Balance to pay"
         _w(41, 1, "$43.94", 0.72, 0.22),  # bare total
-        _w(
-            54, 1, "$43.94", 0.72, 0.10
-        ),  # "TOTAL PURCHASE" — lowest, canonical
+        _w(54, 1, "$43.94", 0.72, 0.10),  # "TOTAL PURCHASE" — lowest, canonical
     ]
     labels = [
-        _label(40, 1, "GRAND_TOTAL"),
-        _label(41, 1, "GRAND_TOTAL"),
-        _label(54, 1, "GRAND_TOTAL"),
+        _label(40, 1, "GRAND_TOTAL", _PENDING),
+        _label(41, 1, "GRAND_TOTAL", _PENDING),
+        _label(54, 1, "GRAND_TOTAL", _PENDING),
     ]
     redundant = dedupe_grand_total(words, labels)
     # canonical (lowest cy => smallest y) is L54; the two above are redundant
     assert _keys(redundant) == {(40, 1), (41, 1)}
+    assert all(l.validation_status == _PENDING for l in redundant)
+
+
+def test_confirmed_copy_is_canonical_only_pending_dropped():
+    """A VALID (human/validator) copy is canonical and never invalidated; only
+    its PENDING duplicates are reported."""
+    words = [
+        _w(40, 1, "$43.94", 0.72, 0.30),
+        _w(41, 1, "$43.94", 0.72, 0.22),
+        _w(54, 1, "$43.94", 0.72, 0.10),
+    ]
+    labels = [
+        _label(40, 1, "GRAND_TOTAL", _PENDING),
+        _label(41, 1, "GRAND_TOTAL", _PENDING),
+        _label(54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value),  # confirmed
+    ]
+    redundant = dedupe_grand_total(words, labels)
+    # The VALID copy is NEVER returned; both PENDING dupes are.
+    assert _keys(redundant) == {(40, 1), (41, 1)}
+    assert (54, 1) not in _keys(redundant)
+    assert all(l.validation_status == _PENDING for l in redundant)
+
+
+def test_multiple_confirmed_copies_abstain():
+    """With >=2 deliberate (VALID) copies we don't reconcile — never override."""
+    words = [
+        _w(40, 1, "$43.94", 0.72, 0.30),
+        _w(41, 1, "$43.94", 0.72, 0.22),
+        _w(54, 1, "$43.94", 0.72, 0.10),
+    ]
+    labels = [
+        _label(40, 1, "GRAND_TOTAL", _PENDING),
+        _label(41, 1, "GRAND_TOTAL", ValidationStatus.VALID.value),
+        _label(54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value),
+    ]
+    # Two VALID copies -> abstain entirely, even the PENDING one is left alone.
+    assert dedupe_grand_total(words, labels) == []
 
 
 def test_single_grand_total_is_untouched():

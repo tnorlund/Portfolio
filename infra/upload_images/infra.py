@@ -149,17 +149,38 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Dead-letter queue for the async LLM validation queue. A grok failure
+        # (OpenRouter outage, malformed payload) must NOT silently drop the
+        # message and strand labels at PENDING — after maxReceiveCount redrives
+        # the message lands here for inspection/replay instead of being lost.
+        self.llm_validation_dlq = Queue(
+            f"{name}-llm-validation-dlq",
+            name=f"{name}-{stack}-llm-validation-dlq",
+            message_retention_seconds=1209600,  # 14 days
+            tags={
+                "Purpose": "Async LLM Label Validation DLQ",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
         # Queue for deferred (async) LLM label validation. When the words
         # pipeline runs with LLM_VALIDATION_ASYNC=true it stages the grok payload
         # on S3 and drops a pointer here; the process_ocr Lambda consumes it off
-        # the upload critical path. Visibility >= the consumer Lambda timeout.
+        # the upload critical path. Visibility > the consumer Lambda timeout
+        # (900s) for redelivery headroom; failed messages redrive to the DLQ.
         self.llm_validation_queue = Queue(
             f"{name}-llm-validation-queue",
             name=f"{name}-{stack}-llm-validation-queue",
-            visibility_timeout_seconds=900,
+            visibility_timeout_seconds=960,
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,
-            redrive_policy=None,
+            redrive_policy=self.llm_validation_dlq.arn.apply(
+                lambda arn: json.dumps(
+                    {"deadLetterTargetArn": arn, "maxReceiveCount": 3}
+                )
+            ),
             tags={
                 "Purpose": "Async LLM Label Validation",
                 "Component": name,
@@ -599,13 +620,16 @@ class UploadImages(ComponentResource):
 
         # Deferred LLM-validation messages feed the SAME Lambda (content-routed
         # in the handler). batch_size=1 so each grok run is independent and a
-        # slow one can't hold up a batch.
+        # slow one can't hold up a batch. ReportBatchItemFailures lets the
+        # handler signal a failed message so SQS redrives it (and eventually
+        # DLQs it) instead of treating a 200 return as success and deleting it.
         aws.lambda_.EventSourceMapping(
             f"{name}-llm-validation-mapping",
             event_source_arn=self.llm_validation_queue.arn,
             function_name=process_ocr_lambda.name,
             batch_size=1,
             enabled=True,
+            function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
 

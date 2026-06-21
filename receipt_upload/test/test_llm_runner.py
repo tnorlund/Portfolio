@@ -112,7 +112,7 @@ class _FakeDynamo:
         self.deleted.append(label)
 
 
-def _install_stubs(results):
+def _install_stubs(results, raises=None):
     """Stub receipt_agent.constants + the LLM validator module in sys.modules."""
     const = types.ModuleType("receipt_agent.constants")
     const.CORE_LABELS = _CORE
@@ -125,6 +125,8 @@ def _install_stubs(results):
             pass
 
         def validate_receipt_labels(self, **kwargs):
+            if raises is not None:
+                raise raises
             return results
 
     validator_mod.LLMBatchValidator = _FakeValidator
@@ -203,3 +205,58 @@ def test_apply_async_payload_valid_invalid_and_correction():
     assert statuses[(5, 2)] == ValidationStatus.VALID.value
     assert statuses[(6, 1)] == ValidationStatus.INVALID.value
     assert statuses[(7, 1)] == ValidationStatus.INVALID.value
+
+
+def _payload(needed):
+    return {
+        "version": 1,
+        "image_id": IMAGE_ID,
+        "receipt_id": 1,
+        "table_name": "tbl",
+        "merchant_name": None,
+        "llm_words_context": [],
+        "pending_labels_data": [],
+        "similar_evidence": {},
+        "needed_labels": [m._label_to_jsonable(l) for l in needed],
+    }
+
+
+def test_apply_async_payload_raises_on_llm_failure_and_keeps_labels():
+    """A grok failure must propagate (so the consumer reports a batch-item
+    failure → SQS redrive/DLQ) and must NOT clean up the pending labels."""
+    needed = [_label(5, 2, "PRODUCT_NAME")]
+    dynamo = _FakeDynamo()
+    saved = _install_stubs([], raises=RuntimeError("openrouter 503"))
+    try:
+        raised = False
+        try:
+            m.apply_async_payload(_payload(needed), dynamo)
+        except RuntimeError:
+            raised = True
+    finally:
+        _restore(saved)
+    assert raised, "apply_async_payload must re-raise on LLM failure"
+    # Labels left intact for retry — nothing deleted.
+    assert dynamo.deleted == []
+
+
+def test_apply_async_payload_idempotent_on_duplicate_correction():
+    """On redelivery the corrected label already exists; a duplicate add must be
+    swallowed (EntityAlreadyExistsError) and still count as resolved."""
+    from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+
+    needed = [_label(6, 1, "ADDRESS_LINE")]
+    results = [_result(6, 1, "INVALID", "MERCHANT_NAME")]
+
+    class _DupDynamo(_FakeDynamo):
+        def add_receipt_word_label(self, label):
+            raise EntityAlreadyExistsError("already exists")
+
+    dynamo = _DupDynamo()
+    saved = _install_stubs(results)
+    try:
+        n = m.apply_async_payload(_payload(needed), dynamo)
+    finally:
+        _restore(saved)
+    # Did not crash; the correction is counted despite the duplicate add.
+    assert n == 1
