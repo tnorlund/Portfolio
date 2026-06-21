@@ -12,8 +12,9 @@ be left with zero receipts. This removes such orphaned images completely:
 ``RECEIPT`` items. Multi-receipt images and survivors are refused.
 
 DRY-RUN unless ``apply=True``. On apply a restore bundle is written first (the
-raw DynamoDB items + the downloaded S3 objects), and ``rollback_cleanup`` re-puts
-the items and re-uploads the objects — because the sitebucket has no versioning.
+raw DynamoDB items + the downloaded S3 objects), and ``rollback_cleanup``
+re-puts the items and re-uploads the objects — because the sitebucket has no
+versioning.
 """
 
 from __future__ import annotations
@@ -59,18 +60,19 @@ class ImageCleanup:
 def image_s3_targets(image) -> List[S3Obj]:
     """Extract the raw + CDN S3 objects to delete for an Image entity (pure).
 
-    The bucket is unversioned and CDN/raw pointers can be crossed, so every key is
+    The bucket is unversioned and CDN/raw pointers can be crossed, so every key
+    is
     OWNERSHIP-CHECKED: the S3 key convention embeds the image_id
-    (``raw/{image_id}.png``, ``assets/{image_id}...``). A key that does not contain
-    this image's id is skipped (it points at another image's pixels) and surfaced
-    in ``skipped_foreign``.
+    (``raw/{image_id}.png``, ``assets/{image_id}...``). A key that does not
+    contain this image's id is skipped (it points at another image's pixels)
+    and surfaced in ``skipped_foreign``.
     """
     image_id = getattr(image, "image_id", None)
     out: List[S3Obj] = []
 
     def add(bucket, key):
-        # ownership guard: the key must embed this image's id, else it points at
-        # another image's pixels (crossed pointer) — never delete it.
+        # ownership guard: the key must embed this image's id, else it points
+        # at another image's pixels (crossed pointer) — never delete it.
         if bucket and key and (not image_id or image_id in key):
             out.append(S3Obj(bucket, key))
 
@@ -201,7 +203,8 @@ def execute_cleanup(
             # then delete. The bucket is unversioned, so the manifest (which
             # points at the downloaded local copies) must be durable before any
             # delete — if a later delete fails or the process dies,
-            # rollback_cleanup can still re-upload every already-deleted object.
+            # rollback_cleanup can still re-upload every already-deleted
+            # object.
             obj_manifest = []
             for o in c.s3_objects:
                 local = os.path.join(backup_dir, "s3", o.bucket, o.key)
@@ -224,10 +227,10 @@ def execute_cleanup(
                 s3.delete_object(Bucket=o["bucket"], Key=o["key"])
                 report["s3_deleted"] += 1
             # 4) delete EXACTLY the items we backed up (not a fresh re-query).
-            # delete_image_details re-queries PK=IMAGE#{id} independently, so an
-            # item written between the backup query and the delete query would be
-            # deleted but absent from the restore bundle (TOCTOU). Delete the
-            # captured `items` directly so backup-set == delete-set.
+            # delete_image_details re-queries PK=IMAGE#{id} independently, so
+            # an item written between the backup query and the delete query
+            # would be deleted but absent from the restore bundle (TOCTOU).
+            # Delete the captured `items` directly so backup-set == delete-set.
             for it in items:
                 client.delete_item(
                     TableName=dynamo.table_name,

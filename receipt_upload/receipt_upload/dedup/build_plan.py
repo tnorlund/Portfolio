@@ -2,9 +2,9 @@
 
 Usage: python -m receipt_upload.dedup.build_plan --env dev --out merge_plan.json
 
-Runs the full deterministic pipeline (group by receipt-sha -> dossiers ->
-merge resolutions) and writes one reviewable plan. Mutates nothing; applying the
-plan is a separate, gated step.
+Runs the full deterministic pipeline (group by receipt-sha -> dossiers -> merge
+resolutions) and writes one reviewable plan. Mutates nothing; applying the plan
+is a separate, gated step.
 """
 
 from __future__ import annotations

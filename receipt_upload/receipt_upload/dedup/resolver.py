@@ -1,6 +1,7 @@
 """Stage 2 — deterministic duplicate MERGE plan (survivor + VALID gap-fills).
 
-Merging duplicates is a dedup problem, not a label-adjudication problem. We pick
+Merging duplicates is a dedup problem, not a label-adjudication problem. We
+pick
 the highest-label-quality copy as the **survivor** and trust its labels. The only
 thing the inferior copies can add is a label on a word the survivor *doesn't
 label at all* — a **gap-fill**. We only ever copy a ``VALID`` label into an empty
@@ -60,7 +61,8 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     drop = sorted(k for k in members if k != survivor)
 
     # A survivor word is OCCUPIED if it already has ANY meaningful label
-    # (canonical OR legacy) — we never adjudicate over the survivor's own label.
+    # (canonical OR legacy) — we never adjudicate over the survivor's own
+    # label.
     occupied = {
         o["pos"] for o in sm.labels if o.get("kind") in ("canonical", "legacy")
     }
@@ -80,7 +82,8 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
             return None
         return positions[0]
 
-    # collect VALID canonical labels from dropped copies, keyed by survivor target
+    # collect VALID canonical labels from dropped copies, keyed by survivor
+    # target
     candidates: Dict[str, List[dict]] = {}
     skipped: List[dict] = []
     for k in drop:
@@ -124,7 +127,8 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
                 )
             )
         else:
-            # dropped copies VALID-disagree on the same survivor word: don't guess.
+            # dropped copies VALID-disagree on the same survivor word: don't
+            # guess.
             skipped.append(
                 {
                     "locus": pos,

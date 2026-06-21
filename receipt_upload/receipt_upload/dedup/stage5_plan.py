@@ -1,11 +1,13 @@
 """Stage 5 — build a merge plan for confirmed CROSS-IMAGE near-duplicates
 (re-scans / re-photos / reprints: same transaction, different pixels).
 
-Input is a list of candidate groups (image#rid keys). Each group is GATED by the
+Input is a list of candidate groups (image#rid keys). Each group is GATED by
+the
 transaction-identity check (:mod:`near_dup`) — a group is only kept if every
-member is provably the same transaction as the survivor (shared auth/transaction
-id, or identical total + item prices). Confirmed groups go through the same
-resolver as the byte-identical path, producing a plan the Stage 3 executor
+member is provably the same transaction as the survivor (shared
+auth/transaction id, or identical total + item prices). Confirmed groups go
+through the same resolver as the byte-identical path, producing a plan the
+Stage 3 executor
 (:mod:`apply`) consumes unchanged.
 """
 
@@ -72,18 +74,19 @@ def _word_list(words_by, key):
     return [t for _, t in sorted(words_by.get(key, {}).items())]
 
 
-# A real near-dup group is a small set of copies of one receipt. A large group is
-# almost always a false bridge through a shared recurring code — refuse it.
+# A real near-dup group is a small set of copies of one receipt. A large group
+# is almost always a false bridge through a shared recurring code — refuse it.
 _MAX_GROUP_SIZE = 6
 
 
 def gate_groups(groups, rec, words_by, totals, merchants=None):
     """Keep a group only if EVERY pair of members is the same transaction.
 
-    Pairwise (clique), not star-shaped against member 0 — so a single corrupted /
-    cross-wired member can't validate the rest by bridging through the anchor.
-    A corpus-frequency denylist excludes recurring ids (card/terminal/AID codes)
-    before matching, and oversized groups are rejected outright.
+    Pairwise (clique), not star-shaped against member 0 — so a single corrupted
+    / cross-wired member can't validate the rest by bridging through the
+    anchor. A corpus-frequency denylist excludes recurring ids
+    (card/terminal/AID codes) before matching, and oversized groups are
+    rejected outright.
     """
     merchants = merchants or {}
 
@@ -92,10 +95,11 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
             _word_list(words_by, k), totals.get(k), merchants.get(k)
         )
 
-    # Build the recurring-id denylist over the FULL loaded table (`rec`), not just
-    # the supplied group subset — otherwise a terminal/card/AID that recurs across
-    # the corpus but appears only twice in `--groups` would not be denylisted, and
-    # two different visits sharing it could be approved as a near-dup.
+    # Build the recurring-id denylist over the FULL loaded table (`rec`), not
+    # just the supplied group subset — otherwise a terminal/card/AID that
+    # recurs across the corpus but appears only twice in `--groups` would not
+    # be denylisted, and two different visits sharing it could be approved as a
+    # near-dup.
     denylist = frequent_ids([fp(k) for k in rec])
 
     kept, rejected = [], []

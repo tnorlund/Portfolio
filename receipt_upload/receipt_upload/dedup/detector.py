@@ -4,14 +4,15 @@ Pure functions over receipt records + lookups (no I/O), so they're testable and
 reusable in a batch Lambda or a one-off script.
 
 - **Tier 0 — exact:** group receipts by their raw-pixel ``sha256``. Byte-identical
-  pixels cannot coincide across distinct receipts, so these are safe to AUTO-MERGE
-  (100% precision; the hash is precomputed on the Receipt entity).
+  pixels cannot coincide across distinct receipts, so these are safe to
+  AUTO-MERGE (100% precision; the hash is precomputed on the Receipt entity).
 - **Tier 1 — content signature:** group by ``(canonical_place_id, grand_total,
-  item_count)``. This catches re-cropped / re-scanned copies that have a different
-  ``sha256`` but the same transaction. It can false-positive (two real visits to
-  the same store with the same total + item count), so it only generates
-  candidates to FLAG FOR REVIEW — never auto-merge. (Date would tighten this
-  further but isn't in the bulk summary; add it as a Tier-1.5 refinement.)
+  item_count)``. This catches re-cropped / re-scanned copies that have a
+  different ``sha256`` but the same transaction. It can false-positive (two
+  real visits to the same store with the same total + item count), so it only
+  generates candidates to FLAG FOR REVIEW — never auto-merge. (Date would
+  tighten this further but isn't in the bulk summary; add it as a Tier-1.5
+  refinement.)
 
 A "keeper" is chosen per group as the highest-resolution receipt (width*height),
 tie-broken deterministically; the others are the duplicates.
@@ -45,7 +46,8 @@ def _key(r) -> Key:
 
 
 def _pick_keeper(records: List) -> object:
-    # Highest resolution wins; deterministic tie-break by (image_id, receipt_id).
+    # Highest resolution wins; deterministic tie-break by (image_id,
+    # receipt_id).
     return max(
         records, key=lambda r: (_resolution(r), r.image_id, r.receipt_id)
     )
@@ -103,11 +105,12 @@ def find_signature_candidates(
 ) -> List[DupGroup]:
     """Tier 1: group receipts that share a content ``signature``.
 
-    ``signature_lookup`` maps each receipt key to a precomputed signature string
+    ``signature_lookup`` maps each receipt key to a precomputed signature
+    string
     (e.g. ``"pid:...|42.54|2024-03-13|7"``) or ``None`` when the receipt lacks the
-    fields to form one. ``exclude_pairs`` is a set of ``frozenset({keyA, keyB})``
-    already merged by Tier 0 — groups whose every pair is already exact are
-    skipped so this only surfaces NEW candidates.
+    fields to form one. ``exclude_pairs`` is a set of ``frozenset({keyA,
+    keyB})`` already merged by Tier 0 — groups whose every pair is already
+    exact are skipped so this only surfaces NEW candidates.
     """
     exclude_pairs = exclude_pairs or set()
     by_sig: Dict[str, List] = {}
@@ -150,7 +153,8 @@ def detect_duplicates(
     """Run Tier 0 + Tier 1 and return a structured report."""
     exact = find_exact_duplicates(receipts)
     exclude_pairs = set()
-    # exclude every within-exact-group pair so Tier 1 only surfaces NEW candidates
+    # exclude every within-exact-group pair so Tier 1 only surfaces NEW
+    # candidates
     for g in exact:
         members = [g.keeper] + g.duplicates
         for a, b in combinations(members, 2):

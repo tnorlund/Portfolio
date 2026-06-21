@@ -9,7 +9,8 @@ into concrete DynamoDB operations:
     lines, letters, metadata). The parent **Image is never deleted** — within-image
     phantom groups keep the image and its survivor receipt.
 
-``plan_operations`` is pure (no I/O) and unit-testable. ``execute`` performs the
+``plan_operations`` is pure (no I/O) and unit-testable. ``execute`` performs
+the
 work but is **dry-run unless ``apply=True``** is passed explicitly, and dry-run
 requires no AWS access at all.
 """
@@ -71,19 +72,21 @@ def _receipt_subtree_items(
 ) -> List[dict]:
     """Every raw DynamoDB item owned by one receipt.
 
-    Most children share ``PK = IMAGE#{image_id}`` with an SK ``RECEIPT#{rid}#...``,
-    but the rid is sometimes ZERO-PADDED (``RECEIPT#00001``) and sometimes NOT
-    (``ReceiptChatGPTValidation`` uses ``RECEIPT#1#...``), so we scan the broad
-    ``RECEIPT#`` prefix and hard-filter on the rid token (padded OR unpadded) —
-    this both catches the unpadded records and prevents sibling bleed. Some
-    receipt-scoped records also live in a DIFFERENT partition (``ReceiptField`` is
-    ``PK=FIELD#...``); those are found via GSI1 (``GSI1PK=IMAGE#{id}``,
+    Most children share ``PK = IMAGE#{image_id}`` with an SK
+    ``RECEIPT#{rid}#...``, but the rid is sometimes ZERO-PADDED
+    (``RECEIPT#00001``) and sometimes NOT (``ReceiptChatGPTValidation`` uses
+    ``RECEIPT#1#...``), so we scan the broad ``RECEIPT#`` prefix and
+    hard-filter on the rid token (padded OR unpadded) — this both catches the
+    unpadded records and prevents sibling bleed. Some receipt-scoped records
+    also live in a DIFFERENT partition (``ReceiptField`` is ``PK=FIELD#...``);
+    those are found via GSI1 (``GSI1PK=IMAGE#{id}``,
     ``GSI1SK=RECEIPT#{rid:05d}#FIELD#...``).
     """
     pk = f"IMAGE#{image_id}"
     padded, unpadded = f"{receipt_id:05d}", str(receipt_id)
     out: List[dict] = []
-    # main table: all receipt-scoped items under IMAGE# (padded or unpadded rid)
+    # main table: all receipt-scoped items under IMAGE# (padded or unpadded
+    # rid)
     for it in paginate(
         dynamo,
         TableName=dynamo.table_name,
@@ -98,7 +101,8 @@ def _receipt_subtree_items(
             and parts[1] in (padded, unpadded)
         ):
             out.append(it)
-    # FIELD# partition: ReceiptField records, located via GSI1 (keys projected).
+    # FIELD# partition: ReceiptField records, located via GSI1 (keys
+    # projected).
     try:
         out.extend(
             paginate(
@@ -176,10 +180,11 @@ def execute(
 
     Dry-run performs NO reads or writes and needs no ``dynamo`` client.
 
-    When ``apply=True`` and ``backup_path`` is given, a complete restore file is
+    When ``apply=True`` and ``backup_path`` is given, a complete restore file
+    is
     written BEFORE any mutation: the raw DynamoDB item of every entity about to be
-    deleted plus the key of every label about to be added. ``rollback()`` consumes
-    that file to fully reverse the operation.
+    deleted plus the key of every label about to be added. ``rollback()``
+    consumes that file to fully reverse the operation.
     """
     report = {
         "dry_run": not apply,
@@ -199,13 +204,15 @@ def execute(
 
     if dynamo is None:
         raise ValueError("apply=True requires a dynamo client")
-    # A real mutation must always be reversible — never delete without a backup.
+    # A real mutation must always be reversible — never delete without a
+    # backup.
     if not backup_path:
         raise ValueError(
             "apply=True requires backup_path (deletions must be recoverable)"
         )
 
-    # Build label entities up front (needed for both backup keys and the writes).
+    # Build label entities up front (needed for both backup keys and the
+    # writes).
     labels_to_add = [
         (
             a,
@@ -322,7 +329,8 @@ def _delete_drops(dynamo, drop_subtrees, failed_sources, report) -> None:
 
 def rollback(backup_path: str, dynamo) -> dict:
     """Reverse an apply: delete added labels, then re-put every deleted item and
-    restore any label that was OVERWRITTEN by a gap-fill update (so a pre-existing
+    restore any label that was OVERWRITTEN by a gap-fill update (so a
+    pre-existing
     label is recovered instead of being left deleted)."""
     with open(backup_path, encoding="utf-8") as f:
         data = json.load(f)

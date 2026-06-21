@@ -16,8 +16,8 @@ from receipt_dynamo.data.shared_exceptions import ReceiptDynamoError
 
 # Failures from the AWS SDK (S3 / low-level DynamoDB) we surface, not crash on.
 AWS_ERRORS = (ClientError, BotoCoreError)
-# High-level receipt_dynamo calls wrap AWS errors as ReceiptDynamoError; include
-# the raw AWS errors too for the low-level ``_client`` calls.
+# High-level receipt_dynamo calls wrap AWS errors as ReceiptDynamoError;
+# include the raw AWS errors too for the low-level ``_client`` calls.
 DYNAMO_ERRORS = (ReceiptDynamoError, ClientError, BotoCoreError)
 
 

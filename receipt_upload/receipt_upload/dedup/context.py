@@ -7,18 +7,19 @@ This is **stage 1** of a two-stage merge pipeline:
 A ``MergeDossier`` is the *necessary context* an LLM needs to safely merge a set
 of duplicate receipts: the members, the consolidated label union, the explicit
 label conflicts to resolve, a survivor ranking by label quality, and any
-non-canonical "junk" labels to strip. The pass is pure (no I/O) and deterministic
-so it's cheap, reproducible, and testable.
+non-canonical "junk" labels to strip. The pass is pure (no I/O) and
+deterministic so it's cheap, reproducible, and testable.
 
 Key design decision (see dedup analysis): duplicates are anchored on the
 **receipt-level sha256** of the raw receipt pixels, which is provably reliable
-(100% precision in verification). Receipts that share a sha256 are byte-identical
+(100% precision in verification). Receipts that share a sha256 are
+byte-identical
 crops of the same physical receipt, whether they live on the *same* parent image
 (segmenter mis-split) or *different* images (re-uploaded photo / re-scanned
 receipt). The whole-photo *image* sha256 is deliberately NOT used as an anchor:
 early-dev uploads reused non-unique raw keys (``raw-receipts/receipt.png``), so
-image hashes collide across unrelated merchants. Real image re-uploads are still
-caught here because their receipt crops are byte-identical.
+image hashes collide across unrelated merchants. Real image re-uploads are
+still caught here because their receipt crops are byte-identical.
 """
 
 from __future__ import annotations
@@ -39,9 +40,9 @@ CANONICAL_LABELS = set(CORE_LABELS)
 
 _TEXT_LIMIT = 1500
 
-# Safe legacy/model aliases -> canonical (extends the shared production map with
-# the older taxonomy seen in historical dev labels). Only mappings with a single
-# unambiguous canonical target belong here.
+# Safe legacy/model aliases -> canonical (extends the shared production map
+# with the older taxonomy seen in historical dev labels). Only mappings with a
+# single unambiguous canonical target belong here.
 _SAFE_ALIASES: Dict[str, str] = {
     **NON_CORE_LABEL_ALIASES,  # ADDRESS, BUSINESS_NAME, CARD_NUMBER, PAYMENT_TYPE
     "PHONE": "PHONE_NUMBER",
@@ -51,10 +52,10 @@ _SAFE_ALIASES: Dict[str, str] = {
     "ITEM_TOTAL": "LINE_TOTAL",
     "TENDER": "PAYMENT_METHOD",
 }
-# Meaningful but AMBIGUOUS legacy labels — a word genuinely carries this concept
-# but it can map to >1 canonical label, so it is NOT auto-mapped (left for an
-# optional label-quality pass). ITEM_PRICE is ambiguous: an "item price" can be a
-# per-unit UNIT_PRICE or the extended LINE_TOTAL shown on the line.
+# Meaningful but AMBIGUOUS legacy labels — a word genuinely carries this
+# concept but it can map to >1 canonical label, so it is NOT auto-mapped (left
+# for an optional label-quality pass). ITEM_PRICE is ambiguous: an "item price"
+# can be a per-unit UNIT_PRICE or the extended LINE_TOTAL shown on the line.
 _AMBIGUOUS_LEGACY = {"AMOUNT", "TOTAL", "ITEM", "ITEM_PRICE"}
 # Looks like a raw value rather than a label name (e.g. "4453.62", "$3.266EA").
 _NUMBERISH = re.compile(
@@ -146,7 +147,8 @@ class MemberContext:
     junk_labels: List[str]
     same_image_as_group: bool
     labels: List[Dict] = field(default_factory=list)  # per-word observations
-    # full (UNtruncated) word_text -> ["line:word", ...]; for gap-fill targeting
+    # full (UNtruncated) word_text -> ["line:word", ...]; for gap-fill
+    # targeting
     word_index: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
@@ -443,9 +445,10 @@ def build_merge_dossiers(
     labels_by_receipt
         ``{(image_id, receipt_id): [LabelObs, ...]}``.
     """
-    # Key on (sha256, width, height): identical raw-pixel bytes only prove a true
-    # duplicate when the dimensions match too — same tobytes() across different
-    # dims can collide for blank/uniform failed crops (sha hashes pixels only).
+    # Key on (sha256, width, height): identical raw-pixel bytes only prove a
+    # true duplicate when the dimensions match too — same tobytes() across
+    # different dims can collide for blank/uniform failed crops (sha hashes
+    # pixels only).
     by_sha: Dict[Tuple, List] = {}
     for r in receipts:
         sha = getattr(r, "sha256", None)

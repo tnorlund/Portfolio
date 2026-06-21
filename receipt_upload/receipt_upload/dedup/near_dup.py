@@ -25,7 +25,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 _LONG_ID = re.compile(r"\d{5,}")
-# "Check #239" / "Trans 54226" / "Order 149590" — a labelled short receipt number.
+# "Check #239" / "Trans 54226" / "Order 149590" — a labelled short receipt
+# number.
 _LABELLED_NUM = re.compile(
     r"(?:check|chk|trans|transaction|order|ticket|ref|receipt|tab)\s*#?\s*(\d{2,})",
     re.I,
@@ -89,7 +90,8 @@ def frequent_ids(
     fingerprints: Iterable[TxnFingerprint], *, max_count: int = 3
 ) -> Set[str]:
     """Corpus-frequency guard: ids appearing on more than ``max_count`` receipts
-    are recurring codes (card/terminal/AID/loyalty/UPC), never transaction-unique.
+    are recurring codes (card/terminal/AID/loyalty/UPC), never
+    transaction-unique.
     Pass the result as ``denylist`` to :func:`same_transaction`/:func:`find_duplicate`.
     """
     c: Counter = Counter()
@@ -120,8 +122,9 @@ def same_transaction(
         disjoint printed times when both have times (two scans of ONE receipt
         share the printed time, different visits don't).
       * **Positive match requires CORROBORATION** — a shared strong id (excluding
-        ``denylist`` recurring codes) AND (identical total OR >= ``amount_overlap_min``
-        item-price overlap), or a shared labelled check/order # AND matching prices.
+        ``denylist`` recurring codes) AND (identical total OR >=
+        ``amount_overlap_min`` item-price overlap), or a shared labelled
+        check/order # AND matching prices.
       * A shared id ALONE, a same total ALONE, or price overlap ALONE is NEVER
         sufficient.
     """
