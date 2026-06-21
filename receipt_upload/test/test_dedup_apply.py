@@ -143,27 +143,35 @@ def test_apply_deletes_full_subtree_and_adds_label(tmp_path):
     assert any("VALIDATION_CATEGORY" in s for s in deleted_sks)
 
 
-def test_apply_never_deletes_parent_image():
+def test_apply_requires_backup_path():
+    import pytest
+    cli = FakeClient({(IMG_D, 1): _full_subtree(IMG_D, 1)})
+    with pytest.raises(ValueError):
+        execute(plan_operations([_resolution()]), cli, apply=True, backup_path=None)
+    assert cli.deleted_keys == []  # nothing deleted when backup is missing
+
+
+def test_apply_never_deletes_parent_image(tmp_path):
     cli = FakeClient({(IMG_D, 1): _full_subtree(IMG_D, 1)})
     execute(plan_operations([_resolution()]), cli, apply=True,
-            backup_path=None)
+            backup_path=str(tmp_path / "b.json"))
     # nothing with SK == "IMAGE" (the parent image entity) is ever deleted
     assert all(k["SK"]["S"] != "IMAGE" for k in cli.deleted_keys)
 
 
-def test_subtree_filter_excludes_sibling_receipt():
+def test_subtree_filter_excludes_sibling_receipt(tmp_path):
     # query returns a stray sibling item (rid 10 padded) — the rid filter drops it
     poisoned = _full_subtree(IMG_D, 1) + [
         _it(IMG_D, "RECEIPT#00010#PLACE", "RECEIPT_PLACE"),  # different receipt!
     ]
     cli = FakeClient({(IMG_D, 1): poisoned})
-    execute(plan_operations([_resolution()]), cli, apply=True, backup_path=None)
+    execute(plan_operations([_resolution()]), cli, apply=True, backup_path=str(tmp_path / "b.json"))
     deleted_sks = {k["SK"]["S"] for k in cli.deleted_keys}
     assert "RECEIPT#00010#PLACE" not in deleted_sks  # sibling never touched
     assert len(cli.deleted_keys) == 8
 
 
-def test_leftover_only_subtree_no_receipt_entity():
+def test_leftover_only_subtree_no_receipt_entity(tmp_path):
     # re-run case: RECEIPT already gone, only orphaned children remain
     leftovers = [
         _it(IMG_D, "RECEIPT#00001#PLACE", "RECEIPT_PLACE"),
@@ -171,10 +179,29 @@ def test_leftover_only_subtree_no_receipt_entity():
     ]
     cli = FakeClient({(IMG_D, 1): leftovers})
     rep = execute(plan_operations([_resolution(gap_fills=[])]), cli, apply=True,
-                  backup_path=None)
+                  backup_path=str(tmp_path / "b.json"))
     assert rep["receipts_deleted"] == 0      # no RECEIPT entity present
     assert rep["children_deleted"] == 2      # but the leftovers are swept
     assert len(cli.deleted_keys) == 2
+
+
+def test_gapfill_failure_skips_its_matching_drop(tmp_path):
+    # if the VALID gap-fill from the dropped receipt fails to write, the drop is
+    # SKIPPED (so the label isn't lost) and surfaced as an error.
+    class FailLabelClient(FakeClient):
+        def add_receipt_word_label(self, label):
+            raise RuntimeError("write failed")
+
+        def update_receipt_word_label(self, label):
+            raise RuntimeError("update failed")
+
+    cli = FailLabelClient({(IMG_D, 1): _full_subtree(IMG_D, 1)})
+    rep = execute(plan_operations([_resolution()]), cli, apply=True,
+                  backup_path=str(tmp_path / "b.json"))
+    assert f"{IMG_D}#1" in rep["skipped_drops"]   # the source drop was skipped
+    assert rep["receipts_deleted"] == 0           # nothing deleted
+    assert cli.deleted_keys == []
+    assert rep["errors"]                          # surfaced
 
 
 # --------------------------------------------------------------------------- #
@@ -203,11 +230,11 @@ def test_rollback_reputs_items_and_removes_added_labels(tmp_path):
     assert len(restore.deleted_keys) == 1    # added label removed
 
 
-def test_empty_plan_no_ops():
+def test_empty_plan_no_ops(tmp_path):
     plan = plan_operations([{"group_id": "g", "scope": "cross_image",
                              "survivor": f"{IMG_S}#1", "receipts_to_drop": [],
                              "gap_fills": []}])
     cli = FakeClient()
-    rep = execute(plan, cli, apply=True, backup_path=None)
+    rep = execute(plan, cli, apply=True, backup_path=str(tmp_path / "b.json"))
     assert rep["labels_added"] == 0 and rep["receipts_deleted"] == 0
     assert cli.deleted_keys == []

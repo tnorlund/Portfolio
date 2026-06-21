@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
-from dataclasses import asdict
 
 from receipt_dynamo import DynamoClient
 

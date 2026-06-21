@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 # CDN variant key attributes on the Image entity (raw is handled separately).
@@ -47,22 +47,33 @@ class ImageCleanup:
 
 
 def image_s3_targets(image) -> List[S3Obj]:
-    """Extract the raw + CDN S3 objects to delete for an Image entity (pure)."""
+    """Extract the raw + CDN S3 objects to delete for an Image entity (pure).
+
+    The bucket is unversioned and CDN/raw pointers can be crossed, so every key is
+    OWNERSHIP-CHECKED: the S3 key convention embeds the image_id
+    (``raw/{image_id}.png``, ``assets/{image_id}...``). A key that does not contain
+    this image's id is skipped (it points at another image's pixels) and surfaced
+    in ``skipped_foreign``.
+    """
+    image_id = getattr(image, "image_id", None)
     out: List[S3Obj] = []
-    raw_b, raw_k = getattr(image, "raw_s3_bucket", None), getattr(image, "raw_s3_key", None)
-    if raw_b and raw_k:
-        out.append(S3Obj(raw_b, raw_k))
+
+    def add(bucket, key):
+        # ownership guard: the key must embed this image's id, else it points at
+        # another image's pixels (crossed pointer) — never delete it.
+        if bucket and key and (not image_id or image_id in key):
+            out.append(S3Obj(bucket, key))
+
+    add(getattr(image, "raw_s3_bucket", None), getattr(image, "raw_s3_key", None))
     cdn_b = getattr(image, "cdn_s3_bucket", None)
-    if cdn_b:
-        for fld in CDN_VARIANT_FIELDS:
-            k = getattr(image, fld, None)
-            if k:
-                out.append(S3Obj(cdn_b, k))
+    for fld in CDN_VARIANT_FIELDS:
+        add(cdn_b, getattr(image, fld, None))
     # de-dup (raw_key sometimes equals a cdn key)
     seen, uniq = set(), []
     for o in out:
         if (o.bucket, o.key) not in seen:
-            seen.add((o.bucket, o.key)); uniq.append(o)
+            seen.add((o.bucket, o.key))
+            uniq.append(o)
     return uniq
 
 
@@ -164,10 +175,18 @@ def execute_cleanup(cleanups: List[ImageCleanup], dynamo=None, s3=None, *,
                 obj_manifest.append({"bucket": o.bucket, "key": o.key, "local": local})
             with open(os.path.join(backup_dir, f"{c.image_id}.s3.json"), "w") as f:
                 json.dump(obj_manifest, f)
-            # 4) delete all DynamoDB items under the image
-            counts = dynamo.delete_image_details(c.image_id)
+            # 4) delete EXACTLY the items we backed up (not a fresh re-query).
+            # delete_image_details re-queries PK=IMAGE#{id} independently, so an
+            # item written between the backup query and the delete query would be
+            # deleted but absent from the restore bundle (TOCTOU). Delete the
+            # captured `items` directly so backup-set == delete-set.
+            for it in items:
+                dynamo._client.delete_item(
+                    TableName=dynamo.table_name,
+                    Key={"PK": it["PK"], "SK": it["SK"]},
+                )
             report["images_deleted"] += 1
-            report["dynamo_items_deleted"] += sum(counts.values()) if counts else 0
+            report["dynamo_items_deleted"] += len(items)
         except Exception as e:  # pragma: no cover
             report["errors"].append(f"{c.image_id}: {e}")
     report["backup_dir"] = backup_dir

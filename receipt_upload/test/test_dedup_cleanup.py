@@ -27,7 +27,7 @@ class FakeDynamo:
 
     def __init__(self, items_by_image):
         self.items_by_image = items_by_image
-        self.deleted_images = []
+        self.deleted_keys = []
         self.put_items = []
         self._client = self
 
@@ -35,9 +35,8 @@ class FakeDynamo:
         iid = kw["ExpressionAttributeValues"][":pk"]["S"].split("#", 1)[1]
         return {"Items": self.items_by_image.get(iid, []), "LastEvaluatedKey": None}
 
-    def delete_image_details(self, image_id):
-        self.deleted_images.append(image_id)
-        return {"IMAGE": 1, "LINE": 2}
+    def delete_item(self, TableName, Key):
+        self.deleted_keys.append(Key)
 
     def put_item(self, TableName, Item):
         self.put_items.append(Item)
@@ -82,7 +81,7 @@ def test_dry_run_performs_no_io():
     cleanups, _ = plan_image_cleanup(dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"])
     rep = execute_cleanup(cleanups, dyn, FakeS3(), apply=False)
     assert rep["dry_run"] and rep["images_deleted"] == 1
-    assert dyn.deleted_images == []  # nothing deleted in dry-run
+    assert dyn.deleted_keys == []  # nothing deleted in dry-run
 
 
 def test_execute_backs_up_then_deletes(tmp_path):
@@ -92,9 +91,20 @@ def test_execute_backs_up_then_deletes(tmp_path):
     s3 = FakeS3()
     rep = execute_cleanup(cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path))
     assert rep["images_deleted"] == 1 and rep["s3_deleted"] == 2  # raw + cdn
-    assert dyn.deleted_images == ["a"]
+    # deletes exactly the captured items (IMAGE + LINE), not a re-query
+    assert len(dyn.deleted_keys) == 2 and rep["dynamo_items_deleted"] == 2
     assert ("rawb", "raw/x.png") in s3.deleted and ("cdnb", "assets/a.jpg") in s3.deleted
     assert (tmp_path / "a.dynamo.json").exists() and (tmp_path / "a.s3.json").exists()
+
+
+def test_s3_ownership_guard_skips_foreign_key():
+    # a CDN key that does NOT contain the image_id points at another image's
+    # pixels (crossed pointer) and must be excluded from the delete targets.
+    img = _img("img-OWNER", cdn_s3_key="assets/img-OWNER.jpg",
+               cdn_webp_s3_key="assets/SOMEONE-ELSE.webp")
+    keys = {o.key for o in image_s3_targets(img)}
+    assert "assets/img-OWNER.jpg" in keys
+    assert "assets/SOMEONE-ELSE.webp" not in keys  # foreign pointer skipped
 
 
 def test_execute_requires_backup_dir():

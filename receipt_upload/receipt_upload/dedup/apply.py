@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -148,6 +148,8 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         "errors": [],
     }
 
+    report["skipped_drops"] = []
+
     if not apply:
         report["labels_added"] = len(plan.label_adds)
         report["receipts_deleted"] = len(plan.receipt_drops)
@@ -155,6 +157,11 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
 
     if dynamo is None:
         raise ValueError("apply=True requires a dynamo client")
+    # A real mutation must always be reversible — never delete without a backup.
+    if not backup_path:
+        raise ValueError(
+            "apply=True requires backup_path (deletions must be recoverable)"
+        )
 
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
@@ -189,21 +196,24 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         drop_subtrees.append((d, items))
 
     # ---- BACKUP (before any mutation) ----
-    if backup_path:
-        backup = {
-            "table": getattr(dynamo, "table_name", None),
-            "created_at": _now_iso(),
-            "deleted_items": [],
-            "added_label_keys": [],
-        }
-        for (_d, items) in drop_subtrees:
-            backup["deleted_items"].extend(items)
-        backup["added_label_keys"] = [lbl.key for _a, lbl in labels_to_add]
-        with open(backup_path, "w") as f:
-            json.dump(backup, f)
-        report["backup_path"] = backup_path
+    backup = {
+        "table": getattr(dynamo, "table_name", None),
+        "created_at": _now_iso(),
+        "deleted_items": [],
+        "added_label_keys": [],
+    }
+    for (_d, items) in drop_subtrees:
+        backup["deleted_items"].extend(items)
+    backup["added_label_keys"] = [lbl.key for _a, lbl in labels_to_add]
+    with open(backup_path, "w") as f:
+        json.dump(backup, f)
+    report["backup_path"] = backup_path
 
     # ---- 1) gap-fill labels onto survivors ----
+    # Track which dropped receipts a gap-fill failed to migrate FROM. We must not
+    # delete a source receipt whose VALID label failed to land on the survivor —
+    # that would lose the label. Such drops are skipped (recoverable via re-run).
+    failed_sources = set()
     for a, label in labels_to_add:
         try:
             dynamo.add_receipt_word_label(label)
@@ -213,10 +223,21 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
                 dynamo.update_receipt_word_label(label)
                 report["labels_added"] += 1
             except Exception as e:  # pragma: no cover - surfaced, not raised
-                report["errors"].append(f"label {a.image_id}#{a.receipt_id} {a.label}: {e}")
+                report["errors"].append(
+                    f"label {a.image_id}#{a.receipt_id} {a.label} "
+                    f"(from {a.from_member}): {e}"
+                )
+                failed_sources.add(a.from_member)
 
     # ---- 2) delete each dropped receipt's full subtree (never the parent Image) ----
     for d, items in drop_subtrees:
+        drop_key = f"{d.image_id}#{d.receipt_id}"
+        if drop_key in failed_sources:
+            report["skipped_drops"].append(drop_key)
+            report["errors"].append(
+                f"skipped drop {drop_key}: a VALID gap-fill from it failed to write"
+            )
+            continue
         had_receipt = any(it.get("TYPE", {}).get("S") == "RECEIPT" for it in items)
         try:
             for it in items:
@@ -228,7 +249,7 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
             if had_receipt:
                 report["receipts_deleted"] += 1
         except Exception as e:  # pragma: no cover
-            report["errors"].append(f"drop {d.image_id}#{d.receipt_id}: {e}")
+            report["errors"].append(f"drop {drop_key}: {e}")
 
     return report
 
@@ -302,6 +323,11 @@ def main() -> None:
     print(f"\nAPPLIED: {json.dumps(report, indent=2)}")
     print(f"\nRollback with:\n  python -m receipt_upload.dedup.apply "
           f"--env {args.env} --rollback {backup_path}")
+    if report["errors"]:
+        raise SystemExit(
+            f"\nCOMPLETED WITH {len(report['errors'])} ERROR(S) "
+            f"(incl. {len(report['skipped_drops'])} skipped drops) — review above."
+        )
 
 
 if __name__ == "__main__":

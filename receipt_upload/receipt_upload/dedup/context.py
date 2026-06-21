@@ -24,7 +24,6 @@ caught here because their receipt crops are byte-identical.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from itertools import combinations
 from typing import Dict, List, Optional, Tuple
 
 import re

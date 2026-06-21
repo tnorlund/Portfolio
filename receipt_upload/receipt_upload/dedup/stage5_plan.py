@@ -19,7 +19,11 @@ from receipt_dynamo import DynamoClient
 
 from receipt_upload.dedup.context import LabelObs, build_dossiers_for_groups
 from receipt_upload.dedup.dossiers import ENV_TABLE
-from receipt_upload.dedup.near_dup import same_transaction, transaction_fingerprint
+from receipt_upload.dedup.near_dup import (
+    frequent_ids,
+    same_transaction,
+    transaction_fingerprint,
+)
 from receipt_upload.dedup.resolver import resolve_all
 
 Key = tuple
@@ -49,28 +53,62 @@ def _load(table):
         g = getattr(su, "grand_total", None)
         if g is not None:
             totals[(su.image_id, su.receipt_id)] = float(g)
-    return rec, words_by, labels_by, totals
+    merchants = {}
+    for m in dc.list_receipt_metadatas()[0]:
+        merchants[(m.image_id, m.receipt_id)] = (
+            getattr(m, "canonical_merchant_name", None)
+            or getattr(m, "merchant_name", None)
+        )
+    return rec, words_by, labels_by, totals, merchants
 
 
 def _word_list(words_by, key):
     return [t for _, t in sorted(words_by.get(key, {}).items())]
 
 
-def gate_groups(groups, rec, words_by, totals):
-    """Keep only groups whose every member is the SAME transaction as member 0."""
+# A real near-dup group is a small set of copies of one receipt. A large group is
+# almost always a false bridge through a shared recurring code — refuse it.
+_MAX_GROUP_SIZE = 6
+
+
+def gate_groups(groups, rec, words_by, totals, merchants=None):
+    """Keep a group only if EVERY pair of members is the same transaction.
+
+    Pairwise (clique), not star-shaped against member 0 — so a single corrupted /
+    cross-wired member can't validate the rest by bridging through the anchor.
+    A corpus-frequency denylist excludes recurring ids (card/terminal/AID codes)
+    before matching, and oversized groups are rejected outright.
+    """
+    merchants = merchants or {}
+
+    def fp(k):
+        return transaction_fingerprint(
+            _word_list(words_by, k), totals.get(k), merchants.get(k)
+        )
+
+    # build the denylist from the full candidate universe (every member of every group)
+    universe = {tuple(k) for g in groups for k in g if tuple(k) in rec}
+    denylist = frequent_ids([fp(k) for k in universe])
+
     kept, rejected = [], []
     for g in groups:
         g = [tuple(k) for k in g if tuple(k) in rec]
         if len(g) < 2:
             continue
-        base = g[0]
-        fb = transaction_fingerprint(_word_list(words_by, base), totals.get(base))
+        if len(g) > _MAX_GROUP_SIZE:
+            rejected.append({"group": g, "reasons": [
+                {"member": "group", "is_dup": False,
+                 "why": f"group too large ({len(g)} > {_MAX_GROUP_SIZE})"}]})
+            continue
+        fps = {k: fp(k) for k in g}
         reasons, ok = [], True
-        for k in g[1:]:
-            fk = transaction_fingerprint(_word_list(words_by, k), totals.get(k))
-            is_dup, why = same_transaction(fb, fk)
-            reasons.append({"member": f"{k[0][:8]}#{k[1]}", "is_dup": is_dup, "why": why})
-            ok = ok and is_dup
+        for i in range(len(g)):
+            for j in range(i + 1, len(g)):
+                is_dup, why = same_transaction(fps[g[i]], fps[g[j]], denylist=denylist)
+                reasons.append({
+                    "pair": f"{g[i][0][:8]}#{g[i][1]} ~ {g[j][0][:8]}#{g[j][1]}",
+                    "is_dup": is_dup, "why": why})
+                ok = ok and is_dup
         (kept if ok else rejected).append({"group": g, "reasons": reasons})
     return kept, rejected
 
@@ -85,9 +123,9 @@ def main():
 
     raw = json.load(open(args.groups))
     groups = raw["groups"] if isinstance(raw, dict) else raw
-    rec, words_by, labels_by, totals = _load(ENV_TABLE[args.env])
+    rec, words_by, labels_by, totals, merchants = _load(ENV_TABLE[args.env])
 
-    kept, rejected = gate_groups(groups, rec, words_by, totals)
+    kept, rejected = gate_groups(groups, rec, words_by, totals, merchants)
     print(f"[{args.env}] candidate groups: {len(groups)} | "
           f"PASSED transaction-identity gate: {len(kept)} | rejected: {len(rejected)}")
     for r in rejected:
