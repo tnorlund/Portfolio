@@ -48,7 +48,6 @@ from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
-    LLMBatchValidator,
 )
 from receipt_upload.label_validation.amount_classifier import (
     classify_amount_labels,
@@ -59,12 +58,72 @@ from receipt_upload.label_validation.label_normalization import (
 from receipt_upload.label_validation.langsmith_logging import (
     log_merchant_resolution,
 )
+from receipt_upload.label_validation.llm_runner import (
+    build_async_payload,
+    run_llm_validation_sync,
+)
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _llm_validation_async_enabled() -> bool:
+    """True when grok validation should be deferred to the async consumer.
+
+    Off by default — the words worker validates inline, exactly as before. When
+    ``LLM_VALIDATION_ASYNC=true`` the worker hands the (slow) LLM step to a
+    separate Lambda and returns ~10s sooner. Gated so the default path is
+    unchanged and the async lambda can be enabled per-stack once deployed.
+    """
+    return os.environ.get("LLM_VALIDATION_ASYNC", "").strip().lower() == "true"
+
+
+def _enqueue_async_llm_validation(
+    *,
+    payload: Dict[str, Any],
+    image_id: str,
+    receipt_id: int,
+    run_id: str,
+    chromadb_bucket: str,
+) -> None:
+    """Stage the grok payload on S3 and enqueue a pointer for the consumer.
+
+    The payload (word context + pre-computed similar-evidence + the pending
+    label entities) is too large and Chroma-derived to recompute downstream, so
+    it goes to S3; the SQS message is just a small pointer. Raises on any failure
+    so the caller can fall back to inline validation (labels are never left
+    dangling PENDING).
+    """
+    import json
+
+    queue_url = (os.environ.get("LLM_VALIDATION_QUEUE_URL") or "").strip()
+    if not queue_url:
+        raise RuntimeError("LLM_VALIDATION_QUEUE_URL is not set")
+
+    key = f"llm-validation/{run_id}/{image_id}_{receipt_id:05d}.json"
+    s3 = boto3.client("s3")
+    s3.put_object(
+        Bucket=chromadb_bucket,
+        Key=key,
+        Body=json.dumps(payload).encode("utf-8"),
+        ContentType="application/json",
+    )
+    sqs = boto3.client("sqs")
+    sqs.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(
+            {
+                "s3_bucket": chromadb_bucket,
+                "s3_key": key,
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            }
+        ),
+    )
+
 
 # Currency-column roles that the deterministic geometry pass assigns by POSITION,
 # not by word text: which column a price sits in is what makes it a line total vs
@@ -98,9 +157,7 @@ def _chroma_cloud_config() -> Optional[Dict[str, str]]:
     return {"api_key": api_key, "tenant": tenant, "database": database}
 
 
-def _make_read_client(
-    local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]
-):
+def _make_read_client(local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]):
     """Build a ChromaClient for READS: Chroma Cloud when configured, else the
     local S3 snapshot at ``local_dir``."""
     if cloud_cfg:
@@ -143,9 +200,7 @@ def _prepare_pending_core_labels(
             continue
 
         if label.label == "AMOUNT":
-            amount_decision = amount_classifications.get(
-                (label.line_id, label.word_id)
-            )
+            amount_decision = amount_classifications.get((label.line_id, label.word_id))
             if amount_decision is None:
                 # Keep AMOUNT only as transient LLM input. Later write paths
                 # delete it unless the LLM replaces it with a CORE_LABEL.
@@ -200,8 +255,7 @@ def _prepare_pending_core_labels(
             word_id=label.word_id,
             label=mapped_label,
             reasoning=(
-                f"Mapped from non-core label '{original_label}' before "
-                "validation."
+                f"Mapped from non-core label '{original_label}' before " "validation."
             ),
             timestamp_added=datetime.now(timezone.utc),
             validation_status=ValidationStatus.PENDING.value,
@@ -231,18 +285,6 @@ def _remove_label_from_list(
         ):
             word_labels.pop(index)
             return
-
-
-def _delete_non_core_label(
-    dynamo: Any,
-    word_labels: List[ReceiptWordLabel],
-    label: ReceiptWordLabel,
-) -> None:
-    """Delete a transient non-core label from Dynamo and local payload state."""
-    if label.label in CORE_LABELS:
-        return
-    dynamo.delete_receipt_word_label(label)
-    _remove_label_from_list(word_labels, label)
 
 
 def _get_traceable():
@@ -495,9 +537,7 @@ def _run_lines_pipeline_worker(
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get(
-                "LANGCHAIN_PROJECT", "receipt-label-validation"
-            )
+            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
             log.info(
                 "[LINES_WORKER] Setting up tracing: project=%s, headers=%s",
                 project,
@@ -614,8 +654,8 @@ def _run_words_pipeline_worker(
             # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
             # (Σ line totals == GRAND_TOTAL only with them counted as line items).
             # Human VALID/INVALID labels are never touched.
-            reclassifications, locked_line_totals = (
-                reclassify_mislabeled_totals(words, word_labels)
+            reclassifications, locked_line_totals = reclassify_mislabeled_totals(
+                words, word_labels
             )
             for old_label, new_label in reclassifications:
                 # Invalidate (don't delete) the mislabeled total — preserves the
@@ -638,7 +678,9 @@ def _run_words_pipeline_worker(
                 # pull them from pending so the LLM can't "correct" them to TAX.
                 lt_label.validation_status = ValidationStatus.VALID.value
                 lt_label.label_proposed_by = "arithmetic_totals_reclass"
-                lt_label.reasoning = "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
+                lt_label.reasoning = (
+                    "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
+                )
                 dynamo.update_receipt_word_label(lt_label)
                 _remove_label_from_list(pending_labels, lt_label)
 
@@ -648,10 +690,7 @@ def _run_words_pipeline_worker(
                 # Arithmetic-verified line items (Σ line_total = receipt total) are
                 # already VALID; only route the unverified PENDING ones through the
                 # Chroma + LLM validators.
-                if (
-                    li_label.validation_status
-                    == ValidationStatus.PENDING.value
-                ):
+                if li_label.validation_status == ValidationStatus.PENDING.value:
                     pending_labels.append(li_label)
 
             # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
@@ -712,13 +751,10 @@ def _run_words_pipeline_worker(
                             # Update the label object with validation results
                             label.validation_status = (
                                 ValidationStatus.VALID.value
-                                if result.decision
-                                == ValidationDecision.AUTO_VALIDATE
+                                if result.decision == ValidationDecision.AUTO_VALIDATE
                                 else ValidationStatus.INVALID.value
                             )
-                            label.label_proposed_by = (
-                                f"chroma_{result.decision.value}"
-                            )
+                            label.label_proposed_by = f"chroma_{result.decision.value}"
                             dynamo.update_receipt_word_label(label)
                             chroma_validated += 1
                         else:
@@ -729,8 +765,7 @@ def _run_words_pipeline_worker(
                             # down. Leave the geometry proposal as-is.
                             if (
                                 label.label in _GEOMETRY_SPATIAL_ROLES
-                                and label.label_proposed_by
-                                == _GEOMETRY_PROPOSER
+                                and label.label_proposed_by == _GEOMETRY_PROPOSER
                             ):
                                 continue
                             llm_needed.append((word, label))
@@ -757,237 +792,70 @@ def _run_words_pipeline_worker(
                 except ImportError:
                     _run_chroma_validation_loop()
 
-                # LLM validation for labels that couldn't be auto-validated
+                # LLM (grok) validation for labels Chroma couldn't auto-resolve.
+                # This is the slowest single step on the upload critical path
+                # (~10s synchronous LLM call). Default: validate inline. When
+                # LLM_VALIDATION_ASYNC is on, hand the payload to a consumer
+                # Lambda (via S3 + SQS) and return now — the corrections land in
+                # DynamoDB within seconds and Chroma converges on next compaction.
                 llm_validated = 0
+                llm_deferred = 0
                 if llm_needed:
-                    # Build words context for LLM
-                    llm_words_context = []
-                    for w in words:
-                        x_center = (
-                            (w.x_min + w.x_max) / 2
-                            if hasattr(w, "x_min")
-                            else 0
-                        )
-                        y_center = (
-                            (w.y_min + w.y_max) / 2
-                            if hasattr(w, "y_min")
-                            else 0
-                        )
-                        llm_words_context.append(
-                            {
-                                "text": w.text,
-                                "line_id": w.line_id,
-                                "word_id": w.word_id,
-                                "x": x_center,
-                                "y": y_center,
-                            }
-                        )
-
-                    # Build pending_labels_data and similar_evidence
-                    pending_labels_data = []
-                    similar_evidence: Dict[str, List[Dict]] = {}
-
-                    for word, label in llm_needed:
-                        word_id_str = f"{label.line_id}_{label.word_id}"
-                        pending_labels_data.append(
-                            {
-                                "line_id": label.line_id,
-                                "word_id": label.word_id,
-                                "label": label.label,
-                                "word_text": word.text,
-                            }
-                        )
-
-                        # Get similar evidence for this word
+                    if _llm_validation_async_enabled():
                         try:
-                            chroma_id = (
-                                f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                                f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
+                            payload = build_async_payload(
+                                llm_needed=llm_needed,
+                                words=words,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                table_name=table_name,
+                                lightweight_validator=lightweight_validator,
+                                word_embedding_cache=word_embedding_cache,
+                                merchant_name=None,
                             )
-                            embedding = word_embedding_cache.get(
-                                (label.line_id, label.word_id)
+                            _enqueue_async_llm_validation(
+                                payload=payload,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                run_id=run_id,
+                                chromadb_bucket=chromadb_bucket,
                             )
-                            if embedding:
-                                similar = lightweight_validator._query_similar_for_label(
-                                    embedding=embedding,
-                                    exclude_id=chroma_id,
-                                    predicted_label=label.label,
-                                    n_results_per_query=5,
-                                )
-                                similar_evidence[word_id_str] = similar
-                            else:
-                                similar_evidence[word_id_str] = []
+                            llm_deferred = len(llm_needed)
                         except Exception as e:
-                            similar_evidence[word_id_str] = []
-
-                    # Call LLM validator
-                    try:
-                        llm_validator = LLMBatchValidator(
-                            temperature=0.0, timeout=120
-                        )
-                        llm_results = llm_validator.validate_receipt_labels(
-                            pending_labels=pending_labels_data,
-                            words=llm_words_context,
-                            similar_evidence=similar_evidence,
-                            merchant_name=None,  # Not available in worker context
-                        )
-
-                        # Update labels based on LLM results
-                        result_lookup = {r.word_id: r for r in llm_results}
-                        for word, label in llm_needed:
-                            word_id_str = f"{label.line_id}_{label.word_id}"
-                            llm_result = result_lookup.get(word_id_str)
-                            if llm_result and llm_result.decision in (
-                                "VALID",
-                                "INVALID",
-                                "NEEDS_REVIEW",
-                            ):
-                                if llm_result.decision == "VALID":
-                                    if label.label not in CORE_LABELS:
-                                        _delete_non_core_label(
-                                            dynamo=dynamo,
-                                            word_labels=word_labels,
-                                            label=label,
-                                        )
-                                        llm_validated += 1
-                                        continue
-                                    # VALID: just update status on existing label
-                                    label.validation_status = (
-                                        ValidationStatus.VALID.value
-                                    )
-                                    label.label_proposed_by = "llm_valid"
-                                    if llm_result.reasoning:
-                                        label.reasoning = llm_result.reasoning
-                                    dynamo.update_receipt_word_label(label)
-                                    llm_validated += 1
-                                elif llm_result.decision == "NEEDS_REVIEW":
-                                    if label.label not in CORE_LABELS:
-                                        _delete_non_core_label(
-                                            dynamo=dynamo,
-                                            word_labels=word_labels,
-                                            label=label,
-                                        )
-                                        llm_validated += 1
-                                        continue
-                                    label.validation_status = (
-                                        ValidationStatus.NEEDS_REVIEW.value
-                                    )
-                                    label.label_proposed_by = (
-                                        "llm_needs_review"
-                                    )
-                                    if llm_result.reasoning:
-                                        label.reasoning = llm_result.reasoning
-                                    dynamo.update_receipt_word_label(label)
-                                    llm_validated += 1
-                                elif llm_result.label != label.label:
-                                    # INVALID with correction: label value is part of SK,
-                                    # so we must mark old label INVALID and create new one
-                                    from datetime import datetime, timezone
-
-                                    # Only create corrected label if it's a valid CORE_LABEL
-                                    # This enforces the constraint that only CORE_LABELS
-                                    # are persisted to DynamoDB
-                                    if llm_result.label in CORE_LABELS:
-                                        if label.label in CORE_LABELS:
-                                            # 1. Mark old label as INVALID (audit trail)
-                                            label.validation_status = (
-                                                ValidationStatus.INVALID.value
-                                            )
-                                            label.label_proposed_by = (
-                                                "llm_invalid"
-                                            )
-                                            label.reasoning = (
-                                                f"Corrected to {llm_result.label}. "
-                                                f"{llm_result.reasoning or ''}"
-                                            )
-                                            dynamo.update_receipt_word_label(
-                                                label
-                                            )
-                                        else:
-                                            _delete_non_core_label(
-                                                dynamo=dynamo,
-                                                word_labels=word_labels,
-                                                label=label,
-                                            )
-
-                                        # 2. Create new label with corrected value
-                                        new_label = ReceiptWordLabel(
-                                            image_id=image_id,
-                                            receipt_id=receipt_id,
-                                            line_id=label.line_id,
-                                            word_id=label.word_id,
-                                            label=llm_result.label,
-                                            reasoning=llm_result.reasoning,
-                                            timestamp_added=datetime.now(
-                                                timezone.utc
-                                            ),
-                                            validation_status=ValidationStatus.VALID.value,
-                                            label_proposed_by=f"llm_corrected:{label.label}",
-                                            label_consolidated_from=label.label,
-                                        )
-                                        dynamo.add_receipt_word_label(
-                                            new_label
-                                        )
-                                        word_labels.append(new_label)
-                                        llm_validated += 1
-                                    else:
-                                        if label.label not in CORE_LABELS:
-                                            _delete_non_core_label(
-                                                dynamo=dynamo,
-                                                word_labels=word_labels,
-                                                label=label,
-                                            )
-                                            llm_validated += 1
-                                            continue
-                                        # LLM returned invalid label (AMOUNT, TIP, etc.)
-                                        # Mark as NEEDS_REVIEW for human intervention
-                                        label.validation_status = (
-                                            ValidationStatus.NEEDS_REVIEW.value
-                                        )
-                                        label.label_proposed_by = (
-                                            "llm_invalid_label"
-                                        )
-                                        label.reasoning = (
-                                            f"LLM suggested '{llm_result.label}' but it's not "
-                                            f"a valid CORE_LABEL. {llm_result.reasoning or ''}"
-                                        )
-                                        dynamo.update_receipt_word_label(label)
-                                        llm_validated += 1
-                                else:
-                                    if label.label not in CORE_LABELS:
-                                        _delete_non_core_label(
-                                            dynamo=dynamo,
-                                            word_labels=word_labels,
-                                            label=label,
-                                        )
-                                        llm_validated += 1
-                                        continue
-                                    # INVALID but same label - just mark as invalid
-                                    label.validation_status = (
-                                        ValidationStatus.INVALID.value
-                                    )
-                                    label.label_proposed_by = "llm_invalid"
-                                    if llm_result.reasoning:
-                                        label.reasoning = llm_result.reasoning
-                                    dynamo.update_receipt_word_label(label)
-                                    llm_validated += 1
-                    except Exception as e:
-                        import logging
-
-                        logging.getLogger(__name__).warning(
-                            f"LLM validation failed: {e}"
-                        )
-                        for _, label in llm_needed:
-                            _delete_non_core_label(
+                            # Never leave labels dangling PENDING: if the hand-off
+                            # fails, validate inline.
+                            logger.warning(
+                                "Async LLM hand-off failed (%s); "
+                                "running validation inline",
+                                e,
+                            )
+                            llm_validated = run_llm_validation_sync(
+                                llm_needed=llm_needed,
+                                words=words,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
                                 dynamo=dynamo,
                                 word_labels=word_labels,
-                                label=label,
+                                lightweight_validator=lightweight_validator,
+                                word_embedding_cache=word_embedding_cache,
                             )
+                    else:
+                        llm_validated = run_llm_validation_sync(
+                            llm_needed=llm_needed,
+                            words=words,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            dynamo=dynamo,
+                            word_labels=word_labels,
+                            lightweight_validator=lightweight_validator,
+                            word_embedding_cache=word_embedding_cache,
+                        )
 
                 validation_stats = {
                     "pending_labels": len(pending_labels),
                     "chroma_validated": chroma_validated,
                     "llm_validated": llm_validated,
+                    "llm_deferred": llm_deferred,
                 }
 
             # Build words payload
@@ -1036,9 +904,7 @@ def _run_words_pipeline_worker(
             log = logging.getLogger(__name__)
 
             # Get project name to ensure child traces go to same project
-            project = os.environ.get(
-                "LANGCHAIN_PROJECT", "receipt-label-validation"
-            )
+            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
             log.info(
                 "[WORDS_WORKER] Setting up tracing: project=%s, headers=%s",
                 project,
@@ -1107,9 +973,7 @@ class MerchantResolvingEmbeddingProcessor:
             try:
                 from receipt_places import PlacesClient
 
-                self.places_client = PlacesClient(
-                    api_key=google_places_api_key
-                )
+                self.places_client = PlacesClient(api_key=google_places_api_key)
             except ImportError:
                 _log("WARNING: receipt_places not available")
 
@@ -1196,15 +1060,9 @@ class MerchantResolvingEmbeddingProcessor:
         """
         # Fetch lines/words if not provided
         if lines is None or words is None:
-            lines = self.dynamo.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
-            words = self.dynamo.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
-            _log(
-                f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB"
-            )
+            lines = self.dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
+            words = self.dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+            _log(f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB")
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
@@ -1238,9 +1096,7 @@ class MerchantResolvingEmbeddingProcessor:
             from openai import OpenAI
 
             openai_client = OpenAI()
-            model = os.environ.get(
-                "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-            )
+            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
             # When Chroma Cloud is enabled, the workers query Cloud for reads, so
             # skip the ~30s/receipt S3 snapshot download (still embed — those are
@@ -1329,9 +1185,7 @@ class MerchantResolvingEmbeddingProcessor:
             executor_class = _get_phase2_executor_class()
             executor_name = executor_class.__name__
             with executor_class(max_workers=2) as executor:
-                _log(
-                    f"Submitting lines and words pipelines to {executor_name}"
-                )
+                _log(f"Submitting lines and words pipelines to {executor_name}")
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
@@ -1401,15 +1255,9 @@ class MerchantResolvingEmbeddingProcessor:
                                     receipt_id=m["receipt_id"],
                                     merchant_name=m.get("merchant_name"),
                                     normalized_phone=m.get("normalized_phone"),
-                                    normalized_address=m.get(
-                                        "normalized_address"
-                                    ),
-                                    embedding_similarity=m[
-                                        "embedding_similarity"
-                                    ],
-                                    metadata_boost=m.get(
-                                        "metadata_boost", 0.0
-                                    ),
+                                    normalized_address=m.get("normalized_address"),
+                                    embedding_similarity=m["embedding_similarity"],
+                                    metadata_boost=m.get("metadata_boost", 0.0),
                                     place_id=m.get("place_id"),
                                 )
                                 for m in lines_result["similarity_matches"]
@@ -1418,18 +1266,12 @@ class MerchantResolvingEmbeddingProcessor:
                         merchant_result = MerchantResult(
                             merchant_name=lines_result.get("merchant_name"),
                             place_id=lines_result.get("place_id"),
-                            resolution_tier=lines_result.get(
-                                "resolution_tier"
-                            ),
+                            resolution_tier=lines_result.get("resolution_tier"),
                             confidence=lines_result.get("confidence"),
                             phone=lines_result.get("phone"),
                             address=lines_result.get("address"),
-                            source_image_id=lines_result.get(
-                                "source_image_id"
-                            ),
-                            source_receipt_id=lines_result.get(
-                                "source_receipt_id"
-                            ),
+                            source_image_id=lines_result.get("source_image_id"),
+                            source_receipt_id=lines_result.get("source_receipt_id"),
                             similarity_matches=similarity_matches,
                         )
                 except Exception as e:
@@ -1469,9 +1311,7 @@ class MerchantResolvingEmbeddingProcessor:
                 )
                 _log(f"Phase 3 complete: created compaction run {run_id}")
             else:
-                _log(
-                    "WARNING: Skipping compaction run - missing delta prefixes"
-                )
+                _log("WARNING: Skipping compaction run - missing delta prefixes")
                 compaction_run = None
 
             # =================================================================
@@ -1591,9 +1431,7 @@ class MerchantResolvingEmbeddingProcessor:
 
                 if merchant_result.merchant_name:
                     if not place.merchant_name:
-                        updates["merchant_name"] = (
-                            merchant_result.merchant_name
-                        )
+                        updates["merchant_name"] = merchant_result.merchant_name
 
                 if merchant_result.address:
                     if not place.formatted_address:
@@ -1646,9 +1484,7 @@ class MerchantResolvingEmbeddingProcessor:
                         matched_fields=matched_fields,
                     )
                     self.dynamo.add_receipt_place(new_place)
-                    _log(
-                        f"Created new receipt place for {image_id}#{receipt_id}"
-                    )
+                    _log(f"Created new receipt place for {image_id}#{receipt_id}")
                 elif merchant_result.place_id:
                     # Have place_id but no merchant_name - log for debugging
                     # This can happen when ChromaDB matches don't have merchant_name

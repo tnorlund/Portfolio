@@ -75,6 +75,19 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     for record in event.get("Records", []):
         try:
+            # Two queues feed this Lambda. An async LLM-validation message is a
+            # small pointer ({s3_bucket, s3_key, image_id, receipt_id}) with no
+            # "job_id"; route it to the deferred grok runner. Everything else is
+            # an OCR job.
+            if _is_llm_validation_record(record):
+                result = _process_llm_validation_record(record)
+                results.append(result)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    error_count += 1
+                continue
+
             result = _process_single_record(record, image_type_counts)
             results.append(result)
 
@@ -149,8 +162,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     )
 
     _log(
-        "Completed processing %s records (success: %s, errors: %s, "
-        "embeddings: %s)",
+        "Completed processing %s records (success: %s, errors: %s, " "embeddings: %s)",
         len(results),
         success_count,
         error_count,
@@ -181,6 +193,62 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             }
         ),
     }
+
+
+def _is_llm_validation_record(record: Dict[str, Any]) -> bool:
+    """True for deferred-LLM-validation messages (vs. OCR jobs)."""
+    try:
+        body = json.loads(record["body"])
+    except (KeyError, ValueError):
+        return False
+    return "s3_key" in body and "job_id" not in body
+
+
+def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Run deferred grok validation for one staged payload.
+
+    The producer (words pipeline) staged a self-contained JSON payload on S3 and
+    enqueued a pointer. We fetch it, run the LLM validator, and persist the
+    decisions to DynamoDB — exactly what the synchronous path would have done,
+    just off the upload critical path.
+    """
+    import boto3
+    from receipt_dynamo import DynamoClient
+
+    from receipt_upload.label_validation.llm_runner import apply_async_payload
+
+    body = json.loads(record["body"])
+    bucket = body["s3_bucket"]
+    key = body["s3_key"]
+    image_id = body.get("image_id")
+    receipt_id = body.get("receipt_id")
+    _log(
+        "Async LLM validation: image=%s receipt=%s s3=%s/%s",
+        image_id,
+        receipt_id,
+        bucket,
+        key,
+    )
+
+    s3 = boto3.client("s3")
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    payload = json.loads(obj["Body"].read())
+
+    dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
+    validated = apply_async_payload(payload, dynamo)
+    _log(
+        "Async LLM validation complete: image=%s validated=%s",
+        image_id,
+        validated,
+    )
+
+    # Best-effort cleanup of the staged payload (idempotent if already gone).
+    try:
+        s3.delete_object(Bucket=bucket, Key=key)
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+
+    return {"success": True, "llm_validated": validated, "image_id": image_id}
 
 
 def _process_single_record(
@@ -238,9 +306,7 @@ def _process_single_record(
     is_swift_single_pass = ocr_result.get("swift_single_pass", False)
 
     # For Swift single-pass with multiple receipts, process all of them
-    receipt_ids = ocr_result.get(
-        "receipt_ids", [receipt_id] if receipt_id else []
-    )
+    receipt_ids = ocr_result.get("receipt_ids", [receipt_id] if receipt_id else [])
     per_receipt_data = ocr_result.get("per_receipt_data", {})
 
     # Only create embeddings if we have valid receipt_id(s)
@@ -280,12 +346,8 @@ def _process_single_record(
             for rid in receipt_ids:
                 # Get per-receipt lines/words if available, otherwise use combined
                 receipt_data = per_receipt_data.get(rid, {})
-                lines = receipt_data.get("lines") or ocr_result.get(
-                    "receipt_lines"
-                )
-                words = receipt_data.get("words") or ocr_result.get(
-                    "receipt_words"
-                )
+                lines = receipt_data.get("lines") or ocr_result.get("receipt_lines")
+                words = receipt_data.get("words") or ocr_result.get("receipt_words")
 
                 _log(
                     "Processing embeddings for receipt %s: lines=%s, words=%s",
@@ -302,9 +364,7 @@ def _process_single_record(
                         words=words,
                     )
 
-                    merchant_found = embedding_result.get(
-                        "merchant_found", False
-                    )
+                    merchant_found = embedding_result.get("merchant_found", False)
                     if merchant_found:
                         total_merchants_found += 1
 
@@ -321,9 +381,7 @@ def _process_single_record(
                             "receipt_id": rid,
                             "success": True,
                             "merchant_found": merchant_found,
-                            "merchant_name": embedding_result.get(
-                                "merchant_name"
-                            ),
+                            "merchant_name": embedding_result.get("merchant_name"),
                             "merchant_place_id": embedding_result.get(
                                 "merchant_place_id"
                             ),
@@ -347,9 +405,7 @@ def _process_single_record(
             embedding_duration = time.time() - embedding_start
 
             # Use first receipt's result for backward compatibility
-            first_result = (
-                all_embedding_results[0] if all_embedding_results else {}
-            )
+            first_result = all_embedding_results[0] if all_embedding_results else {}
 
             _log(
                 "SUCCESS: Processed %s receipts for %s image: "

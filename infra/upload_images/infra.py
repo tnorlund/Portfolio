@@ -40,6 +40,8 @@ chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
 chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
 chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
 chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
+# Defer grok label validation to the async queue/consumer (off by default).
+llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
 
 stack = pulumi.get_stack()
 
@@ -141,6 +143,25 @@ class UploadImages(ComponentResource):
             redrive_policy=None,  # No DLQ for now
             tags={
                 "Purpose": "OCR Results Processing",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Queue for deferred (async) LLM label validation. When the words
+        # pipeline runs with LLM_VALIDATION_ASYNC=true it stages the grok payload
+        # on S3 and drops a pointer here; the process_ocr Lambda consumes it off
+        # the upload critical path. Visibility >= the consumer Lambda timeout.
+        self.llm_validation_queue = Queue(
+            f"{name}-llm-validation-queue",
+            name=f"{name}-{stack}-llm-validation-queue",
+            visibility_timeout_seconds=900,
+            message_retention_seconds=345600,  # 4 days
+            receive_wait_time_seconds=0,
+            redrive_policy=None,
+            tags={
+                "Purpose": "Async LLM Label Validation",
                 "Component": name,
                 "Environment": pulumi.get_stack(),
             },
@@ -251,9 +272,7 @@ class UploadImages(ComponentResource):
             source_paths=["receipt_dynamo"],  # Only need receipt_dynamo
             lambda_config=upload_receipt_lambda_config,
             platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self, depends_on=[upload_receipt_role]
-            ),
+            opts=ResourceOptions(parent=self, depends_on=[upload_receipt_role]),
         )
 
         upload_receipt_lambda = cast(
@@ -315,6 +334,7 @@ class UploadImages(ComponentResource):
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
                 pulumi.Output.from_input(chromadb_bucket_name),
+                self.llm_validation_queue.arn,
             ).apply(
                 lambda args: (
                     json.dumps(
@@ -349,9 +369,7 @@ class UploadImages(ComponentResource):
                                         args[5] + "/*",  # artifacts_bucket
                                     ]
                                     + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
+                                        [f"arn:aws:s3:::{args[6]}/*"] if args[6] else []
                                     ),
                                 },
                                 {
@@ -385,7 +403,10 @@ class UploadImages(ComponentResource):
                                 {
                                     "Effect": "Allow",
                                     "Action": "sqs:SendMessage",
-                                    "Resource": args[4],  # ocr_queue.arn
+                                    "Resource": [
+                                        args[4],  # ocr_queue.arn
+                                        args[7],  # llm_validation_queue.arn
+                                    ],
                                 },
                                 {
                                     "Effect": "Allow",
@@ -485,6 +506,9 @@ class UploadImages(ComponentResource):
                 "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
                 "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
+                # Async LLM validation: producer enqueues here, same Lambda consumes.
+                "LLM_VALIDATION_ASYNC": llm_validation_async,
+                "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
                 # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
@@ -555,9 +579,7 @@ class UploadImages(ComponentResource):
         )
 
         # Use the Lambda function created by CodeBuildDockerImage
-        process_ocr_lambda = cast(
-            Function, process_ocr_docker_image.lambda_function
-        )
+        process_ocr_lambda = cast(Function, process_ocr_docker_image.lambda_function)
 
         # Adopt existing mapping if already present to avoid ResourceConflict
         existing_mapping_uuid = pulumi.Config("portfolio").get(
@@ -571,10 +593,20 @@ class UploadImages(ComponentResource):
             enabled=True,
             opts=ResourceOptions(
                 parent=self,
-                import_=(
-                    existing_mapping_uuid if existing_mapping_uuid else None
-                ),
+                import_=(existing_mapping_uuid if existing_mapping_uuid else None),
             ),
+        )
+
+        # Deferred LLM-validation messages feed the SAME Lambda (content-routed
+        # in the handler). batch_size=1 so each grok run is independent and a
+        # slow one can't hold up a batch.
+        aws.lambda_.EventSourceMapping(
+            f"{name}-llm-validation-mapping",
+            event_source_arn=self.llm_validation_queue.arn,
+            function_name=process_ocr_lambda.name,
+            batch_size=1,
+            enabled=True,
+            opts=ResourceOptions(parent=self),
         )
 
         # =========================================================================
@@ -659,14 +691,8 @@ class UploadImages(ComponentResource):
                                     "s3:PutObject",
                                     "s3:HeadObject",
                                 ],
-                                "Resource": [
-                                    args[1] + "/*"
-                                ]  # artifacts_bucket
-                                + (
-                                    [f"arn:aws:s3:::{args[2]}/*"]
-                                    if args[2]
-                                    else []
-                                ),
+                                "Resource": [args[1] + "/*"]  # artifacts_bucket
+                                + ([f"arn:aws:s3:::{args[2]}/*"] if args[2] else []),
                             },
                         ]
                         + (
@@ -792,9 +818,7 @@ class UploadImages(ComponentResource):
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(
-                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
-            ),
+            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

@@ -15,13 +15,9 @@ import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
-if (
-    config.get_bool("docker-buildkit") is not False
-):  # Default to True if not set
+if config.get_bool("docker-buildkit") is not False:  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
-    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
-        "1"  # Also enable for docker-compose
-    )
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = "1"  # Also enable for docker-compose
 
     # Warning if BuildKit might not be inherited by Docker
     if not os.environ.get("DOCKER_BUILDKIT"):
@@ -150,9 +146,7 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export(
-    "critical_error_topic_arn", notification_system.critical_error_topic_arn
-)
+pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
 
 # Create billing alerts for CloudWatch custom metrics costs
 billing_alerts = BillingAlerts(
@@ -255,9 +249,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 # Create embedding infrastructure using shared bucket and queues
 # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
 embedding_depends_on = (
-    chromadb_infrastructure.efs.mount_targets
-    if chromadb_infrastructure.efs
-    else None
+    chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
 )
 
 embedding_infrastructure = EmbeddingInfrastructure(
@@ -386,9 +378,7 @@ if hasattr(api_gateway, "api"):
         "word_similarity_route",
         api_id=api_gateway.api.id,
         route_key="GET /word_similarity",
-        target=integration_word_similarity.id.apply(
-            lambda id: f"integrations/{id}"
-        ),
+        target=integration_word_similarity.id.apply(lambda id: f"integrations/{id}"),
         opts=pulumi.ResourceOptions(
             replace_on_changes=["route_key", "target"],
             delete_before_replace=True,
@@ -399,9 +389,7 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=word_similarity_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(
-            lambda arn: f"{arn}/*/*"
-        ),
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
 
 # Recreate workers to use NAT private subnets for egress
@@ -465,6 +453,7 @@ upload_images = UploadImages(
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+pulumi.export("llm_validation_queue_url", upload_images.llm_validation_queue.url)
 
 # ML Training Infrastructure
 # -------------------------
@@ -485,16 +474,12 @@ if enable_sagemaker:
         raw_bucket_arn=upload_images.image_bucket.arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
-    pulumi.export(
-        "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
-    )
+    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
     pulumi.export(
         "layoutlm_sagemaker_ecr_repo",
         sagemaker_training.ecr_repo.repository_url,
     )
-    pulumi.export(
-        "layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn
-    )
+    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
     pulumi.export(
         "layoutlm_start_training_lambda",
         sagemaker_training.start_training_lambda.arn,
@@ -503,9 +488,7 @@ if enable_sagemaker:
         "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
     )
     # Export model location for Swift OCR CLI to download LayoutLM model
-    pulumi.export(
-        "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
-    )
+    pulumi.export("layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket)
     pulumi.export("layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip")
 
     # Per-epoch checkpoint evaluation. Reuses the training container image and
@@ -533,9 +516,7 @@ else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
     if training_bucket_config:
-        layoutlm_training_bucket_name = Output.from_input(
-            training_bucket_config
-        )
+        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
 
 # Create LayoutLM inference API if we have a training bucket (either from training infra or config)
 if layoutlm_training_bucket_name is not None:
@@ -628,9 +609,7 @@ if layoutlm_training_bucket_name is not None:
             action="lambda:InvokeFunction",
             function=layoutlm_inference_lambda.name,
             principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(
-                lambda arn: f"{arn}/*/*"
-            ),
+            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
         )
 
         # Route for the per-epoch evaluation API.
@@ -659,9 +638,7 @@ if layoutlm_training_bucket_name is not None:
             action="lambda:InvokeFunction",
             function=layoutlm_epochs_lambda.name,
             principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(
-                lambda arn: f"{arn}/*/*"
-            ),
+            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
         )
 
     pulumi.export(
@@ -1246,12 +1223,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export(
-    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
-)
-pulumi.export(
-    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
-)
+pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
+pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
 pulumi.export(
     "stream_processor_function_arn",
     chromadb_infrastructure.stream_processor_arn,
@@ -1365,9 +1338,7 @@ pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.
 # deploy is observe-only. Flip per stack with:
 #   pulumi config set portfolio:label_refresh_dry_run false --stack dev
 # Then verify dev for 48h before flipping prod.
-_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
-    "label_refresh_dry_run"
-)
+_label_refresh_dry_run = pulumi.Config("portfolio").get_bool("label_refresh_dry_run")
 label_refresh_lambda = create_label_refresh_lambda(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
@@ -1386,15 +1357,9 @@ langsmith_bulk_export = LangSmithBulkExport(
     f"langsmith-export-{stack}",
     project_name=f"label-evaluator-{stack}",
 )
-pulumi.export(
-    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
-)
-pulumi.export(
-    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
-)
-pulumi.export(
-    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
-)
+pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
+pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
+pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
 
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
@@ -1482,9 +1447,7 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
-pulumi.export(
-    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
-)
+pulumi.export("label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name)
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
 # Only create if SageMaker training is enabled (we need the training bucket)
@@ -1502,9 +1465,7 @@ if enable_sagemaker and layoutlm_training_bucket_name is not None:
     )
 
     pulumi.export("coreml_export_job_queue_url", coreml_export.job_queue_url)
-    pulumi.export(
-        "coreml_export_results_queue_url", coreml_export.results_queue_url
-    )
+    pulumi.export("coreml_export_results_queue_url", coreml_export.results_queue_url)
     pulumi.export(
         "coreml_export_process_results_lambda_arn",
         coreml_export.process_results_lambda.arn,
@@ -1556,14 +1517,10 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=label_validation_timeline_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(
-            lambda arn: f"{arn}/*/*"
-        ),
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
 
-pulumi.export(
-    "label_validation_timeline_cache_bucket", timeline_cache_bucket.id
-)
+pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
 pulumi.export(
     "label_validation_timeline_cache_generator_lambda",
     timeline_cache_generator_lambda.name,
@@ -1611,9 +1568,7 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=label_evaluator_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(
-            lambda arn: f"{arn}/*/*"
-        ),
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
 
     # Additional label evaluator visualization endpoints (same Lambda, different paths)
@@ -1723,9 +1678,7 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=label_validation_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(
-            lambda arn: f"{arn}/*/*"
-        ),
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
 
 # QA Agent Step Function pipeline
@@ -1783,7 +1736,5 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=qa_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(
-            lambda arn: f"{arn}/*/*"
-        ),
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )
