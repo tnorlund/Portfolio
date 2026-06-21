@@ -66,6 +66,18 @@ from receipt_upload.merchant_resolution.resolver import (
 
 logger = logging.getLogger(__name__)
 
+# Currency-column roles that the deterministic geometry pass assigns by POSITION,
+# not by word text: which column a price sits in is what makes it a line total vs
+# a per-unit price vs a quantity. The text-only LLM validator cannot see columns
+# and demonstrably flips these (a right-column LINE_TOTAL re-tagged UNIT_PRICE on
+# the Trader Joe's June21 receipt). We trust geometry for these and keep them off
+# the LLM hand-off — which also shrinks grok's payload and the upload critical
+# path. Chroma (embedding + position aware) still gets a vote; only the LLM
+# reassignment is suppressed. Semantic/text roles (PRODUCT_NAME, etc.) and
+# model-proposed currency labels are unaffected.
+_GEOMETRY_SPATIAL_ROLES = {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
+_GEOMETRY_PROPOSER = "geometry_line_items"
+
 
 def _chroma_cloud_config() -> Optional[Dict[str, str]]:
     """Return Chroma Cloud connection config from env, or None if not enabled.
@@ -323,7 +335,11 @@ def _run_lines_pipeline_worker(
     )
     from receipt_chroma.embedding.records import RowEmbeddingRecord
     from receipt_dynamo import DynamoClient
-    from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+    from receipt_dynamo.entities import (
+        ReceiptLine,
+        ReceiptWord,
+        ReceiptWordLabel,
+    )
 
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
@@ -424,9 +440,7 @@ def _run_lines_pipeline_worker(
             # Upsert into the local snapshot client (skip in cloud mode — the
             # read client is Cloud and the delta upload below is self-contained).
             if not cloud_cfg:
-                client.upsert_vectors(
-                    collection_name="lines", **line_payload
-                )
+                client.upsert_vectors(collection_name="lines", **line_payload)
 
             # Upload delta to S3
             import boto3
@@ -538,7 +552,6 @@ def _run_words_pipeline_worker(
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
-
     def _do_words_work() -> Dict[str, Any]:
         # Reconstruct entities from dicts using **unpacking
         words = [ReceiptWord(**d) for d in words_data]
@@ -574,10 +587,26 @@ def _run_words_pipeline_worker(
             # labels and labels by column. Emitted as PENDING so the Chroma + LLM
             # validators below confirm them, same as any other proposed label.
             from receipt_upload.line_items import (
+                dedupe_grand_total,
                 propose_line_item_labels,
                 propose_product_names,
                 reclassify_mislabeled_totals,
             )
+
+            # Receipts restate the grand total several times (balance / total /
+            # tendered amount); the first-pass model tags every copy GRAND_TOTAL.
+            # Keep one canonical copy and invalidate the equal-valued duplicates
+            # BEFORE validation, so they neither corrupt arithmetic nor inflate the
+            # LLM validator's workload. Conservative: only exact-value duplicates.
+            for dup in dedupe_grand_total(words, word_labels):
+                dup.validation_status = ValidationStatus.INVALID.value
+                dup.label_proposed_by = "dedupe_grand_total"
+                dup.reasoning = (
+                    "Redundant GRAND_TOTAL: the receipt restates the final total "
+                    "on multiple rows; the canonical (lowest) copy is kept."
+                )
+                dynamo.update_receipt_word_label(dup)
+                _remove_label_from_list(pending_labels, dup)
 
             # First-pass models emit SUBTOTAL/TAX when line totals coincidentally
             # sum to the grand total and no Subtotal/Tax keyword anchors a real
@@ -609,9 +638,7 @@ def _run_words_pipeline_worker(
                 # pull them from pending so the LLM can't "correct" them to TAX.
                 lt_label.validation_status = ValidationStatus.VALID.value
                 lt_label.label_proposed_by = "arithmetic_totals_reclass"
-                lt_label.reasoning = (
-                    "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
-                )
+                lt_label.reasoning = "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
                 dynamo.update_receipt_word_label(lt_label)
                 _remove_label_from_list(pending_labels, lt_label)
 
@@ -621,7 +648,10 @@ def _run_words_pipeline_worker(
                 # Arithmetic-verified line items (Σ line_total = receipt total) are
                 # already VALID; only route the unverified PENDING ones through the
                 # Chroma + LLM validators.
-                if li_label.validation_status == ValidationStatus.PENDING.value:
+                if (
+                    li_label.validation_status
+                    == ValidationStatus.PENDING.value
+                ):
                     pending_labels.append(li_label)
 
             # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
@@ -692,6 +722,17 @@ def _run_words_pipeline_worker(
                             dynamo.update_receipt_word_label(label)
                             chroma_validated += 1
                         else:
+                            # Don't let the text-only LLM reassign a geometry
+                            # column role (LINE_TOTAL/UNIT_PRICE/QUANTITY): the
+                            # role is positional, grok flips them wrong, and
+                            # skipping them keeps grok's payload (and latency)
+                            # down. Leave the geometry proposal as-is.
+                            if (
+                                label.label in _GEOMETRY_SPATIAL_ROLES
+                                and label.label_proposed_by
+                                == _GEOMETRY_PROPOSER
+                            ):
+                                continue
                             llm_needed.append((word, label))
 
                 # Apply traceable decorator if available
@@ -960,9 +1001,7 @@ def _run_words_pipeline_worker(
             # Upsert into the local snapshot client (skip in cloud mode — the
             # read client is Cloud and the delta upload below is self-contained).
             if not cloud_cfg:
-                client.upsert_vectors(
-                    collection_name="words", **word_payload
-                )
+                client.upsert_vectors(collection_name="words", **word_payload)
 
             # Upload delta to S3
             import boto3
