@@ -630,6 +630,12 @@ class UploadImages(ComponentResource):
             batch_size=1,
             enabled=True,
             function_response_types=["ReportBatchItemFailures"],
+            # Cap deferred-grok consumers so a backlog can't monopolize the
+            # shared Lambda's concurrency and starve latency-sensitive OCR-result
+            # processing. (SQS scaling minimum is 2.)
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=5,
+            ),
             opts=ResourceOptions(parent=self),
         )
 

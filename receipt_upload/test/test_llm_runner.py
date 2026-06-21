@@ -180,7 +180,7 @@ def test_apply_async_payload_valid_invalid_and_correction():
         "llm_words_context": [],
         "pending_labels_data": [],
         "similar_evidence": {},
-        "needed_labels": [m._label_to_jsonable(l) for l in needed],
+        "needed_labels": [m._label_to_jsonable(lab) for lab in needed],
     }
     results = [
         _result(5, 2, "VALID", "PRODUCT_NAME"),
@@ -196,12 +196,14 @@ def test_apply_async_payload_valid_invalid_and_correction():
 
     assert n == 3
     # The correction added a new MERCHANT_NAME (VALID, consolidated from ADDRESS).
-    added = [l for l in dynamo.added if l.label == "MERCHANT_NAME"]
+    added = [lab for lab in dynamo.added if lab.label == "MERCHANT_NAME"]
     assert len(added) == 1
     assert added[0].validation_status == ValidationStatus.VALID.value
     assert added[0].label_consolidated_from == "ADDRESS_LINE"
     # The VALID and the two INVALIDs were status updates.
-    statuses = {(l.line_id, l.word_id): l.validation_status for l in dynamo.updated}
+    statuses = {
+        (lab.line_id, lab.word_id): lab.validation_status for lab in dynamo.updated
+    }
     assert statuses[(5, 2)] == ValidationStatus.VALID.value
     assert statuses[(6, 1)] == ValidationStatus.INVALID.value
     assert statuses[(7, 1)] == ValidationStatus.INVALID.value
@@ -217,7 +219,7 @@ def _payload(needed):
         "llm_words_context": [],
         "pending_labels_data": [],
         "similar_evidence": {},
-        "needed_labels": [m._label_to_jsonable(l) for l in needed],
+        "needed_labels": [m._label_to_jsonable(lab) for lab in needed],
     }
 
 

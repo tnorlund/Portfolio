@@ -1049,6 +1049,23 @@ class TestModuleLevelFunctions:
         # a genuinely wrong merchant still gets rejected
         assert not merchant_name_matches_receipt("Trader Joe's", lines)
 
+    def test_generic_token_collision_is_rejected(self):
+        """A lone GENERIC token overlap must not pass the poison guard.
+
+        Candidate 'Sprouts Farmers Market' shares only the generic word 'market'
+        with an unrelated body line — that is not evidence of a match.
+        """
+        lines = [
+            self._make_line(1, "TOTALLY DIFFERENT DELI", y=0.95),
+            self._make_line(2, "market salad bowl", y=0.5),
+        ]
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
+
+    def test_distinctive_token_overlap_passes(self):
+        """A distinctive (non-generic) token overlap passes."""
+        lines = [self._make_line(1, "COSTCO WHOLESALE #123", y=0.95)]
+        assert merchant_name_matches_receipt("Costco Wholesale", lines)
+
 
 class TestWriteTimeValidationLogic:
     """Test the merchant_name_matches_receipt helper used by write-time validation.
@@ -1288,9 +1305,7 @@ class TestMerchantResolverLabeledFields:
 
         with (
             patch.object(resolver, "_run_labeled_place_search") as labeled_search,
-            patch.object(
-                resolver, "_similarity_search", return_value=MerchantResult()
-            ),
+            patch.object(resolver, "_similarity_search", return_value=MerchantResult()),
             patch.object(
                 resolver, "_run_place_id_finder", return_value=MerchantResult()
             ),
@@ -1320,15 +1335,24 @@ class TestMerchantResolverLabeledFields:
         )
         words = [
             MagicMock(
-                spec=ReceiptWord, line_id=1, word_id=1, text="Whole",
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="Whole",
                 extracted_data={},
             ),
             MagicMock(
-                spec=ReceiptWord, line_id=1, word_id=2, text="Foods",
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=2,
+                text="Foods",
                 extracted_data={},
             ),
             MagicMock(
-                spec=ReceiptWord, line_id=2, word_id=1, text="(702) 361-8183",
+                spec=ReceiptWord,
+                line_id=2,
+                word_id=1,
+                text="(702) 361-8183",
                 extracted_data={"type": "phone", "value": "7023618183"},
             ),
         ]
@@ -1346,7 +1370,8 @@ class TestMerchantResolverLabeledFields:
         )
         with (
             patch.object(
-                resolver, "_run_labeled_place_search",
+                resolver,
+                "_run_labeled_place_search",
                 return_value=places_result,
             ) as places,
             patch.object(resolver, "_similarity_search") as chroma,
@@ -1378,11 +1403,17 @@ class TestMerchantResolverLabeledFields:
         )
         words = [
             MagicMock(
-                spec=ReceiptWord, line_id=1, word_id=1, text="Bad",
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="Bad",
                 extracted_data={},
             ),
             MagicMock(
-                spec=ReceiptWord, line_id=1, word_id=2, text="Hint",
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=2,
+                text="Hint",
                 extracted_data={},
             ),
         ]
@@ -1391,9 +1422,7 @@ class TestMerchantResolverLabeledFields:
         labels = [_label(1, 1, "MERCHANT_NAME"), _label(1, 2, "MERCHANT_NAME")]
         with (
             patch.object(resolver, "_run_labeled_place_search") as places,
-            patch.object(
-                resolver, "_similarity_search", return_value=MerchantResult()
-            ),
+            patch.object(resolver, "_similarity_search", return_value=MerchantResult()),
             patch.object(
                 resolver, "_run_place_id_finder", return_value=MerchantResult()
             ),

@@ -26,6 +26,7 @@ Tracing:
 
 import logging
 import os
+import re
 import shutil
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -59,6 +60,7 @@ from receipt_upload.label_validation.langsmith_logging import (
     log_merchant_resolution,
 )
 from receipt_upload.label_validation.llm_runner import (
+    apply_async_payload,
     build_async_payload,
     run_llm_validation_sync,
 )
@@ -136,6 +138,23 @@ def _enqueue_async_llm_validation(
 # model-proposed currency labels are unaffected.
 _GEOMETRY_SPATIAL_ROLES = {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
 _GEOMETRY_PROPOSER = "geometry_line_items"
+
+# Mask PII in resolver diagnostic logs before re-emitting them to CloudWatch.
+# The resolver prints phone/address pulled from the receipt for matching; those
+# are PII and must not land in centralized logs in the clear.
+_PHONE_FIELD_RE = re.compile(r"(phone=)[^\s,)]+")
+_ADDRESS_FIELD_RE = re.compile(r"(address=)[^)]*")
+_PHONE_NUM_RE = re.compile(r"\b\d{3}[-.\s]\d{3}[-.\s]?\d{4}\b")
+_DIGIT_RUN_RE = re.compile(r"\b\d{10,}\b")
+
+
+def _redact_pii(text: str) -> str:
+    """Mask phone/address values in a resolver log line."""
+    text = _PHONE_FIELD_RE.sub(r"\1<redacted>", text)
+    text = _ADDRESS_FIELD_RE.sub(r"\1<redacted>", text)
+    text = _PHONE_NUM_RE.sub("<redacted-phone>", text)
+    text = _DIGIT_RUN_RE.sub("<redacted-phone>", text)
+    return text
 
 
 def _chroma_cloud_config() -> Optional[Dict[str, str]]:
@@ -429,14 +448,25 @@ def _run_lines_pipeline_worker(
             )
 
             # Capture the resolver's stdout (its `_log` print()s, incl. the
-            # Tier-1/Tier-2 attempts) so the main process can re-emit it. A
-            # ProcessPoolExecutor child's stdout does NOT reach CloudWatch on its
-            # own, which is why merchant resolution was previously unobservable.
+            # Tier attempts) so the main process can re-emit it — but ONLY when
+            # running in a real subprocess (ProcessPoolExecutor child), whose
+            # stdout does NOT reach CloudWatch on its own. In Lambda, Phase 2 uses
+            # a THREAD executor, where redirect_stdout mutates process-global
+            # sys.stdout and would swallow concurrent prints from the words
+            # pipeline. In that case skip the capture: the resolver's prints reach
+            # CloudWatch directly (same process).
             import contextlib
             import io as _io
+            import multiprocessing
 
+            in_subprocess = multiprocessing.current_process().name != "MainProcess"
             resolver_log_buf = _io.StringIO()
-            with contextlib.redirect_stdout(resolver_log_buf):
+            capture_cm = (
+                contextlib.redirect_stdout(resolver_log_buf)
+                if in_subprocess
+                else contextlib.nullcontext()
+            )
+            with capture_cm:
                 merchant_result = resolver.resolve(
                     lines_client=client,
                     lines=lines,
@@ -613,6 +643,9 @@ def _run_words_pipeline_worker(
             # Run label validation
             dynamo = DynamoClient(table_name)
             validation_stats: Dict[str, Any] = {}
+            # Built when LLM_VALIDATION_ASYNC is on; enqueued by the caller AFTER
+            # the words delta + compaction run exist (Phase 3b). None otherwise.
+            async_llm_payload: Optional[Dict[str, Any]] = None
 
             pending_labels = _prepare_pending_core_labels(
                 dynamo=dynamo,
@@ -762,11 +795,18 @@ def _run_words_pipeline_worker(
                             # column role (LINE_TOTAL/UNIT_PRICE/QUANTITY): the
                             # role is positional, grok flips them wrong, and
                             # skipping them keeps grok's payload (and latency)
-                            # down. Leave the geometry proposal as-is.
+                            # down. Geometry is authoritative here, so commit a
+                            # TERMINAL status instead of leaving it PENDING
+                            # (otherwise a Chroma-abstained geometry role would be
+                            # stuck PENDING forever).
                             if (
                                 label.label in _GEOMETRY_SPATIAL_ROLES
                                 and label.label_proposed_by == _GEOMETRY_PROPOSER
                             ):
+                                label.validation_status = ValidationStatus.VALID.value
+                                label.label_proposed_by = "geometry_trusted"
+                                dynamo.update_receipt_word_label(label)
+                                chroma_validated += 1
                                 continue
                             llm_needed.append((word, label))
 
@@ -795,15 +835,17 @@ def _run_words_pipeline_worker(
                 # LLM (grok) validation for labels Chroma couldn't auto-resolve.
                 # This is the slowest single step on the upload critical path
                 # (~10s synchronous LLM call). Default: validate inline. When
-                # LLM_VALIDATION_ASYNC is on, hand the payload to a consumer
-                # Lambda (via S3 + SQS) and return now — the corrections land in
-                # DynamoDB within seconds and Chroma converges on next compaction.
+                # LLM_VALIDATION_ASYNC is on, BUILD the hand-off payload here but
+                # do NOT enqueue yet — the caller enqueues only after the words
+                # delta is uploaded and the compaction run is created, so the
+                # consumer can't write label changes before the word embeddings
+                # exist downstream (see Phase 3b in _process_embeddings_impl).
                 llm_validated = 0
                 llm_deferred = 0
                 if llm_needed:
                     if _llm_validation_async_enabled():
                         try:
-                            payload = build_async_payload(
+                            async_llm_payload = build_async_payload(
                                 llm_needed=llm_needed,
                                 words=words,
                                 image_id=image_id,
@@ -813,22 +855,13 @@ def _run_words_pipeline_worker(
                                 word_embedding_cache=word_embedding_cache,
                                 merchant_name=None,
                             )
-                            _enqueue_async_llm_validation(
-                                payload=payload,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                run_id=run_id,
-                                chromadb_bucket=chromadb_bucket,
-                            )
                             llm_deferred = len(llm_needed)
                         except Exception as e:
-                            # Never leave labels dangling PENDING: if the hand-off
-                            # fails, validate inline. Distinct marker so a log
-                            # metric filter can alarm — a systemic enqueue failure
-                            # (dropped queue URL, tightened IAM) would otherwise
-                            # silently revert the latency win with no signal.
+                            # Never leave labels dangling PENDING: if the payload
+                            # build fails, validate inline. Distinct marker so a
+                            # log metric filter can alarm.
                             logger.warning(
-                                "[LLM_ASYNC_FALLBACK] enqueue failed for "
+                                "[LLM_ASYNC_FALLBACK] payload build failed for "
                                 "%s#%s (%s); running validation inline",
                                 image_id,
                                 receipt_id,
@@ -890,6 +923,7 @@ def _run_words_pipeline_worker(
             return {
                 "success": True,
                 "words_prefix": prefix,
+                "async_llm_payload": async_llm_payload,
                 **validation_stats,
             }
         finally:
@@ -1243,7 +1277,7 @@ class MerchantResolvingEmbeddingProcessor:
                     if resolver_logs:
                         for _ln in resolver_logs.splitlines():
                             if _ln.strip():
-                                _log(f"[lines-pipeline] {_ln}")
+                                _log(f"[lines-pipeline] {_redact_pii(_ln)}")
 
                     # Reconstruct MerchantResult from serializable dict
                     if lines_result.get("success"):
@@ -1285,14 +1319,21 @@ class MerchantResolvingEmbeddingProcessor:
                     merchant_result = MerchantResult()
                     lines_prefix = None
 
+                async_llm_payload = None
                 try:
                     words_result = words_future.result()
                     words_prefix = words_result.get("words_prefix")
+                    async_llm_payload = words_result.get("async_llm_payload")
                     if words_result.get("success"):
                         validation_stats = {
                             k: v
                             for k, v in words_result.items()
-                            if k not in ("success", "words_prefix")
+                            if k
+                            not in (
+                                "success",
+                                "words_prefix",
+                                "async_llm_payload",
+                            )
                         }
                 except Exception as e:
                     _log(f"WARNING: Words pipeline failed: {e}")
@@ -1318,6 +1359,41 @@ class MerchantResolvingEmbeddingProcessor:
             else:
                 _log("WARNING: Skipping compaction run - missing delta prefixes")
                 compaction_run = None
+
+            # =================================================================
+            # PHASE 3b: Enqueue deferred LLM validation (async mode only)
+            # =================================================================
+            # Enqueue ONLY now — after the words delta is uploaded and the
+            # compaction run exists — so the consumer cannot write label changes
+            # before the corresponding word embeddings are in place downstream.
+            if async_llm_payload:
+                try:
+                    _enqueue_async_llm_validation(
+                        payload=async_llm_payload,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        run_id=run_id,
+                        chromadb_bucket=self.chromadb_bucket,
+                    )
+                    _log("Phase 3b complete: enqueued deferred LLM validation")
+                except Exception as e:
+                    # Enqueue failed (systemic SQS/S3/IAM). Don't strand labels:
+                    # validate inline from the same payload (no Chroma needed).
+                    logger.warning(
+                        "[LLM_ASYNC_FALLBACK] enqueue failed for %s#%s (%s); "
+                        "validating inline",
+                        image_id,
+                        receipt_id,
+                        e,
+                    )
+                    try:
+                        apply_async_payload(async_llm_payload, self.dynamo)
+                    except Exception:
+                        logger.exception(
+                            "Inline LLM fallback also failed for %s#%s",
+                            image_id,
+                            receipt_id,
+                        )
 
             # =================================================================
             # PHASE 4: Log merchant resolution + enrich receipt place

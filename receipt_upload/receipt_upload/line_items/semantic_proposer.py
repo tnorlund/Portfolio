@@ -66,12 +66,10 @@ _FIELD_KEYWORDS = frozenset(
         "weight",
         "wt",
         "tare",
-        "net",
         "oz",
         "lb",
         "lbs",
         "kg",
-        "g",
         "ct",
         "pk",
         # payment / card-slip furniture
@@ -101,7 +99,6 @@ _FIELD_KEYWORDS = frozenset(
         "trace",
         "batch",
         "seq",
-        "us",
         # loyalty / membership
         "member",
         "members",
@@ -114,13 +111,11 @@ _FIELD_KEYWORDS = frozenset(
         "extracare",
         # receipt metadata / headers
         "items",
-        "item",
         "qty.",
         "server",
         "table",
         "guest",
         "guests",
-        "order",
         "receipt",
         "store",
         "reg",
@@ -129,8 +124,6 @@ _FIELD_KEYWORDS = frozenset(
         "cashier",
         "cshr",
         "str",
-        "date",
-        "time",
         "visit",
         "transaction",
         "trans",
@@ -200,9 +193,7 @@ def _knn_is_product(
             votes.append(primary)
         if len(votes) >= k:
             break
-    return (
-        bool(votes) and Counter(votes).most_common(1)[0][0] == "PRODUCT_NAME"
-    )
+    return bool(votes) and Counter(votes).most_common(1)[0][0] == "PRODUCT_NAME"
 
 
 def propose_product_names(
@@ -230,23 +221,14 @@ def propose_product_names(
     labeled = {
         (lab.line_id, lab.word_id)
         for lab in existing_labels
-        if lab.label != "O"
-        and lab.validation_status != ValidationStatus.INVALID.value
+        if lab.label != "O" and lab.validation_status != ValidationStatus.INVALID.value
     }
-    label_at = {
-        (lab.line_id, lab.word_id): lab.label for lab in existing_labels
-    }
+    label_at = {(lab.line_id, lab.word_id): lab.label for lab in existing_labels}
 
-    header = [
-        _cy(w)
-        for w in words
-        if label_at.get((w.line_id, w.word_id)) in _HEADER
-    ]
+    header = [_cy(w) for w in words if label_at.get((w.line_id, w.word_id)) in _HEADER]
     header = [y for y in header if y is not None]
     totals = [
-        _cy(w)
-        for w in words
-        if label_at.get((w.line_id, w.word_id)) == "GRAND_TOTAL"
+        _cy(w) for w in words if label_at.get((w.line_id, w.word_id)) == "GRAND_TOTAL"
     ]
     totals = [y for y in totals if y is not None]
     if not header or not totals:

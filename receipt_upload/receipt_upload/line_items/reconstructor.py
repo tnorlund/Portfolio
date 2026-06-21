@@ -323,10 +323,14 @@ def dedupe_grand_total(
         if len(labs) < 2:
             continue
         pending = [
-            l for l in labs if l.validation_status == ValidationStatus.PENDING.value
+            lab
+            for lab in labs
+            if lab.validation_status == ValidationStatus.PENDING.value
         ]
         confirmed = [
-            l for l in labs if l.validation_status != ValidationStatus.PENDING.value
+            lab
+            for lab in labs
+            if lab.validation_status != ValidationStatus.PENDING.value
         ]
         if len(confirmed) >= 2:
             # Multiple deliberate copies — not ours to reconcile; abstain.
@@ -337,7 +341,7 @@ def dedupe_grand_total(
             redundant.extend(pending)
             continue
         # All PENDING: keep the lowest-on-receipt copy, invalidate the rest.
-        pending.sort(key=lambda l: pos.get((l.line_id, l.word_id), 0.0))
+        pending.sort(key=lambda lab: pos.get((lab.line_id, lab.word_id), 0.0))
         redundant.extend(pending[1:])
     return redundant
 

@@ -42,7 +42,7 @@ def _label(line_id, word_id, label, status=ValidationStatus.VALID.value):
 
 
 def _keys(labels):
-    return {(l.line_id, l.word_id) for l in labels}
+    return {(lab.line_id, lab.word_id) for lab in labels}
 
 
 _PENDING = ValidationStatus.PENDING.value
@@ -63,7 +63,7 @@ def test_all_pending_keeps_lowest_invalidates_rest():
     redundant = dedupe_grand_total(words, labels)
     # canonical (lowest cy => smallest y) is L54; the two above are redundant
     assert _keys(redundant) == {(40, 1), (41, 1)}
-    assert all(l.validation_status == _PENDING for l in redundant)
+    assert all(lab.validation_status == _PENDING for lab in redundant)
 
 
 def test_confirmed_copy_is_canonical_only_pending_dropped():
@@ -83,7 +83,7 @@ def test_confirmed_copy_is_canonical_only_pending_dropped():
     # The VALID copy is NEVER returned; both PENDING dupes are.
     assert _keys(redundant) == {(40, 1), (41, 1)}
     assert (54, 1) not in _keys(redundant)
-    assert all(l.validation_status == _PENDING for l in redundant)
+    assert all(lab.validation_status == _PENDING for lab in redundant)
 
 
 def test_multiple_confirmed_copies_abstain():
