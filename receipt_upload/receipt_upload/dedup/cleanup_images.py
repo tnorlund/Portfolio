@@ -160,7 +160,11 @@ def execute_cleanup(cleanups: List[ImageCleanup], dynamo=None, s3=None, *,
             # 2) backup dynamo items
             with open(os.path.join(backup_dir, f"{c.image_id}.dynamo.json"), "w") as f:
                 json.dump(items, f)
-            # 3) backup + delete S3 objects (download first; no versioning)
+            # 3) S3: download ALL objects + persist the restore manifest FIRST,
+            # then delete. The bucket is unversioned, so the manifest (which points
+            # at the downloaded local copies) must be durable before any delete —
+            # if a later delete fails or the process dies, rollback_cleanup can
+            # still re-upload every already-deleted object from the manifest.
             obj_manifest = []
             for o in c.s3_objects:
                 local = os.path.join(backup_dir, "s3", o.bucket, o.key)
@@ -170,11 +174,12 @@ def execute_cleanup(cleanups: List[ImageCleanup], dynamo=None, s3=None, *,
                 except Exception:
                     report["s3_missing"] += 1
                     continue  # object doesn't exist; nothing to delete/restore
-                s3.delete_object(Bucket=o.bucket, Key=o.key)
-                report["s3_deleted"] += 1
                 obj_manifest.append({"bucket": o.bucket, "key": o.key, "local": local})
             with open(os.path.join(backup_dir, f"{c.image_id}.s3.json"), "w") as f:
                 json.dump(obj_manifest, f)
+            for o in obj_manifest:
+                s3.delete_object(Bucket=o["bucket"], Key=o["key"])
+                report["s3_deleted"] += 1
             # 4) delete EXACTLY the items we backed up (not a fresh re-query).
             # delete_image_details re-queries PK=IMAGE#{id} independently, so an
             # item written between the backup query and the delete query would be

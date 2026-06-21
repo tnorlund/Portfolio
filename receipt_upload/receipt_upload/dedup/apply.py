@@ -195,12 +195,27 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         items = _receipt_subtree_items(dynamo, d.image_id, d.receipt_id)
         drop_subtrees.append((d, items))
 
+    # A gap-fill key may ALREADY hold a label (re-run, or a concurrent write
+    # between plan + apply). Capture any pre-existing item so rollback restores
+    # the original instead of deleting it (the update-fallback overwrites it).
+    overwritten_labels = []
+    for _a, label in labels_to_add:
+        try:
+            existing = dynamo._client.get_item(
+                TableName=dynamo.table_name, Key=label.key
+            ).get("Item")
+        except Exception:
+            existing = None
+        if existing:
+            overwritten_labels.append(existing)
+
     # ---- BACKUP (before any mutation) ----
     backup = {
         "table": getattr(dynamo, "table_name", None),
         "created_at": _now_iso(),
         "deleted_items": [],
         "added_label_keys": [],
+        "overwritten_labels": overwritten_labels,
     }
     for (_d, items) in drop_subtrees:
         backup["deleted_items"].extend(items)
@@ -254,24 +269,40 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
     return report
 
 
+def _item_key(item: dict) -> dict:
+    return {"PK": item["PK"], "SK": item["SK"]}
+
+
 def rollback(backup_path: str, dynamo) -> dict:
-    """Reverse an apply: re-put every deleted item, delete every added label."""
+    """Reverse an apply: delete added labels, then re-put every deleted item and
+    restore any label that was OVERWRITTEN by a gap-fill update (so a pre-existing
+    label is recovered instead of being left deleted)."""
     with open(backup_path) as f:
         data = json.load(f)
     table = getattr(dynamo, "table_name", None) or data.get("table")
-    report = {"restored_items": 0, "removed_labels": 0, "errors": []}
-    for item in data.get("deleted_items", []):
-        try:
-            dynamo._client.put_item(TableName=table, Item=item)
-            report["restored_items"] += 1
-        except Exception as e:  # pragma: no cover
-            report["errors"].append(f"restore: {e}")
+    report = {"restored_items": 0, "removed_labels": 0, "restored_labels": 0, "errors": []}
+
+    # delete the labels we added first...
     for key in data.get("added_label_keys", []):
         try:
             dynamo._client.delete_item(TableName=table, Key=key)
             report["removed_labels"] += 1
         except Exception as e:  # pragma: no cover
             report["errors"].append(f"remove label: {e}")
+    # ...then re-put deleted subtrees and any overwritten originals (after the
+    # delete, so an overwritten label is restored to its pre-apply value).
+    for item in data.get("deleted_items", []):
+        try:
+            dynamo._client.put_item(TableName=table, Item=item)
+            report["restored_items"] += 1
+        except Exception as e:  # pragma: no cover
+            report["errors"].append(f"restore: {e}")
+    for item in data.get("overwritten_labels", []):
+        try:
+            dynamo._client.put_item(TableName=table, Item=item)
+            report["restored_labels"] += 1
+        except Exception as e:  # pragma: no cover
+            report["errors"].append(f"restore overwritten label: {e}")
     return report
 
 

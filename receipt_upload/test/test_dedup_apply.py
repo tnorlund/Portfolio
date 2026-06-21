@@ -42,12 +42,19 @@ class FakeClient:
 
     table_name = "ReceiptsTable-test"
 
-    def __init__(self, subtree=None):
+    def __init__(self, subtree=None, existing_labels=None):
         self.subtree = subtree or {}
+        # existing_labels: {(pk, sk): raw_item} returned by get_item
+        self.existing_labels = existing_labels or {}
         self.calls = []
         self.deleted_keys, self.put_items = [], []
         self.added_labels = []
         self._client = self
+
+    def get_item(self, TableName, Key):
+        self.calls.append("get_item")
+        item = self.existing_labels.get((Key["PK"]["S"], Key["SK"]["S"]))
+        return {"Item": item} if item else {}
 
     # high-level label writes
     def add_receipt_word_label(self, label):
@@ -216,6 +223,28 @@ def test_backup_written_before_mutation(tmp_path):
     assert len(data["deleted_items"]) == 8       # full subtree captured
     assert len(data["added_label_keys"]) == 1
     assert data["table"] == "ReceiptsTable-test"
+
+
+def test_overwritten_label_is_backed_up_and_restored(tmp_path):
+    # a gap-fill key already holds a label (re-run / concurrent write): capture it
+    # so rollback restores the original instead of deleting it.
+    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+    lbl = ReceiptWordLabel(image_id=IMG_S, receipt_id=2, line_id=4, word_id=3,
+                           label="LINE_TOTAL", reasoning="pre-existing",
+                           timestamp_added="2026-01-01T00:00:00+00:00")
+    key = lbl.key
+    pre = {**key, "TYPE": {"S": "RECEIPT_WORD_LABEL"},
+           "validation_status": {"S": "VALID"}}
+    bk = tmp_path / "restore.json"
+    cli = FakeClient({(IMG_D, 1): _full_subtree(IMG_D, 1)},
+                     existing_labels={(key["PK"]["S"], key["SK"]["S"]): pre})
+    execute(plan_operations([_resolution()]), cli, apply=True, backup_path=str(bk))
+    data = json.loads(bk.read_text())
+    assert len(data["overwritten_labels"]) == 1     # captured before overwrite
+
+    restore = FakeClient()
+    rep = rollback(str(bk), restore)
+    assert rep["restored_labels"] == 1 and pre in restore.put_items
 
 
 def test_rollback_reputs_items_and_removes_added_labels(tmp_path):
