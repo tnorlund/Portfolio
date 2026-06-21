@@ -22,6 +22,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
+from receipt_upload.dedup._ddb import (
+    AWS_ERRORS,
+    DYNAMO_ERRORS,
+    paginate,
+    raw_client,
+)
+
 
 @dataclass
 class LabelAdd:
@@ -56,7 +66,9 @@ def _parse_locus(s: str) -> Tuple[int, int]:
     return int(ln), int(wd)
 
 
-def _receipt_subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
+def _receipt_subtree_items(
+    dynamo, image_id: str, receipt_id: int
+) -> List[dict]:
     """Every raw DynamoDB item owned by one receipt.
 
     Most children share ``PK = IMAGE#{image_id}`` with an SK ``RECEIPT#{rid}#...``,
@@ -70,46 +82,44 @@ def _receipt_subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]
     """
     pk = f"IMAGE#{image_id}"
     padded, unpadded = f"{receipt_id:05d}", str(receipt_id)
-    out, lek = [], None
+    out: List[dict] = []
     # main table: all receipt-scoped items under IMAGE# (padded or unpadded rid)
-    while True:
-        kw = dict(
-            TableName=dynamo.table_name,
-            KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
-            ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-            ExpressionAttributeValues={":pk": {"S": pk}, ":sk": {"S": "RECEIPT#"}},
-        )
-        if lek:
-            kw["ExclusiveStartKey"] = lek
-        resp = dynamo._client.query(**kw)
-        for it in resp.get("Items", []):
-            parts = it["SK"]["S"].split("#")
-            if len(parts) >= 2 and parts[0] == "RECEIPT" and parts[1] in (padded, unpadded):
-                out.append(it)
-        lek = resp.get("LastEvaluatedKey")
-        if not lek:
-            break
+    for it in paginate(
+        dynamo,
+        TableName=dynamo.table_name,
+        KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
+        ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
+        ExpressionAttributeValues={":pk": {"S": pk}, ":sk": {"S": "RECEIPT#"}},
+    ):
+        parts = it["SK"]["S"].split("#")
+        if (
+            len(parts) >= 2
+            and parts[0] == "RECEIPT"
+            and parts[1] in (padded, unpadded)
+        ):
+            out.append(it)
     # FIELD# partition: ReceiptField records, located via GSI1 (keys projected).
-    lek = None
-    while True:
-        try:
-            kw = dict(
+    try:
+        out.extend(
+            paginate(
+                dynamo,
                 TableName=dynamo.table_name,
                 IndexName="GSI1",
-                KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
-                ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
+                KeyConditionExpression=(
+                    "#pk = :pk AND begins_with(#sk, :sk)"
+                ),
+                ExpressionAttributeNames={
+                    "#pk": "GSI1PK",
+                    "#sk": "GSI1SK",
+                },
                 ExpressionAttributeValues={
-                    ":pk": {"S": pk}, ":sk": {"S": f"RECEIPT#{padded}#FIELD#"}},
+                    ":pk": {"S": pk},
+                    ":sk": {"S": f"RECEIPT#{padded}#FIELD#"},
+                },
             )
-            if lek:
-                kw["ExclusiveStartKey"] = lek
-            resp = dynamo._client.query(**kw)
-        except Exception:
-            break  # no GSI1 / no field records
-        out.extend(resp.get("Items", []))
-        lek = resp.get("LastEvaluatedKey")
-        if not lek:
-            break
+        )
+    except AWS_ERRORS:
+        pass  # no GSI1 / no field records
     return out
 
 
@@ -133,7 +143,9 @@ def plan_operations(resolutions: List[dict]) -> ExecutionPlan:
             )
         for d in r.get("receipts_to_drop", []):
             di, drid = _parse_key(d)
-            plan.receipt_drops.append(ReceiptDrop(image_id=di, receipt_id=drid))
+            plan.receipt_drops.append(
+                ReceiptDrop(image_id=di, receipt_id=drid)
+            )
     return plan
 
 
@@ -141,8 +153,10 @@ def summarize(plan: ExecutionPlan) -> dict:
     return {
         "labels_to_add": len(plan.label_adds),
         "receipts_to_drop": len(plan.receipt_drops),
-        "images_touched": len({a.image_id for a in plan.label_adds}
-                              | {d.image_id for d in plan.receipt_drops}),
+        "images_touched": len(
+            {a.image_id for a in plan.label_adds}
+            | {d.image_id for d in plan.receipt_drops}
+        ),
     }
 
 
@@ -150,8 +164,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
-            source: str = "dedup-merge", backup_path: Optional[str] = None) -> dict:
+def execute(
+    plan: ExecutionPlan,
+    dynamo=None,
+    *,
+    apply: bool = False,
+    source: str = "dedup-merge",
+    backup_path: Optional[str] = None,
+) -> dict:
     """Apply the plan. DRY-RUN unless ``apply=True``.
 
     Dry-run performs NO reads or writes and needs no ``dynamo`` client.
@@ -184,9 +204,6 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         raise ValueError(
             "apply=True requires backup_path (deletions must be recoverable)"
         )
-
-    from receipt_dynamo.constants import ValidationStatus
-    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
     # Build label entities up front (needed for both backup keys and the writes).
     labels_to_add = [
@@ -223,10 +240,10 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
     overwritten_labels = []
     for _a, label in labels_to_add:
         try:
-            existing = dynamo._client.get_item(
+            existing = raw_client(dynamo).get_item(
                 TableName=dynamo.table_name, Key=label.key
             ).get("Item")
-        except Exception:
+        except AWS_ERRORS:
             existing = None
         if existing:
             overwritten_labels.append(existing)
@@ -239,110 +256,141 @@ def execute(plan: ExecutionPlan, dynamo=None, *, apply: bool = False,
         "added_label_keys": [],
         "overwritten_labels": overwritten_labels,
     }
-    for (_d, items) in drop_subtrees:
+    for _d, items in drop_subtrees:
         backup["deleted_items"].extend(items)
     backup["added_label_keys"] = [lbl.key for _a, lbl in labels_to_add]
-    with open(backup_path, "w") as f:
+    with open(backup_path, "w", encoding="utf-8") as f:
         json.dump(backup, f)
     report["backup_path"] = backup_path
 
-    # ---- 1) gap-fill labels onto survivors ----
-    # Track which dropped receipts a gap-fill failed to migrate FROM. We must not
-    # delete a source receipt whose VALID label failed to land on the survivor —
-    # that would lose the label. Such drops are skipped (recoverable via re-run).
+    failed_sources = _write_gap_fills(dynamo, labels_to_add, report)
+    _delete_drops(dynamo, drop_subtrees, failed_sources, report)
+    return report
+
+
+def _write_gap_fills(dynamo, labels_to_add, report) -> set:
+    """Write each gap-fill label onto its survivor. Returns the set of source
+    receipts whose label FAILED to write — those drops must be skipped so the
+    VALID label is not lost (recoverable via re-run)."""
     failed_sources = set()
     for a, label in labels_to_add:
         try:
             dynamo.add_receipt_word_label(label)
             report["labels_added"] += 1
-        except Exception:
+        except DYNAMO_ERRORS:
             try:
                 dynamo.update_receipt_word_label(label)
                 report["labels_added"] += 1
-            except Exception as e:  # pragma: no cover - surfaced, not raised
+            except DYNAMO_ERRORS as e:  # surfaced, not raised
                 report["errors"].append(
                     f"label {a.image_id}#{a.receipt_id} {a.label} "
                     f"(from {a.from_member}): {e}"
                 )
                 failed_sources.add(a.from_member)
+    return failed_sources
 
-    # ---- 2) delete each dropped receipt's full subtree (never the parent Image) ----
+
+def _delete_drops(dynamo, drop_subtrees, failed_sources, report) -> None:
+    """Delete each dropped receipt's full subtree (never the parent Image)."""
+    client = raw_client(dynamo)
     for d, items in drop_subtrees:
         drop_key = f"{d.image_id}#{d.receipt_id}"
         if drop_key in failed_sources:
             report["skipped_drops"].append(drop_key)
             report["errors"].append(
-                f"skipped drop {drop_key}: a VALID gap-fill from it failed to write"
+                f"skipped drop {drop_key}: a VALID gap-fill from it "
+                f"failed to write"
             )
             continue
-        had_receipt = any(it.get("TYPE", {}).get("S") == "RECEIPT" for it in items)
+        had_receipt = any(
+            it.get("TYPE", {}).get("S") == "RECEIPT" for it in items
+        )
         try:
             for it in items:
-                dynamo._client.delete_item(
+                client.delete_item(
                     TableName=dynamo.table_name,
                     Key={"PK": it["PK"], "SK": it["SK"]},
                 )
-            report["children_deleted"] += max(0, len(items) - (1 if had_receipt else 0))
+            report["children_deleted"] += max(
+                0, len(items) - (1 if had_receipt else 0)
+            )
             if had_receipt:
                 report["receipts_deleted"] += 1
-        except Exception as e:  # pragma: no cover
+        except AWS_ERRORS as e:
             report["errors"].append(f"drop {drop_key}: {e}")
-
-    return report
-
-
-def _item_key(item: dict) -> dict:
-    return {"PK": item["PK"], "SK": item["SK"]}
 
 
 def rollback(backup_path: str, dynamo) -> dict:
     """Reverse an apply: delete added labels, then re-put every deleted item and
     restore any label that was OVERWRITTEN by a gap-fill update (so a pre-existing
     label is recovered instead of being left deleted)."""
-    with open(backup_path) as f:
+    with open(backup_path, encoding="utf-8") as f:
         data = json.load(f)
     table = getattr(dynamo, "table_name", None) or data.get("table")
-    report = {"restored_items": 0, "removed_labels": 0, "restored_labels": 0, "errors": []}
+    client = raw_client(dynamo)
+    report = {
+        "restored_items": 0,
+        "removed_labels": 0,
+        "restored_labels": 0,
+        "errors": [],
+    }
 
     # delete the labels we added first...
     for key in data.get("added_label_keys", []):
         try:
-            dynamo._client.delete_item(TableName=table, Key=key)
+            client.delete_item(TableName=table, Key=key)
             report["removed_labels"] += 1
-        except Exception as e:  # pragma: no cover
+        except AWS_ERRORS as e:
             report["errors"].append(f"remove label: {e}")
     # ...then re-put deleted subtrees and any overwritten originals (after the
     # delete, so an overwritten label is restored to its pre-apply value).
     for item in data.get("deleted_items", []):
         try:
-            dynamo._client.put_item(TableName=table, Item=item)
+            client.put_item(TableName=table, Item=item)
             report["restored_items"] += 1
-        except Exception as e:  # pragma: no cover
+        except AWS_ERRORS as e:
             report["errors"].append(f"restore: {e}")
     for item in data.get("overwritten_labels", []):
         try:
-            dynamo._client.put_item(TableName=table, Item=item)
+            client.put_item(TableName=table, Item=item)
             report["restored_labels"] += 1
-        except Exception as e:  # pragma: no cover
+        except AWS_ERRORS as e:
             report["errors"].append(f"restore overwritten label: {e}")
     return report
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--plan", help="merge plan JSON from build_plan (dry-run/apply)")
-    ap.add_argument("--env", choices=["dev", "prod"], help="required with --apply/--rollback")
-    ap.add_argument("--apply", action="store_true", help="ACTUALLY mutate (default: dry-run)")
-    ap.add_argument("--backup", help="restore-file path (default: auto next to --plan)")
-    ap.add_argument("--rollback", help="reverse a prior apply using its restore file")
+    ap.add_argument(
+        "--plan", help="merge plan JSON from build_plan (dry-run/apply)"
+    )
+    ap.add_argument(
+        "--env",
+        choices=["dev", "prod"],
+        help="required with --apply/--rollback",
+    )
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help="ACTUALLY mutate (default: dry-run)",
+    )
+    ap.add_argument(
+        "--backup", help="restore-file path (default: auto next to --plan)"
+    )
+    ap.add_argument(
+        "--rollback", help="reverse a prior apply using its restore file"
+    )
     args = ap.parse_args()
+
+    # Imported here (CLI entry only) to keep the importable module free of a
+    # hard receipt_dynamo client dependency.
+    # pylint: disable=import-outside-toplevel
+    from receipt_dynamo import DynamoClient
+    from receipt_upload.dedup.dossiers import ENV_TABLE
 
     if args.rollback:
         if not args.env:
             raise SystemExit("--rollback requires --env")
-        from receipt_dynamo import DynamoClient
-        from receipt_upload.dedup.dossiers import ENV_TABLE
-
         dynamo = DynamoClient(ENV_TABLE[args.env])
         report = rollback(args.rollback, dynamo)
         print(f"ROLLED BACK: {json.dumps(report, indent=2)}")
@@ -350,32 +398,41 @@ def main() -> None:
 
     if not args.plan:
         raise SystemExit("--plan is required")
-    resolutions = json.load(open(args.plan))
+    with open(args.plan, encoding="utf-8") as f:
+        resolutions = json.load(f)
     plan = plan_operations(resolutions)
     s = summarize(plan)
-    print(f"Plan: add {s['labels_to_add']} gap-fill labels, drop "
-          f"{s['receipts_to_drop']} receipts across {s['images_touched']} images.")
+    print(
+        f"Plan: add {s['labels_to_add']} gap-fill labels, drop "
+        f"{s['receipts_to_drop']} receipts across {s['images_touched']} images."
+    )
     for a in plan.label_adds:
-        print(f"  + {a.label:14} on {a.image_id[:8]}#{a.receipt_id} @ {a.line_id}:{a.word_id} "
-              f"'{a.word_text[:18]}' (from {a.from_member[-6:]})")
+        print(
+            f"  + {a.label:14} on {a.image_id[:8]}#{a.receipt_id} @ {a.line_id}:{a.word_id} "
+            f"'{a.word_text[:18]}' (from {a.from_member[-6:]})"
+        )
     for d in plan.receipt_drops:
         print(f"  - DROP receipt {d.image_id[:8]}#{d.receipt_id}")
 
     if not args.apply:
-        print("\nDRY-RUN — nothing mutated. Re-run with --env <env> --apply to execute.")
+        print(
+            "\nDRY-RUN — nothing mutated. Re-run with --env <env> --apply to execute."
+        )
         return
 
     if not args.env:
         raise SystemExit("--apply requires --env")
-    from receipt_dynamo import DynamoClient
-    from receipt_upload.dedup.dossiers import ENV_TABLE
-
-    backup_path = args.backup or f"{args.plan}.restore_{args.env}_{_now_iso().replace(':', '')}.json"
+    backup_path = (
+        args.backup
+        or f"{args.plan}.restore_{args.env}_{_now_iso().replace(':', '')}.json"
+    )
     dynamo = DynamoClient(ENV_TABLE[args.env])
     report = execute(plan, dynamo, apply=True, backup_path=backup_path)
     print(f"\nAPPLIED: {json.dumps(report, indent=2)}")
-    print(f"\nRollback with:\n  python -m receipt_upload.dedup.apply "
-          f"--env {args.env} --rollback {backup_path}")
+    print(
+        f"\nRollback with:\n  python -m receipt_upload.dedup.apply "
+        f"--env {args.env} --rollback {backup_path}"
+    )
     if report["errors"]:
         raise SystemExit(
             f"\nCOMPLETED WITH {len(report['errors'])} ERROR(S) "

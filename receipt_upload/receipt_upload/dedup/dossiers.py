@@ -56,15 +56,21 @@ def main() -> None:
     ap.add_argument("--json", help="write all dossiers to this path")
     args = ap.parse_args()
 
-    receipts, words_by_receipt, labels_by_receipt = load_inputs(ENV_TABLE[args.env])
-    dossiers = build_merge_dossiers(receipts, words_by_receipt, labels_by_receipt)
+    receipts, words_by_receipt, labels_by_receipt = load_inputs(
+        ENV_TABLE[args.env]
+    )
+    dossiers = build_merge_dossiers(
+        receipts, words_by_receipt, labels_by_receipt
+    )
 
     within = [d for d in dossiers if d.scope == "within_image"]
     cross = [d for d in dossiers if d.scope == "cross_image"]
     n_conflict = sum(len(d.conflicts) for d in dossiers)
     n_lost = sum(len(d.labels_only_on_nonsurvivor) for d in dossiers)
     n_junk = sum(len(d.junk_flags) for d in dossiers)
-    n_clean = sum(1 for d in dossiers if d.deterministic_action == "drop_redundant")
+    n_clean = sum(
+        1 for d in dossiers if d.deterministic_action == "drop_redundant"
+    )
 
     print(f"[{args.env}] {len(receipts)} receipts")
     print(
@@ -90,9 +96,12 @@ def main() -> None:
         )
 
     if args.json:
-        with open(args.json, "w") as f:
+        with open(args.json, "w", encoding="utf-8") as f:
             json.dump(
-                [d.to_llm_context() for d in dossiers], f, indent=2, default=str
+                [d.to_llm_context() for d in dossiers],
+                f,
+                indent=2,
+                default=str,
             )
         print(f"\n  wrote {args.json}")
 

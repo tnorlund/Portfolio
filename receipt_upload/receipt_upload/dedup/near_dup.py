@@ -33,7 +33,9 @@ _LABELLED_NUM = re.compile(
 # non-capturing group so findall returns the full "HH:MM", not just the hour
 _TIME = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")
 _AMOUNT = re.compile(r"\d+\.\d{2}")
-_STRONG_ID_MIN_LEN = 6  # >=6 digit run, before frequency/merchant corroboration
+_STRONG_ID_MIN_LEN = (
+    6  # >=6 digit run, before frequency/merchant corroboration
+)
 
 
 def _normalize_merchant(m: Optional[str]) -> Optional[str]:
@@ -44,9 +46,11 @@ def _normalize_merchant(m: Optional[str]) -> Optional[str]:
 
 @dataclass
 class TxnFingerprint:
-    strong_ids: Set[str] = field(default_factory=set)   # >=6-digit ids (contiguous only)
+    strong_ids: Set[str] = field(
+        default_factory=set
+    )  # >=6-digit ids (contiguous only)
     labelled_nums: Set[str] = field(default_factory=set)  # check/order/trans #
-    amounts: Set[str] = field(default_factory=set)      # all currency amounts
+    amounts: Set[str] = field(default_factory=set)  # all currency amounts
     times: Set[str] = field(default_factory=set)
     total: Optional[float] = None
     merchant: Optional[str] = None
@@ -70,7 +74,9 @@ def transaction_fingerprint(
     """
     text = " ".join(w for w in words if w)
     return TxnFingerprint(
-        strong_ids={m for m in _LONG_ID.findall(text) if len(m) >= _STRONG_ID_MIN_LEN},
+        strong_ids={
+            m for m in _LONG_ID.findall(text) if len(m) >= _STRONG_ID_MIN_LEN
+        },
         labelled_nums=set(_LABELLED_NUM.findall(text)),
         amounts=set(_AMOUNT.findall(text)),
         times=set(_TIME.findall(text)),
@@ -79,7 +85,9 @@ def transaction_fingerprint(
     )
 
 
-def frequent_ids(fingerprints: Iterable[TxnFingerprint], *, max_count: int = 3) -> Set[str]:
+def frequent_ids(
+    fingerprints: Iterable[TxnFingerprint], *, max_count: int = 3
+) -> Set[str]:
     """Corpus-frequency guard: ids appearing on more than ``max_count`` receipts
     are recurring codes (card/terminal/AID/loyalty/UPC), never transaction-unique.
     Pass the result as ``denylist`` to :func:`same_transaction`/:func:`find_duplicate`.
@@ -122,7 +130,7 @@ def same_transaction(
     # --- hard negative guards ---
     if a.merchant and b.merchant and a.merchant != b.merchant:
         return False, f"different merchant ({a.merchant} vs {b.merchant})"
-    if a.times and b.times and not (a.times & b.times):
+    if a.times and b.times and not a.times & b.times:
         return False, (
             f"different printed time ({sorted(a.times)[:1]} vs {sorted(b.times)[:1]})"
         )
@@ -132,10 +140,16 @@ def same_transaction(
     b_ids = b.strong_ids - denylist
     shared_strong = a_ids & b_ids
     amt = _amount_overlap(a.amounts, b.amounts)
-    same_total = a.total is not None and b.total is not None and a.total == b.total
+    same_total = (
+        a.total is not None and b.total is not None and a.total == b.total
+    )
 
     # shared transaction id corroborated by matching content
-    if shared_strong and merchant_ok and (same_total or amt >= amount_overlap_min):
+    if (
+        shared_strong
+        and merchant_ok
+        and (same_total or amt >= amount_overlap_min)
+    ):
         return True, (
             f"shared id {sorted(shared_strong)[:1]} + content "
             f"(total_match={same_total}, item-price {amt:.0%})"
@@ -173,7 +187,9 @@ def find_duplicate(
     totals = candidate_totals or {}
     merchants = candidate_merchants or {}
     for key, words in candidates:
-        fp = transaction_fingerprint(words, totals.get(key), merchants.get(key))
+        fp = transaction_fingerprint(
+            words, totals.get(key), merchants.get(key)
+        )
         is_dup, reason = same_transaction(fp_new, fp, denylist=denylist)
         if is_dup:
             return key, reason

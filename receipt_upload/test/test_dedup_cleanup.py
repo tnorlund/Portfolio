@@ -48,8 +48,12 @@ class FakeS3:
 
     def download_file(self, bucket, key, local):
         if key in self.missing:
-            raise Exception("404")
-        with open(local, "w") as f:
+            from botocore.exceptions import ClientError
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}},
+                "GetObject",
+            )
+        with open(local, "w", encoding="utf-8") as f:
             f.write("obj")
 
     def delete_object(self, Bucket, Key):

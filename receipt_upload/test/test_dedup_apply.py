@@ -221,12 +221,14 @@ def test_unpadded_sk_and_field_partition_are_swept(tmp_path):
 def test_gapfill_failure_skips_its_matching_drop(tmp_path):
     # if the VALID gap-fill from the dropped receipt fails to write, the drop is
     # SKIPPED (so the label isn't lost) and surfaced as an error.
+    from receipt_dynamo.data.shared_exceptions import ReceiptDynamoError
+
     class FailLabelClient(FakeClient):
         def add_receipt_word_label(self, label):
-            raise RuntimeError("write failed")
+            raise ReceiptDynamoError("write failed")
 
         def update_receipt_word_label(self, label):
-            raise RuntimeError("update failed")
+            raise ReceiptDynamoError("update failed")
 
     cli = FailLabelClient({(IMG_D, 1): _full_subtree(IMG_D, 1)})
     rep = execute(plan_operations([_resolution()]), cli, apply=True,

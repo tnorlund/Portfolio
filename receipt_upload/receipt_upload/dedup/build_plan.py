@@ -32,22 +32,28 @@ def main() -> None:
     clean = sum(1 for r in resolutions if r.action == "drop_redundant")
 
     print(f"[{args.env}] {len(receipts)} receipts")
-    print(f"  merge groups: {len(resolutions)} (within-image "
-          f"{sum(1 for r in resolutions if r.scope == 'within_image')}, cross-image "
-          f"{sum(1 for r in resolutions if r.scope == 'cross_image')})")
+    print(
+        f"  merge groups: {len(resolutions)} (within-image "
+        f"{sum(1 for r in resolutions if r.scope == 'within_image')}, cross-image "
+        f"{sum(1 for r in resolutions if r.scope == 'cross_image')})"
+    )
     print(f"  receipts to drop (redundant copies): {drop}")
     print(f"  VALID gap-fill labels migrated onto survivors: {gaps}")
     print(f"  gap labels skipped (ambiguous target / disagreement): {skipped}")
     print(f"  groups needing no gap-fill (drop_redundant): {clean}")
     print("\n  sample groups:")
     for r in sorted(resolutions, key=lambda x: -len(x.gap_fills))[:6]:
-        print(f"    {r.group_id} [{r.scope}] survivor {r.survivor[-6:]} "
-              f"({r.survivor_label_count} labels) | drop {len(r.receipts_to_drop)} "
-              f"| +{len(r.gap_fills)} gap-fills | {r.action}")
+        print(
+            f"    {r.group_id} [{r.scope}] survivor {r.survivor[-6:]} "
+            f"({r.survivor_label_count} labels) | drop {len(r.receipts_to_drop)} "
+            f"| +{len(r.gap_fills)} gap-fills | {r.action}"
+        )
 
     if args.out:
-        with open(args.out, "w") as f:
-            json.dump([r.to_dict() for r in resolutions], f, indent=2, default=str)
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(
+                [r.to_dict() for r in resolutions], f, indent=2, default=str
+            )
         print(f"\n  wrote {args.out}")
 
 

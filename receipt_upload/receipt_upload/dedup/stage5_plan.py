@@ -44,9 +44,16 @@ def _load(table):
     labels_by = defaultdict(list)
     for lb in labels:
         labels_by[(lb.image_id, lb.receipt_id)].append(
-            LabelObs(lb.label, lb.line_id, lb.word_id,
-                     text_at.get((lb.image_id, lb.receipt_id, lb.line_id, lb.word_id), ""),
-                     getattr(lb, "validation_status", None)))
+            LabelObs(
+                lb.label,
+                lb.line_id,
+                lb.word_id,
+                text_at.get(
+                    (lb.image_id, lb.receipt_id, lb.line_id, lb.word_id), ""
+                ),
+                getattr(lb, "validation_status", None),
+            )
+        )
     totals = {}
     for s in dc.list_receipt_summaries()[0]:
         su = getattr(s, "summary", s)
@@ -55,10 +62,9 @@ def _load(table):
             totals[(su.image_id, su.receipt_id)] = float(g)
     merchants = {}
     for m in dc.list_receipt_metadatas()[0]:
-        merchants[(m.image_id, m.receipt_id)] = (
-            getattr(m, "canonical_merchant_name", None)
-            or getattr(m, "merchant_name", None)
-        )
+        merchants[(m.image_id, m.receipt_id)] = getattr(
+            m, "canonical_merchant_name", None
+        ) or getattr(m, "merchant_name", None)
     return rec, words_by, labels_by, totals, merchants
 
 
@@ -98,18 +104,33 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
         if len(g) < 2:
             continue
         if len(g) > _MAX_GROUP_SIZE:
-            rejected.append({"group": g, "reasons": [
-                {"member": "group", "is_dup": False,
-                 "why": f"group too large ({len(g)} > {_MAX_GROUP_SIZE})"}]})
+            rejected.append(
+                {
+                    "group": g,
+                    "reasons": [
+                        {
+                            "member": "group",
+                            "is_dup": False,
+                            "why": f"group too large ({len(g)} > {_MAX_GROUP_SIZE})",
+                        }
+                    ],
+                }
+            )
             continue
         fps = {k: fp(k) for k in g}
         reasons, ok = [], True
-        for i in range(len(g)):
-            for j in range(i + 1, len(g)):
-                is_dup, why = same_transaction(fps[g[i]], fps[g[j]], denylist=denylist)
-                reasons.append({
-                    "pair": f"{g[i][0][:8]}#{g[i][1]} ~ {g[j][0][:8]}#{g[j][1]}",
-                    "is_dup": is_dup, "why": why})
+        for i, ki in enumerate(g):
+            for kj in g[i + 1:]:
+                is_dup, why = same_transaction(
+                    fps[ki], fps[kj], denylist=denylist
+                )
+                reasons.append(
+                    {
+                        "pair": f"{ki[0][:8]}#{ki[1]} ~ {kj[0][:8]}#{kj[1]}",
+                        "is_dup": is_dup,
+                        "why": why,
+                    }
+                )
                 ok = ok and is_dup
         (kept if ok else rejected).append({"group": g, "reasons": reasons})
     return kept, rejected
@@ -118,37 +139,55 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", choices=list(ENV_TABLE), default="dev")
-    ap.add_argument("--groups", required=True, help="JSON: {'groups': [[ [img,rid],... ], ...]}")
+    ap.add_argument(
+        "--groups",
+        required=True,
+        help="JSON: {'groups': [[ [img,rid],... ], ...]}",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--rejects", help="write gate rejections here")
     args = ap.parse_args()
 
-    raw = json.load(open(args.groups))
+    with open(args.groups, encoding="utf-8") as f:
+        raw = json.load(f)
     groups = raw["groups"] if isinstance(raw, dict) else raw
     rec, words_by, labels_by, totals, merchants = _load(ENV_TABLE[args.env])
 
     kept, rejected = gate_groups(groups, rec, words_by, totals, merchants)
-    print(f"[{args.env}] candidate groups: {len(groups)} | "
-          f"PASSED transaction-identity gate: {len(kept)} | rejected: {len(rejected)}")
+    print(
+        f"[{args.env}] candidate groups: {len(groups)} | "
+        f"PASSED transaction-identity gate: {len(kept)} | rejected: {len(rejected)}"
+    )
     for r in rejected:
         bad = [x for x in r["reasons"] if not x["is_dup"]]
-        print(f"  REJECT {[f'{k[0][:8]}#{k[1]}' for k in r['group']]}: {bad[:1]}")
+        print(
+            f"  REJECT {[f'{k[0][:8]}#{k[1]}' for k in r['group']]}: {bad[:1]}"
+        )
 
     dossiers = build_dossiers_for_groups(
-        [r["group"] for r in kept], rec, words_by, labels_by)
+        [r["group"] for r in kept], rec, words_by, labels_by
+    )
     resolutions = resolve_all(dossiers)
     drop = sum(len(x.receipts_to_drop) for x in resolutions)
     gaps = sum(len(x.gap_fills) for x in resolutions)
-    print(f"  -> {len(resolutions)} merge groups | drop {drop} receipts | "
-          f"{gaps} VALID gap-fills")
+    print(
+        f"  -> {len(resolutions)} merge groups | drop {drop} receipts | "
+        f"{gaps} VALID gap-fills"
+    )
     for x in sorted(resolutions, key=lambda z: -len(z.gap_fills))[:8]:
-        print(f"     {x.group_id} survivor {x.survivor[-6:]} drop {len(x.receipts_to_drop)} "
-              f"+{len(x.gap_fills)} gap-fills")
+        print(
+            f"     {x.group_id} survivor {x.survivor[-6:]} drop {len(x.receipts_to_drop)} "
+            f"+{len(x.gap_fills)} gap-fills"
+        )
 
-    json.dump([x.to_dict() for x in resolutions], open(args.out, "w"), indent=2, default=str)
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(
+            [x.to_dict() for x in resolutions], f, indent=2, default=str
+        )
     print(f"  wrote {args.out}")
     if args.rejects:
-        json.dump(rejected, open(args.rejects, "w"), indent=2, default=str)
+        with open(args.rejects, "w", encoding="utf-8") as f:
+            json.dump(rejected, f, indent=2, default=str)
 
 
 if __name__ == "__main__":

@@ -28,11 +28,11 @@ Key = Tuple[str, int]  # (image_id, receipt_id)
 
 @dataclass
 class DupGroup:
-    method: str            # "exact" | "signature"
+    method: str  # "exact" | "signature"
     signature: str
-    keeper: Key            # the receipt to keep
+    keeper: Key  # the receipt to keep
     duplicates: List[Key]  # receipts that are duplicates of the keeper
-    action: str            # "auto-merge" | "review"
+    action: str  # "auto-merge" | "review"
     detail: Dict = field(default_factory=dict)
 
 
@@ -46,7 +46,9 @@ def _key(r) -> Key:
 
 def _pick_keeper(records: List) -> object:
     # Highest resolution wins; deterministic tie-break by (image_id, receipt_id).
-    return max(records, key=lambda r: (_resolution(r), r.image_id, r.receipt_id))
+    return max(
+        records, key=lambda r: (_resolution(r), r.image_id, r.receipt_id)
+    )
 
 
 def find_exact_duplicates(receipts: List) -> List[DupGroup]:

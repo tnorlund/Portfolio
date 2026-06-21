@@ -57,7 +57,9 @@ _SAFE_ALIASES: Dict[str, str] = {
 # per-unit UNIT_PRICE or the extended LINE_TOTAL shown on the line.
 _AMBIGUOUS_LEGACY = {"AMOUNT", "TOTAL", "ITEM", "ITEM_PRICE"}
 # Looks like a raw value rather than a label name (e.g. "4453.62", "$3.266EA").
-_NUMBERISH = re.compile(r"^[\$\d.,()%/x\- ]*\d[\$\d.,()%/x\- ]*$", re.IGNORECASE)
+_NUMBERISH = re.compile(
+    r"^[\$\d.,()%/x\- ]*\d[\$\d.,()%/x\- ]*$", re.IGNORECASE
+)
 
 
 def resolve_label(label) -> Tuple[Optional[str], str]:
@@ -118,9 +120,11 @@ class LabelObs:
 
     @property
     def is_validated(self) -> bool:
-        return bool(self.validation_status) and "VALID" in str(
-            self.validation_status
-        ).upper() and "INVALID" not in str(self.validation_status).upper()
+        return (
+            bool(self.validation_status)
+            and "VALID" in str(self.validation_status).upper()
+            and "INVALID" not in str(self.validation_status).upper()
+        )
 
 
 @dataclass
@@ -232,11 +236,17 @@ def _candidate(o: LabelObs) -> Optional[str]:
     return None
 
 
-def _label_union(label_obs: Dict[Key, List[LabelObs]], members) -> Dict[str, int]:
+def _label_union(
+    label_obs: Dict[Key, List[LabelObs]], members
+) -> Dict[str, int]:
     """Canonical label -> number of DISTINCT members carrying it."""
     counts: Dict[str, set] = {}
     for m in members:
-        seen = {o.effective_label for o in label_obs.get(m.key, []) if o.is_canonical}
+        seen = {
+            o.effective_label
+            for o in label_obs.get(m.key, [])
+            if o.is_canonical
+        }
         for lab in seen:
             counts.setdefault(lab, set()).add(m.key)
     return {lab: len(ks) for lab, ks in sorted(counts.items())}
@@ -305,7 +315,10 @@ def _label_key(o: LabelObs, scope: str):
 
 
 def _text_overlap_pct(
-    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext, scope: str
+    label_obs: Dict[Key, List[LabelObs]],
+    members,
+    survivor: MemberContext,
+    scope: str,
 ) -> Optional[float]:
     """Label overlap between survivor and the rest (position-aware within-image)."""
 
@@ -331,7 +344,10 @@ def _text_overlap_pct(
 
 
 def _labels_only_on_nonsurvivor(
-    label_obs: Dict[Key, List[LabelObs]], members, survivor: MemberContext, scope: str
+    label_obs: Dict[Key, List[LabelObs]],
+    members,
+    survivor: MemberContext,
+    scope: str,
 ) -> List[Dict]:
     surv_pairs = {
         _label_key(o, scope)
@@ -442,7 +458,10 @@ def build_merge_dossiers(
         if len(keys) < 2:
             continue  # not a duplicate
         d = _assemble_dossier(
-            recs, words_by_receipt, labels_by_receipt, anchor="receipt_sha256",
+            recs,
+            words_by_receipt,
+            labels_by_receipt,
+            anchor="receipt_sha256",
             sha256=sha,
         )
         if d is not None:
@@ -493,7 +512,9 @@ def _assemble_dossier(
         conflicts = _text_conflicts(labels_by_receipt, members)
 
     union = _label_union(labels_by_receipt, members)
-    only_non = _labels_only_on_nonsurvivor(labels_by_receipt, members, survivor, scope)
+    only_non = _labels_only_on_nonsurvivor(
+        labels_by_receipt, members, survivor, scope
+    )
     overlap = _text_overlap_pct(labels_by_receipt, members, survivor, scope)
     junk = [
         {"member": m.key_str, "junk_labels": m.junk_labels}
@@ -554,7 +575,10 @@ def build_dossiers_for_groups(
         if len(recs) < 2:
             continue
         d = _assemble_dossier(
-            recs, words_by_receipt, labels_by_receipt, anchor=anchor,
+            recs,
+            words_by_receipt,
+            labels_by_receipt,
+            anchor=anchor,
             group_id=f"{recs[0].image_id[:8]}_near",
         )
         if d is not None:

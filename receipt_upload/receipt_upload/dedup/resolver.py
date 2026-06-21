@@ -85,7 +85,9 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     skipped: List[dict] = []
     for k in drop:
         for o in members[k].labels:
-            if o.get("kind") != "canonical" or not _is_valid(o.get("validation_status")):
+            if o.get("kind") != "canonical" or not _is_valid(
+                o.get("validation_status")
+            ):
                 continue
             tp = survivor_target(o)
             if tp is None:
@@ -101,7 +103,11 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
             if tp in occupied:
                 continue  # survivor already labels this word -> survivor wins
             candidates.setdefault(tp, []).append(
-                {"label": o["canonical_label"], "from": k, "word_text": o["word_text"]}
+                {
+                    "label": o["canonical_label"],
+                    "from": k,
+                    "word_text": o["word_text"],
+                }
             )
 
     gap_fills: List[GapFill] = []
@@ -110,7 +116,12 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
         if len(labels) == 1:
             c = cs[0]
             gap_fills.append(
-                GapFill(locus=pos, word_text=c["word_text"], label=c["label"], from_member=c["from"])
+                GapFill(
+                    locus=pos,
+                    word_text=c["word_text"],
+                    label=c["label"],
+                    from_member=c["from"],
+                )
             )
         else:
             # dropped copies VALID-disagree on the same survivor word: don't guess.

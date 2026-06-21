@@ -11,7 +11,10 @@ from dataclasses import asdict
 
 from receipt_dynamo import DynamoClient
 
-from receipt_upload.dedup.detector import detect_duplicates, normalize_merchant_key
+from receipt_upload.dedup.detector import (
+    detect_duplicates,
+    normalize_merchant_key,
+)
 
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
 
@@ -24,7 +27,8 @@ def build_report(table: str) -> dict:
     merchant = {}
     for m in dc.list_receipt_metadatas()[0]:
         merchant[(m.image_id, m.receipt_id)] = normalize_merchant_key(
-            getattr(m, "canonical_place_id", None) or getattr(m, "place_id", None),
+            getattr(m, "canonical_place_id", None)
+            or getattr(m, "place_id", None),
             getattr(m, "canonical_merchant_name", None)
             or getattr(m, "merchant_name", None),
         )
@@ -47,9 +51,21 @@ def build_report(table: str) -> dict:
             gt = float(grand_total) if grand_total is not None else None
         except (TypeError, ValueError):
             gt = None
-        if mkey and gt and gt > 0 and date is not None and item_count is not None:
-            dstr = date.date().isoformat() if hasattr(date, "date") else str(date)[:10]
-            signature_lookup[key] = f"{mkey}|{round(gt, 2)}|{dstr}|{item_count}"
+        if (
+            mkey
+            and gt
+            and gt > 0
+            and date is not None
+            and item_count is not None
+        ):
+            dstr = (
+                date.date().isoformat()
+                if hasattr(date, "date")
+                else str(date)[:10]
+            )
+            signature_lookup[key] = (
+                f"{mkey}|{round(gt, 2)}|{dstr}|{item_count}"
+            )
 
     return detect_duplicates(receipts, signature_lookup)
 
@@ -89,7 +105,7 @@ def main() -> None:
                 asdict(g) for g in rep["signature_candidate_groups"]
             ],
         }
-        with open(args.json, "w") as f:
+        with open(args.json, "w", encoding="utf-8") as f:
             json.dump(out, f, indent=2, default=list)
         print(f"\n  wrote {args.json}")
 
