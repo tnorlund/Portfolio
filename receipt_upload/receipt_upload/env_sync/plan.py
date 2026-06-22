@@ -81,7 +81,9 @@ class MigrationPlan:
         }
 
 
-def _subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
+def _subtree_items(
+    dynamo: DynamoClient, image_id: str, receipt_id: int
+) -> List[dict]:
     """Raw items under one receipt (padded/unpadded rid), within IMAGE#."""
     padded, unpadded = f"{receipt_id:05d}", str(receipt_id)
     out = []
@@ -100,7 +102,7 @@ def _subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
     return out
 
 
-def partition_items(dynamo, image_id: str) -> List[dict]:
+def partition_items(dynamo: DynamoClient, image_id: str) -> List[dict]:
     return list(
         paginate(
             dynamo,
