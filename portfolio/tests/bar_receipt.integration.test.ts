@@ -79,7 +79,7 @@ describe("bar receipt bounding box equivalence", () => {
       "..",
       "..",
       "receipt_upload",
-      "test",
+      "tests",
       "bar_receipt.json",
     );
     const expectedPath = path.join(__dirname, "fixtures", "bar_receipt.json");
