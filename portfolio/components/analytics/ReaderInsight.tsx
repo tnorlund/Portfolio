@@ -98,7 +98,7 @@ function getComparisonText(
   if (!usableBaseline?.averageTimeToBottomMs) {
     return `You reached the bottom in ${formatDuration(
       result.timeToBottomMs
-    )}. The average will appear here after a few completed reads.`;
+    )}. The average will appear here after 5 previous completed reads.`;
   }
 
   const deltaPercent = Math.round(
@@ -117,14 +117,6 @@ function getComparisonText(
   const direction = deltaPercent > 0 ? "faster" : "slower";
 
   return `You reached the bottom ${absoluteDelta}% ${direction} than the average reader.`;
-}
-
-function getPaceText(result: ReaderResult): string {
-  if (result.quickJump) {
-    return "Quick jump";
-  }
-
-  return `${result.screensPerMinute.toFixed(1)} screens/min`;
 }
 
 export default function ReaderInsight() {
@@ -321,7 +313,6 @@ export default function ReaderInsight() {
   const comparisonText = result
     ? getComparisonText(result, effectiveBaseline)
     : "Calculating your read.";
-  const baselineSampleSize = effectiveBaseline?.sampleSize ?? 0;
 
   return (
     <section
@@ -331,30 +322,6 @@ export default function ReaderInsight() {
     >
       <p className={styles.label}>Reading pace</p>
       <p className={styles.summary}>{comparisonText}</p>
-      {result && (
-        <dl className={styles.metrics}>
-          <div className={styles.metric}>
-            <dt>Your time</dt>
-            <dd>{formatDuration(result.timeToBottomMs)}</dd>
-          </div>
-          <div className={styles.metric}>
-            <dt>Active pace</dt>
-            <dd>{getPaceText(result)}</dd>
-          </div>
-          <div className={styles.metric}>
-            <dt>This session</dt>
-            <dd>{result.sessionPageViews} pages</dd>
-          </div>
-          <div className={styles.metric}>
-            <dt>Average sample</dt>
-            <dd>
-              {baselineSampleSize >= MIN_BASELINE_SAMPLE_SIZE
-                ? `${baselineSampleSize} reads`
-                : "Collecting"}
-            </dd>
-          </div>
-        </dl>
-      )}
     </section>
   );
 }
