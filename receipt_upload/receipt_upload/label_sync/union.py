@@ -217,11 +217,20 @@ def main() -> None:
     prod_dynamo, prod = load_labels_by_word(ENV_TABLE["prod"])
 
     if args.rollback:
-        env = "prod" if "prod" in args.rollback else "dev"
-        rep = rollback(
-            args.rollback, prod_dynamo if env == "prod" else dev_dynamo
+        # Select the client by the TABLE recorded in the backup (the env the
+        # additions were written to), not a filename substring — the union
+        # target is the dst, so union_prod_to_dev wrote to dev, not prod.
+        with open(args.rollback, encoding="utf-8") as f:
+            bk_table = json.load(f).get("table")
+        target = next(
+            (d for d in (dev_dynamo, prod_dynamo)
+             if getattr(d, "table_name", None) == bk_table),
+            None,
         )
-        print(f"ROLLED BACK ({env}): {json.dumps(rep, indent=2)}")
+        if target is None:
+            raise SystemExit(f"backup table {bk_table!r} is not dev or prod")
+        rep = rollback(args.rollback, target)
+        print(f"ROLLED BACK ({bk_table}): {json.dumps(rep, indent=2)}")
         return
 
     print(

@@ -20,7 +20,42 @@ from typing import List
 from botocore.exceptions import ClientError
 
 from receipt_upload.dedup._ddb import AWS_ERRORS, raw_client
-from receipt_upload.env_sync.plan import MigrationPlan, remap_bucket
+from receipt_upload.env_sync.plan import (
+    MigrationPlan,
+    partition_items,
+    remap_bucket,
+)
+
+
+def reconcile_receipt_counts(dynamo, image_ids=None) -> dict:
+    """Recompute ``Image.receipt_count`` from the actual RECEIPT items.
+
+    ``receipt_count`` drives the GSI3 ``list_images_by_type(receipt_count=)``
+    query and is NOT auto-maintained when receipts are added (migration) or
+    removed (dedup), so it drifts. Pass ``image_ids`` to scope the repair, or
+    leave it None to reconcile every image. Only mismatches are written.
+    """
+    images = {im.image_id: im for im in dynamo.list_images()[0]}
+    targets = list(images) if image_ids is None else list(set(image_ids))
+    report = {"checked": 0, "fixed": 0, "errors": []}
+    for iid in targets:
+        img = images.get(iid)
+        if img is None:
+            continue
+        report["checked"] += 1
+        actual = sum(
+            1
+            for it in partition_items(dynamo, iid)
+            if it.get("TYPE", {}).get("S") == "RECEIPT"
+        )
+        if img.receipt_count != actual:
+            try:
+                img.receipt_count = actual
+                dynamo.update_image(img)
+                report["fixed"] += 1
+            except AWS_ERRORS as exc:
+                report["errors"].append(f"{iid}: {exc}")
+    return report
 
 
 def _now_iso() -> str:
@@ -59,8 +94,13 @@ def _s3_source_exists(s3, bucket: str, key: str) -> bool:
     try:
         s3.head_object(Bucket=bucket, Key=key)
         return True
-    except ClientError:
-        return False
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        # AccessDenied / throttling / expired creds etc. are NOT "absent" —
+        # surface them so the caller doesn't silently treat them as missing.
+        raise
 
 
 def execute_migration(
@@ -90,12 +130,14 @@ def execute_migration(
     if not apply:
         # sample source existence to estimate the missing-crop (#993) rate
         sample = plan.s3_copies[:sample_s3_check]
-        missing = sum(
-            0 if _s3_source_exists(s3, b, k) else 1 for b, k, _, _ in sample
-        )
-        report["s3_source_missing_sampled"] = (
-            f"{missing}/{len(sample)}"
-        )
+        missing = 0
+        for b, k, _, _ in sample:
+            try:
+                if not _s3_source_exists(s3, b, k):
+                    missing += 1
+            except ClientError:
+                pass  # transient/access error in the estimate -> skip
+        report["s3_source_missing_sampled"] = f"{missing}/{len(sample)}"
         return report
 
     if not backup_path:
@@ -137,6 +179,14 @@ def execute_migration(
         json.dump(backup, f)
     report["backup_path"] = backup_path
 
+    # If any S3 copy FAILED (not merely a missing source), do NOT write the
+    # DynamoDB rows — they would reference target objects that were never
+    # copied (dangling). The migration is idempotent, so re-run after the
+    # cause (AccessDenied / throttling / etc.) is resolved.
+    if report["errors"]:
+        report["aborted_before_dynamo"] = True
+        return report
+
     # ---- DynamoDB: batched puts ----
     try:
         report["items_written"] = _batch_put(
@@ -144,6 +194,17 @@ def execute_migration(
         )
     except AWS_ERRORS as exc:
         report["errors"].append(f"dynamo batch: {exc}")
+        return report
+
+    # Adding a receipt to an EXISTING target image leaves its receipt_count
+    # stale (GSI3); recompute it for those images. New full-partition images
+    # carry their own count from the copied IMAGE item.
+    if plan.new_receipts:
+        recount = reconcile_receipt_counts(
+            dst_dynamo, {img for img, _rid in plan.new_receipts}
+        )
+        report["receipt_count_fixed"] = recount["fixed"]
+        report["errors"].extend(recount["errors"])
     return report
 
 

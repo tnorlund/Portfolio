@@ -100,7 +100,7 @@ def _subtree_items(dynamo, image_id: str, receipt_id: int) -> List[dict]:
     return out
 
 
-def _partition_items(dynamo, image_id: str) -> List[dict]:
+def partition_items(dynamo, image_id: str) -> List[dict]:
     return list(
         paginate(
             dynamo,
@@ -142,7 +142,7 @@ def build_plan(
     # new images: copy the whole partition + the image's own S3 objects
     for image_id in sorted(new_image_ids):
         plan.new_images.append(image_id)
-        plan.dynamo_items.extend(_partition_items(src, image_id))
+        plan.dynamo_items.extend(partition_items(src, image_id))
         if image_id in src_images:
             s3_refs.extend(_entity_s3_refs(src_images[image_id]))
 
