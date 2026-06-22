@@ -63,10 +63,15 @@ def _now_iso() -> str:
 
 
 def _remap_item_buckets(item: dict) -> dict:
-    """Rewrite ``*_s3_bucket`` attribute values to the counterpart bucket."""
+    """Rewrite S3-bucket attribute values to the counterpart bucket.
+
+    Covers both ``*_s3_bucket`` (Image/Receipt raw + CDN) and the bare
+    ``s3_bucket`` used by auxiliary partition rows (OCRJob / routing /
+    checkpoint), which would otherwise keep the source-env bucket.
+    """
     for attr, val in item.items():
         if (
-            attr.endswith("_s3_bucket")
+            (attr == "s3_bucket" or attr.endswith("_s3_bucket"))
             and isinstance(val, dict)
             and "S" in val
         ):

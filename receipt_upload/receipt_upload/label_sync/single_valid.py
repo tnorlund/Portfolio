@@ -96,13 +96,13 @@ def build_resolution(env_tables: Dict[str, str]):
     ``(env, image_id, receipt_id, line_id, word_id, label, new_status)``.
     """
     per_env = {}
-    word_text = {}
+    word_text = {}  # keyed by (env, word_key) — dev/prod text can differ
     for env, table in env_tables.items():
         dc = DynamoClient(table)
         for w in dc.list_receipt_words()[0]:
-            word_text[(w.image_id, w.receipt_id, w.line_id, w.word_id)] = (
-                getattr(w, "text", "") or ""
-            )
+            word_text[
+                (env, (w.image_id, w.receipt_id, w.line_id, w.word_id))
+            ] = (getattr(w, "text", "") or "")
         byword = defaultdict(list)
         for lb in dc.list_receipt_word_labels()[0]:
             byword[
@@ -122,7 +122,9 @@ def build_resolution(env_tables: Dict[str, str]):
             })
             if len(valid) < 2:
                 continue
-            demotions = plan_demotions(word_text.get(key, ""), valid)
+            demotions = plan_demotions(
+                word_text.get((env, key), ""), valid
+            )
             for label, status in demotions.items():
                 plan.append((env, *key, label, status))
                 summary[status] += 1

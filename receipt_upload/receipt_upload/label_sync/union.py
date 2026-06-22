@@ -87,13 +87,26 @@ def plan_union(
     dst_byword: Dict[WordKey, List],
     *,
     from_env: str,
+    dst_word_keys: set | None = None,
 ) -> List[LabelAdd]:
-    """Labels to add to the target env from the source env (conflict-safe)."""
+    """Labels to add to the target env from the source env (conflict-safe).
+
+    ``dst_word_keys`` is the set of word keys that EXIST in the target. When
+    given, a target word that exists but has zero labels is still a fill
+    candidate (exactly the zero-VALID words the union should fill); only words
+    truly absent from the target are deferred to the record migration. When
+    None, falls back to the labeled-word set (legacy, under-fills).
+    """
     adds: List[LabelAdd] = []
     for key, src_lbs in src_byword.items():
-        dst_lbs = dst_byword.get(key)
-        if dst_lbs is None:
-            continue  # word absent in target -> record migration handles it
+        if dst_word_keys is not None:
+            if key not in dst_word_keys:
+                continue  # truly absent in target -> record migration
+            dst_lbs = dst_byword.get(key, [])
+        elif key not in dst_byword:
+            continue  # legacy: no word set -> only labeled words considered
+        else:
+            dst_lbs = dst_byword[key]
         src_valid = [
             lb
             for lb in src_lbs
@@ -238,16 +251,27 @@ def main() -> None:
         f"prod: {len(find_multivalid(prod))}"
     )
 
+    # word-existence sets so existing-but-unlabeled target words are fillable
+    def word_keys(dynamo):
+        return {
+            (w.image_id, w.receipt_id, w.line_id, w.word_id)
+            for w in dynamo.list_receipt_words()[0]
+        }
+
+    dev_words, prod_words = word_keys(dev_dynamo), word_keys(prod_dynamo)
+
     # (source_name, target_name, target_dynamo, adds)
     jobs = []
     if args.direction in ("dev-to-prod", "both"):
-        jobs.append(
-            ("dev", "prod", prod_dynamo, plan_union(dev, prod, from_env="dev"))
-        )
+        jobs.append((
+            "dev", "prod", prod_dynamo,
+            plan_union(dev, prod, from_env="dev", dst_word_keys=prod_words),
+        ))
     if args.direction in ("prod-to-dev", "both"):
-        jobs.append(
-            ("prod", "dev", dev_dynamo, plan_union(prod, dev, from_env="prod"))
-        )
+        jobs.append((
+            "prod", "dev", dev_dynamo,
+            plan_union(prod, dev, from_env="prod", dst_word_keys=dev_words),
+        ))
 
     for src, dst, _dyn, adds in jobs:
         by_label: Dict[str, int] = defaultdict(int)

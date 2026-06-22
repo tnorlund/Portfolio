@@ -50,6 +50,21 @@ def test_skips_when_target_already_has_label():
     assert plan_union(src, dst, from_env="dev") == []
 
 
+def test_fills_existing_but_unlabeled_target_word():
+    # target word EXISTS (in dst_word_keys) but has no labels -> union fills it
+    src = _byword(_lb("a", 1, 2, 3, "TAX", "VALID"))
+    adds = plan_union(
+        src, _byword(), from_env="dev", dst_word_keys={("a", 1, 2, 3)}
+    )
+    assert len(adds) == 1 and adds[0].label == "TAX"
+
+
+def test_word_truly_absent_from_target_words_is_skipped():
+    # word not in the target's word set -> deferred to record migration
+    src = _byword(_lb("a", 1, 2, 3, "TAX", "VALID"))
+    assert plan_union(src, _byword(), from_env="dev", dst_word_keys=set()) == []
+
+
 def test_skips_word_absent_in_target():
     # word not present in target table -> handled by record migration, not union
     src = _byword(_lb("a", 1, 2, 3, "TAX", "VALID"))
