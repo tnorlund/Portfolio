@@ -15,9 +15,16 @@ Applied to BOTH envs (only where the label exists), gated + backed-up.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Dict, List
+
+from receipt_dynamo import DynamoClient
+
+from receipt_upload.dedup._ddb import DYNAMO_ERRORS
+from receipt_upload.dedup.context import is_valid_status
 
 AMOUNT = {
     "UNIT_PRICE", "LINE_TOTAL", "TAX", "SUBTOTAL", "GRAND_TOTAL", "DISCOUNT",
@@ -85,13 +92,9 @@ def plan_demotions(text: str, valid_labels: List[str]) -> Dict[str, str]:
 def build_resolution(env_tables: Dict[str, str]):
     """Compute per-env label demotions to enforce <=1 VALID per word.
 
-    Returns ``(plan, summary)`` where plan is
-    ``[(env, image_id, receipt_id, line_id, word_id, label, new_status), ...]``.
+    Returns ``(plan, summary)`` where plan is a list of
+    ``(env, image_id, receipt_id, line_id, word_id, label, new_status)``.
     """
-    from receipt_dynamo import DynamoClient  # local: import-light for tests
-
-    from receipt_upload.dedup.context import is_valid_status
-
     per_env = {}
     word_text = {}
     for env, table in env_tables.items():
@@ -130,19 +133,13 @@ def build_resolution(env_tables: Dict[str, str]):
 
 def apply_resolution(plan, env_tables, *, backup_path: str) -> dict:
     """Apply the demotions to each env, backing up prior statuses first."""
-    import json
-    from datetime import datetime, timezone
-
-    from receipt_dynamo import DynamoClient
-
-    from receipt_upload.dedup._ddb import DYNAMO_ERRORS
-
     by_env = defaultdict(list)
     for env, img, rid, ln, wd, label, status in plan:
         by_env[env].append((img, rid, ln, wd, label, status))
 
     report = {"updated": 0, "missing": 0, "errors": []}
-    backup = {"created_at": datetime.now(timezone.utc).isoformat(), "prior": []}
+    now = datetime.now(timezone.utc).isoformat()
+    backup = {"created_at": now, "prior": []}
     for env, items in by_env.items():
         dc = DynamoClient(env_tables[env])
         index = {
