@@ -239,10 +239,7 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     import boto3
     from receipt_dynamo import DynamoClient
 
-    from receipt_upload.label_validation.llm_runner import (
-        apply_async_payload,
-        resync_corrected_labels_to_chroma,
-    )
+    from receipt_upload.label_validation.llm_runner import apply_async_payload
 
     body = json.loads(record["body"])
     bucket = body["s3_bucket"]
@@ -282,33 +279,11 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
         validated,
     )
 
-    # Best-effort: push the corrected labels into Chroma via a corrective delta +
-    # compaction run. Gated by its OWN flag (default OFF), decoupled from
-    # LLM_VALIDATION_ASYNC, so it can be disabled independently if the
-    # words-compaction subsystem is backlogged. The grok decisions are already
-    # durable in DynamoDB, so a failure here must NOT fail the record.
-    resync_enabled = (
-        os.environ.get("LLM_VALIDATION_CORRECTIVE_RESYNC", "").strip().lower() == "true"
-    )
-    if resync_enabled:
-        try:
-            resync_run_id = resync_corrected_labels_to_chroma(payload, dynamo)
-            if resync_run_id:
-                _log(
-                    "Async LLM Chroma resync: image=%s compaction_run=%s",
-                    image_id,
-                    resync_run_id,
-                )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            # Distinct marker so a log metric filter / alarm can catch a
-            # systemic resync outage (Chroma would silently diverge from
-            # DynamoDB until the next compaction).
-            _log(
-                "[CHROMA_RESYNC_FAILED] image=%s (%s); labels correct in "
-                "DynamoDB, Chroma converges on next compaction",
-                image_id,
-                exc,
-            )
+    # NOTE: grok corrections land in DynamoDB (the source of truth); Chroma's
+    # label metadata for these words converges on the next compaction. Pushing
+    # corrections into Chroma immediately via a corrective delta is deferred to
+    # the words-compaction reliability work (#990) — it overwhelms the current
+    # words-compaction subsystem, so it lands stacked on that fix.
 
     # Best-effort cleanup of the staged payload (idempotent if already gone).
     try:

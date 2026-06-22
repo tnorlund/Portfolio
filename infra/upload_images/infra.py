@@ -42,12 +42,6 @@ chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
 chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
-# Corrective Chroma resync after async grok — INDEPENDENT flag (default off),
-# decoupled from LLM_VALIDATION_ASYNC so it can be disabled if the
-# words-compaction subsystem is backlogged (see #990).
-llm_validation_corrective_resync = (
-    config.get("LLM_VALIDATION_CORRECTIVE_RESYNC") or "false"
-)
 
 stack = pulumi.get_stack()
 
@@ -538,7 +532,6 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 # Async LLM validation: producer enqueues here, same Lambda consumes.
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
-                "LLM_VALIDATION_CORRECTIVE_RESYNC": llm_validation_corrective_resync,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,

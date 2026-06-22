@@ -89,9 +89,6 @@ def test_build_async_payload_is_json_safe_and_complete():
     assert len(payload["needed_labels"]) == 1
     assert payload["pending_labels_data"][0]["word_text"] == "MILK"
     assert payload["similar_evidence"]["8_1"]  # evidence carried in payload
-    # Affected word + aligned embedding carried for the corrective resync.
-    assert len(payload["affected_words"]) == 1
-    assert payload["affected_embeddings"] == [[0.1] * 4]
 
 
 # --------------------------------------------------------------------------- #
@@ -271,7 +268,7 @@ def test_apply_async_payload_idempotent_on_duplicate_correction():
 
 
 # --------------------------------------------------------------------------- #
-# Corrective Chroma resync (consumer side).
+# Shared helper: build a real ReceiptWord.
 # --------------------------------------------------------------------------- #
 def _word(line_id, word_id, text):
     from receipt_dynamo.entities import ReceiptWord
@@ -291,123 +288,6 @@ def _word(line_id, word_id, text):
         angle_radians=0.0,
         confidence=0.99,
     )
-
-
-def _install_chroma_stubs(calls):
-    """Stub the receipt_chroma functions resync imports."""
-    from dataclasses import asdict
-
-    mod = types.ModuleType("receipt_chroma")
-
-    def build_words_payload(
-        *, receipt_words, word_embeddings_list, word_labels, merchant_name
-    ):
-        calls["build"] = {
-            "n_words": len(receipt_words),
-            "n_emb": len(word_embeddings_list),
-            "labels": [(l.line_id, l.word_id, l.label) for l in word_labels],
-        }
-        return {"ids": ["x"]}, {}
-
-    def upload_words_delta(*, word_payload, run_id, chromadb_bucket, s3_client):
-        calls["upload"] = {"run_id": run_id, "bucket": chromadb_bucket}
-        return f"words/delta/{run_id}"
-
-    def create_compaction_run(
-        *, run_id, image_id, receipt_id, lines_prefix, words_prefix, dynamo_client
-    ):
-        calls["compaction"] = {
-            "run_id": run_id,
-            "lines_prefix": lines_prefix,
-            "words_prefix": words_prefix,
-        }
-        return object()
-
-    mod.build_words_payload = build_words_payload
-    mod.upload_words_delta = upload_words_delta
-    mod.create_compaction_run = create_compaction_run
-    saved = sys.modules.get("receipt_chroma")
-    sys.modules["receipt_chroma"] = mod
-    return saved
-
-
-def test_resync_returns_none_without_resync_data():
-    # v1-style payload (no lines_prefix / affected words) -> no-op.
-    assert (
-        m.resync_corrected_labels_to_chroma(
-            {"image_id": IMAGE_ID, "receipt_id": 1}, _FakeDynamo()
-        )
-        is None
-    )
-
-
-def test_resync_builds_delta_and_compaction_run():
-    from dataclasses import asdict
-
-    w = _word(8, 1, "MILK")
-    # DynamoDB holds the FINAL (post-grok) label for the affected word + an
-    # unrelated label that must NOT be included.
-    final = _label(8, 1, "PRODUCT_NAME", ValidationStatus.VALID.value)
-    other = _label(99, 9, "MERCHANT_NAME", ValidationStatus.VALID.value)
-    dynamo = _FakeDynamo(labels_for_receipt=[final, other])
-    payload = {
-        "image_id": IMAGE_ID,
-        "receipt_id": 1,
-        "merchant_name": "X",
-        "lines_prefix": "lines/delta/run-abc",
-        "chromadb_bucket": "bucket-1",
-        "affected_words": [asdict(w)],
-        "affected_embeddings": [[0.1] * 4],
-    }
-    calls = {}
-    saved = _install_chroma_stubs(calls)
-    try:
-        run_id = m.resync_corrected_labels_to_chroma(payload, dynamo)
-    finally:
-        if saved is None:
-            sys.modules.pop("receipt_chroma", None)
-        else:
-            sys.modules["receipt_chroma"] = saved
-
-    assert run_id and calls["compaction"]["run_id"] == run_id
-    assert calls["compaction"]["lines_prefix"] == "lines/delta/run-abc"
-    assert calls["compaction"]["words_prefix"] == f"words/delta/{run_id}"
-    # Only the affected word's label is in the delta (the 99/9 one is excluded).
-    assert calls["build"]["labels"] == [(8, 1, "PRODUCT_NAME")]
-    assert calls["build"]["n_words"] == 1 and calls["build"]["n_emb"] == 1
-
-
-def test_resync_run_id_is_deterministic_idempotent():
-    """Redelivery must reuse the same compaction run_id (uuid5 of receipt
-    identity), so it upserts rather than stacking duplicate runs."""
-    from dataclasses import asdict
-
-    w = _word(8, 1, "MILK")
-    final = _label(8, 1, "PRODUCT_NAME", ValidationStatus.VALID.value)
-
-    def _run():
-        dynamo = _FakeDynamo(labels_for_receipt=[final])
-        payload = {
-            "image_id": IMAGE_ID,
-            "receipt_id": 1,
-            "merchant_name": "X",
-            "lines_prefix": "lines/delta/run-abc",
-            "chromadb_bucket": "b",
-            "affected_words": [asdict(w)],
-            "affected_embeddings": [[0.1] * 4],
-        }
-        calls = {}
-        saved = _install_chroma_stubs(calls)
-        try:
-            return m.resync_corrected_labels_to_chroma(payload, dynamo)
-        finally:
-            if saved is None:
-                sys.modules.pop("receipt_chroma", None)
-            else:
-                sys.modules["receipt_chroma"] = saved
-
-    r1, r2 = _run(), _run()
-    assert r1 == r2, "resync run_id must be deterministic across redeliveries"
 
 
 def test_apply_async_payload_raise_on_failure_false_swallows_and_cleans():

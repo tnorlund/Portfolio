@@ -1359,11 +1359,6 @@ class MerchantResolvingEmbeddingProcessor:
             # before the corresponding word embeddings are in place downstream.
             if async_llm_payload:
                 try:
-                    # Give the consumer what it needs to emit a corrective Chroma
-                    # delta for its grok decisions: the (still-present) lines
-                    # delta prefix to re-merge and the bucket to write to.
-                    async_llm_payload["lines_prefix"] = lines_prefix
-                    async_llm_payload["chromadb_bucket"] = self.chromadb_bucket
                     # Give deferred grok the same merchant context the sync path
                     # has (it's resolved by now); falls back to None if unset.
                     async_llm_payload["merchant_name"] = merchant_result.merchant_name
