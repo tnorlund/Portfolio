@@ -1,25 +1,29 @@
-"""Load receipts/words/labels from DynamoDB and build merge dossiers.
+"""Shared DynamoDB loader for the dedup CLIs.
 
-Usage: python -m receipt_upload.dedup.dossiers --env dev [--json dossiers.json]
-
-This is the I/O wrapper around the pure :mod:`receipt_upload.dedup.context`
-builder. Output is the LLM-ready context for stage 2 (the resolver).
+Loads receipts/words/labels (and optionally per-receipt totals + merchants)
+once, into the plain dict structures consumed by the pure builders in
+:mod:`receipt_upload.dedup.context` and the cross-image gate in
+:mod:`receipt_upload.dedup.stage5_plan`.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 from collections import defaultdict
 
 from receipt_dynamo import DynamoClient
 
-from receipt_upload.dedup.context import LabelObs, build_merge_dossiers
+from receipt_upload.dedup.context import LabelObs
 
 ENV_TABLE = {"dev": "ReceiptsTable-dc5be22", "prod": "ReceiptsTable-d7ff76a"}
 
 
-def load_inputs(table: str):
+def load_inputs(table: str, *, with_summaries: bool = False):
+    """Return ``(receipts, words_by_receipt, labels_by_receipt)``.
+
+    With ``with_summaries=True`` also returns ``(totals, merchants)`` (two
+    extra table scans), keyed by ``(image_id, receipt_id)`` — needed only by
+    the cross-image transaction-identity gate.
+    """
     dc = DynamoClient(table)
     receipts = dc.list_receipts()[0]
     words = dc.list_receipt_words()[0]
@@ -47,66 +51,19 @@ def load_inputs(table: str):
                 validation_status=getattr(lb, "validation_status", None),
             )
         )
-    return receipts, words_by_receipt, labels_by_receipt
 
+    if not with_summaries:
+        return receipts, words_by_receipt, labels_by_receipt
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--env", choices=list(ENV_TABLE), default="dev")
-    ap.add_argument("--json", help="write all dossiers to this path")
-    args = ap.parse_args()
-
-    receipts, words_by_receipt, labels_by_receipt = load_inputs(
-        ENV_TABLE[args.env]
-    )
-    dossiers = build_merge_dossiers(
-        receipts, words_by_receipt, labels_by_receipt
-    )
-
-    within = [d for d in dossiers if d.scope == "within_image"]
-    cross = [d for d in dossiers if d.scope == "cross_image"]
-    n_conflict = sum(len(d.conflicts) for d in dossiers)
-    n_lost = sum(len(d.labels_only_on_nonsurvivor) for d in dossiers)
-    n_junk = sum(len(d.junk_flags) for d in dossiers)
-    n_clean = sum(
-        1 for d in dossiers if d.deterministic_action == "drop_redundant"
-    )
-
-    print(f"[{args.env}] {len(receipts)} receipts")
-    print(
-        f"  merge groups (receipt-sha): {len(dossiers)} "
-        f"(within-image {len(within)}, cross-image {len(cross)})"
-    )
-    print(
-        f"  clean drop_redundant: {n_clean} | needs consolidation: "
-        f"{len(dossiers) - n_clean}"
-    )
-    print(
-        f"  total conflicts: {n_conflict} | "
-        f"labels-only-on-nonsurvivor: {n_lost} "
-        f"| groups with junk labels: {n_junk}"
-    )
-    print("\n  sample groups:")
-    for d in dossiers[:6]:
-        ov = d.label_overlap_pct
-        print(
-            f"    {d.group_id} [{d.scope}] {len(d.members)} members | "
-            f"survivor {d.survivor_suggested} | overlap {ov}% | "
-            f"{len(d.conflicts)} conflicts | "
-            f"{len(d.labels_only_on_nonsurvivor)} "
-            f"would-be-lost | action {d.deterministic_action}"
-        )
-
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(
-                [d.to_llm_context() for d in dossiers],
-                f,
-                indent=2,
-                default=str,
-            )
-        print(f"\n  wrote {args.json}")
-
-
-if __name__ == "__main__":
-    main()
+    totals = {}
+    for s in dc.list_receipt_summaries()[0]:
+        su = getattr(s, "summary", s)
+        g = getattr(su, "grand_total", None)
+        if g is not None:
+            totals[(su.image_id, su.receipt_id)] = float(g)
+    merchants = {}
+    for m in dc.list_receipt_metadatas()[0]:
+        merchants[(m.image_id, m.receipt_id)] = getattr(
+            m, "canonical_merchant_name", None
+        ) or getattr(m, "merchant_name", None)
+    return receipts, words_by_receipt, labels_by_receipt, totals, merchants

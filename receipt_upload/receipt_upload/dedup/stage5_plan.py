@@ -15,59 +15,15 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import defaultdict
 
-from receipt_dynamo import DynamoClient
-
-from receipt_upload.dedup.context import LabelObs, build_dossiers_for_groups
-from receipt_upload.dedup.dossiers import ENV_TABLE
+from receipt_upload.dedup.context import build_dossiers_for_groups
+from receipt_upload.dedup.dossiers import ENV_TABLE, load_inputs
 from receipt_upload.dedup.near_dup import (
     frequent_ids,
     same_transaction,
     transaction_fingerprint,
 )
 from receipt_upload.dedup.resolver import resolve_all
-
-Key = tuple
-
-
-def _load(table):
-    dc = DynamoClient(table)
-    receipts = dc.list_receipts()[0]
-    words = dc.list_receipt_words()[0]
-    labels = dc.list_receipt_word_labels()[0]
-    rec = {(r.image_id, r.receipt_id): r for r in receipts}
-
-    words_by, text_at = defaultdict(dict), {}
-    for w in words:
-        t = getattr(w, "text", "") or ""
-        words_by[(w.image_id, w.receipt_id)][(w.line_id, w.word_id)] = t
-        text_at[(w.image_id, w.receipt_id, w.line_id, w.word_id)] = t
-    labels_by = defaultdict(list)
-    for lb in labels:
-        labels_by[(lb.image_id, lb.receipt_id)].append(
-            LabelObs(
-                lb.label,
-                lb.line_id,
-                lb.word_id,
-                text_at.get(
-                    (lb.image_id, lb.receipt_id, lb.line_id, lb.word_id), ""
-                ),
-                getattr(lb, "validation_status", None),
-            )
-        )
-    totals = {}
-    for s in dc.list_receipt_summaries()[0]:
-        su = getattr(s, "summary", s)
-        g = getattr(su, "grand_total", None)
-        if g is not None:
-            totals[(su.image_id, su.receipt_id)] = float(g)
-    merchants = {}
-    for m in dc.list_receipt_metadatas()[0]:
-        merchants[(m.image_id, m.receipt_id)] = getattr(
-            m, "canonical_merchant_name", None
-        ) or getattr(m, "merchant_name", None)
-    return rec, words_by, labels_by, totals, merchants
 
 
 def _word_list(words_by, key):
@@ -156,7 +112,10 @@ def main():
     with open(args.groups, encoding="utf-8") as f:
         raw = json.load(f)
     groups = raw["groups"] if isinstance(raw, dict) else raw
-    rec, words_by, labels_by, totals, merchants = _load(ENV_TABLE[args.env])
+    receipts, words_by, labels_by, totals, merchants = load_inputs(
+        ENV_TABLE[args.env], with_summaries=True
+    )
+    rec = {(r.image_id, r.receipt_id): r for r in receipts}
 
     kept, rejected = gate_groups(groups, rec, words_by, totals, merchants)
     print(
