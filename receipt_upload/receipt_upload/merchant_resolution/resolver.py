@@ -435,25 +435,38 @@ class MerchantResolver:
         if not merchant_hint:
             merchant_hint = merchant_line.text if merchant_line else None
 
+        # The full text of the line(s) carrying the MERCHANT_NAME label. We find
+        # it via the label, NOT geometry: the top-line heuristic is unreliable
+        # (receipts often put the check #, e.g. "105", on the first line, and the
+        # OCR y-axis orientation varies), so it would miss the real name line.
+        merchant_name_line_ids = {
+            lab.line_id for lab in word_labels if lab.label == "MERCHANT_NAME"
+        }
+        merchant_name_line_text = " ".join(
+            ln.text
+            for ln in sorted(lines, key=lambda l: l.line_id)
+            if ln.line_id in merchant_name_line_ids and ln.text
+        ).strip()
+
         # For the Google Places TEXT query, enrich the labeled name with the rest
-        # of the merchant header line — but ONLY when that line actually contains
-        # the labeled name. The extra tokens are usually the city ("IN-N-OUT" +
-        # "BURGER HENDERSON"), which disambiguates a chain to the right location.
-        # A bare "IN-N-OUT" returns an arbitrary branch. If the header line is a
-        # different line (doesn't contain the labeled name), keep the trusted
-        # label rather than risk querying the wrong text.
+        # of its line — but ONLY when that line actually contains the labeled
+        # name. The extra tokens are usually the city ("IN-N-OUT" + "BURGER
+        # HENDERSON"), which disambiguates a chain to the right location; a bare
+        # "IN-N-OUT" returns an arbitrary branch. If the candidate doesn't contain
+        # the labeled name, keep the trusted label rather than query wrong text.
         place_text_query = merchant_hint
-        if merchant_hint and merchant_line and merchant_line.text:
+        candidate = merchant_name_line_text or (
+            merchant_line.text if merchant_line else ""
+        )
+        if merchant_hint and candidate:
             hint_tokens = set(re.findall(r"[a-z0-9]+", merchant_hint.lower()))
-            line_tokens = set(
-                re.findall(r"[a-z0-9]+", merchant_line.text.lower())
-            )
+            cand_tokens = set(re.findall(r"[a-z0-9]+", candidate.lower()))
             if (
                 hint_tokens
-                and hint_tokens <= line_tokens
-                and len(merchant_line.text) > len(merchant_hint)
+                and hint_tokens <= cand_tokens
+                and len(candidate) > len(merchant_hint)
             ):
-                place_text_query = merchant_line.text
+                place_text_query = candidate
 
         _log(
             "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
