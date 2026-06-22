@@ -96,20 +96,47 @@ def test_survivor_legacy_label_is_occupied_not_a_gap():
     assert all(gf.locus != "3:4" for gf in res.gap_fills)
 
 
-def test_cross_image_repeated_token_not_auto_filled():
-    # survivor has "$9.99" twice -> ambiguous target -> refuse to guess
+def test_byte_identical_repeated_token_targeted_by_position():
+    # byte-identical re-upload (same sha, different images): the dropped copy's
+    # OWN (line:word) pins which occurrence of a repeated "$9.99" to fill, so it
+    # is no longer ambiguous and IS recovered onto the survivor.
     receipts = [_r("a", 1, "S"), _r("b", 1, "S")]
     words = {
-        ("a", 1): {(1, 1): "M", (2, 2): "$9.99", (5, 5): "$9.99"},  # repeated token
-        ("b", 1): {(1, 1): "M", (2, 2): "$9.99"},
+        ("a", 1): {(1, 1): "M", (2, 2): "$9.99", (5, 5): "$9.99"},
+        ("b", 1): {(1, 1): "M", (2, 2): "$9.99", (5, 5): "$9.99"},
     }
     labels = {
-        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID")],
-        ("b", 1): [_obs("LINE_TOTAL", 2, 2, "$9.99", "VALID")],
+        # survivor (2 validated) labels neither $9.99 occurrence
+        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID"),
+                   _obs("DATE", 9, 9, "x", "VALID")],
+        ("b", 1): [_obs("LINE_TOTAL", 5, 5, "$9.99", "VALID")],  # the 5:5 one
     }
     res = _resolve(receipts, words, labels)
-    assert res.gap_fills == []  # can't safely target which $9.99
-    assert any(s["reason"] == "no_unique_survivor_target" for s in res.skipped_gaps)
+    assert res.survivor == "a#1"
+    assert len(res.gap_fills) == 1
+    assert res.gap_fills[0].locus == "5:5"  # exact occurrence from the drop
+    assert res.gap_fills[0].label == "LINE_TOTAL"
+
+
+def test_byte_identical_skips_when_position_absent_and_text_repeated():
+    # safety guard: dropped copy labels a $9.99 at a position the survivor does
+    # NOT have, and $9.99 is repeated in the survivor -> can't target -> skip.
+    receipts = [_r("a", 1, "S"), _r("b", 1, "S")]
+    words = {
+        ("a", 1): {(1, 1): "M", (2, 2): "$9.99", (5, 5): "$9.99"},
+        ("b", 1): {(1, 1): "M", (8, 8): "$9.99"},  # labeled occurrence at 8:8
+    }
+    labels = {
+        ("a", 1): [_obs("MERCHANT_NAME", 1, 1, "M", "VALID"),
+                   _obs("DATE", 7, 7, "x", "VALID")],
+        ("b", 1): [_obs("LINE_TOTAL", 8, 8, "$9.99", "VALID")],
+    }
+    res = _resolve(receipts, words, labels)
+    assert res.survivor == "a#1"
+    assert res.gap_fills == []
+    assert any(
+        s["reason"] == "no_unique_survivor_target" for s in res.skipped_gaps
+    )
 
 
 def test_cross_image_gap_fill_targets_concrete_position():

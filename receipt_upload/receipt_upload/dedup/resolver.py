@@ -62,18 +62,33 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
         o["pos"] for o in sm.labels if o.get("kind") in ("canonical", "legacy")
     }
 
+    # Byte-identical members (sha256 anchor) are the SAME pixels, so OCR is
+    # deterministic and (line:word) positions correspond across copies — even
+    # when scope is cross_image (a re-upload under a different image_id). A
+    # transaction_identity anchor (near-dup, different pixels) gets no such
+    # guarantee and stays text-only.
+    byte_identical = d.anchor == "receipt_sha256"
+
     def survivor_target(o: dict):
         """Survivor (line:word) a dropped observation lands on, or None.
 
         within_image: pixels identical, so the same pos is the exact target.
-        cross_image: match by full (untruncated) word text, but ONLY when that
-        text occurs EXACTLY ONCE in the survivor — otherwise the target is
-        ambiguous (repeated token) and we refuse to guess.
+        byte-identical cross_image: the dropped copy's OWN (line:word) exists
+        in the survivor with the same text — target it directly, which pins
+        which occurrence of a repeated token to fill (text-matching alone
+        can't). Falls back to unique-text matching if the exact position
+        somehow isn't present.
+        other cross_image (near-dup): match by full word text, but ONLY when
+        it occurs EXACTLY ONCE in the survivor — else refuse to guess.
         """
         if d.scope == "within_image":
             return o["pos"]
         positions = sm.word_index.get(o["word_text"])
-        if not positions or len(positions) != 1:
+        if not positions:
+            return None
+        if byte_identical and o["pos"] in positions:
+            return o["pos"]
+        if len(positions) != 1:
             return None
         return positions[0]
 

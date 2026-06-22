@@ -170,6 +170,44 @@ def _survivor_score(m: MemberContext) -> Tuple:
     )
 
 
+def _valid_pairs(m: MemberContext) -> set:
+    """VALID canonical ``(word_text, label)`` pairs carried by one member."""
+    return {
+        (o["word_text"], o["canonical_label"])
+        for o in m.labels
+        if o["canonical"] and is_valid_status(o["validation_status"])
+    }
+
+
+def _pick_survivor(members: List[MemberContext]) -> MemberContext:
+    """Choose the survivor that RETAINS the most VALID labels after merge.
+
+    A dropped copy's VALID label can only migrate onto a survivor whose OCR
+    already produced that word (text). Cross-image re-uploads often have
+    divergent OCR, so picking purely by label count can keep a copy whose words
+    can't hold the others' labels — stranding them (and sometimes keeping the
+    worse-OCR copy). We instead maximize the union of VALID ``(text, label)``
+    pairs the candidate can hold: its own plus every other member's pair whose
+    text the candidate also has. Ties fall back to label quality then OCR
+    coverage (:func:`_survivor_score`).
+    """
+    pairs = [_valid_pairs(m) for m in members]
+    words = [set(m.word_index) for m in members]
+
+    def retained(i: int) -> int:
+        keep = set(pairs[i])
+        for j, pj in enumerate(pairs):
+            if j != i:
+                keep |= {(t, lab) for (t, lab) in pj if t in words[i]}
+        return len(keep)
+
+    best = max(
+        range(len(members)),
+        key=lambda i: (retained(i), _survivor_score(members[i])),
+    )
+    return members[best]
+
+
 def _build_member(r, words: Dict[Tuple[int, int], str], obs) -> MemberContext:
     # full word index (NOT truncated) for membership + unique-target gap-fills
     word_index: Dict[str, List[str]] = {}
@@ -264,7 +302,7 @@ def _assemble_dossier(
         return None
 
     scope = "within_image" if len(image_ids) == 1 else "cross_image"
-    survivor = max(members, key=_survivor_score)
+    survivor = _pick_survivor(members)
 
     notes: List[str] = []
     if scope == "within_image" and anchor == "receipt_sha256":
