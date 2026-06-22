@@ -151,9 +151,15 @@ class ChromaDBQueues(ComponentResource):
             # Visibility timeout must be >= Lambda timeout per AWS requirements.
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
+            # High maxReceiveCount so the INTENDED back-pressure works: the
+            # consumer is deliberately concurrency-limited (reserved=2), so SQS
+            # throttles polls when no slot is free — and each throttled poll
+            # increments ApproximateReceiveCount. With maxReceiveCount=10 those
+            # throttle-bounces dead-lettered messages before they ever got a
+            # processing slot. A high cap lets them wait for a slot instead.
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 10}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 1000}
                 )
             ),
             tags={
@@ -171,9 +177,14 @@ class ChromaDBQueues(ComponentResource):
             message_retention_seconds=345600,  # 4 days
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,  # Long polling
+            # See lines_queue: high cap so throttle-bounces don't dead-letter
+            # before a slot opens. The words queue is where this bit hard — a
+            # bulk delete/label-revalidation flood (one stream message per
+            # word/label change) throttle-bounced ~12k messages into the DLQ
+            # without ever being processed. See issue #990.
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 10}
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 1000}
                 )
             ),
             tags={
