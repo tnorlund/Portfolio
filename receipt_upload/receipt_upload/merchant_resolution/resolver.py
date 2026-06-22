@@ -461,7 +461,7 @@ class MerchantResolver:
         place_text_query = merchant_hint
         if merchant_hint:
             hint_tokens = set(re.findall(r"[a-z0-9]+", merchant_hint.lower()))
-            for ln in sorted(lines, key=lambda l: l.line_id):
+            for ln in sorted(lines, key=lambda line: line.line_id):
                 if ln.line_id not in merchant_name_line_ids or not ln.text:
                     continue
                 ln_tokens = set(re.findall(r"[a-z0-9]+", ln.text.lower()))
