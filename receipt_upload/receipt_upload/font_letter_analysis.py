@@ -411,7 +411,9 @@ def build_line_font_samples(
                 line_id=key[2],
                 text=text,
                 section=section,
-                letter_sample_ids=tuple(sample.sample_id for sample in samples),
+                letter_sample_ids=tuple(
+                    sample.sample_id for sample in samples
+                ),
                 vector=vector,
                 metrics=metrics,
             )
@@ -481,9 +483,7 @@ def upsert_letter_samples_to_chroma(
                 metadatas=[
                     {
                         **_sample_metadata(sample),
-                        **dict(
-                            extra_metadata_by_id.get(sample.sample_id, {})
-                        ),
+                        **dict(extra_metadata_by_id.get(sample.sample_id, {})),
                     }
                     for sample in batch
                 ],
@@ -672,18 +672,13 @@ def _hog_orientation_metrics(
     values = list(gray.tobytes())
     histogram = [0.0 for _ in range(bins)]
     if width < 3 or height < 3:
-        return {
-            f"hog_orientation_{index}": 0.0 for index in range(bins)
-        }
+        return {f"hog_orientation_{index}": 0.0 for index in range(bins)}
 
     for y in range(1, height - 1):
         offset = y * width
         for x in range(1, width - 1):
             gx = values[offset + x + 1] - values[offset + x - 1]
-            gy = (
-                values[offset + width + x]
-                - values[offset - width + x]
-            )
+            gy = values[offset + width + x] - values[offset - width + x]
             magnitude = (gx * gx + gy * gy) ** 0.5
             if magnitude <= _EPSILON:
                 continue
@@ -693,9 +688,7 @@ def _hog_orientation_metrics(
 
     total = sum(histogram)
     if total <= _EPSILON:
-        return {
-            f"hog_orientation_{index}": 0.0 for index in range(bins)
-        }
+        return {f"hog_orientation_{index}": 0.0 for index in range(bins)}
     return {
         f"hog_orientation_{index}": value / total
         for index, value in enumerate(histogram)
@@ -1080,7 +1073,9 @@ def _build_letter_analysis(
 
     ordered_labels = sorted(
         grouped,
-        key=lambda label: min(samples.index(sample) for sample in grouped[label]),
+        key=lambda label: min(
+            samples.index(sample) for sample in grouped[label]
+        ),
     )
     relabel = {
         old_label: new_label
@@ -1152,7 +1147,9 @@ def _cluster_vectors(
         raw_labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(
             list(vectors)
         )
-        return [int(label) + 1 if int(label) >= 0 else -1 for label in raw_labels]
+        return [
+            int(label) + 1 if int(label) >= 0 else -1 for label in raw_labels
+        ]
     except Exception:
         return _dbscan(vectors, eps=eps, min_samples=min_samples)
 
@@ -1168,7 +1165,10 @@ def _make_letter_cluster(
         sample_count=len(samples),
         line_ids=tuple(sorted({sample.line_id for sample in samples})),
         normalized_chars=tuple(
-            char for char, _ in _top_counts(sample.normalized_char for sample in samples)
+            char
+            for char, _ in _top_counts(
+                sample.normalized_char for sample in samples
+            )
         ),
         text_examples=tuple(sample.text for sample in samples[:8]),
         centroid=_centroid([sample.style_vector for sample in samples]),
@@ -1214,7 +1214,9 @@ def _average_metrics(
     )
     return {
         name: mean(
-            sample.metrics[name] for sample in samples if name in sample.metrics
+            sample.metrics[name]
+            for sample in samples
+            if name in sample.metrics
         )
         for name in metric_names
     }
@@ -1273,7 +1275,8 @@ def _line_metrics(
         "line_box_y": line_box["y"],
         "line_box_width": line_box["width"],
         "line_box_height": line_box["height"],
-        "line_box_aspect": line_box["width"] / max(line_box["height"], _EPSILON),
+        "line_box_aspect": line_box["width"]
+        / max(line_box["height"], _EPSILON),
         "line_center_x": line_box["x"] + line_box["width"] / 2,
         "line_center_y": line_box["y"] + line_box["height"] / 2,
         "letter_area_ratio": letter_area / line_area,
@@ -1298,7 +1301,9 @@ def _aggregated_letter_metrics(
     return metrics
 
 
-def _line_box(line: Any | None, samples: Sequence[LetterImageSample]) -> BoundingBox:
+def _line_box(
+    line: Any | None, samples: Sequence[LetterImageSample]
+) -> BoundingBox:
     box = _box(line) if line is not None else None
     if box is not None:
         return box
@@ -1310,7 +1315,8 @@ def _line_box(line: Any | None, samples: Sequence[LetterImageSample]) -> Boundin
     )
     bottom = min(sample.metrics.get("box_y", 0.0) for sample in samples)
     top = max(
-        sample.metrics.get("box_y", 0.0) + sample.metrics.get("box_height", 0.0)
+        sample.metrics.get("box_y", 0.0)
+        + sample.metrics.get("box_height", 0.0)
         for sample in samples
     )
     return {
@@ -1332,10 +1338,9 @@ def _spacing_metrics(
     inter_word_gaps = []
     advances = []
     for current, following in zip(ordered, ordered[1:]):
-        current_right = (
-            current.metrics.get("box_x", 0.0)
-            + current.metrics.get("box_width", 0.0)
-        )
+        current_right = current.metrics.get(
+            "box_x", 0.0
+        ) + current.metrics.get("box_width", 0.0)
         gap = max(following.metrics.get("box_x", 0.0) - current_right, 0.0)
         advance = max(
             following.metrics.get("box_center_x", 0.0)
@@ -1356,15 +1361,16 @@ def _spacing_metrics(
         "median_gap": median_gap,
         "mean_gap": gap_mean,
         "std_gap": gap_std,
-        "median_intra_word_gap": median(intra_word_gaps)
-        if intra_word_gaps
-        else 0.0,
-        "median_inter_word_gap": median(inter_word_gaps)
-        if inter_word_gaps
-        else 0.0,
+        "median_intra_word_gap": (
+            median(intra_word_gaps) if intra_word_gaps else 0.0
+        ),
+        "median_inter_word_gap": (
+            median(inter_word_gaps) if inter_word_gaps else 0.0
+        ),
         "median_advance": median_advance,
         "gap_to_height_ratio": median_gap / max(median_height, _EPSILON),
-        "advance_to_height_ratio": median_advance / max(median_height, _EPSILON),
+        "advance_to_height_ratio": median_advance
+        / max(median_height, _EPSILON),
     }
 
 
@@ -1398,8 +1404,7 @@ def _letter_cluster_mix_metrics(
         }
 
     cluster_ids = [
-        int(letter_assignments.get(sample.sample_id, -1))
-        for sample in samples
+        int(letter_assignments.get(sample.sample_id, -1)) for sample in samples
     ]
     assigned = [cluster_id for cluster_id in cluster_ids if cluster_id > 0]
     count = max(len(cluster_ids), 1)
@@ -1428,7 +1433,9 @@ def _line_text_for_key(
     word_text = " ".join(_text(word) for word in words).strip()
     if word_text:
         return word_text
-    return "".join(sample.text for sample in sorted(samples, key=_letter_sort_value))
+    return "".join(
+        sample.text for sample in sorted(samples, key=_letter_sort_value)
+    )
 
 
 def _lookup_line_mapping(
@@ -1565,7 +1572,9 @@ def _describe_letter_cluster(metrics: Mapping[str, float]) -> str:
 
 
 def _describe_line_cluster(metrics: Mapping[str, float]) -> str:
-    height = metrics.get("median_box_height", metrics.get("line_box_height", 0.0))
+    height = metrics.get(
+        "median_box_height", metrics.get("line_box_height", 0.0)
+    )
     aspect = metrics.get("mean_box_aspect", 0.0)
     ink = metrics.get("mean_ink_ratio", 0.0)
     spacing = metrics.get("gap_to_height_ratio", 0.0)

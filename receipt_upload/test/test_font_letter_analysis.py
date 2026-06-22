@@ -81,7 +81,9 @@ def _same_character_two_weight_image() -> tuple[Image.Image, list[object]]:
     return image, letters
 
 
-def _same_character_four_line_weight_image() -> tuple[Image.Image, list[object]]:
+def _same_character_four_line_weight_image() -> (
+    tuple[Image.Image, list[object]]
+):
     image = Image.new("RGB", (800, 440), "white")
     draw = ImageDraw.Draw(image)
     letters = []
