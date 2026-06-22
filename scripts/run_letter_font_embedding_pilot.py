@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "receipt_upload"))
 sys.path.insert(0, str(REPO_ROOT / "receipt_chroma"))
 
+from receipt_chroma import ChromaClient  # noqa: E402
 from receipt_dynamo import DynamoClient  # noqa: E402
 from receipt_upload.font_letter_analysis import (  # noqa: E402
     LetterFontAnalysis,
@@ -39,7 +40,6 @@ from receipt_upload.font_letter_analysis import (  # noqa: E402
     cluster_letter_styles,
     cluster_line_font_styles,
 )
-from receipt_chroma import ChromaClient  # noqa: E402
 
 PROD_TABLE = "ReceiptsTable-d7ff76a"
 COLLECTION_NAME = "letter_font_glyphs"
@@ -89,7 +89,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--query-check-limit", type=int, default=200)
     parser.add_argument(
         "--report-md",
-        default=str(REPO_ROOT / "docs" / "receipt-letter-font-chroma-pilot.md"),
+        default=str(
+            REPO_ROOT / "docs" / "receipt-letter-font-chroma-pilot.md"
+        ),
     )
     parser.add_argument(
         "--report-json",
@@ -126,7 +128,9 @@ def main() -> None:
     for receipt in receipts:
         if not receipt.raw_s3_bucket or not receipt.raw_s3_key:
             continue
-        if not _s3_exists(s3_client, receipt.raw_s3_bucket, receipt.raw_s3_key):
+        if not _s3_exists(
+            s3_client, receipt.raw_s3_bucket, receipt.raw_s3_key
+        ):
             continue
         raw_ok_checked += 1
         selected.append(receipt)
@@ -253,7 +257,9 @@ def main() -> None:
         _line_eps_result(eps, analysis)
         for eps, analysis in line_analyses_by_eps.items()
     ]
-    cluster_by_id = {cluster.cluster_id: cluster for cluster in analysis.clusters}
+    cluster_by_id = {
+        cluster.cluster_id: cluster for cluster in analysis.clusters
+    }
     for sample_id, cluster_id in analysis.assignments.items():
         if cluster_id > 0:
             extra_metadata.setdefault(sample_id, {})[
@@ -421,9 +427,11 @@ def _line_eps_result(eps: float, analysis: LineFontAnalysis) -> dict[str, Any]:
             else 0.0
         ),
         "section_purity": _line_cluster_section_purity(analysis),
-        "median_clusters_per_receipt": median(cluster_counts_by_receipt)
-        if cluster_counts_by_receipt
-        else 0,
+        "median_clusters_per_receipt": (
+            median(cluster_counts_by_receipt)
+            if cluster_counts_by_receipt
+            else 0
+        ),
     }
 
 
@@ -465,9 +473,7 @@ def _persist_and_evaluate_chroma(
                 metadatas=[
                     {
                         **_sample_metadata(sample),
-                        **dict(
-                            extra_metadata_by_id.get(sample.sample_id, {})
-                        ),
+                        **dict(extra_metadata_by_id.get(sample.sample_id, {})),
                     }
                     for sample in batch
                 ],
@@ -582,13 +588,17 @@ def _build_report(
         for sample in analysis.samples
         if analysis.cluster_for_sample(sample.sample_id) is not None
     ]
-    clusters_by_id = {cluster.cluster_id: cluster for cluster in analysis.clusters}
+    clusters_by_id = {
+        cluster.cluster_id: cluster for cluster in analysis.clusters
+    }
     section_counts: Counter[str] = Counter()
     section_cluster_labels: dict[str, Counter[str]] = defaultdict(Counter)
     section_metrics: dict[str, dict[str, list[float]]] = defaultdict(
         lambda: defaultdict(list)
     )
-    char_counts = Counter(sample.normalized_char for sample in analysis.samples)
+    char_counts = Counter(
+        sample.normalized_char for sample in analysis.samples
+    )
 
     for sample in assigned_samples:
         cluster_id = analysis.cluster_for_sample(sample.sample_id)
@@ -598,7 +608,12 @@ def _build_report(
         cluster = clusters_by_id[cluster_id]
         section_counts[section] += 1
         section_cluster_labels[section][cluster.label] += 1
-        for metric in ("box_height", "ink_ratio", "edge_density", "box_aspect"):
+        for metric in (
+            "box_height",
+            "ink_ratio",
+            "edge_density",
+            "box_aspect",
+        ):
             section_metrics[section][metric].append(sample.metrics[metric])
 
     cluster_summaries = _cluster_summaries(
@@ -631,7 +646,9 @@ def _build_report(
             }
         )
 
-    sample_counts = [item["embedded_letter_count"] for item in receipt_summaries]
+    sample_counts = [
+        item["embedded_letter_count"] for item in receipt_summaries
+    ]
     cluster_counts_by_receipt = _cluster_counts_by_receipt(analysis)
     line_cluster_counts_by_receipt = _line_cluster_counts_by_receipt(
         line_analysis
@@ -662,9 +679,11 @@ def _build_report(
             else 0.0
         ),
         "assigned_lines": len(assigned_line_samples),
-        "median_line_clusters_per_receipt": median(line_cluster_counts_by_receipt)
-        if line_cluster_counts_by_receipt
-        else 0,
+        "median_line_clusters_per_receipt": (
+            median(line_cluster_counts_by_receipt)
+            if line_cluster_counts_by_receipt
+            else 0
+        ),
         "letter_cluster_section_purity": _letter_cluster_section_purity(
             analysis,
             section_by_sample,
@@ -672,12 +691,14 @@ def _build_report(
         "line_cluster_section_purity": _line_cluster_section_purity(
             line_analysis
         ),
-        "median_letters_per_receipt": median(sample_counts)
-        if sample_counts
-        else 0,
-        "median_clusters_per_receipt": median(cluster_counts_by_receipt)
-        if cluster_counts_by_receipt
-        else 0,
+        "median_letters_per_receipt": (
+            median(sample_counts) if sample_counts else 0
+        ),
+        "median_clusters_per_receipt": (
+            median(cluster_counts_by_receipt)
+            if cluster_counts_by_receipt
+            else 0
+        ),
         "common_ocr_chars": dict(char_counts.most_common(15)),
         "neighbor_quality": neighbor_quality,
         "errors": len(errors),
@@ -733,7 +754,9 @@ def _cluster_summaries(
                 "normalized_chars": list(cluster.normalized_chars[:12]),
                 "text_examples": list(cluster.text_examples),
                 "sections": dict(sections.most_common()),
-                "avg_box_height": round(cluster.metrics.get("box_height", 0), 5),
+                "avg_box_height": round(
+                    cluster.metrics.get("box_height", 0), 5
+                ),
                 "avg_ink_ratio": round(cluster.metrics.get("ink_ratio", 0), 5),
                 "avg_edge_density": round(
                     cluster.metrics.get("edge_density", 0), 5
@@ -744,26 +767,30 @@ def _cluster_summaries(
 
 
 def _cluster_counts_by_receipt(analysis: LetterFontAnalysis) -> list[int]:
-    clusters_by_receipt: dict[tuple[str | None, int | None], set[int]] = defaultdict(
-        set
+    clusters_by_receipt: dict[tuple[str | None, int | None], set[int]] = (
+        defaultdict(set)
     )
     for sample in analysis.samples:
         cluster_id = analysis.cluster_for_sample(sample.sample_id)
         if cluster_id is None:
             continue
-        clusters_by_receipt[(sample.image_id, sample.receipt_id)].add(cluster_id)
+        clusters_by_receipt[(sample.image_id, sample.receipt_id)].add(
+            cluster_id
+        )
     return [len(clusters) for clusters in clusters_by_receipt.values()]
 
 
 def _line_cluster_counts_by_receipt(analysis: LineFontAnalysis) -> list[int]:
-    clusters_by_receipt: dict[tuple[str | None, int | None], set[int]] = defaultdict(
-        set
+    clusters_by_receipt: dict[tuple[str | None, int | None], set[int]] = (
+        defaultdict(set)
     )
     for sample in analysis.samples:
         cluster_id = analysis.cluster_for_sample(sample.sample_id)
         if cluster_id is None:
             continue
-        clusters_by_receipt[(sample.image_id, sample.receipt_id)].add(cluster_id)
+        clusters_by_receipt[(sample.image_id, sample.receipt_id)].add(
+            cluster_id
+        )
     return [len(clusters) for clusters in clusters_by_receipt.values()]
 
 
@@ -779,7 +806,9 @@ def _line_cluster_summaries(
         key=lambda item: item.sample_count,
         reverse=True,
     )[:limit]:
-        samples = [samples_by_id[sample_id] for sample_id in cluster.sample_ids]
+        samples = [
+            samples_by_id[sample_id] for sample_id in cluster.sample_ids
+        ]
         sections = Counter(sample.section or "unknown" for sample in samples)
         rows.append(
             {
@@ -812,7 +841,9 @@ def _line_cluster_summaries(
 def _line_section_summaries(
     analysis: LineFontAnalysis,
 ) -> list[dict[str, Any]]:
-    clusters_by_id = {cluster.cluster_id: cluster for cluster in analysis.clusters}
+    clusters_by_id = {
+        cluster.cluster_id: cluster for cluster in analysis.clusters
+    }
     section_counts: Counter[str] = Counter()
     section_cluster_labels: dict[str, Counter[str]] = defaultdict(Counter)
     section_cluster_ids: dict[str, Counter[int]] = defaultdict(Counter)
@@ -1076,7 +1107,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
         ]
     )
     for cluster in report["cluster_summaries"][:12]:
-        chars = " ".join(f"`{char}`" for char in cluster["normalized_chars"][:8])
+        chars = " ".join(
+            f"`{char}`" for char in cluster["normalized_chars"][:8]
+        )
         sections = ", ".join(
             f"`{section}` ({count})"
             for section, count in cluster["sections"].items()

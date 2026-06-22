@@ -8,8 +8,8 @@ the embeddings to find font-like groups.
 
 from __future__ import annotations
 
-from io import BytesIO
 from dataclasses import dataclass
+from io import BytesIO
 from math import cos, log, sin, sqrt
 from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
