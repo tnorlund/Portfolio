@@ -47,6 +47,117 @@ if _api_key:
         os.environ["LANGSMITH_TRACING"] = "true"
         _log("Auto-enabled LANGSMITH_TRACING")
 
+
+# --------------------------------------------------------------------------- #
+# Workaround for langchain-ai/langsmith-sdk#3071
+# --------------------------------------------------------------------------- #
+# LangSmith's run serializer (`dumps_json`) can't encode a dict with tuple (or
+# other non-primitive) keys: orjson's OPT_NON_STR_KEYS doesn't cover tuples and
+# the stdlib-json fallback rejects them too, so any traced run whose I/O carries
+# one is silently dropped with:
+#   "Unable to process trace outputs: TypeError('keys must be str...not tuple')".
+# The offending dict comes from a langchain-internal run (NOT one of our own
+# @traceable spans — confirmed: a process_inputs/outputs sanitizer on our spans
+# never fires), so we can't reach it via process_inputs/outputs. Patch the
+# serializer's TypeError fallback to string-coerce non-primitive keys.
+#
+# Fails safe: if a LangSmith upgrade moves these internals the patch quietly
+# no-ops and we're back to the (cosmetic, non-fatal) warning. Remove once #3071
+# is fixed upstream. A one-time diagnostic logs the offending dict's shape so we
+# can decide whether a cleaner source-side fix is worth it.
+_TRACE_PATCH_INSTALLED = False
+_TRACE_PATCH_DIAG_LOGGED = False
+
+
+def _coerce_trace_keys(obj: Any) -> Any:
+    """Recursively stringify dict keys JSON can't encode (e.g. tuples)."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k is not None and not isinstance(k, (str, int, float, bool)):
+                k = "_".join(map(str, k)) if isinstance(k, tuple) else str(k)
+            out[k] = _coerce_trace_keys(v)
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [_coerce_trace_keys(x) for x in obj]
+    return obj
+
+
+def _diag_offending(obj: Any, path: str = "root") -> bool:
+    """Log the path/type of the first non-primitive dict key found (once)."""
+    if isinstance(obj, dict):
+        for k in obj:
+            if k is not None and not isinstance(k, (str, int, float, bool)):
+                _log(
+                    f"langsmith#3071: non-str trace key at {path}: "
+                    f"type={type(k).__name__} key={k!r} "
+                    f"sibling_key_types={[type(x).__name__ for x in list(obj)[:6]]}"
+                )
+                return True
+        for k, v in obj.items():
+            if _diag_offending(v, f"{path}.{k}"):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        for i, x in enumerate(obj):
+            if _diag_offending(x, f"{path}[{i}]"):
+                return True
+    return False
+
+
+def _install_tuple_key_serializer_patch() -> None:
+    """Wrap LangSmith's dumps_json (all bound references) to coerce bad keys."""
+    global _TRACE_PATCH_INSTALLED
+    if _TRACE_PATCH_INSTALLED:
+        return
+    try:
+        import importlib
+
+        serde = importlib.import_module("langsmith._internal._serde")
+    except Exception:  # pylint: disable=broad-exception-caught
+        return
+
+    original = serde.dumps_json
+
+    def _safe_dumps_json(obj: Any, *args: Any, **kwargs: Any) -> Any:
+        global _TRACE_PATCH_DIAG_LOGGED
+        try:
+            return original(obj, *args, **kwargs)
+        except TypeError as exc:
+            text = str(exc)
+            if "keys must be" not in text and "OPT_NON_STR_KEYS" not in text:
+                raise
+            if not _TRACE_PATCH_DIAG_LOGGED:
+                _TRACE_PATCH_DIAG_LOGGED = True
+                try:
+                    _diag_offending(obj)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+            return original(_coerce_trace_keys(obj), *args, **kwargs)
+
+    # dumps_json is re-bound under several names; patch every one we can find.
+    patched = False
+    targets = [(serde, "dumps_json")]
+    for mod_name, attr in (
+        ("langsmith.client", "_dumps_json"),
+        ("langsmith.run_trees", "_dumps_json"),
+    ):
+        try:
+            mod = importlib.import_module(mod_name)
+            if getattr(mod, attr, None) is original:
+                targets.append((mod, attr))
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+    for mod, attr in targets:
+        setattr(mod, attr, _safe_dumps_json)
+        patched = True
+    _TRACE_PATCH_INSTALLED = patched
+    if patched:
+        _log("Installed langsmith#3071 tuple-key serializer workaround")
+
+
+_install_tuple_key_serializer_patch()
+
+
 # Default Langsmith projects
 DEFAULT_LABEL_PROJECT = "receipt-label-validation"
 DEFAULT_MERCHANT_PROJECT = "receipt-merchant-resolution"
