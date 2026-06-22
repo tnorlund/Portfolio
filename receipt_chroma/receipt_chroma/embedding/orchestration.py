@@ -121,8 +121,8 @@ def _sanitize_trace_io(obj):
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
-        from langsmith.run_helpers import (  # pylint: disable=import-outside-toplevel
-            traceable as _ls_traceable,
+        from langsmith.run_helpers import (
+            traceable as _ls_traceable,  # pylint: disable=import-outside-toplevel
         )
 
         def traceable(*args, **kwargs):
