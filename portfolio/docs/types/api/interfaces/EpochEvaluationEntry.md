@@ -6,7 +6,7 @@
 
 # Interface: EpochEvaluationEntry
 
-Defined in: [types/api.ts:517](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L517)
+Defined in: [types/api.ts:517](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L517)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:517](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **avg\_inference\_ms**: `number` \| `null`
 
-Defined in: [types/api.ts:533](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L533)
+Defined in: [types/api.ts:533](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L533)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:533](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **checkpoint**: `string`
 
-Defined in: [types/api.ts:518](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L518)
+Defined in: [types/api.ts:518](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L518)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:518](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **epoch**: `number` \| `null`
 
-Defined in: [types/api.ts:520](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L520)
+Defined in: [types/api.ts:520](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L520)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:520](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **heldout\_f1**: `number`
 
-Defined in: [types/api.ts:521](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L521)
+Defined in: [types/api.ts:521](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L521)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:521](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **heldout\_metric**: `string`
 
-Defined in: [types/api.ts:524](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L524)
+Defined in: [types/api.ts:524](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L524)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:524](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **heldout\_precision**: `number`
 
-Defined in: [types/api.ts:522](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L522)
+Defined in: [types/api.ts:522](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L522)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:522](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **heldout\_recall**: `number`
 
-Defined in: [types/api.ts:523](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L523)
+Defined in: [types/api.ts:523](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L523)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:523](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **num\_receipts\_evaluated**: `number`
 
-Defined in: [types/api.ts:530](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L530)
+Defined in: [types/api.ts:530](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L530)
 
 ***
 
@@ -78,7 +78,7 @@ Defined in: [types/api.ts:530](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **per\_label\_f1**: `Record`\<`string`, `number`\>
 
-Defined in: [types/api.ts:525](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L525)
+Defined in: [types/api.ts:525](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L525)
 
 ***
 
@@ -86,7 +86,7 @@ Defined in: [types/api.ts:525](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **step**: `number` \| `null`
 
-Defined in: [types/api.ts:519](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L519)
+Defined in: [types/api.ts:519](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L519)
 
 ***
 
@@ -94,7 +94,7 @@ Defined in: [types/api.ts:519](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **token\_accuracy**: `number`
 
-Defined in: [types/api.ts:526](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L526)
+Defined in: [types/api.ts:526](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L526)
 
 ***
 
@@ -102,7 +102,7 @@ Defined in: [types/api.ts:526](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **total\_inference\_ms**: `number` \| `null`
 
-Defined in: [types/api.ts:534](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L534)
+Defined in: [types/api.ts:534](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L534)
 
 ***
 
@@ -110,4 +110,4 @@ Defined in: [types/api.ts:534](https://github.com/tnorlund/Portfolio/blob/55c27a
 
 > **training\_reported\_f1**: `number` \| `null`
 
-Defined in: [types/api.ts:529](https://github.com/tnorlund/Portfolio/blob/55c27a2c5dd235a3d3d62985d45ba4dc5c520848/portfolio/types/api.ts#L529)
+Defined in: [types/api.ts:529](https://github.com/tnorlund/Portfolio/blob/b819f48abf52e68516d2e97d5eeef3d5a9cf503b/portfolio/types/api.ts#L529)
