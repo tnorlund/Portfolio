@@ -1247,8 +1247,13 @@ class MerchantResolver:
                 places_api=self.places_client,
             )
 
-            # Run the agent (sync wrapper for async)
-            result = asyncio.get_event_loop().run_until_complete(
+            # Run the agent. Use asyncio.run() rather than get_event_loop():
+            # process_embeddings drives the resolver from a ThreadPoolExecutor
+            # worker thread, which has no current/default event loop, so
+            # asyncio.get_event_loop() raises "There is no current event loop in
+            # thread '...'" and the agentic tier silently never runs.
+            # asyncio.run() creates, drives, and tears down a fresh loop.
+            result = asyncio.run(
                 run_place_id_finder(
                     graph=graph,
                     state_holder=state_holder,
@@ -1284,9 +1289,12 @@ class MerchantResolver:
             # Fall through to simple search below
         except RuntimeError as exc:
             # Handle "no running event loop" error in Lambda
-            if "no running event loop" in str(
-                exc
-            ) or "cannot be called from a running event loop" in str(exc):
+            exc_text = str(exc)
+            if (
+                "no running event loop" in exc_text
+                or "no current event loop" in exc_text
+                or "cannot be called from a running event loop" in exc_text
+            ):
                 _log("Event loop issue, trying asyncio.run(): %s", exc)
                 try:
                     # pylint: disable=import-outside-toplevel
