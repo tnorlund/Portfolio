@@ -36,7 +36,7 @@ _CDN_FIELDS = [
 
 
 def remap_bucket(bucket: str) -> str:
-    """The counterpart bucket in the other env (shared/unknown -> unchanged)."""
+    """Counterpart bucket in the other env (shared/unknown -> unchanged)."""
     return BUCKET_MAP.get(bucket, bucket)
 
 
