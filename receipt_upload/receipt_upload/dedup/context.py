@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import CORE_LABELS
+from receipt_upload.dedup.detector import group_by_pixels
 from receipt_upload.label_validation.label_normalization import (
     NON_CORE_LABEL_ALIASES,
     canonical_label_name,
@@ -48,6 +49,12 @@ _SAFE_ALIASES: Dict[str, str] = {
 # ITEM_PRICE is ambiguous: an "item price" can be a per-unit UNIT_PRICE or the
 # extended LINE_TOTAL shown on the line.
 _AMBIGUOUS_LEGACY = {"AMOUNT", "TOTAL", "ITEM", "ITEM_PRICE"}
+
+
+def is_valid_status(status) -> bool:
+    """True iff a validation status reads as VALID (and not INVALID)."""
+    s = str(status or "").upper()
+    return "VALID" in s and "INVALID" not in s
 
 
 def resolve_label(label) -> Tuple[Optional[str], str]:
@@ -108,11 +115,7 @@ class LabelObs:
 
     @property
     def is_validated(self) -> bool:
-        return (
-            bool(self.validation_status)
-            and "VALID" in str(self.validation_status).upper()
-            and "INVALID" not in str(self.validation_status).upper()
-        )
+        return is_valid_status(self.validation_status)
 
 
 @dataclass
@@ -216,20 +219,8 @@ def build_merge_dossiers(
     labels_by_receipt
         ``{(image_id, receipt_id): [LabelObs, ...]}``.
     """
-    # Key on (sha256, width, height): identical raw-pixel bytes only prove a
-    # true duplicate when the dimensions match too — same tobytes() across
-    # different dims can collide for blank/uniform failed crops.
-    by_sha: Dict[Tuple, List] = {}
-    for r in receipts:
-        sha = getattr(r, "sha256", None)
-        if sha:
-            by_sha.setdefault((sha, r.width, r.height), []).append(r)
-
     dossiers: List[MergeDossier] = []
-    for (sha, _w, _h), recs in by_sha.items():
-        keys = {(r.image_id, r.receipt_id) for r in recs}
-        if len(keys) < 2:
-            continue  # not a duplicate
+    for sha, recs in group_by_pixels(receipts):
         d = _assemble_dossier(
             recs,
             words_by_receipt,

@@ -47,25 +47,36 @@ def _pick_keeper(records: List) -> object:
     )
 
 
-def find_exact_duplicates(receipts: List) -> List[DupGroup]:
-    """Group receipts by identical raw-pixel ``sha256`` + dims.
+def group_by_pixels(receipts: List) -> List[Tuple[str, List]]:
+    """Bucket receipts by raw-pixel identity ``(sha256, width, height)``.
+
+    Returns ``[(sha256, [records]), ...]`` for every bucket holding >=2
+    DISTINCT ``(image_id, receipt_id)`` — i.e. a real duplicate set. This is
+    the single source of truth for "these receipts are byte-identical
+    duplicates", shared by the exact-dup report and the merge-dossier builder.
 
     The stored sha hashes ``image.tobytes()`` only, so identical bytes across
     *different* dims (e.g. blank/uniform failed crops of equal area) would
-    otherwise be auto-merged as duplicates. Keying on ``(sha, width, height)``
-    keeps that safe; true duplicates share dimensions anyway.
+    otherwise collide. Keying on ``(sha, width, height)`` keeps that safe;
+    true duplicates share dimensions anyway.
     """
     by_key: Dict[Tuple, List] = {}
     for r in receipts:
         sha = getattr(r, "sha256", None)
         if sha:
             by_key.setdefault((sha, r.width, r.height), []).append(r)
-
-    groups: List[DupGroup] = []
+    out: List[Tuple[str, List]] = []
     for (sha, _w, _h), records in by_key.items():
+        if len({_key(r) for r in records}) >= 2:
+            out.append((sha, records))
+    return out
+
+
+def find_exact_duplicates(receipts: List) -> List[DupGroup]:
+    """Tier 0 report: one ``DupGroup`` per byte-identical duplicate set."""
+    groups: List[DupGroup] = []
+    for sha, records in group_by_pixels(receipts):
         keys = {_key(r) for r in records}
-        if len(keys) < 2:
-            continue
         keeper = _pick_keeper(records)
         dups = sorted(k for k in keys if k != _key(keeper))
         groups.append(

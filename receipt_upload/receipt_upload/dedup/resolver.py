@@ -22,12 +22,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List
 
-from receipt_upload.dedup.context import MergeDossier
-
-
-def _is_valid(status) -> bool:
-    s = str(status or "").upper()
-    return "VALID" in s and "INVALID" not in s
+from receipt_upload.dedup.context import MergeDossier, is_valid_status
 
 
 @dataclass
@@ -88,7 +83,7 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     skipped: List[dict] = []
     for k in drop:
         for o in members[k].labels:
-            if o.get("kind") != "canonical" or not _is_valid(
+            if o.get("kind") != "canonical" or not is_valid_status(
                 o.get("validation_status")
             ):
                 continue
