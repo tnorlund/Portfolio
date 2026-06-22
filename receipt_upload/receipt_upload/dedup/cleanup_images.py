@@ -312,22 +312,26 @@ def main() -> None:
     images = {im.image_id: im for im in dynamo.list_images()[0]}
     cleanups, refused = plan_image_cleanup(dynamo, images, ids)
     print(
-        f"Eligible orphaned images: {len(cleanups)} | refused (have receipts): {len(refused)}"
+        f"Eligible orphaned images: {len(cleanups)} | "
+        f"refused (have receipts): {len(refused)}"
     )
     for r in refused:
         print(
-            f"  REFUSE {r['image_id'][:12]}: {r['reason']} ({r['receipt_count']} receipts)"
+            f"  REFUSE {r['image_id'][:12]}: {r['reason']} "
+            f"({r['receipt_count']} receipts)"
         )
     print(json.dumps(summarize(cleanups), indent=2))
     for c in cleanups:
         print(
-            f"  - {c.image_id[:12]} | {sum(c.dynamo_type_counts.values())} dynamo items "
+            f"  - {c.image_id[:12]} | "
+            f"{sum(c.dynamo_type_counts.values())} dynamo items "
             f"{dict(c.dynamo_type_counts)} | {len(c.s3_objects)} S3 objects"
         )
 
     if not args.apply:
         print(
-            "\nDRY-RUN — nothing deleted. Add --apply --backup-dir <dir> to execute."
+            "\nDRY-RUN — nothing deleted. Add --apply"
+            " --backup-dir <dir> to execute."
         )
         return
     if not args.backup_dir:

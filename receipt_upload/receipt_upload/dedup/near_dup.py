@@ -12,7 +12,7 @@ conservative because the signals it uses are individually unreliable:
   * stored totals and OCR item-prices can be wrong;
   * two different visits can have the same items + total on the same card.
 So a positive match here requires a shared id CORROBORATED by matching content
-*and* merchant, with hard negative guards (different printed time or merchant =>
+*and* merchant, with hard negative guards (different time or merchant =>
 not the same transaction). Even then, callers should treat the result as a
 candidate to confirm against the raw image, not as deletion authority.
 """
@@ -28,7 +28,8 @@ _LONG_ID = re.compile(r"\d{5,}")
 # "Check #239" / "Trans 54226" / "Order 149590" — a labelled short receipt
 # number.
 _LABELLED_NUM = re.compile(
-    r"(?:check|chk|trans|transaction|order|ticket|ref|receipt|tab)\s*#?\s*(\d{2,})",
+    r"(?:check|chk|trans|transaction|order|ticket|ref|receipt|tab)"
+    r"\s*#?\s*(\d{2,})",
     re.I,
 )
 # non-capturing group so findall returns the full "HH:MM", not just the hour
@@ -89,10 +90,10 @@ def transaction_fingerprint(
 def frequent_ids(
     fingerprints: Iterable[TxnFingerprint], *, max_count: int = 3
 ) -> Set[str]:
-    """Corpus-frequency guard: ids appearing on more than ``max_count`` receipts
+    """Corpus-frequency guard: ids on more than ``max_count`` receipts
     are recurring codes (card/terminal/AID/loyalty/UPC), never
     transaction-unique.
-    Pass the result as ``denylist`` to :func:`same_transaction`/:func:`find_duplicate`.
+    Pass as ``denylist`` to :func:`same_transaction`/:func:`find_duplicate`.
     """
     c: Counter = Counter()
     for fp in fingerprints:
@@ -121,7 +122,7 @@ def same_transaction(
       * **Negative guards (return False):** different merchant when both known;
         disjoint printed times when both have times (two scans of ONE receipt
         share the printed time, different visits don't).
-      * **Positive match requires CORROBORATION** — a shared strong id (excluding
+      * **Positive match needs CORROBORATION** — a shared id (excluding
         ``denylist`` recurring codes) AND (identical total OR >=
         ``amount_overlap_min`` item-price overlap), or a shared labelled
         check/order # AND matching prices.
@@ -135,7 +136,8 @@ def same_transaction(
         return False, f"different merchant ({a.merchant} vs {b.merchant})"
     if a.times and b.times and not a.times & b.times:
         return False, (
-            f"different printed time ({sorted(a.times)[:1]} vs {sorted(b.times)[:1]})"
+            f"different printed time "
+            f"({sorted(a.times)[:1]} vs {sorted(b.times)[:1]})"
         )
 
     merchant_ok = not a.merchant or not b.merchant or a.merchant == b.merchant
@@ -161,7 +163,8 @@ def same_transaction(
     shared_label = a.labelled_nums & b.labelled_nums
     if shared_label and merchant_ok and amt >= amount_overlap_min:
         return True, (
-            f"shared check/order # {sorted(shared_label)[:1]} + {amt:.0%} item-price"
+            f"shared check/order # {sorted(shared_label)[:1]} "
+            f"+ {amt:.0%} item-price"
         )
 
     return False, (
@@ -180,7 +183,7 @@ def find_duplicate(
     candidate_merchants: Optional[Dict] = None,
     denylist: Optional[Set[str]] = None,
 ) -> Optional[Tuple[object, str]]:
-    """Return ``(candidate_key, reason)`` of the first candidate that is the same
+    """Return ``(candidate_key, reason)`` of the first that is the same
     transaction as ``new_words``, else ``None``. Used at upload time to flag a
     re-scan/reprint candidate. ``candidates`` is ``[(key, words), ...]``.
     """

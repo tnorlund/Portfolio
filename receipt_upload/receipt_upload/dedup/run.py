@@ -85,7 +85,8 @@ def main() -> None:
         f"{s['exact_redundant_receipts']} redundant receipts"
     )
     print(
-        f"  Tier 1 (signature, REVIEW):   {s['signature_candidate_groups']} groups, "
+        f"  Tier 1 (signature, REVIEW):   "
+        f"{s['signature_candidate_groups']} groups, "
         f"{s['signature_candidate_receipts']} candidate receipts"
     )
 

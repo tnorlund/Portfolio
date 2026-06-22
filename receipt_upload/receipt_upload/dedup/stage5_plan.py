@@ -115,7 +115,8 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
                         {
                             "member": "group",
                             "is_dup": False,
-                            "why": f"group too large ({len(g)} > {_MAX_GROUP_SIZE})",
+                            "why": f"group too large "
+                            f"({len(g)} > {_MAX_GROUP_SIZE})",
                         }
                     ],
                 }
@@ -160,7 +161,8 @@ def main():
     kept, rejected = gate_groups(groups, rec, words_by, totals, merchants)
     print(
         f"[{args.env}] candidate groups: {len(groups)} | "
-        f"PASSED transaction-identity gate: {len(kept)} | rejected: {len(rejected)}"
+        f"PASSED transaction-identity gate: {len(kept)} | "
+        f"rejected: {len(rejected)}"
     )
     for r in rejected:
         bad = [x for x in r["reasons"] if not x["is_dup"]]
@@ -180,7 +182,8 @@ def main():
     )
     for x in sorted(resolutions, key=lambda z: -len(z.gap_fills))[:8]:
         print(
-            f"     {x.group_id} survivor {x.survivor[-6:]} drop {len(x.receipts_to_drop)} "
+            f"     {x.group_id} survivor {x.survivor[-6:]} "
+            f"drop {len(x.receipts_to_drop)} "
             f"+{len(x.gap_fills)} gap-fills"
         )
 

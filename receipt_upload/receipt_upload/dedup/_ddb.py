@@ -22,7 +22,7 @@ DYNAMO_ERRORS = (ReceiptDynamoError, ClientError, BotoCoreError)
 
 
 def raw_client(dynamo):
-    """Return the underlying boto3 client (no public accessor on DynamoClient)."""
+    """The underlying boto3 client (DynamoClient has no public accessor)."""
     return dynamo._client  # pylint: disable=protected-access
 
 

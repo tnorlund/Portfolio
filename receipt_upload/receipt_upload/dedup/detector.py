@@ -3,7 +3,7 @@
 Pure functions over receipt records + lookups (no I/O), so they're testable and
 reusable in a batch Lambda or a one-off script.
 
-- **Tier 0 — exact:** group receipts by their raw-pixel ``sha256``. Byte-identical
+- **Tier 0 — exact:** group receipts by raw-pixel ``sha256``. Byte-identical
   pixels cannot coincide across distinct receipts, so these are safe to
   AUTO-MERGE (100% precision; the hash is precomputed on the Receipt entity).
 - **Tier 1 — content signature:** group by ``(canonical_place_id, grand_total,
@@ -14,7 +14,7 @@ reusable in a batch Lambda or a one-off script.
   tighten this further but isn't in the bulk summary; add it as a Tier-1.5
   refinement.)
 
-A "keeper" is chosen per group as the highest-resolution receipt (width*height),
+A "keeper" is chosen per group as the highest-res receipt (width*height),
 tie-broken deterministically; the others are the duplicates.
 """
 
@@ -54,10 +54,10 @@ def _pick_keeper(records: List) -> object:
 
 
 def find_exact_duplicates(receipts: List) -> List[DupGroup]:
-    """Tier 0: group receipts with identical raw-pixel ``sha256`` AND dimensions.
+    """Tier 0: group receipts by identical raw-pixel ``sha256`` + dims.
 
     The stored sha hashes ``image.tobytes()`` only, so identical bytes across
-    *different* dimensions (e.g. blank/uniform failed crops of equal area) would
+    *different* dims (e.g. blank/uniform failed crops of equal area) would
     otherwise be auto-merged as duplicates. Keying on ``(sha, width, height)``
     keeps that safe; true duplicates share dimensions anyway.
     """
@@ -90,7 +90,7 @@ def find_exact_duplicates(receipts: List) -> List[DupGroup]:
 def normalize_merchant_key(
     place_id: Optional[str], merchant_name: Optional[str]
 ) -> Optional[str]:
-    """Stable merchant identity: prefer the Google place_id, else normalized name."""
+    """Stable merchant identity: Google place_id, else normalized name."""
     if place_id:
         return f"pid:{place_id}"
     if merchant_name and merchant_name.strip():
@@ -107,7 +107,7 @@ def find_signature_candidates(
 
     ``signature_lookup`` maps each receipt key to a precomputed signature
     string
-    (e.g. ``"pid:...|42.54|2024-03-13|7"``) or ``None`` when the receipt lacks the
+    (e.g. ``"pid:...|42.54|2024-03-13|7"``) or ``None`` if lacking the
     fields to form one. ``exclude_pairs`` is a set of ``frozenset({keyA,
     keyB})`` already merged by Tier 0 — groups whose every pair is already
     exact are skipped so this only surfaces NEW candidates.

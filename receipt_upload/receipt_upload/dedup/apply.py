@@ -5,8 +5,8 @@ into concrete DynamoDB operations:
 
   * **gap-fill labels** -> ``ReceiptWordLabel`` writes on the survivor, tagged
     ``label_consolidated_from`` with the source copy for provenance.
-  * **redundant receipts** -> delete the Receipt and its children (labels, words,
-    lines, letters, metadata). The parent **Image is never deleted** — within-image
+  * **redundant receipts** -> delete the Receipt + children (labels, words,
+    lines, letters, metadata). **Image is never deleted** — within-image
     phantom groups keep the image and its survivor receipt.
 
 ``plan_operations`` is pure (no I/O) and unit-testable. ``execute`` performs
@@ -182,7 +182,7 @@ def execute(
 
     When ``apply=True`` and ``backup_path`` is given, a complete restore file
     is
-    written BEFORE any mutation: the raw DynamoDB item of every entity about to be
+    written BEFORE mutation: the raw DynamoDB item of every entity to be
     deleted plus the key of every label about to be added. ``rollback()``
     consumes that file to fully reverse the operation.
     """
@@ -222,7 +222,10 @@ def execute(
                 line_id=a.line_id,
                 word_id=a.word_id,
                 label=a.label,
-                reasoning=f"dedup merge: VALID gap-fill migrated from {a.from_member}",
+                reasoning=(
+                    "dedup merge: VALID gap-fill migrated"
+                    f" from {a.from_member}"
+                ),
                 timestamp_added=_now_iso(),
                 validation_status=ValidationStatus.VALID.value,
                 label_proposed_by=source,
@@ -328,7 +331,7 @@ def _delete_drops(dynamo, drop_subtrees, failed_sources, report) -> None:
 
 
 def rollback(backup_path: str, dynamo) -> dict:
-    """Reverse an apply: delete added labels, then re-put every deleted item and
+    """Reverse an apply: delete added labels, then re-put deleted items and
     restore any label that was OVERWRITTEN by a gap-fill update (so a
     pre-existing
     label is recovered instead of being left deleted)."""
@@ -412,11 +415,13 @@ def main() -> None:
     s = summarize(plan)
     print(
         f"Plan: add {s['labels_to_add']} gap-fill labels, drop "
-        f"{s['receipts_to_drop']} receipts across {s['images_touched']} images."
+        f"{s['receipts_to_drop']} receipts across "
+        f"{s['images_touched']} images."
     )
     for a in plan.label_adds:
         print(
-            f"  + {a.label:14} on {a.image_id[:8]}#{a.receipt_id} @ {a.line_id}:{a.word_id} "
+            f"  + {a.label:14} on {a.image_id[:8]}#{a.receipt_id} "
+            f"@ {a.line_id}:{a.word_id} "
             f"'{a.word_text[:18]}' (from {a.from_member[-6:]})"
         )
     for d in plan.receipt_drops:
@@ -424,7 +429,8 @@ def main() -> None:
 
     if not args.apply:
         print(
-            "\nDRY-RUN — nothing mutated. Re-run with --env <env> --apply to execute."
+            "\nDRY-RUN — nothing mutated. Re-run with"
+            " --env <env> --apply to execute."
         )
         return
 
@@ -444,7 +450,8 @@ def main() -> None:
     if report["errors"]:
         raise SystemExit(
             f"\nCOMPLETED WITH {len(report['errors'])} ERROR(S) "
-            f"(incl. {len(report['skipped_drops'])} skipped drops) — review above."
+            f"(incl. {len(report['skipped_drops'])} skipped drops) "
+            "— review above."
         )
 
 

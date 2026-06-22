@@ -1,6 +1,6 @@
 """Build the deterministic duplicate-merge plan (survivor + VALID gap-fills).
 
-Usage: python -m receipt_upload.dedup.build_plan --env dev --out merge_plan.json
+Usage: python -m receipt_upload.dedup.build_plan --env dev --out plan.json
 
 Runs the full deterministic pipeline (group by receipt-sha -> dossiers -> merge
 resolutions) and writes one reviewable plan. Mutates nothing; applying the plan
@@ -34,7 +34,8 @@ def main() -> None:
     print(f"[{args.env}] {len(receipts)} receipts")
     print(
         f"  merge groups: {len(resolutions)} (within-image "
-        f"{sum(1 for r in resolutions if r.scope == 'within_image')}, cross-image "
+        f"{sum(1 for r in resolutions if r.scope == 'within_image')}, "
+        f"cross-image "
         f"{sum(1 for r in resolutions if r.scope == 'cross_image')})"
     )
     print(f"  receipts to drop (redundant copies): {drop}")
@@ -45,7 +46,8 @@ def main() -> None:
     for r in sorted(resolutions, key=lambda x: -len(x.gap_fills))[:6]:
         print(
             f"    {r.group_id} [{r.scope}] survivor {r.survivor[-6:]} "
-            f"({r.survivor_label_count} labels) | drop {len(r.receipts_to_drop)} "
+            f"({r.survivor_label_count} labels) | drop "
+            f"{len(r.receipts_to_drop)} "
             f"| +{len(r.gap_fills)} gap-fills | {r.action}"
         )
 

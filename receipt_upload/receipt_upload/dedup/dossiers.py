@@ -82,7 +82,8 @@ def main() -> None:
         f"{len(dossiers) - n_clean}"
     )
     print(
-        f"  total conflicts: {n_conflict} | labels-only-on-nonsurvivor: {n_lost} "
+        f"  total conflicts: {n_conflict} | "
+        f"labels-only-on-nonsurvivor: {n_lost} "
         f"| groups with junk labels: {n_junk}"
     )
     print("\n  sample groups:")
@@ -91,7 +92,8 @@ def main() -> None:
         print(
             f"    {d.group_id} [{d.scope}] {len(d.members)} members | "
             f"survivor {d.survivor_suggested} | overlap {ov}% | "
-            f"{len(d.conflicts)} conflicts | {len(d.labels_only_on_nonsurvivor)} "
+            f"{len(d.conflicts)} conflicts | "
+            f"{len(d.labels_only_on_nonsurvivor)} "
             f"would-be-lost | action {d.deterministic_action}"
         )
 

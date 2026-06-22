@@ -2,9 +2,9 @@
 
 Merging duplicates is a dedup problem, not a label-adjudication problem. We
 pick
-the highest-label-quality copy as the **survivor** and trust its labels. The only
+the highest-quality copy as the **survivor** and trust its labels. The only
 thing the inferior copies can add is a label on a word the survivor *doesn't
-label at all* — a **gap-fill**. We only ever copy a ``VALID`` label into an empty
+label at all* — a **gap-fill**. We only ever copy a ``VALID`` into an empty
 slot, so:
 
   * the survivor's own labels are never overridden,
@@ -68,9 +68,9 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     }
 
     def survivor_target(o: dict):
-        """The survivor (line:word) a dropped observation should land on, or None.
+        """Survivor (line:word) a dropped observation lands on, or None.
 
-        within_image: pixels are identical, so the same pos is the exact target.
+        within_image: pixels identical, so the same pos is the exact target.
         cross_image: match by full (untruncated) word text, but ONLY when that
         text occurs EXACTLY ONCE in the survivor — otherwise the target is
         ambiguous (repeated token) and we refuse to guess.
@@ -141,12 +141,14 @@ def resolve_dossier(d: MergeDossier) -> MergeResolution:
     notes: List[str] = list(d.notes)
     if d.scope == "within_image":
         notes.append(
-            f"Segmenter mis-split parent image into {len(members)} identical crops; "
+            f"Segmenter mis-split parent image into "
+            f"{len(members)} identical crops; "
             f"keep survivor, drop the rest."
         )
     if skipped:
         notes.append(
-            f"{len(skipped)} gap label(s) left unfilled (ambiguous target or VALID "
+            f"{len(skipped)} gap label(s) left unfilled "
+            f"(ambiguous target or VALID "
             f"disagreement) — optional label-quality pass."
         )
     action = "consolidate_then_drop" if gap_fills else "drop_redundant"

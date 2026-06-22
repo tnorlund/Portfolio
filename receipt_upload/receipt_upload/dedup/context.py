@@ -4,7 +4,7 @@ This is **stage 1** of a two-stage merge pipeline:
 
     deterministic pass (this module)  ->  MergeDossier (JSON)  ->  LLM resolver
 
-A ``MergeDossier`` is the *necessary context* an LLM needs to safely merge a set
+A ``MergeDossier`` is the *necessary context* an LLM needs to merge a set
 of duplicate receipts: the members, the consolidated label union, the explicit
 label conflicts to resolve, a survivor ranking by label quality, and any
 non-canonical "junk" labels to strip. The pass is pure (no I/O) and
@@ -14,7 +14,7 @@ Key design decision (see dedup analysis): duplicates are anchored on the
 **receipt-level sha256** of the raw receipt pixels, which is provably reliable
 (100% precision in verification). Receipts that share a sha256 are
 byte-identical
-crops of the same physical receipt, whether they live on the *same* parent image
+crops of the same receipt, whether they live on the *same* parent image
 (segmenter mis-split) or *different* images (re-uploaded photo / re-scanned
 receipt). The whole-photo *image* sha256 is deliberately NOT used as an anchor:
 early-dev uploads reused non-unique raw keys (``raw-receipts/receipt.png``), so
@@ -44,7 +44,7 @@ _TEXT_LIMIT = 1500
 # with the older taxonomy seen in historical dev labels). Only mappings with a
 # single unambiguous canonical target belong here.
 _SAFE_ALIASES: Dict[str, str] = {
-    **NON_CORE_LABEL_ALIASES,  # ADDRESS, BUSINESS_NAME, CARD_NUMBER, PAYMENT_TYPE
+    **NON_CORE_LABEL_ALIASES,  # ADDRESS, BUSINESS_NAME, CARD_NUMBER, etc.
     "PHONE": "PHONE_NUMBER",
     "ITEM_NAME": "PRODUCT_NAME",
     "ITEM_DESCRIPTION": "PRODUCT_NAME",
@@ -67,9 +67,9 @@ def resolve_label(label) -> Tuple[Optional[str], str]:
     """Classify a stored label.
 
     Returns ``(canonical_or_None, kind)`` where kind is:
-      * ``"canonical"`` — ``canonical`` is the CORE label to use (direct or safe alias)
-      * ``"legacy"``    — meaningful but ambiguous; ``canonical`` is None, LLM maps it
-      * ``"junk"``      — not a real label (raw value / instruction note / OTHER)
+      * ``"canonical"`` — the CORE label to use (direct or safe alias)
+      * ``"legacy"`` — ambiguous; ``canonical`` is None, LLM maps it
+      * ``"junk"`` — not a real label (raw value / instruction note / OTHER)
     """
     up = canonical_label_name(label)
     if up in CANONICAL_LABELS:
@@ -162,7 +162,7 @@ class MemberContext:
 
 @dataclass
 class Conflict:
-    """A locus where members disagree on the label (must be resolved on merge)."""
+    """A locus where members disagree on the label (resolved on merge)."""
 
     locus: str  # "line:word" for pixel-aligned groups, else the word text
     word_text: str
@@ -322,7 +322,7 @@ def _text_overlap_pct(
     survivor: MemberContext,
     scope: str,
 ) -> Optional[float]:
-    """Label overlap between survivor and the rest (position-aware within-image)."""
+    """Label overlap: survivor vs the rest (position-aware within-image)."""
 
     def pairs(m):
         return {
@@ -415,7 +415,7 @@ def _build_member(
                 "pos": o.pos,
                 "word_text": o.word_text,
                 "label": o.label,  # original stored value
-                "canonical_label": o.effective_label,  # normalized CORE label or None
+                "canonical_label": o.effective_label,  # CORE label or None
                 "kind": o.kind,  # canonical | legacy | junk
                 "validation_status": o.validation_status,
                 "canonical": o.is_canonical,
@@ -483,7 +483,7 @@ def _assemble_dossier(
     sha256: str = "",
     group_id: Optional[str] = None,
 ) -> Optional[MergeDossier]:
-    """Build one dossier from a set of receipt entities (any grouping criterion)."""
+    """Build one dossier from a set of receipt entities (any grouping)."""
     image_ids = {r.image_id for r in recs}
     group_image_id = sorted(image_ids)[0]
     members = [
@@ -571,7 +571,7 @@ def build_dossiers_for_groups(
 ) -> List[MergeDossier]:
     """Build dossiers from EXPLICIT receipt groups (e.g. confirmed cross-image
     near-duplicates) rather than sha256-grouping. Survivor is chosen by label
-    quality exactly as for the byte-identical path; gap-fills are text-based."""
+    quality as for the byte-identical path; gap-fills are text-based."""
     out: List[MergeDossier] = []
     for g in groups:
         recs = [receipts_by_key[k] for k in g if k in receipts_by_key]
