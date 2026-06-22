@@ -152,15 +152,16 @@ func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGPoint, bo
 
 // MARK: - OCR Processing
 
-/// Upscale small images before OCR so Vision's automatic orientation detection
-/// has enough pixels to pick the right reading direction. On small, faint crops
-/// (e.g. a warped receipt from a faded thermal print) Vision can otherwise flip
-/// the image 180° and return upside-down garbage. Coordinate-safe: Vision returns
-/// NORMALIZED (0-1) bounding boxes, so scaling the pixels changes no geometry.
-/// (Keep in sync with VisionOCREngine.swift.)
+/// Upscale small crops before OCR. Empirically, on a small, faint crop (e.g. a
+/// warped receipt from a faded thermal print) Vision returns text in the wrong
+/// (180°-rotated) reading order; upscaling the short side restores correct
+/// recognition. Coordinate-safe: Vision returns NORMALIZED (0-1) boxes, so a
+/// uniform pixel scale changes no geometry. The maxDim cap skips already-large
+/// images and pathological long strips. (Keep in sync with VisionOCREngine.swift.)
 func upscaleForOCR(_ cgImage: CGImage, targetMinDimension: Int = 1000, maxScale: CGFloat = 4.0) -> CGImage {
     let minDim = min(cgImage.width, cgImage.height)
-    guard minDim > 0, minDim < targetMinDimension else { return cgImage }
+    let maxDim = max(cgImage.width, cgImage.height)
+    guard minDim > 0, minDim < targetMinDimension, maxDim < 6000 else { return cgImage }
     let scale = min(maxScale, CGFloat(targetMinDimension) / CGFloat(minDim))
     let newWidth = Int((CGFloat(cgImage.width) * scale).rounded())
     let newHeight = Int((CGFloat(cgImage.height) * scale).rounded())

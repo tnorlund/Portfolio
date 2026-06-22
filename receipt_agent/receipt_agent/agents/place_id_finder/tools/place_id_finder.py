@@ -77,6 +77,14 @@ from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 
+# Toll-free area codes (US/NANP). A toll-free number on a receipt is the chain's
+# corporate line, not the store, so a Places phone lookup on it returns the
+# chain's primary listing and picks the WRONG location. 822 is reserved/coming
+# online; included for forward-compat.
+_TOLL_FREE_AREA_CODES = frozenset(
+    {"800", "822", "833", "844", "855", "866", "877", "888"}
+)
+
 
 @dataclass
 class ReceiptRecord:
@@ -342,27 +350,27 @@ class PlaceIdFinder:
                 if len(phone_digits) == 11 and phone_digits[0] == "1"
                 else phone_digits
             )
-            # Toll-free numbers (800/888/877/...) belong to a chain's corporate
-            # line, not the store on the receipt (e.g. In-N-Out's 800-786-1000
-            # "Questions/Comments" line). Searching them returns the chain's
-            # primary listing and picks the WRONG location, so skip them and let
-            # the city-bearing text search (Strategy 3) disambiguate.
-            is_toll_free = len(national) == 10 and national[:3] in {
-                "800",
-                "833",
-                "844",
-                "855",
-                "866",
-                "877",
-                "888",
-            }
-            if is_toll_free:
+            # A toll-free number is a chain's corporate line, not the store on
+            # the receipt (e.g. In-N-Out's 800-786-1000 "Questions/Comments"
+            # line); a phone lookup on it returns the chain's primary listing and
+            # picks the WRONG location. Skip it so the city-bearing text search
+            # (Strategy 3) disambiguates — but ONLY when another identifier
+            # (address or merchant name) can drive that search. For a phone-only
+            # receipt, a toll-free lookup still beats no match.
+            is_toll_free = (
+                len(national) == 10 and national[:3] in _TOLL_FREE_AREA_CODES
+            )
+            skip_phone = is_toll_free and bool(
+                receipt.address or receipt.merchant_name
+            )
+            if skip_phone:
                 logger.debug(
-                    "Skipping toll-free phone %s (not store-specific)",
+                    "Skipping toll-free phone %s (chain corporate line); "
+                    "using address/name instead",
                     receipt.phone,
                 )
-            if len(phone_digits) >= 10 and not is_toll_free:
-                # Valid, store-specific phone has at least 10 digits
+            if len(phone_digits) >= 10 and not skip_phone:
+                # Valid phone has at least 10 digits
                 try:
                     logger.debug("Searching by phone: %s", receipt.phone)
                     place_data = self.places.search_by_phone(receipt.phone)

@@ -211,20 +211,23 @@ private func performOCRSync(from imageURL: URL) throws -> [Line] {
     return try performOCRSync(from: cgImage)
 }
 
-/// Upscale small images before OCR.
+/// Upscale small crops before OCR.
 ///
-/// Vision's automatic orientation detection needs enough pixels to pick the
-/// right reading direction. On a small, faint crop — e.g. a 408x888 warped
-/// receipt from a faded thermal print — it can flip the image 180° and return
-/// upside-down garbage ("105" -> "GO L", "$9.97" -> "L6'6$"). Upscaling the
-/// short side to a minimum dimension gives the recognizer enough signal to
-/// orient and read it correctly.
+/// Empirically, on a small, faint crop — e.g. a 408x888 warped receipt from a
+/// faded thermal print — Vision returns text in the wrong (180°-rotated)
+/// reading order ("105" -> "GO L", "$9.97" -> "L6'6$"). Upscaling the short
+/// side so the recognizer has more signal restores correct recognition;
+/// verified on that crop and on CVS / Dollar Tree / Smith's receipts. (We do
+/// not assert Vision's internal orientation mechanism, only the observed fix.)
 ///
-/// This is coordinate-safe: Vision returns NORMALIZED (0-1) bounding boxes, so
-/// scaling the pixels does not change any downstream geometry.
+/// Coordinate-safe: Vision returns NORMALIZED (0-1) boxes, so a UNIFORM pixel
+/// scale changes no downstream geometry. Fires only when the short side is
+/// below the threshold AND the image isn't already very large — the maxDim cap
+/// skips pathological long strips so the allocation stays bounded.
 private func upscaleForOCR(_ cgImage: CGImage, targetMinDimension: Int = 1000, maxScale: CGFloat = 4.0) -> CGImage {
     let minDim = min(cgImage.width, cgImage.height)
-    guard minDim > 0, minDim < targetMinDimension else { return cgImage }
+    let maxDim = max(cgImage.width, cgImage.height)
+    guard minDim > 0, minDim < targetMinDimension, maxDim < 6000 else { return cgImage }
     let scale = min(maxScale, CGFloat(targetMinDimension) / CGFloat(minDim))
     let newWidth = Int((CGFloat(cgImage.width) * scale).rounded())
     let newHeight = Int((CGFloat(cgImage.height) * scale).rounded())
