@@ -202,7 +202,7 @@ def propose_product_names(
     words: List,
     existing_labels: List[ReceiptWordLabel],
     words_client,
-    word_embeddings: Dict[Tuple[int, int], List[float]],
+    word_embeddings: Dict[str, List[float]],
     *,
     k: int = 5,
     min_similarity: float = 0.5,
@@ -214,7 +214,7 @@ def propose_product_names(
         existing_labels: labels already on the receipt (anchors + any proposals
             from the geometry pass); only unlabeled words are candidates.
         words_client: ChromaClient exposing ``.query(collection_name=..., ...)``.
-        word_embeddings: cached embeddings keyed by ``(line_id, word_id)``.
+        word_embeddings: cached embeddings keyed by ``"line_id_word_id"``.
     """
     # A word counts as "already labeled" only if it carries a real, non-rejected
     # core label. A pending ``O`` (background) label or an INVALID-only label
@@ -258,7 +258,7 @@ def propose_product_names(
             continue
         if _is_field_keyword(w.text):
             continue
-        emb = word_embeddings.get(key)
+        emb = word_embeddings.get(f"{w.line_id}_{w.word_id}")
         if emb is None:
             continue
         if _knn_is_product(words_client, emb, w.image_id, k, min_similarity):

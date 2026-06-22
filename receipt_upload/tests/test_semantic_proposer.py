@@ -71,7 +71,7 @@ def _setup():
         _w(13, 1, "$9.99", 0.72, 0.50),
     ]
     anchors = [_anchor(1, 1, "STORE_HOURS"), _anchor(13, 1, "GRAND_TOTAL")]
-    embeddings = {(8, 1): [0.1] * 8, (8, 2): [0.1] * 8, (8, 3): [0.1] * 8}
+    embeddings = {"8_1": [0.1] * 8, "8_2": [0.1] * 8, "8_3": [0.1] * 8}
     return words, anchors, embeddings
 
 
@@ -179,7 +179,7 @@ def test_keyword_substring_is_not_blocked():
         _w(8, 1, "Taxidermy", 0.1, 0.70),
         _w(13, 1, "$9.99", 0.72, 0.50),
     ]
-    embeddings = {(8, 1): [0.1] * 8}
+    embeddings = {"8_1": [0.1] * 8}
     out = propose_product_names(words, anchors, _FakeClient(), embeddings)
     assert keys_has(out, 8, 1)
 

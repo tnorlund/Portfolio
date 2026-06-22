@@ -81,7 +81,7 @@ def test_build_async_payload_is_json_safe_and_complete():
         receipt_id=1,
         table_name="tbl",
         lightweight_validator=_FakeLV(),
-        word_embedding_cache={(8, 1): [0.1] * 4},
+        word_embedding_cache={"8_1": [0.1] * 4},
     )
     json.dumps(payload)  # raises if anything is not JSON-safe
     assert payload["image_id"] == IMAGE_ID

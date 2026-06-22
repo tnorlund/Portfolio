@@ -105,7 +105,7 @@ def build_pending_and_evidence(
     image_id: str,
     receipt_id: int,
     lightweight_validator: Any,
-    word_embedding_cache: Dict[Tuple[int, int], List[float]],
+    word_embedding_cache: Dict[str, List[float]],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict]]]:
     """Build ``pending_labels_data`` and per-word ``similar_evidence``.
 
@@ -131,9 +131,7 @@ def build_pending_and_evidence(
                 f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                 f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
             )
-            embedding = word_embedding_cache.get(
-                (label.line_id, label.word_id)
-            )
+            embedding = word_embedding_cache.get(word_id_str)
             if embedding:
                 similar_evidence[word_id_str] = (
                     lightweight_validator._query_similar_for_label(
@@ -348,7 +346,7 @@ def run_llm_validation_sync(
     dynamo: Any,
     word_labels: List[ReceiptWordLabel],
     lightweight_validator: Any,
-    word_embedding_cache: Dict[Tuple[int, int], List[float]],
+    word_embedding_cache: Dict[str, List[float]],
     merchant_name: Optional[str] = None,
 ) -> int:
     """Build the grok payload and apply it inline (original behavior)."""
@@ -398,7 +396,7 @@ def build_async_payload(
     receipt_id: int,
     table_name: str,
     lightweight_validator: Any,
-    word_embedding_cache: Dict[Tuple[int, int], List[float]],
+    word_embedding_cache: Dict[str, List[float]],
     merchant_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a self-contained, JSON-safe payload for the async consumer.

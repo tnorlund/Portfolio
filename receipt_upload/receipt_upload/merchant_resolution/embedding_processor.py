@@ -631,9 +631,13 @@ def _run_words_pipeline_worker(
         client = _make_read_client(local_words_dir, cloud_cfg)
 
         try:
-            # Build embedding cache
-            word_embedding_cache: Dict[Tuple[int, int], List[float]] = {
-                (w.line_id, w.word_id): emb
+            # Build embedding cache. Keyed by "line_id_word_id" STRING (not a
+            # (line_id, word_id) tuple): this cache is passed into functions that
+            # langchain/langsmith can auto-trace, and their JSON serializer can't
+            # encode tuple dict keys (langchain-ai/langsmith-sdk#3071), which
+            # silently drops the run's trace outputs. A string key is JSON-safe.
+            word_embedding_cache: Dict[str, List[float]] = {
+                f"{w.line_id}_{w.word_id}": emb
                 for w, emb in zip(words, word_embeddings_list, strict=True)
             }
 

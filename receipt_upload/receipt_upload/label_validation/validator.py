@@ -91,7 +91,7 @@ class LightweightLabelValidator:
         self,
         words_client: ChromaClient,
         merchant_name: Optional[str] = None,
-        word_embeddings: Optional[Dict[Tuple[int, int], List[float]]] = None,
+        word_embeddings: Optional[Dict[str, List[float]]] = None,
     ):
         """Initialize the validator.
 
@@ -120,8 +120,9 @@ class LightweightLabelValidator:
         Returns:
             The embedding vector or None if not found
         """
-        # Check cache first (embeddings from current receipt)
-        cached = self.word_embeddings.get((line_id, word_id))
+        # Check cache first (embeddings from current receipt). Key is the
+        # "line_id_word_id" STRING (JSON-safe for tracing; see #3071).
+        cached = self.word_embeddings.get(f"{line_id}_{word_id}")
         if cached:
             return cached
 
