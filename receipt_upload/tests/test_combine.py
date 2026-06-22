@@ -2,7 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
-from receipt_dynamo.entities import Receipt, ReceiptPlace, ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.entities import (
+    Receipt,
+    ReceiptPlace,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 from receipt_upload.combine import (
     calculate_min_area_rect,
@@ -12,8 +17,9 @@ from receipt_upload.combine import (
     migrate_receipt_word_labels,
     transform_point_to_warped_space,
 )
-from receipt_upload.combine.records_builder import _get_receipt_to_image_transform
-
+from receipt_upload.combine.records_builder import (
+    _get_receipt_to_image_transform,
+)
 
 TEST_IMAGE_ID = "123e4567-e89b-42d3-a456-426614174000"
 

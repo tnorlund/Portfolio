@@ -131,7 +131,9 @@ def build_pending_and_evidence(
                 f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                 f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
             )
-            embedding = word_embedding_cache.get((label.line_id, label.word_id))
+            embedding = word_embedding_cache.get(
+                (label.line_id, label.word_id)
+            )
             if embedding:
                 similar_evidence[word_id_str] = (
                     lightweight_validator._query_similar_for_label(
@@ -233,7 +235,9 @@ def apply_llm_results(
                         )
                         llm_validated += 1
                         continue
-                    label.validation_status = ValidationStatus.NEEDS_REVIEW.value
+                    label.validation_status = (
+                        ValidationStatus.NEEDS_REVIEW.value
+                    )
                     label.label_proposed_by = "llm_needs_review"
                     if llm_result.reasoning:
                         label.reasoning = llm_result.reasoning
@@ -244,7 +248,9 @@ def apply_llm_results(
                     # mark the old label INVALID (audit trail) and create a new one.
                     if llm_result.label in CORE_LABELS:
                         if label.label in CORE_LABELS:
-                            label.validation_status = ValidationStatus.INVALID.value
+                            label.validation_status = (
+                                ValidationStatus.INVALID.value
+                            )
                             label.label_proposed_by = "llm_invalid"
                             label.reasoning = (
                                 f"Corrected to {llm_result.label}. "
@@ -287,7 +293,9 @@ def apply_llm_results(
                             )
                             llm_validated += 1
                             continue
-                        label.validation_status = ValidationStatus.NEEDS_REVIEW.value
+                        label.validation_status = (
+                            ValidationStatus.NEEDS_REVIEW.value
+                        )
                         label.label_proposed_by = "llm_invalid_label"
                         label.reasoning = (
                             f"LLM suggested '{llm_result.label}' but it's not "
@@ -417,7 +425,9 @@ def build_async_payload(
         "llm_words_context": llm_words_context,
         "pending_labels_data": pending_labels_data,
         "similar_evidence": similar_evidence,
-        "needed_labels": [_label_to_jsonable(label) for _word, label in llm_needed],
+        "needed_labels": [
+            _label_to_jsonable(label) for _word, label in llm_needed
+        ],
     }
 
 
@@ -432,7 +442,9 @@ def apply_async_payload(
     passes ``False`` so a grok failure there is swallowed + transient labels
     cleaned up (sync-path semantics) rather than re-raised and stranding labels.
     """
-    needed_labels = [_label_from_jsonable(d) for d in payload.get("needed_labels", [])]
+    needed_labels = [
+        _label_from_jsonable(d) for d in payload.get("needed_labels", [])
+    ]
     # A local working list so _delete_non_core_label has something to mutate;
     # the authoritative writes go straight to DynamoDB inside apply_llm_results.
     word_labels = list(needed_labels)

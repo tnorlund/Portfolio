@@ -53,7 +53,9 @@ def test_all_pending_keeps_lowest_invalidates_rest():
     words = [
         _w(40, 1, "$43.94", 0.72, 0.30),  # "Balance to pay"
         _w(41, 1, "$43.94", 0.72, 0.22),  # bare total
-        _w(54, 1, "$43.94", 0.72, 0.10),  # "TOTAL PURCHASE" — lowest, canonical
+        _w(
+            54, 1, "$43.94", 0.72, 0.10
+        ),  # "TOTAL PURCHASE" — lowest, canonical
     ]
     labels = [
         _label(40, 1, "GRAND_TOTAL", _PENDING),
@@ -77,7 +79,9 @@ def test_confirmed_copy_is_canonical_only_pending_dropped():
     labels = [
         _label(40, 1, "GRAND_TOTAL", _PENDING),
         _label(41, 1, "GRAND_TOTAL", _PENDING),
-        _label(54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value),  # confirmed
+        _label(
+            54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value
+        ),  # confirmed
     ]
     redundant = dedupe_grand_total(words, labels)
     # The VALID copy is NEVER returned; both PENDING dupes are.

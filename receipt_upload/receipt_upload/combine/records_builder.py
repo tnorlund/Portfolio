@@ -13,14 +13,20 @@ from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
-from receipt_upload.combine.geometry_utils import transform_point_to_warped_space
-from receipt_upload.geometry.transformations import find_perspective_coeffs, invert_warp
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
+)
+
+from receipt_upload.combine.geometry_utils import (
+    transform_point_to_warped_space,
+)
+from receipt_upload.geometry.transformations import (
+    find_perspective_coeffs,
+    invert_warp,
 )
 
 
@@ -561,21 +567,34 @@ def create_combined_receipt_records(
         # Build normalized (0-1) corners, then derive bounding_box from them
         line_top_left = {
             "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
-            "y": line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0,
+            "y": (
+                line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0
+            ),
         }
         line_top_right = {
             "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-            "y": line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0,
+            "y": (
+                line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0
+            ),
         }
         line_bottom_left = {
             "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
-            "y": line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0,
+            "y": (
+                line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0
+            ),
         }
         line_bottom_right = {
             "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-            "y": line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0,
+            "y": (
+                line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0
+            ),
         }
-        line_corners_norm = [line_top_left, line_top_right, line_bottom_left, line_bottom_right]
+        line_corners_norm = [
+            line_top_left,
+            line_top_right,
+            line_bottom_left,
+            line_bottom_right,
+        ]
 
         receipt_line = ReceiptLine(
             receipt_id=new_receipt_id,
@@ -585,8 +604,10 @@ def create_combined_receipt_records(
             bounding_box={
                 "x": min(c["x"] for c in line_corners_norm),
                 "y": min(c["y"] for c in line_corners_norm),
-                "width": max(c["x"] for c in line_corners_norm) - min(c["x"] for c in line_corners_norm),
-                "height": max(c["y"] for c in line_corners_norm) - min(c["y"] for c in line_corners_norm),
+                "width": max(c["x"] for c in line_corners_norm)
+                - min(c["x"] for c in line_corners_norm),
+                "height": max(c["y"] for c in line_corners_norm)
+                - min(c["y"] for c in line_corners_norm),
             },
             top_left=line_top_left,
             top_right=line_top_right,
@@ -641,22 +662,59 @@ def create_combined_receipt_records(
 
         # Build normalized (0-1) corners, then derive bounding_box from them
         word_top_left = {
-            "x": word_corners_ocr_warped["top_left"][0] / receipt_width if receipt_width > 0 else 0.0,
-            "y": word_corners_ocr_warped["top_left"][1] / receipt_height if receipt_height > 0 else 0.0,
+            "x": (
+                word_corners_ocr_warped["top_left"][0] / receipt_width
+                if receipt_width > 0
+                else 0.0
+            ),
+            "y": (
+                word_corners_ocr_warped["top_left"][1] / receipt_height
+                if receipt_height > 0
+                else 0.0
+            ),
         }
         word_top_right = {
-            "x": word_corners_ocr_warped["top_right"][0] / receipt_width if receipt_width > 0 else 1.0,
-            "y": word_corners_ocr_warped["top_right"][1] / receipt_height if receipt_height > 0 else 0.0,
+            "x": (
+                word_corners_ocr_warped["top_right"][0] / receipt_width
+                if receipt_width > 0
+                else 1.0
+            ),
+            "y": (
+                word_corners_ocr_warped["top_right"][1] / receipt_height
+                if receipt_height > 0
+                else 0.0
+            ),
         }
         word_bottom_left = {
-            "x": word_corners_ocr_warped["bottom_left"][0] / receipt_width if receipt_width > 0 else 0.0,
-            "y": word_corners_ocr_warped["bottom_left"][1] / receipt_height if receipt_height > 0 else 1.0,
+            "x": (
+                word_corners_ocr_warped["bottom_left"][0] / receipt_width
+                if receipt_width > 0
+                else 0.0
+            ),
+            "y": (
+                word_corners_ocr_warped["bottom_left"][1] / receipt_height
+                if receipt_height > 0
+                else 1.0
+            ),
         }
         word_bottom_right = {
-            "x": word_corners_ocr_warped["bottom_right"][0] / receipt_width if receipt_width > 0 else 1.0,
-            "y": word_corners_ocr_warped["bottom_right"][1] / receipt_height if receipt_height > 0 else 1.0,
+            "x": (
+                word_corners_ocr_warped["bottom_right"][0] / receipt_width
+                if receipt_width > 0
+                else 1.0
+            ),
+            "y": (
+                word_corners_ocr_warped["bottom_right"][1] / receipt_height
+                if receipt_height > 0
+                else 1.0
+            ),
         }
-        word_corners_norm = [word_top_left, word_top_right, word_bottom_left, word_bottom_right]
+        word_corners_norm = [
+            word_top_left,
+            word_top_right,
+            word_bottom_left,
+            word_bottom_right,
+        ]
 
         receipt_word = ReceiptWord(
             receipt_id=new_receipt_id,
@@ -667,8 +725,10 @@ def create_combined_receipt_records(
             bounding_box={
                 "x": min(c["x"] for c in word_corners_norm),
                 "y": min(c["y"] for c in word_corners_norm),
-                "width": max(c["x"] for c in word_corners_norm) - min(c["x"] for c in word_corners_norm),
-                "height": max(c["y"] for c in word_corners_norm) - min(c["y"] for c in word_corners_norm),
+                "width": max(c["x"] for c in word_corners_norm)
+                - min(c["x"] for c in word_corners_norm),
+                "height": max(c["y"] for c in word_corners_norm)
+                - min(c["y"] for c in word_corners_norm),
             },
             top_left=word_top_left,
             top_right=word_top_right,
@@ -756,22 +816,59 @@ def create_receipt_letters_from_combined(
 
         # Build normalized (0-1) corners, then derive bounding_box from them
         letter_top_left = {
-            "x": letter_corners_ocr_warped["top_left"][0] / receipt_width if receipt_width > 0 else 0.0,
-            "y": letter_corners_ocr_warped["top_left"][1] / receipt_height if receipt_height > 0 else 0.0,
+            "x": (
+                letter_corners_ocr_warped["top_left"][0] / receipt_width
+                if receipt_width > 0
+                else 0.0
+            ),
+            "y": (
+                letter_corners_ocr_warped["top_left"][1] / receipt_height
+                if receipt_height > 0
+                else 0.0
+            ),
         }
         letter_top_right = {
-            "x": letter_corners_ocr_warped["top_right"][0] / receipt_width if receipt_width > 0 else 1.0,
-            "y": letter_corners_ocr_warped["top_right"][1] / receipt_height if receipt_height > 0 else 0.0,
+            "x": (
+                letter_corners_ocr_warped["top_right"][0] / receipt_width
+                if receipt_width > 0
+                else 1.0
+            ),
+            "y": (
+                letter_corners_ocr_warped["top_right"][1] / receipt_height
+                if receipt_height > 0
+                else 0.0
+            ),
         }
         letter_bottom_left = {
-            "x": letter_corners_ocr_warped["bottom_left"][0] / receipt_width if receipt_width > 0 else 0.0,
-            "y": letter_corners_ocr_warped["bottom_left"][1] / receipt_height if receipt_height > 0 else 1.0,
+            "x": (
+                letter_corners_ocr_warped["bottom_left"][0] / receipt_width
+                if receipt_width > 0
+                else 0.0
+            ),
+            "y": (
+                letter_corners_ocr_warped["bottom_left"][1] / receipt_height
+                if receipt_height > 0
+                else 1.0
+            ),
         }
         letter_bottom_right = {
-            "x": letter_corners_ocr_warped["bottom_right"][0] / receipt_width if receipt_width > 0 else 1.0,
-            "y": letter_corners_ocr_warped["bottom_right"][1] / receipt_height if receipt_height > 0 else 1.0,
+            "x": (
+                letter_corners_ocr_warped["bottom_right"][0] / receipt_width
+                if receipt_width > 0
+                else 1.0
+            ),
+            "y": (
+                letter_corners_ocr_warped["bottom_right"][1] / receipt_height
+                if receipt_height > 0
+                else 1.0
+            ),
         }
-        letter_corners_norm = [letter_top_left, letter_top_right, letter_bottom_left, letter_bottom_right]
+        letter_corners_norm = [
+            letter_top_left,
+            letter_top_right,
+            letter_bottom_left,
+            letter_bottom_right,
+        ]
 
         receipt_letter = ReceiptLetter(
             receipt_id=new_receipt_id,
@@ -783,8 +880,10 @@ def create_receipt_letters_from_combined(
             bounding_box={
                 "x": min(c["x"] for c in letter_corners_norm),
                 "y": min(c["y"] for c in letter_corners_norm),
-                "width": max(c["x"] for c in letter_corners_norm) - min(c["x"] for c in letter_corners_norm),
-                "height": max(c["y"] for c in letter_corners_norm) - min(c["y"] for c in letter_corners_norm),
+                "width": max(c["x"] for c in letter_corners_norm)
+                - min(c["x"] for c in letter_corners_norm),
+                "height": max(c["y"] for c in letter_corners_norm)
+                - min(c["y"] for c in letter_corners_norm),
             },
             top_left=letter_top_left,
             top_right=letter_top_right,

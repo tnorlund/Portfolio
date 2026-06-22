@@ -98,7 +98,10 @@ def sample_ocr_data():
                         "angle_degrees": 0.0,
                         "angle_radians": 0.0,
                         "confidence": 0.94,
-                        "extracted_data": {"type": "greeting"},
+                        "extracted_data": {
+                            "type": "greeting",
+                            "value": "World",
+                        },
                         "letters": [],
                     },
                 ],
@@ -150,7 +153,10 @@ class TestProcessOCRDictAsReceipt:
 
         word2 = words[1]
         assert word2.text == "World"
-        assert word2.extracted_data == {"type": "greeting"}
+        assert word2.extracted_data == {
+            "type": "greeting",
+            "value": "World",
+        }
 
         # Verify letter data
         letter = letters[0]
@@ -236,7 +242,10 @@ class TestProcessOCRDictAsImage:
 
         word2 = words[1]
         assert word2.text == "World"
-        assert word2.extracted_data == {"type": "greeting"}
+        assert word2.extracted_data == {
+            "type": "greeting",
+            "value": "World",
+        }
 
         # Verify letter data
         letter = letters[0]

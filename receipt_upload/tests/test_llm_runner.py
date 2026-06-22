@@ -119,9 +119,13 @@ def _install_stubs(results, raises=None):
     """Stub receipt_agent.constants + the LLM validator module in sys.modules."""
     const = types.ModuleType("receipt_agent.constants")
     const.CORE_LABELS = _CORE
-    agent_pkg = sys.modules.get("receipt_agent") or types.ModuleType("receipt_agent")
+    agent_pkg = sys.modules.get("receipt_agent") or types.ModuleType(
+        "receipt_agent"
+    )
 
-    validator_mod = types.ModuleType("receipt_upload.label_validation.llm_validator")
+    validator_mod = types.ModuleType(
+        "receipt_upload.label_validation.llm_validator"
+    )
 
     class _FakeValidator:
         def __init__(self, *a, **k):
@@ -147,7 +151,9 @@ def _install_stubs(results, raises=None):
     sys.modules["receipt_agent"] = agent_pkg
     sys.modules["receipt_agent.constants"] = const
     sys.modules["receipt_upload.label_validation"] = lv_pkg
-    sys.modules["receipt_upload.label_validation.llm_validator"] = validator_mod
+    sys.modules["receipt_upload.label_validation.llm_validator"] = (
+        validator_mod
+    )
     return saved
 
 
@@ -171,7 +177,9 @@ def _result(line, word, decision, label, reasoning="x"):
 def test_apply_async_payload_valid_invalid_and_correction():
     needed = [
         _label(5, 2, "PRODUCT_NAME"),  # -> VALID
-        _label(6, 1, "ADDRESS_LINE"),  # -> INVALID + corrected to MERCHANT_NAME
+        _label(
+            6, 1, "ADDRESS_LINE"
+        ),  # -> INVALID + corrected to MERCHANT_NAME
         _label(7, 1, "PRODUCT_NAME"),  # -> INVALID (same label)
     ]
     payload = {
@@ -205,7 +213,8 @@ def test_apply_async_payload_valid_invalid_and_correction():
     assert added[0].label_consolidated_from == "ADDRESS_LINE"
     # The VALID and the two INVALIDs were status updates.
     statuses = {
-        (lab.line_id, lab.word_id): lab.validation_status for lab in dynamo.updated
+        (lab.line_id, lab.word_id): lab.validation_status
+        for lab in dynamo.updated
     }
     assert statuses[(5, 2)] == ValidationStatus.VALID.value
     assert statuses[(6, 1)] == ValidationStatus.INVALID.value
@@ -299,7 +308,9 @@ def test_apply_async_payload_raise_on_failure_false_swallows_and_cleans():
     raised = False
     try:
         try:
-            m.apply_async_payload(_payload(needed), dynamo, raise_on_failure=False)
+            m.apply_async_payload(
+                _payload(needed), dynamo, raise_on_failure=False
+            )
         except RuntimeError:
             raised = True
     finally:
