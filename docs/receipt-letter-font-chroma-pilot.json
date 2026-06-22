@@ -27,17 +27,7 @@
         "header": 944,
         "line_items": 222,
         "totals_payments": 777
-      },
-      "text_examples": [
-        "T",
-        "a",
-        "6",
-        ",",
-        "2",
-        "0",
-        "2",
-        "6"
-      ]
+      }
     },
     {
       "avg_box_height": 0.01069,
@@ -65,17 +55,7 @@
         "footer": 14,
         "header": 8,
         "totals_payments": 5
-      },
-      "text_examples": [
-        "a",
-        "a",
-        "d",
-        "0",
-        "9",
-        "a",
-        "#",
-        "o"
-      ]
+      }
     },
     {
       "avg_box_height": 0.01067,
@@ -103,17 +83,7 @@
         "footer": 10,
         "header": 5,
         "totals_payments": 8
-      },
-      "text_examples": [
-        "1",
-        "S",
-        "C",
-        "A",
-        "T",
-        "L",
-        "T",
-        "l"
-      ]
+      }
     },
     {
       "avg_box_height": 0.00943,
@@ -129,17 +99,7 @@
       "sections": {
         "body_other": 22,
         "footer": 8
-      },
-      "text_examples": [
-        "*",
-        "*",
-        "*",
-        "*",
-        "*",
-        "*",
-        "*",
-        "*"
-      ]
+      }
     },
     {
       "avg_box_height": 0.02041,
@@ -163,17 +123,7 @@
         "footer": 2,
         "header": 1,
         "totals_payments": 2
-      },
-      "text_examples": [
-        "E",
-        "g",
-        "d",
-        "A",
-        "e",
-        "R",
-        "4",
-        "e"
-      ]
+      }
     },
     {
       "avg_box_height": 0.0093,
@@ -189,17 +139,7 @@
       "sections": {
         "body_other": 6,
         "footer": 2
-      },
-      "text_examples": [
-        "*",
-        "*",
-        "*",
-        "*",
-        "*",
-        "*",
-        "4",
-        "*"
-      ]
+      }
     },
     {
       "avg_box_height": 0.01096,
@@ -218,17 +158,7 @@
       "sections": {
         "body_other": 5,
         "footer": 3
-      },
-      "text_examples": [
-        "8",
-        "g",
-        "p",
-        "B",
-        "e",
-        "e",
-        "g",
-        "e"
-      ]
+      }
     },
     {
       "avg_box_height": 0.0228,
@@ -249,15 +179,7 @@
         "footer": 2,
         "line_items": 1,
         "totals_payments": 1
-      },
-      "text_examples": [
-        "e",
-        "9",
-        "g",
-        "o",
-        "e",
-        "h"
-      ]
+      }
     }
   ],
   "errors": [],
@@ -277,17 +199,7 @@
         "header": 32,
         "line_items": 9,
         "totals_payments": 35
-      },
-      "text_examples": [
-        "Cafe does not cover",
-        "additional",
-        "costs for",
-        "Application ID",
-        "$1.52",
-        "$3.15",
-        "+ 2%: (Tip $0.42 Total $22.94)",
-        "* 3%: (Tip $0.63"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.65042,
@@ -304,17 +216,7 @@
         "header": 3,
         "line_items": 4,
         "totals_payments": 7
-      },
-      "text_examples": [
-        "180 Promenade Way",
-        "Ordered:",
-        "ESPRESSO",
-        "VISA DEBIT",
-        "Approval Code",
-        "Application ID",
-        "Card Reader",
-        "$4.80"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.66003,
@@ -329,17 +231,7 @@
         "body_other": 5,
         "footer": 2,
         "header": 1
-      },
-      "text_examples": [
-        "Server: Lachlan B",
-        "C (EMV Chip Read)",
-        "Food & Drinks: For",
-        "regarding food and drink",
-        "Retail & Clothing: All",
-        "receive an incorrect or",
-        "days with photos of the",
-        "to be unworn, unwashed, and"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.97,
@@ -352,14 +244,7 @@
       "line_count": 5,
       "sections": {
         "footer": 5
-      },
-      "text_examples": [
-        "****************************************",
-        "****************************************",
-        "**********",
-        "******",
-        "****************************************"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 1.0,
@@ -372,12 +257,7 @@
       "line_count": 3,
       "sections": {
         "line_items": 3
-      },
-      "text_examples": [
-        "$4.80",
-        "$0.96",
-        "$21.00"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.62222,
@@ -390,12 +270,7 @@
       "line_count": 3,
       "sections": {
         "body_other": 3
-      },
-      "text_examples": [
-        "************2777",
-        "********************",
-        "+ Tip::"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.74074,
@@ -409,12 +284,7 @@
       "sections": {
         "body_other": 1,
         "totals_payments": 2
-      },
-      "text_examples": [
-        "TOTAL:",
-        "GRATUITY:",
-        "TOTAL:"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.87202,
@@ -428,12 +298,7 @@
       "sections": {
         "body_other": 2,
         "header": 1
-      },
-      "text_examples": [
-        "Main St Provisions",
-        "Las Vegas, NU 89109",
-        "Server: Makella"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.875,
@@ -446,11 +311,7 @@
       "line_count": 2,
       "sections": {
         "header": 2
-      },
-      "text_examples": [
-        "Lava",
-        "band"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.8125,
@@ -463,11 +324,7 @@
       "line_count": 2,
       "sections": {
         "totals_payments": 2
-      },
-      "text_examples": [
-        "Subtotal",
-        "Subtotal"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.7,
@@ -480,11 +337,7 @@
       "line_count": 2,
       "sections": {
         "totals_payments": 2
-      },
-      "text_examples": [
-        "Total",
-        "Total"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.96875,
@@ -497,11 +350,7 @@
       "line_count": 2,
       "sections": {
         "body_other": 2
-      },
-      "text_examples": [
-        "items, please",
-        "item, please email"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.94077,
@@ -514,11 +363,7 @@
       "line_count": 2,
       "sections": {
         "body_other": 2
-      },
-      "text_examples": [
-        "info@lalalandkindcafe.com.",
-        "shop@lalalandkindcafe.com"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.96667,
@@ -532,11 +377,7 @@
       "sections": {
         "body_other": 1,
         "header": 1
-      },
-      "text_examples": [
-        "Zen Leaf Las Vegas",
-        "RECEIPT 86233955"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.9,
@@ -549,11 +390,7 @@
       "line_count": 2,
       "sections": {
         "line_items": 2
-      },
-      "text_examples": [
-        "$2.79",
-        "$2.34"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.50505,
@@ -567,11 +404,7 @@
       "sections": {
         "body_other": 1,
         "line_items": 1
-      },
-      "text_examples": [
-        "1 \u20ac 99/0.00",
-        "*******0658"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.80808,
@@ -585,11 +418,7 @@
       "sections": {
         "body_other": 1,
         "totals_payments": 1
-      },
-      "text_examples": [
-        "Annual Card Savings $0.00",
-        "You nay have purchased a product"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.55556,
@@ -602,11 +431,7 @@
       "line_count": 2,
       "sections": {
         "body_other": 2
-      },
-      "text_examples": [
-        "*********",
-        "******************"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.29167,
@@ -620,11 +445,7 @@
       "sections": {
         "body_other": 1,
         "footer": 1
-      },
-      "text_examples": [
-        "************",
-        "******"
-      ]
+      }
     },
     {
       "avg_dominant_letter_cluster_ratio": 0.83333,
@@ -637,11 +458,7 @@
       "line_count": 2,
       "sections": {
         "header": 2
-      },
-      "text_examples": [
-        "- APPROVED",
-        "- APPROVED"
-      ]
+      }
     }
   ],
   "line_eps_sweep": [
@@ -693,14 +510,14 @@
       "dominant_cluster_share": 0.6811594202898551,
       "section": "body_other",
       "top_cluster_ids": {
+        "13": 3,
+        "15": 2,
+        "19": 2,
         "2": 20,
         "3": 5,
         "7": 2,
         "8": 2,
-        "9": 94,
-        "13": 3,
-        "15": 2,
-        "19": 2
+        "9": 94
       },
       "top_cluster_labels": {
         "large-line normal light tight": 1,
@@ -720,12 +537,12 @@
       "dominant_cluster_share": 0.7142857142857143,
       "section": "totals_payments",
       "top_cluster_ids": {
+        "14": 1,
+        "17": 2,
         "2": 7,
         "4": 2,
         "5": 2,
-        "9": 35,
-        "14": 1,
-        "17": 2
+        "9": 35
       },
       "top_cluster_labels": {
         "large-line normal light tight": 2,
@@ -743,14 +560,14 @@
       "dominant_cluster_share": 0.6530612244897959,
       "section": "footer",
       "top_cluster_ids": {
-        "2": 4,
-        "3": 2,
-        "9": 32,
         "16": 1,
+        "2": 4,
         "20": 5,
         "21": 2,
         "22": 2,
-        "25": 1
+        "25": 1,
+        "3": 2,
+        "9": 32
       },
       "top_cluster_labels": {
         "large-line wide medium tight": 32,
@@ -770,12 +587,12 @@
       "section": "header",
       "top_cluster_ids": {
         "1": 2,
-        "2": 3,
-        "3": 1,
-        "9": 32,
         "10": 1,
         "18": 2,
-        "24": 1
+        "2": 3,
+        "24": 1,
+        "3": 1,
+        "9": 32
       },
       "top_cluster_labels": {
         "large-line wide medium tight": 34,
@@ -794,12 +611,12 @@
       "dominant_cluster_share": 0.42857142857142855,
       "section": "line_items",
       "top_cluster_ids": {
-        "2": 4,
-        "6": 3,
-        "9": 9,
         "11": 2,
         "12": 1,
-        "23": 2
+        "2": 4,
+        "23": 2,
+        "6": 3,
+        "9": 9
       },
       "top_cluster_labels": {
         "large-line wide medium tight": 9,
@@ -811,327 +628,135 @@
   ],
   "receipt_summaries": [
     {
-      "bottom_lines": [
-        "$24.33",
-        "Total",
-        "$24.33",
-        "Visa 1454 (Contactless)"
-      ],
-      "date": "2026-05-26",
       "embedded_letter_count": 258,
-      "image_id": "fc408bf9-7b71-401d-ab5b-cd508fb2db3b",
       "image_size": [
         405,
         666
       ],
       "letter_count": 258,
       "line_count": 28,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/fc408bf9-7b71-401d-ab5b-cd508fb2db3b_RECEIPT_00003.png",
-      "receipt_id": 3,
-      "top_lines": [
-        "GT Poke",
-        "8610 Spring Mountain Rd",
-        "May 6, 2026",
-        "6:13 PM"
-      ],
+      "receipt_index": 1,
       "word_count": 57
     },
     {
-      "bottom_lines": [
-        "I agree to pay above total",
-        "amount according to my card",
-        "ssuer agreement'",
-        "issuer agreement"
-      ],
-      "date": "2026-05-21",
       "embedded_letter_count": 459,
-      "image_id": "c137dfd9-351c-4d4e-9dae-7950ab7db753",
       "image_size": [
         883,
         1120
       ],
       "letter_count": 462,
       "line_count": 57,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/c137dfd9-351c-4d4e-9dae-7950ab7db753_RECEIPT_00003.png",
-      "receipt_id": 3,
-      "top_lines": [
-        "03/30/26",
-        "03/30/26",
-        "SALES DRAFT",
-        "Carousel"
-      ],
+      "receipt_index": 2,
       "word_count": 86
     },
     {
-      "bottom_lines": [
-        "total amount according to the",
-        "card issuer agreement.",
-        "Thank you and Come Again",
-        "** PLEASE SIGN **"
-      ],
-      "date": "2026-05-21",
       "embedded_letter_count": 392,
-      "image_id": "9167c199-8808-487c-a55b-ea065ee336e5",
       "image_size": [
         771,
         1002
       ],
       "letter_count": 392,
       "line_count": 35,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/9167c199-8808-487c-a55b-ea065ee336e5_RECEIPT_00005.png",
-      "receipt_id": 5,
-      "top_lines": [
-        "Main St Provisions",
-        "1214 S Main St.",
-        "Las Vegas, NV 89109",
-        "(702) 457-0111"
-      ],
+      "receipt_index": 3,
       "word_count": 80
     },
     {
-      "bottom_lines": [
-        "58.53",
-        "Balance Due",
-        "58.53",
-        "Thank you and Come Again"
-      ],
-      "date": "2026-05-21",
       "embedded_letter_count": 292,
-      "image_id": "fb44b8a7-1a34-40c6-9f2b-011665b20f88",
       "image_size": [
         656,
         980
       ],
       "letter_count": 292,
       "line_count": 34,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/fb44b8a7-1a34-40c6-9f2b-011665b20f88_RECEIPT_00005.png",
-      "receipt_id": 5,
-      "top_lines": [
-        "2026",
-        "/2026",
-        "40006",
-        "097153"
-      ],
+      "receipt_index": 4,
       "word_count": 60
     },
     {
-      "bottom_lines": [
-        "Total pald:",
-        "$35.00",
-        "Change due:",
-        "$1.95"
-      ],
-      "date": "2026-05-21",
       "embedded_letter_count": 556,
-      "image_id": "5b1ea5d7-4f9e-44ff-9802-6c7ff11194a6",
       "image_size": [
         407,
         923
       ],
       "letter_count": 556,
       "line_count": 43,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/5b1ea5d7-4f9e-44ff-9802-6c7ff11194a6_RECEIPT_00003.png",
-      "receipt_id": 3,
-      "top_lines": [
-        "Zen Leaf Las Vegas",
-        "5335 South Fort Apache Road, Las Vegas,",
-        "Nevada, United States",
-        "support-nv@zenleafdispensaries.com"
-      ],
+      "receipt_index": 5,
       "word_count": 85
     },
     {
-      "bottom_lines": [
-        "4*744*****",
-        "******",
-        "RECALL NOTICE",
-        "You mau run nurchased a productor"
-      ],
-      "date": "2026-05-21",
       "embedded_letter_count": 1260,
-      "image_id": "6539deb9-52cc-49a0-81a0-3a64989bee49",
       "image_size": [
         634,
         1081
       ],
       "letter_count": 1260,
       "line_count": 83,
-      "raw_s3_bucket": "raw-image-bucket-0facc78",
-      "raw_s3_key": "raw/6539deb9-52cc-49a0-81a0-3a64989bee49_RECEIPT_00004.png",
-      "receipt_id": 4,
-      "top_lines": [
-        "HEALTH",
-        "0940601",
-        "094030-",
-        "194058"
-      ],
+      "receipt_index": 6,
       "word_count": 217
     },
     {
-      "bottom_lines": [
-        "the method of payment used.",
-        "original receipt, th",
-        "ipt. Limits apply to",
-        "without a recei"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 302,
-      "image_id": "ff649c4b-5c31-4247-b78c-d9b0c56610ad",
       "image_size": [
         768,
         879
       ],
       "letter_count": 302,
       "line_count": 18,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/ff649c4b-5c31-4247-b78c-d9b0c56610ad/receipt_ 7-3a26c6b2-9799-47fb-ab15-397ea4d07152_RECEIPT_00001.png",
-      "receipt_id": 1,
-      "top_lines": [
-        "How was your visit?",
-        "Let us know at SproutsFeedback.com",
-        "so we can grow and improve!",
-        "***"
-      ],
+      "receipt_index": 7,
       "word_count": 65
     },
     {
-      "bottom_lines": [
-        "99022003313520071320",
-        "****************************************",
-        "To join our rewards program please go to",
-        "www.sprouts.com/rewards or scan the OR"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 681,
-      "image_id": "ff649c4b-5c31-4247-b78c-d9b0c56610ad",
       "image_size": [
         849,
         2297
       ],
       "letter_count": 681,
       "line_count": 59,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/ff649c4b-5c31-4247-b78c-d9b0c56610ad/receipt_ 7-3a26c6b2-9799-47fb-ab15-397ea4d07152_RECEIPT_00002.png",
-      "receipt_id": 2,
-      "top_lines": [
-        "01/07/2026",
-        "13:20:55",
-        "US DEBIT",
-        "Entry Method: Cntctless"
-      ],
+      "receipt_index": 8,
       "word_count": 105
     },
     {
-      "bottom_lines": [
-        "0003265563651604",
-        "****************************************",
-        "To join our rewards program please go to",
-        "www. sprouts. com/newards or scan the OR"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 468,
-      "image_id": "eaeee5ef-ba10-48c6-9cfe-591d043d7d65",
       "image_size": [
         881,
         2378
       ],
       "letter_count": 468,
       "line_count": 56,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/eaeee5ef-ba10-48c6-9cfe-591d043d7d65/receipt_ 11-28fc9489-8ffd-4884-8767-9c39a9bb9ec9_RECEIPT_00002.png",
-      "receipt_id": 2,
-      "top_lines": [
-        "16:04:54",
-        "12/31/2025",
-        "Entry Method: Ontotless",
-        "US DEBIT"
-      ],
+      "receipt_index": 9,
       "word_count": 75
     },
     {
-      "bottom_lines": [
-        "....",
-        ".....",
-        "without a receipt.",
-        "to returne"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 396,
-      "image_id": "eaeee5ef-ba10-48c6-9cfe-591d043d7d65",
       "image_size": [
         830,
         993
       ],
       "letter_count": 396,
       "line_count": 26,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/eaeee5ef-ba10-48c6-9cfe-591d043d7d65/receipt_ 11-28fc9489-8ffd-4884-8767-9c39a9bb9ec9_RECEIPT_00001.png",
-      "receipt_id": 1,
-      "top_lines": [
-        "How was your visit?",
-        "Let us know at SproutsFeedback.com",
-        "so we can grow and improve!",
-        "******\u2022"
-      ],
+      "receipt_index": 10,
       "word_count": 81
     },
     {
-      "bottom_lines": [
-        "Cafe does not cover",
-        "additional",
-        "costs for",
-        "port"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 834,
-      "image_id": "14587777-4f26-4bd2-a160-1d0a85fe7796",
       "image_size": [
         837,
         3705
       ],
       "letter_count": 846,
       "line_count": 73,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/14587777-4f26-4bd2-a160-1d0a85fe7796/receipt_ 5-ec68ebc0-16b1-42a9-9f40-8d2c1e79cecf_RECEIPT_00001.png",
-      "receipt_id": 1,
-      "top_lines": [
-        "Lava",
-        "band",
-        "La La Land Kind Cafe",
-        "180 Promenade Way"
-      ],
+      "receipt_index": 11,
       "word_count": 152
     },
     {
-      "bottom_lines": [
-        "www.mouthfuleatery.com",
-        "\"People who love to eat are always",
-        "the best people\"",
-        "-Julia Child"
-      ],
-      "date": "2026-02-06",
       "embedded_letter_count": 607,
-      "image_id": "534f5ac3-528e-44a5-81c3-b2164691ed34",
       "image_size": [
         844,
         1845
       ],
       "letter_count": 619,
       "line_count": 51,
-      "raw_s3_bucket": "upload-images-image-bucket-4bcea7e",
-      "raw_s3_key": "receipts/534f5ac3-528e-44a5-81c3-b2164691ed34/receipt_ 13-b93805f6-fa95-47c5-bfca-2eb30e8d3f89_RECEIPT_00001.png",
-      "receipt_id": 1,
-      "top_lines": [
-        "Mouthful Eatery",
-        "2626 Thousand Oaks Blvd",
-        "Thousand Oaks, CA 91362",
-        "805-777-9222"
-      ],
+      "receipt_index": 12,
       "word_count": 113
     }
   ],
@@ -1254,126 +879,106 @@
           "neighbors": [
             {
               "cluster": 1,
-              "id": "image=ff649c4b-5c31-4247-b78c-d9b0c56610ad:receipt=2:line=43:word=2:letter=2",
               "label": "large wide medium",
               "section": "line_items"
             },
             {
               "cluster": 1,
-              "id": "image=ff649c4b-5c31-4247-b78c-d9b0c56610ad:receipt=2:line=5:word=1:letter=3",
               "label": "large wide medium",
               "section": "header"
             },
             {
               "cluster": 1,
-              "id": "image=534f5ac3-528e-44a5-81c3-b2164691ed34:receipt=1:line=46:word=1:letter=1",
               "label": "large wide medium",
               "section": "footer"
             }
           ],
           "query_char": "T",
-          "query_cluster": 1,
-          "query_id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=1:word=1:letter=96"
+          "query_cluster": 1
         },
         {
           "neighbors": [
             {
               "cluster": 1,
-              "id": "image=534f5ac3-528e-44a5-81c3-b2164691ed34:receipt=1:line=49:word=7:letter=4",
               "label": "large wide medium",
               "section": "footer"
             },
             {
               "cluster": 1,
-              "id": "image=534f5ac3-528e-44a5-81c3-b2164691ed34:receipt=1:line=48:word=1:letter=14",
               "label": "large wide medium",
               "section": "footer"
             },
             {
               "cluster": 1,
-              "id": "image=534f5ac3-528e-44a5-81c3-b2164691ed34:receipt=1:line=22:word=2:letter=3",
               "label": "large wide medium",
               "section": "totals_payments"
             }
           ],
           "query_char": "a",
-          "query_cluster": 1,
-          "query_id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=7:letter=212"
+          "query_cluster": 1
         },
         {
           "neighbors": [
             {
               "cluster": 1,
-              "id": "image=6539deb9-52cc-49a0-81a0-3a64989bee49:receipt=4:line=31:word=54:letter=109",
               "label": "large wide medium",
               "section": "line_items"
             },
             {
               "cluster": 1,
-              "id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=9:letter=241",
               "label": "large wide medium",
               "section": "header"
             },
             {
               "cluster": 1,
-              "id": "image=fb44b8a7-1a34-40c6-9f2b-011665b20f88:receipt=5:line=5:word=3:letter=142",
               "label": "large wide medium",
               "section": "header"
             }
           ],
           "query_char": "6",
-          "query_cluster": 1,
-          "query_id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=8:letter=257"
+          "query_cluster": 1
         },
         {
           "neighbors": [
             {
               "cluster": 1,
-              "id": "image=5b1ea5d7-4f9e-44ff-9802-6c7ff11194a6:receipt=3:line=3:word=8:letter=456",
               "label": "large wide medium",
               "section": "header"
             },
             {
               "cluster": 1,
-              "id": "image=c137dfd9-351c-4d4e-9dae-7950ab7db753:receipt=3:line=25:word=10:letter=226",
               "label": "large wide medium",
               "section": "header"
             },
             {
               "cluster": 1,
-              "id": "image=5b1ea5d7-4f9e-44ff-9802-6c7ff11194a6:receipt=3:line=5:word=12:letter=367",
               "label": "large wide medium",
               "section": "header"
             }
           ],
           "query_char": ",",
-          "query_cluster": 1,
-          "query_id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=8:letter=258"
+          "query_cluster": 1
         },
         {
           "neighbors": [
             {
               "cluster": 1,
-              "id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=9:letter=240",
               "label": "large wide medium",
               "section": "header"
             },
             {
               "cluster": 1,
-              "id": "image=534f5ac3-528e-44a5-81c3-b2164691ed34:receipt=1:line=41:word=4:letter=5",
               "label": "large wide medium",
               "section": "totals_payments"
             },
             {
               "cluster": 1,
-              "id": "image=fb44b8a7-1a34-40c6-9f2b-011665b20f88:receipt=5:line=13:word=8:letter=215",
               "label": "large wide medium",
               "section": "body_other"
             }
           ],
           "query_char": "2",
-          "query_cluster": 1,
-          "query_id": "image=fc408bf9-7b71-401d-ab5b-cd508fb2db3b:receipt=3:line=2:word=9:letter=238"
+          "query_cluster": 1
         }
       ],
       "same_char_neighbor_found": 200,
@@ -1391,6 +996,6 @@
     "receipts_seen": 645,
     "style_clusters": 8,
     "style_vector_dim": 333,
-    "table": "ReceiptsTable-d7ff76a"
+    "table": "redacted"
   }
 }

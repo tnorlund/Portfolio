@@ -172,9 +172,7 @@ def main() -> None:
             image = _load_image(
                 s3_client, receipt.raw_s3_bucket, receipt.raw_s3_key
             )
-            section_by_line, ordered_lines, line_text_by_id = _classify_lines(
-                lines, words
-            )
+            section_by_line, _, _ = _classify_lines(lines, words)
             all_lines.extend(lines)
             all_words.extend(words)
             for line in lines:
@@ -200,33 +198,22 @@ def main() -> None:
             all_samples.extend(samples)
             receipt_summaries.append(
                 {
-                    "image_id": receipt.image_id,
-                    "receipt_id": receipt.receipt_id,
-                    "date": str(receipt.timestamp_added)[:10],
-                    "raw_s3_bucket": receipt.raw_s3_bucket,
-                    "raw_s3_key": receipt.raw_s3_key,
+                    "receipt_index": len(receipt_summaries) + 1,
                     "image_size": list(image.size),
                     "line_count": len(lines),
                     "word_count": len(words),
                     "letter_count": len(letters),
                     "embedded_letter_count": len(samples),
-                    "top_lines": [
-                        line_text_by_id[line.line_id]
-                        for line in ordered_lines[:4]
-                    ],
-                    "bottom_lines": [
-                        line_text_by_id[line.line_id]
-                        for line in ordered_lines[-4:]
-                    ],
+                    "section_line_counts": dict(
+                        Counter(section_by_line.values()).most_common()
+                    ),
                 }
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(
                 {
-                    "image_id": receipt.image_id,
-                    "receipt_id": receipt.receipt_id,
+                    "receipt_offset": len(receipt_summaries) + len(errors) + 1,
                     "error_type": type(exc).__name__,
-                    "error": str(exc)[:300],
                 }
             )
 
@@ -540,17 +527,15 @@ def _evaluate_chroma_neighbors(
         if len(examples) < 5:
             examples.append(
                 {
-                    "query_id": sample.sample_id,
                     "query_char": sample.text,
                     "query_cluster": cluster_id,
                     "neighbors": [
                         {
-                            "id": neighbor_id,
                             "cluster": metadata.get("style_cluster_id"),
                             "label": metadata.get("style_cluster_label"),
                             "section": metadata.get("section"),
                         }
-                        for neighbor_id, metadata in neighbors[:3]
+                        for _, metadata in neighbors[:3]
                     ],
                 }
             )
@@ -657,7 +642,7 @@ def _build_report(
     )
 
     summary = {
-        "table": args.table,
+        "table": "redacted",
         "receipt_limit": args.limit,
         "receipts_seen": receipts_seen,
         "raw_ok_candidates": raw_ok_candidates,
@@ -754,7 +739,6 @@ def _cluster_summaries(
                 "label": cluster.label,
                 "sample_count": cluster.sample_count,
                 "normalized_chars": list(cluster.normalized_chars[:12]),
-                "text_examples": list(cluster.text_examples),
                 "sections": dict(sections.most_common()),
                 "avg_box_height": round(
                     cluster.metrics.get("box_height", 0), 5
@@ -818,7 +802,6 @@ def _line_cluster_summaries(
                 "label": cluster.label,
                 "line_count": cluster.sample_count,
                 "sections": dict(sections.most_common()),
-                "text_examples": list(cluster.text_examples[:8]),
                 "avg_line_height": round(
                     cluster.metrics.get("line_box_height", 0.0), 5
                 ),
@@ -1125,8 +1108,8 @@ def _render_markdown(report: dict[str, Any]) -> str:
             "",
             "## Largest Line Style Clusters",
             "",
-            "| Cluster | Label | Lines | Sections | Examples |",
-            "|---:|---|---:|---|---|",
+            "| Cluster | Label | Lines | Sections |",
+            "|---:|---|---:|---|",
         ]
     )
     for cluster in report["line_cluster_summaries"][:12]:
@@ -1134,14 +1117,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
             f"`{section}` ({count})"
             for section, count in cluster["sections"].items()
         )
-        examples = "; ".join(
-            example.replace("|", " ")
-            for example in cluster["text_examples"][:3]
-            if example
-        )
         lines.append(
             f"| {cluster['cluster_id']} | `{cluster['label']}` | "
-            f"{cluster['line_count']} | {sections} | {examples} |"
+            f"{cluster['line_count']} | {sections} |"
         )
     lines.extend(
         [
