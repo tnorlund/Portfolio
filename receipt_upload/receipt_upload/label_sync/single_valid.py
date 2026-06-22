@@ -138,7 +138,7 @@ def apply_resolution(plan, env_tables, *, backup_path: str) -> dict:
         by_env[env].append((img, rid, ln, wd, label, status))
 
     report = {"updated": 0, "missing": 0, "errors": []}
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     backup = {"created_at": now, "prior": []}
     for env, items in by_env.items():
         dc = DynamoClient(env_tables[env])

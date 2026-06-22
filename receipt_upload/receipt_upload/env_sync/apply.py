@@ -59,7 +59,7 @@ def reconcile_receipt_counts(dynamo, image_ids=None) -> dict:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _remap_item_buckets(item: dict) -> dict:
@@ -109,7 +109,7 @@ def execute_migration(
     s3,
     *,
     apply: bool = False,
-    backup_path: str = None,
+    backup_path: str | None = None,
     sample_s3_check: int = 250,
 ) -> dict:
     """DRY-RUN unless ``apply=True``. Backs up before any write."""

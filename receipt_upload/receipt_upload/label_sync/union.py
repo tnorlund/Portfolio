@@ -49,7 +49,7 @@ class LabelAdd:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def load_labels_by_word(table: str):
@@ -128,7 +128,7 @@ def apply_union(
     dynamo,
     *,
     apply: bool = False,
-    backup_path: str = None,
+    backup_path: str | None = None,
 ) -> dict:
     """DRY-RUN unless ``apply=True``. Writes a backup of added keys first."""
     report = {
