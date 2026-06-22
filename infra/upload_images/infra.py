@@ -34,6 +34,14 @@ google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
+# Chroma Cloud: the upload path queries Cloud (no per-receipt snapshot download).
+# Batch step functions keep using the local S3 snapshot.
+chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
+chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
+chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
+chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
+# Defer grok label validation to the async queue/consumer (off by default).
+llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
 
 stack = pulumi.get_stack()
 
@@ -135,6 +143,46 @@ class UploadImages(ComponentResource):
             redrive_policy=None,  # No DLQ for now
             tags={
                 "Purpose": "OCR Results Processing",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Dead-letter queue for the async LLM validation queue. A grok failure
+        # (OpenRouter outage, malformed payload) must NOT silently drop the
+        # message and strand labels at PENDING — after maxReceiveCount redrives
+        # the message lands here for inspection/replay instead of being lost.
+        self.llm_validation_dlq = Queue(
+            f"{name}-llm-validation-dlq",
+            name=f"{name}-{stack}-llm-validation-dlq",
+            message_retention_seconds=1209600,  # 14 days
+            tags={
+                "Purpose": "Async LLM Label Validation DLQ",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Queue for deferred (async) LLM label validation. When the words
+        # pipeline runs with LLM_VALIDATION_ASYNC=true it stages the grok payload
+        # on S3 and drops a pointer here; the process_ocr Lambda consumes it off
+        # the upload critical path. Visibility > the consumer Lambda timeout
+        # (900s) for redelivery headroom; failed messages redrive to the DLQ.
+        self.llm_validation_queue = Queue(
+            f"{name}-llm-validation-queue",
+            name=f"{name}-{stack}-llm-validation-queue",
+            visibility_timeout_seconds=960,
+            message_retention_seconds=345600,  # 4 days
+            receive_wait_time_seconds=0,
+            redrive_policy=self.llm_validation_dlq.arn.apply(
+                lambda arn: json.dumps(
+                    {"deadLetterTargetArn": arn, "maxReceiveCount": 3}
+                )
+            ),
+            tags={
+                "Purpose": "Async LLM Label Validation",
                 "Component": name,
                 "Environment": pulumi.get_stack(),
             },
@@ -245,9 +293,7 @@ class UploadImages(ComponentResource):
             source_paths=["receipt_dynamo"],  # Only need receipt_dynamo
             lambda_config=upload_receipt_lambda_config,
             platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self, depends_on=[upload_receipt_role]
-            ),
+            opts=ResourceOptions(parent=self, depends_on=[upload_receipt_role]),
         )
 
         upload_receipt_lambda = cast(
@@ -309,6 +355,7 @@ class UploadImages(ComponentResource):
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
                 pulumi.Output.from_input(chromadb_bucket_name),
+                self.llm_validation_queue.arn,
             ).apply(
                 lambda args: (
                     json.dumps(
@@ -335,6 +382,9 @@ class UploadImages(ComponentResource):
                                         "s3:GetObject",
                                         "s3:PutObject",
                                         "s3:HeadObject",
+                                        # Consumer deletes the staged async LLM
+                                        # payload on the chromadb bucket after use.
+                                        "s3:DeleteObject",
                                     ],
                                     "Resource": [
                                         args[1] + "/*",  # raw_bucket
@@ -343,9 +393,7 @@ class UploadImages(ComponentResource):
                                         args[5] + "/*",  # artifacts_bucket
                                     ]
                                     + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
+                                        [f"arn:aws:s3:::{args[6]}/*"] if args[6] else []
                                     ),
                                 },
                                 {
@@ -379,7 +427,10 @@ class UploadImages(ComponentResource):
                                 {
                                     "Effect": "Allow",
                                     "Action": "sqs:SendMessage",
-                                    "Resource": args[4],  # ocr_queue.arn
+                                    "Resource": [
+                                        args[4],  # ocr_queue.arn
+                                        args[7],  # llm_validation_queue.arn
+                                    ],
                                 },
                                 {
                                     "Effect": "Allow",
@@ -479,8 +530,16 @@ class UploadImages(ComponentResource):
                 "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
                 "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
+                # Async LLM validation: producer enqueues here, same Lambda consumes.
+                "LLM_VALIDATION_ASYNC": llm_validation_async,
+                "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
+                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
@@ -544,9 +603,7 @@ class UploadImages(ComponentResource):
         )
 
         # Use the Lambda function created by CodeBuildDockerImage
-        process_ocr_lambda = cast(
-            Function, process_ocr_docker_image.lambda_function
-        )
+        process_ocr_lambda = cast(Function, process_ocr_docker_image.lambda_function)
 
         # Adopt existing mapping if already present to avoid ResourceConflict
         existing_mapping_uuid = pulumi.Config("portfolio").get(
@@ -560,10 +617,29 @@ class UploadImages(ComponentResource):
             enabled=True,
             opts=ResourceOptions(
                 parent=self,
-                import_=(
-                    existing_mapping_uuid if existing_mapping_uuid else None
-                ),
+                import_=(existing_mapping_uuid if existing_mapping_uuid else None),
             ),
+        )
+
+        # Deferred LLM-validation messages feed the SAME Lambda (content-routed
+        # in the handler). batch_size=1 so each grok run is independent and a
+        # slow one can't hold up a batch. ReportBatchItemFailures lets the
+        # handler signal a failed message so SQS redrives it (and eventually
+        # DLQs it) instead of treating a 200 return as success and deleting it.
+        aws.lambda_.EventSourceMapping(
+            f"{name}-llm-validation-mapping",
+            event_source_arn=self.llm_validation_queue.arn,
+            function_name=process_ocr_lambda.name,
+            batch_size=1,
+            enabled=True,
+            function_response_types=["ReportBatchItemFailures"],
+            # Cap deferred-grok consumers so a backlog can't monopolize the
+            # shared Lambda's concurrency and starve latency-sensitive OCR-result
+            # processing. (SQS scaling minimum is 2.)
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=5,
+            ),
+            opts=ResourceOptions(parent=self),
         )
 
         # =========================================================================
@@ -648,14 +724,8 @@ class UploadImages(ComponentResource):
                                     "s3:PutObject",
                                     "s3:HeadObject",
                                 ],
-                                "Resource": [
-                                    args[1] + "/*"
-                                ]  # artifacts_bucket
-                                + (
-                                    [f"arn:aws:s3:::{args[2]}/*"]
-                                    if args[2]
-                                    else []
-                                ),
+                                "Resource": [args[1] + "/*"]  # artifacts_bucket
+                                + ([f"arn:aws:s3:::{args[2]}/*"] if args[2] else []),
                             },
                         ]
                         + (
@@ -695,6 +765,11 @@ class UploadImages(ComponentResource):
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                # Chroma Cloud (upload path reads from Cloud, skips S3 snapshot)
+                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
+                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
+                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
+                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
@@ -776,9 +851,7 @@ class UploadImages(ComponentResource):
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(
-                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
-            ),
+            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

@@ -84,8 +84,12 @@ def _model_labels():
         _label(2, 1, "ADDRESS_LINE"),
         _label(2, 2, "ADDRESS_LINE"),
         _label(1, 1, "MERCHANT_NAME"),
-        _label(11, 1, "SUBTOTAL", ValidationStatus.PENDING.value),    # $4.29 (milk)
-        _label(12, 1, "LINE_TOTAL", ValidationStatus.PENDING.value),  # $1.38 (banana)
+        _label(
+            11, 1, "SUBTOTAL", ValidationStatus.PENDING.value
+        ),  # $4.29 (milk)
+        _label(
+            12, 1, "LINE_TOTAL", ValidationStatus.PENDING.value
+        ),  # $1.38 (banana)
         _label(13, 1, "GRAND_TOTAL", ValidationStatus.PENDING.value),
     ]
 
@@ -151,8 +155,8 @@ def test_locks_existing_line_total_against_llm_correction():
     labels = [
         _label(2, 1, "ADDRESS_LINE"),
         _label(1, 1, "MERCHANT_NAME"),
-        _label(11, 1, "SUBTOTAL", P),     # $4.29 mislabeled
-        _label(12, 1, "LINE_TOTAL", P),   # $1.38 model got this one right
+        _label(11, 1, "SUBTOTAL", P),  # $4.29 mislabeled
+        _label(12, 1, "LINE_TOTAL", P),  # $1.38 model got this one right
         _label(13, 1, "GRAND_TOTAL", P),
     ]
     words = _trader_joes_words()
@@ -180,8 +184,8 @@ def test_single_item_total_not_reclassified():
         _w(5, 2, "BURRITO", 0.24, 0.80),
         _w(5, 3, "9.99", 0.72, 0.80),
         _w(8, 1, "Total", 0.10, 0.60),
-        _w(8, 2, "10.83", 0.72, 0.60),     # model mislabels this SUBTOTAL
-        _w(12, 1, "10.83", 0.72, 0.50),    # the real grand total
+        _w(8, 2, "10.83", 0.72, 0.60),  # model mislabels this SUBTOTAL
+        _w(12, 1, "10.83", 0.72, 0.50),  # the real grand total
     ]
     labels = [
         _label(1, 1, "MERCHANT_NAME"),
@@ -214,7 +218,7 @@ def test_real_tax_without_subtotal_not_reclassified():
         _label(1, 1, "MERCHANT_NAME"),
         _label(5, 2, "LINE_TOTAL", P),
         _label(6, 2, "LINE_TOTAL", P),
-        _label(8, 2, "TAX", P),          # real tax, model missed SUBTOTAL
+        _label(8, 2, "TAX", P),  # real tax, model missed SUBTOTAL
         _label(9, 2, "GRAND_TOTAL", P),
     ]
     assert reclassify_mislabeled_totals(words, labels) == ([], [])
@@ -226,8 +230,10 @@ def test_invalid_line_total_not_locked_or_counted():
     words = _trader_joes_words()
     labels = [
         _label(1, 1, "MERCHANT_NAME"),
-        _label(11, 1, "SUBTOTAL", P),    # $4.29
-        _label(12, 1, "LINE_TOTAL", ValidationStatus.INVALID.value),  # $1.38 rejected
+        _label(11, 1, "SUBTOTAL", P),  # $4.29
+        _label(
+            12, 1, "LINE_TOTAL", ValidationStatus.INVALID.value
+        ),  # $1.38 rejected
         _label(13, 1, "GRAND_TOTAL", P),
     ]
     reclassifications, locked = reclassify_mislabeled_totals(words, labels)
@@ -265,7 +271,10 @@ def test_x_marker_in_product_or_pack_not_unit_price_row():
         _label(1, 1, "MERCHANT_NAME"),
         _label(9, 1, "GRAND_TOTAL"),
     ]
-    p = {(x.line_id, x.word_id): x for x in propose_line_item_labels(words, labels)}
+    p = {
+        (x.line_id, x.word_id): x
+        for x in propose_line_item_labels(words, labels)
+    }
     assert p[(5, 3)].label == "LINE_TOTAL"
     assert (5, 2) not in p or p[(5, 2)].label != "UNIT_PRICE"
 

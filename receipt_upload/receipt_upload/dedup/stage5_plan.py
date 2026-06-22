@@ -81,7 +81,7 @@ def gate_groups(groups, rec, words_by, totals, merchants=None):
         fps = {k: fp(k) for k in g}
         reasons, ok = [], True
         for i, ki in enumerate(g):
-            for kj in g[i + 1:]:
+            for kj in g[i + 1 :]:
                 is_dup, why = same_transaction(
                     fps[ki], fps[kj], denylist=denylist
                 )
@@ -147,9 +147,7 @@ def main():
         )
 
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(
-            [x.to_dict() for x in resolutions], f, indent=2, default=str
-        )
+        json.dump([x.to_dict() for x in resolutions], f, indent=2, default=str)
     print(f"  wrote {args.out}")
     if args.rejects:
         with open(args.rejects, "w", encoding="utf-8") as f:

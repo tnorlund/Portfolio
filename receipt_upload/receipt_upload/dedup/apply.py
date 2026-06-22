@@ -109,9 +109,7 @@ def _receipt_subtree_items(
                 dynamo,
                 TableName=dynamo.table_name,
                 IndexName="GSI1",
-                KeyConditionExpression=(
-                    "#pk = :pk AND begins_with(#sk, :sk)"
-                ),
+                KeyConditionExpression=("#pk = :pk AND begins_with(#sk, :sk)"),
                 ExpressionAttributeNames={
                     "#pk": "GSI1PK",
                     "#sk": "GSI1SK",
@@ -250,9 +248,11 @@ def execute(
     overwritten_labels = []
     for _a, label in labels_to_add:
         try:
-            existing = raw_client(dynamo).get_item(
-                TableName=dynamo.table_name, Key=label.key
-            ).get("Item")
+            existing = (
+                raw_client(dynamo)
+                .get_item(TableName=dynamo.table_name, Key=label.key)
+                .get("Item")
+            )
         except AWS_ERRORS:
             existing = None
         if existing:
@@ -397,6 +397,7 @@ def main() -> None:
     # hard receipt_dynamo client dependency.
     # pylint: disable=import-outside-toplevel
     from receipt_dynamo import DynamoClient
+
     from receipt_upload.dedup.dossiers import ENV_TABLE
 
     if args.rollback:

@@ -12,8 +12,13 @@ def _r(image_id, receipt_id, sha, w=100, h=100):
 
 
 def _obs(label, line, word, text, status=None):
-    return LabelObs(label=label, line_id=line, word_id=word, word_text=text,
-                    validation_status=status)
+    return LabelObs(
+        label=label,
+        line_id=line,
+        word_id=word,
+        word_text=text,
+        validation_status=status,
+    )
 
 
 def test_groups_only_shared_sha_with_multiple_receipts():

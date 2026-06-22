@@ -23,9 +23,9 @@ from typing import Dict, List, Set, Tuple
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-_FULL = re.compile(r"^\$?\d{1,4}[.,]\d{2}[A-Z]?$")   # $3.99, 3,99, 15.59T
-_DOT = re.compile(r"^\$?\d{1,4}[.,]$")               # "$3."  (split, left half)
-_FRAG = re.compile(r"^\d{2}$")                       # "99"   (split, right half)
+_FULL = re.compile(r"^\$?\d{1,4}[.,]\d{2}[A-Z]?$")  # $3.99, 3,99, 15.59T
+_DOT = re.compile(r"^\$?\d{1,4}[.,]$")  # "$3."  (split, left half)
+_FRAG = re.compile(r"^\d{2}$")  # "99"   (split, right half)
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS"}
 _TOTALS = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
 _PROPOSED_BY = "geometry_line_items"
@@ -138,7 +138,9 @@ def reclassify_mislabeled_totals(
         )
     ]
     grand_vals = [
-        v for v in (_amount(by_key[k].text) for k in grand_keys) if v is not None
+        v
+        for v in (_amount(by_key[k].text) for k in grand_keys)
+        if v is not None
     ]
     if not grand_vals:
         return [], []
@@ -193,7 +195,8 @@ def reclassify_mislabeled_totals(
         if p.label == "LINE_TOTAL"
     }
     l_clean = round(
-        sum((_amount(by_key[k].text) or 0.0) for k in lt_keys if k in by_key), 2
+        sum((_amount(by_key[k].text) or 0.0) for k in lt_keys if k in by_key),
+        2,
     )
     cand_sum = round(sum(v for _, _, v in candidates), 2)
 
@@ -205,7 +208,9 @@ def reclassify_mislabeled_totals(
     # more likely a mislabeled *total* than a lone line item — e.g. a one-item
     # cafe receipt where the model tags "Total 10.83" as SUBTOTAL. Requiring >=2
     # keeps us from "reconciling" such a receipt into a phantom line item.
-    line_total_count = len({k for k in lt_keys if k in by_key}) + len(candidates)
+    line_total_count = len({k for k in lt_keys if k in by_key}) + len(
+        candidates
+    )
     # Normal receipt: the real line items already sum to a labeled SUBTOTAL value.
     subtotal_vals = [v for _, lab, v in candidates if lab.label == "SUBTOTAL"]
     is_normal_receipt = l_clean > 0 and any(
@@ -259,6 +264,96 @@ def reclassify_mislabeled_totals(
         and lab.validation_status != ValidationStatus.INVALID.value
     ]
     return reclassifications, locked_line_totals
+
+
+def dedupe_grand_total(
+    words: List, existing_labels: List[ReceiptWordLabel]
+) -> List[ReceiptWordLabel]:
+    """Return redundant ``GRAND_TOTAL`` labels that should be invalidated.
+
+    Receipts restate the final total several times — "Balance to pay", a bare
+    total line, "TOTAL PURCHASE", and the card-tendered amount all carry the same
+    value — and the first-pass model tags every one ``GRAND_TOTAL`` (the Trader
+    Joe's June21 receipt had it three times). A receipt has exactly one grand
+    total, so the duplicates are noise: they inflate the LLM validator's workload
+    and corrupt downstream arithmetic.
+
+    We keep ONE canonical ``GRAND_TOTAL`` and report the rest for invalidation.
+    Conservative by construction — and, like the sibling
+    ``reclassify_mislabeled_totals``, it only ever touches **PENDING** labels:
+
+    * Only **exact-value** duplicates are touched. ``GRAND_TOTAL`` labels with a
+      different numeric value are left alone (they may be a legitimately distinct
+      amount, or an upstream error we shouldn't compound).
+    * **A confirmed copy is never invalidated.** Only the returned labels are
+      ``PENDING``. A ``VALID``/``NEEDS_REVIEW`` decision is deliberate (human or a
+      prior validator) and is honored — overriding it would violate the currency-
+      label invariant ("INVALID currency labels are deliberate; don't machine-
+      override a decided label"). If a value-group already has a confirmed copy,
+      that copy is canonical and only the ``PENDING`` duplicates of it are
+      reported. If a group has *multiple* confirmed copies we abstain entirely.
+    * When every copy in a value-group is ``PENDING``, the canonical kept copy is
+      the **lowest one on the receipt** (smallest y-center — header is high-y, the
+      final total prints last/lowest); the equal-valued restatements above it are
+      the redundant copies.
+
+    Callers should mark each returned label ``INVALID`` (audit trail, never
+    delete) and drop it from the pending set so the validators don't resurrect it.
+    Returns an empty list when there is nothing to dedupe.
+    """
+    pos: Dict[Tuple[int, int], float] = {}
+    for w in words:
+        xy = _xy(w)
+        if xy is not None:
+            pos[(w.line_id, w.word_id)] = xy[1]
+    val_by_key: Dict[Tuple[int, int], float] = {}
+    for w in words:
+        key = (w.line_id, w.word_id)
+        if key in pos and _is_money(w.text):
+            v = _amount(w.text)
+            if v is not None:
+                val_by_key[key] = round(v, 2)
+
+    # Group active GRAND_TOTAL labels by their word's numeric value.
+    by_value: Dict[float, List[ReceiptWordLabel]] = {}
+    for lab in existing_labels:
+        if (
+            lab.label != "GRAND_TOTAL"
+            or lab.validation_status == ValidationStatus.INVALID.value
+        ):
+            continue
+        key = (lab.line_id, lab.word_id)
+        val = val_by_key.get(key)
+        if val is None:
+            continue
+        by_value.setdefault(val, []).append(lab)
+
+    redundant: List[ReceiptWordLabel] = []
+    for _val, labs in by_value.items():
+        if len(labs) < 2:
+            continue
+        pending = [
+            lab
+            for lab in labs
+            if lab.validation_status == ValidationStatus.PENDING.value
+        ]
+        confirmed = [
+            lab
+            for lab in labs
+            if lab.validation_status != ValidationStatus.PENDING.value
+        ]
+        if len(confirmed) >= 2:
+            # Multiple deliberate copies — not ours to reconcile; abstain.
+            continue
+        if confirmed:
+            # The single confirmed copy is canonical; only its PENDING
+            # duplicates are redundant (never invalidate the confirmed one).
+            redundant.extend(pending)
+            continue
+        # All PENDING: keep the lowest-on-receipt copy, invalidate the rest.
+        pending.sort(key=lambda lab: pos.get((lab.line_id, lab.word_id), 0.0))
+        redundant.extend(pending[1:])
+    return redundant
 
 
 def propose_line_item_labels(
@@ -398,12 +493,18 @@ def propose_line_item_labels(
                 for m in prices_right[:-1]:
                     proposals[(m.line_id, m.word_id)] = "UNIT_PRICE"
             elif len(prices_right) == 1:
-                proposals[(prices_right[0].line_id, prices_right[0].word_id)] = (
-                    "UNIT_PRICE"
-                )
-            for w in row:                            # product = text left of "@"
-                if xl(w) < at_x and _has_letters(w.text) and not _is_money(w.text):
-                    proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
+                proposals[
+                    (prices_right[0].line_id, prices_right[0].word_id)
+                ] = "UNIT_PRICE"
+            for w in row:  # product = text left of "@"
+                if (
+                    xl(w) < at_x
+                    and _has_letters(w.text)
+                    and not _is_money(w.text)
+                ):
+                    proposals.setdefault(
+                        (w.line_id, w.word_id), "PRODUCT_NAME"
+                    )
             continue
 
         # --- normal product row ------------------------------------------
@@ -412,18 +513,24 @@ def propose_line_item_labels(
         # A line total must be a real price (a full token, or the "$3." left half
         # of a split) — never a bare two-digit token, which is usually a quantity.
         line_total = next(
-            (m for m in reversed(monies) if _FULL.match(m.text) or _DOT.match(m.text)),
+            (
+                m
+                for m in reversed(monies)
+                if _FULL.match(m.text) or _DOT.match(m.text)
+            ),
             None,
         )
         if line_total is None:
             continue
         group = [line_total]
         group_keys = {(line_total.line_id, line_total.word_id)}
-        for m in monies:                            # split-price recovery
+        for m in monies:  # split-price recovery
             if (m.line_id, m.word_id) in group_keys:
                 continue
             if abs(xl(m) - xl(line_total)) < 0.14 and (
-                _DOT.match(m.text) or _FRAG.match(m.text) or _DOT.match(line_total.text)
+                _DOT.match(m.text)
+                or _FRAG.match(m.text)
+                or _DOT.match(line_total.text)
             ):
                 group.append(m)
                 group_keys.add((m.line_id, m.word_id))
@@ -432,8 +539,12 @@ def propose_line_item_labels(
         full = next((m for m in group if _FULL.match(m.text)), None)
         if full and (val := _amount(full.text)) is not None:
             line_vals.append(val)
-        for w in row:                                # product = text left of price
-            if xl(w) < xl(line_total) and _has_letters(w.text) and not _is_money(w.text):
+        for w in row:  # product = text left of price
+            if (
+                xl(w) < xl(line_total)
+                and _has_letters(w.text)
+                and not _is_money(w.text)
+            ):
                 proposals.setdefault((w.line_id, w.word_id), "PRODUCT_NAME")
 
     # Arithmetic confidence: Σ line_total vs subtotal/grand total.
@@ -446,22 +557,28 @@ def propose_line_item_labels(
     if line_vals and tot_vals:
         s = round(sum(line_vals), 2)
         target = min(tot_vals, key=lambda t: abs(t - s))
-        arith = abs(s - target) <= 0.02     # strict: exact-to-2-cents to auto-commit
+        arith = (
+            abs(s - target) <= 0.02
+        )  # strict: exact-to-2-cents to auto-commit
     state = (
-        "consistent" if arith else "mismatch" if arith is False else "unverified"
+        "consistent"
+        if arith
+        else "mismatch" if arith is False else "unverified"
     )
     reason = f"Geometry line-item reconstruction (arithmetic {state})."
     # Auto-validate when the line totals provably sum to the receipt total;
     # otherwise leave PENDING for the Chroma/LLM validators to confirm.
     status = (
-        ValidationStatus.VALID.value if arith else ValidationStatus.PENDING.value
+        ValidationStatus.VALID.value
+        if arith
+        else ValidationStatus.PENDING.value
     )
 
     by_key = {(w.line_id, w.word_id): w for w in placed}
     out: List[ReceiptWordLabel] = []
     for key, label in proposals.items():
-        if key in labeled_any:       # word already carries a label (incl. INVALID)
-            continue                  # — don't double-label or resurrect a rejection
+        if key in labeled_any:  # word already carries a label (incl. INVALID)
+            continue  # — don't double-label or resurrect a rejection
         w0 = by_key.get(key)
         if w0 is None:
             continue

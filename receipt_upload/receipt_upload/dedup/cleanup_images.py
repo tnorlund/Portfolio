@@ -289,8 +289,8 @@ def main() -> None:
 
     # pylint: disable=import-outside-toplevel
     import boto3
-
     from receipt_dynamo import DynamoClient
+
     from receipt_upload.dedup.dossiers import ENV_TABLE
 
     dynamo = DynamoClient(ENV_TABLE[args.env])

@@ -44,9 +44,18 @@ class _FakeClient:
         return {
             "metadatas": [
                 [
-                    {"image_id": "other-1", "valid_labels_array": [self.primary]},
-                    {"image_id": "other-2", "valid_labels_array": [self.primary]},
-                    {"image_id": "other-3", "valid_labels_array": [self.primary]},
+                    {
+                        "image_id": "other-1",
+                        "valid_labels_array": [self.primary],
+                    },
+                    {
+                        "image_id": "other-2",
+                        "valid_labels_array": [self.primary],
+                    },
+                    {
+                        "image_id": "other-3",
+                        "valid_labels_array": [self.primary],
+                    },
                 ]
             ],
             "distances": [[0.2, 0.3, 0.4]],
@@ -56,9 +65,9 @@ class _FakeClient:
 def _setup():
     words = [
         _w(1, 1, "STORE", 0.2, 0.95),
-        _w(8, 1, "GREEK", 0.1, 0.70),     # unlabeled product (geometry missed)
+        _w(8, 1, "GREEK", 0.1, 0.70),  # unlabeled product (geometry missed)
         _w(8, 2, "YOGURT", 0.22, 0.70),
-        _w(8, 3, "$5.99", 0.72, 0.70),    # money — never a product
+        _w(8, 3, "$5.99", 0.72, 0.70),  # money — never a product
         _w(13, 1, "$9.99", 0.72, 0.50),
     ]
     anchors = [_anchor(1, 1, "STORE_HOURS"), _anchor(13, 1, "GRAND_TOTAL")]
@@ -78,7 +87,9 @@ def test_proposes_product_name_for_unlabeled_in_band_word():
 
 def test_skips_when_knn_majority_is_not_product():
     words, anchors, embeddings = _setup()
-    out = propose_product_names(words, anchors, _FakeClient(primary="LINE_TOTAL"), embeddings)
+    out = propose_product_names(
+        words, anchors, _FakeClient(primary="LINE_TOTAL"), embeddings
+    )
     assert out == []
 
 
@@ -117,7 +128,58 @@ def test_o_label_word_is_still_a_candidate():
 def test_invalid_only_word_is_still_a_candidate():
     """A word whose only label is INVALID is effectively unlabeled."""
     words, anchors, embeddings = _setup()
-    anchors = anchors + [_pending(8, 1, "PRODUCT_NAME", ValidationStatus.INVALID.value)]
+    anchors = anchors + [
+        _pending(8, 1, "PRODUCT_NAME", ValidationStatus.INVALID.value)
+    ]
+    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    assert keys_has(out, 8, 1)
+
+
+def test_field_keywords_are_never_proposed():
+    """Structural/field keywords must not be proposed PRODUCT_NAME even when the
+    kNN majority-votes product (historical mislabels poison the validated pool).
+
+    Regression for the June21 MCP review, where ``Total``/``Tax``/``Tip``/
+    ``Weight``/``oz``/``Guests``/``Member`` and card-slip furniture were
+    over-proposed and dumped onto the LLM validator to reject.
+    """
+    anchors = [_anchor(1, 1, "STORE_HOURS"), _anchor(20, 1, "GRAND_TOTAL")]
+    keywords = [
+        "Total",
+        "Subtotal",
+        "Tax",
+        "Tip",
+        "Weight",
+        "oz",
+        "Guests",
+        "Member",
+        "DEBIT",
+        "INVOICE",
+    ]
+    words = [_w(1, 1, "STORE", 0.2, 0.95)]
+    embeddings = {}
+    for i, kw in enumerate(keywords):
+        line = 5 + i
+        words.append(_w(line, 1, kw, 0.2, 0.80 - i * 0.02))
+        embeddings[(line, 1)] = [0.1] * 8
+    words.append(_w(20, 1, "$9.99", 0.72, 0.50))
+
+    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    assert (
+        out == []
+    ), f"field keywords were proposed: {[(o.line_id, o.word_id) for o in out]}"
+
+
+def test_keyword_substring_is_not_blocked():
+    """Only exact field-keyword words are blocked; product words that merely
+    contain a keyword substring (e.g. ``Taxidermy``) remain candidates."""
+    anchors = [_anchor(1, 1, "STORE_HOURS"), _anchor(13, 1, "GRAND_TOTAL")]
+    words = [
+        _w(1, 1, "STORE", 0.2, 0.95),
+        _w(8, 1, "Taxidermy", 0.1, 0.70),
+        _w(13, 1, "$9.99", 0.72, 0.50),
+    ]
+    embeddings = {(8, 1): [0.1] * 8}
     out = propose_product_names(words, anchors, _FakeClient(), embeddings)
     assert keys_has(out, 8, 1)
 

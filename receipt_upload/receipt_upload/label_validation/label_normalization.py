@@ -6,7 +6,6 @@ from typing import Any
 
 from receipt_dynamo.constants import CORE_LABELS
 
-
 NON_CORE_LABEL_ALIASES: dict[str, str] = {
     "ADDRESS": "ADDRESS_LINE",
     "BUSINESS_NAME": "MERCHANT_NAME",

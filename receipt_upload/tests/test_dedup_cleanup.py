@@ -12,8 +12,12 @@ from receipt_upload.dedup.cleanup_images import (
 
 
 def _img(image_id, **kw):
-    d = dict(image_id=image_id, raw_s3_bucket="rawb", raw_s3_key="raw/x.png",
-             cdn_s3_bucket="cdnb")
+    d = dict(
+        image_id=image_id,
+        raw_s3_bucket="rawb",
+        raw_s3_key="raw/x.png",
+        cdn_s3_bucket="cdnb",
+    )
     d.update(kw)
     return SimpleNamespace(**d)
 
@@ -33,7 +37,10 @@ class FakeDynamo:
 
     def query(self, **kw):
         iid = kw["ExpressionAttributeValues"][":pk"]["S"].split("#", 1)[1]
-        return {"Items": self.items_by_image.get(iid, []), "LastEvaluatedKey": None}
+        return {
+            "Items": self.items_by_image.get(iid, []),
+            "LastEvaluatedKey": None,
+        }
 
     def delete_item(self, TableName, Key):
         self.deleted_keys.append(Key)
@@ -49,6 +56,7 @@ class FakeS3:
     def download_file(self, bucket, key, local):
         if key in self.missing:
             from botocore.exceptions import ClientError
+
             raise ClientError(
                 {"Error": {"Code": "404", "Message": "Not Found"}},
                 "GetObject",
@@ -64,25 +72,44 @@ class FakeS3:
 
 
 def test_s3_targets_raw_plus_cdn_variants_deduped():
-    img = _img("a", cdn_s3_key="assets/a.jpg", cdn_webp_s3_key="assets/a.webp",
-               cdn_thumbnail_s3_key="assets/a_thumb.jpg")
+    img = _img(
+        "a",
+        cdn_s3_key="assets/a.jpg",
+        cdn_webp_s3_key="assets/a.webp",
+        cdn_thumbnail_s3_key="assets/a_thumb.jpg",
+    )
     keys = {o.key for o in image_s3_targets(img)}
-    assert keys == {"raw/x.png", "assets/a.jpg", "assets/a.webp", "assets/a_thumb.jpg"}
+    assert keys == {
+        "raw/x.png",
+        "assets/a.jpg",
+        "assets/a.webp",
+        "assets/a_thumb.jpg",
+    }
 
 
 def test_plan_refuses_images_that_still_have_receipts():
-    items = {"a": [_item("IMAGE"), _item("LINE")],          # orphaned
-             "b": [_item("IMAGE"), _item("RECEIPT")]}        # NOT orphaned
+    items = {
+        "a": [_item("IMAGE"), _item("LINE")],  # orphaned
+        "b": [_item("IMAGE"), _item("RECEIPT")],
+    }  # NOT orphaned
     dyn = FakeDynamo(items)
-    cleanups, refused = plan_image_cleanup(dyn, {"a": _img("a"), "b": _img("b")}, ["a", "b"])
+    cleanups, refused = plan_image_cleanup(
+        dyn, {"a": _img("a"), "b": _img("b")}, ["a", "b"]
+    )
     assert [c.image_id for c in cleanups] == ["a"]
-    assert refused and refused[0]["image_id"] == "b" and refused[0]["receipt_count"] == 1
+    assert (
+        refused
+        and refused[0]["image_id"] == "b"
+        and refused[0]["receipt_count"] == 1
+    )
 
 
 def test_dry_run_performs_no_io():
     items = {"a": [_item("IMAGE")]}
     dyn = FakeDynamo(items)
-    cleanups, _ = plan_image_cleanup(dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"])
+    cleanups, _ = plan_image_cleanup(
+        dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"]
+    )
     rep = execute_cleanup(cleanups, dyn, FakeS3(), apply=False)
     assert rep["dry_run"] and rep["images_deleted"] == 1
     assert dyn.deleted_keys == []  # nothing deleted in dry-run
@@ -91,21 +118,33 @@ def test_dry_run_performs_no_io():
 def test_execute_backs_up_then_deletes(tmp_path):
     items = {"a": [_item("IMAGE"), _item("LINE")]}
     dyn = FakeDynamo(items)
-    cleanups, _ = plan_image_cleanup(dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"])
+    cleanups, _ = plan_image_cleanup(
+        dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"]
+    )
     s3 = FakeS3()
-    rep = execute_cleanup(cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path))
+    rep = execute_cleanup(
+        cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path)
+    )
     assert rep["images_deleted"] == 1 and rep["s3_deleted"] == 2  # raw + cdn
     # deletes exactly the captured items (IMAGE + LINE), not a re-query
     assert len(dyn.deleted_keys) == 2 and rep["dynamo_items_deleted"] == 2
-    assert ("rawb", "raw/x.png") in s3.deleted and ("cdnb", "assets/a.jpg") in s3.deleted
-    assert (tmp_path / "a.dynamo.json").exists() and (tmp_path / "a.s3.json").exists()
+    assert ("rawb", "raw/x.png") in s3.deleted and (
+        "cdnb",
+        "assets/a.jpg",
+    ) in s3.deleted
+    assert (tmp_path / "a.dynamo.json").exists() and (
+        tmp_path / "a.s3.json"
+    ).exists()
 
 
 def test_s3_ownership_guard_skips_foreign_key():
     # a CDN key that does NOT contain the image_id points at another image's
     # pixels (crossed pointer) and must be excluded from the delete targets.
-    img = _img("img-OWNER", cdn_s3_key="assets/img-OWNER.jpg",
-               cdn_webp_s3_key="assets/SOMEONE-ELSE.webp")
+    img = _img(
+        "img-OWNER",
+        cdn_s3_key="assets/img-OWNER.jpg",
+        cdn_webp_s3_key="assets/SOMEONE-ELSE.webp",
+    )
     keys = {o.key for o in image_s3_targets(img)}
     assert "assets/img-OWNER.jpg" in keys
     assert "assets/SOMEONE-ELSE.webp" not in keys  # foreign pointer skipped
@@ -113,28 +152,37 @@ def test_s3_ownership_guard_skips_foreign_key():
 
 def test_execute_requires_backup_dir():
     import pytest
+
     with pytest.raises(ValueError):
-        execute_cleanup([], FakeDynamo({}), FakeS3(), apply=True, backup_dir=None)
+        execute_cleanup(
+            [], FakeDynamo({}), FakeS3(), apply=True, backup_dir=None
+        )
 
 
 def test_missing_s3_object_is_counted_not_fatal(tmp_path):
     items = {"a": [_item("IMAGE")]}
     dyn = FakeDynamo(items)
-    cleanups, _ = plan_image_cleanup(dyn, {"a": _img("a", cdn_s3_key="assets/gone.jpg")}, ["a"])
+    cleanups, _ = plan_image_cleanup(
+        dyn, {"a": _img("a", cdn_s3_key="assets/gone.jpg")}, ["a"]
+    )
     s3 = FakeS3(missing={"assets/gone.jpg"})
-    rep = execute_cleanup(cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path))
+    rep = execute_cleanup(
+        cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path)
+    )
     assert rep["s3_missing"] == 1 and rep["images_deleted"] == 1
 
 
 def test_rollback_restores_dynamo_and_s3(tmp_path):
     items = {"a": [_item("IMAGE"), _item("LINE")]}
     dyn = FakeDynamo(items)
-    cleanups, _ = plan_image_cleanup(dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"])
+    cleanups, _ = plan_image_cleanup(
+        dyn, {"a": _img("a", cdn_s3_key="assets/a.jpg")}, ["a"]
+    )
     s3 = FakeS3()
     execute_cleanup(cleanups, dyn, s3, apply=True, backup_dir=str(tmp_path))
 
     dyn2, s3_2 = FakeDynamo({}), FakeS3()
     rep = rollback_cleanup(str(tmp_path), dyn2, s3_2)
-    assert rep["items_restored"] == 2          # IMAGE + LINE re-put
-    assert rep["s3_restored"] == 2             # raw + cdn re-uploaded
+    assert rep["items_restored"] == 2  # IMAGE + LINE re-put
+    assert rep["s3_restored"] == 2  # raw + cdn re-uploaded
     assert len(dyn2.put_items) == 2 and len(s3_2.uploaded) == 2
