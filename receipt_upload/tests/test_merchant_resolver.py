@@ -1347,6 +1347,150 @@ class TestMerchantResolverLabeledFields:
         )
         chroma_search.assert_not_called()
 
+    def test_place_query_enriched_with_full_merchant_line(self):
+        """The Places text query is the full MERCHANT_NAME line (carries the
+        city) — not the bare labelled token, nor the geometric top line (the
+        check number). A bare "IN-N-OUT" returns an arbitrary branch; the city
+        ("HENDERSON") disambiguates to the right store."""
+        resolver = MerchantResolver(
+            dynamo_client=MagicMock(), places_client=MagicMock()
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=2,
+                word_id=1,
+                text="IN-N-OUT",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=4,
+                word_id=1,
+                text="123",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=4,
+                word_id=2,
+                text="Main",
+                extracted_data={},
+            ),
+        ]
+        # line 1 is the check number (the geometric top line); line 2 is the
+        # real merchant header carrying the city.
+        l1 = MagicMock(spec=ReceiptLine, line_id=1, text="105")
+        l1.calculate_centroid.return_value = (0.5, 0.05)
+        l2 = MagicMock(
+            spec=ReceiptLine, line_id=2, text="IN-N-OUT BURGER HENDERSON"
+        )
+        l2.calculate_centroid.return_value = (0.5, 0.1)
+        labels = [
+            _label(2, 1, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(4, 1, "ADDRESS_LINE", ValidationStatus.VALID.value),
+            _label(4, 2, "ADDRESS_LINE", ValidationStatus.VALID.value),
+        ]
+        labeled_result = MerchantResult(
+            place_id="ChIJ_innout_henderson",
+            merchant_name="In-N-Out Burger",
+            confidence=0.80,
+            resolution_tier="place_id_labeled_fields",
+        )
+        with (
+            patch.object(
+                resolver,
+                "_run_labeled_place_search",
+                return_value=labeled_result,
+            ) as labeled_search,
+            patch.object(resolver, "_similarity_search"),
+        ):
+            resolver.resolve(
+                lines_client=MagicMock(),
+                lines=[l1, l2],
+                words=words,
+                image_id="img",
+                receipt_id=1,
+                line_embeddings={},
+                word_labels=labels,
+            )
+        assert (
+            labeled_search.call_args.kwargs["merchant_name"]
+            == "IN-N-OUT BURGER HENDERSON"
+        )
+
+    def test_place_query_ignores_rejected_merchant_label_line(self):
+        """A NEEDS_REVIEW/INVALID MERCHANT_NAME label must not drag its line into
+        the Places query. Line 1 carries a rejected MERCHANT_NAME label and would
+        be picked first (lowest line_id) if not filtered; the query must instead
+        use line 2, which carries the VALID label."""
+        resolver = MerchantResolver(
+            dynamo_client=MagicMock(), places_client=MagicMock()
+        )
+        words = [
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                word_id=1,
+                text="IN-N-OUT",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=2,
+                word_id=1,
+                text="IN-N-OUT",
+                extracted_data={},
+            ),
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=4,
+                word_id=1,
+                text="123",
+                extracted_data={},
+            ),
+        ]
+        l1 = MagicMock(
+            spec=ReceiptLine, line_id=1, text="IN-N-OUT EXPRESS DELIVERY"
+        )
+        l1.calculate_centroid.return_value = (0.5, 0.05)
+        l2 = MagicMock(
+            spec=ReceiptLine, line_id=2, text="IN-N-OUT BURGER HENDERSON"
+        )
+        l2.calculate_centroid.return_value = (0.5, 0.1)
+        labels = [
+            _label(1, 1, "MERCHANT_NAME", ValidationStatus.NEEDS_REVIEW.value),
+            _label(2, 1, "MERCHANT_NAME", ValidationStatus.VALID.value),
+            _label(4, 1, "ADDRESS_LINE", ValidationStatus.VALID.value),
+        ]
+        labeled_result = MerchantResult(
+            place_id="X",
+            merchant_name="In-N-Out Burger",
+            confidence=0.80,
+            resolution_tier="place_id_labeled_fields",
+        )
+        with (
+            patch.object(
+                resolver,
+                "_run_labeled_place_search",
+                return_value=labeled_result,
+            ) as labeled_search,
+            patch.object(resolver, "_similarity_search"),
+        ):
+            resolver.resolve(
+                lines_client=MagicMock(),
+                lines=[l1, l2],
+                words=words,
+                image_id="img",
+                receipt_id=1,
+                line_embeddings={},
+                word_labels=labels,
+            )
+        assert (
+            labeled_search.call_args.kwargs["merchant_name"]
+            == "IN-N-OUT BURGER HENDERSON"
+        )
+
     def test_pending_labeled_fields_do_not_short_circuit_places(self):
         dynamo = MagicMock()
         resolver = MerchantResolver(

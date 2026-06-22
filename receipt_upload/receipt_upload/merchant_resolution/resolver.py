@@ -431,9 +431,52 @@ class MerchantResolver:
         ) or self._extract_labeled_text(
             words, word_labels, "MERCHANT_NAME", require_valid=False
         )
+        merchant_line = self._get_merchant_line(lines)
         if not merchant_hint:
-            merchant_line = self._get_merchant_line(lines)
             merchant_hint = merchant_line.text if merchant_line else None
+
+        # For the Google Places TEXT query, enrich the labelled name with the rest
+        # of ITS line — that extra text is usually the city ("IN-N-OUT" + "BURGER
+        # HENDERSON"), which disambiguates a chain to the right location (a bare
+        # "IN-N-OUT" returns an arbitrary branch). Guards, so we never query the
+        # wrong text:
+        #   - find the name line via the MERCHANT_NAME *label*, not geometry (the
+        #     top line is often the check #, e.g. "105");
+        #   - exclude validator-rejected labels (INVALID/NEEDS_REVIEW), matching
+        #     the trust filter merchant_hint uses;
+        #   - use the SINGLE line whose tokens contain the labelled name — never a
+        #     join of all labelled lines (a mislabelled footer word would
+        #     otherwise pollute the query);
+        #   - drop pure-numeric/symbol tokens (check/register/store numbers).
+        _rejected_status = {
+            ValidationStatus.INVALID.value,
+            ValidationStatus.NEEDS_REVIEW.value,
+        }
+        merchant_name_line_ids = {
+            lab.line_id
+            for lab in word_labels
+            if lab.label == "MERCHANT_NAME"
+            and lab.validation_status not in _rejected_status
+        }
+        place_text_query = merchant_hint
+        if merchant_hint:
+            hint_tokens = set(re.findall(r"[a-z0-9]+", merchant_hint.lower()))
+            for ln in sorted(lines, key=lambda line: line.line_id):
+                if ln.line_id not in merchant_name_line_ids or not ln.text:
+                    continue
+                ln_tokens = set(re.findall(r"[a-z0-9]+", ln.text.lower()))
+                if (
+                    hint_tokens
+                    and hint_tokens <= ln_tokens
+                    and len(ln.text) > len(merchant_hint)
+                ):
+                    cleaned = " ".join(
+                        tok
+                        for tok in ln.text.split()
+                        if not re.fullmatch(r"[#\d.,:-]+", tok)
+                    ).strip()
+                    place_text_query = cleaned or ln.text
+                    break
 
         _log(
             "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
@@ -452,7 +495,7 @@ class MerchantResolver:
         # inert because it required VALID labels that don't exist yet here.
         if phone or address:
             result = self._run_labeled_place_search(
-                merchant_name=merchant_hint,
+                merchant_name=place_text_query,
                 address=address,
                 phone=phone,
             )
@@ -1247,8 +1290,13 @@ class MerchantResolver:
                 places_api=self.places_client,
             )
 
-            # Run the agent (sync wrapper for async)
-            result = asyncio.get_event_loop().run_until_complete(
+            # Run the agent. Use asyncio.run() rather than get_event_loop():
+            # process_embeddings drives the resolver from a ThreadPoolExecutor
+            # worker thread, which has no current/default event loop, so
+            # asyncio.get_event_loop() raises "There is no current event loop in
+            # thread '...'" and the agentic tier silently never runs.
+            # asyncio.run() creates, drives, and tears down a fresh loop.
+            result = asyncio.run(
                 run_place_id_finder(
                     graph=graph,
                     state_holder=state_holder,
@@ -1283,67 +1331,13 @@ class MerchantResolver:
             )
             # Fall through to simple search below
         except RuntimeError as exc:
-            # Handle "no running event loop" error in Lambda
-            if "no running event loop" in str(
-                exc
-            ) or "cannot be called from a running event loop" in str(exc):
-                _log("Event loop issue, trying asyncio.run(): %s", exc)
-                try:
-                    # pylint: disable=import-outside-toplevel
-                    from receipt_agent.agents.place_id_finder import (
-                        create_place_id_finder_graph,
-                        run_place_id_finder,
-                    )
-
-                    def embed_fn(texts: List[str]) -> List[List[float]]:
-                        if not self.openai_client or not texts:
-                            return []
-                        from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
-                            embed_texts,
-                        )
-
-                        return embed_texts(
-                            client=self.openai_client,
-                            texts=texts,
-                            model="text-embedding-3-small",
-                        )
-
-                    graph, state_holder = create_place_id_finder_graph(
-                        dynamo_client=self.dynamo,
-                        chroma_client=lines_client,
-                        embed_fn=embed_fn,
-                        places_api=self.places_client,
-                    )
-
-                    result = asyncio.run(
-                        run_place_id_finder(
-                            graph=graph,
-                            state_holder=state_holder,
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            callbacks=langsmith_callbacks,
-                        )
-                    )
-
-                    if (
-                        result
-                        and result.get("found")
-                        and result.get("place_id")
-                    ):
-                        return MerchantResult(
-                            place_id=result["place_id"],
-                            merchant_name=result.get("place_name"),
-                            address=result.get("place_address"),
-                            phone=result.get("place_phone"),
-                            confidence=result.get("confidence", 0.0),
-                            resolution_tier="place_id_finder_agentic",
-                        )
-                except (
-                    Exception
-                ) as inner_exc:  # pylint: disable=broad-exception-caught
-                    _log("Agentic fallback also failed: %s", inner_exc)
-            else:
-                _log("RuntimeError in agentic finder: %s", exc)
+            # The primary path already uses asyncio.run(). The only RuntimeError
+            # it can raise here is "cannot be called from a running event loop",
+            # which does not occur on the ThreadPoolExecutor worker that drives
+            # this resolver. Retrying asyncio.run() identically (the old fallback)
+            # could never help, so just log and fall through to the simple
+            # (non-async) Place ID search below.
+            _log("Agentic finder unavailable (%s); using simple search", exc)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error running agentic Place ID Finder: %s", exc)
             logger.exception("Agentic Place ID Finder failed")
