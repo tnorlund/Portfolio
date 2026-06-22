@@ -65,12 +65,70 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
+_TRACE_SANITIZE_LOGGED = False
+
+
+def _sanitize_trace_io(obj):
+    """Stringify tuple dict keys so LangSmith can serialize this module's trace
+    I/O.
+
+    Several traced functions here return ``EmbeddingResult``, whose
+    ``word_embeddings`` field is keyed by ``(line_id, word_id)`` tuples.
+    LangSmith's serializer can't encode tuple dict keys (orjson's
+    OPT_NON_STR_KEYS doesn't cover tuples; the json fallback rejects them too —
+    langchain-ai/langsmith-sdk#3071), so it silently drops the run's outputs
+    with "Unable to process trace outputs: TypeError('keys must be
+    str...not tuple')". This runs ONLY on the copy LangSmith serializes (via
+    ``process_inputs``/``process_outputs``); the real return value keeps its
+    tuple keys, so there is zero functional change.
+    """
+    global _TRACE_SANITIZE_LOGGED
+    if isinstance(obj, dict):
+        out = {}
+        changed = False
+        for k, v in obj.items():
+            if k is not None and not isinstance(k, (str, int, float, bool)):
+                k = "_".join(map(str, k)) if isinstance(k, tuple) else str(k)
+                changed = True
+            out[k] = _sanitize_trace_io(v)
+        if changed and not _TRACE_SANITIZE_LOGGED:
+            _TRACE_SANITIZE_LOGGED = True
+            print(
+                "[TRACE_SANITIZE] receipt_chroma: tuple keys in trace I/O "
+                "(langsmith#3071)",
+                flush=True,
+            )
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_trace_io(x) for x in obj]
+    # LangSmith serializes dataclasses to dicts; recurse into a SHALLOW field
+    # map (not dataclasses.asdict, which would deep-copy non-dataclass fields
+    # like ChromaClient) so a tuple-keyed dict field is coerced. Trace-only, so
+    # never raise.
+    if hasattr(obj, "__dataclass_fields__") and not isinstance(obj, type):
+        try:
+            fields = {
+                name: getattr(obj, name)
+                for name in obj.__dataclass_fields__
+                if not name.startswith("_")
+            }
+            return {k: _sanitize_trace_io(v) for k, v in fields.items()}
+        except Exception:  # pylint: disable=broad-exception-caught
+            return obj
+    return obj
+
+
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
         from langsmith.run_helpers import (  # pylint: disable=import-outside-toplevel
-            traceable,
+            traceable as _ls_traceable,
         )
+
+        def traceable(*args, **kwargs):
+            kwargs.setdefault("process_inputs", _sanitize_trace_io)
+            kwargs.setdefault("process_outputs", _sanitize_trace_io)
+            return _ls_traceable(*args, **kwargs)
 
         return traceable
     except ImportError:
