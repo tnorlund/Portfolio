@@ -29,9 +29,9 @@ SHARED_BUCKETS = {"upload-images-image-bucket-4bcea7e"}
 _CDN_FIELDS = [
     "cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key",
     "cdn_thumbnail_s3_key", "cdn_thumbnail_webp_s3_key",
-    "cdn_thumbnail_avif_s3_key", "cdn_small_s3_key", "cdn_small_webp_s3_key",
-    "cdn_small_avif_s3_key", "cdn_medium_s3_key", "cdn_medium_webp_s3_key",
-    "cdn_medium_avif_s3_key",
+    "cdn_thumbnail_avif_s3_key", "cdn_small_s3_key",
+    "cdn_small_webp_s3_key", "cdn_small_avif_s3_key", "cdn_medium_s3_key",
+    "cdn_medium_webp_s3_key", "cdn_medium_avif_s3_key",
 ]
 
 
@@ -112,7 +112,9 @@ def _partition_items(dynamo, image_id: str) -> List[dict]:
     )
 
 
-def build_plan(src_env: str, dst_env: str, env_table: Dict[str, str]) -> MigrationPlan:
+def build_plan(
+    src_env: str, dst_env: str, env_table: Dict[str, str]
+) -> MigrationPlan:
     """Enumerate the genuinely-new records + S3 objects to copy src -> dst."""
     src = DynamoClient(env_table[src_env])
     dst = DynamoClient(env_table[dst_env])
