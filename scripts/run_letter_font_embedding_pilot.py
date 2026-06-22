@@ -276,6 +276,7 @@ def main() -> None:
         collection_name=args.collection_name,
         extra_metadata_by_id=extra_metadata,
         limit=args.query_check_limit,
+        reset_collection=not args.no_reset,
     )
 
     report = _build_report(
@@ -444,6 +445,7 @@ def _persist_and_evaluate_chroma(
     extra_metadata_by_id: dict[str, dict[str, object]],
     limit: int,
     batch_size: int = 1000,
+    reset_collection: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     with ChromaClient(
         persist_directory=persist_directory,
@@ -457,7 +459,7 @@ def _persist_and_evaluate_chroma(
                 "description": "Receipt OCR letter crop style embeddings"
             },
         )
-        if collection.count():
+        if reset_collection and collection.count():
             existing = collection.get(include=["metadatas"])
             existing_ids = list(existing.get("ids") or [])
             for start in range(0, len(existing_ids), batch_size):

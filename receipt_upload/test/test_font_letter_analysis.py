@@ -6,10 +6,12 @@ import pytest
 from PIL import Image, ImageDraw
 
 from receipt_upload.font_letter_analysis import (
+    LetterImageSample,
     build_letter_image_samples,
     build_line_font_samples,
     cluster_letter_styles,
     cluster_line_font_styles,
+    upsert_letter_samples_to_chroma,
 )
 
 
@@ -215,3 +217,70 @@ def test_letter_embeddings_skip_low_confidence_letters():
 
     assert len(samples) == 19
     assert all(sample.metrics["confidence"] >= 0.35 for sample in samples)
+
+
+@pytest.mark.unit
+def test_chroma_upsert_preserves_existing_rows_by_default(
+    tmp_path, monkeypatch
+):
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.ids = ["existing"]
+            self.deleted: list[str] = []
+
+        def count(self) -> int:
+            return len(self.ids)
+
+        def get(self, include=None):
+            return {"ids": list(self.ids)}
+
+        def delete(self, ids):
+            self.deleted.extend(ids)
+            self.ids = [value for value in self.ids if value not in ids]
+
+    class FakeClient:
+        collection = FakeCollection()
+
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            pass
+
+        def get_collection(self, *args, **kwargs):
+            return self.collection
+
+        def upsert(self, *, ids, **kwargs) -> None:
+            self.collection.ids.extend(ids)
+
+        def count(self, collection_name: str) -> int:
+            return self.collection.count()
+
+    import receipt_chroma
+
+    monkeypatch.setattr(receipt_chroma, "ChromaClient", FakeClient)
+    sample = LetterImageSample(
+        sample_id="new",
+        image_id="image-1",
+        receipt_id=1,
+        line_id=1,
+        word_id=1,
+        letter_id=1,
+        text="A",
+        normalized_char="A",
+        vector=(0.1, 0.2),
+        style_vector=(0.1, 0.2),
+        metrics={"confidence": 0.99},
+    )
+
+    count = upsert_letter_samples_to_chroma(
+        [sample],
+        persist_directory=str(tmp_path),
+    )
+
+    assert count == 2
+    assert FakeClient.collection.ids == ["existing", "new"]
+    assert FakeClient.collection.deleted == []

@@ -450,8 +450,12 @@ def upsert_letter_samples_to_chroma(
     collection_name: str = "letter_font_glyphs",
     extra_metadata_by_id: Mapping[str, Mapping[str, object]] | None = None,
     batch_size: int = 1000,
+    reset_collection: bool = False,
 ) -> int:
-    """Persist letter style vectors into a separate local Chroma collection."""
+    """Persist letter style vectors into a separate local Chroma collection.
+
+    Existing rows are preserved unless ``reset_collection`` is explicitly set.
+    """
     from receipt_chroma import ChromaClient
 
     extra_metadata_by_id = extra_metadata_by_id or {}
@@ -467,7 +471,7 @@ def upsert_letter_samples_to_chroma(
                 "description": "Receipt OCR letter crop style embeddings"
             },
         )
-        if collection.count():
+        if reset_collection and collection.count():
             existing = collection.get(include=["metadatas"])
             existing_ids = list(existing.get("ids") or [])
             for start in range(0, len(existing_ids), batch_size):

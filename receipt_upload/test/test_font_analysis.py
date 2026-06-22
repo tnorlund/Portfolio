@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image, ImageDraw
 
-from receipt_upload.font_analysis import analyze_receipt_fonts
+from receipt_upload.font_analysis import _dbscan, analyze_receipt_fonts
 
 
 def _box(x: float, y: float, width: float, height: float) -> dict[str, float]:
@@ -340,6 +340,17 @@ def test_similar_samples_prefers_same_font_cluster():
     assert matches[0].cluster_id == analysis.cluster_for_sample(
         samples["STORE"].sample_id
     )
+
+
+@pytest.mark.unit
+def test_dbscan_min_samples_one_still_honors_eps():
+    labels = _dbscan(
+        [(0.0, 0.0), (0.01, 0.0), (5.0, 5.0)],
+        eps=0.05,
+        min_samples=1,
+    )
+
+    assert labels == [1, 1, 2]
 
 
 @pytest.mark.unit

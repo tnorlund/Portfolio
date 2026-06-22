@@ -579,8 +579,7 @@ def _dbscan(
 ) -> list[int]:
     if not vectors:
         return []
-    if min_samples <= 1:
-        return [index + 1 for index in range(len(vectors))]
+    min_samples = max(1, min_samples)
 
     visited = [False for _ in vectors]
     labels = [0 for _ in vectors]
