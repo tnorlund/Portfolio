@@ -431,9 +431,29 @@ class MerchantResolver:
         ) or self._extract_labeled_text(
             words, word_labels, "MERCHANT_NAME", require_valid=False
         )
+        merchant_line = self._get_merchant_line(lines)
         if not merchant_hint:
-            merchant_line = self._get_merchant_line(lines)
             merchant_hint = merchant_line.text if merchant_line else None
+
+        # For the Google Places TEXT query, enrich the labeled name with the rest
+        # of the merchant header line — but ONLY when that line actually contains
+        # the labeled name. The extra tokens are usually the city ("IN-N-OUT" +
+        # "BURGER HENDERSON"), which disambiguates a chain to the right location.
+        # A bare "IN-N-OUT" returns an arbitrary branch. If the header line is a
+        # different line (doesn't contain the labeled name), keep the trusted
+        # label rather than risk querying the wrong text.
+        place_text_query = merchant_hint
+        if merchant_hint and merchant_line and merchant_line.text:
+            hint_tokens = set(re.findall(r"[a-z0-9]+", merchant_hint.lower()))
+            line_tokens = set(
+                re.findall(r"[a-z0-9]+", merchant_line.text.lower())
+            )
+            if (
+                hint_tokens
+                and hint_tokens <= line_tokens
+                and len(merchant_line.text) > len(merchant_hint)
+            ):
+                place_text_query = merchant_line.text
 
         _log(
             "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
@@ -452,7 +472,7 @@ class MerchantResolver:
         # inert because it required VALID labels that don't exist yet here.
         if phone or address:
             result = self._run_labeled_place_search(
-                merchant_name=merchant_hint,
+                merchant_name=place_text_query,
                 address=address,
                 phone=phone,
             )

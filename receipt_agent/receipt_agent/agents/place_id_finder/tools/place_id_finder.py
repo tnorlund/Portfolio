@@ -68,13 +68,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.entities import ReceiptPlace
-
 from receipt_agent.agents.place_id_finder import (
     create_place_id_finder_graph,
     run_place_id_finder,
 )
+from receipt_dynamo.constants import MerchantValidationStatus
+from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 
@@ -337,7 +336,33 @@ class PlaceIdFinder:
         if receipt.phone:
             # Validate phone number format before searching
             phone_digits = "".join(c for c in receipt.phone if c.isdigit())
-            if len(phone_digits) >= 10:  # Valid phone has at least 10 digits
+            # Drop a leading US country code so we can inspect the area code.
+            national = (
+                phone_digits[1:]
+                if len(phone_digits) == 11 and phone_digits[0] == "1"
+                else phone_digits
+            )
+            # Toll-free numbers (800/888/877/...) belong to a chain's corporate
+            # line, not the store on the receipt (e.g. In-N-Out's 800-786-1000
+            # "Questions/Comments" line). Searching them returns the chain's
+            # primary listing and picks the WRONG location, so skip them and let
+            # the city-bearing text search (Strategy 3) disambiguate.
+            is_toll_free = len(national) == 10 and national[:3] in {
+                "800",
+                "833",
+                "844",
+                "855",
+                "866",
+                "877",
+                "888",
+            }
+            if is_toll_free:
+                logger.debug(
+                    "Skipping toll-free phone %s (not store-specific)",
+                    receipt.phone,
+                )
+            if len(phone_digits) >= 10 and not is_toll_free:
+                # Valid, store-specific phone has at least 10 digits
                 try:
                     logger.debug("Searching by phone: %s", receipt.phone)
                     place_data = self.places.search_by_phone(receipt.phone)
