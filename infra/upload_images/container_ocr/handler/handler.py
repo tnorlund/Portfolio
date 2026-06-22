@@ -212,7 +212,15 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
 
 def _is_llm_validation_record(record: Dict[str, Any]) -> bool:
-    """True for deferred-LLM-validation messages (vs. OCR jobs)."""
+    """True for deferred-LLM-validation messages (vs. OCR jobs).
+
+    Route by the SOURCE QUEUE (eventSourceARN) — authoritative and immune to a
+    malformed body being misclassified (and then silently dropped) on the wrong
+    path. Fall back to body-shape only if the ARN is absent.
+    """
+    arn = record.get("eventSourceARN") or record.get("eventSourceArn") or ""
+    if arn:
+        return arn.endswith("-llm-validation-queue")
     try:
         body = json.loads(record["body"])
     except (KeyError, ValueError):
@@ -250,7 +258,19 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     s3 = boto3.client("s3")
-    obj = s3.get_object(Bucket=bucket, Key=key)
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=key)
+    except s3.exceptions.NoSuchKey:
+        # Payload already deleted by a prior successful processing of this
+        # message — a redelivery of an already-settled record. No-op success so
+        # it does NOT count as a failure / re-DLQ.
+        _log(
+            "Async LLM validation: staged payload already gone (%s/%s) — "
+            "treating redelivery as no-op success",
+            bucket,
+            key,
+        )
+        return {"success": True, "llm_validated": 0, "image_id": image_id}
     payload = json.loads(obj["Body"].read())
 
     dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
@@ -263,23 +283,32 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # Best-effort: push the corrected labels into Chroma via a corrective delta +
-    # compaction run. The grok decisions are already durable in DynamoDB, so a
-    # failure here must NOT fail the record (which would redrive and re-run grok).
-    try:
-        resync_run_id = resync_corrected_labels_to_chroma(payload, dynamo)
-        if resync_run_id:
+    # compaction run. Gated by its OWN flag (default OFF), decoupled from
+    # LLM_VALIDATION_ASYNC, so it can be disabled independently if the
+    # words-compaction subsystem is backlogged. The grok decisions are already
+    # durable in DynamoDB, so a failure here must NOT fail the record.
+    resync_enabled = (
+        os.environ.get("LLM_VALIDATION_CORRECTIVE_RESYNC", "").strip().lower() == "true"
+    )
+    if resync_enabled:
+        try:
+            resync_run_id = resync_corrected_labels_to_chroma(payload, dynamo)
+            if resync_run_id:
+                _log(
+                    "Async LLM Chroma resync: image=%s compaction_run=%s",
+                    image_id,
+                    resync_run_id,
+                )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Distinct marker so a log metric filter / alarm can catch a
+            # systemic resync outage (Chroma would silently diverge from
+            # DynamoDB until the next compaction).
             _log(
-                "Async LLM Chroma resync: image=%s compaction_run=%s",
+                "[CHROMA_RESYNC_FAILED] image=%s (%s); labels correct in "
+                "DynamoDB, Chroma converges on next compaction",
                 image_id,
-                resync_run_id,
+                exc,
             )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        _log(
-            "WARNING: Chroma resync failed for image=%s (%s); "
-            "labels are correct in DynamoDB, Chroma converges on next compaction",
-            image_id,
-            exc,
-        )
 
     # Best-effort cleanup of the staged payload (idempotent if already gone).
     try:

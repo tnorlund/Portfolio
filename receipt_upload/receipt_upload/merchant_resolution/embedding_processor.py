@@ -783,15 +783,18 @@ def _run_words_pipeline_worker(
                             # column role (LINE_TOTAL/UNIT_PRICE/QUANTITY): the
                             # role is positional, grok flips them wrong, and
                             # skipping them keeps grok's payload (and latency)
-                            # down. Geometry is authoritative here, so commit a
-                            # TERMINAL status instead of leaving it PENDING
-                            # (otherwise a Chroma-abstained geometry role would be
-                            # stuck PENDING forever).
+                            # down. Commit a TERMINAL status (not PENDING) so a
+                            # Chroma-abstained geometry role isn't stuck forever —
+                            # but as NEEDS_REVIEW, not VALID: neither arithmetic
+                            # nor Chroma confirmed it, so we don't assert it as
+                            # validated, just remove it from the PENDING/LLM path.
                             if (
                                 label.label in _GEOMETRY_SPATIAL_ROLES
                                 and label.label_proposed_by == _GEOMETRY_PROPOSER
                             ):
-                                label.validation_status = ValidationStatus.VALID.value
+                                label.validation_status = (
+                                    ValidationStatus.NEEDS_REVIEW.value
+                                )
                                 label.label_proposed_by = "geometry_trusted"
                                 dynamo.update_receipt_word_label(label)
                                 chroma_validated += 1
@@ -1361,6 +1364,9 @@ class MerchantResolvingEmbeddingProcessor:
                     # delta prefix to re-merge and the bucket to write to.
                     async_llm_payload["lines_prefix"] = lines_prefix
                     async_llm_payload["chromadb_bucket"] = self.chromadb_bucket
+                    # Give deferred grok the same merchant context the sync path
+                    # has (it's resolved by now); falls back to None if unset.
+                    async_llm_payload["merchant_name"] = merchant_result.merchant_name
                     _enqueue_async_llm_validation(
                         payload=async_llm_payload,
                         image_id=image_id,
@@ -1380,7 +1386,14 @@ class MerchantResolvingEmbeddingProcessor:
                         e,
                     )
                     try:
-                        apply_async_payload(async_llm_payload, self.dynamo)
+                        # raise_on_failure=False so a grok failure here is
+                        # swallowed + transient labels cleaned up (sync-path
+                        # semantics) rather than re-raised and stranding labels.
+                        apply_async_payload(
+                            async_llm_payload,
+                            self.dynamo,
+                            raise_on_failure=False,
+                        )
                     except Exception:
                         logger.exception(
                             "Inline LLM fallback also failed for %s#%s",

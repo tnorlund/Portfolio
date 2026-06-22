@@ -375,3 +375,53 @@ def test_resync_builds_delta_and_compaction_run():
     # Only the affected word's label is in the delta (the 99/9 one is excluded).
     assert calls["build"]["labels"] == [(8, 1, "PRODUCT_NAME")]
     assert calls["build"]["n_words"] == 1 and calls["build"]["n_emb"] == 1
+
+
+def test_resync_run_id_is_deterministic_idempotent():
+    """Redelivery must reuse the same compaction run_id (uuid5 of receipt
+    identity), so it upserts rather than stacking duplicate runs."""
+    from dataclasses import asdict
+
+    w = _word(8, 1, "MILK")
+    final = _label(8, 1, "PRODUCT_NAME", ValidationStatus.VALID.value)
+
+    def _run():
+        dynamo = _FakeDynamo(labels_for_receipt=[final])
+        payload = {
+            "image_id": IMAGE_ID,
+            "receipt_id": 1,
+            "merchant_name": "X",
+            "lines_prefix": "lines/delta/run-abc",
+            "chromadb_bucket": "b",
+            "affected_words": [asdict(w)],
+            "affected_embeddings": [[0.1] * 4],
+        }
+        calls = {}
+        saved = _install_chroma_stubs(calls)
+        try:
+            return m.resync_corrected_labels_to_chroma(payload, dynamo)
+        finally:
+            if saved is None:
+                sys.modules.pop("receipt_chroma", None)
+            else:
+                sys.modules["receipt_chroma"] = saved
+
+    r1, r2 = _run(), _run()
+    assert r1 == r2, "resync run_id must be deterministic across redeliveries"
+
+
+def test_apply_async_payload_raise_on_failure_false_swallows_and_cleans():
+    """The producer inline-fallback path (raise_on_failure=False) must NOT raise
+    on a grok failure; it cleans up transient labels instead of stranding."""
+    needed = [_label(5, 2, "PRODUCT_NAME")]
+    dynamo = _FakeDynamo()
+    saved = _install_stubs([], raises=RuntimeError("openrouter 503"))
+    raised = False
+    try:
+        try:
+            m.apply_async_payload(_payload(needed), dynamo, raise_on_failure=False)
+        except RuntimeError:
+            raised = True
+    finally:
+        _restore(saved)
+    assert not raised, "raise_on_failure=False must swallow the LLM failure"

@@ -78,9 +78,7 @@ class TestMerchantResolverTier1Phone:
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        mock_line = MagicMock(
-            spec=ReceiptLine, line_id=1, text="Matching Store"
-        )
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Matching Store")
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
@@ -171,9 +169,7 @@ class TestMerchantResolverTier1Phone:
         # Should not find a match (current receipt skipped)
         assert result.place_id is None
 
-    def test_no_phone_extracted_proceeds_to_address(
-        self, resolver, mock_lines_client
-    ):
+    def test_no_phone_extracted_proceeds_to_address(self, resolver, mock_lines_client):
         """Test that missing phone proceeds to address tier."""
         words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
         mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
@@ -338,9 +334,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
         fake_embedding = [0.1] * 1536
         line_embeddings = {1: fake_embedding}
 
-        with patch.object(
-            resolver, "_run_place_id_finder", return_value=tier2_result
-        ):
+        with patch.object(resolver, "_run_place_id_finder", return_value=tier2_result):
             result = resolver.resolve(
                 lines_client=mock_lines_client,
                 lines=lines,
@@ -419,9 +413,7 @@ class TestMerchantResolverHelpers:
 
     def test_extract_phone_returns_none_when_missing(self, resolver):
         """Test phone extraction returns None when no phone."""
-        words = [
-            MagicMock(extracted_data={"type": "address", "value": "123 Main"})
-        ]
+        words = [MagicMock(extracted_data={"type": "address", "value": "123 Main"})]
 
         phone = resolver._extract_phone(words)
         assert phone is None
@@ -449,9 +441,7 @@ class TestMerchantResolverHelpers:
 
     def test_extract_merchant_name_from_first_line(self, resolver):
         """Test merchant name extraction from first line."""
-        mock_line1 = MagicMock(
-            spec=ReceiptLine, line_id=2, text="123 Address St"
-        )
+        mock_line1 = MagicMock(spec=ReceiptLine, line_id=2, text="123 Address St")
         mock_line1.calculate_centroid.return_value = (0.5, 0.3)
         mock_line2 = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
         mock_line2.calculate_centroid.return_value = (0.5, 0.1)
@@ -508,9 +498,7 @@ class TestMerchantResolverOCRCrossValidation:
     def test_matching_merchant_passes(self, resolver):
         """Merchant name shares tokens with receipt text → True."""
         lines = [self._make_line(1, "AIM MAIL CENTER #18")]
-        assert resolver._merchant_name_matches_receipt(
-            "AIM Mail Center", lines
-        )
+        assert resolver._merchant_name_matches_receipt("AIM Mail Center", lines)
 
     def test_non_matching_merchant_fails(self, resolver):
         """No token overlap → False."""
@@ -525,9 +513,7 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(1, "WHOLE FOODS MARKET", y=0.1),
             self._make_line(2, "740 N MOORPARK RD", y=0.2),
         ]
-        assert not resolver._merchant_name_matches_receipt(
-            "Mouthful Eatery", lines
-        )
+        assert not resolver._merchant_name_matches_receipt("Mouthful Eatery", lines)
 
     def test_empty_merchant_name_passes(self, resolver):
         """None/empty merchant name should pass (nothing to validate)."""
@@ -596,9 +582,7 @@ class TestMerchantResolverOCRCrossValidation:
             resolution_tier="place_id_finder_agentic",
         )
 
-        with patch.object(
-            resolver, "_run_place_id_finder", return_value=tier2_result
-        ):
+        with patch.object(resolver, "_run_place_id_finder", return_value=tier2_result):
             result = resolver.resolve(
                 lines_client=mock_lines_client,
                 lines=lines,
@@ -742,9 +726,7 @@ class TestMerchantResolverErrorHandling:
         """Create mock ChromaClient."""
         return MagicMock()
 
-    def test_chroma_query_error_is_handled(
-        self, mock_dynamo_client, mock_lines_client
-    ):
+    def test_chroma_query_error_is_handled(self, mock_dynamo_client, mock_lines_client):
         """Test that ChromaDB query errors are handled gracefully."""
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
@@ -816,9 +798,7 @@ class TestMerchantResolverErrorHandling:
         }
 
         # Mock DynamoDB to raise exception
-        mock_dynamo_client.get_receipt_place.side_effect = Exception(
-            "DynamoDB error"
-        )
+        mock_dynamo_client.get_receipt_place.side_effect = Exception("DynamoDB error")
 
         # Provide pre-cached line embeddings
         fake_embedding = [0.1] * 1536
@@ -924,9 +904,7 @@ class TestGetPlaceFromDynamo:
         assert place_id == "ChIJ_test"
         assert merchant_name == "Corrected Name"
 
-    def test_get_place_from_dynamo_no_merchant_name(
-        self, resolver, mock_dynamo_client
-    ):
+    def test_get_place_from_dynamo_no_merchant_name(self, resolver, mock_dynamo_client):
         """DynamoDB has place_id but no merchant_name → falls back to None."""
         mock_place = MagicMock()
         mock_place.place_id = "ChIJ_test"
@@ -938,9 +916,7 @@ class TestGetPlaceFromDynamo:
         assert place_id == "ChIJ_test"
         assert merchant_name is None
 
-    def test_get_place_from_dynamo_invalid_place_id(
-        self, resolver, mock_dynamo_client
-    ):
+    def test_get_place_from_dynamo_invalid_place_id(self, resolver, mock_dynamo_client):
         """Invalid place_id → (None, None)."""
         mock_place = MagicMock()
         mock_place.place_id = "NO_RESULTS"
@@ -1041,9 +1017,7 @@ class TestModuleLevelFunctions:
     def test_module_level_merchant_name_matches_receipt_fail(self):
         """Module-level function detects no token overlap."""
         lines = [self._make_line(1, "AIM MAIL CENTER #18")]
-        assert not merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
-        )
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
     def test_module_level_merchant_name_matches_receipt_none(self):
         """None merchant name passes."""
@@ -1085,9 +1059,7 @@ class TestModuleLevelFunctions:
             self._make_line(1, "TOTALLY DIFFERENT DELI", y=0.95),
             self._make_line(2, "market salad bowl", y=0.5),
         ]
-        assert not merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
-        )
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
     def test_distinctive_token_overlap_passes(self):
         """A distinctive (non-generic) token overlap passes."""
@@ -1111,6 +1083,30 @@ class TestModuleLevelFunctions:
         # 'none' placeholders carry no PII and are left alone.
         assert "<redacted>" not in redact_pii("phone=none, address=none")
 
+    def test_three_char_distinctive_brand_passes(self):
+        """3-char distinctive brand tokens (CVS, IGA, KFC) must pass the guard
+        (threshold matches _MIN_TOKEN_LEN=3, not 4)."""
+        for brand, line_text in [
+            ("CVS Pharmacy", "CVS PHARMACY #4821"),
+            ("IGA Supermarket", "IGA SUPERMARKET"),
+            ("KFC Restaurant", "KFC RESTAURANT 102"),
+        ]:
+            lines = [self._make_line(1, line_text, y=0.95)]
+            assert merchant_name_matches_receipt(brand, lines), brand
+
+    def test_redact_pii_masks_unprefixed_address_and_paren_phone(self):
+        """Raw addresses logged WITHOUT an address= prefix, and parenthesized
+        phones, are still masked."""
+        from receipt_upload.merchant_resolution.resolver import redact_pii
+
+        out = redact_pii("Tier 2: Similarity search for address line: 123 Main Street")
+        assert "123 Main Street" not in out
+        assert "<redacted-address>" in out
+
+        out2 = redact_pii("Calling (702) 555-1234 now")
+        assert "555-1234" not in out2
+        assert "<redacted-phone>" in out2
+
 
 class TestWriteTimeValidationLogic:
     """Test the merchant_name_matches_receipt helper used by write-time validation.
@@ -1132,9 +1128,7 @@ class TestWriteTimeValidationLogic:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
         # "Sprouts Farmers Market" has no overlap with "AIM MAIL CENTER"
-        assert not merchant_name_matches_receipt(
-            "Sprouts Farmers Market", lines
-        )
+        assert not merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
     def test_worker_passes_valid_merchant_name(self):
         """Valid merchant_name passes write-time validation."""
@@ -1351,12 +1345,8 @@ class TestMerchantResolverLabeledFields:
         ]
 
         with (
-            patch.object(
-                resolver, "_run_labeled_place_search"
-            ) as labeled_search,
-            patch.object(
-                resolver, "_similarity_search", return_value=MerchantResult()
-            ),
+            patch.object(resolver, "_run_labeled_place_search") as labeled_search,
+            patch.object(resolver, "_similarity_search", return_value=MerchantResult()),
             patch.object(
                 resolver, "_run_place_id_finder", return_value=MerchantResult()
             ),
@@ -1473,9 +1463,7 @@ class TestMerchantResolverLabeledFields:
         labels = [_label(1, 1, "MERCHANT_NAME"), _label(1, 2, "MERCHANT_NAME")]
         with (
             patch.object(resolver, "_run_labeled_place_search") as places,
-            patch.object(
-                resolver, "_similarity_search", return_value=MerchantResult()
-            ),
+            patch.object(resolver, "_similarity_search", return_value=MerchantResult()),
             patch.object(
                 resolver, "_run_place_id_finder", return_value=MerchantResult()
             ),

@@ -61,12 +61,21 @@ def _delete_non_core_label(
     word_labels: List[ReceiptWordLabel],
     label: ReceiptWordLabel,
 ) -> None:
-    """Delete a transient non-core label from Dynamo and local payload state."""
+    """Delete a transient non-core label from Dynamo and local payload state.
+
+    Idempotent on SQS redelivery: a redelivered batch may try to delete a label
+    a prior attempt already removed; treat "already gone" as done rather than
+    raising (which would re-fail the whole record).
+    """
     from receipt_agent.constants import CORE_LABELS
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
     if label.label in CORE_LABELS:
         return
-    dynamo.delete_receipt_word_label(label)
+    try:
+        dynamo.delete_receipt_word_label(label)
+    except EntityNotFoundError:
+        pass
     _remove_label_from_list(word_labels, label)
 
 
@@ -430,12 +439,16 @@ def build_async_payload(
     }
 
 
-def apply_async_payload(payload: Dict[str, Any], dynamo: Any) -> int:
+def apply_async_payload(
+    payload: Dict[str, Any], dynamo: Any, raise_on_failure: bool = True
+) -> int:
     """Run grok + persist for a payload produced by ``build_async_payload``.
 
-    Raises on LLM failure so the consumer Lambda can report a batch-item failure
-    (SQS redrives, then DLQs) instead of silently dropping the validation and
-    leaving labels at PENDING.
+    ``raise_on_failure`` (default True, for the async consumer): re-raise on LLM
+    failure so the consumer reports a batch-item failure (SQS redrive, then DLQ)
+    instead of silently dropping the validation. The producer's inline fallback
+    passes ``False`` so a grok failure there is swallowed + transient labels
+    cleaned up (sync-path semantics) rather than re-raised and stranding labels.
     """
     needed_labels = [_label_from_jsonable(d) for d in payload.get("needed_labels", [])]
     # A local working list so _delete_non_core_label has something to mutate;
@@ -451,7 +464,7 @@ def apply_async_payload(payload: Dict[str, Any], dynamo: Any) -> int:
         dynamo=dynamo,
         word_labels=word_labels,
         merchant_name=payload.get("merchant_name"),
-        raise_on_failure=True,
+        raise_on_failure=raise_on_failure,
     )
 
 
@@ -510,7 +523,11 @@ def resync_corrected_labels_to_chroma(
         word_labels=final_labels,
         merchant_name=payload.get("merchant_name"),
     )
-    run_id = str(uuid.uuid4())
+    # Deterministic run_id keyed on receipt identity: on SQS redelivery the
+    # corrective delta UPSERTS the same prefix and the CompactionRun overwrites
+    # the same record, instead of stacking a fresh run (and extra words+lines
+    # merges) on the already-fragile words-compaction subsystem each retry.
+    run_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"corrective/{image_id}/{receipt_id}"))
     words_prefix = upload_words_delta(
         word_payload=word_payload,
         run_id=run_id,

@@ -85,14 +85,32 @@ _MIN_TOKEN_LEN = 3  # Ignore tokens shorter than this (e.g., "A", "of", "&")
 # mode) or captured and re-emitted by the parent (subprocess mode).
 _PHONE_FIELD_RE = re.compile(r"(phone=)(?!none\b)[^\s,)]+")
 _ADDRESS_FIELD_RE = re.compile(r"(address=)(?!none\b)[^)]*")
-_PHONE_NUM_RE = re.compile(r"\b\d{3}[-.\s]\d{3}[-.\s]?\d{4}\b")
+# Phones: dashed/dotted/spaced 10-digit, parenthesized "(702) 555-1234", and bare
+# 10+ digit runs.
+_PHONE_NUM_RE = re.compile(r"\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]?\d{4}\b")
 _DIGIT_RUN_RE = re.compile(r"\b\d{10,}\b")
+# Street addresses logged WITHOUT an address= prefix (e.g. raw OCR address lines):
+# <house number> ... <street suffix>. Matches "3411 ST ROSE PKWY",
+# "2716 North Green Valley Parkway", "509D N Stephanie St".
+_STREET_RE = re.compile(
+    r"\b\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'#-]+\s+){0,6}"
+    r"(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|RD|ROAD|DR|DRIVE|LN|LANE|"
+    r"WAY|CT|COURT|PKWY|PARKWAY|HWY|HIGHWAY|PL|PLACE|CIR|CIRCLE|TER|"
+    r"TERRACE|SQ|SUITE|STE|UNIT)\b\.?",
+    re.IGNORECASE,
+)
 
 
 def redact_pii(text: str) -> str:
-    """Mask phone/address values in a resolver log line."""
+    """Mask phone/address values in a resolver log line.
+
+    Covers both prefixed forms (``phone=``/``address=``) and raw values logged
+    without a prefix (street addresses, parenthesized/formatted phones, long
+    digit runs), so address/phone PII never reaches CloudWatch in the clear.
+    """
     text = _PHONE_FIELD_RE.sub(r"\1<redacted>", text)
     text = _ADDRESS_FIELD_RE.sub(r"\1<redacted>", text)
+    text = _STREET_RE.sub("<redacted-address>", text)
     text = _PHONE_NUM_RE.sub("<redacted-phone>", text)
     text = _DIGIT_RUN_RE.sub("<redacted-phone>", text)
     return text
@@ -108,9 +126,7 @@ def _log(msg: str, *args: object) -> None:
 def tokenize_text(text: str) -> Set[str]:
     """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
     return {
-        t
-        for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
-        if len(t) >= _MIN_TOKEN_LEN
+        t for t in re.split(r"[^a-zA-Z0-9]+", text.lower()) if len(t) >= _MIN_TOKEN_LEN
     }
 
 
@@ -153,9 +169,7 @@ _GENERIC_MERCHANT_TOKENS = {
 def merchant_name_matches_receipt(
     merchant_name: Optional[str],
     lines: List[ReceiptLine],
-    n_lines: Optional[
-        int
-    ] = None,  # retained for API compat; no longer windows
+    n_lines: Optional[int] = None,  # retained for API compat; no longer windows
 ) -> bool:
     """
     Check whether *merchant_name* has meaningful token overlap with the
@@ -202,8 +216,13 @@ def merchant_name_matches_receipt(
     receipt_tokens = tokenize_text(receipt_text)
 
     overlap = merchant_tokens & receipt_tokens
+    # Distinctive = non-generic token of at least the tokenizer's minimum length
+    # (>= _MIN_TOKEN_LEN, not 4) so legitimate 3-char brands like CVS / IGA / KFC
+    # still pass the guard.
     distinctive = {
-        t for t in overlap if len(t) >= 4 and t not in _GENERIC_MERCHANT_TOKENS
+        t
+        for t in overlap
+        if len(t) >= _MIN_TOKEN_LEN and t not in _GENERIC_MERCHANT_TOKENS
     }
     if distinctive:
         return True
@@ -290,9 +309,7 @@ class MerchantResolver:
                 if api_key:
                     self._openai_client = OpenAI(api_key=api_key)
                 else:
-                    _log(
-                        "WARNING: OPENAI_API_KEY not set, similarity search disabled"
-                    )
+                    _log("WARNING: OPENAI_API_KEY not set, similarity search disabled")
             except ImportError:
                 _log("WARNING: openai package not available")
         return self._openai_client
@@ -458,10 +475,7 @@ class MerchantResolver:
                     expected_address=address,
                     resolution_tier="chroma_phone",
                 )
-                if (
-                    result.place_id
-                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
-                ):
+                if result.place_id and result.confidence >= MIN_SIMILARITY_THRESHOLD:
                     _log(
                         "Tier 2 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
@@ -487,10 +501,7 @@ class MerchantResolver:
                     expected_address=address,
                     resolution_tier="chroma_address",
                 )
-                if (
-                    result.place_id
-                    and result.confidence >= MIN_SIMILARITY_THRESHOLD
-                ):
+                if result.place_id and result.confidence >= MIN_SIMILARITY_THRESHOLD:
                     _log(
                         "Tier 2 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
@@ -524,10 +535,7 @@ class MerchantResolver:
             # so require HIGH_CONFIDENCE_THRESHOLD: accept only when the text
             # match is strong on its own OR metadata corroborates it;
             # otherwise fall through to the Google Places tier.
-            if (
-                result.place_id
-                and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
-            ):
+            if result.place_id and result.confidence >= HIGH_CONFIDENCE_THRESHOLD:
                 _log(
                     "Tier 2 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
@@ -594,16 +602,12 @@ class MerchantResolver:
                         return line
         return None
 
-    def _get_merchant_line(
-        self, lines: List[ReceiptLine]
-    ) -> Optional[ReceiptLine]:
+    def _get_merchant_line(self, lines: List[ReceiptLine]) -> Optional[ReceiptLine]:
         """Get the first line (often contains merchant name)."""
         if not lines:
             return None
         # Sort by y-coordinate (top to bottom) and return first
-        sorted_lines = sorted(
-            lines, key=lambda line: line.calculate_centroid()[1]
-        )
+        sorted_lines = sorted(lines, key=lambda line: line.calculate_centroid()[1])
         return sorted_lines[0] if sorted_lines else None
 
     def _similarity_search(
@@ -737,9 +741,7 @@ class MerchantResolver:
 
                 if expected_address and result_address:
                     # For addresses, use fuzzy comparison (OCR errors)
-                    if self._addresses_similar(
-                        expected_address, result_address
-                    ):
+                    if self._addresses_similar(expected_address, result_address):
                         metadata_boost += ADDRESS_MATCH_BOOST
                         _log("  Address match boost: %s", result_address[:30])
 
@@ -776,8 +778,15 @@ class MerchantResolver:
             receipt_lines = getattr(self, "_receipt_lines", [])
             validated_matches: List[SimilarityMatch] = []
             for match in matches:
-                if self._merchant_name_matches_receipt(
-                    match.merchant_name, receipt_lines
+                # The token guard exists to catch metadata poisoning / weak
+                # matches — NOT to veto a strong embedding match. A
+                # high-confidence match (>= HIGH_CONFIDENCE_THRESHOLD) is trusted
+                # even if its only OCR overlap is a generic token.
+                if (
+                    match.total_confidence >= HIGH_CONFIDENCE_THRESHOLD
+                    or self._merchant_name_matches_receipt(
+                        match.merchant_name, receipt_lines
+                    )
                 ):
                     validated_matches.append(match)
                 else:
@@ -949,8 +958,10 @@ class MerchantResolver:
                 dynamo_client=self.dynamo,
                 places_client=self.places_client,
             )
-            match = finder._search_places_for_receipt(  # pylint: disable=protected-access
-                receipt_record
+            match = (
+                finder._search_places_for_receipt(  # pylint: disable=protected-access
+                    receipt_record
+                )
             )
 
             if not match.found or not match.place_id:
@@ -1056,18 +1067,14 @@ class MerchantResolver:
             place = self.dynamo.get_receipt_place(image_id, receipt_id)
             if place and place.place_id:
                 if place.place_id not in INVALID_PLACE_IDS:
-                    return place.place_id, getattr(
-                        place, "merchant_name", None
-                    )
+                    return place.place_id, getattr(place, "merchant_name", None)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error getting place from receipt_place: %s", exc)
             logger.exception("DynamoDB lookup failed")
 
         return None, None
 
-    def _extract_merchant_name(
-        self, lines: List[ReceiptLine]
-    ) -> Optional[str]:
+    def _extract_merchant_name(self, lines: List[ReceiptLine]) -> Optional[str]:
         """
         Extract merchant name from receipt lines.
 
@@ -1239,9 +1246,7 @@ class MerchantResolver:
                 "WARNING: receipt_agent import failed, falling back to simple search: %s",
                 exc,
             )
-            logger.warning(
-                "receipt_agent agentic import failed", exc_info=True
-            )
+            logger.warning("receipt_agent agentic import failed", exc_info=True)
             # Fall through to simple search below
         except RuntimeError as exc:
             # Handle "no running event loop" error in Lambda
@@ -1286,11 +1291,7 @@ class MerchantResolver:
                         )
                     )
 
-                    if (
-                        result
-                        and result.get("found")
-                        and result.get("place_id")
-                    ):
+                    if result and result.get("found") and result.get("place_id"):
                         return MerchantResult(
                             place_id=result["place_id"],
                             merchant_name=result.get("place_name"),
@@ -1299,9 +1300,7 @@ class MerchantResolver:
                             confidence=result.get("confidence", 0.0),
                             resolution_tier="place_id_finder_agentic",
                         )
-                except (
-                    Exception
-                ) as inner_exc:  # pylint: disable=broad-exception-caught
+                except Exception as inner_exc:  # pylint: disable=broad-exception-caught
                     _log("Agentic fallback also failed: %s", inner_exc)
             else:
                 _log("RuntimeError in agentic finder: %s", exc)
@@ -1343,8 +1342,10 @@ class MerchantResolver:
             )
 
             # Search for place_id
-            match = finder._search_places_for_receipt(  # pylint: disable=protected-access
-                receipt_record
+            match = (
+                finder._search_places_for_receipt(  # pylint: disable=protected-access
+                    receipt_record
+                )
             )
 
             if match.found and match.place_id:
