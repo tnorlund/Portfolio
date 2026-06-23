@@ -1378,6 +1378,14 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     )
     assert bundle["synthesis_quality_report"]["ready"] is True
     assert bundle["synthesis_quality_report"]["summary"]["accepted_count"] == 2
+    assert bundle["synthesis_quality_report"]["summary"][
+        "next_synthesis_action_counts"
+    ] == {
+        "collect_multi_item_non_taxable_receipts_with_totals": 1,
+        "collect_stable_date_time_examples_for_field_replacement": 1,
+        "synthesize_add_line_item_from_existing_evidence": 1,
+        "synthesize_hard_negative_from_existing_evidence": 1,
+    }
     assert bundle["synthesis_quality_report"]["summary"]["accepted_source_lineage"] == (
         expected_accepted_source_lineage
     )

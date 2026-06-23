@@ -989,6 +989,7 @@ export interface TrainingSynthesisQualityReport {
     accepted_source_lineage?: TrainingSynthesisAcceptedSourceLineage;
     llm_execution?: TrainingSynthesisLlmExecutionSummary;
     rejection_reasons?: Record<string, number>;
+    next_synthesis_action_counts?: Record<string, number>;
     contract_count?: number | null;
     ready_contract_count?: number | null;
     source_quality_status_counts?: Record<string, number>;

@@ -933,6 +933,15 @@ def _count_values(values: Any) -> Dict[str, int]:
     return dict(counts)
 
 
+def _next_synthesis_action_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    return _count_values(
+        action
+        for row in rows
+        for action in row.get("next_synthesis_actions") or []
+        if action
+    )
+
+
 def _source_key_values(value: Any) -> List[str]:
     if isinstance(value, str):
         text = value.strip()
@@ -1597,12 +1606,35 @@ def _derive_next_synthesis_actions(
     *,
     readiness_status: Any,
     source_quality_requires_label_validation: bool,
+    ready_operations: Any = None,
+    accepted_operation_counts: Any = None,
 ) -> List[str]:
     actions: list[str] = []
     if source_quality_requires_label_validation:
         actions.append("validate_recoverable_unlabeled_receipts")
     if str(readiness_status or "").strip().lower() == "blocked":
         actions.append("resolve_merchant_synthesis_blockers")
+        return actions[:8]
+
+    ready_operation_set = {str(operation) for operation in ready_operations or []}
+    accepted_counts = (
+        accepted_operation_counts if isinstance(accepted_operation_counts, dict) else {}
+    )
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        if operation in ready_operation_set and _safe_int(
+            accepted_counts.get(operation)
+        ):
+            actions.append(f"synthesize_{operation}_from_existing_evidence")
+        elif operation in ready_operation_set:
+            actions.append(f"generate_{operation}_candidate_from_ready_contract")
+        elif operation == "hard_negative":
+            actions.append("mine_confusion_targets_for_hard_negative_slots")
+        elif operation == "add_line_item":
+            actions.append("collect_cross_receipt_item_and_category_evidence")
+        elif operation == "remove_line_item":
+            actions.append("collect_multi_item_non_taxable_receipts_with_totals")
+        elif operation == "replace_field":
+            actions.append("collect_stable_date_time_examples_for_field_replacement")
     return actions[:8]
 
 
@@ -2380,6 +2412,9 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
         "accepted_field_replacement_counts": _compact_count_map(
             summary.get("accepted_field_replacement_counts")
         ),
+        "next_synthesis_action_counts": _compact_count_map(
+            summary.get("next_synthesis_action_counts")
+        ),
         "accepted_structure_similarity": _compact_score_summary(
             summary.get("accepted_structure_similarity")
         ),
@@ -2669,6 +2704,13 @@ def _derive_synthesis_quality_report(
                 examples_by_merchant.get(merchant, []),
                 expected_candidate_count=accepted_count,
             )
+        contract_ready_operations = _contract_ready_operations(contract)
+        accepted_operation_counts = _compact_count_map(
+            mix.get("accepted_operation_counts")
+            or (contract.get("bundle_acceptance") or {}).get(
+                "accepted_operation_counts"
+            )
+        )
         merchant_row = {
             "merchant_name": merchant,
             "readiness_status": contract.get("status"),
@@ -2681,17 +2723,12 @@ def _derive_synthesis_quality_report(
             "supported_operations": list(contract.get("supported_operations") or [])[
                 :8
             ],
-            "contract_ready_operations": _contract_ready_operations(contract),
+            "contract_ready_operations": contract_ready_operations,
             "operation_counts": _compact_count_map(mix.get("operation_counts")),
             "candidate_operation_counts": _compact_count_map(
                 mix.get("candidate_operation_counts")
             ),
-            "accepted_operation_counts": _compact_count_map(
-                mix.get("accepted_operation_counts")
-                or (contract.get("bundle_acceptance") or {}).get(
-                    "accepted_operation_counts"
-                )
-            ),
+            "accepted_operation_counts": accepted_operation_counts,
             "accepted_category_counts": _compact_count_map(
                 mix.get("accepted_category_counts")
                 or (contract.get("bundle_acceptance") or {}).get(
@@ -2734,6 +2771,8 @@ def _derive_synthesis_quality_report(
                 source_quality_requires_label_validation=(
                     source_quality_requires_label_validation
                 ),
+                ready_operations=contract_ready_operations,
+                accepted_operation_counts=accepted_operation_counts,
             ),
             "accepted_examples": accepted_examples,
         }
@@ -2911,6 +2950,9 @@ def _derive_synthesis_quality_report(
                 "accepted_mix_balance": candidate_mix.get("accepted_mix_balance"),
                 "llm_execution": llm_execution,
                 "rejection_reasons": candidate_mix.get("rejection_reasons"),
+                "next_synthesis_action_counts": _next_synthesis_action_counts(
+                    merchant_rows
+                ),
                 "contract_count": len(contracts),
                 "ready_contract_count": sum(
                     1 for contract in contracts if contract.get("status") == "ready"

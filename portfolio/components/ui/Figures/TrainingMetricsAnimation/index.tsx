@@ -1043,6 +1043,11 @@ const summarizeOperationReadiness = (
   const nextActions = Array.from(
     new Set(merchants.flatMap((merchant) => merchant.next_synthesis_actions || []))
   ).filter(Boolean);
+  const nextActionCounts = summarizeCountRecord(
+    synthesis.quality_report?.summary?.next_synthesis_action_counts,
+    formatSyntheticRejectionReason,
+    6
+  );
   const actionNeedsAttention = nextActions.some(
     (action) => action.startsWith("collect_") || action.startsWith("resolve_")
   );
@@ -1072,6 +1077,7 @@ const summarizeOperationReadiness = (
           .map(formatSyntheticRejectionReason)
           .join(", ")}`
       : null,
+    nextActionCounts ? `Action backlog: ${nextActionCounts}` : null,
     blockedRows.length ? `Blocked rows: ${blockedRows.join(" | ")}` : null,
   ]
     .filter((value): value is string => Boolean(value))

@@ -145,6 +145,12 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
           with_layout_integrity_count: 1,
           with_arithmetic_reconciliation_count: 1,
         },
+        next_synthesis_action_counts: {
+          synthesize_hard_negative_from_existing_evidence: 1,
+          synthesize_add_line_item_from_existing_evidence: 1,
+          collect_multi_item_non_taxable_receipts_with_totals: 1,
+          collect_stable_date_time_examples_for_field_replacement: 1,
+        },
       },
       training_batch_policy: {
         schema_version: "synthetic-training-batch-policy-v1",
@@ -317,6 +323,16 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
       "title",
       expect.stringContaining("collect multi item non taxable receipts with totals"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Action backlog:"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "collect stable date time examples for field replacement: 1",
+      ),
     );
     expect(screen.getByText("Lineage (not auth)")).toHaveAttribute(
       "title",

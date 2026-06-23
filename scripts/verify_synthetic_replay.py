@@ -895,6 +895,17 @@ def _count_by(values: list[str]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _next_synthesis_action_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    return _count_by(
+        [
+            str(action)
+            for row in rows
+            for action in row.get("next_synthesis_actions") or []
+            if action
+        ]
+    )
+
+
 def _normalized_entropy(counts: dict[str, int]) -> float | None:
     positive = [count for count in counts.values() if count > 0]
     total = sum(positive)
@@ -2784,6 +2795,9 @@ def build_local_synthesis_quality_report(
             "accepted_mix_balance": candidate_mix.get("accepted_mix_balance") or {},
             "llm_execution": llm_execution,
             "rejection_reasons": candidate_mix.get("rejection_reasons") or {},
+            "next_synthesis_action_counts": _next_synthesis_action_counts(
+                merchant_rows
+            ),
             "contract_count": len(contracts),
             "ready_contract_count": sum(
                 1

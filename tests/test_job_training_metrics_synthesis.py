@@ -195,6 +195,10 @@ def test_derived_quality_report_recommends_label_validation_for_recoverable_text
         "validate_recoverable_unlabeled_receipts",
         "resolve_merchant_synthesis_blockers",
     ]
+    assert report["summary"]["next_synthesis_action_counts"] == {
+        "resolve_merchant_synthesis_blockers": 1,
+        "validate_recoverable_unlabeled_receipts": 1,
+    }
 
 
 def test_derived_quality_report_blocks_ready_payload_for_label_validation_only(
@@ -265,8 +269,19 @@ def test_derived_quality_report_blocks_ready_payload_for_label_validation_only(
     )
     assert report["merchants"][0]["source_quality_requires_label_validation"] is True
     assert report["merchants"][0]["next_synthesis_actions"] == [
-        "validate_recoverable_unlabeled_receipts"
+        "validate_recoverable_unlabeled_receipts",
+        "mine_confusion_targets_for_hard_negative_slots",
+        "collect_cross_receipt_item_and_category_evidence",
+        "collect_multi_item_non_taxable_receipts_with_totals",
+        "collect_stable_date_time_examples_for_field_replacement",
     ]
+    assert report["summary"]["next_synthesis_action_counts"] == {
+        "collect_cross_receipt_item_and_category_evidence": 1,
+        "collect_multi_item_non_taxable_receipts_with_totals": 1,
+        "collect_stable_date_time_examples_for_field_replacement": 1,
+        "mine_confusion_targets_for_hard_negative_slots": 1,
+        "validate_recoverable_unlabeled_receipts": 1,
+    }
 
 
 def test_compact_report_merchant_preserves_label_validation_actions(monkeypatch):
@@ -1935,6 +1950,15 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "usable": 2,
         "blocked": 1,
     }
+    assert summary["quality_report"]["summary"]["next_synthesis_action_counts"] == {
+        "collect_multi_item_non_taxable_receipts_with_totals": 2,
+        "collect_stable_date_time_examples_for_field_replacement": 1,
+        "generate_replace_field_candidate_from_ready_contract": 1,
+        "mine_confusion_targets_for_hard_negative_slots": 1,
+        "resolve_merchant_synthesis_blockers": 1,
+        "synthesize_add_line_item_from_existing_evidence": 2,
+        "synthesize_hard_negative_from_existing_evidence": 1,
+    }
     assert (
         summary["quality_report"]["summary"]["blocked_source_quality_merchant_count"]
         == 1
@@ -2143,6 +2167,12 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "max": 0.86,
         },
         "rejection_reasons": {"merchant_operation_synthetic_cap": 1},
+        "next_synthesis_actions": [
+            "mine_confusion_targets_for_hard_negative_slots",
+            "synthesize_add_line_item_from_existing_evidence",
+            "collect_multi_item_non_taxable_receipts_with_totals",
+            "collect_stable_date_time_examples_for_field_replacement",
+        ],
         "limitations": ["no_mutable_fields"],
     }
     assert summary["quality_report"]["merchants"][1]["merchant_name"] == (
