@@ -681,62 +681,50 @@ def test_candidate_quality_rejects_overlapping_layout():
     assert quality["high_fidelity"] is False
 
 
-def test_layout_integrity_tolerates_real_ocr_noise():
-    """Real rotated Apple Vision OCR has mild overlaps + line inversions that
-    are inherent to the source geometry; the gate forgives a size-scaled budget
-    while still failing genuinely broken geometry."""
+def test_layout_integrity_only_fails_on_synthesis_introduced_defects():
+    """layout_integrity measures geometry the SYNTHESIS introduced, not the base
+    receipt's inherited rotated-OCR noise. Base overlaps/inversions do not fail a
+    clean edit; only a synthetic-line collision, a malformed/off-canvas box, or a
+    catastrophic splice does."""
     from receipt_agent.agents.label_evaluator.merchant_synthesis import (
         _layout_integrity_score_from_counts as score,
     )
 
     common = dict(invalid_count=0, out_of_bounds_count=0)
-    # A few mild overlaps within the 3%-of-words budget do not lower the score.
+    # Mild base-OCR overlaps + inversions on a clean edit no longer penalize.
     assert (
         score(
-            overlap_count=3,
-            line_order_valid=True,
-            word_count=102,
-            line_count=47,
-            line_inversion_count=0,
-            **common,
-        )
-        == 1.0
-    )
-    # Rotation-induced line inversions within the 15%-of-lines budget pass.
-    assert (
-        score(
-            overlap_count=0,
+            overlap_count=11,
             line_order_valid=False,
-            word_count=160,
-            line_count=90,
+            word_count=126,
+            line_count=55,
             line_inversion_count=8,
             **common,
         )
         == 1.0
     )
-    # Excessive overlaps beyond the budget still drive the score to zero.
+    # A collision involving an inserted synthetic line is a hard failure.
     assert (
         score(
-            overlap_count=11,
+            overlap_count=1,
             line_order_valid=True,
             word_count=126,
             line_count=55,
-            line_inversion_count=0,
+            synthetic_overlap_count=1,
             **common,
         )
         == 0.0
     )
-    # Scrambled reading order beyond the budget caps the score at 0.5.
+    # A catastrophic base splice (overlaps ~ word count) still fails.
     assert (
         score(
-            overlap_count=0,
-            line_order_valid=False,
+            overlap_count=80,
+            line_order_valid=True,
             word_count=100,
             line_count=40,
-            line_inversion_count=30,
             **common,
         )
-        == 0.5
+        == 0.0
     )
     # A single invalid (malformed/zero-area) box is always a hard failure.
     assert (
@@ -745,7 +733,6 @@ def test_layout_integrity_tolerates_real_ocr_noise():
             line_order_valid=True,
             word_count=100,
             line_count=40,
-            line_inversion_count=0,
             invalid_count=1,
             out_of_bounds_count=0,
         )

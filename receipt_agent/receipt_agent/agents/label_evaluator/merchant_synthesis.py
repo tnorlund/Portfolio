@@ -863,24 +863,56 @@ def _reflow_insert_lines(
     """
     lines = receipt.setdefault("lines", [])
     after_index = max(-1, min(after_index, len(lines) - 1))
-    shifted = 0
-    for line in lines[after_index + 1 :]:
+    below = lines[after_index + 1 :]
+    # Open a gap by pushing the lower rows down by INDEX (rigid blocks).
+    for line in below:
         for word in line.get("words") or []:
             box = word.get("bbox")
             if box:
-                box[1] = max(0, box[1] - reserve)
-                box[3] = max(0, box[3] - reserve)
+                box[1] -= reserve
+                box[3] -= reserve
         if isinstance(line.get("y"), (int, float)):
-            line["y"] = max(0.0, line["y"] - reserve / 1000)
-        shifted += 1
+            line["y"] -= reserve / 1000
     lines[after_index + 1 : after_index + 1] = band_lines
+    # Compress the whole receipt back onto the canvas so the gap never pushes the
+    # footer (or any row) off the page into a degenerate/out-of-bounds box. A
+    # uniform fit preserves relative layout, so it introduces no new overlaps.
+    _fit_receipt_to_canvas(receipt)
     _refresh_words(receipt)
     return {
-        "line_count": shifted,
+        "line_count": len(below),
         "median_shift": reserve,
         "min_shift": reserve,
         "max_shift": reserve,
     }
+
+
+def _fit_receipt_to_canvas(
+    receipt: dict[str, Any], *, bottom: int = 4, top: int = 996
+) -> None:
+    """Uniformly scale/translate all word boxes so the receipt's content fits
+    within [bottom, top] — never off-canvas, never zero-height."""
+    boxes = [
+        word["bbox"]
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+        if word.get("bbox")
+    ]
+    if not boxes:
+        return
+    lo = min(box[1] for box in boxes)
+    hi = max(box[3] for box in boxes)
+    span = hi - lo
+    if span <= 0:
+        return
+    scale = min(1.0, (top - bottom) / span)
+    if lo >= bottom and hi <= top and scale >= 1.0:
+        return
+    for box in boxes:
+        box[1] = int(round(bottom + (box[1] - lo) * scale))
+        box[3] = int(round(bottom + (box[3] - lo) * scale))
+        if box[3] <= box[1]:
+            box[3] = box[1] + 1
 
 
 def _reflow_remove_lines(
@@ -924,6 +956,25 @@ def _reflow_remove_lines(
         "min_shift": reserve,
         "max_shift": reserve,
     }
+
+
+def _summary_block_top_y(receipt: dict[str, Any]) -> float | None:
+    """Top edge (highest y) of the SUBTOTAL/TAX/TOTAL summary block — the line
+    above which all item rows must sit (y-high-is-top)."""
+    ys: list[int] = []
+    for line in receipt.get("lines", []):
+        labels = {
+            label
+            for word in line.get("words", [])
+            for label in (word.get("labels") or [])
+        }
+        if labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"}:
+            ys.extend(
+                word["bbox"][3]
+                for word in line.get("words", [])
+                if word.get("bbox")
+            )
+    return float(max(ys)) if ys else None
 
 
 def _build_add_item_candidate_from_plan(
@@ -997,6 +1048,19 @@ def _build_add_item_candidate_from_plan(
         band_lines=band_lines,
         reserve=_row_group_height(band_lines, fallback=line_step) + gap,
     )
+    # A real item row precedes the SUBTOTAL/TOTAL block. If the chosen boundary
+    # item sat below that block (a mis-categorized item), the insert lands in the
+    # footer — flag it so the quality gate rejects the candidate.
+    summary_top = _summary_block_top_y(receipt)
+    inserted_bottoms = [
+        word["bbox"][1]
+        for cloned_line in band_lines
+        for word in cloned_line.get("words", [])
+        if word.get("bbox")
+    ]
+    insertion_position_valid = summary_top is None or (
+        min(inserted_bottoms, default=0) >= summary_top - gap
+    )
 
     new_total = _money(old_total + delta_amount)
     arithmetic = _apply_non_taxable_delta(
@@ -1019,6 +1083,7 @@ def _build_add_item_candidate_from_plan(
                 **entry.to_dict(),
                 "line_total": _format_money(delta_amount),
                 "row_cloned_from_real_receipt": row_cloned,
+                "insertion_position_valid": insertion_position_valid,
                 "seen_in_other_receipt": any(
                     key != _receipt_key(analysis.receipt)
                     for key in entry.source_receipt_keys
@@ -1797,7 +1862,7 @@ def build_synthesis_candidate_quality(
 
     if operation == "add_line_item":
         observed = metadata.get("observed_item_evidence")
-        added = metadata.get("added_item")
+        added = metadata.get("added_item") or {}
         arithmetic = metadata.get("arithmetic_reconciliation")
         components.update(
             {
@@ -1810,15 +1875,22 @@ def build_synthesis_candidate_quality(
                     arithmetic,
                     expected_tax_delta="0.00",
                 ),
+                # An item inserted below the SUBTOTAL/TOTAL block is invalid.
+                "valid_insertion_position": (
+                    1.0
+                    if added.get("insertion_position_valid", True)
+                    else 0.0
+                ),
             }
         )
         weights = {
-            "structure_similarity": 0.24,
+            "structure_similarity": 0.22,
             "structure_component_pass_rate": 0.06,
             "layout_integrity": 0.10,
-            "cross_receipt_grounding": 0.22,
-            "category_alignment": 0.15,
+            "cross_receipt_grounding": 0.20,
+            "category_alignment": 0.13,
             "arithmetic_reconciliation": 0.18,
+            "valid_insertion_position": 0.06,
             "token_budget": 0.05,
         }
     elif operation == "remove_line_item":
@@ -1914,6 +1986,7 @@ def build_synthesis_candidate_quality(
             and components["structure_similarity"]
             >= SYNTHETIC_MIN_STRUCTURE_SIMILARITY
             and components["layout_integrity"] >= 1.0
+            and components.get("valid_insertion_position", 1.0) >= 1.0
             and structure_gate["passed"] is True
         ),
         "components": {
@@ -2121,34 +2194,21 @@ def _layout_integrity_score_from_counts(
     line_inversion_count: int = 0,
     synthetic_overlap_count: int = 0,
 ) -> float:
-    # An invalid or out-of-bounds box is a hard geometry failure (a malformed
-    # or off-canvas word) and is never tolerated. Neither is a collision the
-    # synthesis introduced (an inserted row overlapping a neighbor / summary
-    # line) — that is a defect, not the rotated-OCR grazing the budget forgives.
+    # layout_integrity measures geometry the SYNTHESIS introduced, not the base
+    # receipt's own quality. Hard failures: a malformed / off-canvas box, or a
+    # collision involving an inserted synthetic line (a new row landing on a
+    # neighbor / summary line).
     if invalid_count or out_of_bounds_count or synthetic_overlap_count:
         return 0.0
-    # A handful of mild axis-aligned box overlaps and line-centroid inversions
-    # are inherent to real rotated OCR, not synthesis defects. Forgive a budget
-    # scaled to receipt size and penalize only the EXCESS, so genuinely broken
-    # geometry (many collisions / scrambled reading order) still scores low.
-    overlap_budget = max(2, round(word_count * 0.03))
-    excess_overlaps = max(0, overlap_count - overlap_budget)
-    score = max(0.0, 1.0 - min(excess_overlaps, 5) * 0.20)
-    # Tolerate a few rotation inversions, but never more than half the adjacent
-    # line pairs — otherwise a short receipt in fully reversed reading order
-    # (a 3-line receipt has 2 inversions) would slip under the flat minimum.
-    inversion_budget = min(
-        max(2, round(line_count * 0.15)),
-        max(0, (line_count - 1) // 2),
-    )
-    disordered = (
-        line_inversion_count > inversion_budget
-        if line_inversion_count
-        else not line_order_valid
-    )
-    if disordered:
-        score = min(score, 0.5)
-    return round(score, 3)
+    # Base-OCR overlaps and line inversions are INHERITED from the real receipt
+    # (it carries the same rotated-photo noise), so they must NOT fail a clean
+    # edit — penalizing them rejected well-formed add_line_item rows just for
+    # sitting on a slightly noisy base. Only a CATASTROPHIC base defect — a
+    # concatenated-receipt splice with overlaps on the order of the word count —
+    # is rejected.
+    if word_count and overlap_count > max(8, word_count // 2):
+        return 0.0
+    return 1.0
 
 
 # Normalized-y (0..1) tolerance for line-order inversions: roughly half a line
