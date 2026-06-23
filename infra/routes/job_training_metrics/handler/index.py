@@ -1223,6 +1223,27 @@ def _accepted_source_lineage_from_candidates(
     )
 
 
+def _accepted_source_lineage_incomplete(
+    accepted_source_lineage: Dict[str, Any],
+    *,
+    accepted_count: int | None,
+) -> bool:
+    """Fail closed when accepted rows cannot all prove base receipt lineage."""
+    accepted_count = accepted_count or 0
+    if accepted_count <= 0:
+        return False
+    if not isinstance(accepted_source_lineage, dict) or not accepted_source_lineage:
+        return True
+    if accepted_source_lineage.get("authoritative") is False:
+        return True
+    # Candidate/observed counts can be bounded diagnostics; base coverage is
+    # the full-population training invariant enforced here.
+    with_base_count = _safe_int(accepted_source_lineage.get("with_base_receipt_count"))
+    if with_base_count is None or with_base_count < accepted_count:
+        return True
+    return False
+
+
 def _compact_score_summary(value: Any) -> Dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -2863,7 +2884,10 @@ def _derive_synthesis_quality_report(
         and llm_model_freshness_gate.get("passed") is not True
     ):
         training_ready_reasons.append("refresh_latest_model_guidance_before_synthesis")
-    if accepted_source_lineage.get("authoritative") is False:
+    if _accepted_source_lineage_incomplete(
+        accepted_source_lineage,
+        accepted_count=accepted_count,
+    ):
         training_ready_reasons.append("complete_source_lineage_before_training")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:

@@ -2541,9 +2541,11 @@ def _training_ready_reasons(
 ) -> list[str]:
     """Return blocking reasons before synthetic rows should train LayoutLM."""
     reasons: list[str] = []
+    accepted_count = _safe_int(candidate_mix.get("accepted_count")) or 0
+    accepted_source_lineage = candidate_mix.get("accepted_source_lineage") or {}
     if bundle.get("ready") is not True:
         reasons.append("resolve_bundle_reasons_before_training")
-    if not _safe_int(candidate_mix.get("accepted_count")):
+    if not accepted_count:
         reasons.append("collect_more_receipts_or_fix_parameterization")
     if any(str(contract.get("status") or "") != "ready" for contract in contracts):
         reasons.append("collect_more_receipts_for_not_ready_merchants")
@@ -2571,10 +2573,35 @@ def _training_ready_reasons(
         and llm_model_freshness_gate.get("passed") is not True
     ):
         reasons.append("refresh_latest_model_guidance_before_synthesis")
+    if _accepted_source_lineage_incomplete(
+        accepted_source_lineage,
+        accepted_count=accepted_count,
+    ):
+        reasons.append("complete_source_lineage_before_training")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
         reasons.append("rebalance_synthetic_mix_before_training")
     return reasons[:8]
+
+
+def _accepted_source_lineage_incomplete(
+    accepted_source_lineage: dict[str, Any],
+    *,
+    accepted_count: int,
+) -> bool:
+    """Fail closed when accepted rows cannot all prove base receipt lineage."""
+    if accepted_count <= 0:
+        return False
+    if not isinstance(accepted_source_lineage, dict) or not accepted_source_lineage:
+        return True
+    if accepted_source_lineage.get("authoritative") is False:
+        return True
+    # Candidate/observed counts can be bounded diagnostics; base coverage is
+    # the full-population training invariant enforced here.
+    with_base_count = _safe_int(accepted_source_lineage.get("with_base_receipt_count"))
+    if with_base_count is None or with_base_count < accepted_count:
+        return True
+    return False
 
 
 def _synthetic_mix_balance_failure(

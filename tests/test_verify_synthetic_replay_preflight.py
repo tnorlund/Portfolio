@@ -2051,6 +2051,67 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
     ]
 
 
+def test_build_local_synthesis_quality_report_requires_base_lineage_coverage():
+    module = _load_module()
+    artifact = _artifact("Market Mart")
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+    incomplete_lineages = [
+        {},
+        {
+            **bundle["candidate_mix"]["accepted_source_lineage"],
+            "authoritative": False,
+        },
+        {
+            **bundle["candidate_mix"]["accepted_source_lineage"],
+            "with_base_receipt_count": 1,
+        },
+    ]
+
+    for accepted_source_lineage in incomplete_lineages:
+        next_bundle = json.loads(json.dumps(bundle))
+        next_bundle["candidate_mix"][
+            "accepted_source_lineage"
+        ] = accepted_source_lineage
+
+        report = module.build_local_synthesis_quality_report(
+            next_bundle,
+            artifacts=[artifact],
+        )
+
+        assert report["ready"] is True
+        assert report["training_ready"] is False
+        assert report["training_ready_reasons"] == [
+            "complete_source_lineage_before_training"
+        ]
+
+
+def test_build_local_synthesis_quality_report_allows_bounded_lineage_diagnostics():
+    module = _load_module()
+    artifact = _artifact("Market Mart")
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+    bundle["candidate_mix"]["accepted_source_lineage"] = {
+        **bundle["candidate_mix"]["accepted_source_lineage"],
+        "candidate_count": 1,
+        "observed_candidate_count": 1,
+        "expected_candidate_count": 2,
+        "with_base_receipt_count": 2,
+    }
+
+    report = module.build_local_synthesis_quality_report(
+        bundle,
+        artifacts=[artifact],
+    )
+
+    assert report["training_ready"] is True
+    assert report["training_ready_reasons"] == []
+
+
 def test_build_local_synthesis_quality_report_blocks_stale_paid_llm_guidance(
     monkeypatch,
 ):

@@ -237,6 +237,15 @@ def test_derived_quality_report_blocks_ready_payload_for_label_validation_only(
             "rejected_count": 0,
             "merchant_count": 1,
             "accepted_merchant_count": 1,
+            "accepted_source_lineage": {
+                "schema_version": "accepted-source-lineage-v1",
+                "coverage_status": "complete",
+                "authoritative": True,
+                "candidate_count": 1,
+                "observed_candidate_count": 1,
+                "expected_candidate_count": 1,
+                "with_base_receipt_count": 1,
+            },
             "merchants": [
                 {
                     "merchant_name": "Market Mart",
@@ -282,6 +291,113 @@ def test_derived_quality_report_blocks_ready_payload_for_label_validation_only(
         "mine_confusion_targets_for_hard_negative_slots": 1,
         "validate_recoverable_unlabeled_receipts": 1,
     }
+
+
+def test_derived_quality_report_blocks_incomplete_base_lineage(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    complete_lineage = {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": "complete",
+        "authoritative": True,
+        "candidate_count": 2,
+        "observed_candidate_count": 2,
+        "expected_candidate_count": 2,
+        "with_base_receipt_count": 2,
+        "with_cross_receipt_item_count": 1,
+        "with_category_evidence_count": 1,
+    }
+    incomplete_lineages = [
+        {},
+        {**complete_lineage, "authoritative": False},
+        {**complete_lineage, "with_base_receipt_count": 1},
+    ]
+
+    for accepted_source_lineage in incomplete_lineages:
+        report = module._derive_synthesis_quality_report(
+            bundle={"ready": True},
+            candidate_mix={
+                "candidate_count": 2,
+                "accepted_count": 2,
+                "rejected_count": 0,
+                "merchant_count": 1,
+                "accepted_merchant_count": 1,
+                "accepted_source_lineage": accepted_source_lineage,
+                "merchants": [
+                    {
+                        "merchant_name": "Market Mart",
+                        "candidate_count": 2,
+                        "accepted_count": 2,
+                    }
+                ],
+            },
+            selection={},
+            contracts=[
+                {
+                    "merchant_name": "Market Mart",
+                    "status": "ready",
+                    "supported_operations": [],
+                    "operation_contracts": {},
+                    "bundle_acceptance": {},
+                    "blockers": [],
+                    "limitations": [],
+                }
+            ],
+            candidate_examples=[],
+        )
+
+        assert report["ready"] is True
+        assert report["training_ready"] is False
+        assert report["training_ready_reasons"] == [
+            "complete_source_lineage_before_training"
+        ]
+
+
+def test_derived_quality_report_allows_bounded_lineage_diagnostics(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    report = module._derive_synthesis_quality_report(
+        bundle={"ready": True},
+        candidate_mix={
+            "candidate_count": 2,
+            "accepted_count": 2,
+            "rejected_count": 0,
+            "merchant_count": 1,
+            "accepted_merchant_count": 1,
+            "accepted_source_lineage": {
+                "schema_version": "accepted-source-lineage-v1",
+                "coverage_status": "complete",
+                "authoritative": True,
+                "candidate_count": 1,
+                "observed_candidate_count": 1,
+                "expected_candidate_count": 2,
+                "with_base_receipt_count": 2,
+            },
+            "merchants": [
+                {
+                    "merchant_name": "Market Mart",
+                    "candidate_count": 2,
+                    "accepted_count": 2,
+                }
+            ],
+        },
+        selection={},
+        contracts=[
+            {
+                "merchant_name": "Market Mart",
+                "status": "ready",
+                "supported_operations": [],
+                "operation_contracts": {},
+                "bundle_acceptance": {},
+                "blockers": [],
+                "limitations": [],
+            }
+        ],
+        candidate_examples=[],
+    )
+
+    assert report["training_ready"] is True
+    assert report["training_ready_reasons"] == []
 
 
 def test_compact_report_merchant_preserves_label_validation_actions(monkeypatch):
