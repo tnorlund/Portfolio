@@ -185,7 +185,10 @@ merchant synthesis contracts, and writes a bundle with:
 ### Training Handoff
 
 Point LayoutLM training at the generated bundle. Synthetic rows are loaded only
-into the training split; validation remains real receipts only.
+into the training split; validation remains real receipts only. The loader also
+enforces embedded bundle holds: a bundle whose `synthesis_quality_report`
+declares `training_ready: false` is rejected before any synthetic rows are mixed
+into training.
 
 ```bash
 export LAYOUTLM_SYNTHETIC_TRAINING_EXAMPLES="./.tmp/synthetic-bundle.json"

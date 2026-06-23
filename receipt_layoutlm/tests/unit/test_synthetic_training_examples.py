@@ -244,6 +244,172 @@ def test_load_synthetic_training_examples_accepts_pattern_artifact(tmp_path):
     ]
 
 
+def test_load_synthetic_training_examples_rejects_non_training_ready_bundle(
+    tmp_path,
+):
+    path = tmp_path / "bundle.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthesis_quality_report": {
+                    "ready": True,
+                    "training_ready": False,
+                    "training_ready_reasons": [
+                        "cover_ready_operations_before_training"
+                    ],
+                },
+                "synthetic_training_examples": [_candidate()],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.examples == []
+    assert loaded.accepted_rows == []
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 0
+    assert loaded.candidates_rejected == 1
+    assert loaded.rejection_reasons == {"bundle_training_not_ready": 1}
+    assert loaded.rejected_rows == [
+        {
+            "candidate_id": "candidate-1",
+            "receipt_key": "synthetic-candidate-1#00001",
+            "image_id": "synthetic-candidate-1",
+            "merchant_name": "Sprouts Farmers Market",
+            "operation": "hard_negative",
+            "reason": "bundle_training_not_ready",
+            "idx": 0,
+            "structure_similarity": 0.93,
+        }
+    ]
+
+
+def test_load_synthetic_training_examples_accepts_training_ready_bundle(
+    tmp_path,
+):
+    path = tmp_path / "bundle.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthesis_quality_report": {
+                    "ready": True,
+                    "training_ready": True,
+                    "training_ready_reasons": [],
+                },
+                "synthetic_training_examples": [_candidate()],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 1
+    assert loaded.candidates_rejected == 0
+    assert loaded.rejection_reasons == {}
+    assert [row["candidate_id"] for row in loaded.accepted_rows] == ["candidate-1"]
+
+
+def test_load_synthetic_training_examples_prefers_training_ready_over_legacy_ready(
+    tmp_path,
+):
+    path = tmp_path / "bundle.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ready": False,
+                "synthesis_quality_report": {
+                    "ready": False,
+                    "training_ready": True,
+                    "training_ready_reasons": [],
+                },
+                "synthetic_training_examples": [_candidate()],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 1
+    assert loaded.candidates_rejected == 0
+    assert loaded.rejection_reasons == {}
+
+
+def test_load_synthetic_training_examples_treats_null_training_ready_as_legacy(
+    tmp_path,
+):
+    path = tmp_path / "bundle.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthesis_quality_report": {
+                    "ready": False,
+                    "training_ready": None,
+                    "training_ready_reasons": [],
+                },
+                "synthetic_training_examples": [_candidate()],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 0
+    assert loaded.candidates_rejected == 1
+    assert loaded.rejection_reasons == {"bundle_not_ready": 1}
+
+
+def test_load_synthetic_training_examples_rejects_only_not_ready_artifact_in_directory(
+    tmp_path,
+):
+    blocked = tmp_path / "blocked.json"
+    blocked.write_text(
+        json.dumps(
+            {
+                "synthesis_quality_report": {
+                    "ready": True,
+                    "training_ready": False,
+                    "training_ready_reasons": [
+                        "cover_ready_operations_before_training"
+                    ],
+                },
+                "synthetic_training_examples": [_candidate(candidate_id="blocked")],
+            }
+        ),
+        encoding="utf-8",
+    )
+    allowed = tmp_path / "allowed.json"
+    allowed.write_text(
+        json.dumps(
+            {
+                "synthesis_quality_report": {
+                    "ready": True,
+                    "training_ready": True,
+                    "training_ready_reasons": [],
+                },
+                "synthetic_training_examples": [_candidate(candidate_id="allowed")],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(tmp_path))
+
+    assert loaded.candidates_seen == 2
+    assert loaded.candidates_accepted == 1
+    assert loaded.candidates_rejected == 1
+    assert loaded.rejection_reasons == {"bundle_training_not_ready": 1}
+    assert [row["candidate_id"] for row in loaded.accepted_rows] == ["allowed"]
+    assert [row["candidate_id"] for row in loaded.rejected_rows] == ["blocked"]
+
+
 def test_load_synthetic_training_examples_skips_validation_rows(tmp_path):
     path = tmp_path / "patterns.json"
     path.write_text(

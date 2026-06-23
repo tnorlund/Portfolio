@@ -17,6 +17,16 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "remove_line_item",
     "replace_field",
 )
+SYNTHETIC_CANDIDATE_COLLECTION_KEYS = (
+    "synthetic_receipt_candidates",
+    "synthetic_training_examples",
+    "candidates",
+    "examples",
+)
+SYNTHETIC_CANDIDATE_CONTAINER_KEYS = (
+    *SYNTHETIC_CANDIDATE_COLLECTION_KEYS,
+    "line_item_patterns",
+)
 
 
 @dataclass
@@ -604,25 +614,14 @@ def _candidate_rows(payload: Any) -> List[dict]:
         for item in payload:
             if not isinstance(item, dict):
                 continue
-            if (
-                "synthetic_receipt_candidates" in item
-                or "synthetic_training_examples" in item
-                or "candidates" in item
-                or "examples" in item
-                or "line_item_patterns" in item
-            ):
+            if any(key in item for key in SYNTHETIC_CANDIDATE_CONTAINER_KEYS):
                 rows.extend(_candidate_rows(item))
             else:
                 rows.append(item)
         return rows
     if not isinstance(payload, dict):
         return []
-    for key in (
-        "synthetic_receipt_candidates",
-        "synthetic_training_examples",
-        "candidates",
-        "examples",
-    ):
+    for key in SYNTHETIC_CANDIDATE_COLLECTION_KEYS:
         rows = payload.get(key)
         if isinstance(rows, list):
             candidate_rows = [row for row in rows if isinstance(row, dict)]
@@ -633,6 +632,84 @@ def _candidate_rows(payload: Any) -> List[dict]:
     if isinstance(patterns, dict):
         return _candidate_rows(patterns)
     return []
+
+
+def _embedded_synthesis_quality_report(
+    payload: Any,
+) -> Optional[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    for key in ("synthesis_quality_report", "quality_report"):
+        report = payload.get(key)
+        if isinstance(report, dict):
+            return report
+    return None
+
+
+def _synthetic_bundle_readiness_failure(payload: Any) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+
+    report = _embedded_synthesis_quality_report(payload)
+    if isinstance(report, dict):
+        report_training_ready = report.get("training_ready")
+        if report_training_ready is False:
+            return "bundle_training_not_ready"
+        if report_training_ready is True:
+            return None
+        if report.get("ready") is False:
+            return "bundle_not_ready"
+    payload_training_ready = payload.get("training_ready")
+    if payload_training_ready is False:
+        return "bundle_training_not_ready"
+    if payload_training_ready is True:
+        return None
+    if payload.get("ready") is False:
+        return "bundle_not_ready"
+    return None
+
+
+def _candidate_rows_with_bundle_readiness(
+    payload: Any,
+) -> Tuple[List[dict[str, Any]], List[dict[str, Any]], Dict[str, int]]:
+    """Extract rows while enforcing embedded bundle-level training holds."""
+    if isinstance(payload, list):
+        rows: List[dict[str, Any]] = []
+        rejected_rows: List[dict[str, Any]] = []
+        rejection_reasons: Dict[str, int] = {}
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            if any(key in item for key in SYNTHETIC_CANDIDATE_CONTAINER_KEYS):
+                item_rows, item_rejected_rows, item_reasons = (
+                    _candidate_rows_with_bundle_readiness(item)
+                )
+                rows.extend(item_rows)
+                rejected_rows.extend(item_rejected_rows)
+                for reason, count in item_reasons.items():
+                    rejection_reasons[reason] = (
+                        rejection_reasons.get(reason, 0) + count
+                    )
+            else:
+                rows.append(item)
+        return rows, rejected_rows, rejection_reasons
+
+    if not isinstance(payload, dict):
+        return [], [], {}
+
+    rows = _candidate_rows(payload)
+    reason = _synthetic_bundle_readiness_failure(payload)
+    if not reason:
+        return rows, [], {}
+
+    return (
+        [],
+        [
+            _synthetic_rejection_record(row, idx=idx, reason=reason)
+            for idx, row in enumerate(rows)
+        ],
+        {reason: len(rows)} if rows else {},
+    )
 
 
 def _valid_box(box: Any) -> bool:
@@ -1882,12 +1959,23 @@ def _load_synthetic_training_examples_with_summary(
         return SyntheticTrainingLoad()
 
     payload = _read_json_source(source)
-    rows = _candidate_rows(payload)
+    rows, bundle_rejected_rows, bundle_rejection_reasons = (
+        _candidate_rows_with_bundle_readiness(payload)
+    )
     merchant_contracts = _merchant_synthesis_contracts_by_merchant(payload)
-    return _select_synthetic_training_examples(
+    selected = _select_synthetic_training_examples(
         rows,
         merchant_contracts=merchant_contracts,
     )
+    if bundle_rejection_reasons:
+        selected.rejected_rows = bundle_rejected_rows + selected.rejected_rows
+        selected.candidates_seen += sum(bundle_rejection_reasons.values())
+        selected.candidates_rejected += sum(bundle_rejection_reasons.values())
+        for reason, count in bundle_rejection_reasons.items():
+            selected.rejection_reasons[reason] = (
+                selected.rejection_reasons.get(reason, 0) + count
+            )
+    return selected
 
 
 # Anchor labels used to dynamically bound the line-item region per receipt.

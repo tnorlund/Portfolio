@@ -637,6 +637,8 @@ const SYNTHETIC_REJECTION_REASON_LABELS: Record<string, string> = {
   accepted_synthetic_mix_high_risk: "high-risk merchant mix",
   accepted_synthetic_mix_single_merchant_high_risk: "single merchant mix",
   accepted_synthetic_mix_top_merchant_high_risk: "top merchant dominates",
+  bundle_not_ready: "bundle not ready",
+  bundle_training_not_ready: "bundle training hold",
   invalid_arithmetic_reconciliation: "bad arithmetic",
   below_real_structure_baseline: "below real baseline",
   low_category_sequence_similarity: "weak category order",
