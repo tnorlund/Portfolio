@@ -1362,6 +1362,11 @@ def _synthetic_has_arithmetic(row: dict[str, Any]) -> bool:
     return isinstance(arithmetic, dict) and bool(arithmetic)
 
 
+def _synthetic_is_high_fidelity(row: dict[str, Any]) -> bool:
+    quality = _synthetic_row_metadata(row).get("candidate_quality")
+    return isinstance(quality, dict) and quality.get("high_fidelity") is True
+
+
 def _synthetic_declared_candidate_quality(row: dict[str, Any]) -> Optional[float]:
     quality = _synthetic_row_metadata(row).get("candidate_quality")
     if not isinstance(quality, dict):
@@ -1724,8 +1729,16 @@ def _select_synthetic_training_examples(
     max_per_merchant_operation: Optional[int] = None,
     min_structure_similarity: Optional[float] = None,
     merchant_contracts: Optional[dict[str, dict[str, Any]]] = None,
+    require_high_fidelity: bool = False,
 ) -> SyntheticTrainingLoad:
-    """Apply LayoutLM synthetic quality gates and diversity caps to rows."""
+    """Apply LayoutLM synthetic quality gates and diversity caps to rows.
+
+    When ``require_high_fidelity`` is set, a candidate that passes the structure
+    and contract gates but is not flagged ``candidate_quality.high_fidelity`` is
+    rejected. This is used when building a curated, ready-to-train bundle (which
+    must be entirely high-fidelity); ordinary training runs leave it off so the
+    looser structure threshold still admits trainable examples.
+    """
     examples: List[dict[str, Any]] = []
     accepted: List[dict[str, Any]] = []
     rejected_rows: List[dict[str, Any]] = []
@@ -1783,6 +1796,9 @@ def _select_synthetic_training_examples(
         )
         if contract_failure:
             reject(contract_failure, row=row, idx=idx)
+            continue
+        if require_high_fidelity and not _synthetic_is_high_fidelity(row):
+            reject("not_high_fidelity", row=row, idx=idx)
             continue
 
         image_id = str(row.get("image_id") or f"synthetic-{idx:04d}")

@@ -837,12 +837,17 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         receipts,
     )
 
-    assert [candidate["metadata"]["source"] for candidate in candidates] == [
-        "merchant_parameterized_geometry",
-        "merchant_arithmetic_geometry",
-    ]
+    # Grounded add-item augmentations are generated first (grounded-dominant
+    # batch), then the hard-negative fills the remaining budget.
+    sources = [candidate["metadata"]["source"] for candidate in candidates]
+    assert sources[0] == "merchant_arithmetic_geometry"
+    assert "merchant_parameterized_geometry" in sources
 
-    hard_negative = candidates[0]
+    hard_negative = next(
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "hard_negative"
+    )
     assert hard_negative["metadata"]["base_receipt_key"] in receipt_keys
     assert "REWARDS" in hard_negative["tokens"]
     rewards_index = hard_negative["tokens"].index("REWARDS")
@@ -873,7 +878,11 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
     )
     assert hard_negative_quality["structure_gate"]["passed"] is True
 
-    arithmetic = candidates[1]
+    arithmetic = next(
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "add_line_item"
+    )
     metadata = arithmetic["metadata"]
     assert metadata["operation"] == "add_line_item"
     assert (
@@ -1283,11 +1292,16 @@ def test_generic_entry_point_uses_merchant_synthesis_for_non_sprouts():
         receipts_data=_merchant_receipts(),
     )
 
-    assert len(candidates) == 2
-    assert (
-        candidates[0].metadata["source"] == "merchant_parameterized_geometry"
-    )
-    assert candidates[1].metadata["source"] == "merchant_arithmetic_geometry"
+    # Grounded-dominant batch: grounded add-item augmentations lead, then the
+    # hard-negative fills the remaining budget.
+    operations = [candidate.metadata["operation"] for candidate in candidates]
+    assert operations.count("add_line_item") >= 2
+    assert "hard_negative" in operations
+    assert operations.index("add_line_item") < operations.index("hard_negative")
+    assert {candidate.metadata["source"] for candidate in candidates} == {
+        "merchant_arithmetic_geometry",
+        "merchant_parameterized_geometry",
+    }
 
 
 def test_nearest_open_y_skips_when_target_zone_is_crowded():

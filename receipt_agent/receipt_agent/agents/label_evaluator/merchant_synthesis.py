@@ -267,30 +267,23 @@ def generate_merchant_synthesis_candidates(
     )
 
     candidates: list[dict[str, Any]] = []
-    for recipe in _false_positive_recipes(plan):
-        if len(candidates) >= min(max_candidates, 3):
-            break
-        candidate = _generate_hard_negative_candidate(
-            merchant_name,
-            profile,
-            receipts,
-            analyses,
-            recipe,
-            index=len(candidates) + 1,
-        )
-        if candidate:
-            candidates.append(candidate)
 
-    if len(candidates) < max_candidates:
-        arithmetic = _generate_add_item_candidate(
+    # Grounded add-item augmentations are the highest-value train-only signal and
+    # the curated batch is intended to be grounded-dominant (the bundle gate's
+    # default grounded-share floor is 0.5). Generate them FIRST and allow several
+    # from a rich cross-receipt catalog, before filling the remaining budget with
+    # the other operations.
+    add_target = max(1, (max_candidates + 1) // 2)
+    candidates.extend(
+        _generate_add_item_candidates(
             merchant_name,
             profile,
             analyses,
             catalog,
-            index=len(candidates) + 1,
+            start_index=len(candidates) + 1,
+            limit=add_target,
         )
-        if arithmetic:
-            candidates.append(arithmetic)
+    )
 
     if len(candidates) < max_candidates:
         arithmetic = _generate_remove_item_candidate(
@@ -315,6 +308,22 @@ def generate_merchant_synthesis_candidates(
         )
         if replacement:
             candidates.append(replacement)
+
+    # Hard negatives are the lowest-priority, fill-last operation: they only
+    # consume budget the grounded edits / field replacements did not use.
+    for recipe in _false_positive_recipes(plan):
+        if len(candidates) >= max_candidates:
+            break
+        candidate = _generate_hard_negative_candidate(
+            merchant_name,
+            profile,
+            receipts,
+            analyses,
+            recipe,
+            index=len(candidates) + 1,
+        )
+        if candidate:
+            candidates.append(candidate)
 
     return candidates[:max_candidates]
 
@@ -597,6 +606,96 @@ def _generate_add_item_candidate(
         if candidate:
             candidates.append(candidate)
     return select_high_fidelity_synthesis_candidate(candidates)
+
+
+def _generate_add_item_candidates(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    catalog: list[MerchantCatalogEntry],
+    *,
+    start_index: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Generate up to ``limit`` distinct grounded add-item candidates.
+
+    Grounded add-item augmentations are the highest-value train-only signal, and
+    a merchant with a rich cross-receipt catalog can support several. Candidates
+    are de-duplicated by (category, product) and ranked by the same fidelity key
+    the selection gate uses, so the strongest distinct grounded edits come first.
+    """
+    if limit <= 0:
+        return []
+    plans = _build_add_item_plans(analyses, catalog)
+    if not plans:
+        return []
+    built: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for plan_rank, (plan_score, analysis, entry, y_center) in enumerate(
+        plans, start=1
+    ):
+        key = (entry.category, _normalize_product_text(entry.product_text))
+        if key in seen:
+            continue
+        candidate = _build_add_item_candidate_from_plan(
+            merchant_name,
+            profile,
+            analyses,
+            analysis,
+            entry,
+            y_center,
+            index=start_index,
+            plan_rank=plan_rank,
+            plan_count=len(plans),
+            plan_score=plan_score,
+        )
+        if candidate:
+            seen.add(key)
+            built.append(candidate)
+    # Rank high-fidelity grounded add-items first so the strongest distinct
+    # options lead; the bundle's acceptance gate drops any that are not
+    # high-fidelity from the final curated batch.
+    indexed = sorted(
+        enumerate(built),
+        key=lambda item: (
+            _candidate_is_high_fidelity(item[1]),
+            *_candidate_selection_key(item[1]),
+            -item[0],
+        ),
+        reverse=True,
+    )
+    chosen = []
+    # Renumber so candidate ids / indices stay sequential within the batch, and
+    # record the same selection evidence the single-pick selector emits.
+    for offset, (input_index, candidate) in enumerate(indexed[:limit]):
+        _renumber_candidate(candidate, merchant_name, start_index + offset)
+        _set_selection_evidence(
+            candidate,
+            candidate_count=len(built),
+            selected_index=input_index,
+        )
+        chosen.append(candidate)
+    return chosen
+
+
+def _candidate_is_high_fidelity(candidate: dict[str, Any]) -> bool:
+    metadata = candidate.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    quality = metadata.get("candidate_quality")
+    quality = quality if isinstance(quality, dict) else {}
+    return quality.get("high_fidelity") is True
+
+
+def _renumber_candidate(
+    candidate: dict[str, Any], merchant_name: str, index: int
+) -> None:
+    metadata = candidate.get("metadata") or {}
+    source = str(metadata.get("source") or "merchant_arithmetic_geometry")
+    operation = str(metadata.get("operation") or "add_line_item")
+    slug = _slug(f"{merchant_name}-{source}-{operation}-{index}")
+    candidate["candidate_id"] = slug
+    candidate["receipt_key"] = f"synthetic-{slug}#00001"
+    candidate["image_id"] = f"synthetic-{slug}"
 
 
 def _build_add_item_candidate_from_plan(
@@ -1552,27 +1651,46 @@ def select_high_fidelity_synthesis_candidate(
     if not isinstance(metadata, dict):
         return selected
 
+    _set_selection_evidence(
+        selected,
+        candidate_count=len(candidates),
+        selected_index=selected_index,
+    )
+    return selected
+
+
+_CANDIDATE_RANKED_BY = [
+    "candidate_quality.high_fidelity",
+    "real_baseline_comparison.within_real_score_range",
+    "candidate_quality.score",
+    "real_baseline_comparison.delta_from_min",
+    "structure_similarity.score",
+    "structure_component_pass_rate",
+    "layout_integrity",
+    "token_budget",
+]
+
+
+def _set_selection_evidence(
+    candidate: dict[str, Any],
+    *,
+    candidate_count: int,
+    selected_index: int,
+) -> None:
+    metadata = candidate.get("metadata")
+    if not isinstance(metadata, dict):
+        return
     metadata["selection_evidence"] = {
         "schema_version": "synthetic-candidate-selection-v1",
-        "selected_from_candidate_count": len(candidates),
+        "selected_from_candidate_count": candidate_count,
         "selected_input_index": selected_index,
-        "ranked_by": [
-            "candidate_quality.high_fidelity",
-            "real_baseline_comparison.within_real_score_range",
-            "candidate_quality.score",
-            "real_baseline_comparison.delta_from_min",
-            "structure_similarity.score",
-            "structure_component_pass_rate",
-            "layout_integrity",
-            "token_budget",
-        ],
-        "selected_score": _candidate_selection_summary(selected),
+        "ranked_by": list(_CANDIDATE_RANKED_BY),
+        "selected_score": _candidate_selection_summary(candidate),
         "selection_policy": (
             "Generate feasible merchant-local mutations, then keep the highest "
             "fidelity option instead of maximizing synthetic volume."
         ),
     }
-    return selected
 
 
 def _candidate_selection_key(candidate: dict[str, Any]) -> tuple[float, ...]:

@@ -1513,3 +1513,37 @@ def test_load_synthetic_training_examples_accepts_s3_prefix(monkeypatch):
         "synthetic-candidate-1#00001",
         "synthetic-candidate-2#00001",
     ]
+
+
+def test_require_high_fidelity_rejects_non_high_fidelity_rows(monkeypatch):
+    """The opt-in require_high_fidelity gate rejects candidates that clear the
+    other gates but are not flagged high-fidelity."""
+    from receipt_layoutlm.data_loader import _select_synthetic_training_examples
+
+    # Isolate the high-fidelity gate from the structure/contract quality gate.
+    monkeypatch.setenv("LAYOUTLM_SYNTHETIC_QUALITY_GATE", "0")
+
+    def row(cid, high_fidelity):
+        return {
+            "train_only": True,
+            "tokens": ["MILK", "5.00"],
+            "bboxes": [[10, 900, 90, 924], [800, 900, 880, 924]],
+            "ner_tags": ["B-PRODUCT_NAME", "B-LINE_TOTAL"],
+            "candidate_id": cid,
+            "image_id": f"synthetic-{cid}",
+            "receipt_key": f"synthetic-{cid}#00001",
+            "merchant_name": "Test Mart",
+            "metadata": {
+                "merchant_name": "Test Mart",
+                "candidate_quality": {"high_fidelity": high_fidelity},
+            },
+        }
+
+    rows = [row("hi", True), row("lo", False)]
+    # Default: high-fidelity not required -> both pass the remaining gates.
+    default = _select_synthetic_training_examples(rows)
+    assert default.candidates_accepted == 2
+    # Opt-in: the non-high-fidelity row is rejected with the explicit reason.
+    strict = _select_synthetic_training_examples(rows, require_high_fidelity=True)
+    assert strict.rejection_reasons.get("not_high_fidelity") == 1
+    assert strict.candidates_accepted == 1
