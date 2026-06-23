@@ -142,8 +142,13 @@ def apply_resolution(plan, env_tables, *, backup_path: str) -> dict:
     report = {"updated": 0, "missing": 0, "errors": []}
     now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     backup = {"created_at": now, "prior": []}
+
+    # First pass (read-only): resolve each target label + record its prior
+    # status, so the backup is complete and durable BEFORE any mutation.
+    pending = []  # (env_dynamo, label_entity, new_status)
+    clients = {}
     for env, items in by_env.items():
-        dc = DynamoClient(env_tables[env])
+        dc = clients.setdefault(env, DynamoClient(env_tables[env]))
         index = {
             (lb.image_id, lb.receipt_id, lb.line_id, lb.word_id, lb.label): lb
             for lb in dc.list_receipt_word_labels()[0]
@@ -157,16 +162,22 @@ def apply_resolution(plan, env_tables, *, backup_path: str) -> dict:
                 [env, img, rid, ln, wd, label,
                  getattr(lb, "validation_status", None)]
             )
-            try:
-                lb.validation_status = status
-                lb.label_proposed_by = "claude-conflict-resolution"
-                dc.update_receipt_word_label(lb)
-                report["updated"] += 1
-            except DYNAMO_ERRORS as exc:  # surfaced, not raised
-                report["errors"].append(
-                    f"{env} {img}#{rid} {ln}:{wd} {label}: {exc}"
-                )
+            pending.append((dc, lb, status))
+
     with open(backup_path, "w", encoding="utf-8") as f:
         json.dump(backup, f)
     report["backup_path"] = backup_path
+
+    # Second pass: mutate (backup already persisted -> always recoverable).
+    for dc, lb, status in pending:
+        try:
+            lb.validation_status = status
+            lb.label_proposed_by = "claude-conflict-resolution"
+            dc.update_receipt_word_label(lb)
+            report["updated"] += 1
+        except DYNAMO_ERRORS as exc:  # surfaced, not raised
+            report["errors"].append(
+                f"{lb.image_id}#{lb.receipt_id} "
+                f"{lb.line_id}:{lb.word_id} {lb.label}: {exc}"
+            )
     return report
