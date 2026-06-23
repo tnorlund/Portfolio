@@ -1064,6 +1064,23 @@ def test_load_synthetic_training_examples_covers_ready_operations_before_duplica
         "hard_negative": 1,
         "replace_field": 1,
     }
+    assert loaded.accepted_operation_coverage["ready_operation_count"] == 4
+    assert loaded.accepted_operation_coverage["accepted_ready_operation_count"] == 2
+    assert loaded.accepted_operation_coverage["accepted_ready_operation_share"] == 0.5
+    assert loaded.accepted_operation_coverage["uncovered_ready_operations"] == [
+        "add_line_item",
+        "remove_line_item",
+    ]
+    assert loaded.accepted_operation_coverage["operations"]["replace_field"] == {
+        "ready_merchant_count": 1,
+        "accepted_merchant_count": 1,
+        "accepted_ready_merchant_count": 1,
+        "accepted_count": 1,
+        "ready_acceptance_share": 1.0,
+        "ready_merchants": ["Sprouts Farmers Market"],
+        "accepted_merchants": ["Sprouts Farmers Market"],
+        "uncovered_ready_merchants": [],
+    }
     assert loaded.accepted_field_replacement_counts == {"DATE": 1}
     assert loaded.rejected_rows[0]["candidate_id"] == "duplicate-hard-negative"
 

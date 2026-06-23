@@ -374,6 +374,13 @@ def _synthetic_loader_summary(
         result["synthetic_accepted_operation_counts"] = accepted_operation_counts
         result["accepted_operation_counts"] = accepted_operation_counts
 
+    accepted_operation_coverage = _compact_accepted_operation_coverage(
+        metrics.get("synthetic_accepted_operation_coverage")
+    )
+    if accepted_operation_coverage:
+        result["synthetic_accepted_operation_coverage"] = accepted_operation_coverage
+        result["accepted_operation_coverage"] = accepted_operation_coverage
+
     accepted_category_counts = _compact_count_map(
         metrics.get("synthetic_accepted_category_counts")
     )

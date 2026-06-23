@@ -95,6 +95,7 @@ def test_trainer_records_synthetic_quality_gate_metrics():
     assert 'metric_name="synthetic_candidates_rejected"' in trainer_source
     assert 'metric_name="synthetic_rejection_reasons"' in trainer_source
     assert 'metric_name="synthetic_accepted_operation_counts"' in trainer_source
+    assert 'metric_name="synthetic_accepted_operation_coverage"' in trainer_source
     assert 'metric_name="synthetic_accepted_category_counts"' in trainer_source
     assert 'metric_name="synthetic_accepted_field_replacement_counts"' in trainer_source
     assert 'metric_name="synthetic_accepted_structure_similarity"' in trainer_source

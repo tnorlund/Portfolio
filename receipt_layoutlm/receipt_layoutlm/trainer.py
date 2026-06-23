@@ -1197,6 +1197,14 @@ class ReceiptLayoutLMTrainer:
                         ),
                         JobMetric(
                             job_id=job.job_id,
+                            metric_name="synthetic_accepted_operation_coverage",
+                            value=split_metadata.synthetic_accepted_operation_coverage,
+                            timestamp=ts,
+                            unit="json",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
                             metric_name="synthetic_accepted_category_counts",
                             value=split_metadata.synthetic_accepted_category_counts,
                             timestamp=ts,

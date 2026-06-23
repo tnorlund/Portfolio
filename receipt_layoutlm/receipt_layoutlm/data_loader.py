@@ -11,6 +11,13 @@ from urllib.parse import urlparse
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 
+SYNTHESIS_OPERATION_FAMILIES = (
+    "hard_negative",
+    "add_line_item",
+    "remove_line_item",
+    "replace_field",
+)
+
 
 @dataclass
 class SplitMetadata:
@@ -55,6 +62,9 @@ class SplitMetadata:
     synthetic_candidates_rejected: int = 0
     synthetic_rejection_reasons: Dict[str, int] = field(default_factory=dict)
     synthetic_accepted_operation_counts: Dict[str, int] = field(default_factory=dict)
+    synthetic_accepted_operation_coverage: Dict[str, Any] = field(
+        default_factory=dict
+    )
     synthetic_accepted_category_counts: Dict[str, int] = field(default_factory=dict)
     synthetic_accepted_field_replacement_counts: Dict[str, int] = field(
         default_factory=dict
@@ -91,6 +101,7 @@ class SyntheticTrainingLoad:
     candidates_rejected: int = 0
     rejection_reasons: Dict[str, int] = field(default_factory=dict)
     accepted_operation_counts: Dict[str, int] = field(default_factory=dict)
+    accepted_operation_coverage: Dict[str, Any] = field(default_factory=dict)
     accepted_category_counts: Dict[str, int] = field(default_factory=dict)
     accepted_field_replacement_counts: Dict[str, int] = field(default_factory=dict)
     accepted_structure_similarity: Dict[str, Any] = field(default_factory=dict)
@@ -651,6 +662,16 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
+def _safe_ratio(numerator: Any, denominator: Any) -> Optional[float]:
+    top = _safe_int(numerator)
+    bottom = _safe_int(denominator)
+    if bottom is None:
+        return None
+    if bottom <= 0:
+        return 0.0
+    return round((top or 0) / bottom, 3)
+
+
 def _synthetic_quality_gate_enabled() -> bool:
     return os.getenv("LAYOUTLM_SYNTHETIC_QUALITY_GATE", "1") not in {
         "0",
@@ -886,6 +907,113 @@ def _contract_operation_ready(
         if ready is False:
             return False
     return operation in supported_operations
+
+
+def _synthetic_accepted_operation_coverage(
+    rows: List[dict[str, Any]],
+    merchant_contracts: Optional[dict[str, dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Summarize whether accepted rows cover contract-ready operations."""
+    if not merchant_contracts:
+        return {}
+
+    merchant_names: Dict[str, str] = {}
+    accepted_counts: Dict[tuple[str, str], int] = {}
+    for row in rows:
+        merchant_key = _synthetic_merchant_key(row)
+        operation = _synthetic_operation(row).strip()
+        if not operation:
+            continue
+        merchant_names.setdefault(merchant_key, _synthetic_merchant_name(row))
+        key = (merchant_key, operation)
+        accepted_counts[key] = accepted_counts.get(key, 0) + 1
+
+    for merchant_key, contract in merchant_contracts.items():
+        merchant_name = str(contract.get("merchant_name") or merchant_key).strip()
+        merchant_names[merchant_key] = merchant_name or merchant_key
+
+    operations: Dict[str, Any] = {}
+    uncovered_ready_operations: List[str] = []
+    ready_operation_count = 0
+    accepted_operation_count = 0
+    accepted_ready_operation_count = 0
+
+    def merchant_label(merchant_key: str) -> str:
+        return merchant_names.get(merchant_key) or merchant_key
+
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        ready_keys = [
+            merchant_key
+            for merchant_key, contract in merchant_contracts.items()
+            if str(contract.get("status") or "").strip().lower() == "ready"
+            and _contract_operation_ready(contract, operation)
+        ]
+        accepted_keys = [
+            merchant_key
+            for merchant_key, accepted_operation in accepted_counts
+            if accepted_operation == operation
+            and accepted_counts[(merchant_key, accepted_operation)] > 0
+        ]
+        ready_key_set = set(ready_keys)
+        accepted_key_set = set(accepted_keys)
+        ready_accepted_keys = sorted(
+            ready_key_set.intersection(accepted_key_set),
+            key=merchant_label,
+        )
+        uncovered_ready_keys = sorted(
+            ready_key_set.difference(accepted_key_set),
+            key=merchant_label,
+        )
+        accepted_keys = sorted(set(accepted_keys), key=merchant_label)
+        accepted_count = sum(
+            count
+            for (merchant_key, accepted_operation), count in accepted_counts.items()
+            if accepted_operation == operation and count > 0
+        )
+
+        if ready_keys:
+            ready_operation_count += 1
+        if accepted_count:
+            accepted_operation_count += 1
+        if ready_keys and ready_accepted_keys:
+            accepted_ready_operation_count += 1
+        if ready_keys and not ready_accepted_keys:
+            uncovered_ready_operations.append(operation)
+
+        operations[operation] = {
+            "ready_merchant_count": len(ready_keys),
+            "accepted_merchant_count": len(accepted_keys),
+            "accepted_ready_merchant_count": len(ready_accepted_keys),
+            "accepted_count": accepted_count,
+            "ready_acceptance_share": (
+                _safe_ratio(len(ready_accepted_keys), len(ready_keys))
+                if ready_keys
+                else None
+            ),
+            "ready_merchants": [merchant_label(key) for key in ready_keys[:8]],
+            "accepted_merchants": [merchant_label(key) for key in accepted_keys[:8]],
+            "uncovered_ready_merchants": [
+                merchant_label(key) for key in uncovered_ready_keys[:8]
+            ],
+        }
+
+    return {
+        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": ready_operation_count,
+        "accepted_operation_count": accepted_operation_count,
+        "accepted_ready_operation_count": accepted_ready_operation_count,
+        "accepted_ready_operation_share": _safe_ratio(
+            accepted_ready_operation_count,
+            ready_operation_count,
+        ),
+        "uncovered_ready_operations": uncovered_ready_operations,
+        "operations": operations,
+        "recommendations": (
+            ["cover_ready_operations_before_training"]
+            if uncovered_ready_operations
+            else []
+        ),
+    }
 
 
 def _contract_field_for_label(
@@ -1694,6 +1822,10 @@ def _select_synthetic_training_examples(
         accepted_operation_counts=_count_synthetic_values(
             [_synthetic_operation(row) for row in accepted_rows]
         ),
+        accepted_operation_coverage=_synthetic_accepted_operation_coverage(
+            accepted_rows,
+            merchant_contracts,
+        ),
         accepted_category_counts=_count_synthetic_values(
             [
                 category
@@ -2146,6 +2278,9 @@ def load_datasets(
         synthetic_candidates_rejected=synthetic_load.candidates_rejected,
         synthetic_rejection_reasons=synthetic_load.rejection_reasons,
         synthetic_accepted_operation_counts=synthetic_load.accepted_operation_counts,
+        synthetic_accepted_operation_coverage=(
+            synthetic_load.accepted_operation_coverage
+        ),
         synthetic_accepted_category_counts=synthetic_load.accepted_category_counts,
         synthetic_accepted_field_replacement_counts=(
             synthetic_load.accepted_field_replacement_counts
