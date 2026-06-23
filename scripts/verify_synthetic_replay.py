@@ -14,6 +14,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -2281,6 +2282,15 @@ def _report_source_quality_fields(
             "source_quality_receipts_with_date_or_time_label": _safe_int(
                 source_quality.get("receipts_with_date_or_time_label")
             ),
+            "source_quality_text_structure_status": source_quality.get(
+                "text_structure_status"
+            ),
+            "source_quality_line_item_like_text_line_count": _safe_int(
+                source_quality.get("line_item_like_text_line_count")
+            ),
+            "source_quality_total_like_text_line_count": _safe_int(
+                source_quality.get("total_like_text_line_count")
+            ),
             "source_quality_operation_blockers": _source_quality_operation_blockers(
                 source_quality
             ),
@@ -3901,6 +3911,93 @@ def _receipt_label_counts(receipt: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
+PRICE_TEXT_RE = re.compile(r"(?:^|\s)\$?\d{1,4}(?:,\d{3})*\.\d{2}\b")
+DATE_TIME_TEXT_RE = re.compile(
+    r"\b(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}\s?(?:AM|PM)?)\b",
+    re.IGNORECASE,
+)
+TOTAL_TEXT_MARKERS = {
+    "AMOUNT",
+    "BALANCE",
+    "DUE",
+    "GRAND TOTAL",
+    "SUBTOTAL",
+    "TOTAL",
+}
+LINE_ITEM_EXCLUDED_TEXT_MARKERS = TOTAL_TEXT_MARKERS | {
+    "CARD",
+    "CASH",
+    "CHANGE",
+    "PAYMENT",
+    "TAX",
+    "TIP",
+}
+
+
+def _normalized_line_text(line: dict[str, Any]) -> str:
+    text = str(line.get("text") or "").strip()
+    if text:
+        return " ".join(text.split())
+    return " ".join(
+        str(word.get("text") or "")
+        for word in line.get("words") or []
+        if isinstance(word, dict) and word.get("text")
+    ).strip()
+
+
+def _line_has_price_like_text(text: str) -> bool:
+    return bool(PRICE_TEXT_RE.search(text))
+
+
+def _line_has_total_like_text(text: str) -> bool:
+    upper = text.upper()
+    return any(marker in upper for marker in TOTAL_TEXT_MARKERS) and (
+        _line_has_price_like_text(text)
+        or any(marker in upper for marker in {"TOTAL", "DUE"})
+    )
+
+
+def _line_has_line_item_like_text(text: str) -> bool:
+    if not _line_has_price_like_text(text) or _line_has_total_like_text(text):
+        return False
+    upper = text.upper()
+    if any(marker in upper for marker in LINE_ITEM_EXCLUDED_TEXT_MARKERS):
+        return False
+    prefix = PRICE_TEXT_RE.split(text, maxsplit=1)[0]
+    return any(ch.isalpha() for ch in prefix) and len(prefix.split()) <= 8
+
+
+def _line_has_date_time_like_text(text: str) -> bool:
+    return bool(DATE_TIME_TEXT_RE.search(text))
+
+
+def _receipt_text_structure_counts(receipt: dict[str, Any]) -> dict[str, int]:
+    counts = {
+        "merchant_header_like_line_count": 0,
+        "price_like_line_count": 0,
+        "line_item_like_text_line_count": 0,
+        "total_like_text_line_count": 0,
+        "date_time_like_text_line_count": 0,
+    }
+    for index, line in enumerate(
+        [line for line in receipt.get("lines") or [] if isinstance(line, dict)]
+    ):
+        text = _normalized_line_text(line)
+        if not text:
+            continue
+        if index < 6 and _merchant_header_candidate(text):
+            counts["merchant_header_like_line_count"] += 1
+        if _line_has_price_like_text(text):
+            counts["price_like_line_count"] += 1
+        if _line_has_line_item_like_text(text):
+            counts["line_item_like_text_line_count"] += 1
+        if _line_has_total_like_text(text):
+            counts["total_like_text_line_count"] += 1
+        if _line_has_date_time_like_text(text):
+            counts["date_time_like_text_line_count"] += 1
+    return counts
+
+
 def _source_receipt_quality(
     merchant_name: str,
     receipts: list[dict[str, Any]],
@@ -3914,8 +4011,19 @@ def _source_receipt_quality(
     receipts_with_line_item_labels = 0
     receipts_with_grand_total_label = 0
     receipts_with_date_or_time_label = 0
+    receipts_with_line_item_like_text = 0
+    receipts_with_total_like_text = 0
+    receipts_with_date_time_like_text = 0
+    receipts_with_merchant_header_like_text = 0
     total_line_count = 0
     total_word_count = 0
+    text_structure_counts = {
+        "merchant_header_like_line_count": 0,
+        "price_like_line_count": 0,
+        "line_item_like_text_line_count": 0,
+        "total_like_text_line_count": 0,
+        "date_time_like_text_line_count": 0,
+    }
 
     for receipt in receipts:
         lines = [line for line in receipt.get("lines") or [] if isinstance(line, dict)]
@@ -3942,8 +4050,32 @@ def _source_receipt_quality(
             receipts_with_grand_total_label += 1
         if receipt_counts.get("DATE") or receipt_counts.get("TIME"):
             receipts_with_date_or_time_label += 1
+        receipt_text_counts = _receipt_text_structure_counts(receipt)
+        for key, count in receipt_text_counts.items():
+            text_structure_counts[key] += count
+        if receipt_text_counts["line_item_like_text_line_count"]:
+            receipts_with_line_item_like_text += 1
+        if receipt_text_counts["total_like_text_line_count"]:
+            receipts_with_total_like_text += 1
+        if receipt_text_counts["date_time_like_text_line_count"]:
+            receipts_with_date_time_like_text += 1
+        if receipt_text_counts["merchant_header_like_line_count"]:
+            receipts_with_merchant_header_like_text += 1
 
     labeled_word_count = sum(label_counts.values())
+    text_structure_status = "not_applicable"
+    if not labeled_word_count and total_word_count:
+        if (
+            text_structure_counts["line_item_like_text_line_count"]
+            or text_structure_counts["total_like_text_line_count"]
+            or text_structure_counts["price_like_line_count"]
+        ):
+            text_structure_status = "recoverable_unlabeled_text"
+        else:
+            text_structure_status = "unlabeled_text_without_receipt_structure"
+    elif labeled_word_count:
+        text_structure_status = "labeled"
+
     blockers: list[str] = []
     limitations: list[str] = []
     if not receipt_count:
@@ -3954,6 +4086,8 @@ def _source_receipt_quality(
         blockers.append("no_receipt_words")
     if not labeled_word_count:
         blockers.append("no_word_labels")
+        if text_structure_status == "recoverable_unlabeled_text":
+            limitations.append("unlabeled_text_requires_label_validation")
     if not receipts_with_line_item_labels:
         limitations.append("no_labeled_line_items")
     if not receipts_with_grand_total_label:
@@ -3981,9 +4115,17 @@ def _source_receipt_quality(
         "receipts_with_line_item_labels": receipts_with_line_item_labels,
         "receipts_with_grand_total_label": receipts_with_grand_total_label,
         "receipts_with_date_or_time_label": receipts_with_date_or_time_label,
+        "receipts_with_line_item_like_text": receipts_with_line_item_like_text,
+        "receipts_with_total_like_text": receipts_with_total_like_text,
+        "receipts_with_date_time_like_text": receipts_with_date_time_like_text,
+        "receipts_with_merchant_header_like_text": (
+            receipts_with_merchant_header_like_text
+        ),
         "line_count": total_line_count,
         "word_count": total_word_count,
         "labeled_word_count": labeled_word_count,
+        "text_structure_status": text_structure_status,
+        **text_structure_counts,
         "top_labels": top_labels,
         "blockers": blockers,
         "limitations": limitations,
@@ -4001,7 +4143,7 @@ def summarize_source_receipt_quality(
     status_counts = _count_by(
         [str(row.get("status") or "missing") for row in merchants]
     )
-    return {
+    result = {
         "merchant_count": len(merchants),
         "usable_merchant_count": status_counts.get("usable", 0),
         "limited_merchant_count": status_counts.get("limited", 0),
@@ -4015,6 +4157,18 @@ def summarize_source_receipt_quality(
         ),
         "merchants": merchants[:50],
     }
+    if any(row.get("text_structure_status") for row in merchants):
+        result["text_structure_status_counts"] = _count_by(
+            [str(row.get("text_structure_status") or "missing") for row in merchants]
+        )
+        result["line_item_like_text_line_count"] = sum(
+            _safe_int(row.get("line_item_like_text_line_count")) or 0
+            for row in merchants
+        )
+        result["total_like_text_line_count"] = sum(
+            _safe_int(row.get("total_like_text_line_count")) or 0 for row in merchants
+        )
+    return result
 
 
 def build_local_pattern_artifacts_from_receipts(

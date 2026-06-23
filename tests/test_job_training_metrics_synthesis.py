@@ -80,6 +80,51 @@ def test_load_pattern_artifacts_accepts_s3_prefix(monkeypatch):
     ]
 
 
+def test_compact_source_receipt_quality_preserves_unlabeled_text_structure(
+    monkeypatch,
+):
+    module = _load_module(monkeypatch)
+
+    compact = module._compact_source_receipt_quality(
+        {
+            "merchants": [
+                {
+                    "merchant_name": "Market Mart",
+                    "status": "blocked",
+                    "receipt_count": 1,
+                    "receipts_with_lines": 1,
+                    "receipts_with_words": 1,
+                    "receipts_with_labels": 0,
+                    "receipts_with_line_item_labels": 0,
+                    "receipts_with_grand_total_label": 0,
+                    "receipts_with_date_or_time_label": 0,
+                    "line_count": 5,
+                    "word_count": 9,
+                    "labeled_word_count": 0,
+                    "text_structure_status": "recoverable_unlabeled_text",
+                    "receipts_with_line_item_like_text": 1,
+                    "receipts_with_total_like_text": 1,
+                    "receipts_with_date_time_like_text": 1,
+                    "line_item_like_text_line_count": 1,
+                    "total_like_text_line_count": 1,
+                    "price_like_line_count": 3,
+                    "blockers": ["no_word_labels"],
+                    "limitations": ["unlabeled_text_requires_label_validation"],
+                }
+            ]
+        }
+    )
+
+    assert compact["text_structure_status_counts"] == {"recoverable_unlabeled_text": 1}
+    assert compact["line_item_like_text_line_count"] == 1
+    assert compact["total_like_text_line_count"] == 1
+    merchant = compact["merchants"][0]
+    assert merchant["text_structure_status"] == "recoverable_unlabeled_text"
+    assert merchant["receipts_with_line_item_like_text"] == 1
+    assert merchant["line_item_like_text_line_count"] == 1
+    assert merchant["total_like_text_line_count"] == 1
+
+
 def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
     module = _load_module(monkeypatch)
 

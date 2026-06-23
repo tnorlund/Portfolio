@@ -1003,6 +1003,80 @@ def test_source_quality_blocked_artifact_cannot_feed_training_bundle():
     }
 
 
+def test_source_quality_reports_recoverable_unlabeled_text_structure():
+    module = _load_module()
+
+    receipt = module._normalize_local_receipt(
+        {
+            "lines": [
+                {"line_id": 1, "text": "Market Mart"},
+                {"line_id": 2, "text": "BANANAS 1.95"},
+                {"line_id": 3, "text": "TAX 0.00"},
+                {"line_id": 4, "text": "TOTAL 1.95"},
+                {"line_id": 5, "text": "06/23/26 12:45 PM"},
+            ],
+        }
+    )
+
+    quality = module._source_receipt_quality("Market Mart", [receipt])
+
+    assert quality["status"] == "blocked"
+    assert quality["blockers"] == ["no_word_labels"]
+    assert "unlabeled_text_requires_label_validation" in quality["limitations"]
+    assert quality["text_structure_status"] == "recoverable_unlabeled_text"
+    assert quality["receipts_with_merchant_header_like_text"] == 1
+    assert quality["receipts_with_line_item_like_text"] == 1
+    assert quality["receipts_with_total_like_text"] == 1
+    assert quality["receipts_with_date_time_like_text"] == 1
+    assert quality["line_item_like_text_line_count"] == 1
+    assert quality["total_like_text_line_count"] == 1
+    summary = module.summarize_source_receipt_quality(
+        [{"source_receipt_quality": quality}]
+    )
+    assert summary["text_structure_status_counts"] == {"recoverable_unlabeled_text": 1}
+    assert summary["line_item_like_text_line_count"] == 1
+    assert summary["total_like_text_line_count"] == 1
+
+    artifact = _artifact(
+        "Market Mart",
+        status="ready",
+        score=0.92,
+        source_receipt_quality=quality,
+    )
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_ready_share=0.0,
+        min_avg_readiness_score=0.0,
+        min_grounded_candidate_share=0.0,
+    )
+    assert bundle["selection"]["candidates_accepted"] == 0
+    assert bundle["candidate_mix"]["accepted_count"] == 0
+    assert bundle["synthesis_quality_report"]["training_ready"] is False
+    report_merchant = bundle["synthesis_quality_report"]["merchants"][0]
+    assert (
+        report_merchant["source_quality_text_structure_status"]
+        == "recoverable_unlabeled_text"
+    )
+    assert report_merchant["source_quality_line_item_like_text_line_count"] == 1
+    assert report_merchant["source_quality_total_like_text_line_count"] == 1
+
+    weak_receipt = module._normalize_local_receipt(
+        {
+            "lines": [
+                {"line_id": 1, "text": "Market Mart"},
+                {"line_id": 2, "text": "Order ABC123"},
+                {"line_id": 3, "text": "06/23/26 12:45 PM"},
+            ],
+        }
+    )
+    weak_quality = module._source_receipt_quality("Market Mart", [weak_receipt])
+    assert (
+        weak_quality["text_structure_status"]
+        == "unlabeled_text_without_receipt_structure"
+    )
+    assert "unlabeled_text_requires_label_validation" not in weak_quality["limitations"]
+
+
 def test_preflight_cli_loads_local_artifacts_without_deployment_lookup(
     tmp_path,
     monkeypatch,
@@ -2428,6 +2502,7 @@ def test_build_local_pattern_artifacts_from_receipt_json(tmp_path):
     source_quality = summary["source_receipt_quality"]["merchants"][0]
     assert source_quality["merchant_name"] == "Market Mart"
     assert source_quality["receipt_count"] == 2
+    assert source_quality["text_structure_status"] == "labeled"
     assert source_quality["receipts_with_line_item_labels"] == 2
     assert source_quality["receipts_with_grand_total_label"] == 2
     assert source_quality["blockers"] == []

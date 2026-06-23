@@ -1395,9 +1395,33 @@ def _compact_source_receipt_quality_merchant(row: Any) -> Dict[str, Any]:
         "receipts_with_date_or_time_label": _safe_int(
             row.get("receipts_with_date_or_time_label")
         ),
+        "receipts_with_line_item_like_text": _safe_int(
+            row.get("receipts_with_line_item_like_text")
+        ),
+        "receipts_with_total_like_text": _safe_int(
+            row.get("receipts_with_total_like_text")
+        ),
+        "receipts_with_date_time_like_text": _safe_int(
+            row.get("receipts_with_date_time_like_text")
+        ),
+        "receipts_with_merchant_header_like_text": _safe_int(
+            row.get("receipts_with_merchant_header_like_text")
+        ),
         "line_count": _safe_int(row.get("line_count")),
         "word_count": _safe_int(row.get("word_count")),
         "labeled_word_count": _safe_int(row.get("labeled_word_count")),
+        "text_structure_status": row.get("text_structure_status"),
+        "merchant_header_like_line_count": _safe_int(
+            row.get("merchant_header_like_line_count")
+        ),
+        "price_like_line_count": _safe_int(row.get("price_like_line_count")),
+        "line_item_like_text_line_count": _safe_int(
+            row.get("line_item_like_text_line_count")
+        ),
+        "total_like_text_line_count": _safe_int(row.get("total_like_text_line_count")),
+        "date_time_like_text_line_count": _safe_int(
+            row.get("date_time_like_text_line_count")
+        ),
         "top_labels": _compact_count_map(row.get("top_labels")),
         "blockers": list(row.get("blockers") or [])[:5],
         "limitations": list(row.get("limitations") or [])[:5],
@@ -1416,7 +1440,7 @@ def _summarize_source_receipt_quality_rows(rows: List[Any]) -> Dict[str, Any]:
     if not merchants:
         return {}
     status_counts = Counter(str(row.get("status") or "missing") for row in merchants)
-    return {
+    result = {
         "merchant_count": len(merchants),
         "usable_merchant_count": status_counts.get("usable", 0),
         "limited_merchant_count": status_counts.get("limited", 0),
@@ -1430,6 +1454,19 @@ def _summarize_source_receipt_quality_rows(rows: List[Any]) -> Dict[str, Any]:
         ),
         "merchants": merchants[:8],
     }
+    if any(row.get("text_structure_status") for row in merchants):
+        text_structure_status_counts = Counter(
+            str(row.get("text_structure_status") or "missing") for row in merchants
+        )
+        result["text_structure_status_counts"] = dict(text_structure_status_counts)
+        result["line_item_like_text_line_count"] = sum(
+            _safe_int(row.get("line_item_like_text_line_count")) or 0
+            for row in merchants
+        )
+        result["total_like_text_line_count"] = sum(
+            _safe_int(row.get("total_like_text_line_count")) or 0 for row in merchants
+        )
+    return result
 
 
 def _compact_source_receipt_quality(value: Any) -> Dict[str, Any]:
@@ -1450,10 +1487,17 @@ def _compact_source_receipt_quality(value: Any) -> Dict[str, Any]:
             "blocked_merchant_count",
             "receipt_count",
             "labeled_word_count",
+            "line_item_like_text_line_count",
+            "total_like_text_line_count",
         ):
             compact_value = _safe_int(value.get(key))
             if compact_value is not None:
                 summary[key] = compact_value
+        text_structure_status_counts = _compact_count_map(
+            value.get("text_structure_status_counts")
+        )
+        if text_structure_status_counts:
+            summary["text_structure_status_counts"] = text_structure_status_counts
         return summary
 
     if value.get("merchant_name"):
@@ -1546,6 +1590,15 @@ def _report_source_quality_fields(
         ),
         "source_quality_receipts_with_date_or_time_label": _safe_int(
             source_quality.get("receipts_with_date_or_time_label")
+        ),
+        "source_quality_text_structure_status": source_quality.get(
+            "text_structure_status"
+        ),
+        "source_quality_line_item_like_text_line_count": _safe_int(
+            source_quality.get("line_item_like_text_line_count")
+        ),
+        "source_quality_total_like_text_line_count": _safe_int(
+            source_quality.get("total_like_text_line_count")
         ),
         "source_quality_operation_blockers": {
             str(operation): str(reason)
@@ -2164,6 +2217,15 @@ def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "source_quality_receipts_with_date_or_time_label": _safe_int(
             row.get("source_quality_receipts_with_date_or_time_label")
+        ),
+        "source_quality_text_structure_status": row.get(
+            "source_quality_text_structure_status"
+        ),
+        "source_quality_line_item_like_text_line_count": _safe_int(
+            row.get("source_quality_line_item_like_text_line_count")
+        ),
+        "source_quality_total_like_text_line_count": _safe_int(
+            row.get("source_quality_total_like_text_line_count")
         ),
         "candidate_count": candidate_count,
         "accepted_count": accepted_count,

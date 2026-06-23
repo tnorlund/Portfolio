@@ -571,9 +571,19 @@ export interface TrainingSynthesisSourceQualityMerchant {
   receipts_with_line_item_labels?: number | null;
   receipts_with_grand_total_label?: number | null;
   receipts_with_date_or_time_label?: number | null;
+  receipts_with_line_item_like_text?: number | null;
+  receipts_with_total_like_text?: number | null;
+  receipts_with_date_time_like_text?: number | null;
+  receipts_with_merchant_header_like_text?: number | null;
   line_count?: number | null;
   word_count?: number | null;
   labeled_word_count?: number | null;
+  text_structure_status?: string | null;
+  merchant_header_like_line_count?: number | null;
+  price_like_line_count?: number | null;
+  line_item_like_text_line_count?: number | null;
+  total_like_text_line_count?: number | null;
+  date_time_like_text_line_count?: number | null;
   top_labels?: Record<string, number>;
   blockers?: string[];
   limitations?: string[];
@@ -585,8 +595,11 @@ export interface TrainingSynthesisSourceQualitySummary {
   limited_merchant_count?: number | null;
   blocked_merchant_count?: number | null;
   status_counts?: Record<string, number>;
+  text_structure_status_counts?: Record<string, number>;
   receipt_count?: number | null;
   labeled_word_count?: number | null;
+  line_item_like_text_line_count?: number | null;
+  total_like_text_line_count?: number | null;
   merchants?: TrainingSynthesisSourceQualityMerchant[];
 }
 
@@ -836,6 +849,9 @@ export interface TrainingSynthesisQualityMerchant {
   source_quality_receipts_with_line_item_labels?: number | null;
   source_quality_receipts_with_grand_total_label?: number | null;
   source_quality_receipts_with_date_or_time_label?: number | null;
+  source_quality_text_structure_status?: string | null;
+  source_quality_line_item_like_text_line_count?: number | null;
+  source_quality_total_like_text_line_count?: number | null;
   source_quality_operation_blockers?: Record<string, string>;
   candidate_count?: number | null;
   accepted_count?: number | null;
