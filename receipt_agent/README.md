@@ -224,6 +224,9 @@ before training. Limited source quality can also disable specific operations,
 such as line-item arithmetic when labeled line items or grand-total labels are
 missing. The synthesis quality report and training-metrics API expose the same
 source-quality status, label counts, and per-operation blockers for review.
+Preflight summaries keep raw `candidate_count` separate from `accepted_count`:
+pattern artifacts may contain candidate sketches, but `accepted_count` remains
+zero until bundle selection and the training-batch quality policy accept them.
 Candidate quality also includes a nearest-real structure gate. Inspect
 `structure_similarity.nearest_real_receipt_key`, `shape_deltas`, and
 `match_summary.shape_checks` to see which real receipt the candidate resembles

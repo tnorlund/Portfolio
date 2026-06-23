@@ -2810,6 +2810,10 @@ def _compact_readiness_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
         for candidate in candidates
         if (candidate.get("metadata") or {}).get("arithmetic_reconciliation")
     ]
+    accepted_operation_counts = _accepted_operation_counts_for_row(artifact)
+    accepted_count = _safe_int(artifact.get("accepted_count"))
+    if accepted_count is None:
+        accepted_count = sum(accepted_operation_counts.values())
     readiness_status = _source_quality_effective_status(
         str(readiness.get("status") or "missing"),
         source_quality,
@@ -2828,6 +2832,8 @@ def _compact_readiness_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
         "candidate_operation_counts": candidate_operation_counts,
         "candidate_capacity": _safe_int(readiness.get("candidate_capacity")),
         "candidate_count": len(candidates),
+        "accepted_count": accepted_count,
+        "accepted_operation_counts": accepted_operation_counts,
         "grounded_candidate_count": len(grounded),
         "arithmetic_candidate_count": len(arithmetic),
         "hard_negative_label_count": _safe_int(
@@ -3128,10 +3134,9 @@ def _merchant_gap_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         accepted_count = _safe_int(row.get("accepted_count"))
         candidate_count = _safe_int(row.get("candidate_count")) or 0
         if accepted_count is None:
-            accepted_count = sum(
-                _compact_count
-                for _operation, _compact_count in _operation_counts_for_row(row).items()
-            )
+            # Candidate operation counts are pre-selection sketches; only accepted
+            # operation counts can stand in for accepted training examples.
+            accepted_count = sum(_accepted_operation_counts_for_row(row).values())
         merchant_gaps.append(
             {
                 "merchant_name": merchant,

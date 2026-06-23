@@ -775,7 +775,7 @@ def test_summarize_local_synthesis_preflight_passes_ready_artifacts():
         "status": "ready",
         "score": 0.86,
         "candidate_count": 2,
-        "accepted_count": 2,
+        "accepted_count": 0,
         "ready_operation_count": 2,
         "missing_operations": ["remove_line_item", "replace_field"],
         "operation_gap_reasons": {
@@ -785,6 +785,8 @@ def test_summarize_local_synthesis_preflight_passes_ready_artifacts():
         "blockers": [],
         "limitations": [],
     }
+    assert summary["merchants"][0]["candidate_count"] == 2
+    assert summary["merchants"][0]["accepted_count"] == 0
     assert summary["merchants"][0]["llm_execution"] == {
         "mode": "deterministic_fallback",
         "paid_llm_disabled": True,
@@ -851,6 +853,67 @@ def test_summarize_local_synthesis_preflight_fails_weak_artifacts():
         "collect_multi_item_receipts_for_remove_item_synthesis",
         "collect_stable_date_time_examples_for_field_replacement",
     ]
+
+
+def test_merchant_gap_summary_keeps_candidates_separate_from_accepted_counts():
+    module = _load_module()
+
+    summary = module._merchant_gap_summary(
+        [
+            {
+                "merchant_name": "Candidate Only",
+                "readiness_status": "ready",
+                "readiness_score": 0.9,
+                "candidate_count": 4,
+                "candidate_operation_counts": {"add_line_item": 4},
+                "supported_operations": ["add_line_item"],
+            },
+            {
+                "merchant_name": "Accepted Operation",
+                "readiness_status": "ready",
+                "readiness_score": 0.9,
+                "candidate_count": 4,
+                "candidate_operation_counts": {"add_line_item": 4},
+                "accepted_operation_counts": {"add_line_item": 1},
+                "supported_operations": ["add_line_item"],
+            },
+            {
+                "merchant_name": "Legacy Operation Counts",
+                "readiness_status": "ready",
+                "readiness_score": 0.9,
+                "candidate_count": 4,
+                "operation_counts": {"add_line_item": 4},
+                "supported_operations": ["add_line_item"],
+            },
+        ]
+    )
+
+    merchants = {row["merchant_name"]: row for row in summary["merchants"]}
+    assert merchants["Candidate Only"]["candidate_count"] == 4
+    assert merchants["Candidate Only"]["accepted_count"] == 0
+    assert merchants["Accepted Operation"]["candidate_count"] == 4
+    assert merchants["Accepted Operation"]["accepted_count"] == 1
+    assert merchants["Legacy Operation Counts"]["candidate_count"] == 4
+    assert merchants["Legacy Operation Counts"]["accepted_count"] == 0
+
+
+def test_preflight_compact_artifact_can_preserve_explicit_accepted_operations():
+    module = _load_module()
+
+    artifact = _artifact("Market Mart")
+    artifact["accepted_operation_counts"] = {"add_line_item": 1}
+    summary = module.summarize_local_synthesis_preflight(
+        [artifact],
+        min_ready_share=0.0,
+        min_avg_readiness_score=0.0,
+        min_grounded_candidate_share=0.0,
+    )
+
+    merchant = summary["merchants"][0]
+    assert merchant["candidate_count"] == 2
+    assert merchant["accepted_operation_counts"] == {"add_line_item": 1}
+    assert merchant["accepted_count"] == 1
+    assert summary["merchant_gap_summary"]["merchants"][0]["accepted_count"] == 1
 
 
 def test_source_quality_blocked_artifact_cannot_feed_training_bundle():
