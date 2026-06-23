@@ -2129,6 +2129,34 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
         audits["Sprouts Farmers Market"]["mutation_inventory"]["mutable_field_count"]
         == 0
     )
+    sprouts_operations = {
+        row["operation"]: row
+        for row in audits["Sprouts Farmers Market"]["operation_readiness"]
+    }
+    assert audits["Sprouts Farmers Market"]["missing_operations"] == [
+        "remove_line_item",
+        "replace_field",
+    ]
+    assert sprouts_operations["add_line_item"]["ready"] is True
+    assert sprouts_operations["add_line_item"]["candidate_count"] == 1
+    assert sprouts_operations["add_line_item"]["evidence_candidate_count"] == 1
+    assert (
+        sprouts_operations["add_line_item"]["evidence"]["grounded_candidate_count"] == 2
+    )
+    assert sprouts_operations["remove_line_item"]["ready"] is False
+    assert sprouts_operations["remove_line_item"]["evidence_candidate_count"] == 1
+    assert sprouts_operations["remove_line_item"]["blockers"] == [
+        "no_removable_non_taxable_items"
+    ]
+    assert sprouts_operations["replace_field"]["blockers"] == [
+        "no_stable_mutable_fields"
+    ]
+    assert audits["Sprouts Farmers Market"]["next_synthesis_actions"] == [
+        "synthesize_hard_negative_from_existing_evidence",
+        "synthesize_add_line_item_from_existing_evidence",
+        "collect_multi_item_non_taxable_receipts_with_totals",
+        "collect_stable_date_time_examples_for_field_replacement",
+    ]
     assert audits["Thin Merchant"]["readiness_status"] == "blocked"
     assert audits["Thin Merchant"]["blockers"] == [
         "no_line_items",
@@ -2136,6 +2164,34 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
     ]
     assert audits["Thin Merchant"]["grounded_candidate_count"] == 0
     assert audits["Thin Merchant"]["arithmetic_candidate_count"] == 0
+    thin_operations = {
+        row["operation"]: row for row in audits["Thin Merchant"]["operation_readiness"]
+    }
+    assert audits["Thin Merchant"]["missing_operations"] == [
+        "hard_negative",
+        "add_line_item",
+        "remove_line_item",
+        "replace_field",
+    ]
+    assert audits["Thin Merchant"]["next_synthesis_actions"] == [
+        "resolve_merchant_synthesis_blockers"
+    ]
+    assert thin_operations["hard_negative"]["ready"] is False
+    assert thin_operations["hard_negative"]["candidate_count"] == 1
+    assert thin_operations["hard_negative"]["evidence_candidate_count"] == 1
+    assert "readiness_status_blocked" in thin_operations["hard_negative"]["blockers"]
+    assert thin_operations["add_line_item"]["blockers"] == [
+        "readiness_status_blocked",
+        "no_line_items",
+        "no_observed_item_catalog",
+        "no_cross_receipt_grounded_add_items",
+    ]
+    assert thin_operations["remove_line_item"]["blockers"] == [
+        "readiness_status_blocked",
+        "no_line_items",
+        "no_observed_item_catalog",
+        "no_removable_non_taxable_items",
+    ]
     assert result["preflight"]["merchant_count"] == 3
     assert result["preflight"]["readiness_status_counts"].get("blocked") == 1
     coverage = result["preflight"]["operation_coverage"]
@@ -2216,6 +2272,282 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
     assert produce_y > yellow_y > dairy_y
 
 
+def test_merchant_synthesis_audit_does_not_treat_raw_candidate_count_as_ready():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Candidate Count Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Candidate Count Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "ready",
+                        "score": 0.78,
+                        "supported_operations": [],
+                        "grounded_add_item_candidate_count": 0,
+                        "removable_item_candidate_count": 0,
+                        "mutable_field_count": 0,
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [
+                    {
+                        "candidate_id": "ungrounded-add-item",
+                        "merchant_name": "Candidate Count Mart",
+                        "metadata": {"operation": "add_line_item"},
+                    }
+                ],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["add_line_item"]["candidate_count"] == 1
+    assert operations["add_line_item"]["evidence_candidate_count"] == 0
+    assert operations["add_line_item"]["ready"] is False
+    assert operations["add_line_item"]["blockers"] == [
+        "no_cross_receipt_grounded_add_items"
+    ]
+    assert (
+        "collect_cross_receipt_item_and_category_evidence"
+        in audit["next_synthesis_actions"]
+    )
+
+
+def test_merchant_synthesis_audit_requires_confused_hard_negative_evidence():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Easy Negative Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Easy Negative Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "ready",
+                        "score": 0.84,
+                        "supported_operations": [],
+                        "ready_hard_negative_labels": [],
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [
+                    {
+                        "candidate_id": "not-a-confusion",
+                        "merchant_name": "Easy Negative Mart",
+                        "metadata": {
+                            "operation": "hard_negative",
+                            "actual_label": "O",
+                            "predicted_label": "O",
+                        },
+                    }
+                ],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["hard_negative"]["candidate_count"] == 1
+    assert operations["hard_negative"]["evidence_candidate_count"] == 0
+    assert operations["hard_negative"]["ready"] is False
+    assert operations["hard_negative"]["blockers"] == [
+        "no_supported_hard_negative_slots"
+    ]
+    assert (
+        "mine_confusion_targets_for_hard_negative_slots"
+        in audit["next_synthesis_actions"]
+    )
+
+
+def test_merchant_synthesis_audit_requires_ready_status_for_synthesis_actions():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Partial Evidence Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Partial Evidence Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "partial",
+                        "score": 0.72,
+                        "supported_operations": ["add_line_item"],
+                        "grounded_add_item_candidate_count": 1,
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [
+                    {
+                        "candidate_id": "grounded-but-partial",
+                        "merchant_name": "Partial Evidence Mart",
+                        "metadata": {
+                            "operation": "add_line_item",
+                            "added_item": {"seen_in_other_receipt": True},
+                            "observed_item_evidence": {
+                                "product_seen_outside_base": ["source#00001"]
+                            },
+                            "arithmetic_reconciliation": {"tax_delta": "0.00"},
+                        },
+                    }
+                ],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["add_line_item"]["candidate_count"] == 1
+    assert operations["add_line_item"]["evidence_candidate_count"] == 1
+    assert operations["add_line_item"]["supported"] is True
+    assert operations["add_line_item"]["ready"] is False
+    assert operations["add_line_item"]["blockers"] == ["readiness_status_partial"]
+    assert all(
+        not action.startswith(("synthesize_", "generate_"))
+        for action in audit["next_synthesis_actions"]
+    )
+
+
+def test_merchant_synthesis_audit_does_not_let_candidate_metadata_bypass_contract():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Self Assert Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Self Assert Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "ready",
+                        "score": 0.8,
+                        "supported_operations": [],
+                        "grounded_add_item_candidate_count": 0,
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [
+                    {
+                        "candidate_id": "self-asserted-add",
+                        "merchant_name": "Self Assert Mart",
+                        "metadata": {
+                            "operation": "add_line_item",
+                            "added_item": {"seen_in_other_receipt": True},
+                            "observed_item_evidence": {
+                                "product_seen_outside_base": ["source#00001"]
+                            },
+                            "arithmetic_reconciliation": {"tax_delta": "0.00"},
+                        },
+                    }
+                ],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["add_line_item"]["candidate_count"] == 1
+    assert operations["add_line_item"]["evidence_candidate_count"] == 1
+    assert operations["add_line_item"]["ready"] is False
+    assert operations["add_line_item"]["blockers"] == [
+        "no_cross_receipt_grounded_add_items"
+    ]
+    assert (
+        "collect_cross_receipt_item_and_category_evidence"
+        in audit["next_synthesis_actions"]
+    )
+
+
+def test_merchant_synthesis_audit_reuses_only_evidence_backed_candidates():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Contract Ready Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Contract Ready Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "ready",
+                        "score": 0.82,
+                        "supported_operations": ["add_line_item"],
+                        "grounded_add_item_candidate_count": 1,
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [
+                    {
+                        "candidate_id": "raw-add",
+                        "merchant_name": "Contract Ready Mart",
+                        "metadata": {"operation": "add_line_item"},
+                    }
+                ],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["add_line_item"]["candidate_count"] == 1
+    assert operations["add_line_item"]["evidence_candidate_count"] == 0
+    assert operations["add_line_item"]["ready"] is True
+    assert (
+        "generate_add_line_item_candidate_from_ready_contract"
+        in audit["next_synthesis_actions"]
+    )
+    assert (
+        "synthesize_add_line_item_from_existing_evidence"
+        not in audit["next_synthesis_actions"]
+    )
+
+
+def test_merchant_synthesis_audit_requires_supported_operation_for_generation():
+    module = _load_module()
+
+    audit = module.summarize_merchant_synthesis_audit(
+        [
+            {
+                "merchant_name": "Unsupported Count Mart",
+                "source_receipt_count": 2,
+                "merchant_receipt_parameterization": {
+                    "merchant_name": "Unsupported Count Mart",
+                    "receipt_count": 2,
+                    "synthesis_readiness": {
+                        "status": "ready",
+                        "score": 0.82,
+                        "supported_operations": [],
+                        "grounded_add_item_candidate_count": 1,
+                        "blockers": [],
+                        "limitations": [],
+                    },
+                },
+                "synthetic_receipt_candidates": [],
+            }
+        ]
+    )[0]
+
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert operations["add_line_item"]["ready"] is False
+    assert operations["add_line_item"]["blockers"] == [
+        "operation_not_supported_by_contract"
+    ]
+    assert (
+        "generate_add_line_item_candidate_from_ready_contract"
+        not in audit["next_synthesis_actions"]
+    )
+
+
 def test_run_local_synthetic_pipeline_accepts_datetime_replacements(tmp_path):
     module = _load_module()
     receipt_path = tmp_path / "datetime_receipts.json"
@@ -2244,6 +2576,20 @@ def test_run_local_synthetic_pipeline_accepts_datetime_replacements(tmp_path):
         "DATE",
         "TIME",
     ]
+    operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert audit["missing_operations"] == ["remove_line_item"]
+    assert operations["replace_field"]["ready"] is True
+    assert operations["replace_field"]["candidate_count"] == 2
+    assert operations["replace_field"]["evidence_candidate_count"] == 2
+    assert operations["replace_field"]["evidence"]["mutable_field_count"] == 2
+    assert sorted(operations["replace_field"]["evidence"]["mutable_fields"]) == [
+        "DATE",
+        "TIME",
+    ]
+    assert (
+        "synthesize_replace_field_from_existing_evidence"
+        in audit["next_synthesis_actions"]
+    )
     assert (
         audit["mutation_inventory"]["candidate_operation_counts"]["replace_field"] == 2
     )

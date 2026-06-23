@@ -510,11 +510,11 @@ def _candidate_source_lineage(candidate: dict[str, Any]) -> dict[str, Any]:
     )
     flags = {
         "has_base_receipt": bool(base_key),
-        "has_cross_receipt_item": any(
-            key != base_key for key in product_keys
-        )
-        if base_key
-        else bool(product_keys),
+        "has_cross_receipt_item": (
+            any(key != base_key for key in product_keys)
+            if base_key
+            else bool(product_keys)
+        ),
         "has_category_evidence": bool(category_keys),
         "has_nearest_real_structure": bool(nearest_key),
         "has_layout_integrity": bool(layout),
@@ -533,9 +533,7 @@ def _candidate_source_lineage(candidate: dict[str, Any]) -> dict[str, Any]:
         "category_source_receipt_keys": category_keys[:8],
         "evidence_flags": flags,
     }
-    return {
-        key: value for key, value in result.items() if value not in (None, "", [])
-    }
+    return {key: value for key, value in result.items() if value not in (None, "", [])}
 
 
 def _candidate_merchant(candidate: dict[str, Any]) -> str:
@@ -695,6 +693,36 @@ def _candidate_selection_evidence(candidate: dict[str, Any]) -> dict[str, Any]:
 
 def _candidate_has_arithmetic(candidate: dict[str, Any]) -> bool:
     return bool(_candidate_metadata(candidate).get("arithmetic_reconciliation"))
+
+
+def _candidate_has_operation_evidence(candidate: dict[str, Any]) -> bool:
+    metadata = _candidate_metadata(candidate)
+    operation = _candidate_operation(candidate)
+    if operation == "hard_negative":
+        actual_label = str(metadata.get("actual_label") or "").strip()
+        predicted_label = str(metadata.get("predicted_label") or "").strip()
+        return bool(
+            actual_label == "O" and predicted_label and predicted_label != actual_label
+        )
+    if operation == "add_line_item":
+        return _candidate_is_grounded(candidate) and _candidate_has_arithmetic(
+            candidate
+        )
+    if operation == "remove_line_item":
+        removed = metadata.get("removed_item")
+        return (
+            isinstance(removed, dict)
+            and removed.get("taxable") is False
+            and _candidate_has_arithmetic(candidate)
+        )
+    if operation == "replace_field":
+        field = metadata.get("mutable_field_evidence")
+        return (
+            isinstance(metadata.get("field_replacement"), dict)
+            and isinstance(field, dict)
+            and field.get("safe_to_mutate") is True
+        )
+    return False
 
 
 def _rejection_merchant(record: dict[str, Any]) -> str:
@@ -895,9 +923,7 @@ def _llm_model_freshness_gate(llm_execution: dict[str, Any]) -> dict[str, Any]:
     """Summarize whether paid LLM synthesis used current model guidance."""
     verified_at = str(llm_execution.get("latest_model_verified_at") or "")
     source_values = [
-        str(value)
-        for value in llm_execution.get("latest_model_sources") or []
-        if value
+        str(value) for value in llm_execution.get("latest_model_sources") or [] if value
     ]
     api_call_allowed_count = _safe_int(llm_execution.get("api_call_allowed_count")) or 0
     mode_counts = llm_execution.get("mode_counts")
@@ -990,6 +1016,169 @@ def _compact_mutation_inventory(
     }
 
 
+SYNTHESIS_OPERATION_ORDER = (
+    "hard_negative",
+    "add_line_item",
+    "remove_line_item",
+    "replace_field",
+)
+
+SYNTHESIS_ACTION_READY_STATUSES = {"ready"}
+
+
+def _operation_readiness_row(
+    operation: str,
+    readiness: dict[str, Any],
+    operation_counts: dict[str, int],
+    operation_evidence_counts: dict[str, int],
+    *,
+    readiness_status: str,
+) -> dict[str, Any]:
+    supported = set(readiness.get("supported_operations") or [])
+    supported_for_operation = operation in supported
+    candidate_count = _safe_int(operation_counts.get(operation)) or 0
+    evidence_candidate_count = _safe_int(operation_evidence_counts.get(operation)) or 0
+    blockers: list[str] = []
+    evidence: dict[str, Any] = {}
+    merchant_actionable = readiness_status in SYNTHESIS_ACTION_READY_STATUSES
+    contract_capacity_count = 0
+
+    if operation == "hard_negative":
+        labels = list(readiness.get("ready_hard_negative_labels") or [])[:8]
+        label_count = _safe_int(readiness.get("hard_negative_label_count")) or 0
+        contract_capacity_count = label_count
+        has_capacity = bool(labels or label_count > 0)
+        ready = supported_for_operation and has_capacity
+        evidence.update(
+            {
+                "labels": labels,
+                "hard_negative_label_count": label_count,
+            }
+        )
+        if not has_capacity:
+            blockers.append("no_supported_hard_negative_slots")
+    elif operation == "add_line_item":
+        grounded_count = (
+            _safe_int(readiness.get("grounded_add_item_candidate_count")) or 0
+        )
+        contract_capacity_count = grounded_count
+        ready = supported_for_operation and grounded_count > 0
+        evidence.update(
+            {
+                "grounded_candidate_count": grounded_count,
+                "grounded_examples": list(
+                    readiness.get("grounded_add_item_examples") or []
+                )[:5],
+            }
+        )
+        if grounded_count <= 0:
+            blockers.append("no_cross_receipt_grounded_add_items")
+    elif operation == "remove_line_item":
+        removable_count = (
+            _safe_int(readiness.get("removable_item_candidate_count")) or 0
+        )
+        contract_capacity_count = removable_count
+        ready = supported_for_operation and removable_count > 0
+        evidence["removable_item_candidate_count"] = removable_count
+        if removable_count <= 0:
+            blockers.append("no_removable_non_taxable_items")
+    elif operation == "replace_field":
+        mutable_count = _safe_int(readiness.get("mutable_field_count")) or 0
+        mutable_fields = readiness.get("mutable_fields") or {}
+        contract_capacity_count = mutable_count
+        ready = supported_for_operation and mutable_count > 0
+        evidence.update(
+            {
+                "mutable_field_count": mutable_count,
+                "mutable_fields": mutable_fields,
+            }
+        )
+        if mutable_count <= 0:
+            blockers.append("no_stable_mutable_fields")
+    else:
+        ready = False
+
+    if not supported_for_operation and contract_capacity_count > 0:
+        blockers.append("operation_not_supported_by_contract")
+
+    if not merchant_actionable:
+        ready = False
+        blockers = list(
+            dict.fromkeys(
+                [
+                    f"readiness_status_{readiness_status or 'missing'}",
+                    *[str(item) for item in readiness.get("blockers") or []],
+                    *blockers,
+                ]
+            )
+        )
+
+    return {
+        "operation": operation,
+        "ready": ready,
+        "supported": operation in supported,
+        "candidate_count": candidate_count,
+        "evidence_candidate_count": evidence_candidate_count,
+        "evidence": evidence,
+        "blockers": blockers,
+    }
+
+
+def _operation_readiness_matrix(
+    readiness: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    operation_counts = _count_by([_candidate_operation(row) for row in candidates])
+    operation_evidence_counts = _count_by(
+        [
+            _candidate_operation(row)
+            for row in candidates
+            if _candidate_has_operation_evidence(row)
+        ]
+    )
+    readiness_status = str(readiness.get("status") or "missing").strip().lower()
+    return [
+        _operation_readiness_row(
+            operation,
+            readiness,
+            operation_counts,
+            operation_evidence_counts,
+            readiness_status=readiness_status,
+        )
+        for operation in SYNTHESIS_OPERATION_ORDER
+    ]
+
+
+def _next_synthesis_actions(
+    operation_readiness: list[dict[str, Any]],
+    *,
+    readiness_status: str,
+) -> list[str]:
+    if readiness_status == "blocked":
+        return ["resolve_merchant_synthesis_blockers"]
+
+    actions: list[str] = []
+    rows_by_operation = {str(row.get("operation")): row for row in operation_readiness}
+    for operation in SYNTHESIS_OPERATION_ORDER:
+        row = rows_by_operation.get(operation) or {}
+        if (
+            row.get("ready")
+            and (_safe_int(row.get("evidence_candidate_count")) or 0) > 0
+        ):
+            actions.append(f"synthesize_{operation}_from_existing_evidence")
+        elif row.get("ready"):
+            actions.append(f"generate_{operation}_candidate_from_ready_contract")
+        elif operation == "hard_negative":
+            actions.append("mine_confusion_targets_for_hard_negative_slots")
+        elif operation == "add_line_item":
+            actions.append("collect_cross_receipt_item_and_category_evidence")
+        elif operation == "remove_line_item":
+            actions.append("collect_multi_item_non_taxable_receipts_with_totals")
+        elif operation == "replace_field":
+            actions.append("collect_stable_date_time_examples_for_field_replacement")
+    return actions
+
+
 def summarize_merchant_synthesis_audit(
     artifacts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -1008,10 +1197,20 @@ def summarize_merchant_synthesis_audit(
             or profile.get("merchant_name")
             or "Unknown merchant"
         )
+        readiness_status = str(readiness.get("status") or "missing")
+        operation_readiness = _operation_readiness_matrix(
+            readiness,
+            candidates,
+        )
+        missing_operations = [
+            str(row["operation"])
+            for row in operation_readiness
+            if row.get("ready") is not True
+        ]
         audits.append(
             {
                 "merchant_name": merchant,
-                "readiness_status": str(readiness.get("status") or "missing"),
+                "readiness_status": readiness_status,
                 "readiness_score": _safe_float(readiness.get("score")),
                 "source_receipt_count": _safe_int(artifact.get("source_receipt_count"))
                 or _safe_int(profile.get("receipt_count"))
@@ -1036,6 +1235,12 @@ def summarize_merchant_synthesis_audit(
                 "mutation_inventory": _compact_mutation_inventory(
                     readiness,
                     candidates,
+                ),
+                "operation_readiness": operation_readiness,
+                "missing_operations": missing_operations,
+                "next_synthesis_actions": _next_synthesis_actions(
+                    operation_readiness,
+                    readiness_status=readiness_status.strip().lower(),
                 ),
                 "llm_execution": _artifact_llm_execution(artifact),
                 "safe_training_policy": {
@@ -1559,9 +1764,7 @@ def _accepted_source_lineage_summary(rows: list[dict[str, Any]]) -> dict[str, An
         "with_base_receipt_count": count_flag("has_base_receipt"),
         "with_cross_receipt_item_count": count_flag("has_cross_receipt_item"),
         "with_category_evidence_count": count_flag("has_category_evidence"),
-        "with_nearest_real_structure_count": count_flag(
-            "has_nearest_real_structure"
-        ),
+        "with_nearest_real_structure_count": count_flag("has_nearest_real_structure"),
         "with_layout_integrity_count": count_flag("has_layout_integrity"),
         "with_arithmetic_reconciliation_count": count_flag(
             "has_arithmetic_reconciliation"
@@ -2326,8 +2529,7 @@ def build_local_synthesis_quality_report(
                     "accepted_ready_operation_count"
                 ),
                 "uncovered_ready_operations": list(
-                    accepted_operation_coverage.get("uncovered_ready_operations")
-                    or []
+                    accepted_operation_coverage.get("uncovered_ready_operations") or []
                 )[:8],
             },
             "llm_model_freshness_gate": llm_model_freshness_gate,
