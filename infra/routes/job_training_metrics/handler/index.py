@@ -1728,7 +1728,9 @@ def _derive_operation_coverage_from_merchants(
                 or row.get("supported_operations")
                 or []
             )
-            counts = row.get("accepted_operation_counts") or row.get("operation_counts")
+            counts = row.get("candidate_operation_counts") or row.get(
+                "operation_counts"
+            )
             if isinstance(counts, dict):
                 operation_count = _safe_int(counts.get(operation)) or 0
                 candidate_count += operation_count
@@ -2561,6 +2563,10 @@ def _derive_synthesis_quality_report(
                 :8
             ],
             "contract_ready_operations": _contract_ready_operations(contract),
+            "operation_counts": _compact_count_map(mix.get("operation_counts")),
+            "candidate_operation_counts": _compact_count_map(
+                mix.get("candidate_operation_counts")
+            ),
             "accepted_operation_counts": _compact_count_map(
                 mix.get("accepted_operation_counts")
                 or (contract.get("bundle_acceptance") or {}).get(

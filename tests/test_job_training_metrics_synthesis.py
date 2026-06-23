@@ -814,6 +814,10 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                     "accepted_count": 2,
                     "rejected_count": 0,
                     "rejection_reasons": {},
+                    "operation_counts": {
+                        "add_line_item": 1,
+                        "hard_negative": 1,
+                    },
                     "accepted_operation_counts": {
                         "add_line_item": 1,
                         "hard_negative": 1,
@@ -891,6 +895,10 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                     "accepted_count": 1,
                     "rejected_count": 1,
                     "rejection_reasons": {"merchant_operation_synthetic_cap": 1},
+                    "operation_counts": {
+                        "add_line_item": 1,
+                        "hard_negative": 1,
+                    },
                     "accepted_operation_counts": {"add_line_item": 1},
                     "accepted_category_counts": {"PRODUCE": 1},
                     "accepted_grounded_candidate_count": 1,
@@ -909,6 +917,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                     "accepted_count": 0,
                     "rejected_count": 1,
                     "rejection_reasons": {"merchant_synthesis_not_ready": 1},
+                    "operation_counts": {"hard_negative": 1},
                     "accepted_operation_counts": {},
                     "accepted_category_counts": {},
                     "accepted_grounded_candidate_count": 0,
@@ -1724,10 +1733,28 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         == 2
     )
     assert (
+        summary["quality_report"]["operation_coverage"]["operations"]["add_line_item"][
+            "candidate_count"
+        ]
+        == 2
+    )
+    assert (
+        summary["quality_report"]["operation_coverage"]["operations"]["hard_negative"][
+            "candidate_count"
+        ]
+        == 3
+    )
+    assert (
         summary["quality_report"]["operation_coverage"]["operations"]["replace_field"][
             "ready_merchant_count"
         ]
         == 1
+    )
+    assert (
+        summary["quality_report"]["operation_coverage"]["operations"]["replace_field"][
+            "candidate_count"
+        ]
+        == 0
     )
     assert summary["quality_report"]["accepted_operation_coverage"] == {
         "operation_count": 4,
@@ -2032,6 +2059,49 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "replace_field": "source_receipt_quality_blocked",
     }
     assert "tokens" not in summary["candidate_examples"][0]
+
+
+def test_operation_coverage_does_not_count_accepted_operations_as_candidates(
+    monkeypatch,
+):
+    module = _load_module(monkeypatch)
+
+    accepted_only_coverage = module._derive_operation_coverage_from_merchants(
+        [
+            {
+                "merchant_name": "Accepted Only",
+                "contract_ready_operations": ["add_line_item"],
+                "accepted_operation_counts": {"add_line_item": 3},
+            }
+        ]
+    )
+    assert accepted_only_coverage["operations"]["add_line_item"]["candidate_count"] == 0
+
+    coverage = module._derive_operation_coverage_from_merchants(
+        [
+            {
+                "merchant_name": "Accepted Only",
+                "contract_ready_operations": ["add_line_item"],
+                "accepted_operation_counts": {"add_line_item": 3},
+            },
+            {
+                "merchant_name": "Candidate Counted",
+                "contract_ready_operations": ["add_line_item"],
+                "operation_counts": {"add_line_item": 2},
+                "accepted_operation_counts": {"add_line_item": 1},
+            },
+            {
+                "merchant_name": "Candidate Preferred",
+                "contract_ready_operations": ["add_line_item"],
+                "candidate_operation_counts": {"add_line_item": 4},
+                "operation_counts": {"add_line_item": 9},
+                "accepted_operation_counts": {"add_line_item": 2},
+            },
+        ]
+    )
+
+    assert coverage["operations"]["add_line_item"]["ready_merchant_count"] == 3
+    assert coverage["operations"]["add_line_item"]["candidate_count"] == 6
 
 
 def test_summarize_synthesis_bundle_counts_accepted_field_replacements(
