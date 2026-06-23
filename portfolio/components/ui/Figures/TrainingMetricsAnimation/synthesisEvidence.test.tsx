@@ -1,4 +1,3 @@
-import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import TrainingMetricsAnimation from ".";
 import { api } from "../../../../services/api";
@@ -125,7 +124,28 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
     ],
     quality_report: {
       training_ready: false,
-      training_ready_reasons: ["cover_ready_operations_before_training"],
+      training_ready_reasons: [
+        "cover_ready_operations_before_training",
+        "complete_source_lineage_before_training",
+      ],
+      summary: {
+        accepted_source_lineage: {
+          schema_version: "accepted-source-lineage-v1",
+          coverage_status: "sampled",
+          authoritative: false,
+          coverage_warning: "sampled_source_lineage_not_authoritative",
+          candidate_count: 1,
+          observed_candidate_count: 1,
+          expected_candidate_count: 2,
+          source_receipt_key_count: 4,
+          source_receipt_keys_redacted: true,
+          with_cross_receipt_item_count: 1,
+          with_category_evidence_count: 1,
+          with_nearest_real_structure_count: 1,
+          with_layout_integrity_count: 1,
+          with_arithmetic_reconciliation_count: 1,
+        },
+      },
       quality_gates: {
         llm_model_freshness_gate: {
           enabled: true,
@@ -192,6 +212,26 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       "title",
       expect.stringContaining("Training hold: cover ready operations before training"),
     );
+    expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
+      "title",
+      expect.stringContaining("complete source lineage before training"),
+    );
+    expect(screen.getByText("Lineage (not auth)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source lineage is sampled and not authoritative"),
+    );
+    expect(screen.getByText("sampled 1 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source lineage is sampled and not authoritative"),
+    );
+    expect(screen.getByText("sampled 1 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source receipts: 4 (IDs redacted)"),
+    );
+    expect(screen.getByText("sampled 1 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Arithmetic evidence: 1"),
+    );
     expect(screen.getByText("Local only")).toHaveAttribute(
       "title",
       expect.stringContaining("Model guidance: fresh"),
@@ -205,6 +245,14 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       synthetic_train_examples: 2,
       synthetic_candidates_seen: 3,
       synthetic_candidates_accepted: 2,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: false,
+        candidate_count: 2,
+        observed_candidate_count: 2,
+        source_receipt_key_count: 3,
+      },
       accepted_operation_coverage: {
         operation_count: 4,
         ready_operation_count: 2,
@@ -227,9 +275,173 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       "title",
       expect.stringContaining("Ready ops accepted: 1 / 2"),
     );
+    expect(screen.getByText("not auth 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source lineage is not authoritative"),
+    );
+    expect(screen.getByText("not auth 2")).not.toHaveAttribute(
+      "title",
+      expect.stringContaining("Coverage: 2 / 2"),
+    );
     expect(contractValue).toHaveAttribute(
       "title",
       expect.stringContaining("Uncovered ready ops: Add Line Item"),
+    );
+  });
+
+  it("renders authoritative source lineage as accepted candidate coverage", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 1,
+        observed_candidate_count: 1,
+        expected_candidate_count: 1,
+        source_receipt_key_count: 2,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("1 candidate")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source lineage covers accepted candidates"),
+    );
+    expect(screen.getByText("Lineage")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Coverage: 1 / 1"),
+    );
+  });
+
+  it("does not use candidate_count as sampled observed coverage", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "sampled",
+        authoritative: false,
+        candidate_count: 5,
+        expected_candidate_count: 5,
+        source_receipt_key_count: 2,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("sampled expected 5")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Observed candidates: unavailable / 5 expected"),
+    );
+    expect(screen.queryByText("sampled 5 / 5")).not.toBeInTheDocument();
+  });
+
+  it("flags unverified lineage status and mismatched complete counts", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 5,
+        observed_candidate_count: 3,
+        expected_candidate_count: 5,
+        source_receipt_key_count: 4,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage (gap)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("count does not match expected coverage"),
+    );
+    expect(screen.getByText("gap 3 / 5")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Coverage: 3 / 5"),
+    );
+  });
+
+  it("flags unknown source lineage coverage status", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "partial",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 2,
+        expected_candidate_count: 2,
+        source_receipt_key_count: 3,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage (review)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("coverage status needs review"),
+    );
+    expect(screen.getByText("review 2 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Coverage: 2 / 2"),
+    );
+  });
+
+  it("flags unsupported source lineage schema versions", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v2",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 2,
+        expected_candidate_count: 2,
+        source_receipt_key_count: 3,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("schema review")).toHaveAttribute(
+      "title",
+      expect.stringContaining("unsupported (accepted-source-lineage-v2)"),
+    );
+    expect(screen.getByText("Lineage (schema)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("unsupported (accepted-source-lineage-v2)"),
     );
   });
 });

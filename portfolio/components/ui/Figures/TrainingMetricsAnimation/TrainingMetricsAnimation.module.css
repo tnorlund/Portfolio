@@ -302,6 +302,11 @@
   border-top-color: rgba(var(--color-green-rgb), 0.35);
 }
 
+.synthesisEvidenceMetricWarning {
+  background: rgba(var(--color-yellow-rgb), 0.065);
+  border-top-color: rgba(var(--color-yellow-rgb), 0.5);
+}
+
 .synthesisEvidenceItem span {
   color: rgba(var(--color-green-rgb), 0.82);
 }

@@ -181,6 +181,19 @@ test.describe("Skeleton height stability", () => {
     await expect(evidenceStrip.getByText("Accepted merchants")).toBeVisible();
     await expect(evidenceStrip.getByText("Fidelity")).toBeVisible();
     await expect(evidenceStrip.getByText("1 / 1 high")).toBeVisible();
+    await expect(evidenceStrip.getByText("Lineage (not auth)")).toBeVisible();
+    const lineageValue = evidenceStrip.getByText("sampled 3 / 5");
+    await expect(lineageValue).toHaveAttribute(
+      "title",
+      /Source receipts: 12 \(IDs redacted\)/
+    );
+    await expect(lineageValue).toHaveAttribute(
+      "title",
+      /Selection evidence: 1/
+    );
+    await expect(lineageValue.locator("xpath=..")).toHaveClass(
+      /synthesisEvidenceMetricWarning/
+    );
     await expect(evidenceStrip.getByText("Merchant gaps")).toBeVisible();
     await expect(evidenceStrip.getByText("1 / 2 gaps")).toBeVisible();
     await expect(evidenceStrip.getByText("Source receipts")).toBeVisible();

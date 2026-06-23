@@ -6,6 +6,7 @@ import {
   DatasetMetrics,
   TrainingMetricsEpoch,
   TrainingSynthesisCandidateQuality,
+  TrainingSynthesisAcceptedSourceLineage,
   TrainingSynthesisLayoutIntegrityEvidence,
   TrainingSynthesisMerchantGapSummary,
   TrainingSynthesisMixBalance,
@@ -1296,6 +1297,164 @@ const summarizeCandidateQuality = (
   };
 };
 
+const summarizeSourceLineage = (
+  synthesis: TrainingSynthesisSummary
+): {
+  label: string;
+  statusLabel: string;
+  title?: string;
+  warning: boolean;
+} | null => {
+  const lineage =
+    synthesis.accepted_source_lineage ??
+    synthesis.quality_report?.summary?.accepted_source_lineage;
+  if (!lineage) return null;
+
+  const schemaVersion = lineage.schema_version ?? null;
+  const supportedSchema = schemaVersion === "accepted-source-lineage-v1";
+  const observed = lineage.observed_candidate_count ?? null;
+  const hasExpected = lineage.expected_candidate_count != null;
+  const expected = lineage.expected_candidate_count ?? null;
+  const candidateCount = lineage.candidate_count ?? null;
+  const sourceCount = lineage.source_receipt_key_count ?? 0;
+  const coverageStatus = (lineage.coverage_status || "").toLowerCase();
+  const isCompleteStatus =
+    coverageStatus === "complete" || coverageStatus === "full";
+  const isCoverageSampled = coverageStatus === "sampled";
+  const unverifiedCoverageStatus = !isCompleteStatus;
+  const nonAuthoritative = lineage.authoritative === false;
+  const countMismatch =
+    observed != null && expected != null && observed !== expected;
+  const missingObservedCoverage =
+    observed == null && (expected != null || candidateCount != null);
+  const statusPrefix = isCoverageSampled
+    ? "sampled"
+    : nonAuthoritative
+      ? "not auth"
+      : countMismatch
+        ? "gap"
+        : unverifiedCoverageStatus
+          ? "review"
+          : null;
+  const warning =
+    !supportedSchema ||
+    nonAuthoritative ||
+    isCoverageSampled ||
+    unverifiedCoverageStatus ||
+    countMismatch ||
+    missingObservedCoverage ||
+    Boolean(lineage.coverage_warning) ||
+    Boolean(lineage.source_receipt_keys_truncated);
+
+  let label = "reported";
+  if (!supportedSchema) {
+    label = "schema review";
+  } else if (statusPrefix && observed != null && expected != null) {
+    label = `${statusPrefix} ${formatCount(observed)} / ${formatCount(expected)}`;
+  } else if (statusPrefix && observed != null) {
+    label = `${statusPrefix} ${formatCount(observed)}`;
+  } else if (statusPrefix && expected != null) {
+    label = `${statusPrefix} expected ${formatCount(expected)}`;
+  } else if (statusPrefix && candidateCount != null) {
+    label = `${statusPrefix} expected ${formatCount(candidateCount)}`;
+  } else if (observed != null) {
+    label = `${formatCount(observed)} candidate${observed === 1 ? "" : "s"}`;
+  } else if (candidateCount != null) {
+    label = `expected ${formatCount(candidateCount)}`;
+  } else if (sourceCount) {
+    label = `${formatCount(sourceCount)} source receipts`;
+  } else if (warning) {
+    label = "review";
+  }
+
+  let statusLabel = "Lineage";
+  if (nonAuthoritative) {
+    statusLabel = "Lineage (not auth)";
+  } else if (isCoverageSampled) {
+    statusLabel = "Lineage (sampled)";
+  } else if (!supportedSchema) {
+    statusLabel = "Lineage (schema)";
+  } else if (countMismatch || missingObservedCoverage) {
+    statusLabel = "Lineage (gap)";
+  } else if (unverifiedCoverageStatus) {
+    statusLabel = "Lineage (review)";
+  }
+
+  const flagTitle = (
+    name: keyof Pick<
+      TrainingSynthesisAcceptedSourceLineage,
+      | "with_base_receipt_count"
+      | "with_cross_receipt_item_count"
+      | "with_category_evidence_count"
+      | "with_nearest_real_structure_count"
+      | "with_layout_integrity_count"
+      | "with_arithmetic_reconciliation_count"
+      | "with_selection_evidence_count"
+    >,
+    label: string
+  ) =>
+    lineage[name] != null
+      ? `${label}: ${formatCount(lineage[name] as number)}`
+      : null;
+
+  let statusTitle = "Source lineage covers accepted candidates";
+  if (!supportedSchema) {
+    statusTitle = `Source lineage schema is ${
+      schemaVersion ? `unsupported (${schemaVersion})` : "missing"
+    }`;
+  } else if (isCoverageSampled && nonAuthoritative) {
+    statusTitle = "Source lineage is sampled and not authoritative";
+  } else if (isCoverageSampled) {
+    statusTitle = "Source lineage is sampled";
+  } else if (nonAuthoritative) {
+    statusTitle = "Source lineage is not authoritative";
+  } else if (countMismatch) {
+    statusTitle = "Source lineage count does not match expected coverage";
+  } else if (missingObservedCoverage) {
+    statusTitle = "Source lineage observed coverage is unavailable";
+  } else if (unverifiedCoverageStatus) {
+    statusTitle = "Source lineage coverage status needs review";
+  }
+
+  const title = [
+    statusTitle,
+    observed != null && hasExpected && expected != null
+      ? `Coverage: ${formatCount(observed)} / ${formatCount(expected)}`
+      : null,
+    observed == null && hasExpected && expected != null
+      ? `Observed candidates: unavailable / ${formatCount(expected)} expected`
+      : null,
+    candidateCount != null ? `Candidate count: ${formatCount(candidateCount)}` : null,
+    sourceCount
+      ? `Source receipts: ${formatCount(sourceCount)}${
+          lineage.source_receipt_keys_redacted ? " (IDs redacted)" : ""
+        }`
+      : null,
+    lineage.source_receipt_keys_truncated
+      ? "Source receipt list was truncated"
+      : null,
+    lineage.coverage_warning
+      ? `Warning: ${formatSyntheticRejectionReason(lineage.coverage_warning)}`
+      : null,
+    flagTitle("with_base_receipt_count", "Base receipt evidence"),
+    flagTitle("with_cross_receipt_item_count", "Cross-receipt item evidence"),
+    flagTitle("with_category_evidence_count", "Category evidence"),
+    flagTitle("with_nearest_real_structure_count", "Nearest-real structure"),
+    flagTitle("with_layout_integrity_count", "Layout evidence"),
+    flagTitle("with_arithmetic_reconciliation_count", "Arithmetic evidence"),
+    flagTitle("with_selection_evidence_count", "Selection evidence"),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return {
+    label,
+    statusLabel,
+    title: title || undefined,
+    warning,
+  };
+};
+
 const summarizeMixBalance = (
   balance?: TrainingSynthesisMixBalance
 ): { label: string; title?: string } | null => {
@@ -2076,6 +2235,7 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
     synthesis.candidate_examples
   );
   const candidateQualitySummary = summarizeCandidateQuality(synthesis);
+  const sourceLineageSummary = summarizeSourceLineage(synthesis);
   const merchantGapSummary = summarizeMerchantGaps(synthesis);
   const sourceReceiptQualitySummary = summarizeSourceReceiptQuality(synthesis);
   const contractSummary = summarizeContractCoverage(synthesis);
@@ -2122,6 +2282,20 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
           <span title={candidateQualitySummary?.title}>Fidelity</span>
           <strong title={candidateQualitySummary?.title}>
             {candidateQualitySummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div
+          className={`${styles.synthesisEvidenceMetric}${
+            sourceLineageSummary?.warning
+              ? ` ${styles.synthesisEvidenceMetricWarning}`
+              : ""
+          }`}
+        >
+          <span title={sourceLineageSummary?.title}>
+            {sourceLineageSummary?.statusLabel ?? "Lineage"}
+          </span>
+          <strong title={sourceLineageSummary?.title}>
+            {sourceLineageSummary?.label ?? "—"}
           </strong>
         </div>
         <div className={styles.synthesisEvidenceMetric}>

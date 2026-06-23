@@ -111,6 +111,25 @@ const mockSelectionEvidence = {
     "Generate feasible merchant-local mutations, then keep the highest fidelity option instead of maximizing synthetic volume.",
 };
 
+const mockAcceptedSourceLineage = {
+  schema_version: "accepted-source-lineage-v1",
+  coverage_status: "sampled",
+  authoritative: false,
+  coverage_warning: "sampled_source_lineage_not_authoritative",
+  candidate_count: 5,
+  observed_candidate_count: 3,
+  expected_candidate_count: 5,
+  source_receipt_key_count: 12,
+  source_receipt_keys_redacted: true,
+  with_base_receipt_count: 3,
+  with_cross_receipt_item_count: 1,
+  with_category_evidence_count: 1,
+  with_nearest_real_structure_count: 3,
+  with_layout_integrity_count: 1,
+  with_arithmetic_reconciliation_count: 1,
+  with_selection_evidence_count: 1,
+};
+
 export const mockTrainingMetricsResponse = {
   job_id: "test-job-id",
   job_name: "layoutlm-test-run",
@@ -173,6 +192,7 @@ export const mockTrainingMetricsResponse = {
       DATE: 1,
       TIME: 1,
     },
+    accepted_source_lineage: mockAcceptedSourceLineage,
     rejected_count: 1,
     rejection_reasons: {
       merchant_synthesis_not_ready: 1,
@@ -448,6 +468,7 @@ export const mockTrainingMetricsResponse = {
           max: 0.94,
         },
         accepted_real_baseline_comparison: mockAcceptedRealBaselineComparison,
+        accepted_source_lineage: mockAcceptedSourceLineage,
         rejection_reasons: {
           merchant_synthesis_not_ready: 1,
         },
