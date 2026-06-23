@@ -165,8 +165,11 @@ def execute_migration(
     }
 
     client = raw_client(dst_dynamo)
-    # ---- S3 first: copy objects so migrated rows never dangle ----
-    created = []
+    # ---- S3: decide what to copy (read-only), PERSIST the rollback plan,
+    # then copy. Writing the planned dst keys before any copy means a crash
+    # mid-copy still leaves a backup that can delete every object we created;
+    # already-present objects are excluded so rollback never deletes them. ----
+    to_copy = []
     for src_b, src_k, dst_b, dst_k in plan.s3_copies:
         try:
             if _s3_source_exists(s3, dst_b, dst_k):
@@ -175,25 +178,33 @@ def execute_migration(
             if not _s3_source_exists(s3, src_b, src_k):
                 report["s3_source_missing"] += 1
                 continue
+            to_copy.append((src_b, src_k, dst_b, dst_k))
+        except AWS_ERRORS as exc:
+            report["errors"].append(f"s3 head {dst_b}/{dst_k}: {exc}")
+
+    backup["s3_created"] = [[d_b, d_k] for _, _, d_b, d_k in to_copy]
+    with open(backup_path, "w", encoding="utf-8") as f:
+        json.dump(backup, f)
+    report["backup_path"] = backup_path
+
+    if report["errors"]:  # a HEAD check failed -> don't migrate half of it
+        report["aborted_before_dynamo"] = True
+        return report
+
+    for src_b, src_k, dst_b, dst_k in to_copy:
+        try:
             s3.copy_object(
                 CopySource={"Bucket": src_b, "Key": src_k},
                 Bucket=dst_b,
                 Key=dst_k,
             )
-            created.append([dst_b, dst_k])
             report["s3_copied"] += 1
         except AWS_ERRORS as exc:
             report["errors"].append(f"s3 {dst_b}/{dst_k}: {exc}")
-    backup["s3_created"] = created
 
-    with open(backup_path, "w", encoding="utf-8") as f:
-        json.dump(backup, f)
-    report["backup_path"] = backup_path
-
-    # If any S3 copy FAILED (not merely a missing source), do NOT write the
-    # DynamoDB rows — they would reference target objects that were never
-    # copied (dangling). The migration is idempotent, so re-run after the
-    # cause (AccessDenied / throttling / etc.) is resolved.
+    # If any S3 copy FAILED, do NOT write the DynamoDB rows — they would
+    # reference objects that were never copied (dangling). Idempotent re-run
+    # resumes once the cause (AccessDenied / throttling / etc.) is resolved.
     if report["errors"]:
         report["aborted_before_dynamo"] = True
         return report
@@ -241,6 +252,15 @@ def rollback(backup_path: str, dst_dynamo, s3) -> dict:
             report["items_deleted"] += len(chunk)
         except AWS_ERRORS as exc:
             report["errors"].append(f"dynamo delete: {exc}")
+
+    # If the DynamoDB deletes failed, those rows still exist — deleting their
+    # S3 objects now would leave live rows pointing at missing objects. Leave
+    # S3 (and receipt_count) untouched; the operator resolves the cause and
+    # re-runs rollback.
+    if report["errors"]:
+        report["s3_deletion_skipped"] = True
+        return report
+
     for bucket, key in data.get("s3_created", []):
         try:
             s3.delete_object(Bucket=bucket, Key=key)
