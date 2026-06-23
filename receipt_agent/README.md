@@ -178,6 +178,11 @@ merchant synthesis contracts, and writes a bundle with:
   category/catalog evidence, quality gates, blockers, and limitations.
 - `candidate_mix`: accepted/rejected counts by merchant, operation, category,
   field replacement, structure similarity, and accepted mix balance.
+- `synthetic_training_batch_policy`: a no-spend stoplight for the next
+  train-only run. `hold` means do not train the synthetic rows yet,
+  `smoke_test_only` means try only the tiny accepted batch with real validation,
+  and `bounded_augmentation` means the selected batch has high-fidelity
+  candidate-quality evidence and passed the overtraining concentration checks.
 - `synthesis_quality_report`: bounded reviewer-facing evidence with readiness,
   recommendations, merchant acceptance rates, preview lines, arithmetic checks,
   and grounding checks.

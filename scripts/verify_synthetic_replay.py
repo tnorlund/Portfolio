@@ -835,6 +835,73 @@ def _accepted_mix_balance(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _synthetic_training_batch_policy(
+    *,
+    candidate_mix: dict[str, Any],
+    selected_rows: list[dict[str, Any]],
+    max_per_merchant: int,
+    max_per_merchant_operation: int,
+    bundle_reasons: list[str],
+) -> dict[str, Any]:
+    """Return a conservative policy for the next train-only synthetic batch."""
+    reported_accepted_count = _safe_int(candidate_mix.get("accepted_count")) or 0
+    selected_count = len(selected_rows)
+    available_count = min(reported_accepted_count, selected_count)
+    balance = candidate_mix.get("accepted_mix_balance") or {}
+    risk_level = str(balance.get("risk_level") or "none").strip().lower()
+    risk_reasons = [str(reason) for reason in balance.get("risk_reasons") or []]
+    candidate_quality_count = sum(1 for row in selected_rows if _candidate_quality(row))
+    high_fidelity_count = sum(
+        1
+        for row in selected_rows
+        if (_candidate_quality(row) or {}).get("high_fidelity") is True
+    )
+    hold_reasons = list(dict.fromkeys(str(reason) for reason in bundle_reasons))
+    if available_count <= 0 and "no_accepted_synthetic_examples" not in hold_reasons:
+        hold_reasons.append("no_accepted_synthetic_examples")
+    if reported_accepted_count != selected_count:
+        hold_reasons.append("accepted_selected_count_mismatch")
+    if risk_level in {"medium", "high"}:
+        hold_reasons.append("rebalance_synthetic_mix_before_training")
+    if available_count > 0 and candidate_quality_count < available_count:
+        hold_reasons.append("missing_candidate_quality_assessment")
+    elif available_count > 0 and high_fidelity_count < available_count:
+        hold_reasons.append("no_high_fidelity_candidate_quality")
+    hold_reasons = list(dict.fromkeys(hold_reasons))
+
+    status = "bounded_augmentation"
+    recommended_count = available_count
+    max_synthetic_train_share = 0.05
+    if hold_reasons:
+        status = "hold"
+        recommended_count = 0
+        max_synthetic_train_share = 0.0
+    elif available_count < 3:
+        status = "smoke_test_only"
+        recommended_count = available_count
+        max_synthetic_train_share = 0.01
+    elif high_fidelity_count:
+        recommended_count = min(available_count, high_fidelity_count)
+
+    return {
+        "schema_version": "synthetic-training-batch-policy-v1",
+        "status": status,
+        "recommended_example_count": recommended_count,
+        "accepted_candidate_count": reported_accepted_count,
+        "selected_candidate_count": selected_count,
+        "candidate_quality_count": candidate_quality_count,
+        "high_fidelity_candidate_count": high_fidelity_count,
+        "max_synthetic_train_share": max_synthetic_train_share,
+        "max_per_merchant": max_per_merchant,
+        "max_per_merchant_operation": max_per_merchant_operation,
+        "overtraining_risk_level": risk_level,
+        "risk_reasons": risk_reasons[:8],
+        "hold_reasons": hold_reasons[:8],
+        "requires_real_validation_split": True,
+        "review_required": status != "bounded_augmentation",
+    }
+
+
 def _compact_llm_execution(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {"mode": "unknown"}
@@ -2444,6 +2511,11 @@ def build_local_synthesis_quality_report(
         accepted_operation_coverage=accepted_operation_coverage,
         llm_model_freshness_gate=llm_model_freshness_gate,
     )
+    training_batch_policy = (
+        bundle.get("synthetic_training_batch_policy")
+        or (bundle.get("selection") or {}).get("training_batch_policy")
+        or {}
+    )
     source_quality_status_counts = _count_by(
         [
             str(row.get("source_quality_status"))
@@ -2516,6 +2588,7 @@ def build_local_synthesis_quality_report(
         "operation_coverage": operation_coverage,
         "accepted_operation_coverage": accepted_operation_coverage,
         "merchant_gap_summary": merchant_gap_summary,
+        "training_batch_policy": training_batch_policy,
         "quality_gates": {
             "validation_policy": bundle.get("validation_policy")
             or "real_receipts_only",
@@ -4036,6 +4109,9 @@ def run_local_synthetic_pipeline(
             "ready": bundle["ready"],
             "reasons": bundle["reasons"],
             "selection": bundle["selection"],
+            "training_batch_policy": (
+                bundle.get("synthetic_training_batch_policy") or {}
+            ),
             "merchant_synthesis_contract_count": len(
                 bundle.get("merchant_synthesis_contracts") or []
             ),
@@ -4313,6 +4389,21 @@ def build_local_synthetic_training_bundle(
         max_per_merchant=max_per_merchant,
         max_per_merchant_operation=max_per_merchant_operation,
     )
+    training_batch_policy = _synthetic_training_batch_policy(
+        candidate_mix=candidate_mix,
+        selected_rows=selected_rows,
+        max_per_merchant=max_per_merchant,
+        max_per_merchant_operation=max_per_merchant_operation,
+        bundle_reasons=reasons,
+    )
+    policy_bundle_blockers = {
+        "accepted_selected_count_mismatch",
+        "missing_candidate_quality_assessment",
+        "no_high_fidelity_candidate_quality",
+    }
+    for reason in training_batch_policy.get("hold_reasons") or []:
+        if reason in policy_bundle_blockers and reason not in reasons:
+            reasons.append(reason)
     selection_summary = {
         "candidates_seen": selection.candidates_seen,
         "candidates_accepted": selection.candidates_accepted,
@@ -4340,6 +4431,7 @@ def build_local_synthetic_training_bundle(
             _compact_selection_candidate(row, rank=rank)
             for rank, row in enumerate(selected_rows[:10], start=1)
         ],
+        "training_batch_policy": training_batch_policy,
     }
     bundle = {
         "schema_version": "layoutlm-synthetic-training-bundle-v1",
@@ -4353,6 +4445,7 @@ def build_local_synthetic_training_bundle(
         "selection": selection_summary,
         "candidate_mix": candidate_mix,
         "merchant_synthesis_contracts": merchant_synthesis_contracts,
+        "synthetic_training_batch_policy": training_batch_policy,
         "synthetic_training_examples": selected_rows,
     }
     bundle["synthesis_quality_report"] = build_local_synthesis_quality_report(

@@ -15,6 +15,7 @@ import {
   TrainingSynthesisSourceQualityMerchant,
   TrainingSynthesisStructureEvidence,
   TrainingSynthesisSummary,
+  TrainingSynthesisTrainingBatchPolicy,
 } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 import {
@@ -1576,6 +1577,62 @@ const summarizeMixBalance = (
   return { label, title: title || undefined };
 };
 
+const summarizeTrainingBatchPolicy = (
+  policy?: TrainingSynthesisTrainingBatchPolicy
+): { label: string; title?: string; warning?: boolean } | null => {
+  if (!policy || !policy.status) return null;
+  const status = policy.status.toLowerCase();
+  const recommended = policy.recommended_example_count ?? 0;
+  const label =
+    status === "hold"
+      ? "hold"
+      : status === "smoke_test_only"
+        ? `smoke ${formatCount(recommended)}`
+        : status === "bounded_augmentation"
+          ? `train ${formatCount(recommended)}`
+          : formatCategoryName(policy.status);
+  const title = [
+    `Recommended examples: ${formatCount(recommended)}`,
+    policy.accepted_candidate_count != null
+      ? `Accepted candidates: ${formatCount(policy.accepted_candidate_count)}`
+      : null,
+    policy.selected_candidate_count != null
+      ? `Selected rows: ${formatCount(policy.selected_candidate_count)}`
+      : null,
+    policy.high_fidelity_candidate_count != null
+      ? `High fidelity: ${formatCount(policy.high_fidelity_candidate_count)}`
+      : null,
+    policy.max_synthetic_train_share != null
+      ? `Max synthetic train share: ${formatPercent(policy.max_synthetic_train_share)}`
+      : null,
+    policy.overtraining_risk_level
+      ? `Overtraining risk: ${formatCategoryName(policy.overtraining_risk_level)}`
+      : null,
+    (policy.risk_reasons || []).length
+      ? `Risk reasons: ${(policy.risk_reasons || [])
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+      : null,
+    (policy.hold_reasons || []).length
+      ? `Hold reasons: ${(policy.hold_reasons || [])
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+      : null,
+    policy.max_per_merchant != null && policy.max_per_merchant_operation != null
+      ? `Caps: ${formatCount(policy.max_per_merchant)} / merchant, ${formatCount(policy.max_per_merchant_operation)} / merchant-operation`
+      : null,
+    policy.requires_real_validation_split ? "Validation: real receipts only" : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return {
+    label,
+    title: title || undefined,
+    warning: policy.review_required === true || status !== "bounded_augmentation",
+  };
+};
+
 const summarizeRealBaselineComparison = (
   baseline?: TrainingSynthesisRealBaselineSummary | null
 ): { label: string; title?: string } | null => {
@@ -2330,6 +2387,9 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
       synthesis.synthetic_accepted_mix_balance ??
       synthesis.quality_report?.summary?.accepted_mix_balance
   );
+  const trainingBatchPolicySummary = summarizeTrainingBatchPolicy(
+    synthesis.quality_report?.training_batch_policy
+  );
 
   return (
     <div
@@ -2406,6 +2466,18 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
           <span title={mixBalanceSummary?.title}>Mix balance</span>
           <strong title={mixBalanceSummary?.title}>
             {mixBalanceSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div
+          className={`${styles.synthesisEvidenceMetric}${
+            trainingBatchPolicySummary?.warning
+              ? ` ${styles.synthesisEvidenceMetricWarning}`
+              : ""
+          }`}
+        >
+          <span title={trainingBatchPolicySummary?.title}>Batch policy</span>
+          <strong title={trainingBatchPolicySummary?.title}>
+            {trainingBatchPolicySummary?.label ?? "—"}
           </strong>
         </div>
         <div className={styles.synthesisEvidenceMetric}>

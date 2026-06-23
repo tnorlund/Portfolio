@@ -146,6 +146,23 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
           with_arithmetic_reconciliation_count: 1,
         },
       },
+      training_batch_policy: {
+        schema_version: "synthetic-training-batch-policy-v1",
+        status: "hold",
+        recommended_example_count: 0,
+        accepted_candidate_count: 1,
+        selected_candidate_count: 1,
+        candidate_quality_count: 1,
+        high_fidelity_candidate_count: 1,
+        max_synthetic_train_share: 0,
+        max_per_merchant: 5,
+        max_per_merchant_operation: 2,
+        overtraining_risk_level: "high",
+        risk_reasons: ["single_merchant_accepted"],
+        hold_reasons: ["rebalance_synthetic_mix_before_training"],
+        requires_real_validation_split: true,
+        review_required: true,
+      },
       quality_gates: {
         llm_model_freshness_gate: {
           enabled: true,
@@ -255,6 +272,18 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(mixBalanceValue).toHaveAttribute(
       "title",
       expect.stringContaining("Reasons: single merchant accepted"),
+    );
+    expect(screen.getByText("hold")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Hold reasons: rebalance synthetic mix before training"),
+    );
+    expect(screen.getByText("hold")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Max synthetic train share: 0%"),
+    );
+    expect(screen.getByText("hold")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Selected rows: 1"),
     );
 
     expect(screen.getByText("2 / 2 ready")).toHaveAttribute(

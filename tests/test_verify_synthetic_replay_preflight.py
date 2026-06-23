@@ -55,6 +55,7 @@ def _artifact(
     status="ready",
     score=0.86,
     candidates=True,
+    candidate_quality=True,
     source_receipt_quality=None,
 ):
     artifact = {
@@ -165,6 +166,29 @@ def _artifact(
             else []
         ),
     }
+    if candidates and candidate_quality:
+        add_item, hard_negative = artifact["synthetic_receipt_candidates"]
+        add_item["metadata"]["candidate_quality"] = {
+            "schema_version": "synthetic-candidate-quality-v1",
+            "score": 0.93,
+            "high_fidelity": True,
+            "components": {
+                "arithmetic_reconciliation": 0.9,
+                "category_alignment": 1.0,
+                "cross_receipt_grounding": 1.0,
+                "structure_similarity": 0.92,
+                "token_budget": 1.0,
+            },
+        }
+        hard_negative["metadata"]["candidate_quality"] = {
+            "schema_version": "synthetic-candidate-quality-v1",
+            "score": 0.9,
+            "high_fidelity": True,
+            "components": {
+                "structure_similarity": 0.88,
+                "token_budget": 1.0,
+            },
+        }
     if source_receipt_quality is not None:
         artifact["source_receipt_quality"] = source_receipt_quality
     return artifact
@@ -1115,6 +1139,25 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     assert bundle["candidate_mix"]["accepted_source_lineage"] == (
         expected_accepted_source_lineage
     )
+    expected_add_candidate_quality = {
+        "score": 0.93,
+        "high_fidelity": True,
+        "components": {
+            "arithmetic_reconciliation": 0.9,
+            "category_alignment": 1.0,
+            "cross_receipt_grounding": 1.0,
+            "structure_similarity": 0.92,
+            "token_budget": 1.0,
+        },
+    }
+    expected_hard_negative_candidate_quality = {
+        "score": 0.9,
+        "high_fidelity": True,
+        "components": {
+            "structure_similarity": 0.88,
+            "token_budget": 1.0,
+        },
+    }
     assert bundle["selection"]["accepted_candidate_examples"][0] == {
         "rank": 1,
         "candidate_id": "grounded-add-item",
@@ -1126,9 +1169,8 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "merchant_name": "Market Mart",
         "image_id": "synthetic-Market Mart-add",
         "source_lineage": expected_source_lineage,
-        "selection_reason": (
-            "grounded_add_item_with_arithmetic_and_structure_similarity"
-        ),
+        "selection_reason": ("declared_candidate_quality_ranked_after_layoutlm_gates"),
+        "candidate_quality": expected_add_candidate_quality,
     }
     assert bundle["selection"]["accepted_candidate_examples"][1] == {
         "rank": 2,
@@ -1140,9 +1182,8 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "accuracy_checks": [],
         "merchant_name": "Market Mart",
         "image_id": "synthetic-Market Mart-hard-negative",
-        "selection_reason": (
-            "hard_negative_false_positive_geometry_after_layoutlm_gates"
-        ),
+        "selection_reason": ("declared_candidate_quality_ranked_after_layoutlm_gates"),
+        "candidate_quality": expected_hard_negative_candidate_quality,
     }
     assert all(row.get("metadata") for row in bundle["synthetic_training_examples"])
     assert bundle["synthesis_quality_report"]["schema_version"] == (
@@ -1228,6 +1269,7 @@ def test_build_local_synthetic_training_bundle_enforces_contract_before_writing(
             "idx": 0,
             "category": "PRODUCE",
             "structure_similarity": 0.92,
+            "candidate_quality": 0.93,
         }
     ]
     assert [row["candidate_id"] for row in bundle["synthetic_training_examples"]] == [
@@ -1278,6 +1320,7 @@ def test_build_local_synthetic_training_bundle_requires_contract_capacity():
             "idx": 0,
             "category": "PRODUCE",
             "structure_similarity": 0.92,
+            "candidate_quality": 0.93,
         },
         {
             "candidate_id": "hard-negative",
@@ -1288,6 +1331,7 @@ def test_build_local_synthetic_training_bundle_requires_contract_capacity():
             "reason": "operation_not_supported_by_contract",
             "idx": 1,
             "structure_similarity": 0.88,
+            "candidate_quality": 0.9,
         },
     ]
     assert bundle["candidate_mix"]["accepted_count"] == 0
@@ -1614,6 +1658,25 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "add_line_item": 1,
         "hard_negative": 1,
     }
+    expected_training_batch_policy = {
+        "schema_version": "synthetic-training-batch-policy-v1",
+        "status": "smoke_test_only",
+        "recommended_example_count": 2,
+        "accepted_candidate_count": 2,
+        "selected_candidate_count": 2,
+        "candidate_quality_count": 2,
+        "high_fidelity_candidate_count": 2,
+        "max_synthetic_train_share": 0.01,
+        "max_per_merchant": 5,
+        "max_per_merchant_operation": 2,
+        "overtraining_risk_level": "low",
+        "risk_reasons": ["too_few_examples_for_balance_assessment"],
+        "hold_reasons": [],
+        "requires_real_validation_split": True,
+        "review_required": True,
+    }
+    assert bundle["synthetic_training_batch_policy"] == expected_training_batch_policy
+    assert report["training_batch_policy"] == expected_training_batch_policy
     assert report["summary"]["accepted_source_lineage"] == (
         expected_accepted_source_lineage
     )
@@ -1622,9 +1685,9 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         == bundle["candidate_mix"]["accepted_structure_components"]
     )
     assert report["summary"]["accepted_candidate_quality"] == {
-        "count": 1,
-        "avg": 0.93,
-        "min": 0.93,
+        "count": 2,
+        "avg": 0.915,
+        "min": 0.9,
         "max": 0.93,
     }
     assert report["summary"]["accepted_candidate_quality_components"] == {
@@ -1642,12 +1705,12 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
             "max": 1.0,
         },
         "structure_similarity": {
-            "count": 1,
-            "avg": 0.86,
+            "count": 2,
+            "avg": 0.87,
             "min": 0.86,
-            "max": 0.86,
+            "max": 0.88,
         },
-        "token_budget": {"count": 1, "avg": 1.0, "min": 1.0, "max": 1.0},
+        "token_budget": {"count": 2, "avg": 1.0, "min": 1.0, "max": 1.0},
     }
     assert report["quality_gates"]["contract_gate"] == {
         "enabled": True,
@@ -1885,6 +1948,7 @@ def test_build_local_synthetic_training_bundle_reports_caps():
             "reason": "merchant_operation_synthetic_cap",
             "idx": 2,
             "structure_similarity": 0.86,
+            "candidate_quality": 0.9,
         }
     ]
     assert bundle["candidate_mix"]["rejected_count"] == 1
@@ -1940,7 +2004,7 @@ def test_build_local_synthetic_training_bundle_reports_multi_merchant_mix():
 
 def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_mix():
     module = _load_module()
-    dominant = _artifact("Market Mart")
+    dominant = _artifact("Market Mart", candidate_quality=False)
     extra_add = json.loads(json.dumps(dominant["synthetic_receipt_candidates"][0]))
     extra_add.update(
         {
@@ -1963,17 +2027,96 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
     )
 
     assert bundle["ready"] is False
-    assert bundle["reasons"] == ["accepted_synthetic_mix_single_merchant_high_risk"]
+    assert bundle["reasons"] == [
+        "accepted_synthetic_mix_single_merchant_high_risk",
+        "missing_candidate_quality_assessment",
+    ]
     assert bundle["selection"]["candidates_accepted"] == 3
     balance = bundle["candidate_mix"]["accepted_mix_balance"]
     assert balance["risk_level"] == "high"
     assert balance["risk_reasons"] == ["single_merchant_accepted"]
     assert bundle["candidate_mix"]["accepted_merchant_count"] == 1
     assert bundle["preflight"]["ready_merchant_count"] == 2
+    assert bundle["synthetic_training_batch_policy"] == {
+        "schema_version": "synthetic-training-batch-policy-v1",
+        "status": "hold",
+        "recommended_example_count": 0,
+        "accepted_candidate_count": 3,
+        "selected_candidate_count": 3,
+        "candidate_quality_count": 0,
+        "high_fidelity_candidate_count": 0,
+        "max_synthetic_train_share": 0.0,
+        "max_per_merchant": 5,
+        "max_per_merchant_operation": 2,
+        "overtraining_risk_level": "high",
+        "risk_reasons": ["single_merchant_accepted"],
+        "hold_reasons": [
+            "accepted_synthetic_mix_single_merchant_high_risk",
+            "rebalance_synthetic_mix_before_training",
+            "missing_candidate_quality_assessment",
+        ],
+        "requires_real_validation_split": True,
+        "review_required": True,
+    }
+    assert bundle["synthesis_quality_report"]["training_batch_policy"]["status"] == (
+        "hold"
+    )
     assert (
         "rebalance_synthetic_mix_before_training"
         in bundle["synthesis_quality_report"]["recommendations"]
     )
+
+
+def test_build_local_synthetic_training_bundle_holds_unscored_larger_batch():
+    module = _load_module()
+    bundle = module.build_local_synthetic_training_bundle(
+        [
+            _artifact("Market Mart", candidate_quality=False),
+            _artifact("Sprouts Farmers Market", candidate_quality=False),
+        ],
+        min_ready_share=0.0,
+        min_avg_readiness_score=0.0,
+        min_grounded_candidate_share=0.0,
+    )
+
+    assert bundle["ready"] is False
+    assert bundle["reasons"] == ["missing_candidate_quality_assessment"]
+    assert bundle["selection"]["candidates_accepted"] == 4
+    assert bundle["synthetic_training_batch_policy"] == {
+        "schema_version": "synthetic-training-batch-policy-v1",
+        "status": "hold",
+        "recommended_example_count": 0,
+        "accepted_candidate_count": 4,
+        "selected_candidate_count": 4,
+        "candidate_quality_count": 0,
+        "high_fidelity_candidate_count": 0,
+        "max_synthetic_train_share": 0.0,
+        "max_per_merchant": 5,
+        "max_per_merchant_operation": 2,
+        "overtraining_risk_level": "low",
+        "risk_reasons": [],
+        "hold_reasons": ["missing_candidate_quality_assessment"],
+        "requires_real_validation_split": True,
+        "review_required": True,
+    }
+    assert bundle["synthesis_quality_report"]["training_ready"] is False
+
+
+def test_build_local_synthetic_training_bundle_holds_unscored_smoke_batch():
+    module = _load_module()
+    bundle = module.build_local_synthetic_training_bundle(
+        [_artifact("Market Mart", candidate_quality=False)],
+        min_grounded_candidate_share=0.4,
+    )
+
+    assert bundle["ready"] is False
+    assert bundle["reasons"] == ["missing_candidate_quality_assessment"]
+    assert bundle["selection"]["candidates_accepted"] == 2
+    assert bundle["synthetic_training_batch_policy"]["status"] == "hold"
+    assert bundle["synthetic_training_batch_policy"]["recommended_example_count"] == 0
+    assert bundle["synthetic_training_batch_policy"]["hold_reasons"] == [
+        "missing_candidate_quality_assessment"
+    ]
 
 
 def test_inventory_local_artifacts_classifies_pattern_and_bundle(tmp_path):
@@ -2923,6 +3066,44 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
             "line_step": {"count": 2, "avg": 0.6, "min": 0.55, "max": 0.65},
             "price_column": {"count": 2, "avg": 1.0, "min": 1.0, "max": 1.0},
             "token_count": {"count": 2, "avg": 0.47, "min": 0.47, "max": 0.47},
+        },
+        "accepted_candidate_quality": {
+            "count": 2,
+            "avg": 0.915,
+            "min": 0.9,
+            "max": 0.93,
+        },
+        "accepted_candidate_quality_components": {
+            "arithmetic_reconciliation": {
+                "count": 1,
+                "avg": 0.9,
+                "min": 0.9,
+                "max": 0.9,
+            },
+            "category_alignment": {
+                "count": 1,
+                "avg": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+            },
+            "cross_receipt_grounding": {
+                "count": 1,
+                "avg": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+            },
+            "structure_similarity": {
+                "count": 2,
+                "avg": 0.9,
+                "min": 0.88,
+                "max": 0.92,
+            },
+            "token_budget": {
+                "count": 2,
+                "avg": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+            },
         },
         "accepted_source_lineage": {
             "schema_version": "accepted-source-lineage-v1",

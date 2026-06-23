@@ -685,6 +685,23 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                 "category_set": 0.4,
                 "token_count": 0.35,
             },
+            "training_batch_policy": {
+                "schema_version": "synthetic-training-batch-policy-v1",
+                "status": "bounded_augmentation",
+                "recommended_example_count": 2,
+                "accepted_candidate_count": 3,
+                "selected_candidate_count": 3,
+                "candidate_quality_count": 2,
+                "high_fidelity_candidate_count": 2,
+                "max_synthetic_train_share": 0.05,
+                "max_per_merchant": 5,
+                "max_per_merchant_operation": 2,
+                "overtraining_risk_level": "low",
+                "risk_reasons": [],
+                "hold_reasons": [],
+                "requires_real_validation_split": True,
+                "review_required": False,
+            },
         },
         "candidate_mix": {
             "candidate_count": 5,
@@ -1650,6 +1667,21 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "cover_ready_operations_before_training",
         "complete_source_lineage_before_training",
     ]
+    assert summary["quality_report"]["training_batch_policy"] == {
+        "schema_version": "synthetic-training-batch-policy-v1",
+        "status": "bounded_augmentation",
+        "recommended_example_count": 2,
+        "accepted_candidate_count": 3,
+        "selected_candidate_count": 3,
+        "candidate_quality_count": 2,
+        "high_fidelity_candidate_count": 2,
+        "max_synthetic_train_share": 0.05,
+        "max_per_merchant": 5,
+        "max_per_merchant_operation": 2,
+        "overtraining_risk_level": "low",
+        "requires_real_validation_split": True,
+        "review_required": False,
+    }
     assert summary["quality_report"]["summary"]["acceptance_rate"] == 0.6
     assert summary["quality_report"]["summary"]["ready_contract_count"] == 2
     assert summary["quality_report"]["summary"]["accepted_candidate_quality"] == {

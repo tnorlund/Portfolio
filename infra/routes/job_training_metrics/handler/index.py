@@ -2385,6 +2385,10 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
         "merchant_gap_summary": _compact_merchant_gap_summary(
             value.get("merchant_gap_summary")
         ),
+        "training_batch_policy": _compact_training_batch_policy(
+            value.get("training_batch_policy")
+            or value.get("synthetic_training_batch_policy")
+        ),
         "quality_gates": {
             "validation_policy": quality_gates.get("validation_policy"),
             "train_only_examples": quality_gates.get("train_only_examples") is True,
@@ -2415,6 +2419,41 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
             if isinstance(row, dict)
         ],
     }
+
+
+def _compact_training_batch_policy(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict) or not value:
+        return {}
+    compact = {
+        "schema_version": value.get("schema_version"),
+        "status": value.get("status"),
+        "recommended_example_count": _safe_int(value.get("recommended_example_count")),
+        "accepted_candidate_count": _safe_int(value.get("accepted_candidate_count")),
+        "selected_candidate_count": _safe_int(value.get("selected_candidate_count")),
+        "candidate_quality_count": _safe_int(value.get("candidate_quality_count")),
+        "high_fidelity_candidate_count": _safe_int(
+            value.get("high_fidelity_candidate_count")
+        ),
+        "max_synthetic_train_share": _safe_float(
+            value.get("max_synthetic_train_share")
+        ),
+        "max_per_merchant": _safe_int(value.get("max_per_merchant")),
+        "max_per_merchant_operation": _safe_int(
+            value.get("max_per_merchant_operation")
+        ),
+        "overtraining_risk_level": value.get("overtraining_risk_level"),
+        "risk_reasons": [
+            str(item) for item in (value.get("risk_reasons") or [])[:8] if item
+        ],
+        "hold_reasons": [
+            str(item) for item in (value.get("hold_reasons") or [])[:8] if item
+        ],
+        "requires_real_validation_split": (
+            value.get("requires_real_validation_split") is True
+        ),
+        "review_required": value.get("review_required") is True,
+    }
+    return {key: item for key, item in compact.items() if item not in (None, "", [])}
 
 
 def _derive_synthesis_quality_report(
@@ -2732,6 +2771,11 @@ def _derive_synthesis_quality_report(
             "operation_coverage": operation_coverage,
             "accepted_operation_coverage": accepted_operation_coverage,
             "merchant_gap_summary": merchant_gap_summary,
+            "training_batch_policy": (
+                bundle.get("synthetic_training_batch_policy")
+                or selection.get("training_batch_policy")
+                or {}
+            ),
             "quality_gates": {
                 "validation_policy": bundle.get("validation_policy")
                 or "real_receipts_only",

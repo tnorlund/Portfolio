@@ -927,6 +927,24 @@ export interface TrainingSynthesisMerchantGapSummary {
   }>;
 }
 
+export interface TrainingSynthesisTrainingBatchPolicy {
+  schema_version?: string | null;
+  status?: string | null;
+  recommended_example_count?: number | null;
+  accepted_candidate_count?: number | null;
+  selected_candidate_count?: number | null;
+  candidate_quality_count?: number | null;
+  high_fidelity_candidate_count?: number | null;
+  max_synthetic_train_share?: number | null;
+  max_per_merchant?: number | null;
+  max_per_merchant_operation?: number | null;
+  overtraining_risk_level?: string | null;
+  risk_reasons?: string[];
+  hold_reasons?: string[];
+  requires_real_validation_split?: boolean;
+  review_required?: boolean;
+}
+
 export interface TrainingSynthesisQualityReport {
   ready?: boolean;
   training_ready?: boolean;
@@ -960,6 +978,7 @@ export interface TrainingSynthesisQualityReport {
   operation_coverage?: TrainingSynthesisOperationCoverage;
   accepted_operation_coverage?: TrainingSynthesisAcceptedOperationCoverage;
   merchant_gap_summary?: TrainingSynthesisMerchantGapSummary;
+  training_batch_policy?: TrainingSynthesisTrainingBatchPolicy;
   quality_gates?: {
     validation_policy?: string | null;
     train_only_examples?: boolean;
