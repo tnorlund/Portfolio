@@ -466,6 +466,66 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     );
   });
 
+  it("surfaces synthetic receipt shape geometry for accepted examples", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        merchants: [
+          {
+            merchant_name: "Sprouts Farmers Market",
+            readiness_status: "ready",
+            candidate_count: 2,
+            accepted_count: 1,
+            accepted_examples: [
+              {
+                candidate_id: "sprouts-add-bananas",
+                operation: "add_line_item",
+                category: "PRODUCE",
+                changed_text: "YELLOW BANANAS",
+                receipt_shape: {
+                  line_count: 5,
+                  token_count: 10,
+                  truncated: false,
+                },
+                preview_lines: [
+                  {
+                    line_number: 3,
+                    text: "YELLOW BANANAS 1.95",
+                    role: "line_item",
+                    y: 0.705,
+                    bbox: [90, 695, 1200, 720],
+                    synthetic_insert: true,
+                    modified_labels: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("YELLOW BANANAS 1.95")).toBeInTheDocument();
+    expect(screen.getByText("5 lines · 10 tokens")).toBeInTheDocument();
+    expect(screen.getByText("YELLOW BANANAS 1.95").parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining("Line bbox (receipt coords): [90 / 695 / 1200 / 720]"),
+    );
+    expect(screen.getByText("YELLOW BANANAS 1.95").parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining("Line y (normalized): 0.70"),
+    );
+  });
+
   it("does not headline contract-ready operations as reusable evidence", async () => {
     const metrics = trainingMetrics();
     metrics.synthesis = {

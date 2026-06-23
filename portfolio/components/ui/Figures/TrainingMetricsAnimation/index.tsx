@@ -2014,6 +2014,48 @@ const summarizeSelectionEvidence = (
   };
 };
 
+const summarizeReceiptShape = (
+  example?: SynthesisQualityExample
+): { label?: string; title?: string } => {
+  if (!example) return {};
+  const shape = example.receipt_shape || {};
+  const previewLines = example.preview_lines || [];
+  const focusedLine =
+    previewLines.find((line) => line.synthetic_insert) ||
+    previewLines.find((line) => (line.modified_labels || []).length > 0) ||
+    previewLines[0];
+  const lineCount = shape.line_count ?? null;
+  const tokenCount = shape.token_count ?? null;
+  const labelParts = [
+    lineCount != null ? formatPlural(lineCount, "line") : null,
+    tokenCount != null ? formatPlural(tokenCount, "token") : null,
+  ].filter((value): value is string => Boolean(value));
+  const bbox = focusedLine?.bbox;
+  const bboxLabel =
+    Array.isArray(bbox) && bbox.length === 4
+      ? `[${bbox.map((value) => String(value)).join(" / ")}]`
+      : null;
+  const title = [
+    labelParts.length ? `Shape: ${labelParts.join(", ")}` : null,
+    shape.truncated === true ? "Preview truncated" : null,
+    focusedLine?.text ? `Focused line: ${focusedLine.text}` : null,
+    focusedLine?.line_number != null
+      ? `Line number: ${formatCount(focusedLine.line_number)}`
+      : null,
+    focusedLine?.y != null
+      ? `Line y (normalized): ${formatSimilarity(focusedLine.y)}`
+      : null,
+    bboxLabel ? `Line bbox (receipt coords): ${bboxLabel}` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return {
+    label: labelParts.join(" · ") || undefined,
+    title: title || undefined,
+  };
+};
+
 const summarizeReceiptPreview = (
   examples: TrainingSynthesisSummary["candidate_examples"] | undefined
 ): { label: string; title?: string } | null => {
@@ -2319,7 +2361,9 @@ const SynthesisMerchantQualityPanel: React.FC<SynthesisEvidenceStripProps> = ({
           firstExample?.layout_integrity
         );
         const selectionSummary = summarizeSelectionEvidence(firstExample);
+        const receiptShapeSummary = summarizeReceiptShape(firstExample);
         const evidenceTitle = [
+          receiptShapeSummary.title,
           layoutSummary.title,
           shapeSummary.title,
           selectionSummary.title,
@@ -2328,6 +2372,7 @@ const SynthesisMerchantQualityPanel: React.FC<SynthesisEvidenceStripProps> = ({
           .join(" | ");
         const evidenceDetail = [
           grounding,
+          receiptShapeSummary.label,
           layoutSummary.label,
           shapeSummary.label,
           selectionSummary.label,

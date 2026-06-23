@@ -417,6 +417,8 @@ export interface TrainingSynthesisReceiptPreviewLine {
   line_number?: number | null;
   text?: string;
   role?: string | null;
+  y?: number | null;
+  bbox?: number[] | null;
   synthetic_insert?: boolean;
   modified_labels?: string[];
 }
