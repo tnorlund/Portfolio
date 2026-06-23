@@ -815,6 +815,29 @@ export interface TrainingSynthesisOperationCoverage {
   recommendations?: string[];
 }
 
+export interface TrainingSynthesisAcceptedOperationCoverage {
+  operation_count?: number | null;
+  ready_operation_count?: number | null;
+  accepted_operation_count?: number | null;
+  accepted_ready_operation_count?: number | null;
+  accepted_ready_operation_share?: number | null;
+  uncovered_ready_operations?: string[];
+  operations?: Record<
+    string,
+    {
+      ready_merchant_count?: number | null;
+      accepted_merchant_count?: number | null;
+      accepted_ready_merchant_count?: number | null;
+      accepted_count?: number | null;
+      ready_acceptance_share?: number | null;
+      ready_merchants?: string[];
+      accepted_merchants?: string[];
+      uncovered_ready_merchants?: string[];
+    }
+  >;
+  recommendations?: string[];
+}
+
 export interface TrainingSynthesisMerchantGapSummary {
   blocked_merchant_count?: number | null;
   merchant_gap_count?: number | null;
@@ -862,6 +885,7 @@ export interface TrainingSynthesisQualityReport {
     blocked_source_quality_merchant_count?: number | null;
   };
   operation_coverage?: TrainingSynthesisOperationCoverage;
+  accepted_operation_coverage?: TrainingSynthesisAcceptedOperationCoverage;
   merchant_gap_summary?: TrainingSynthesisMerchantGapSummary;
   quality_gates?: {
     validation_policy?: string | null;

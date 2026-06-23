@@ -1791,6 +1791,7 @@ def _report_recommendations(
     *,
     candidate_mix: dict[str, Any],
     contracts: list[dict[str, Any]],
+    accepted_operation_coverage: dict[str, Any] | None = None,
 ) -> list[str]:
     recommendations: list[str] = []
     if bundle.get("ready") is not True:
@@ -1815,6 +1816,10 @@ def _report_recommendations(
         recommendations.append("verify_total_and_tax_reconciliation_in_preview")
     if _safe_int(candidate_mix.get("accepted_grounded_candidate_count")):
         recommendations.append("prefer_cross_receipt_grounded_item_mutations")
+    if accepted_operation_coverage and accepted_operation_coverage.get(
+        "uncovered_ready_operations"
+    ):
+        recommendations.append("cover_ready_operations_before_training")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
         recommendations.append("rebalance_synthetic_mix_before_training")
@@ -1959,6 +1964,7 @@ def build_local_synthesis_quality_report(
         merchant_rows.append(merchant_row)
 
     operation_coverage = _operation_coverage_from_rows(merchant_rows)
+    accepted_operation_coverage = _accepted_operation_coverage_from_rows(merchant_rows)
     merchant_gap_summary = _merchant_gap_summary(merchant_rows)
     accepted_count = _safe_int(candidate_mix.get("accepted_count")) or 0
     candidate_count = _safe_int(candidate_mix.get("candidate_count")) or 0
@@ -2028,6 +2034,7 @@ def build_local_synthesis_quality_report(
             ),
         },
         "operation_coverage": operation_coverage,
+        "accepted_operation_coverage": accepted_operation_coverage,
         "merchant_gap_summary": merchant_gap_summary,
         "quality_gates": {
             "validation_policy": bundle.get("validation_policy")
@@ -2050,6 +2057,7 @@ def build_local_synthesis_quality_report(
             bundle,
             candidate_mix=candidate_mix,
             contracts=contracts,
+            accepted_operation_coverage=accepted_operation_coverage,
         ),
         "merchants": merchant_rows[:50],
     }
@@ -2217,6 +2225,17 @@ def _operation_counts_for_row(row: dict[str, Any]) -> dict[str, int]:
     return {}
 
 
+def _accepted_operation_counts_for_row(row: dict[str, Any]) -> dict[str, int]:
+    counts = row.get("accepted_operation_counts")
+    if not isinstance(counts, dict):
+        return {}
+    return {
+        str(name): count
+        for name, value in counts.items()
+        if (count := _safe_int(value)) is not None and count > 0
+    }
+
+
 def _row_operation_ready(row: dict[str, Any], operation: str) -> bool:
     if _source_quality_row_operation_blocker(row, operation):
         return False
@@ -2225,6 +2244,78 @@ def _row_operation_ready(row: dict[str, Any], operation: str) -> bool:
     return status in {"ready", "partial"} and (
         operation in set(row.get("supported_operations") or []) or has_candidate
     )
+
+
+def _accepted_operation_coverage_from_rows(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    operations: dict[str, dict[str, Any]] = {}
+    uncovered_operations: list[str] = []
+    accepted_ready_operation_count = 0
+    ready_operation_count = 0
+    accepted_operation_count = 0
+
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        ready_merchants = [
+            str(row.get("merchant_name") or "Unknown merchant")
+            for row in rows
+            if _row_operation_ready(row, operation)
+        ]
+        accepted_counts_by_merchant = {
+            str(row.get("merchant_name") or "Unknown merchant"): count
+            for row in rows
+            if (count := _accepted_operation_counts_for_row(row).get(operation))
+        }
+        accepted_merchants = sorted(accepted_counts_by_merchant)
+        ready_accepted_merchants = [
+            merchant
+            for merchant in ready_merchants
+            if merchant in accepted_counts_by_merchant
+        ]
+        uncovered_ready_merchants = [
+            merchant
+            for merchant in ready_merchants
+            if merchant not in accepted_counts_by_merchant
+        ]
+        accepted_count = sum(accepted_counts_by_merchant.values())
+        ready_count = len(ready_merchants)
+        accepted_ready_count = len(ready_accepted_merchants)
+        if ready_count:
+            ready_operation_count += 1
+        if accepted_count:
+            accepted_operation_count += 1
+        if ready_count and accepted_ready_count:
+            accepted_ready_operation_count += 1
+        if ready_count and not accepted_ready_count:
+            uncovered_operations.append(operation)
+
+        operations[operation] = {
+            "ready_merchant_count": ready_count,
+            "accepted_merchant_count": len(accepted_merchants),
+            "accepted_ready_merchant_count": accepted_ready_count,
+            "accepted_count": accepted_count,
+            "ready_acceptance_share": _ratio(accepted_ready_count, ready_count),
+            "ready_merchants": ready_merchants[:10],
+            "accepted_merchants": accepted_merchants[:10],
+            "uncovered_ready_merchants": uncovered_ready_merchants[:10],
+        }
+
+    recommendations = (
+        ["cover_ready_operations_before_training"] if uncovered_operations else []
+    )
+    return {
+        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": ready_operation_count,
+        "accepted_operation_count": accepted_operation_count,
+        "accepted_ready_operation_count": accepted_ready_operation_count,
+        "accepted_ready_operation_share": _ratio(
+            accepted_ready_operation_count,
+            ready_operation_count,
+        ),
+        "uncovered_ready_operations": uncovered_operations,
+        "operations": operations,
+        "recommendations": recommendations,
+    }
 
 
 def _operation_coverage_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:

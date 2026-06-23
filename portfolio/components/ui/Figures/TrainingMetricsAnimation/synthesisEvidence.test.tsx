@@ -99,6 +99,30 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
       risk_level: "high",
       risk_reasons: ["single_merchant_accepted"],
     },
+    merchant_synthesis_contracts: [
+      {
+        merchant_name: "Sprouts Farmers Market",
+        status: "ready",
+      },
+      {
+        merchant_name: "Market Mart",
+        status: "ready",
+      },
+    ],
+    quality_report: {
+      accepted_operation_coverage: {
+        operation_count: 4,
+        ready_operation_count: 3,
+        accepted_operation_count: 2,
+        accepted_ready_operation_count: 2,
+        accepted_ready_operation_share: 0.667,
+        uncovered_ready_operations: ["replace_field"],
+      },
+      operation_coverage: {
+        operation_count: 4,
+        ready_operation_count: 3,
+      },
+    },
   },
 });
 
@@ -114,17 +138,26 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
 
     expect(await screen.findByText("1 rejected")).toHaveAttribute(
       "title",
-      "1 single merchant mix"
+      "1 single merchant mix",
     );
 
     const mixBalanceValue = screen.getByText("High risk");
     expect(mixBalanceValue).toHaveAttribute(
       "title",
-      expect.stringContaining("Top merchant: Sprouts Farmers Market (100%)")
+      expect.stringContaining("Top merchant: Sprouts Farmers Market (100%)"),
     );
     expect(mixBalanceValue).toHaveAttribute(
       "title",
-      expect.stringContaining("Reasons: single merchant accepted")
+      expect.stringContaining("Reasons: single merchant accepted"),
+    );
+
+    expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Ready ops accepted: 2 / 3"),
+    );
+    expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Uncovered ready ops: Field edits"),
     );
   });
 });

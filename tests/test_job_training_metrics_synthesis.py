@@ -1444,6 +1444,57 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         ]
         == 1
     )
+    assert summary["quality_report"]["accepted_operation_coverage"] == {
+        "operation_count": 4,
+        "ready_operation_count": 3,
+        "accepted_operation_count": 2,
+        "accepted_ready_operation_count": 2,
+        "accepted_ready_operation_share": 0.667,
+        "uncovered_ready_operations": ["replace_field"],
+        "operations": {
+            "hard_negative": {
+                "ready_merchant_count": 1,
+                "accepted_merchant_count": 1,
+                "accepted_ready_merchant_count": 1,
+                "accepted_count": 1,
+                "ready_acceptance_share": 1.0,
+                "ready_merchants": ["Sprouts Farmers Market"],
+                "accepted_merchants": ["Sprouts Farmers Market"],
+                "uncovered_ready_merchants": [],
+            },
+            "add_line_item": {
+                "ready_merchant_count": 2,
+                "accepted_merchant_count": 2,
+                "accepted_ready_merchant_count": 2,
+                "accepted_count": 2,
+                "ready_acceptance_share": 1.0,
+                "ready_merchants": ["Market Mart", "Sprouts Farmers Market"],
+                "accepted_merchants": ["Market Mart", "Sprouts Farmers Market"],
+                "uncovered_ready_merchants": [],
+            },
+            "remove_line_item": {
+                "ready_merchant_count": 0,
+                "accepted_merchant_count": 0,
+                "accepted_ready_merchant_count": 0,
+                "accepted_count": 0,
+                "ready_acceptance_share": None,
+                "ready_merchants": [],
+                "accepted_merchants": [],
+                "uncovered_ready_merchants": [],
+            },
+            "replace_field": {
+                "ready_merchant_count": 1,
+                "accepted_merchant_count": 0,
+                "accepted_ready_merchant_count": 0,
+                "accepted_count": 0,
+                "ready_acceptance_share": 0.0,
+                "ready_merchants": ["Sprouts Farmers Market"],
+                "accepted_merchants": [],
+                "uncovered_ready_merchants": ["Sprouts Farmers Market"],
+            },
+        },
+        "recommendations": ["cover_ready_operations_before_training"],
+    }
     assert summary["quality_report"]["merchant_gap_summary"] == {
         "blocked_merchant_count": 1,
         "merchant_gap_count": 2,
@@ -1508,6 +1559,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "fix_source_receipt_quality_before_synthesis",
         "verify_total_and_tax_reconciliation_in_preview",
         "prefer_cross_receipt_grounded_item_mutations",
+        "cover_ready_operations_before_training",
     ]
     assert summary["quality_report"]["merchants"][0] == {
         "merchant_name": "Market Mart",

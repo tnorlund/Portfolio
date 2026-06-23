@@ -1292,6 +1292,56 @@ def _compact_operation_coverage(value: Any) -> Dict[str, Any]:
     }
 
 
+def _compact_accepted_operation_coverage(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    operations = value.get("operations")
+    if not isinstance(operations, dict):
+        return {}
+    compact_operations: Dict[str, Any] = {}
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        row = operations.get(operation)
+        if not isinstance(row, dict):
+            continue
+        compact_operations[operation] = {
+            "ready_merchant_count": _safe_int(row.get("ready_merchant_count")),
+            "accepted_merchant_count": _safe_int(row.get("accepted_merchant_count")),
+            "accepted_ready_merchant_count": _safe_int(
+                row.get("accepted_ready_merchant_count")
+            ),
+            "accepted_count": _safe_int(row.get("accepted_count")),
+            "ready_acceptance_share": _safe_float(row.get("ready_acceptance_share")),
+            "ready_merchants": [str(item) for item in row.get("ready_merchants") or []][
+                :8
+            ],
+            "accepted_merchants": [
+                str(item) for item in row.get("accepted_merchants") or []
+            ][:8],
+            "uncovered_ready_merchants": [
+                str(item) for item in row.get("uncovered_ready_merchants") or []
+            ][:8],
+        }
+    return {
+        "operation_count": _safe_int(value.get("operation_count"))
+        or len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": _safe_int(value.get("ready_operation_count")),
+        "accepted_operation_count": _safe_int(value.get("accepted_operation_count")),
+        "accepted_ready_operation_count": _safe_int(
+            value.get("accepted_ready_operation_count")
+        ),
+        "accepted_ready_operation_share": _safe_float(
+            value.get("accepted_ready_operation_share")
+        ),
+        "uncovered_ready_operations": [
+            str(item) for item in value.get("uncovered_ready_operations") or []
+        ][:8],
+        "operations": compact_operations,
+        "recommendations": [str(item) for item in value.get("recommendations") or []][
+            :8
+        ],
+    }
+
+
 def _derive_operation_coverage_from_merchants(
     rows: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -1348,6 +1398,90 @@ def _derive_operation_coverage_from_merchants(
         ),
         "operations": operations,
         "recommendations": [],
+    }
+
+
+def _derive_accepted_operation_coverage_from_merchants(
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    operations: Dict[str, Any] = {}
+    uncovered_ready_operations: list[str] = []
+    ready_operation_count = 0
+    accepted_operation_count = 0
+    accepted_ready_operation_count = 0
+
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        ready_merchants: list[str] = []
+        accepted_merchants: list[str] = []
+        ready_accepted_merchants: list[str] = []
+        uncovered_ready_merchants: list[str] = []
+        accepted_count = 0
+        for row in rows:
+            merchant = str(row.get("merchant_name") or "Unknown merchant")
+            ready_operations = set(
+                row.get("contract_ready_operations")
+                or row.get("ready_operations")
+                or row.get("supported_operations")
+                or []
+            )
+            accepted_counts = row.get("accepted_operation_counts")
+            operation_accepted_count = (
+                _safe_int(accepted_counts.get(operation))
+                if isinstance(accepted_counts, dict)
+                else None
+            ) or 0
+            is_ready = operation in ready_operations
+            if is_ready:
+                ready_merchants.append(merchant)
+            if operation_accepted_count > 0:
+                accepted_merchants.append(merchant)
+                accepted_count += operation_accepted_count
+            if is_ready and operation_accepted_count > 0:
+                ready_accepted_merchants.append(merchant)
+            elif is_ready:
+                uncovered_ready_merchants.append(merchant)
+
+        ready_count = len(ready_merchants)
+        accepted_ready_count = len(ready_accepted_merchants)
+        if ready_count:
+            ready_operation_count += 1
+        if accepted_count:
+            accepted_operation_count += 1
+        if ready_count and accepted_ready_count:
+            accepted_ready_operation_count += 1
+        if ready_count and not accepted_ready_count:
+            uncovered_ready_operations.append(operation)
+
+        operations[operation] = {
+            "ready_merchant_count": ready_count,
+            "accepted_merchant_count": len(accepted_merchants),
+            "accepted_ready_merchant_count": accepted_ready_count,
+            "accepted_count": accepted_count,
+            "ready_acceptance_share": (
+                _safe_ratio(accepted_ready_count, ready_count) if ready_count else None
+            ),
+            "ready_merchants": ready_merchants[:8],
+            "accepted_merchants": accepted_merchants[:8],
+            "uncovered_ready_merchants": uncovered_ready_merchants[:8],
+        }
+
+    recommendations = (
+        ["cover_ready_operations_before_training"]
+        if uncovered_ready_operations
+        else []
+    )
+    return {
+        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": ready_operation_count,
+        "accepted_operation_count": accepted_operation_count,
+        "accepted_ready_operation_count": accepted_ready_operation_count,
+        "accepted_ready_operation_share": _safe_ratio(
+            accepted_ready_operation_count,
+            ready_operation_count,
+        ),
+        "uncovered_ready_operations": uncovered_ready_operations,
+        "operations": operations,
+        "recommendations": recommendations,
     }
 
 
@@ -1731,6 +1865,9 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
         "operation_coverage": _compact_operation_coverage(
             value.get("operation_coverage")
         ),
+        "accepted_operation_coverage": _compact_accepted_operation_coverage(
+            value.get("accepted_operation_coverage")
+        ),
         "merchant_gap_summary": _compact_merchant_gap_summary(
             value.get("merchant_gap_summary")
         ),
@@ -1926,6 +2063,12 @@ def _derive_synthesis_quality_report(
     if _safe_int(candidate_mix.get("accepted_grounded_candidate_count")):
         recommendations.append("prefer_cross_receipt_grounded_item_mutations")
     operation_coverage = _derive_operation_coverage_from_merchants(merchant_rows)
+    accepted_operation_coverage = _derive_accepted_operation_coverage_from_merchants(
+        merchant_rows
+    )
+    for recommendation in accepted_operation_coverage.get("recommendations") or []:
+        if recommendation not in recommendations:
+            recommendations.append(str(recommendation))
     merchant_gap_summary = {
         "blocked_merchant_count": sum(
             1
@@ -2021,6 +2164,7 @@ def _derive_synthesis_quality_report(
                 ),
             },
             "operation_coverage": operation_coverage,
+            "accepted_operation_coverage": accepted_operation_coverage,
             "merchant_gap_summary": merchant_gap_summary,
             "quality_gates": {
                 "validation_policy": bundle.get("validation_policy")

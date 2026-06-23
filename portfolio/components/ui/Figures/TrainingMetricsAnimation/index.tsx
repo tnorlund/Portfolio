@@ -816,12 +816,30 @@ const summarizeContractCoverage = (
     readyOperations != null && totalOperations
       ? `Operations ready: ${formatCount(readyOperations)} / ${formatCount(totalOperations)}`
       : null;
+  const acceptedOperationCoverage =
+    synthesis.quality_report?.accepted_operation_coverage;
+  const acceptedReadyOperations =
+    acceptedOperationCoverage?.accepted_ready_operation_count;
+  const readyAcceptedTotal = acceptedOperationCoverage?.ready_operation_count;
+  const acceptedCoverageTitle =
+    acceptedReadyOperations != null && readyAcceptedTotal
+      ? `Ready ops accepted: ${formatCount(acceptedReadyOperations)} / ${formatCount(readyAcceptedTotal)}`
+      : null;
+  const uncoveredTitle = (
+    acceptedOperationCoverage?.uncovered_ready_operations || []
+  ).length
+    ? `Uncovered ready ops: ${(
+        acceptedOperationCoverage?.uncovered_ready_operations || []
+      )
+        .map(formatOperationName)
+        .join(", ")}`
+    : null;
   return {
     label:
       total != null
         ? `${formatCount(ready ?? 0)} / ${formatCount(total)} ready`
         : "—",
-    title: [operationTitle, coverageTitle]
+    title: [operationTitle, coverageTitle, acceptedCoverageTitle, uncoveredTitle]
       .filter((value): value is string => Boolean(value))
       .join(" | ") || undefined,
   };
