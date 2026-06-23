@@ -1823,6 +1823,27 @@ def _report_recommendations(
     return recommendations[:8]
 
 
+def _synthetic_mix_balance_failure(
+    *,
+    preflight: dict[str, Any],
+    candidate_mix: dict[str, Any],
+) -> str | None:
+    """Return a bundle-level failure when selected rows are merchant-skewed."""
+    ready_merchants = _safe_int(preflight.get("ready_merchant_count")) or 0
+    if ready_merchants <= 1:
+        return None
+
+    balance = candidate_mix.get("accepted_mix_balance") or {}
+    if str(balance.get("risk_level") or "").strip().lower() != "high":
+        return None
+    risk_reasons = {str(reason) for reason in balance.get("risk_reasons") or []}
+    if "single_merchant_accepted" in risk_reasons:
+        return "accepted_synthetic_mix_single_merchant_high_risk"
+    if "top_merchant_share_ge_80pct" in risk_reasons:
+        return "accepted_synthetic_mix_top_merchant_high_risk"
+    return "accepted_synthetic_mix_high_risk"
+
+
 def build_local_synthesis_quality_report(
     bundle: dict[str, Any],
     *,
@@ -3688,6 +3709,11 @@ def build_local_synthetic_training_bundle(
         selected_rows,
         selection.rejected_rows,
     )
+    if balance_failure := _synthetic_mix_balance_failure(
+        preflight=preflight,
+        candidate_mix=candidate_mix,
+    ):
+        reasons.append(balance_failure)
     merchant_synthesis_contracts = build_merchant_synthesis_contracts(
         artifacts,
         candidate_mix=candidate_mix,

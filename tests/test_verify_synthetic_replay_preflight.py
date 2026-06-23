@@ -1593,6 +1593,44 @@ def test_build_local_synthetic_training_bundle_reports_multi_merchant_mix():
     ] == [{"PRODUCE": 1}, {"PRODUCE": 1}]
 
 
+def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_mix():
+    module = _load_module()
+    dominant = _artifact("Market Mart")
+    extra_add = json.loads(json.dumps(dominant["synthetic_receipt_candidates"][0]))
+    extra_add.update(
+        {
+            "candidate_id": "second-grounded-add-item",
+            "image_id": "synthetic-market-mart-second-add",
+            "receipt_key": "synthetic-market-mart-second-add#00001",
+        }
+    )
+    extra_add["metadata"]["structure_similarity"]["score"] = 0.91
+    dominant["synthetic_receipt_candidates"].append(extra_add)
+
+    bundle = module.build_local_synthetic_training_bundle(
+        [
+            dominant,
+            _artifact("Ready But No Accepted Merchant", candidates=False),
+        ],
+        min_ready_share=0.0,
+        min_avg_readiness_score=0.0,
+        min_grounded_candidate_share=0.0,
+    )
+
+    assert bundle["ready"] is False
+    assert bundle["reasons"] == ["accepted_synthetic_mix_single_merchant_high_risk"]
+    assert bundle["selection"]["candidates_accepted"] == 3
+    balance = bundle["candidate_mix"]["accepted_mix_balance"]
+    assert balance["risk_level"] == "high"
+    assert balance["risk_reasons"] == ["single_merchant_accepted"]
+    assert bundle["candidate_mix"]["accepted_merchant_count"] == 1
+    assert bundle["preflight"]["ready_merchant_count"] == 2
+    assert (
+        "rebalance_synthetic_mix_before_training"
+        in bundle["synthesis_quality_report"]["recommendations"]
+    )
+
+
 def test_inventory_local_artifacts_classifies_pattern_and_bundle(tmp_path):
     module = _load_module()
     pattern_path = tmp_path / "pattern.json"
