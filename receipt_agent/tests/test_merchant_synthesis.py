@@ -1288,3 +1288,60 @@ def test_generic_entry_point_uses_merchant_synthesis_for_non_sprouts():
         candidates[0].metadata["source"] == "merchant_parameterized_geometry"
     )
     assert candidates[1].metadata["source"] == "merchant_arithmetic_geometry"
+
+
+def test_nearest_open_y_skips_when_target_zone_is_crowded():
+    """A distractor that cannot be placed near its target zone without
+    overlapping real words returns None (caller skips) rather than colliding."""
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _nearest_open_y,
+    )
+
+    # A wall of words filling every row around the target band.
+    receipt = {
+        "lines": [
+            {
+                "line_id": i,
+                "words": [
+                    {"text": "X", "bbox": [0, y, 1000, y + 24], "word_id": 1}
+                ],
+            }
+            for i, y in enumerate(range(300, 700, 18), start=1)
+        ]
+    }
+    assert _nearest_open_y(receipt, x0=100, desired_y=500, tokens=["FOO"]) is None
+    # An empty receipt always has room.
+    assert _nearest_open_y({"lines": []}, x0=100, desired_y=500, tokens=["FOO"]) == 500
+
+
+def test_choose_base_receipt_prefers_clean_geometry():
+    """A receipt whose own OCR has overlapping word boxes is ranked behind a
+    clean receipt of the same merchant."""
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _choose_base_receipt,
+    )
+
+    clean = {
+        "receipt_id": 1,
+        "image_id": "img-clean",
+        "lines": [
+            {"line_id": 1, "words": [{"text": "A", "bbox": [10, 900, 90, 924]}]},
+            {"line_id": 2, "words": [{"text": "B", "bbox": [10, 850, 90, 874]}]},
+        ],
+    }
+    dirty = {
+        "receipt_id": 2,
+        "image_id": "img-dirty",
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [
+                    {"text": "COSTCO", "bbox": [10, 900, 400, 950]},
+                    {"text": "CO", "bbox": [12, 902, 398, 948]},  # overlaps
+                ],
+            },
+        ],
+    }
+    # Regardless of input order, the clean receipt is chosen first.
+    assert _choose_base_receipt([dirty, clean], used=0)["image_id"] == "img-clean"
+    assert _choose_base_receipt([clean, dirty], used=0)["image_id"] == "img-clean"

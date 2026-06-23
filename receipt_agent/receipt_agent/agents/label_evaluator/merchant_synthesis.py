@@ -534,6 +534,10 @@ def _generate_hard_negative_candidate(
     tokens = _hard_negative_tokens(predicted_label)
     x0 = max(25, min(900, int(round(slot["x"]["p50"] - 60))))
     y0 = _nearest_open_y(mutated, x0, int(round(slot["y"]["p50"])), tokens)
+    if y0 is None:
+        # No clean gap near the target zone; placing the distractor anyway would
+        # overlap real words and fail the layout-integrity gate. Skip instead.
+        return None
     _insert_line_sorted(mutated, _build_line(tokens, [], x0=x0, y0=y0))
     row = _candidate_from_receipt(
         mutated,
@@ -3162,12 +3166,25 @@ def _nearest_open_y(
     x0: int,
     desired_y: int,
     tokens: list[str],
-) -> int:
-    for delta in (0, -18, 18, -36, 36, -54, 54, -72, 72):
-        y0 = max(0, min(976, desired_y + delta))
-        if not _line_collides(receipt, x0, y0, tokens):
-            return y0
-    return max(0, min(976, desired_y))
+) -> int | None:
+    """Find a vertical gap near ``desired_y`` for a distractor line.
+
+    A hard-negative distractor must sit in (or close to) its target zone, so the
+    search stays local. Returns ``None`` when every local offset collides with
+    existing words — a crowded receipt where the distractor cannot be placed
+    cleanly. The caller skips such candidates rather than overlapping real words
+    (degenerate geometry that the layout-integrity gate would reject anyway).
+    """
+    step = 18
+    for distance in range(0, 144 + step, step):
+        deltas = (0,) if distance == 0 else (-distance, distance)
+        for delta in deltas:
+            y0 = desired_y + delta
+            if 0 <= y0 <= 976 and not _line_collides(
+                receipt, x0, y0, tokens
+            ):
+                return y0
+    return None
 
 
 def _line_collides(
@@ -3301,6 +3318,13 @@ def _line_category_heading(line: dict[str, Any]) -> str | None:
     return text if text in GENERIC_CATEGORY_HEADINGS else None
 
 
+def _base_overlap_count(receipt: dict[str, Any]) -> int:
+    """Pre-existing overlapping word-box pairs in a receipt's own OCR geometry."""
+    return _safe_int(
+        build_layout_integrity_evidence(receipt).get("overlap_pair_count")
+    ) or 0
+
+
 def _choose_base_receipt(
     receipts: list[dict[str, Any]],
     *,
@@ -3309,7 +3333,15 @@ def _choose_base_receipt(
     preferred = [
         receipt for receipt in receipts if len(receipt.get("words", [])) <= 190
     ]
-    pool = sorted(preferred or receipts, key=lambda row: (_receipt_key(row)))
+    # Prefer a geometrically clean base. A receipt whose own OCR carries
+    # overlapping or duplicate word boxes (e.g. "COSTCO" + a stray "CO"
+    # fragment) cannot yield a high-fidelity synthetic candidate regardless of
+    # the edit applied, so rank those last while keeping a deterministic
+    # receipt-key tiebreak.
+    pool = sorted(
+        preferred or receipts,
+        key=lambda row: (_base_overlap_count(row), _receipt_key(row)),
+    )
     return pool[min(used, len(pool) - 1)]
 
 
