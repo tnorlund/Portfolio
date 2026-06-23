@@ -3916,3 +3916,52 @@ def test_report_cli_reads_local_bundle_without_deployment_lookup(
     assert output["merchants"][0]["accepted_examples"][0]["candidate_id"] == (
         "grounded-add-item"
     )
+
+
+def test_normalize_bbox_keeps_edge_touching_fractions_valid():
+    """A normalized box that touches the receipt edge reaches slightly past 1.0
+    (a full-width header, a top/bottom row). It must still scale to a valid
+    0..1000 pixel box, not collapse to a degenerate 1x1 box."""
+    module = _load_module()
+    # Full-width header: x+width = 1.0017 just over 1.0.
+    header = module._normalize_bbox(
+        {"x": 0.0935, "width": 0.8254, "y": 0.9404, "height": 0.0610}
+    )
+    assert header is not None
+    x0, y0, x1, y1 = header
+    assert x0 < x1 and y0 < y1, header  # not degenerate
+    assert header == [94, 940, 919, 1000]
+    # A box already in pixel space is left as-is.
+    assert module._normalize_bbox([103, 954, 889, 997]) == [103, 954, 889, 997]
+    # A slightly-negative y (OCR overshoot) clamps without collapsing.
+    neg = module._normalize_bbox(
+        {"x": 0.897, "width": 0.105, "y": -0.0005, "height": 0.091}
+    )
+    assert neg is not None and neg[0] < neg[2] and neg[1] < neg[3], neg
+
+
+def test_payload_words_prefer_receipt_level_set():
+    """An export carrying BOTH an image-level ``words`` set and a receipt-level
+    ``receipt_words`` set (same words, different coordinate frames) must use the
+    receipt-level set only, never the union (which would double-count words)."""
+    module = _load_module()
+    receipt = {"image_id": "img-1", "receipt_id": 1}
+    payload = {
+        "words": [  # image-level frame — must be ignored when receipt_words exist
+            {"image_id": "img-1", "receipt_id": 1, "line_id": 1, "word_id": 1,
+             "text": "COSTCO", "bounding_box": {"x": 0.4, "y": 0.8, "width": 0.2, "height": 0.05}},
+        ],
+        "receipt_words": [  # receipt-cropped frame — authoritative
+            {"image_id": "img-1", "receipt_id": 1, "line_id": 1, "word_id": 1,
+             "text": "COSTCO", "bounding_box": {"x": 0.1, "y": 0.94, "width": 0.8, "height": 0.05}},
+        ],
+    }
+    by_line = module._payload_words_for_receipt(payload, receipt, label_lookup={})
+    words = [w for ws in by_line.values() for w in ws]
+    assert len(words) == 1, words  # not doubled
+    # Falls back to image-level words when no receipt-level set is present.
+    payload_no_receipt = {"words": payload["words"]}
+    by_line2 = module._payload_words_for_receipt(
+        payload_no_receipt, receipt, label_lookup={}
+    )
+    assert sum(len(ws) for ws in by_line2.values()) == 1

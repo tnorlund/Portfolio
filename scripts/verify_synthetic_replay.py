@@ -3703,12 +3703,21 @@ def _generate_local_synthesis_candidates(
     ]
 
 
+# Boxes are stored either as 0..1 fractions or as 0..1000 pixel coordinates.
+# A fractional box that touches the receipt edge legitimately reaches slightly
+# past 1.0 (a full-width header's x+width, or a top/bottom word's y+height can
+# be ~1.002), so a strict ``<= 1.0`` test misreads those fractions as pixels and
+# collapses them to a degenerate 1x1 box. Pixel coordinates start in the tens,
+# so 1.5 cleanly separates the two encodings while tolerating edge overflow.
+_NORMALIZED_BBOX_MAX = 1.5
+
+
 def _normalize_bbox(value: Any) -> list[int] | None:
     if isinstance(value, list) and len(value) == 4:
         coords = [_safe_float(coord) for coord in value]
         if all(coord is not None for coord in coords):
             max_coord = max(abs(coord or 0.0) for coord in coords)
-            scale = 1000 if max_coord <= 1.0 else 1
+            scale = 1000 if max_coord <= _NORMALIZED_BBOX_MAX else 1
             return [
                 max(0, min(1000, int(round((coord or 0.0) * scale))))
                 for coord in coords
@@ -3725,7 +3734,11 @@ def _normalize_bbox(value: Any) -> list[int] | None:
                 (x or 0.0) + (width or 0.0),
                 (y or 0.0) + (height or 0.0),
             ]
-            scale = 1000 if max(abs(coord) for coord in coords) <= 1.0 else 1
+            scale = (
+                1000
+                if max(abs(coord) for coord in coords) <= _NORMALIZED_BBOX_MAX
+                else 1
+            )
             return [max(0, min(1000, int(round(coord * scale)))) for coord in coords]
     return None
 
