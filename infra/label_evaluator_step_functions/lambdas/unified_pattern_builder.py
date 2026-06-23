@@ -10,6 +10,7 @@ Phase 1 operations (sequential):
 Both pattern types are saved to S3 with timing metadata for per-receipt tracing.
 """
 
+import importlib.util
 import json
 import logging
 import os
@@ -92,8 +93,20 @@ def _event_flag_enabled(value: Any, *, default: bool = True) -> bool:
     return bool(value)
 
 
-def _llm_execution_metadata(config: Any) -> dict[str, Any]:
-    """Describe LLM mode without creating a client or making an API call."""
+def _local_receipt_agent_root() -> str:
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "receipt_agent")
+    )
+
+
+def _load_llm_model_catalog() -> tuple[dict[str, Any], bool]:
+    """Load current model metadata without making any API calls."""
+    receipt_agent_root = _local_receipt_agent_root()
+    if os.path.isdir(receipt_agent_root) and receipt_agent_root not in sys.path:
+        sys.path.insert(0, receipt_agent_root)
+
+    catalog: dict[str, Any] = {}
+    process_disabled = False
     try:
         from receipt_agent.utils.llm_factory import (
             openrouter_model_catalog,
@@ -103,8 +116,38 @@ def _llm_execution_metadata(config: Any) -> dict[str, Any]:
         catalog = openrouter_model_catalog()
         process_disabled = paid_llm_calls_disabled()
     except Exception:  # pragma: no cover - defensive Lambda metadata path
-        catalog = {}
-        process_disabled = False
+        pass
+
+    if catalog.get("latest_openai_model"):
+        return catalog, process_disabled
+
+    local_factory = os.path.join(
+        receipt_agent_root,
+        "receipt_agent",
+        "utils",
+        "llm_factory.py",
+    )
+    if not os.path.exists(local_factory):
+        return catalog, process_disabled
+
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "receipt_agent_local_llm_factory",
+            local_factory,
+        )
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            catalog = module.openrouter_model_catalog()
+            process_disabled = module.paid_llm_calls_disabled()
+    except Exception:  # pragma: no cover - keep failed provenance visible
+        pass
+    return catalog, process_disabled
+
+
+def _llm_execution_metadata(config: Any) -> dict[str, Any]:
+    """Describe LLM mode without creating a client or making an API call."""
+    catalog, process_disabled = _load_llm_model_catalog()
 
     api_key = str(getattr(config, "openrouter_api_key", "") or "")
     disabled = bool(getattr(config, "disable_paid_llm", False)) or process_disabled

@@ -1331,6 +1331,9 @@ def _compact_llm_execution_summary(value: Any) -> Dict[str, Any]:
         "configured_models": [
             str(item) for item in (value.get("configured_models") or [])[:5] if item
         ],
+        "latest_openai_models": [
+            str(item) for item in (value.get("latest_openai_models") or [])[:3] if item
+        ],
         "latest_model_sources": [
             str(item) for item in (value.get("latest_model_sources") or [])[:3] if item
         ],
@@ -1355,6 +1358,9 @@ def _llm_model_freshness_gate(llm_execution: Any) -> Dict[str, Any]:
     verified_at = str(llm_execution.get("latest_model_verified_at") or "")
     latest_sources = [
         str(item) for item in (llm_execution.get("latest_model_sources") or []) if item
+    ][:3]
+    latest_openai_models = [
+        str(item) for item in (llm_execution.get("latest_openai_models") or []) if item
     ][:3]
     api_call_allowed_count = _safe_int(llm_execution.get("api_call_allowed_count")) or 0
     mode_counts = llm_execution.get("mode_counts")
@@ -1397,6 +1403,7 @@ def _llm_model_freshness_gate(llm_execution: Any) -> Dict[str, Any]:
         "latest_model_verified_at": verified_at or None,
         "latest_model_age_days": (raw_age_days if requires_current_guidance else None),
         "max_age_days": LLM_MODEL_FRESHNESS_MAX_AGE_DAYS,
+        "latest_openai_models": latest_openai_models,
         "latest_model_sources": latest_sources,
         "reason": None if passed else "latest_model_guidance_stale_or_missing",
     }
@@ -2529,6 +2536,11 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
                 llm_freshness_gate.get("latest_model_age_days")
             ),
             "max_age_days": _safe_int(llm_freshness_gate.get("max_age_days")),
+            "latest_openai_models": [
+                str(item)
+                for item in (llm_freshness_gate.get("latest_openai_models") or [])[:3]
+                if item
+            ],
             "latest_model_sources": [
                 str(item)
                 for item in (llm_freshness_gate.get("latest_model_sources") or [])[:3]

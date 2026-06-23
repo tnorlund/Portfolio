@@ -868,6 +868,58 @@ const summarizeContractCoverage = (
   };
 };
 
+const describeModelGuidanceStatus = (
+  freshnessGate:
+    | NonNullable<
+        NonNullable<TrainingSynthesisSummary["quality_report"]>["quality_gates"]
+      >["llm_model_freshness_gate"]
+    | undefined,
+  verifiedAt?: string | null
+): { guidanceStatus: string; latestModelStatus: string } => {
+  if (freshnessGate?.requires_current_model_guidance === false) {
+    const localStatus = "not required for local-only run";
+    return {
+      guidanceStatus: localStatus,
+      latestModelStatus: verifiedAt
+        ? `${localStatus}; verified ${verifiedAt}`
+        : localStatus,
+    };
+  }
+
+  if (freshnessGate?.passed === false) {
+    return {
+      guidanceStatus: "stale or missing",
+      latestModelStatus: "stale or missing",
+    };
+  }
+
+  if (
+    freshnessGate?.requires_current_model_guidance === true &&
+    freshnessGate.passed === true
+  ) {
+    return {
+      guidanceStatus: "fresh",
+      latestModelStatus: verifiedAt
+        ? `verified ${verifiedAt}`
+        : "verification date missing",
+    };
+  }
+
+  if (freshnessGate?.passed === true) {
+    return {
+      guidanceStatus: "freshness gate passed",
+      latestModelStatus: verifiedAt
+        ? `freshness gate passed; verified ${verifiedAt}`
+        : "freshness gate passed; verification date missing",
+    };
+  }
+
+  return {
+    guidanceStatus: "verification not reported",
+    latestModelStatus: verifiedAt ? `verified ${verifiedAt}` : "verification missing",
+  };
+};
+
 const summarizeLlmExecution = (
   synthesis: TrainingSynthesisSummary
 ): { label: string; title?: string } | null => {
@@ -894,8 +946,19 @@ const summarizeLlmExecution = (
   const modeTitle = entries
     .map(([mode, count]) => `${formatFieldName(mode)}: ${formatCount(count)}`)
     .join(", ");
+  const freshnessGate = synthesis.quality_report?.quality_gates
+    ?.llm_model_freshness_gate;
   const modelTitle = (execution.configured_models || []).length
     ? `Models: ${(execution.configured_models || []).join(", ")}`
+    : null;
+  const guidanceStatus = describeModelGuidanceStatus(
+    freshnessGate,
+    execution.latest_model_verified_at
+  );
+  const latestModelTitle = (execution.latest_openai_models || []).length
+    ? `Latest OpenAI guidance: ${(execution.latest_openai_models || []).join(
+        ", "
+      )} (${guidanceStatus.latestModelStatus})`
     : null;
   const sourceTitle = (execution.latest_model_sources || []).length
     ? `Latest model source: ${(execution.latest_model_sources || []).join(", ")}`
@@ -903,12 +966,8 @@ const summarizeLlmExecution = (
   const verifiedTitle = execution.latest_model_verified_at
     ? `Latest model verified: ${execution.latest_model_verified_at}`
     : null;
-  const freshnessGate = synthesis.quality_report?.quality_gates
-    ?.llm_model_freshness_gate;
   const freshnessTitle = freshnessGate
-    ? `Model guidance: ${
-        freshnessGate.passed ? "fresh" : "stale or missing"
-      }${
+    ? `Model guidance: ${guidanceStatus.guidanceStatus}${
         freshnessGate.latest_model_age_days != null
           ? ` (${formatCount(freshnessGate.latest_model_age_days)}d old`
           : ""
@@ -938,6 +997,7 @@ const summarizeLlmExecution = (
         `Paid LLM disabled: ${formatCount(disabled)}`,
         `API allowed: ${formatCount(apiAllowed)}`,
         modelTitle,
+        latestModelTitle,
         sourceTitle,
         verifiedTitle,
         freshnessTitle,

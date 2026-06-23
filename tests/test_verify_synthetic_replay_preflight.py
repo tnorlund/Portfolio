@@ -766,6 +766,7 @@ def test_summarize_local_synthesis_preflight_passes_ready_artifacts():
         "paid_llm_disabled_count": 2,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -815,6 +816,41 @@ def test_summarize_local_synthesis_preflight_passes_ready_artifacts():
         "collect_multi_item_receipts_for_remove_item_synthesis",
         "collect_stable_date_time_examples_for_field_replacement",
     ]
+
+
+def test_summarize_local_synthesis_preflight_tracks_latest_model_ids():
+    module = _load_module()
+    first = _artifact("Market Mart", score=0.86)
+    second = _artifact("Sprouts Farmers Market", score=0.92)
+    first["_trace_metadata"]["llm_execution"]["latest_openai_model"] = "gpt-5.4"
+
+    summary = module.summarize_local_synthesis_preflight(
+        [first, second],
+        min_ready_share=0.75,
+        min_avg_readiness_score=0.7,
+        min_grounded_candidate_share=0.4,
+    )
+
+    assert summary["llm_execution"]["latest_openai_models"] == [
+        "gpt-5.4",
+        "gpt-5.5",
+    ]
+
+
+def test_summarize_local_synthesis_preflight_tolerates_legacy_model_metadata():
+    module = _load_module()
+    artifact = _artifact("Market Mart", score=0.86)
+    artifact["_trace_metadata"]["llm_execution"].pop("latest_openai_model")
+
+    summary = module.summarize_local_synthesis_preflight(
+        [artifact],
+        min_ready_share=0.75,
+        min_avg_readiness_score=0.7,
+        min_grounded_candidate_share=0.4,
+    )
+
+    assert "latest_openai_models" not in summary["llm_execution"]
+    assert summary["llm_execution"]["latest_model_verified_at"] == "2026-06-23"
 
 
 def test_summarize_local_synthesis_preflight_fails_weak_artifacts():
@@ -1413,6 +1449,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "paid_llm_disabled_count": 1,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -1996,6 +2033,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "api_call_allowed_count": 0,
         "latest_model_verified_at": "2026-06-23",
         "max_age_days": 30,
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2128,6 +2166,7 @@ def test_build_local_synthesis_quality_report_blocks_stale_paid_llm_guidance(
         "paid_llm_disabled_count": 0,
         "api_call_allowed_count": 1,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2153,6 +2192,7 @@ def test_build_local_synthesis_quality_report_blocks_stale_paid_llm_guidance(
         "latest_model_verified_at": "2026-04-01",
         "latest_model_age_days": 83,
         "max_age_days": 30,
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2175,6 +2215,7 @@ def test_build_local_synthesis_quality_report_blocks_missing_paid_llm_guidance(
         "paid_llm_disabled_count": 0,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
     }
 
     report = module.build_local_synthesis_quality_report(
@@ -2193,6 +2234,7 @@ def test_build_local_synthesis_quality_report_blocks_missing_paid_llm_guidance(
         "api_call_allowed_count": 0,
         "llm_assisted_mode_count": 1,
         "max_age_days": 30,
+        "latest_openai_models": ["gpt-5.5"],
         "reason": "latest_model_guidance_stale_or_missing",
     }
 
@@ -2212,6 +2254,7 @@ def test_build_local_synthesis_quality_report_allows_stale_no_spend_guidance(
         "paid_llm_disabled_count": 1,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2232,6 +2275,7 @@ def test_build_local_synthesis_quality_report_allows_stale_no_spend_guidance(
         "api_call_allowed_count": 0,
         "latest_model_verified_at": "2026-04-01",
         "max_age_days": 30,
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -3564,6 +3608,7 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
         "paid_llm_disabled_count": 1,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],

@@ -1,6 +1,8 @@
 """Tests for LayoutLM confusion-target loading in unified pattern builder."""
 
+import builtins
 import importlib.util
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -150,6 +152,39 @@ def test_llm_execution_metadata_reports_no_spend_mode(monkeypatch):
         ),
         "latest_model_verified_at": "2026-06-23",
     }
+
+
+def test_llm_execution_metadata_does_not_fabricate_model_guidance(monkeypatch, tmp_path):
+    module = _load_module(monkeypatch)
+    monkeypatch.setattr(
+        module,
+        "_local_receipt_agent_root",
+        lambda: str(tmp_path / "missing-receipt-agent"),
+    )
+    monkeypatch.delitem(sys.modules, "receipt_agent.utils.llm_factory", raising=False)
+    real_import = builtins.__import__
+
+    def blocked_import(name, *args, **kwargs):
+        if name == "receipt_agent.utils.llm_factory":
+            raise ImportError("blocked llm_factory import")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+    config = type(
+        "Config",
+        (),
+        {
+            "openrouter_api_key": "test-key",
+            "openrouter_model": "openai/gpt-5.5",
+            "disable_paid_llm": True,
+        },
+    )()
+
+    metadata = module._llm_execution_metadata(config)
+
+    assert metadata["latest_openai_model"] is None
+    assert metadata["latest_model_source"] is None
+    assert metadata["latest_model_verified_at"] is None
 
 
 def test_load_confusion_target_context_selects_best_f1_epoch_and_collapses_bio(

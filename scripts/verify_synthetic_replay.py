@@ -1122,6 +1122,13 @@ def _summarize_llm_execution(rows: list[dict[str, Any]]) -> dict[str, Any]:
             if execution.get("configured_model")
         }
     )
+    latest_openai_models = sorted(
+        {
+            str(execution.get("latest_openai_model"))
+            for execution in executions
+            if execution.get("latest_openai_model")
+        }
+    )
     verified_dates = sorted(
         {
             str(execution.get("latest_model_verified_at"))
@@ -1140,6 +1147,7 @@ def _summarize_llm_execution(rows: list[dict[str, Any]]) -> dict[str, Any]:
             1 for execution in executions if execution.get("api_call_allowed") is True
         ),
         "configured_models": configured_models[:5],
+        "latest_openai_models": latest_openai_models[:3],
         "latest_model_sources": latest_sources[:3],
         "latest_model_verified_at": verified_dates[-1] if verified_dates else None,
     }
@@ -1161,6 +1169,11 @@ def _llm_model_freshness_gate(llm_execution: dict[str, Any]) -> dict[str, Any]:
     verified_at = str(llm_execution.get("latest_model_verified_at") or "")
     source_values = [
         str(value) for value in llm_execution.get("latest_model_sources") or [] if value
+    ]
+    latest_openai_models = [
+        str(value)
+        for value in llm_execution.get("latest_openai_models") or []
+        if value
     ]
     api_call_allowed_count = _safe_int(llm_execution.get("api_call_allowed_count")) or 0
     mode_counts = llm_execution.get("mode_counts")
@@ -1204,6 +1217,7 @@ def _llm_model_freshness_gate(llm_execution: dict[str, Any]) -> dict[str, Any]:
         "latest_model_verified_at": verified_at or None,
         "latest_model_age_days": raw_age_days if requires_current_guidance else None,
         "max_age_days": LLM_MODEL_FRESHNESS_MAX_AGE_DAYS,
+        "latest_openai_models": latest_openai_models[:3],
         "latest_model_sources": source_values[:3],
         "reason": None if passed else "latest_model_guidance_stale_or_missing",
     }

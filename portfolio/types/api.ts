@@ -618,6 +618,7 @@ export interface TrainingSynthesisLlmExecutionSummary {
   paid_llm_disabled_count?: number | null;
   api_call_allowed_count?: number | null;
   configured_models?: string[];
+  latest_openai_models?: string[];
   latest_model_sources?: string[];
   latest_model_verified_at?: string | null;
 }
@@ -1025,6 +1026,7 @@ export interface TrainingSynthesisQualityReport {
       latest_model_verified_at?: string | null;
       latest_model_age_days?: number | null;
       max_age_days?: number | null;
+      latest_openai_models?: string[];
       latest_model_sources?: string[];
       reason?: string | null;
     };

@@ -951,6 +951,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                 "paid_llm_disabled_count": 3,
                 "api_call_allowed_count": 0,
                 "configured_models": ["openai/gpt-5.5"],
+                "latest_openai_models": ["gpt-5.5"],
                 "latest_model_sources": [
                     "https://developers.openai.com/api/docs/guides/latest-model"
                 ],
@@ -1628,6 +1629,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "paid_llm_disabled_count": 3,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2088,6 +2090,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "paid_llm_disabled_count": 3,
         "api_call_allowed_count": 0,
         "configured_models": ["openai/gpt-5.5"],
+        "latest_openai_models": ["gpt-5.5"],
         "latest_model_sources": [
             "https://developers.openai.com/api/docs/guides/latest-model"
         ],
@@ -2248,6 +2251,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "api_call_allowed_count": 0,
             "latest_model_verified_at": "2026-06-23",
             "max_age_days": 30,
+            "latest_openai_models": ["gpt-5.5"],
             "latest_model_sources": [
                 "https://developers.openai.com/api/docs/guides/latest-model"
             ],

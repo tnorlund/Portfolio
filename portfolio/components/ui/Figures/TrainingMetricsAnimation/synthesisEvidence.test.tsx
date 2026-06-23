@@ -107,6 +107,7 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
       paid_llm_disabled_count: 1,
       api_call_allowed_count: 0,
       configured_models: ["openai/gpt-5.5"],
+      latest_openai_models: ["gpt-5.5"],
       latest_model_sources: [
         "https://developers.openai.com/api/docs/guides/latest-model",
       ],
@@ -177,6 +178,7 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
           api_call_allowed_count: 0,
           latest_model_verified_at: "2026-06-23",
           max_age_days: 30,
+          latest_openai_models: ["gpt-5.5"],
           latest_model_sources: [
             "https://developers.openai.com/api/docs/guides/latest-model",
           ],
@@ -352,7 +354,172 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     );
     expect(screen.getByText("Local only")).toHaveAttribute(
       "title",
-      expect.stringContaining("Model guidance: fresh"),
+      expect.stringContaining("Model guidance: not required for local-only run"),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Latest OpenAI guidance: gpt-5.5 (not required for local-only run; verified 2026-06-23)",
+      ),
+    );
+  });
+
+  it("omits latest model guidance when legacy synthesis metrics lack the model id", async () => {
+    const metrics = trainingMetrics();
+    if (metrics.synthesis?.llm_execution) {
+      metrics.synthesis.llm_execution.latest_openai_models = [];
+    }
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Local only")).toHaveAttribute(
+      "title",
+      expect.not.stringContaining("Latest OpenAI guidance:"),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: not required for local-only run"),
+    );
+  });
+
+  it("marks required latest model guidance fresh when paid LLM synthesis is current", async () => {
+    const metrics = trainingMetrics();
+    if (metrics.synthesis?.llm_execution) {
+      metrics.synthesis.llm_execution.api_call_allowed_count = 1;
+      metrics.synthesis.llm_execution.paid_llm_disabled_count = 0;
+    }
+    const gate =
+      metrics.synthesis?.quality_report?.quality_gates?.llm_model_freshness_gate;
+    if (gate) {
+      gate.passed = true;
+      gate.requires_current_model_guidance = true;
+      gate.api_call_allowed_count = 1;
+      gate.latest_model_age_days = 0;
+    }
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("LLM assisted")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: fresh (0d old, max 30d)"),
+    );
+    expect(screen.getByText("LLM assisted")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Latest OpenAI guidance: gpt-5.5 (verified 2026-06-23)",
+      ),
+    );
+  });
+
+  it("uses a neutral model status when legacy gates omit guidance requirements", async () => {
+    const metrics = trainingMetrics();
+    const gate =
+      metrics.synthesis?.quality_report?.quality_gates?.llm_model_freshness_gate;
+    if (gate) {
+      gate.passed = true;
+      delete gate.requires_current_model_guidance;
+    }
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: freshness gate passed"),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Latest OpenAI guidance: gpt-5.5 (freshness gate passed; verified 2026-06-23)",
+      ),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.not.stringContaining("not required for local-only run"),
+    );
+  });
+
+  it("marks latest model guidance stale when paid LLM synthesis needs a refresh", async () => {
+    const metrics = trainingMetrics();
+    if (metrics.synthesis?.llm_execution) {
+      metrics.synthesis.llm_execution.api_call_allowed_count = 1;
+      metrics.synthesis.llm_execution.paid_llm_disabled_count = 0;
+    }
+    const gate =
+      metrics.synthesis?.quality_report?.quality_gates?.llm_model_freshness_gate;
+    if (gate) {
+      gate.passed = false;
+      gate.requires_current_model_guidance = true;
+      gate.api_call_allowed_count = 1;
+      gate.latest_model_age_days = 83;
+      gate.reason = "latest_model_guidance_stale_or_missing";
+    }
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("LLM assisted")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: stale or missing (83d old, max 30d)"),
+    );
+    expect(screen.getByText("LLM assisted")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Latest OpenAI guidance: gpt-5.5 (stale or missing)"),
+    );
+    expect(screen.getByText("LLM assisted")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Training hold: latest model guidance stale or missing"),
+    );
+  });
+
+  it("does not call local-only model guidance stale when current guidance is not required", async () => {
+    const metrics = trainingMetrics();
+    const gate =
+      metrics.synthesis?.quality_report?.quality_gates?.llm_model_freshness_gate;
+    if (gate) {
+      gate.passed = false;
+      gate.requires_current_model_guidance = false;
+      gate.reason = "latest_model_guidance_stale_or_missing";
+    }
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: not required for local-only run"),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Latest OpenAI guidance: gpt-5.5 (not required for local-only run; verified 2026-06-23)",
+      ),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.not.stringContaining("stale or missing"),
     );
   });
 
