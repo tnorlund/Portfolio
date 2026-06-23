@@ -47,10 +47,41 @@ def test_definition_adds_synthetic_replay_launch_when_training_lambda_exists():
     assert states["CheckRunSyntheticReplay"]["Choices"][0]["Next"] == (
         "StartSyntheticReplayTraining"
     )
+    replay_conditions = states["CheckRunSyntheticReplay"]["Choices"][0]["And"]
+    assert {
+        "Variable": "$.config.merged.synthetic_replay_cost_ack",
+        "BooleanEquals": True,
+    } in replay_conditions
+    assert {
+        "Variable": "$.config.merged.limit",
+        "IsNumeric": True,
+    } in replay_conditions
+    assert {
+        "Variable": "$.config.merged.limit",
+        "NumericLessThanEqualsPath": "$.defaults.synthetic_replay_max_limit",
+    } in replay_conditions
+    assert {
+        "Variable": "$.config.merged.synthetic_replay_use_spot",
+        "BooleanEquals": True,
+    } in replay_conditions
+    assert {
+        "Variable": "$.config.merged.synthetic_replay_max_runtime_hours",
+        "NumericLessThanEqualsPath": ("$.defaults.synthetic_replay_max_runtime_hours"),
+    } in replay_conditions
     assert states["StartSyntheticReplayTraining"]["Resource"] == ("arn:start-training")
     assert (
         states["StartSyntheticReplayTraining"]["Parameters"]["baseline_job_ref.$"]
         == "$.config.merged.baseline_job_ref"
+    )
+    assert (
+        states["StartSyntheticReplayTraining"]["Parameters"][
+            "synthetic_replay_cost_ack.$"
+        ]
+        == "$.config.merged.synthetic_replay_cost_ack"
+    )
+    assert (
+        states["StartSyntheticReplayTraining"]["Parameters"]["source_receipt_limit.$"]
+        == "$.config.merged.limit"
     )
     assert states["StartSyntheticReplayTraining"]["Parameters"][
         "synthetic_training_examples.$"

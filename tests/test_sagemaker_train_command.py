@@ -65,7 +65,14 @@ def test_start_training_lambda_can_promote_pattern_builder_output():
         '            "synthetic_training_examples", str(synthetic_training_examples)\n'
         "        )"
     ) in component_source
+    assert 'event.get("synthetic_replay_cost_ack")' in component_source
+    assert "synthetic replay requires 1-3 source receipts" in component_source
+    assert "synthetic replay requires managed spot training" in component_source
+    assert "synthetic replay is capped at one runtime hour" in component_source
+    assert "synthetic replay is capped at one epoch" in component_source
     assert '"synthetic-augmentation", "Value": "true"' in component_source
+    assert '"synthetic-replay-cost-ack", "Value": "true"' in component_source
+    assert '"source-receipt-limit"' in component_source
     assert '"baseline-job-ref"' in component_source
     assert '"pattern-artifact-s3-uri"' in component_source
 

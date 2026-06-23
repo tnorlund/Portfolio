@@ -179,6 +179,7 @@ def build_execution_input(args: argparse.Namespace) -> dict[str, Any]:
 
     payload: dict[str, Any] = {
         "run_synthetic_replay": True,
+        "synthetic_replay_cost_ack": args.confirm_cost_ack,
         "baseline_job_ref": args.baseline_job_ref,
         "run_analytics": args.run_analytics,
         "synthetic_replay_hyperparameters": hyperparameters,
@@ -194,6 +195,24 @@ def build_execution_input(args: argparse.Namespace) -> dict[str, Any]:
     if args.langchain_project:
         payload["langchain_project"] = args.langchain_project
     return payload
+
+
+def validate_start_args(args: argparse.Namespace) -> None:
+    """Fail fast before submitting an uncapped synthetic replay."""
+    if not args.confirm_cost_ack:
+        raise RuntimeError(
+            "--confirm-cost-ack is required before starting real infrastructure"
+        )
+    if args.limit is None or args.limit < 1 or args.limit > 3:
+        raise RuntimeError("--limit must be between 1 and 3 for this smoke test")
+    if args.instance_count != 1:
+        raise RuntimeError("--instance-count must be 1 for synthetic replay")
+    if not args.use_spot:
+        raise RuntimeError("synthetic replay requires managed spot: omit --no-spot")
+    if args.max_runtime_hours > 1:
+        raise RuntimeError("--max-runtime-hours must be 1 or less")
+    if args.epochs is not None and args.epochs > 1:
+        raise RuntimeError("--epochs must be 1 for synthetic replay")
 
 
 def start_execution(
@@ -3742,17 +3761,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start a synthetic replay Step Function execution",
     )
     start.add_argument("--baseline-job-ref", required=True)
-    start.add_argument("--limit", type=int, default=10)
+    start.add_argument("--confirm-cost-ack", action="store_true")
+    start.add_argument("--limit", type=int, required=True)
     start.add_argument("--since-date")
     start.add_argument("--langchain-project")
     start.add_argument("--run-analytics", action="store_true")
     start.add_argument("--hyperparameters")
-    start.add_argument("--epochs", type=int, default=2)
+    start.add_argument("--epochs", type=int, default=1)
     start.add_argument("--early-stopping-patience", type=int, default=1)
     start.add_argument("--instance-type", default="ml.g5.xlarge")
     start.add_argument("--instance-count", type=int, default=1)
-    start.add_argument("--use-spot", action="store_true")
-    start.add_argument("--max-runtime-hours", type=int, default=4)
+    start.add_argument("--use-spot", dest="use_spot", action="store_true", default=True)
+    start.add_argument("--no-spot", dest="use_spot", action="store_false")
+    start.add_argument("--max-runtime-hours", type=int, default=1)
     start.add_argument("--name-prefix", default="synthetic-replay")
     start.add_argument("--skip-preflight", action="store_true")
     start.add_argument("--wait", action="store_true")
@@ -3952,6 +3973,7 @@ def main() -> int:
     if args.command == "start":
         if not args.skip_preflight:
             require_ready(status)
+        validate_start_args(args)
         payload = build_execution_input(args)
         launch = start_execution(
             outputs,

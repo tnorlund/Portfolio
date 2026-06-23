@@ -38,6 +38,12 @@ config:
   docker-build:debug-mode: "false"
   portfolio:force-rebuild: "false"
   label-evaluator:max_concurrency: "3"
+  label-evaluator:synthetic-test-mode: "true"
+  label-evaluator:disable-paid-llm: "true"
+  label-evaluator:openrouter-model-profile: "nano"
+  label-evaluator:synthetic-replay-max-limit: "3"
+  label-evaluator:synthetic-replay-max-instance-count: "1"
+  label-evaluator:synthetic-replay-max-runtime-hours: "1"
   portfolio:OPENROUTER_API_KEY:
     secure: AAABAN6ptx7AysWMDQ4oCllzXWxWkIu7uxwgHswFkbfa0B0+DBMbJoVT5RZ2i5uSakARs45iOO6KNuiX1sUgZPRF8o6iWpDmwr06IZJ1GIz8CWUtTEz6A07PC4Hv9LivlK//JXLIXV2/
   ml-training:enable-sagemaker: "true"

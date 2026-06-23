@@ -156,9 +156,7 @@ class SageMakerTrainingInfra(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "sagemaker.amazonaws.com"
-                            },
+                            "Principal": {"Service": "sagemaker.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -312,12 +310,8 @@ class SageMakerTrainingInfra(ComponentResource):
         sagemaker_training_dir = REPO_ROOT / "infra" / "sagemaker_training"
         self.source_archive = AssetArchive(
             {
-                "receipt_layoutlm": FileArchive(
-                    str(REPO_ROOT / "receipt_layoutlm")
-                ),
-                "receipt_dynamo": FileArchive(
-                    str(REPO_ROOT / "receipt_dynamo")
-                ),
+                "receipt_layoutlm": FileArchive(str(REPO_ROOT / "receipt_layoutlm")),
+                "receipt_dynamo": FileArchive(str(REPO_ROOT / "receipt_dynamo")),
                 "infra/sagemaker_training/Dockerfile": FileAsset(
                     str(sagemaker_training_dir / "Dockerfile")
                 ),
@@ -347,9 +341,7 @@ class SageMakerTrainingInfra(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -451,9 +443,7 @@ class SageMakerTrainingInfra(ComponentResource):
             ),
             source=aws.codebuild.ProjectSourceArgs(
                 type="S3",
-                location=self.source_bucket.bucket.apply(
-                    lambda b: f"{b}/source.zip"
-                ),
+                location=self.source_bucket.bucket.apply(lambda b: f"{b}/source.zip"),
                 buildspec=self._generate_buildspec(),
             ),
             artifacts=aws.codebuild.ProjectArtifactsArgs(type="NO_ARTIFACTS"),
@@ -612,6 +602,21 @@ def _tag_value(value):
     text = str(value)
     return text[:256] if text else None
 
+def _truthy(value):
+    """Return whether an event value is an explicit truthy flag."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+def _int_value(name, value):
+    """Parse an integer event value with a clear error."""
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+
 def handler(event, context):
     """Start a SageMaker training job.
 
@@ -627,21 +632,6 @@ def handler(event, context):
     job_name = event.get("job_name")
     if not job_name:
         job_name = f"layoutlm-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-
-    instance_type = event.get("instance_type", "ml.g5.xlarge")
-    instance_count = event.get("instance_count", 1)
-    use_spot = event.get("use_spot", False)  # Default to on-demand for reliability
-    max_runtime_hours = event.get("max_runtime_hours", 24)
-
-    # Default hyperparameters
-    hyperparameters = {
-        "epochs": "10",
-        "batch_size": "8",
-        "learning_rate": "5e-5",
-        "warmup_ratio": "0.1",
-        "early_stopping_patience": "2",
-        **{k: str(v) for k, v in event.get("hyperparameters", {}).items()},
-    }
 
     batch_bucket = event.get("batch_bucket")
     line_item_patterns_prefix = event.get("line_item_patterns_s3_prefix")
@@ -665,6 +655,60 @@ def handler(event, context):
             synthetic_training_examples = (
                 f"s3://{batch_bucket}/line_item_patterns/{event['execution_id']}/"
             )
+
+    baseline_job_ref = (
+        event.get("baseline_job_ref")
+        or event.get("baseline_job_id")
+        or event.get("baseline_job_name")
+    )
+    is_synthetic_replay = bool(synthetic_training_examples)
+
+    instance_type = event.get("instance_type", "ml.g5.xlarge")
+    instance_count = _int_value("instance_count", event.get("instance_count", 1))
+    use_spot = event.get(
+        "use_spot",
+        True if is_synthetic_replay else False,
+    )
+    max_runtime_hours = _int_value(
+        "max_runtime_hours",
+        event.get("max_runtime_hours", 1 if is_synthetic_replay else 24),
+    )
+
+    if is_synthetic_replay:
+        source_receipt_limit = _int_value(
+            "source_receipt_limit",
+            event.get("source_receipt_limit"),
+        )
+        if not baseline_job_ref:
+            raise ValueError(
+                "baseline_job_ref is required for synthetic training examples"
+            )
+        if not _truthy(event.get("synthetic_replay_cost_ack")):
+            raise ValueError(
+                "synthetic_replay_cost_ack=true is required for synthetic replay"
+            )
+        if source_receipt_limit < 1 or source_receipt_limit > 3:
+            raise ValueError("synthetic replay requires 1-3 source receipts")
+        if instance_count != 1:
+            raise ValueError("synthetic replay is capped at one SageMaker instance")
+        if not _truthy(use_spot):
+            raise ValueError("synthetic replay requires managed spot training")
+        if max_runtime_hours > 1:
+            raise ValueError("synthetic replay is capped at one runtime hour")
+
+    # Default hyperparameters
+    hyperparameters = {
+        "epochs": "1" if is_synthetic_replay else "10",
+        "batch_size": "8",
+        "learning_rate": "5e-5",
+        "warmup_ratio": "0.1",
+        "early_stopping_patience": "1" if is_synthetic_replay else "2",
+        **{k: str(v) for k, v in event.get("hyperparameters", {}).items()},
+    }
+
+    if is_synthetic_replay and _int_value("epochs", hyperparameters.get("epochs")) > 1:
+        raise ValueError("synthetic replay is capped at one epoch")
+
     if synthetic_training_examples:
         hyperparameters.setdefault(
             "synthetic_training_examples", str(synthetic_training_examples)
@@ -712,13 +756,13 @@ def handler(event, context):
     if hyperparameters.get("model_version") == "v3":
         tags.append({"Key": "skip-coreml-export", "Value": "true"})
 
-    baseline_job_ref = (
-        event.get("baseline_job_ref")
-        or event.get("baseline_job_id")
-        or event.get("baseline_job_name")
-    )
     if baseline_job_ref and synthetic_training_examples:
         tags.append({"Key": "synthetic-augmentation", "Value": "true"})
+        tags.append({"Key": "synthetic-replay-cost-ack", "Value": "true"})
+        tags.append({
+            "Key": "source-receipt-limit",
+            "Value": _tag_value(event.get("source_receipt_limit")),
+        })
         tags.append({
             "Key": "baseline-job-ref",
             "Value": _tag_value(baseline_job_ref),

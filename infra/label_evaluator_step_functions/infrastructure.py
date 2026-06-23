@@ -61,6 +61,55 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 evaluator_config = Config("label-evaluator")
 
 
+def _config_bool(name: str, default: bool) -> bool:
+    """Read a boolean label-evaluator config value with an explicit default."""
+    value = evaluator_config.get_bool(name)
+    return default if value is None else value
+
+
+def _config_int(name: str, default: int) -> int:
+    """Read an integer label-evaluator config value with an explicit default."""
+    value = evaluator_config.get_int(name)
+    return default if value is None else value
+
+
+synthetic_test_mode = _config_bool("synthetic-test-mode", False)
+disable_paid_llm = _config_bool("disable-paid-llm", synthetic_test_mode)
+openrouter_model = evaluator_config.get("openrouter-model")
+openrouter_model_profile = evaluator_config.get("openrouter-model-profile") or (
+    "nano" if synthetic_test_mode else "cheap"
+)
+synthetic_replay_max_limit = _config_int(
+    "synthetic-replay-max-limit",
+    3 if synthetic_test_mode else 10,
+)
+synthetic_replay_max_instance_count = _config_int(
+    "synthetic-replay-max-instance-count",
+    1,
+)
+synthetic_replay_max_runtime_hours = _config_int(
+    "synthetic-replay-max-runtime-hours",
+    1 if synthetic_test_mode else 4,
+)
+
+llm_safety_env = {
+    "RECEIPT_AGENT_DISABLE_PAID_LLM": "1" if disable_paid_llm else "0",
+    "DISABLE_PAID_LLM": "1" if disable_paid_llm else "0",
+    "SYNTHETIC_TEST_MODE": "1" if synthetic_test_mode else "0",
+    "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+    "OPENROUTER_MODEL_PROFILE": openrouter_model_profile,
+    "RECEIPT_AGENT_OPENROUTER_MODEL_PROFILE": openrouter_model_profile,
+}
+if openrouter_model:
+    llm_safety_env["OPENROUTER_MODEL"] = openrouter_model
+    llm_safety_env["RECEIPT_AGENT_OPENROUTER_MODEL"] = openrouter_model
+
+llm_credential_env = {
+    "RECEIPT_AGENT_OPENAI_API_KEY": "" if disable_paid_llm else openai_api_key,
+    "OPENROUTER_API_KEY": "" if disable_paid_llm else openrouter_api_key,
+}
+
+
 class LabelEvaluatorStepFunction(ComponentResource):
     """
     Step Function infrastructure for label evaluation with LangSmith tracing.
@@ -88,9 +137,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # Viz-cache integration (optional, writes cache via Lambda)
         cache_bucket: Optional[pulumi.Input[str]] = None,
         # Optional LayoutLM start-training Lambda for synthetic replay launches
-        layoutlm_start_training_lambda_arn: Optional[
-            pulumi.Input[str]
-        ] = None,
+        layoutlm_start_training_lambda_arn: Optional[pulumi.Input[str]] = None,
         # External batch bucket (optional - if not provided, creates one internally)
         # Use this to break circular dependencies with EMR analytics
         batch_bucket_name: Optional[pulumi.Input[str]] = None,
@@ -114,9 +161,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.viz_cache_enabled = cache_bucket is not None
         self.cache_bucket = cache_bucket
         self.spark_artifacts_bucket = spark_artifacts_bucket
-        self.layoutlm_start_training_lambda_arn = (
-            layoutlm_start_training_lambda_arn
-        )
+        self.layoutlm_start_training_lambda_arn = layoutlm_start_training_lambda_arn
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -457,18 +502,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "ephemeral_storage": 10240,  # 10 GB for ChromaDB
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
-                "VIZ_CACHE_BUCKET": (
-                    self.cache_bucket if self.cache_bucket else ""
-                ),
+                "VIZ_CACHE_BUCKET": (self.cache_bucket if self.cache_bucket else ""),
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "OCR_JOB_QUEUE_URL": resolved_ocr_job_queue_url,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
-                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                # OpenRouter LLM provider
-                "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-5.5",
+                **llm_credential_env,
+                **llm_safety_env,
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
                 # rate-limit contention when 40 Lambdas run concurrently.
@@ -517,15 +557,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                **llm_credential_env,
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Pattern builder uses S3 snapshots by default so parallel
                 # merchant-map runs do not contend with Chroma Cloud limits.
                 "CHROMA_CLOUD_ENABLED": "false",
-                # OpenRouter LLM provider
-                "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-5.5",
+                **llm_safety_env,
                 "LLM_STRICT_STRUCTURED_OUTPUT": "true",
                 "LLM_STRUCTURED_OUTPUT_RETRIES": "3",
                 **tracing_env,
@@ -570,6 +607,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "SYNTHETIC_TEST_MODE": "1" if synthetic_test_mode else "0",
             },
             "image_config": {
                 "commands": ["synthetic_augmentation_audit.handler"],
@@ -912,9 +950,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             unified_pattern_builder_lambda.arn,  # 2
             final_aggregate_lambda.arn,  # 3
             self.batch_bucket.bucket,  # 4
-            Output.from_input(
-                self.layoutlm_start_training_lambda_arn or ""
-            ),  # 5
+            Output.from_input(self.layoutlm_start_training_lambda_arn or ""),  # 5
         ]
 
         # Add EMR outputs if enabled (indices 6-10)
@@ -984,6 +1020,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     ),
                     runtime=RuntimeConfig(
                         batch_bucket=args[4],
+                        synthetic_replay_max_limit=synthetic_replay_max_limit,
+                        synthetic_replay_max_instance_count=(
+                            synthetic_replay_max_instance_count
+                        ),
+                        synthetic_replay_max_runtime_hours=(
+                            synthetic_replay_max_runtime_hours
+                        ),
                     ),
                     emr=build_emr_config(args),
                     viz_cache=build_viz_cache_config(args),

@@ -335,7 +335,8 @@ def test_pattern_builder_lambda_has_chroma_snapshot_contract():
 
     assert '"ephemeral_storage": 10240' in config_block
     assert '"CHROMADB_BUCKET": chromadb_bucket_name or ""' in config_block
-    assert '"RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key' in config_block
+    assert "**llm_credential_env" in config_block
+    assert "**llm_safety_env" in config_block
     assert '"RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb"' in (config_block)
 
 

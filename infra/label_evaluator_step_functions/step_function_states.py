@@ -60,6 +60,9 @@ class RuntimeConfig:
     batch_bucket: str
     phase1_concurrency: int = 25
     phase2_concurrency: int = 40
+    synthetic_replay_max_limit: int = 3
+    synthetic_replay_max_instance_count: int = 1
+    synthetic_replay_max_runtime_hours: int = 1
 
 
 def build_retry_config(
@@ -101,8 +104,11 @@ def build_llm_retry_config() -> list[dict[str, Any]]:
     ]
 
 
-def build_input_normalization_states() -> dict[str, Any]:
+def build_input_normalization_states(
+    runtime: RuntimeConfig | None = None,
+) -> dict[str, Any]:
     """Build states for normalizing input and setting defaults."""
+    runtime = runtime or RuntimeConfig(batch_bucket="")
     return {
         "NormalizeInput": {
             "Type": "Pass",
@@ -123,12 +129,19 @@ def build_input_normalization_states() -> dict[str, Any]:
                 ),
                 "run_analytics": True,
                 "run_synthetic_replay": False,
+                "synthetic_replay_cost_ack": False,
+                "synthetic_replay_max_limit": runtime.synthetic_replay_max_limit,
                 "baseline_job_ref": None,
                 "synthetic_replay_hyperparameters": {},
                 "synthetic_replay_instance_type": "ml.g5.xlarge",
                 "synthetic_replay_instance_count": 1,
-                "synthetic_replay_use_spot": False,
-                "synthetic_replay_max_runtime_hours": 24,
+                "synthetic_replay_max_instance_count": (
+                    runtime.synthetic_replay_max_instance_count
+                ),
+                "synthetic_replay_use_spot": True,
+                "synthetic_replay_max_runtime_hours": (
+                    runtime.synthetic_replay_max_runtime_hours
+                ),
             },
             "ResultPath": "$.defaults",
             "Next": "MergeInputWithDefaults",
@@ -492,8 +505,46 @@ def build_synthetic_replay_states(
                             "BooleanEquals": True,
                         },
                         {
+                            "Variable": "$.config.merged.synthetic_replay_cost_ack",
+                            "BooleanEquals": True,
+                        },
+                        {
                             "Variable": "$.config.merged.baseline_job_ref",
                             "IsString": True,
+                        },
+                        {
+                            "Variable": "$.config.merged.limit",
+                            "IsNumeric": True,
+                        },
+                        {
+                            "Variable": "$.config.merged.limit",
+                            "NumericGreaterThan": 0,
+                        },
+                        {
+                            "Variable": "$.config.merged.limit",
+                            "NumericLessThanEqualsPath": (
+                                "$.defaults.synthetic_replay_max_limit"
+                            ),
+                        },
+                        {
+                            "Variable": (
+                                "$.config.merged.synthetic_replay_instance_count"
+                            ),
+                            "NumericLessThanEqualsPath": (
+                                "$.defaults.synthetic_replay_max_instance_count"
+                            ),
+                        },
+                        {
+                            "Variable": "$.config.merged.synthetic_replay_use_spot",
+                            "BooleanEquals": True,
+                        },
+                        {
+                            "Variable": (
+                                "$.config.merged.synthetic_replay_max_runtime_hours"
+                            ),
+                            "NumericLessThanEqualsPath": (
+                                "$.defaults.synthetic_replay_max_runtime_hours"
+                            ),
                         },
                     ],
                     "Next": "StartSyntheticReplayTraining",
@@ -507,6 +558,10 @@ def build_synthetic_replay_states(
             "TimeoutSeconds": 60,
             "Parameters": {
                 "baseline_job_ref.$": "$.config.merged.baseline_job_ref",
+                "synthetic_replay_cost_ack.$": (
+                    "$.config.merged.synthetic_replay_cost_ack"
+                ),
+                "source_receipt_limit.$": "$.config.merged.limit",
                 "batch_bucket.$": "$.init.batch_bucket",
                 "execution_id.$": "$.init.execution_id",
                 "line_item_patterns_s3_prefix.$": (
@@ -791,7 +846,7 @@ def create_step_function_definition(
     states: dict[str, Any] = {}
 
     # Input normalization and defaults
-    states.update(build_input_normalization_states())
+    states.update(build_input_normalization_states(runtime))
 
     # Input mode checking and initialization
     states.update(
