@@ -634,6 +634,9 @@ const SYNTHETIC_REJECTION_REASON_LABELS: Record<string, string> = {
   add_item_not_cross_receipt_grounded: "ungrounded item",
   add_item_placement_base_category_missing: "placement missing section",
   add_item_placement_category_mismatch: "placement category mismatch",
+  accepted_synthetic_mix_high_risk: "high-risk merchant mix",
+  accepted_synthetic_mix_single_merchant_high_risk: "single merchant mix",
+  accepted_synthetic_mix_top_merchant_high_risk: "top merchant dominates",
   invalid_arithmetic_reconciliation: "bad arithmetic",
   below_real_structure_baseline: "below real baseline",
   low_category_sequence_similarity: "weak category order",
@@ -657,6 +660,8 @@ const SYNTHETIC_REJECTION_REASON_LABELS: Record<string, string> = {
   replace_field_not_mutable: "field not mutable",
   replace_field_unsupported_label: "unsupported field",
   replace_field_unstable_geometry: "unstable field geometry",
+  single_merchant_accepted: "single merchant accepted",
+  top_merchant_share_ge_80pct: "top merchant >=80%",
 };
 
 const formatSyntheticRejectionReason = (reason: string): string =>
