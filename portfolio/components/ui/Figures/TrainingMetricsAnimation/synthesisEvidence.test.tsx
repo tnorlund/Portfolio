@@ -391,6 +391,65 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     );
   });
 
+  it("shows recoverable unlabeled OCR as a label-validation action", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        merchants: [
+          {
+            merchant_name: "Recoverable Mart",
+            readiness_status: "blocked",
+            source_quality_status: "blocked",
+            source_quality_receipt_count: 1,
+            source_quality_labeled_word_count: 0,
+            source_quality_line_item_like_text_line_count: 1,
+            source_quality_total_like_text_line_count: 2,
+            source_quality_limitations: [
+              "unlabeled_text_requires_label_validation",
+            ],
+            source_quality_operation_blockers: {
+              add_line_item: "source_receipt_quality_blocked",
+            },
+            missing_operations: [
+              "hard_negative",
+              "add_line_item",
+              "remove_line_item",
+              "replace_field",
+            ],
+            candidate_count: 1,
+            accepted_count: 0,
+            next_synthesis_actions: [
+              "validate_recoverable_unlabeled_receipts",
+              "resolve_merchant_synthesis_blockers",
+            ],
+          },
+        ],
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("1 src · 0 labels · validate")).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Recoverable OCR: 2 total-like anchors, 1 line-item-like rows"
+      )
+    );
+    expect(
+      screen.getByText("Needs Hard Negative, Add Line Item, +2")
+    ).toHaveAttribute(
+      "title",
+      expect.stringContaining("validate recoverable unlabeled receipts")
+    );
+  });
+
   it("does not headline contract-ready operations as reusable evidence", async () => {
     const metrics = trainingMetrics();
     metrics.synthesis = {

@@ -584,6 +584,7 @@ export interface TrainingSynthesisSourceQualityMerchant {
   line_item_like_text_line_count?: number | null;
   total_like_text_line_count?: number | null;
   date_time_like_text_line_count?: number | null;
+  requires_label_validation?: boolean | null;
   top_labels?: Record<string, number>;
   blockers?: string[];
   limitations?: string[];
@@ -852,6 +853,8 @@ export interface TrainingSynthesisQualityMerchant {
   source_quality_text_structure_status?: string | null;
   source_quality_line_item_like_text_line_count?: number | null;
   source_quality_total_like_text_line_count?: number | null;
+  source_quality_limitations?: string[];
+  source_quality_requires_label_validation?: boolean | null;
   source_quality_operation_blockers?: Record<string, string>;
   candidate_count?: number | null;
   accepted_count?: number | null;

@@ -1375,8 +1375,14 @@ def _next_synthesis_actions(
     operation_readiness: list[dict[str, Any]],
     *,
     readiness_status: str,
+    source_quality: dict[str, Any] | None = None,
 ) -> list[str]:
     if readiness_status == "blocked":
+        if _source_quality_has_recoverable_unlabeled_text(source_quality or {}):
+            return [
+                "validate_recoverable_unlabeled_receipts",
+                "resolve_merchant_synthesis_blockers",
+            ]
         return ["resolve_merchant_synthesis_blockers"]
 
     actions: list[str] = []
@@ -1463,6 +1469,7 @@ def summarize_merchant_synthesis_audit(
                 "next_synthesis_actions": _next_synthesis_actions(
                     operation_readiness,
                     readiness_status=readiness_status.strip().lower(),
+                    source_quality=_artifact_source_quality(artifact),
                 ),
                 "llm_execution": _artifact_llm_execution(artifact),
                 "safe_training_policy": {
@@ -1616,6 +1623,8 @@ def _source_quality_limitations(source_quality: dict[str, Any]) -> list[str]:
     limitations = [
         str(item) for item in source_quality.get("limitations") or [] if item
     ]
+    if "unlabeled_text_requires_label_validation" in limitations:
+        limitations.insert(0, "unlabeled_text_requires_label_validation")
     if _source_quality_status(source_quality) == "limited":
         limitations.insert(0, "source_receipt_quality_limited")
     return list(dict.fromkeys(limitations))[:8]
@@ -1701,11 +1710,30 @@ def _compact_source_quality_contract(
                 source_quality.get("receipts_with_date_or_time_label")
             ),
             "labeled_word_count": _safe_int(source_quality.get("labeled_word_count")),
+            "text_structure_status": source_quality.get("text_structure_status"),
+            "line_item_like_text_line_count": _safe_int(
+                source_quality.get("line_item_like_text_line_count")
+            ),
+            "total_like_text_line_count": _safe_int(
+                source_quality.get("total_like_text_line_count")
+            ),
             "blockers": _source_quality_blockers(source_quality),
             "limitations": _source_quality_limitations(source_quality),
         }.items()
         if value not in (None, "", [], {})
     }
+
+
+def _source_quality_has_recoverable_unlabeled_text(
+    source_quality: dict[str, Any],
+) -> bool:
+    if not isinstance(source_quality, dict) or not source_quality:
+        return False
+    if source_quality.get("text_structure_status") == "recoverable_unlabeled_text":
+        return True
+    return "unlabeled_text_requires_label_validation" in set(
+        source_quality.get("limitations") or []
+    )
 
 
 def build_merchant_synthesis_contracts(
@@ -2291,6 +2319,12 @@ def _report_source_quality_fields(
             "source_quality_total_like_text_line_count": _safe_int(
                 source_quality.get("total_like_text_line_count")
             ),
+            "source_quality_limitations": _source_quality_limitations(source_quality),
+            "source_quality_requires_label_validation": (
+                True
+                if _source_quality_has_recoverable_unlabeled_text(source_quality)
+                else None
+            ),
             "source_quality_operation_blockers": _source_quality_operation_blockers(
                 source_quality
             ),
@@ -2460,6 +2494,13 @@ def _report_recommendations(
         for contract in contracts
     ):
         recommendations.append("fix_source_receipt_quality_before_synthesis")
+    if any(
+        _source_quality_has_recoverable_unlabeled_text(
+            contract.get("source_receipt_quality") or {}
+        )
+        for contract in contracts
+    ):
+        recommendations.append("validate_recoverable_unlabeled_receipts")
     rejection_reasons = candidate_mix.get("rejection_reasons") or {}
     if rejection_reasons.get("operation_not_supported_by_contract"):
         recommendations.append("enable_only_contract_supported_mutations")
@@ -2504,6 +2545,13 @@ def _training_ready_reasons(
         for contract in contracts
     ):
         reasons.append("fix_source_receipt_quality_before_synthesis")
+    if any(
+        _source_quality_has_recoverable_unlabeled_text(
+            contract.get("source_receipt_quality") or {}
+        )
+        for contract in contracts
+    ):
+        reasons.append("validate_recoverable_unlabeled_receipts")
     if accepted_operation_coverage and accepted_operation_coverage.get(
         "uncovered_ready_operations"
     ):

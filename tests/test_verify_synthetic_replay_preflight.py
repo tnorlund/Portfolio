@@ -1052,6 +1052,14 @@ def test_source_quality_reports_recoverable_unlabeled_text_structure():
     assert bundle["selection"]["candidates_accepted"] == 0
     assert bundle["candidate_mix"]["accepted_count"] == 0
     assert bundle["synthesis_quality_report"]["training_ready"] is False
+    assert (
+        "validate_recoverable_unlabeled_receipts"
+        in bundle["synthesis_quality_report"]["recommendations"]
+    )
+    assert (
+        "validate_recoverable_unlabeled_receipts"
+        in bundle["synthesis_quality_report"]["training_ready_reasons"]
+    )
     report_merchant = bundle["synthesis_quality_report"]["merchants"][0]
     assert (
         report_merchant["source_quality_text_structure_status"]
@@ -1059,6 +1067,24 @@ def test_source_quality_reports_recoverable_unlabeled_text_structure():
     )
     assert report_merchant["source_quality_line_item_like_text_line_count"] == 1
     assert report_merchant["source_quality_total_like_text_line_count"] == 1
+    assert report_merchant["source_quality_limitations"] == [
+        "unlabeled_text_requires_label_validation",
+        "no_labeled_line_items",
+        "no_grand_total_labels",
+        "single_receipt_limits_cross_receipt_grounding",
+    ]
+    assert report_merchant["source_quality_requires_label_validation"] is True
+    blocked_artifact = _artifact(
+        "Market Mart",
+        status="blocked",
+        score=0.2,
+        source_receipt_quality=quality,
+    )
+    audit = module.summarize_merchant_synthesis_audit([blocked_artifact])[0]
+    assert audit["next_synthesis_actions"] == [
+        "validate_recoverable_unlabeled_receipts",
+        "resolve_merchant_synthesis_blockers",
+    ]
 
     weak_receipt = module._normalize_local_receipt(
         {

@@ -125,6 +125,186 @@ def test_compact_source_receipt_quality_preserves_unlabeled_text_structure(
     assert merchant["total_like_text_line_count"] == 1
 
 
+def test_derived_quality_report_recommends_label_validation_for_recoverable_text(
+    monkeypatch,
+):
+    module = _load_module(monkeypatch)
+
+    source_quality = {
+        "merchant_name": "Market Mart",
+        "status": "blocked",
+        "receipt_count": 1,
+        "receipts_with_lines": 1,
+        "receipts_with_words": 1,
+        "receipts_with_labels": 0,
+        "receipts_with_line_item_labels": 0,
+        "receipts_with_grand_total_label": 0,
+        "receipts_with_date_or_time_label": 0,
+        "line_count": 5,
+        "word_count": 9,
+        "labeled_word_count": 0,
+        "text_structure_status": "recoverable_unlabeled_text",
+        "line_item_like_text_line_count": 1,
+        "total_like_text_line_count": 1,
+        "blockers": ["no_word_labels"],
+        "limitations": ["unlabeled_text_requires_label_validation"],
+    }
+    report = module._derive_synthesis_quality_report(
+        bundle={
+            "ready": False,
+            "source_receipt_quality": {"merchants": [source_quality]},
+        },
+        candidate_mix={
+            "candidate_count": 0,
+            "accepted_count": 0,
+            "rejected_count": 0,
+            "merchant_count": 1,
+            "accepted_merchant_count": 0,
+            "merchants": [
+                {
+                    "merchant_name": "Market Mart",
+                    "candidate_count": 0,
+                    "accepted_count": 0,
+                }
+            ],
+        },
+        selection={},
+        contracts=[
+            {
+                "merchant_name": "Market Mart",
+                "status": "blocked",
+                "source_receipt_quality": source_quality,
+                "blockers": ["source_receipt_quality_blocked"],
+                "limitations": ["unlabeled_text_requires_label_validation"],
+            }
+        ],
+        candidate_examples=[],
+    )
+
+    assert report["training_ready"] is False
+    assert "validate_recoverable_unlabeled_receipts" in report["recommendations"]
+    assert "validate_recoverable_unlabeled_receipts" in report["training_ready_reasons"]
+    assert report["merchants"][0]["source_quality_text_structure_status"] == (
+        "recoverable_unlabeled_text"
+    )
+    assert report["merchants"][0]["source_quality_limitations"] == [
+        "unlabeled_text_requires_label_validation"
+    ]
+    assert report["merchants"][0]["source_quality_requires_label_validation"] is True
+    assert report["merchants"][0]["next_synthesis_actions"] == [
+        "validate_recoverable_unlabeled_receipts",
+        "resolve_merchant_synthesis_blockers",
+    ]
+
+
+def test_derived_quality_report_blocks_ready_payload_for_label_validation_only(
+    monkeypatch,
+):
+    module = _load_module(monkeypatch)
+
+    source_quality = {
+        "merchant_name": "Market Mart",
+        "status": "usable",
+        "receipt_count": 2,
+        "labeled_word_count": 0,
+        "line_item_like_text_line_count": 2,
+        "total_like_text_line_count": 2,
+        "limitations": [
+            "generic_source_limitation_0",
+            "generic_source_limitation_1",
+            "generic_source_limitation_2",
+            "generic_source_limitation_3",
+            "generic_source_limitation_4",
+            "generic_source_limitation_5",
+            "generic_source_limitation_6",
+            "generic_source_limitation_7",
+            "generic_source_limitation_8",
+            "unlabeled_text_requires_label_validation",
+        ],
+    }
+    report = module._derive_synthesis_quality_report(
+        bundle={
+            "ready": True,
+            "source_receipt_quality": {"merchants": [source_quality]},
+        },
+        candidate_mix={
+            "candidate_count": 1,
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "merchant_count": 1,
+            "accepted_merchant_count": 1,
+            "merchants": [
+                {
+                    "merchant_name": "Market Mart",
+                    "candidate_count": 1,
+                    "accepted_count": 1,
+                }
+            ],
+        },
+        selection={},
+        contracts=[
+            {
+                "merchant_name": "Market Mart",
+                "status": "ready",
+                "source_receipt_quality": source_quality,
+                "blockers": [],
+                "limitations": [],
+                "ready_operations": [],
+            }
+        ],
+        candidate_examples=[],
+    )
+
+    assert report["ready"] is True
+    assert report["training_ready"] is False
+    assert report["training_ready_reasons"] == [
+        "validate_recoverable_unlabeled_receipts"
+    ]
+    assert report["merchants"][0]["source_quality_limitations"][0] == (
+        "unlabeled_text_requires_label_validation"
+    )
+    assert report["merchants"][0]["source_quality_requires_label_validation"] is True
+    assert report["merchants"][0]["next_synthesis_actions"] == [
+        "validate_recoverable_unlabeled_receipts"
+    ]
+
+
+def test_compact_report_merchant_preserves_label_validation_actions(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    compact = module._compact_report_merchant(
+        {
+            "merchant_name": "Market Mart",
+            "source_quality_limitations": [
+                "generic_source_limitation_0",
+                "generic_source_limitation_1",
+                "generic_source_limitation_2",
+                "generic_source_limitation_3",
+                "generic_source_limitation_4",
+                "generic_source_limitation_5",
+                "generic_source_limitation_6",
+                "generic_source_limitation_7",
+                "generic_source_limitation_8",
+                "unlabeled_text_requires_label_validation",
+            ],
+            "source_quality_requires_label_validation": True,
+            "next_synthesis_actions": [
+                "validate_recoverable_unlabeled_receipts",
+                "resolve_merchant_synthesis_blockers",
+            ],
+        }
+    )
+
+    assert compact["source_quality_limitations"][0] == (
+        "unlabeled_text_requires_label_validation"
+    )
+    assert compact["source_quality_requires_label_validation"] is True
+    assert compact["next_synthesis_actions"] == [
+        "validate_recoverable_unlabeled_receipts",
+        "resolve_merchant_synthesis_blockers",
+    ]
+
+
 def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
     module = _load_module(monkeypatch)
 

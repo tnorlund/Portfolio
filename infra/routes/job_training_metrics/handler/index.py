@@ -1365,7 +1365,7 @@ def _llm_model_freshness_gate(llm_execution: Any) -> Dict[str, Any]:
             llm_assisted_mode_count if llm_assisted_mode_count else None
         ),
         "latest_model_verified_at": verified_at or None,
-        "latest_model_age_days": raw_age_days if requires_current_guidance else None,
+        "latest_model_age_days": (raw_age_days if requires_current_guidance else None),
         "max_age_days": LLM_MODEL_FRESHNESS_MAX_AGE_DAYS,
         "latest_model_sources": latest_sources,
         "reason": None if passed else "latest_model_guidance_stale_or_missing",
@@ -1424,7 +1424,7 @@ def _compact_source_receipt_quality_merchant(row: Any) -> Dict[str, Any]:
         ),
         "top_labels": _compact_count_map(row.get("top_labels")),
         "blockers": list(row.get("blockers") or [])[:5],
-        "limitations": list(row.get("limitations") or [])[:5],
+        "limitations": _source_quality_limitations(row, limit=5),
     }
     return {
         key: value for key, value in result.items() if value not in (None, "", [], {})
@@ -1568,6 +1568,44 @@ def _source_quality_operation_blockers_from_contract(
     }
 
 
+def _source_quality_limitations(
+    source_quality: Dict[str, Any],
+    *,
+    limit: int = 8,
+) -> List[str]:
+    limitations = [
+        str(item) for item in source_quality.get("limitations") or [] if item
+    ]
+    if "unlabeled_text_requires_label_validation" in limitations:
+        limitations.insert(0, "unlabeled_text_requires_label_validation")
+    if str(source_quality.get("status") or "").strip().lower() == "limited":
+        limitations.insert(0, "source_receipt_quality_limited")
+    return list(dict.fromkeys(limitations))[:limit]
+
+
+def _source_quality_requires_label_validation(source_quality: Dict[str, Any]) -> bool:
+    if not isinstance(source_quality, dict) or not source_quality:
+        return False
+    if source_quality.get("text_structure_status") == "recoverable_unlabeled_text":
+        return True
+    return "unlabeled_text_requires_label_validation" in set(
+        source_quality.get("limitations") or []
+    )
+
+
+def _derive_next_synthesis_actions(
+    *,
+    readiness_status: Any,
+    source_quality_requires_label_validation: bool,
+) -> List[str]:
+    actions: list[str] = []
+    if source_quality_requires_label_validation:
+        actions.append("validate_recoverable_unlabeled_receipts")
+    if str(readiness_status or "").strip().lower() == "blocked":
+        actions.append("resolve_merchant_synthesis_blockers")
+    return actions[:8]
+
+
 def _report_source_quality_fields(
     source_quality: Dict[str, Any],
     *,
@@ -1599,6 +1637,10 @@ def _report_source_quality_fields(
         ),
         "source_quality_total_like_text_line_count": _safe_int(
             source_quality.get("total_like_text_line_count")
+        ),
+        "source_quality_limitations": _source_quality_limitations(source_quality),
+        "source_quality_requires_label_validation": (
+            True if _source_quality_requires_label_validation(source_quality) else None
         ),
         "source_quality_operation_blockers": {
             str(operation): str(reason)
@@ -1632,7 +1674,9 @@ def _summarize_source_receipt_quality_from_artifacts(
     )
 
 
-def _summarize_contract_operations(contracts: List[Dict[str, Any]]) -> Dict[str, int]:
+def _summarize_contract_operations(
+    contracts: List[Dict[str, Any]],
+) -> Dict[str, int]:
     counts: Counter[str] = Counter()
     for contract in contracts:
         operation_contracts = contract.get("operation_contracts") or {}
@@ -1644,7 +1688,9 @@ def _summarize_contract_operations(contracts: List[Dict[str, Any]]) -> Dict[str,
     return dict(counts)
 
 
-def _summarize_contract_fields(contracts: List[Dict[str, Any]]) -> Dict[str, int]:
+def _summarize_contract_fields(
+    contracts: List[Dict[str, Any]],
+) -> Dict[str, int]:
     counts: Counter[str] = Counter()
     for contract in contracts:
         operation_contracts = contract.get("operation_contracts") or {}
@@ -2227,6 +2273,14 @@ def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
         "source_quality_total_like_text_line_count": _safe_int(
             row.get("source_quality_total_like_text_line_count")
         ),
+        "source_quality_limitations": _source_quality_limitations(
+            {"limitations": row.get("source_quality_limitations") or []}
+        ),
+        "source_quality_requires_label_validation": (
+            True
+            if row.get("source_quality_requires_label_validation") is True
+            else None
+        ),
         "candidate_count": candidate_count,
         "accepted_count": accepted_count,
         "rejected_count": _safe_int(row.get("rejected_count")),
@@ -2601,6 +2655,9 @@ def _derive_synthesis_quality_report(
             _source_quality_operation_blockers_from_contract(contract)
             or _source_quality_operation_blockers(source_quality)
         )
+        source_quality_requires_label_validation = (
+            _source_quality_requires_label_validation(source_quality)
+        )
         candidate_count = _safe_int(mix.get("candidate_count"))
         accepted_count = _safe_int(mix.get("accepted_count"))
         accepted_examples = examples_by_merchant.get(merchant, [])[:3]
@@ -2669,6 +2726,15 @@ def _derive_synthesis_quality_report(
             "rejection_reasons": _compact_count_map(mix.get("rejection_reasons")),
             "blockers": list(contract.get("blockers") or [])[:5],
             "limitations": list(contract.get("limitations") or [])[:5],
+            "source_quality_requires_label_validation": (
+                source_quality_requires_label_validation
+            ),
+            "next_synthesis_actions": _derive_next_synthesis_actions(
+                readiness_status=contract.get("status"),
+                source_quality_requires_label_validation=(
+                    source_quality_requires_label_validation
+                ),
+            ),
             "accepted_examples": accepted_examples,
         }
         merchant_row.update(
@@ -2696,6 +2762,18 @@ def _derive_synthesis_quality_report(
         for row in merchant_rows
     ):
         recommendations.append("fix_source_receipt_quality_before_synthesis")
+    if any(
+        row.get("source_quality_requires_label_validation") is True
+        or row.get("source_quality_text_structure_status")
+        == "recoverable_unlabeled_text"
+        or "unlabeled_text_requires_label_validation"
+        in (
+            set(row.get("source_quality_limitations") or [])
+            | set(row.get("limitations") or [])
+        )
+        for row in merchant_rows
+    ):
+        recommendations.append("validate_recoverable_unlabeled_receipts")
     if candidate_mix.get("rejection_reasons", {}).get(
         "operation_not_supported_by_contract"
     ):
@@ -2727,6 +2805,18 @@ def _derive_synthesis_quality_report(
         for row in merchant_rows
     ):
         training_ready_reasons.append("fix_source_receipt_quality_before_synthesis")
+    if any(
+        row.get("source_quality_requires_label_validation") is True
+        or row.get("source_quality_text_structure_status")
+        == "recoverable_unlabeled_text"
+        or "unlabeled_text_requires_label_validation"
+        in (
+            set(row.get("source_quality_limitations") or [])
+            | set(row.get("limitations") or [])
+        )
+        for row in merchant_rows
+    ):
+        training_ready_reasons.append("validate_recoverable_unlabeled_receipts")
     if accepted_operation_coverage.get("uncovered_ready_operations"):
         training_ready_reasons.append("cover_ready_operations_before_training")
     if (

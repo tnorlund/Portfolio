@@ -1166,6 +1166,19 @@ const reportMerchantSourceQuality = (
       merchant.source_quality_receipts_with_grand_total_label,
     receipts_with_date_or_time_label:
       merchant.source_quality_receipts_with_date_or_time_label,
+    text_structure_status: merchant.source_quality_text_structure_status,
+    line_item_like_text_line_count:
+      merchant.source_quality_line_item_like_text_line_count,
+    total_like_text_line_count:
+      merchant.source_quality_total_like_text_line_count,
+    limitations: Array.from(
+      new Set([
+        ...(merchant.source_quality_limitations || []),
+        ...(merchant.limitations || []),
+      ])
+    ),
+    requires_label_validation:
+      merchant.source_quality_requires_label_validation,
     blockers: Array.from(
       new Set(Object.values(merchant.source_quality_operation_blockers || {}))
     ),
@@ -1180,10 +1193,24 @@ const summarizeSourceQualityMerchant = (
   const labeledWordCount = merchant.labeled_word_count ?? 0;
   const lineItemReceipts = merchant.receipts_with_line_item_labels ?? 0;
   const totalReceipts = receiptCount || merchant.receipts_with_labels || 0;
+  const labelValidationRequired = (merchant.limitations || []).includes(
+    "unlabeled_text_requires_label_validation"
+  );
+  const recoverableUnlabeled =
+    merchant.requires_label_validation === true ||
+    merchant.text_structure_status === "recoverable_unlabeled_text" ||
+    labelValidationRequired;
   const title = [
     `${formatReadinessStatus(merchant.status)} source receipts`,
     `Receipts: ${formatCount(receiptCount)}`,
     `Labeled words: ${formatCount(labeledWordCount)}`,
+    recoverableUnlabeled
+      ? `Recoverable OCR: ${formatCount(
+          merchant.total_like_text_line_count ?? 0
+        )} total-like anchors, ${formatCount(
+          merchant.line_item_like_text_line_count ?? 0
+        )} line-item-like rows`
+      : null,
     `Line item labels: ${formatCount(lineItemReceipts)} / ${formatCount(totalReceipts)}`,
     merchant.receipts_with_grand_total_label != null
       ? `Grand total labels: ${formatCount(merchant.receipts_with_grand_total_label)}`
@@ -1201,7 +1228,9 @@ const summarizeSourceQualityMerchant = (
     .filter((value): value is string => Boolean(value))
     .join(" | ");
   return {
-    label: `${formatCount(receiptCount)} src · ${formatCount(labeledWordCount)} labels`,
+    label: recoverableUnlabeled
+      ? `${formatCount(receiptCount)} src · ${formatCount(labeledWordCount)} labels · validate`
+      : `${formatCount(receiptCount)} src · ${formatCount(labeledWordCount)} labels`,
     title,
   };
 };
@@ -2128,6 +2157,7 @@ const summarizeMerchantOperationGaps = (
   const missingOperations = (merchant.missing_operations || []).filter(Boolean);
   const blockers = (merchant.blockers || []).filter(Boolean);
   const limitations = (merchant.limitations || []).filter(Boolean);
+  const nextActions = (merchant.next_synthesis_actions || []).filter(Boolean);
   const operationReasonEntries = Object.entries(
     merchant.operation_gap_reasons || {}
   ).filter(([operation, reasons]) => operation && reasons.length);
@@ -2136,18 +2166,23 @@ const summarizeMerchantOperationGaps = (
     !missingOperations.length &&
     !blockers.length &&
     !limitations.length &&
+    !nextActions.length &&
     !operationReasonEntries.length
   ) {
     return null;
   }
 
   const label = missingOperations.length
-    ? `Needs ${missingOperations.slice(0, 2).map(formatOperationName).join(", ")}${
+      ? `Needs ${missingOperations.slice(0, 2).map(formatOperationName).join(", ")}${
         missingOperations.length > 2 ? `, +${formatCount(missingOperations.length - 2)}` : ""
       }`
     : blockers.length
       ? `Blocked: ${formatSyntheticRejectionReason(blockers[0])}`
-      : `Limited: ${formatSyntheticRejectionReason(limitations[0])}`;
+      : limitations.length
+        ? `Limited: ${formatSyntheticRejectionReason(limitations[0])}`
+        : nextActions.length
+          ? `Next: ${formatSyntheticRejectionReason(nextActions[0])}`
+          : `Gap: ${formatOperationName(operationReasonEntries[0][0])}`;
 
   const title = [
     missingOperations.length
@@ -2158,6 +2193,12 @@ const summarizeMerchantOperationGaps = (
       : null,
     limitations.length
       ? `Limitations: ${limitations.map(formatSyntheticRejectionReason).join(", ")}`
+      : null,
+    nextActions.length
+      ? `Next actions: ${nextActions
+          .slice(0, 4)
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
       : null,
     ...operationReasonEntries.map(
       ([operation, reasons]) =>
