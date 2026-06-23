@@ -614,7 +614,8 @@ def _build_add_item_candidate_from_plan(
         return None
     new_total = _money(old_total + entry.amount)
     line_step = _line_step(analysis.line_items)
-    shifted_line_count = _shift_lines_below_for_insert(
+    insertion_context = _category_insertion_context(analysis, entry.category, y_center)
+    shift_summary = _shift_lines_below_for_insert(
         receipt,
         inserted_center_y=y_center,
         delta=line_step,
@@ -652,12 +653,11 @@ def _build_add_item_candidate_from_plan(
                 "category": entry.category,
                 "y_center": round(float(y_center), 1),
                 "line_step": line_step,
-                "shifted_lower_lines_by": line_step,
-                "shifted_line_count": shifted_line_count,
-                "selection_reason": (
-                    "observed item from another receipt inserted into the "
-                    "same category block on the base receipt"
-                ),
+                "shifted_lower_lines_by": shift_summary["median_shift"],
+                "shifted_line_count": shift_summary["line_count"],
+                "shifted_lower_line_shift_min": shift_summary["min_shift"],
+                "shifted_lower_line_shift_max": shift_summary["max_shift"],
+                **insertion_context,
             },
             "old_grand_total": _format_money(old_total),
             "new_grand_total": _format_money(new_total),
@@ -1964,6 +1964,7 @@ def _compact_category_placement_evidence(
     observed = observed if isinstance(observed, dict) else {}
     result: dict[str, Any] = {}
     if isinstance(insertion, dict):
+        same_category_section = insertion.get("same_category_section")
         result.update(
             {
                 "category": insertion.get("category"),
@@ -1974,7 +1975,23 @@ def _compact_category_placement_evidence(
                 "shifted_line_count": _safe_int(
                     insertion.get("shifted_line_count")
                 ),
+                "shifted_lower_line_shift_min": _safe_int(
+                    insertion.get("shifted_lower_line_shift_min")
+                ),
+                "shifted_lower_line_shift_max": _safe_int(
+                    insertion.get("shifted_lower_line_shift_max")
+                ),
                 "line_step": _safe_int(insertion.get("line_step")),
+                "category_item_count_before": _safe_int(
+                    insertion.get("category_item_count_before")
+                ),
+                "nearest_category_item_y": insertion.get("nearest_category_item_y"),
+                "nearest_lower_line_y": insertion.get("nearest_lower_line_y"),
+                "same_category_section": (
+                    same_category_section
+                    if isinstance(same_category_section, bool)
+                    else None
+                ),
                 "selection_reason": insertion.get("selection_reason"),
             }
         )
@@ -2512,6 +2529,54 @@ def _category_insert_y(
     return max(24.0, lower_item_y - max(24, _line_step(analysis.line_items)))
 
 
+def _category_insertion_context(
+    analysis: MerchantAnalysis,
+    category: str,
+    y_center: float,
+) -> dict[str, Any]:
+    items = [item for item in analysis.line_items if item.category == category]
+    category_item_ys = [item.center_y for item in items]
+    nearest_category_item_y = (
+        min(category_item_ys, key=lambda item_y: abs(item_y - y_center))
+        if category_item_ys
+        else None
+    )
+    lower_line_ys = [
+        _line_y(line) * 1000
+        for line in analysis.receipt.get("lines", [])
+        if _line_y(line) * 1000 < y_center
+    ]
+    nearest_lower_line_y = max(lower_line_ys, default=None)
+    same_category_section = bool(
+        items
+        and nearest_category_item_y is not None
+        and y_center < nearest_category_item_y
+        and (nearest_lower_line_y is None or y_center > nearest_lower_line_y)
+    )
+    selection_reason = (
+        "observed item from another receipt inserted under the same category "
+        "on the base receipt"
+        if same_category_section
+        else "observed item from another receipt inserted with merchant-local "
+        "price-column geometry"
+    )
+    return {
+        "category_item_count_before": len(items) if items else None,
+        "nearest_category_item_y": (
+            round(float(nearest_category_item_y), 1)
+            if nearest_category_item_y is not None
+            else None
+        ),
+        "nearest_lower_line_y": (
+            round(float(nearest_lower_line_y), 1)
+            if nearest_lower_line_y is not None
+            else None
+        ),
+        "same_category_section": same_category_section,
+        "selection_reason": selection_reason,
+    }
+
+
 def _build_line_item_line(
     receipt: dict[str, Any],
     entry: MerchantCatalogEntry,
@@ -2618,18 +2683,33 @@ def _shift_lines_below_for_insert(
     *,
     inserted_center_y: float,
     delta: int,
-) -> int:
-    shifted = 0
+) -> dict[str, int]:
+    realized_shifts: list[int] = []
     for line in receipt.get("lines", []):
         if _line_y(line) * 1000 >= inserted_center_y:
             continue
-        shifted += 1
+        before_y = _line_y(line) * 1000
         for word in line.get("words", []):
             word["bbox"][1] = max(0, word["bbox"][1] - delta)
             word["bbox"][3] = max(0, word["bbox"][3] - delta)
         line["y"] = max(0.0, _line_y(line))
+        realized_shift = int(round(before_y - (_line_y(line) * 1000)))
+        if realized_shift > 0:
+            realized_shifts.append(realized_shift)
     _refresh_words(receipt)
-    return shifted
+    if not realized_shifts:
+        return {
+            "line_count": 0,
+            "median_shift": 0,
+            "min_shift": 0,
+            "max_shift": 0,
+        }
+    return {
+        "line_count": len(realized_shifts),
+        "median_shift": int(round(statistics.median(realized_shifts))),
+        "min_shift": min(realized_shifts),
+        "max_shift": max(realized_shifts),
+    }
 
 
 def _apply_non_taxable_delta(

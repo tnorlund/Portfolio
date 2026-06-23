@@ -2118,8 +2118,8 @@ def _compact_quality_examples(rows: Any) -> List[Dict[str, Any]]:
             example["catalog_grounding"] = _compact_catalog_grounding_evidence(
                 catalog_grounding
             )
-        category_placement = row.get("category_placement")
-        if isinstance(category_placement, dict):
+        category_placement = _compact_category_placement(row.get("category_placement"))
+        if category_placement:
             example["category_placement"] = category_placement
         removal_context = _compact_removal_context(row.get("removal_context"))
         if removal_context:
@@ -2691,7 +2691,9 @@ def _derive_synthesis_quality_report(
                 "accuracy_checks": accuracy.get("checks") or [],
                 "layout_integrity": accuracy.get("layout_integrity"),
                 "catalog_grounding": accuracy.get("catalog_grounding"),
-                "category_placement": accuracy.get("category_placement"),
+                "category_placement": _compact_category_placement(
+                    accuracy.get("category_placement")
+                ),
                 "receipt_shape": {
                     "line_count": (example.get("receipt_preview") or {}).get(
                         "line_count"
@@ -3319,7 +3321,7 @@ def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     catalog_grounding = value.get("catalog_grounding")
-    category_placement = value.get("category_placement")
+    category_placement = _compact_category_placement(value.get("category_placement"))
     removal_context = _compact_removal_context(value.get("removal_context"))
     layout_integrity = _compact_layout_integrity_evidence(value.get("layout_integrity"))
     structure_similarity = _compact_structure_accuracy_evidence(
@@ -3335,14 +3337,54 @@ def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
         "category": value.get("category"),
         "tax_delta": value.get("tax_delta"),
         "catalog_grounding": _compact_catalog_grounding_evidence(catalog_grounding),
-        "category_placement": (
-            category_placement if isinstance(category_placement, dict) else None
-        ),
+        "category_placement": category_placement,
         "removal_context": removal_context,
         "layout_integrity": layout_integrity,
         "structure_similarity": structure_similarity,
     }
     return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_category_placement(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        "category": value.get("category"),
+        "insert_y": _safe_float(value.get("insert_y")),
+        "line_step": _safe_int(value.get("line_step")),
+        "shifted_lower_lines_by": _safe_int(value.get("shifted_lower_lines_by")),
+        "shifted_line_count": _safe_int(value.get("shifted_line_count")),
+        "shifted_lower_line_shift_min": _safe_int(
+            value.get("shifted_lower_line_shift_min")
+        ),
+        "shifted_lower_line_shift_max": _safe_int(
+            value.get("shifted_lower_line_shift_max")
+        ),
+        "category_item_count_before": _safe_int(
+            value.get("category_item_count_before")
+        ),
+        "nearest_category_item_y": _safe_float(value.get("nearest_category_item_y")),
+        "nearest_lower_line_y": _safe_float(value.get("nearest_lower_line_y")),
+        "same_category_section": (
+            value.get("same_category_section")
+            if isinstance(value.get("same_category_section"), bool)
+            else None
+        ),
+        "selection_reason": _clip_text(str(value.get("selection_reason") or ""), 180),
+        "base_receipt_has_category": (
+            value.get("base_receipt_has_category")
+            if isinstance(value.get("base_receipt_has_category"), bool)
+            else None
+        ),
+        "category_seen_count": _safe_int(value.get("category_seen_count")),
+        "category_heading_seen_count": _safe_int(
+            value.get("category_heading_seen_count")
+        ),
+        "category_alignment": value.get("category_alignment"),
+    }
+    return {
+        key: item for key, item in result.items() if item not in (None, "", [], {})
+    }
 
 
 def _compact_removal_context(value: Any) -> Dict[str, Any]:

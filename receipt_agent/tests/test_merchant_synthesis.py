@@ -4,6 +4,7 @@ from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     _analyze_receipt,
     _build_remove_item_candidate_from_plan,
     _normalize_receipt,
+    _shift_lines_below_for_insert,
     build_merchant_synthesis_profile,
     build_merchant_synthesis_readiness,
     build_synthesis_candidate_quality,
@@ -968,10 +969,16 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "insert_y": 661.5,
         "shifted_lower_lines_by": 26,
         "shifted_line_count": 1,
+        "shifted_lower_line_shift_min": 26,
+        "shifted_lower_line_shift_max": 26,
         "line_step": 26,
+        "category_item_count_before": 1,
+        "nearest_category_item_y": 687.5,
+        "nearest_lower_line_y": 637.5,
+        "same_category_section": True,
         "selection_reason": (
-            "observed item from another receipt inserted into the same "
-            "category block on the base receipt"
+            "observed item from another receipt inserted under the same "
+            "category on the base receipt"
         ),
         "base_receipt_has_category": True,
         "category_seen_count": 2,
@@ -984,9 +991,15 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "line_step": 26,
         "shifted_lower_lines_by": 26,
         "shifted_line_count": 1,
+        "shifted_lower_line_shift_min": 26,
+        "shifted_lower_line_shift_max": 26,
+        "category_item_count_before": 1,
+        "nearest_category_item_y": 687.5,
+        "nearest_lower_line_y": 637.5,
+        "same_category_section": True,
         "selection_reason": (
-            "observed item from another receipt inserted into the same "
-            "category block on the base receipt"
+            "observed item from another receipt inserted under the same "
+            "category on the base receipt"
         ),
     }
     assert {
@@ -999,6 +1012,44 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "nearest_real_structure_similarity",
     }.issubset(evidence["checks"])
     assert "5.50" in arithmetic["tokens"]
+
+
+def test_insert_shift_summary_reports_realized_clamped_movement():
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "y": 0.005,
+                "words": [_word("BOTTOM", [80, 0, 160, 10])],
+            },
+            {
+                "line_id": 2,
+                "y": 0.200,
+                "words": [_word("MIDDLE", [80, 188, 160, 212])],
+            },
+            {
+                "line_id": 3,
+                "y": 0.400,
+                "words": [_word("ABOVE", [80, 388, 160, 412])],
+            },
+        ]
+    }
+
+    summary = _shift_lines_below_for_insert(
+        receipt,
+        inserted_center_y=250,
+        delta=26,
+    )
+
+    assert summary == {
+        "line_count": 2,
+        "median_shift": 16,
+        "min_shift": 5,
+        "max_shift": 26,
+    }
+    assert receipt["lines"][0]["words"][0]["bbox"] == [80, 0, 160, 0]
+    assert receipt["lines"][1]["words"][0]["bbox"] == [80, 162, 160, 186]
+    assert receipt["lines"][2]["words"][0]["bbox"] == [80, 388, 160, 412]
 
 
 def test_generate_merchant_synthesis_candidates_can_remove_supported_item():

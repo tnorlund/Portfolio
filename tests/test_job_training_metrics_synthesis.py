@@ -986,6 +986,81 @@ def test_compact_synthesis_accuracy_evidence_whitelists_removal_context(monkeypa
     assert "debug_notes" not in compact["removal_context"]
 
 
+def test_compact_synthesis_accuracy_evidence_whitelists_category_placement(
+    monkeypatch,
+):
+    module = _load_module(monkeypatch)
+
+    compact = module._compact_synthesis_accuracy_evidence(
+        {
+            "operation": "add_line_item",
+            "checks": ["item_seen_in_other_receipt"],
+            "changed_text": "BANANAS",
+            "category": "PRODUCE",
+            "category_placement": {
+                "category": "PRODUCE",
+                "insert_y": "661.5",
+                "line_step": "26",
+                "shifted_lower_lines_by": "26",
+                "shifted_line_count": "1",
+                "shifted_lower_line_shift_min": "26",
+                "shifted_lower_line_shift_max": "26",
+                "category_item_count_before": "1",
+                "nearest_category_item_y": "687.5",
+                "nearest_lower_line_y": "637.5",
+                "same_category_section": True,
+                "selection_reason": (
+                    "observed item from another receipt inserted under the "
+                    "same category on the base receipt"
+                ),
+                "base_receipt_has_category": True,
+                "category_seen_count": "2",
+                "category_heading_seen_count": "2",
+                "category_alignment": "same_category_as_base",
+                "debug_notes": "must not leak",
+            },
+        }
+    )
+
+    assert compact["operation"] == "add_line_item"
+    assert compact["category_placement"] == {
+        "category": "PRODUCE",
+        "insert_y": 661.5,
+        "line_step": 26,
+        "shifted_lower_lines_by": 26,
+        "shifted_line_count": 1,
+        "shifted_lower_line_shift_min": 26,
+        "shifted_lower_line_shift_max": 26,
+        "category_item_count_before": 1,
+        "nearest_category_item_y": 687.5,
+        "nearest_lower_line_y": 637.5,
+        "same_category_section": True,
+        "selection_reason": (
+            "observed item from another receipt inserted under the same "
+            "category on the base receipt"
+        ),
+        "base_receipt_has_category": True,
+        "category_seen_count": 2,
+        "category_heading_seen_count": 2,
+        "category_alignment": "same_category_as_base",
+    }
+    assert "debug_notes" not in compact["category_placement"]
+
+    compact_without_reason = module._compact_synthesis_accuracy_evidence(
+        {
+            "operation": "add_line_item",
+            "category_placement": {
+                "category": "PRODUCE",
+                "insert_y": "661.5",
+            },
+        }
+    )
+    assert compact_without_reason["category_placement"] == {
+        "category": "PRODUCE",
+        "insert_y": 661.5,
+    }
+
+
 def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
     module = _load_module(monkeypatch)
 

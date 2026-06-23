@@ -507,7 +507,15 @@ export interface TrainingSynthesisAccuracyEvidence {
   category_placement?: {
     category?: string | null;
     insert_y?: number | null;
+    line_step?: number | null;
     shifted_lower_lines_by?: number | null;
+    shifted_line_count?: number | null;
+    shifted_lower_line_shift_min?: number | null;
+    shifted_lower_line_shift_max?: number | null;
+    category_item_count_before?: number | null;
+    nearest_category_item_y?: number | null;
+    nearest_lower_line_y?: number | null;
+    same_category_section?: boolean | null;
     selection_reason?: string | null;
     base_receipt_has_category?: boolean;
     category_seen_count?: number | null;
@@ -825,7 +833,15 @@ export interface TrainingSynthesisQualityExample {
   category_placement?: {
     category?: string | null;
     insert_y?: number | null;
+    line_step?: number | null;
     shifted_lower_lines_by?: number | null;
+    shifted_line_count?: number | null;
+    shifted_lower_line_shift_min?: number | null;
+    shifted_lower_line_shift_max?: number | null;
+    category_item_count_before?: number | null;
+    nearest_category_item_y?: number | null;
+    nearest_lower_line_y?: number | null;
+    same_category_section?: boolean | null;
     selection_reason?: string | null;
     base_receipt_has_category?: boolean;
     category_seen_count?: number | null;

@@ -2168,6 +2168,85 @@ def test_compact_report_candidate_keeps_remove_line_geometry_context():
     ]
 
 
+def test_compact_report_candidate_keeps_add_line_placement_context():
+    module = _load_module()
+    candidate = {
+        "candidate_id": "market-add-bananas",
+        "receipt_key": "synthetic-market-add-bananas#00001",
+        "metadata": {
+            "operation": "add_line_item",
+            "synthesis_accuracy_evidence": {
+                "operation": "add_line_item",
+                "checks": [
+                    "item_seen_in_other_receipt",
+                    "base_receipt_has_category",
+                    "non_taxable_arithmetic_reconciled",
+                ],
+                "changed_text": "BANANAS",
+                "category": "PRODUCE",
+                "old_grand_total": "2.50",
+                "new_grand_total": "5.00",
+                "tax_delta": "0.00",
+                "category_placement": {
+                    "category": "PRODUCE",
+                    "insert_y": 661.5,
+                    "line_step": 26,
+                    "shifted_lower_lines_by": 26,
+                    "shifted_line_count": 1,
+                    "shifted_lower_line_shift_min": 26,
+                    "shifted_lower_line_shift_max": 26,
+                    "category_item_count_before": 1,
+                    "nearest_category_item_y": 687.5,
+                    "nearest_lower_line_y": 637.5,
+                    "same_category_section": True,
+                    "selection_reason": (
+                        "observed item from another receipt inserted under "
+                        "the same category on the base receipt"
+                    ),
+                    "base_receipt_has_category": True,
+                    "category_seen_count": 2,
+                    "category_heading_seen_count": 2,
+                    "category_alignment": "same_category_as_base",
+                    "debug_notes": "must not leak into compact API payload",
+                },
+            },
+        },
+    }
+
+    compact = module._compact_report_candidate(candidate)
+
+    assert compact["operation"] == "add_line_item"
+    assert compact["changed_text"] == "BANANAS"
+    assert compact["category_placement"] == {
+        "category": "PRODUCE",
+        "insert_y": 661.5,
+        "line_step": 26,
+        "shifted_lower_lines_by": 26,
+        "shifted_line_count": 1,
+        "shifted_lower_line_shift_min": 26,
+        "shifted_lower_line_shift_max": 26,
+        "category_item_count_before": 1,
+        "nearest_category_item_y": 687.5,
+        "nearest_lower_line_y": 637.5,
+        "same_category_section": True,
+        "selection_reason": (
+            "observed item from another receipt inserted under the same "
+            "category on the base receipt"
+        ),
+        "base_receipt_has_category": True,
+        "category_seen_count": 2,
+        "category_heading_seen_count": 2,
+        "category_alignment": "same_category_as_base",
+    }
+    assert "debug_notes" not in compact["category_placement"]
+
+    candidate["metadata"]["synthesis_accuracy_evidence"]["category_placement"].pop(
+        "selection_reason"
+    )
+    compact_without_reason = module._compact_report_candidate(candidate)
+    assert "selection_reason" not in compact_without_reason["category_placement"]
+
+
 def test_build_local_synthesis_quality_report_requires_base_lineage_coverage():
     module = _load_module()
     artifact = _artifact("Market Mart")
