@@ -13,6 +13,7 @@ A backup of every key written and object created is saved BEFORE mutation so
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timezone
 from typing import List
@@ -148,7 +149,12 @@ def execute_migration(
     if not backup_path:
         raise ValueError("apply=True requires backup_path")
 
-    items = [_remap_item_buckets(dict(it)) for it in plan.dynamo_items]
+    # deep copy: _remap_item_buckets mutates nested {"S": ...} maps, and a
+    # shallow dict(it) would mutate plan.dynamo_items in place (corrupting a
+    # retry with the same plan, since the bucket map is symmetric).
+    items = [
+        _remap_item_buckets(copy.deepcopy(it)) for it in plan.dynamo_items
+    ]
     backup = {
         "dst_table": getattr(dst_dynamo, "table_name", None),
         "created_at": _now_iso(),
@@ -241,4 +247,17 @@ def rollback(backup_path: str, dst_dynamo, s3) -> dict:
             report["s3_deleted"] += 1
         except AWS_ERRORS as exc:
             report["errors"].append(f"s3 {bucket}/{key}: {exc}")
+
+    # The migration may have bumped receipt_count for images that gained
+    # receipts; after deleting those receipts, recompute it so GSI3 reflects
+    # the post-rollback state.
+    image_ids = {
+        k["PK"]["S"].split("#", 1)[1]
+        for k in keys
+        if k.get("PK", {}).get("S", "").startswith("IMAGE#")
+    }
+    if image_ids:
+        recount = reconcile_receipt_counts(dst_dynamo, image_ids)
+        report["receipt_count_fixed"] = recount["fixed"]
+        report["errors"].extend(recount["errors"])
     return report
