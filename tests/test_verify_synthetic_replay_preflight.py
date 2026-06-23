@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 
@@ -2715,6 +2716,99 @@ def test_build_local_pattern_artifacts_from_receipt_json(tmp_path):
     assert bundle["source_receipt_quality"]["merchants"][0]["merchant_name"] == (
         "Market Mart"
     )
+
+
+def test_build_local_pattern_artifacts_restores_lightweight_import_stubs(tmp_path):
+    module = _load_module()
+    receipt_path = tmp_path / "receipts.json"
+    receipt_path.write_text(json.dumps(_receipt_group_payload()), encoding="utf-8")
+    groups = module.load_local_receipt_groups(receipt_files=[str(receipt_path)])
+
+    sentinel = object()
+    tracked_names = [
+        "receipt_agent",
+        "receipt_agent.agents",
+        "receipt_agent.agents.label_evaluator",
+        "receipt_agent.agents.label_evaluator.merchant_synthesis",
+        "receipt_agent.agents.label_evaluator.sprouts_parameterization",
+    ]
+    before = {name: module.sys.modules.get(name, sentinel) for name in tracked_names}
+
+    artifacts = module.build_local_pattern_artifacts_from_receipts(groups)
+
+    assert artifacts[0]["synthetic_receipt_candidates"]
+    for name, previous in before.items():
+        if previous is sentinel:
+            assert name not in module.sys.modules
+        else:
+            assert module.sys.modules.get(name) is previous
+
+
+def test_build_local_pattern_artifacts_uses_sprouts_specific_generators(tmp_path):
+    module = _load_module()
+    receipt_path = tmp_path / "sprouts_receipts.json"
+    receipt_path.write_text(
+        json.dumps(_category_sprouts_group_payload()),
+        encoding="utf-8",
+    )
+    groups = module.load_local_receipt_groups(receipt_files=[str(receipt_path)])
+
+    artifacts = module.build_local_pattern_artifacts_from_receipts(groups)
+
+    candidates = artifacts[0]["synthetic_receipt_candidates"]
+    sources = [candidate["metadata"]["source"] for candidate in candidates]
+    assert "sprouts_parameterized_geometry" in sources
+    assert "sprouts_arithmetic_geometry" in sources
+    assert {
+        "candidate_id",
+        "recipe_id",
+        "merchant_name",
+        "tokens",
+        "bboxes",
+        "ner_tags",
+        "receipt_key",
+        "image_id",
+        "train_only",
+        "metadata",
+    }.issubset(candidates[0])
+
+
+def test_lightweight_candidates_match_pattern_discovery_wrapper_on_supported_python():
+    if sys.version_info >= (3, 14):
+        return
+
+    module = _load_module()
+    from receipt_agent.agents.label_evaluator.pattern_discovery import (
+        generate_synthetic_receipt_candidates,
+    )
+
+    synthesis_functions = module._load_local_synthesis_functions()
+    payloads = [
+        _receipt_group_payload(),
+        _category_sprouts_group_payload(),
+    ]
+    for payload in payloads:
+        group = module._receipt_groups_from_payload(payload, source="test")[0]
+        merchant_name = group["merchant_name"]
+        receipts = group["receipts"]
+        plan = module._default_synthetic_plan(merchant_name, receipts)
+
+        direct = module._generate_local_synthesis_candidates(
+            synthesis_functions,
+            plan,
+            receipts,
+            max_candidates=5,
+        )
+        wrapped = [
+            candidate.to_dict()
+            for candidate in generate_synthetic_receipt_candidates(
+                plan,
+                receipts_data=receipts,
+                max_candidates=5,
+            )
+        ]
+
+        assert direct == wrapped
 
 
 def test_build_artifacts_cli_writes_without_deployment_lookup(

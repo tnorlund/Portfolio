@@ -11,12 +11,14 @@ wait for the Step Function and audit JSON.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import os
 import re
 import sys
 import time
+import types
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "receipt_agent"))
 sys.path.insert(0, str(PROJECT_ROOT / "receipt_layoutlm"))
+
+_MISSING_MODULE = object()
 
 
 SUCCESS_EXECUTION_STATUSES = {"SUCCEEDED"}
@@ -3463,6 +3467,148 @@ def _default_synthetic_plan(
     }
 
 
+def _install_temporary_receipt_agent_stub(
+    saved_modules: dict[str, Any],
+    name: str,
+    *,
+    package_path: Path,
+) -> types.ModuleType:
+    module = types.ModuleType(name)
+    module.__path__ = [str(package_path)]  # type: ignore[attr-defined]
+    saved_modules[name] = sys.modules.get(name, _MISSING_MODULE)
+    sys.modules[name] = module
+    return module
+
+
+def _load_lightweight_label_evaluator_module(
+    module_name: str,
+    *,
+    saved_modules: dict[str, Any],
+):
+    qualified_name = f"receipt_agent.agents.label_evaluator.{module_name}"
+    saved_modules[qualified_name] = sys.modules.get(
+        qualified_name,
+        _MISSING_MODULE,
+    )
+    path = (
+        PROJECT_ROOT
+        / "receipt_agent"
+        / "receipt_agent"
+        / "agents"
+        / "label_evaluator"
+        / f"{module_name}.py"
+    )
+    spec = importlib.util.spec_from_file_location(qualified_name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load local synthesis module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[qualified_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _restore_modules(saved_modules: dict[str, Any]) -> None:
+    # Restore leaf modules before parent package stubs.
+    for name, previous in reversed(saved_modules.items()):
+        if previous is _MISSING_MODULE:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+
+
+def _load_local_synthesis_functions() -> dict[str, Any]:
+    """Load deterministic synthesis modules without importing the full agent."""
+    saved_modules: dict[str, Any] = {}
+    try:
+        receipt_agent = _install_temporary_receipt_agent_stub(
+            saved_modules,
+            "receipt_agent",
+            package_path=PROJECT_ROOT / "receipt_agent" / "receipt_agent",
+        )
+        agents = _install_temporary_receipt_agent_stub(
+            saved_modules,
+            "receipt_agent.agents",
+            package_path=(PROJECT_ROOT / "receipt_agent" / "receipt_agent" / "agents"),
+        )
+        label_evaluator = _install_temporary_receipt_agent_stub(
+            saved_modules,
+            "receipt_agent.agents.label_evaluator",
+            package_path=(
+                PROJECT_ROOT
+                / "receipt_agent"
+                / "receipt_agent"
+                / "agents"
+                / "label_evaluator"
+            ),
+        )
+        receipt_agent.agents = agents
+        agents.label_evaluator = label_evaluator
+
+        merchant = _load_lightweight_label_evaluator_module(
+            "merchant_synthesis",
+            saved_modules=saved_modules,
+        )
+        label_evaluator.merchant_synthesis = merchant
+        sprouts = _load_lightweight_label_evaluator_module(
+            "sprouts_parameterization",
+            saved_modules=saved_modules,
+        )
+        label_evaluator.sprouts_parameterization = sprouts
+
+        return {
+            "build_merchant_synthesis_profile": (
+                merchant.build_merchant_synthesis_profile
+            ),
+            "generate_merchant_synthesis_candidates": (
+                merchant.generate_merchant_synthesis_candidates
+            ),
+            "generate_arithmetic_sprouts_candidates": (
+                sprouts.generate_arithmetic_sprouts_candidates
+            ),
+            "generate_parameterized_sprouts_candidates": (
+                sprouts.generate_parameterized_sprouts_candidates
+            ),
+            "is_sprouts_merchant": sprouts.is_sprouts_merchant,
+        }
+    finally:
+        _restore_modules(saved_modules)
+
+
+def _generate_local_synthesis_candidates(
+    synthesis_functions: dict[str, Any],
+    plan: dict[str, Any],
+    receipts: list[dict[str, Any]],
+    *,
+    max_candidates: int,
+) -> list[dict[str, Any]]:
+    merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
+    if synthesis_functions["is_sprouts_merchant"](merchant_name):
+        candidate_limit = min(max_candidates, 5)
+        rows = synthesis_functions["generate_parameterized_sprouts_candidates"](
+            plan,
+            receipts,
+            max_candidates=min(candidate_limit, 3),
+        )
+        remaining = candidate_limit - len(rows)
+        if remaining > 0:
+            rows.extend(
+                synthesis_functions["generate_arithmetic_sprouts_candidates"](
+                    receipts,
+                    max_candidates=min(remaining, 2),
+                )
+            )
+        return [dict(row) for row in rows[:candidate_limit]]
+
+    return [
+        dict(row)
+        for row in synthesis_functions["generate_merchant_synthesis_candidates"](
+            plan,
+            receipts,
+            max_candidates=max_candidates,
+        )
+    ]
+
+
 def _normalize_bbox(value: Any) -> list[int] | None:
     if isinstance(value, list) and len(value) == 4:
         coords = [_safe_float(coord) for coord in value]
@@ -4264,12 +4410,7 @@ def build_local_pattern_artifacts_from_receipts(
     max_candidates: int = 5,
 ) -> list[dict[str, Any]]:
     """Build pattern-artifact JSON from local receipt structures without LLM."""
-    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
-        build_merchant_synthesis_profile,
-    )
-    from receipt_agent.agents.label_evaluator.pattern_discovery import (
-        generate_synthetic_receipt_candidates,
-    )
+    synthesis_functions = _load_local_synthesis_functions()
 
     artifacts: list[dict[str, Any]] = []
     for group in receipt_groups:
@@ -4277,15 +4418,16 @@ def build_local_pattern_artifacts_from_receipts(
         receipts = [row for row in group.get("receipts") or [] if isinstance(row, dict)]
         source_receipt_quality = _source_receipt_quality(merchant_name, receipts)
         plan = _default_synthetic_plan(merchant_name, receipts)
-        profile = build_merchant_synthesis_profile(merchant_name, receipts)
-        candidates = [
-            candidate.to_dict()
-            for candidate in generate_synthetic_receipt_candidates(
-                plan,
-                receipts_data=receipts,
-                max_candidates=max_candidates,
-            )
-        ]
+        profile = synthesis_functions["build_merchant_synthesis_profile"](
+            merchant_name,
+            receipts,
+        )
+        candidates = _generate_local_synthesis_candidates(
+            synthesis_functions,
+            plan,
+            receipts,
+            max_candidates=max_candidates,
+        )
         artifacts.append(
             {
                 "schema_version": "offline-pattern-artifact-v1",
