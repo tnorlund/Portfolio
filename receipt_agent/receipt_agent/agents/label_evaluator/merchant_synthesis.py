@@ -782,6 +782,150 @@ def _row_group_height(
     return max(fallback, (max(bottoms) - min(tops)) + 8)
 
 
+def _estimate_row_slope(line: dict[str, Any]) -> float:
+    """Slope (dy/dx) of a row's word centroids — the receipt's local tilt from
+    being photographed at an angle. Used to re-apply the same tilt to an
+    inserted row so it visually matches its neighbors."""
+    boxes = [
+        word.get("bbox")
+        for word in line.get("words") or []
+        if word.get("bbox")
+    ]
+    if len(boxes) < 2:
+        return 0.0
+    xs = [_cx(box) for box in boxes]
+    ys = [_cy(box) for box in boxes]
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    denom = sum((x - mean_x) ** 2 for x in xs)
+    if denom == 0:
+        return 0.0
+    slope = sum(
+        (xs[i] - mean_x) * (ys[i] - mean_y) for i in range(len(xs))
+    ) / denom
+    # Real receipt tilt is gentle; bound it so the re-applied skew stays small.
+    return max(-0.05, min(0.05, slope))
+
+
+def _apply_row_slope(
+    lines: list[dict[str, Any]], slope: float, *, ref_x: float
+) -> None:
+    """Tilt each word's box by ``slope`` about ``ref_x`` (re-apply receipt skew)."""
+    if not slope:
+        return
+    for line in lines:
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            if not box:
+                continue
+            dy = int(round(slope * (_cx(box) - ref_x)))
+            box[1] += dy
+            box[3] += dy
+
+
+def _anchor_band_top(
+    band_lines: list[dict[str, Any]], *, target_top: float
+) -> None:
+    """Translate a band so its HIGHEST point (after any tilt) sits at
+    ``target_top`` — keeping every tilted word below the boundary row above."""
+    tops = [
+        word["bbox"][3]
+        for line in band_lines
+        for word in line.get("words") or []
+        if word.get("bbox")
+    ]
+    if not tops:
+        return
+    dy = int(round(target_top - max(tops)))
+    if not dy:
+        return
+    for line in band_lines:
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            if box:
+                box[1] = max(0, box[1] + dy)
+                box[3] = max(0, box[3] + dy)
+
+
+def _reflow_insert_lines(
+    receipt: dict[str, Any],
+    *,
+    after_index: int,
+    band_lines: list[dict[str, Any]],
+    reserve: int,
+) -> dict[str, int]:
+    """Splice ``band_lines`` into the row sequence after ``after_index`` and push
+    every LOWER row down by ``reserve``.
+
+    The shift is by ROW INDEX, not a y threshold: every word of a lower row
+    moves together as a rigid block, so a slanted row can never be half-shifted
+    and clipped by the inserted band. The new band drops into the reserved gap.
+    """
+    lines = receipt.setdefault("lines", [])
+    after_index = max(-1, min(after_index, len(lines) - 1))
+    shifted = 0
+    for line in lines[after_index + 1 :]:
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            if box:
+                box[1] = max(0, box[1] - reserve)
+                box[3] = max(0, box[3] - reserve)
+        if isinstance(line.get("y"), (int, float)):
+            line["y"] = max(0.0, line["y"] - reserve / 1000)
+        shifted += 1
+    lines[after_index + 1 : after_index + 1] = band_lines
+    _refresh_words(receipt)
+    return {
+        "line_count": shifted,
+        "median_shift": reserve,
+        "min_shift": reserve,
+        "max_shift": reserve,
+    }
+
+
+def _reflow_remove_lines(
+    receipt: dict[str, Any],
+    *,
+    band_indices: list[int],
+    line_step: int,
+) -> dict[str, int]:
+    """Delete the rows at ``band_indices`` and pull every LOWER row up by the
+    removed band's height (by INDEX), closing the gap with no orphans."""
+    lines = receipt.setdefault("lines", [])
+    band = sorted(i for i in set(band_indices) if 0 <= i < len(lines))
+    if not band:
+        return {"line_count": 0, "median_shift": 0, "min_shift": 0, "max_shift": 0}
+    tops: list[int] = []
+    bottoms: list[int] = []
+    for index in band:
+        for word in lines[index].get("words") or []:
+            box = word.get("bbox")
+            if box:
+                tops.append(box[3])
+                bottoms.append(box[1])
+    height = (max(tops) - min(bottoms)) if tops else line_step
+    reserve = max(line_step, height + 8)
+    lo, hi = band[0], band[-1]
+    shifted = 0
+    for line in lines[hi + 1 :]:
+        for word in line.get("words") or []:
+            box = word.get("bbox")
+            if box:
+                box[1] = min(1000, box[1] + reserve)
+                box[3] = min(1000, box[3] + reserve)
+        if isinstance(line.get("y"), (int, float)):
+            line["y"] = min(1.0, line["y"] + reserve / 1000)
+        shifted += 1
+    del lines[lo : hi + 1]
+    _refresh_words(receipt)
+    return {
+        "line_count": shifted,
+        "median_shift": reserve,
+        "min_shift": reserve,
+        "max_shift": reserve,
+    }
+
+
 def _build_add_item_candidate_from_plan(
     merchant_name: str,
     profile: dict[str, Any],
@@ -803,32 +947,56 @@ def _build_add_item_candidate_from_plan(
     line_step = _line_step(analysis.line_items)
     insertion_context = _category_insertion_context(analysis, entry.category, y_center)
 
-    # Prefer cloning the grounded real row verbatim (full merchant row grammar:
-    # product code, tax flag, exact price token) over rebuilding a lossy
-    # name+price approximation.
+    # Row-order reflow (no free-floating placement): insert the new band right
+    # AFTER the lowest item of the target category in the row sequence, push the
+    # lower rows down by INDEX, and re-apply the boundary row's tilt so the
+    # inserted row stacks cleanly and matches the receipt's skew.
+    gap = max(6, line_step // 3)
+    category_items = [
+        item for item in analysis.line_items if item.category == entry.category
+    ]
+    boundary_item = min(
+        category_items or analysis.line_items,
+        key=lambda item: item.band_bottom_y or item.center_y,
+    )
+    after_index = max(
+        boundary_item.band_line_indices or boundary_item.line_indices
+    )
+    boundary_line = receipt.get("lines", [])[after_index]
+    boundary_bottom = boundary_item.band_bottom_y or boundary_item.center_y
+    slope = _estimate_row_slope(boundary_line)
+    ref_x = (
+        statistics.mean(
+            _cx(word["bbox"])
+            for word in boundary_line.get("words", [])
+            if word.get("bbox")
+        )
+        if boundary_line.get("words")
+        else 500.0
+    )
+    band_top_anchor = max(12.0, boundary_bottom - gap + 12)
+
     captured = _select_source_row(entry, exclude_key=base_key)
     if captured:
         delta_amount = _parse_money(captured.get("amount")) or entry.amount
-        group_lines = _clone_row_group_lines(captured, y_center=y_center)
-        shift_summary = _shift_lines_below_for_insert(
-            receipt,
-            inserted_center_y=y_center,
-            delta=_row_group_height(group_lines, fallback=line_step),
-        )
-        for cloned_line in group_lines:
-            _insert_line_sorted(receipt, cloned_line)
+        band_lines = _clone_row_group_lines(captured, y_center=band_top_anchor)
         row_cloned = True
     else:
         delta_amount = entry.amount
-        shift_summary = _shift_lines_below_for_insert(
-            receipt,
-            inserted_center_y=y_center,
-            delta=line_step,
-        )
-        _insert_line_sorted(
-            receipt, _build_line_item_line(receipt, entry, y_center=y_center)
-        )
+        band_lines = [
+            _build_line_item_line(receipt, entry, y_center=band_top_anchor)
+        ]
         row_cloned = False
+    _apply_row_slope(band_lines, slope, ref_x=ref_x)
+    # Re-anchor AFTER tilting so the band's highest tilted word still sits a gap
+    # below the boundary row — the tilt can never push a word up into it.
+    _anchor_band_top(band_lines, target_top=boundary_bottom - gap)
+    shift_summary = _reflow_insert_lines(
+        receipt,
+        after_index=after_index,
+        band_lines=band_lines,
+        reserve=_row_group_height(band_lines, fallback=line_step) + gap,
+    )
 
     new_total = _money(old_total + delta_amount)
     arithmetic = _apply_non_taxable_delta(
@@ -996,14 +1164,13 @@ def _build_remove_item_candidate_from_plan(
 
     removed_center = removed.center_y
     line_step = _line_step(refreshed.line_items)
-    # Delete the item's FULL band (every line it occupies — code, name, flag,
-    # quantity, price), so a removal never strands a satellite of the item.
-    band = removed.band_line_indices or sorted(removed.line_indices)
-    for line_index in sorted(set(band), reverse=True):
-        if 0 <= line_index < len(receipt.get("lines", [])):
-            del receipt["lines"][line_index]
-    shift_summary = _shift_lines_below(receipt, removed_center, line_step)
-    _refresh_words(receipt)
+    # Row-order reflow: delete the item's FULL band by INDEX and pull every lower
+    # row up to close the gap — no orphaned satellites, no displaced neighbors.
+    shift_summary = _reflow_remove_lines(
+        receipt,
+        band_indices=removed.band_line_indices or sorted(removed.line_indices),
+        line_step=line_step,
+    )
     arithmetic = _apply_non_taxable_delta(
         receipt,
         refreshed,
