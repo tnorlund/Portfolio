@@ -1967,7 +1967,13 @@ def _layout_integrity_score_from_counts(
     overlap_budget = max(2, round(word_count * 0.03))
     excess_overlaps = max(0, overlap_count - overlap_budget)
     score = max(0.0, 1.0 - min(excess_overlaps, 5) * 0.20)
-    inversion_budget = max(2, round(line_count * 0.15))
+    # Tolerate a few rotation inversions, but never more than half the adjacent
+    # line pairs — otherwise a short receipt in fully reversed reading order
+    # (a 3-line receipt has 2 inversions) would slip under the flat minimum.
+    inversion_budget = min(
+        max(2, round(line_count * 0.15)),
+        max(0, (line_count - 1) // 2),
+    )
     disordered = (
         line_inversion_count > inversion_budget
         if line_inversion_count
@@ -2387,7 +2393,13 @@ def _segment_item_bands(
             for word in line.get("words", [])
             for label in (word.get("labels") or [])
         }
-        return bool(labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"})
+        # Summary / adjustment lines never belong to an item's band, so they are
+        # never swept into a removal. DISCOUNT and COUPON are money-only lines
+        # that a bare-price heuristic would otherwise misread as item satellites.
+        return bool(
+            labels
+            & {"SUBTOTAL", "TAX", "GRAND_TOTAL", "DISCOUNT", "COUPON"}
+        )
 
     attribution: dict[int, MerchantLineItem] = dict(owner)
     for index in range(count):
@@ -3779,37 +3791,24 @@ def _line_is_taxable(*lines: dict[str, Any]) -> bool:
     )
 
 
-def _is_item_satellite_line(line: dict[str, Any]) -> bool:
-    """True for a line that is a fragment of an item's row group — a lone tax
-    flag, a bare price, or a quantity multiplier ("6 @ $1.39 ea") — with no
-    product name, category heading, or summary label. Used to sweep the orphan
-    rows a removal would otherwise strand."""
-    words = line.get("words") or []
-    if not words:
-        return True
-    labels = {label for word in words for label in (word.get("labels") or [])}
-    if labels & {
-        "PRODUCT_NAME",
-        "SUBTOTAL",
-        "GRAND_TOTAL",
-        "TAX",
-        "MERCHANT_NAME",
-    }:
-        return False
-    if _line_category_heading(line):
-        return False
-    texts = [str(word.get("text") or "").strip() for word in words]
-    joined = " ".join(texts)
-    if re.search(r"\d+\s*@\s*\$?\d", joined):  # quantity multiplier
-        return True
-    if len(texts) == 1 and re.fullmatch(r"<?[A-Za-z]{1,3}>?", texts[0]):
-        return True  # lone tax flag (NF / T / F / E / <A>)
-    if texts and all(_parse_money(text) is not None for text in texts):
-        return True  # bare price(s), no other content
-    return False
-
-
-_ITEM_COUNT_KEYWORDS = ("sold", "number", "count", "qty", "q ty", "purchased")
+# Phrases that denote an item-COUNT summary, matched against the line text with
+# underscores normalized to spaces ("ITEMS_SOLD" -> "items sold"). Phrase-based
+# (not a bare "number"/"count" keyword) so an item/transaction IDENTIFIER line
+# such as "ITEM NUMBER 12345" is NOT mistaken for a counter and rewritten.
+_ITEM_COUNT_PHRASES = (
+    "items sold",
+    "item sold",
+    "number of items",
+    "number of item",
+    "total items",
+    "total item",
+    "item count",
+    "count of items",
+    "items purchased",
+    "no. of items",
+    "# of items",
+    "qty sold",
+)
 
 
 def _reconcile_item_count(
@@ -3818,9 +3817,10 @@ def _reconcile_item_count(
     """Adjust an item-count summary field ("ITEMS SOLD 4") by ``delta_count``.
 
     The arithmetic gate reconciles currency totals only, leaving item counters
-    stale after an add/remove. Match a line that names items in a count context
-    and bump its integer (on the same line, or the immediately following line if
-    the label and number are split). Returns the number of fields updated.
+    stale after an add/remove. Match a line whose text denotes an item COUNT
+    (not an item/transaction number) and bump its integer (on the same line, or
+    the immediately following line if the label and number are split). Returns
+    the number of fields updated.
     """
     if not delta_count:
         return 0
@@ -3829,10 +3829,8 @@ def _reconcile_item_count(
     for index, line in enumerate(lines):
         words = line.get("words") or []
         joined = " ".join(str(word.get("text") or "") for word in words)
-        low = joined.lower()
-        if "item" not in low:
-            continue
-        if not any(keyword in low for keyword in _ITEM_COUNT_KEYWORDS):
+        low = joined.lower().replace("_", " ")
+        if not any(phrase in low for phrase in _ITEM_COUNT_PHRASES):
             continue
         target_words = list(words)
         if not any(

@@ -3952,13 +3952,15 @@ def _payload_words_for_receipt(
     # that describe the SAME words in DIFFERENT coordinate frames (whole image
     # vs the receipt crop). Unioning them double-counts every word and collides
     # boxes from incompatible frames, producing hundreds of spurious overlaps
-    # that destroy the layout-integrity geometry. Use the receipt-level rows
-    # when present; fall back to image-level ``words`` only for exports that
-    # lack a receipt-level set.
-    rows = payload.get("receipt_words")
-    if not isinstance(rows, list) or not rows:
-        rows = payload.get("words")
-    if isinstance(rows, list):
+    # that destroy the layout-integrity geometry. Try the receipt-level rows
+    # first; fall back to image-level ``words`` PER RECEIPT — so a receipt that
+    # has no receipt-level rows (even when other receipts in the export do) still
+    # gets its image-level words instead of being dropped.
+    for source_key in ("receipt_words", "words"):
+        rows = payload.get(source_key)
+        if not isinstance(rows, list):
+            continue
+        candidate: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             if not isinstance(row, dict) or not row.get("text"):
                 continue
@@ -3979,7 +3981,10 @@ def _payload_words_for_receipt(
                 if label not in labels:
                     labels.append(label)
             word["labels"] = labels
-            words_by_line.setdefault(_record_line_id(row), []).append(word)
+            candidate.setdefault(_record_line_id(row), []).append(word)
+        if candidate:
+            words_by_line = candidate
+            break
     for words in words_by_line.values():
         words.sort(key=lambda word: _safe_int(word.get("word_id")) or 0)
     return words_by_line
@@ -4080,10 +4085,13 @@ def _attach_payload_lines(
             label_lookup=label_lookup,
         )
         image_id, receipt_id = _receipt_identity(receipt)
-        if not str(next_receipt.get("merchant_name") or "").strip():
-            canonical = canonical_merchant.get((image_id, receipt_id))
-            if canonical:
-                next_receipt["merchant_name"] = canonical
+        # The canonical Google Places name is the authoritative grouping key, so
+        # it OVERRIDES any pre-existing (often noisy, header-derived) per-receipt
+        # merchant_name; otherwise receipts sharing the same place can still be
+        # split across merchants by their differing header text.
+        canonical = canonical_merchant.get((image_id, receipt_id))
+        if canonical:
+            next_receipt["merchant_name"] = canonical
         matching_lines = [
             line
             for line in payload_lines
