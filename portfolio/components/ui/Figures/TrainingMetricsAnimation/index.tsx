@@ -653,6 +653,7 @@ const SYNTHETIC_REJECTION_REASON_LABELS: Record<string, string> = {
   merchant_synthesis_not_ready: "merchant not ready",
   merchant_synthetic_cap: "merchant cap",
   missing_arithmetic_reconciliation: "missing arithmetic",
+  missing_base_receipt_lineage: "missing base receipt",
   missing_metadata: "missing metadata",
   missing_structure_similarity: "missing similarity",
   replace_field_format_mismatch: "format mismatch",

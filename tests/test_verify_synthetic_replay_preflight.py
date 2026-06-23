@@ -103,6 +103,7 @@ def _artifact(
                     "ner_tags": ["B-PRODUCT_NAME", "B-LINE_TOTAL"],
                     "metadata": {
                         "operation": "add_line_item",
+                        "base_receipt_key": "base#00001",
                         "added_item": {
                             "category": "PRODUCE",
                             "seen_in_other_receipt": True,
@@ -145,6 +146,7 @@ def _artifact(
                     "ner_tags": ["O", "O"],
                     "metadata": {
                         "operation": "hard_negative",
+                        "base_receipt_key": "base#00001",
                         "error_kind": "false_positive",
                         "actual_label": "O",
                         "predicted_label": "LINE_TOTAL",
@@ -1291,12 +1293,13 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     ]
     expected_source_lineage = {
         "schema_version": "synthetic-candidate-lineage-v1",
+        "base_receipt_key": "base#00001",
         "source_receipt_key_count": 2,
         "source_receipt_keys": ["base#00001", "source#00001"],
         "product_source_receipt_keys": ["source#00001"],
         "category_source_receipt_keys": ["base#00001", "source#00001"],
         "evidence_flags": {
-            "has_base_receipt": False,
+            "has_base_receipt": True,
             "has_cross_receipt_item": True,
             "has_category_evidence": True,
             "has_nearest_real_structure": False,
@@ -1312,7 +1315,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "candidate_count": 2,
         "observed_candidate_count": 2,
         "expected_candidate_count": 2,
-        "with_base_receipt_count": 0,
+        "with_base_receipt_count": 2,
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
@@ -1369,6 +1372,21 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "accuracy_checks": [],
         "merchant_name": "Market Mart",
         "image_id": "synthetic-Market Mart-hard-negative",
+        "source_lineage": {
+            "schema_version": "synthetic-candidate-lineage-v1",
+            "base_receipt_key": "base#00001",
+            "source_receipt_key_count": 1,
+            "source_receipt_keys": ["base#00001"],
+            "evidence_flags": {
+                "has_base_receipt": True,
+                "has_cross_receipt_item": False,
+                "has_category_evidence": False,
+                "has_nearest_real_structure": False,
+                "has_layout_integrity": False,
+                "has_arithmetic_reconciliation": False,
+                "has_selection_evidence": False,
+            },
+        },
         "selection_reason": ("declared_candidate_quality_ranked_after_layoutlm_gates"),
         "candidate_quality": expected_hard_negative_candidate_quality,
     }
@@ -1428,6 +1446,52 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     assert coverage["operations"]["add_line_item"]["candidate_count"] == 1
     assert coverage["operations"]["remove_line_item"]["ready_merchant_count"] == 0
     assert coverage["operations"]["replace_field"]["ready_merchant_count"] == 0
+
+
+def test_generated_local_bundle_preserves_base_lineage_for_layoutlm_loader(tmp_path):
+    module = _load_module()
+    from receipt_layoutlm.data_loader import (
+        _load_synthetic_training_examples_with_summary,
+    )
+
+    artifacts = module.build_local_pattern_artifacts_from_receipts(
+        [_receipt_group_payload()],
+        max_candidates=6,
+    )
+    assert all(
+        str(candidate["metadata"].get("base_receipt_key") or "").strip()
+        for candidate in artifacts[0]["synthetic_receipt_candidates"]
+    )
+
+    bundle = module.build_local_synthetic_training_bundle(
+        artifacts,
+        min_ready_share=0.0,
+        min_avg_readiness_score=0.0,
+        min_grounded_candidate_share=0.0,
+        max_per_merchant=6,
+        max_per_merchant_operation=1,
+    )
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    persisted = json.loads(bundle_path.read_text(encoding="utf-8"))
+    accepted_rows = persisted["synthetic_training_examples"]
+    assert [row["metadata"]["operation"] for row in accepted_rows] == [
+        "add_line_item",
+        "hard_negative",
+    ]
+    # Candidate metadata is the local training provenance consumed by the
+    # loader; report summaries can redact source-lineage keys separately.
+    assert all(
+        str(row["metadata"].get("base_receipt_key") or "").strip()
+        for row in accepted_rows
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(bundle_path))
+
+    assert loaded.candidates_seen == len(accepted_rows)
+    assert loaded.candidates_accepted == len(accepted_rows)
+    assert loaded.rejection_reasons == {}
 
 
 def test_build_local_synthetic_training_bundle_enforces_contract_before_writing():
@@ -1792,12 +1856,13 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
     assert accepted_examples[0]["selection_evidence"] == expected_selection_evidence
     expected_source_lineage = {
         "schema_version": "synthetic-candidate-lineage-v1",
+        "base_receipt_key": "base#00001",
         "source_receipt_key_count": 2,
         "source_receipt_keys": ["base#00001", "source#00001"],
         "product_source_receipt_keys": ["source#00001"],
         "category_source_receipt_keys": ["base#00001", "source#00001"],
         "evidence_flags": {
-            "has_base_receipt": False,
+            "has_base_receipt": True,
             "has_cross_receipt_item": True,
             "has_category_evidence": True,
             "has_nearest_real_structure": False,
@@ -1813,7 +1878,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "candidate_count": 2,
         "observed_candidate_count": 2,
         "expected_candidate_count": 2,
-        "with_base_receipt_count": 0,
+        "with_base_receipt_count": 2,
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
@@ -3424,7 +3489,7 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
             "candidate_count": 2,
             "observed_candidate_count": 2,
             "expected_candidate_count": 2,
-            "with_base_receipt_count": 0,
+            "with_base_receipt_count": 2,
             "with_cross_receipt_item_count": 1,
             "with_category_evidence_count": 1,
             "with_nearest_real_structure_count": 0,

@@ -383,6 +383,7 @@ def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
                 "metadata": {
                     "source": "sprouts_arithmetic_geometry",
                     "operation": "add_line_item",
+                    "base_receipt_key": "base#00001",
                     "added_item": {
                         "product_text": "YELLOW BANANAS",
                         "category": "PRODUCE",
@@ -434,6 +435,7 @@ def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
                 "metadata": {
                     "source": "sprouts_parameterized_geometry",
                     "operation": "hard_negative",
+                    "base_receipt_key": "base#00001",
                     "actual_label": "O",
                     "predicted_label": "ADDRESS_LINE",
                 },
@@ -552,7 +554,7 @@ def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
             "category_source_receipt_key_count": 2,
             "source_receipt_keys_redacted": True,
             "evidence_flags": {
-                "has_base_receipt": False,
+                "has_base_receipt": True,
                 "has_cross_receipt_item": True,
                 "has_category_evidence": True,
                 "has_nearest_real_structure": True,
@@ -576,6 +578,7 @@ def test_summarize_synthesis_artifacts_exposes_field_replacement_evidence(
         "metadata": {
             "source": "merchant_mutable_field_geometry",
             "operation": "replace_field",
+            "base_receipt_key": "base#00001",
             "field_replacement": {
                 "label": "DATE",
                 "old_text": "05/13/2026",
@@ -632,12 +635,12 @@ def test_summarize_synthesis_artifacts_exposes_field_replacement_evidence(
         "nearest_real_receipt_key_redacted": True,
         "source_lineage": {
             "schema_version": "synthetic-candidate-lineage-v1",
-            "source_receipt_key_count": 1,
+            "source_receipt_key_count": 2,
             "product_source_receipt_key_count": 0,
             "category_source_receipt_key_count": 0,
             "source_receipt_keys_redacted": True,
             "evidence_flags": {
-                "has_base_receipt": False,
+                "has_base_receipt": True,
                 "has_cross_receipt_item": False,
                 "has_category_evidence": False,
                 "has_nearest_real_structure": True,
@@ -1257,6 +1260,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
                 "metadata": {
                     "source": "sprouts_arithmetic_geometry",
                     "operation": "add_line_item",
+                    "base_receipt_key": "base#00001",
                     "added_item": {
                         "product_text": "YELLOW BANANAS",
                         "category": "PRODUCE",
@@ -1776,7 +1780,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "category_source_receipt_key_count": 4,
         "source_receipt_keys_redacted": True,
         "evidence_flags": {
-            "has_base_receipt": False,
+            "has_base_receipt": True,
             "has_cross_receipt_item": True,
             "has_category_evidence": True,
             "has_nearest_real_structure": True,
@@ -1796,7 +1800,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "candidate_count": 1,
         "observed_candidate_count": 1,
         "expected_candidate_count": 3,
-        "with_base_receipt_count": 0,
+        "with_base_receipt_count": 1,
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 1,
@@ -2380,6 +2384,7 @@ def test_summarize_synthesis_bundle_counts_accepted_field_replacements(
                 "metadata": {
                     "source": "merchant_mutable_field_geometry",
                     "operation": "replace_field",
+                    "base_receipt_key": "base#00001",
                     "field_replacement": {
                         "label": "DATE",
                         "old_text": "05/13/2026",

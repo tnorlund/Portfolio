@@ -478,6 +478,10 @@ def test_generate_merchant_synthesis_candidates_replaces_stable_datetime_fields(
         "DATE",
         "TIME",
     ]
+    assert all(
+        row["metadata"]["base_receipt_key"].endswith("#00001")
+        for row in replacements
+    )
     date_replacement = replacements[0]["metadata"]["field_replacement"]
     assert date_replacement == {
         "label": "DATE",
@@ -747,9 +751,14 @@ def test_select_high_fidelity_candidate_prefers_real_baseline_fit():
 
 
 def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
+    receipts = _merchant_receipts()
+    receipt_keys = {
+        f"{receipt['image_id']}#{receipt['receipt_num']:05d}"
+        for receipt in receipts
+    }
     candidates = generate_merchant_synthesis_candidates(
         _plan(),
-        _merchant_receipts(),
+        receipts,
     )
 
     assert [candidate["metadata"]["source"] for candidate in candidates] == [
@@ -758,6 +767,7 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
     ]
 
     hard_negative = candidates[0]
+    assert hard_negative["metadata"]["base_receipt_key"] in receipt_keys
     assert "REWARDS" in hard_negative["tokens"]
     rewards_index = hard_negative["tokens"].index("REWARDS")
     assert hard_negative["ner_tags"][rewards_index] == "O"
@@ -790,6 +800,10 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
     arithmetic = candidates[1]
     metadata = arithmetic["metadata"]
     assert metadata["operation"] == "add_line_item"
+    assert (
+        metadata["base_receipt_key"]
+        == "30000000-0000-0000-0000-000000000002#00001"
+    )
     assert metadata["old_grand_total"] == "2.50"
     assert metadata["new_grand_total"] == "5.50"
     assert metadata["old_subtotal"] is None
@@ -996,6 +1010,10 @@ def test_generate_merchant_synthesis_candidates_can_remove_supported_item():
         if candidate["metadata"]["operation"] == "remove_line_item"
     ][0]
     metadata = removed["metadata"]
+    assert (
+        metadata["base_receipt_key"]
+        == "30000000-0000-0000-0000-000000000001#00001"
+    )
     assert metadata["removed_item"]["product_text"] == "PEARS"
     assert metadata["removed_item"]["category"] == "PRODUCE"
     assert metadata["old_grand_total"] == "10.00"

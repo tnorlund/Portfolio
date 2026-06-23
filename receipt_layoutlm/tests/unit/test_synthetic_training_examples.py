@@ -38,6 +38,7 @@ def _candidate(
         "metadata": {
             "source": "sprouts_parameterized_geometry",
             "operation": "hard_negative",
+            "base_receipt_key": "base#00001",
             "actual_label": "O",
             "predicted_label": "LINE_TOTAL",
             "error_kind": "false_positive",
@@ -72,6 +73,7 @@ def _grounded_add_item_metadata():
     return {
         "source": "sprouts_arithmetic_geometry",
         "operation": "add_line_item",
+        "base_receipt_key": "base#00001",
         "added_item": {
             "product_text": "YELLOW BANANAS",
             "category": "PRODUCE",
@@ -156,6 +158,7 @@ def _replace_field_candidate():
     candidate["metadata"] = {
         "source": "merchant_mutable_field_geometry",
         "operation": "replace_field",
+        "base_receipt_key": "base#00001",
         "field_replacement": {
             "label": "DATE",
             "old_text": "05/13/2026",
@@ -444,6 +447,36 @@ def test_load_synthetic_training_examples_rejects_low_structure_similarity(
     )
 
     assert _load_synthetic_training_examples(str(path)) == []
+
+
+def test_load_synthetic_training_examples_rejects_missing_base_lineage(
+    tmp_path,
+):
+    path = tmp_path / "patterns.json"
+    missing_lineage = _candidate()
+    del missing_lineage["metadata"]["base_receipt_key"]
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [missing_lineage]}),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"missing_base_receipt_lineage": 1}
+    assert loaded.rejected_rows == [
+        {
+            "candidate_id": "candidate-1",
+            "receipt_key": "synthetic-candidate-1#00001",
+            "image_id": "synthetic-candidate-1",
+            "merchant_name": "Sprouts Farmers Market",
+            "operation": "hard_negative",
+            "reason": "missing_base_receipt_lineage",
+            "idx": 0,
+            "structure_similarity": 0.93,
+        }
+    ]
 
 
 def test_load_synthetic_training_examples_rejects_low_declared_candidate_quality(
@@ -830,6 +863,7 @@ def test_load_synthetic_training_examples_rejects_ungrounded_add_item(
     ungrounded["metadata"] = {
         "source": "sprouts_arithmetic_geometry",
         "operation": "add_line_item",
+        "base_receipt_key": "base#00001",
         "added_item": {
             "product_text": "YELLOW BANANAS",
             "category": "PRODUCE",
@@ -934,6 +968,7 @@ def test_load_synthetic_training_examples_reports_rejection_reasons(tmp_path):
     ungrounded["metadata"] = {
         "source": "sprouts_arithmetic_geometry",
         "operation": "add_line_item",
+        "base_receipt_key": "base#00001",
         "added_item": {
             "product_text": "YELLOW BANANAS",
             "category": "PRODUCE",
@@ -1369,6 +1404,7 @@ def test_load_synthetic_training_examples_accepts_grounded_remove_item(
     grounded["metadata"] = {
         "source": "merchant_arithmetic_geometry",
         "operation": "remove_line_item",
+        "base_receipt_key": "base#00001",
         "removed_item": {
             "product_text": "PEARS",
             "category": "PRODUCE",

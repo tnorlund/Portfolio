@@ -1572,6 +1572,9 @@ def _synthetic_candidate_quality_failure(
         if status and status not in {"ready", "partial"}:
             return "merchant_synthesis_not_ready"
 
+    if not str(metadata.get("base_receipt_key") or "").strip():
+        return "missing_base_receipt_lineage"
+
     structure = metadata.get("structure_similarity")
     if not isinstance(structure, dict):
         return "missing_structure_similarity"
