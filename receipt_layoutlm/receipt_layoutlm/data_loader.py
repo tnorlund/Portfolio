@@ -1493,6 +1493,22 @@ def _synthetic_candidate_quality_passes(row: dict[str, Any]) -> bool:
     return _synthetic_candidate_quality_failure(row) is None
 
 
+def _synthetic_contract_ready_operation(
+    row: dict[str, Any],
+    merchant_contracts: Optional[dict[str, dict[str, Any]]],
+) -> Optional[str]:
+    """Return the candidate operation when its merchant contract marks it ready."""
+    if not merchant_contracts:
+        return None
+    contract = merchant_contracts.get(_synthetic_merchant_key(row))
+    if not contract:
+        return None
+    if str(contract.get("status") or "").strip().lower() != "ready":
+        return None
+    operation = _synthetic_operation(row).strip()
+    return operation if _contract_operation_ready(contract, operation) else None
+
+
 def _select_synthetic_training_examples(
     rows: List[dict[str, Any]],
     *,
@@ -1594,7 +1610,52 @@ def _select_synthetic_training_examples(
             item["idx"],
         )
     )
+    selected_indices: set[int] = set()
+
+    def can_accept(item: dict[str, Any]) -> bool:
+        row = item["row"]
+        merchant = _synthetic_merchant_key(row)
+        operation = _synthetic_operation(row)
+        operation_key = (merchant, operation)
+        return (
+            merchant_counts.get(merchant, 0) < merchant_cap
+            and operation_counts.get(operation_key, 0) < operation_cap
+        )
+
+    def accept_item(item: dict[str, Any]) -> None:
+        row = item["row"]
+        merchant = _synthetic_merchant_key(row)
+        operation = _synthetic_operation(row)
+        operation_key = (merchant, operation)
+        accepted_rows.append(row)
+        examples.append(item["example"])
+        merchant_counts[merchant] = merchant_counts.get(merchant, 0) + 1
+        operation_counts[operation_key] = operation_counts.get(operation_key, 0) + 1
+        selected_indices.add(item["idx"])
+
+    if merchant_contracts:
+        best_ready_operation_items: Dict[tuple[str, str], dict[str, Any]] = {}
+        for item in accepted:
+            row = item["row"]
+            operation = _synthetic_contract_ready_operation(row, merchant_contracts)
+            if operation:
+                best_ready_operation_items.setdefault(
+                    (_synthetic_merchant_key(row), operation),
+                    item,
+                )
+        for item in sorted(
+            best_ready_operation_items.values(),
+            key=lambda value: (
+                -_synthetic_fidelity_score(value["row"]),
+                value["idx"],
+            ),
+        ):
+            if can_accept(item):
+                accept_item(item)
+
     for item in accepted:
+        if item["idx"] in selected_indices:
+            continue
         row = item["row"]
         merchant = _synthetic_merchant_key(row)
         operation = _synthetic_operation(row)
@@ -1609,10 +1670,7 @@ def _select_synthetic_training_examples(
                 idx=item["idx"],
             )
             continue
-        accepted_rows.append(row)
-        examples.append(item["example"])
-        merchant_counts[merchant] = merchant_counts.get(merchant, 0) + 1
-        operation_counts[operation_key] = operation_counts.get(operation_key, 0) + 1
+        accept_item(item)
 
     accepted_scores = [
         score

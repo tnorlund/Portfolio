@@ -1014,6 +1014,60 @@ def test_load_synthetic_training_examples_caps_same_merchant(
     assert loaded.accepted_arithmetic_count == 1
 
 
+def test_load_synthetic_training_examples_covers_ready_operations_before_duplicate_operation(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("LAYOUTLM_SYNTHETIC_MAX_PER_MERCHANT", "2")
+    monkeypatch.setenv("LAYOUTLM_SYNTHETIC_MAX_PER_MERCHANT_OPERATION", "5")
+    path = tmp_path / "bundle.json"
+    best_hard_negative = _candidate(
+        candidate_id="best-hard-negative",
+        structure_score=0.97,
+    )
+    duplicate_hard_negative = _candidate(
+        candidate_id="duplicate-hard-negative",
+        structure_score=0.96,
+    )
+    replace_field = _replace_field_candidate()
+    replace_field["metadata"]["candidate_quality"] = {
+        "schema_version": "synthetic-candidate-quality-v1",
+        "score": 0.80,
+        "high_fidelity": True,
+        "components": {"structure_similarity": 0.91},
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "merchant_synthesis_contracts": [_merchant_contract()],
+                "synthetic_training_examples": [
+                    best_hard_negative,
+                    duplicate_hard_negative,
+                    replace_field,
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 3
+    assert loaded.candidates_accepted == 2
+    assert loaded.candidates_rejected == 1
+    assert loaded.rejection_reasons == {"merchant_synthetic_cap": 1}
+    assert [row["candidate_id"] for row in loaded.accepted_rows] == [
+        "best-hard-negative",
+        "replace-date",
+    ]
+    assert loaded.accepted_operation_counts == {
+        "hard_negative": 1,
+        "replace_field": 1,
+    }
+    assert loaded.accepted_field_replacement_counts == {"DATE": 1}
+    assert loaded.rejected_rows[0]["candidate_id"] == "duplicate-hard-negative"
+
+
 def test_load_synthetic_training_examples_prefers_richer_add_item_evidence(
     tmp_path,
     monkeypatch,
