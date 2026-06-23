@@ -57,3 +57,71 @@ def test_start_validation_accepts_one_shot_smoke_caps():
     module = _load_replay_module()
 
     module.validate_start_args(_valid_args())
+
+
+def test_budget_guard_rejects_when_current_spend_reaches_cap(monkeypatch):
+    module = _load_replay_module()
+
+    class CostExplorer:
+        def get_cost_and_usage(self, **kwargs):
+            assert kwargs["Granularity"] == "MONTHLY"
+            assert kwargs["Metrics"] == ["UnblendedCost"]
+            return {
+                "ResultsByTime": [
+                    {
+                        "Total": {
+                            "UnblendedCost": {
+                                "Amount": "297.9051690333",
+                                "Unit": "USD",
+                            }
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(
+        module,
+        "_client",
+        lambda service, region: CostExplorer(),
+    )
+
+    with pytest.raises(RuntimeError, match="spend cap reached"):
+        module.require_experiment_budget_remaining(
+            region="us-east-1",
+            max_aws_spend_usd=200,
+        )
+
+
+def test_budget_guard_reports_remaining_spend_under_cap(monkeypatch):
+    module = _load_replay_module()
+
+    class CostExplorer:
+        def get_cost_and_usage(self, **kwargs):
+            return {
+                "ResultsByTime": [
+                    {
+                        "Total": {
+                            "UnblendedCost": {
+                                "Amount": "42.50",
+                                "Unit": "USD",
+                            }
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(
+        module,
+        "_client",
+        lambda service, region: CostExplorer(),
+    )
+
+    budget = module.require_experiment_budget_remaining(
+        region="us-east-1",
+        max_aws_spend_usd=200,
+    )
+
+    assert budget["enforced"] is True
+    assert budget["amount_usd"] == 42.5
+    assert budget["max_aws_spend_usd"] == 200
+    assert budget["remaining_usd"] == 157.5

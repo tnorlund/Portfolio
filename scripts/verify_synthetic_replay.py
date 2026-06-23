@@ -13,9 +13,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "remove_line_item",
     "replace_field",
 )
+DEFAULT_EXPERIMENT_MAX_AWS_SPEND_USD = 200.0
 
 
 def load_outputs(env: str) -> dict[str, Any]:
@@ -213,6 +215,73 @@ def validate_start_args(args: argparse.Namespace) -> None:
         raise RuntimeError("--max-runtime-hours must be 1 or less")
     if args.epochs is not None and args.epochs > 1:
         raise RuntimeError("--epochs must be 1 for synthetic replay")
+
+
+def _current_month_cost_window(today: date | None = None) -> tuple[str, str]:
+    """Return Cost Explorer's inclusive start/exclusive end date window."""
+    today = today or datetime.now(timezone.utc).date()
+    start = today.replace(day=1)
+    end = today + timedelta(days=1)
+    return start.isoformat(), end.isoformat()
+
+
+def current_month_aws_spend_usd(*, region: str) -> dict[str, Any]:
+    """Read current-month unblended AWS spend from Cost Explorer."""
+    start, end = _current_month_cost_window()
+    ce = _client("ce", region)
+    response = ce.get_cost_and_usage(
+        TimePeriod={"Start": start, "End": end},
+        Granularity="MONTHLY",
+        Metrics=["UnblendedCost"],
+    )
+    total = (
+        response.get("ResultsByTime", [{}])[0].get("Total", {}).get("UnblendedCost", {})
+    )
+    amount = _safe_float(total.get("Amount"))
+    return {
+        "start": start,
+        "end": end,
+        "amount_usd": round(amount or 0.0, 2),
+        "raw_amount_usd": total.get("Amount"),
+        "unit": total.get("Unit") or "USD",
+        "metric": "UnblendedCost",
+    }
+
+
+def require_experiment_budget_remaining(
+    *,
+    region: str,
+    max_aws_spend_usd: float | None,
+) -> dict[str, Any]:
+    """Fail closed when account month-to-date spend is at/above the cap."""
+    if max_aws_spend_usd is None or max_aws_spend_usd <= 0:
+        return {"enforced": False}
+    spend = current_month_aws_spend_usd(region=region)
+    amount = _safe_float(spend.get("raw_amount_usd"))
+    if amount is None:
+        raise RuntimeError("Unable to read current AWS spend from Cost Explorer")
+    if amount >= max_aws_spend_usd:
+        raise RuntimeError(
+            "AWS experiment spend cap reached: "
+            f"${amount:.2f} month-to-date >= ${max_aws_spend_usd:.2f}. "
+            "Not starting synthetic replay."
+        )
+    return {
+        "enforced": True,
+        "max_aws_spend_usd": round(max_aws_spend_usd, 2),
+        "remaining_usd": round(max_aws_spend_usd - amount, 2),
+        **spend,
+    }
+
+
+def _default_experiment_max_aws_spend_usd() -> float:
+    raw = os.getenv("SYNTHETIC_REPLAY_MAX_AWS_SPEND_USD")
+    if raw is None:
+        return DEFAULT_EXPERIMENT_MAX_AWS_SPEND_USD
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_EXPERIMENT_MAX_AWS_SPEND_USD
 
 
 def start_execution(
@@ -3774,6 +3843,15 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--use-spot", dest="use_spot", action="store_true", default=True)
     start.add_argument("--no-spot", dest="use_spot", action="store_false")
     start.add_argument("--max-runtime-hours", type=int, default=1)
+    start.add_argument(
+        "--max-aws-spend-usd",
+        type=float,
+        default=_default_experiment_max_aws_spend_usd(),
+        help=(
+            "Abort before launch when current month-to-date AWS spend is at "
+            "or above this cap. Set <=0 to disable."
+        ),
+    )
     start.add_argument("--name-prefix", default="synthetic-replay")
     start.add_argument("--skip-preflight", action="store_true")
     start.add_argument("--wait", action="store_true")
@@ -3974,6 +4052,10 @@ def main() -> int:
         if not args.skip_preflight:
             require_ready(status)
         validate_start_args(args)
+        budget = require_experiment_budget_remaining(
+            region=args.region,
+            max_aws_spend_usd=args.max_aws_spend_usd,
+        )
         payload = build_execution_input(args)
         launch = start_execution(
             outputs,
@@ -3983,6 +4065,7 @@ def main() -> int:
         )
         result: dict[str, Any] = {
             "deployment": status,
+            "budget": budget,
             "launch": launch,
         }
         if args.wait:

@@ -518,6 +518,12 @@ class SageMakerTrainingInfra(ComponentResource):
                                 ],
                                 "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
                             },
+                            # Read account spend before synthetic replay launches
+                            {
+                                "Effect": "Allow",
+                                "Action": "ce:GetCostAndUsage",
+                                "Resource": "*",
+                            },
                             # Pass role to SageMaker
                             {
                                 "Effect": "Allow",
@@ -563,6 +569,7 @@ class SageMakerTrainingInfra(ComponentResource):
                         "OUTPUT_BUCKET": args[1],
                         "SAGEMAKER_ROLE_ARN": args[2],
                         "DYNAMO_TABLE_NAME": args[3],
+                        "SYNTHETIC_REPLAY_MAX_AWS_SPEND_USD": "200",
                     }
                 ),
             ),
@@ -591,7 +598,7 @@ class SageMakerTrainingInfra(ComponentResource):
 import json
 import os
 import boto3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sagemaker = boto3.client("sagemaker")
 
@@ -616,6 +623,55 @@ def _int_value(name, value):
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{name} must be an integer") from exc
+
+def _float_value(name, value):
+    """Parse a float event/env value with a clear error."""
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a number") from exc
+
+def _current_month_spend_usd():
+    """Return current-month unblended AWS spend from Cost Explorer."""
+    today = datetime.utcnow().date()
+    start = today.replace(day=1).isoformat()
+    end = (today + timedelta(days=1)).isoformat()
+    ce = boto3.client("ce", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    response = ce.get_cost_and_usage(
+        TimePeriod={"Start": start, "End": end},
+        Granularity="MONTHLY",
+        Metrics=["UnblendedCost"],
+    )
+    total = (
+        response.get("ResultsByTime", [{}])[0]
+        .get("Total", {})
+        .get("UnblendedCost", {})
+    )
+    amount = _float_value("current_month_aws_spend_usd", total.get("Amount"))
+    return {
+        "amount": amount,
+        "start": start,
+        "end": end,
+        "unit": total.get("Unit") or "USD",
+    }
+
+def _require_synthetic_replay_budget(event):
+    """Fail closed before starting synthetic replay after the experiment cap."""
+    raw_limit = event.get("max_aws_spend_usd")
+    if raw_limit is None:
+        raw_limit = event.get("synthetic_replay_max_aws_spend_usd")
+    if raw_limit is None:
+        raw_limit = os.environ.get("SYNTHETIC_REPLAY_MAX_AWS_SPEND_USD", "200")
+    limit = _float_value("synthetic_replay_max_aws_spend_usd", raw_limit)
+    if limit <= 0:
+        return
+    spend = _current_month_spend_usd()
+    if spend["amount"] >= limit:
+        raise ValueError(
+            "synthetic replay AWS spend cap reached: "
+            f"${spend['amount']:.2f} month-to-date >= ${limit:.2f}; "
+            "not starting SageMaker training"
+        )
 
 def handler(event, context):
     """Start a SageMaker training job.
@@ -695,6 +751,7 @@ def handler(event, context):
             raise ValueError("synthetic replay requires managed spot training")
         if max_runtime_hours > 1:
             raise ValueError("synthetic replay is capped at one runtime hour")
+        _require_synthetic_replay_budget(event)
 
     # Default hyperparameters
     hyperparameters = {

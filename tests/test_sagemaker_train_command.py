@@ -70,6 +70,10 @@ def test_start_training_lambda_can_promote_pattern_builder_output():
     assert "synthetic replay requires managed spot training" in component_source
     assert "synthetic replay is capped at one runtime hour" in component_source
     assert "synthetic replay is capped at one epoch" in component_source
+    assert "ce:GetCostAndUsage" in component_source
+    assert '"SYNTHETIC_REPLAY_MAX_AWS_SPEND_USD": "200"' in component_source
+    assert "_require_synthetic_replay_budget(event)" in component_source
+    assert "synthetic replay AWS spend cap reached" in component_source
     assert '"synthetic-augmentation", "Value": "true"' in component_source
     assert '"synthetic-replay-cost-ack", "Value": "true"' in component_source
     assert '"source-receipt-limit"' in component_source
