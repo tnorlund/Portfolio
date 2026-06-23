@@ -3934,10 +3934,18 @@ def _payload_words_for_receipt(
     label_lookup: dict[tuple[str, str, str, str], list[str]],
 ) -> dict[str, list[dict[str, Any]]]:
     words_by_line: dict[str, list[dict[str, Any]]] = {}
-    for key in ("words", "receipt_words"):
-        rows = payload.get(key)
-        if not isinstance(rows, list):
-            continue
+    # Prefer the receipt-cropped word set. An ``export_image`` dump carries BOTH
+    # an image-level ``words`` list and a receipt-level ``receipt_words`` list
+    # that describe the SAME words in DIFFERENT coordinate frames (whole image
+    # vs the receipt crop). Unioning them double-counts every word and collides
+    # boxes from incompatible frames, producing hundreds of spurious overlaps
+    # that destroy the layout-integrity geometry. Use the receipt-level rows
+    # when present; fall back to image-level ``words`` only for exports that
+    # lack a receipt-level set.
+    rows = payload.get("receipt_words")
+    if not isinstance(rows, list) or not rows:
+        rows = payload.get("words")
+    if isinstance(rows, list):
         for row in rows:
             if not isinstance(row, dict) or not row.get("text"):
                 continue
@@ -4005,8 +4013,14 @@ def _attach_payload_lines(
     receipts: list[dict[str, Any]],
     payload: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    # Prefer receipt-level lines for the same reason as words: image-level
+    # ``lines`` are in the whole-image frame while ``receipt_lines`` match the
+    # receipt crop the words use. Mixing frames misplaces lines vertically.
+    source_lines = payload.get("receipt_lines")
+    if not isinstance(source_lines, list) or not source_lines:
+        source_lines = payload.get("lines")
     payload_lines = [
-        line for line in payload.get("lines") or [] if isinstance(line, dict)
+        line for line in source_lines or [] if isinstance(line, dict)
     ]
     label_lookup = _payload_label_lookup(payload)
 

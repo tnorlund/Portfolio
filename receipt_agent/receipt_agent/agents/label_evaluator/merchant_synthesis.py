@@ -1162,29 +1162,39 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
+    # Real Apple Vision OCR receipts are photographed at a slight angle, so a
+    # line's word centroids do not land on a perfectly monotonic y. Count an
+    # inversion only when the next line sits a meaningful step HIGHER than the
+    # current one (beyond _LINE_ORDER_EPSILON), so rotation near-ties are not
+    # mistaken for scrambled reading order.
     line_ys = [_line_y(line) for line in lines]
-    line_order_valid = all(
-        line_ys[index] >= line_ys[index + 1]
+    line_inversion_count = sum(
+        1
         for index in range(len(line_ys) - 1)
+        if line_ys[index] < line_ys[index + 1] - _LINE_ORDER_EPSILON
     )
+    line_order_valid = line_inversion_count == 0
+    word_count = len(words) + len(invalid_words) + len(out_of_bounds_words)
     score = _layout_integrity_score_from_counts(
         overlap_count=len(overlaps),
         invalid_count=len(invalid_words),
         out_of_bounds_count=len(out_of_bounds_words),
         line_order_valid=line_order_valid,
+        word_count=word_count,
+        line_count=len(lines),
+        line_inversion_count=line_inversion_count,
     )
     return {
         "schema_version": "synthetic-layout-integrity-v1",
         "score": score,
         "passed": score >= 1.0,
         "line_count": len(lines),
-        "word_count": len(words)
-        + len(invalid_words)
-        + len(out_of_bounds_words),
+        "word_count": word_count,
         "overlap_pair_count": len(overlaps),
         "out_of_bounds_word_count": len(out_of_bounds_words),
         "invalid_word_box_count": len(invalid_words),
         "line_order_valid": line_order_valid,
+        "line_inversion_count": line_inversion_count,
         "overlap_examples": overlaps[:5],
         "out_of_bounds_examples": out_of_bounds_words[:5],
         "invalid_word_examples": invalid_words[:5],
@@ -1690,13 +1700,36 @@ def _layout_integrity_score_from_counts(
     invalid_count: int,
     out_of_bounds_count: int,
     line_order_valid: bool,
+    word_count: int = 0,
+    line_count: int = 0,
+    line_inversion_count: int = 0,
 ) -> float:
+    # An invalid or out-of-bounds box is a hard geometry failure (a malformed
+    # or off-canvas word) and is never tolerated.
     if invalid_count or out_of_bounds_count:
         return 0.0
-    score = max(0.0, 1.0 - min(overlap_count, 5) * 0.20)
-    if not line_order_valid:
+    # A handful of mild axis-aligned box overlaps and line-centroid inversions
+    # are inherent to real rotated OCR, not synthesis defects. Forgive a budget
+    # scaled to receipt size and penalize only the EXCESS, so genuinely broken
+    # geometry (many collisions / scrambled reading order) still scores low.
+    overlap_budget = max(2, round(word_count * 0.03))
+    excess_overlaps = max(0, overlap_count - overlap_budget)
+    score = max(0.0, 1.0 - min(excess_overlaps, 5) * 0.20)
+    inversion_budget = max(2, round(line_count * 0.15))
+    disordered = (
+        line_inversion_count > inversion_budget
+        if line_inversion_count
+        else not line_order_valid
+    )
+    if disordered:
         score = min(score, 0.5)
     return round(score, 3)
+
+
+# Normalized-y (0..1) tolerance for line-order inversions: roughly half a line
+# height, so rotation near-ties between adjacent lines are not counted as a
+# reading-order inversion.
+_LINE_ORDER_EPSILON = 0.01
 
 
 def _token_budget_score(token_count: int | None) -> float:

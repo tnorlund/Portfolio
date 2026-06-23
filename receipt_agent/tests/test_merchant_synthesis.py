@@ -681,6 +681,78 @@ def test_candidate_quality_rejects_overlapping_layout():
     assert quality["high_fidelity"] is False
 
 
+def test_layout_integrity_tolerates_real_ocr_noise():
+    """Real rotated Apple Vision OCR has mild overlaps + line inversions that
+    are inherent to the source geometry; the gate forgives a size-scaled budget
+    while still failing genuinely broken geometry."""
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _layout_integrity_score_from_counts as score,
+    )
+
+    common = dict(invalid_count=0, out_of_bounds_count=0)
+    # A few mild overlaps within the 3%-of-words budget do not lower the score.
+    assert (
+        score(
+            overlap_count=3,
+            line_order_valid=True,
+            word_count=102,
+            line_count=47,
+            line_inversion_count=0,
+            **common,
+        )
+        == 1.0
+    )
+    # Rotation-induced line inversions within the 15%-of-lines budget pass.
+    assert (
+        score(
+            overlap_count=0,
+            line_order_valid=False,
+            word_count=160,
+            line_count=90,
+            line_inversion_count=8,
+            **common,
+        )
+        == 1.0
+    )
+    # Excessive overlaps beyond the budget still drive the score to zero.
+    assert (
+        score(
+            overlap_count=11,
+            line_order_valid=True,
+            word_count=126,
+            line_count=55,
+            line_inversion_count=0,
+            **common,
+        )
+        == 0.0
+    )
+    # Scrambled reading order beyond the budget caps the score at 0.5.
+    assert (
+        score(
+            overlap_count=0,
+            line_order_valid=False,
+            word_count=100,
+            line_count=40,
+            line_inversion_count=30,
+            **common,
+        )
+        == 0.5
+    )
+    # A single invalid (malformed/zero-area) box is always a hard failure.
+    assert (
+        score(
+            overlap_count=0,
+            line_order_valid=True,
+            word_count=100,
+            line_count=40,
+            line_inversion_count=0,
+            invalid_count=1,
+            out_of_bounds_count=0,
+        )
+        == 0.0
+    )
+
+
 def _selection_candidate(
     candidate_id,
     *,
@@ -873,6 +945,7 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "out_of_bounds_word_count": 0,
         "invalid_word_box_count": 0,
         "line_order_valid": True,
+        "line_inversion_count": 0,
         "overlap_examples": [],
         "out_of_bounds_examples": [],
         "invalid_word_examples": [],
