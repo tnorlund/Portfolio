@@ -2029,7 +2029,7 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
     assert bundle["ready"] is False
     assert bundle["reasons"] == [
         "accepted_synthetic_mix_single_merchant_high_risk",
-        "missing_candidate_quality_assessment",
+        "no_high_fidelity_candidate_quality",
     ]
     assert bundle["selection"]["candidates_accepted"] == 3
     balance = bundle["candidate_mix"]["accepted_mix_balance"]
@@ -2043,7 +2043,7 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
         "recommended_example_count": 0,
         "accepted_candidate_count": 3,
         "selected_candidate_count": 3,
-        "candidate_quality_count": 0,
+        "candidate_quality_count": 3,
         "high_fidelity_candidate_count": 0,
         "max_synthetic_train_share": 0.0,
         "max_per_merchant": 5,
@@ -2053,7 +2053,7 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
         "hold_reasons": [
             "accepted_synthetic_mix_single_merchant_high_risk",
             "rebalance_synthetic_mix_before_training",
-            "missing_candidate_quality_assessment",
+            "no_high_fidelity_candidate_quality",
         ],
         "requires_real_validation_split": True,
         "review_required": True,
@@ -2067,42 +2067,67 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
     )
 
 
-def test_build_local_synthetic_training_bundle_holds_unscored_larger_batch():
+def test_build_local_synthetic_training_bundle_derives_candidate_quality():
     module = _load_module()
+    artifact = _artifact("Market Mart", candidate_quality=False)
+    for candidate in artifact["synthetic_receipt_candidates"]:
+        metadata = candidate["metadata"]
+        structure = metadata["structure_similarity"]
+        score = structure["score"]
+        structure["real_baseline_comparison"] = {
+            "baseline_pair_count": 6,
+            "candidate_score": score,
+            "baseline_min": 0.82,
+            "baseline_max": 0.98,
+            "within_real_score_range": True,
+        }
+        metadata["layout_integrity"] = {
+            "score": 1.0,
+            "passed": True,
+            "line_count": 5,
+            "word_count": len(candidate.get("tokens") or []),
+            "overlap_pair_count": 0,
+            "out_of_bounds_word_count": 0,
+        }
     bundle = module.build_local_synthetic_training_bundle(
-        [
-            _artifact("Market Mart", candidate_quality=False),
-            _artifact("Sprouts Farmers Market", candidate_quality=False),
-        ],
-        min_ready_share=0.0,
-        min_avg_readiness_score=0.0,
-        min_grounded_candidate_share=0.0,
+        [artifact],
+        min_grounded_candidate_share=0.4,
     )
 
-    assert bundle["ready"] is False
-    assert bundle["reasons"] == ["missing_candidate_quality_assessment"]
-    assert bundle["selection"]["candidates_accepted"] == 4
+    assert bundle["ready"] is True
+    assert bundle["reasons"] == []
+    assert bundle["selection"]["candidates_accepted"] == 2
     assert bundle["synthetic_training_batch_policy"] == {
         "schema_version": "synthetic-training-batch-policy-v1",
-        "status": "hold",
-        "recommended_example_count": 0,
-        "accepted_candidate_count": 4,
-        "selected_candidate_count": 4,
-        "candidate_quality_count": 0,
-        "high_fidelity_candidate_count": 0,
-        "max_synthetic_train_share": 0.0,
+        "status": "smoke_test_only",
+        "recommended_example_count": 2,
+        "accepted_candidate_count": 2,
+        "selected_candidate_count": 2,
+        "candidate_quality_count": 2,
+        "high_fidelity_candidate_count": 2,
+        "max_synthetic_train_share": 0.01,
         "max_per_merchant": 5,
         "max_per_merchant_operation": 2,
         "overtraining_risk_level": "low",
-        "risk_reasons": [],
-        "hold_reasons": ["missing_candidate_quality_assessment"],
+        "risk_reasons": ["too_few_examples_for_balance_assessment"],
+        "hold_reasons": [],
         "requires_real_validation_split": True,
         "review_required": True,
     }
-    assert bundle["synthesis_quality_report"]["training_ready"] is False
+    assert [
+        row["metadata"]["candidate_quality"]["source"]
+        for row in bundle["synthetic_training_examples"]
+    ] == [
+        "deterministic_layoutlm_gate_evidence",
+        "deterministic_layoutlm_gate_evidence",
+    ]
+    assert all(
+        row["metadata"]["candidate_quality"]["high_fidelity"] is True
+        for row in bundle["synthetic_training_examples"]
+    )
 
 
-def test_build_local_synthetic_training_bundle_holds_unscored_smoke_batch():
+def test_build_local_synthetic_training_bundle_holds_derived_quality_without_independent_evidence():
     module = _load_module()
     bundle = module.build_local_synthetic_training_bundle(
         [_artifact("Market Mart", candidate_quality=False)],
@@ -2110,13 +2135,104 @@ def test_build_local_synthetic_training_bundle_holds_unscored_smoke_batch():
     )
 
     assert bundle["ready"] is False
-    assert bundle["reasons"] == ["missing_candidate_quality_assessment"]
+    assert bundle["reasons"] == ["no_high_fidelity_candidate_quality"]
     assert bundle["selection"]["candidates_accepted"] == 2
     assert bundle["synthetic_training_batch_policy"]["status"] == "hold"
-    assert bundle["synthetic_training_batch_policy"]["recommended_example_count"] == 0
+    assert bundle["synthetic_training_batch_policy"]["candidate_quality_count"] == 2
+    assert (
+        bundle["synthetic_training_batch_policy"]["high_fidelity_candidate_count"] == 0
+    )
     assert bundle["synthetic_training_batch_policy"]["hold_reasons"] == [
-        "missing_candidate_quality_assessment"
+        "no_high_fidelity_candidate_quality"
     ]
+
+
+def test_derived_candidate_quality_rejects_above_range_real_baseline():
+    module = _load_module()
+    candidate = _artifact("Market Mart", candidate_quality=False)[
+        "synthetic_receipt_candidates"
+    ][0]
+    candidate["metadata"]["structure_similarity"]["real_baseline_comparison"] = {
+        "baseline_pair_count": 6,
+        "candidate_score": 1.0,
+        "baseline_min": 0.82,
+        "baseline_max": 0.95,
+    }
+
+    assert module._candidate_real_baseline_alignment_score(candidate) == 0.0
+
+    candidate["metadata"]["structure_similarity"]["real_baseline_comparison"][
+        "within_real_score_range"
+    ] = True
+    assert module._candidate_real_baseline_alignment_score(candidate) == 0.0
+
+
+def test_derived_candidate_quality_requires_robust_independent_evidence():
+    module = _load_module()
+    candidate = _artifact("Market Mart", candidate_quality=False)[
+        "synthetic_receipt_candidates"
+    ][0]
+    candidate["metadata"]["layout_integrity"] = {"passed": True, "score": 0.7}
+    candidate["metadata"]["structure_similarity"]["real_baseline_comparison"] = {
+        "baseline_pair_count": 1,
+        "candidate_score": 0.92,
+        "baseline_min": 0.82,
+        "baseline_max": 0.98,
+        "within_real_score_range": True,
+    }
+
+    assert module._candidate_layout_integrity_score(candidate) == 0.7
+    assert module._candidate_real_baseline_alignment_score(candidate) is None
+    candidate["metadata"]["layout_integrity"] = {"passed": True}
+    assert module._candidate_layout_integrity_score(candidate) is None
+    quality = module._derived_candidate_quality(
+        candidate,
+        min_structure_similarity=0.6,
+        structure_component_thresholds=STRUCTURE_COMPONENT_THRESHOLDS,
+        quality_failure=None,
+    )
+    assert quality["high_fidelity"] is False
+
+
+def test_synthetic_training_batch_policy_holds_unscored_larger_batch():
+    module = _load_module()
+    policy = module._synthetic_training_batch_policy(
+        candidate_mix={
+            "accepted_count": 4,
+            "accepted_mix_balance": {"risk_level": "low", "risk_reasons": []},
+        },
+        selected_rows=[{"metadata": {}} for _ in range(4)],
+        max_per_merchant=5,
+        max_per_merchant_operation=2,
+        bundle_reasons=[],
+    )
+
+    assert policy["status"] == "hold"
+    assert policy["recommended_example_count"] == 0
+    assert policy["candidate_quality_count"] == 0
+    assert policy["high_fidelity_candidate_count"] == 0
+    assert policy["hold_reasons"] == ["missing_candidate_quality_assessment"]
+
+
+def test_synthetic_training_batch_policy_holds_unscored_smoke_batch():
+    module = _load_module()
+    policy = module._synthetic_training_batch_policy(
+        candidate_mix={
+            "accepted_count": 2,
+            "accepted_mix_balance": {
+                "risk_level": "low",
+                "risk_reasons": ["too_few_examples_for_balance_assessment"],
+            },
+        },
+        selected_rows=[{"metadata": {}} for _ in range(2)],
+        max_per_merchant=5,
+        max_per_merchant_operation=2,
+        bundle_reasons=[],
+    )
+
+    assert policy["status"] == "hold"
+    assert policy["recommended_example_count"] == 0
+    assert policy["hold_reasons"] == ["missing_candidate_quality_assessment"]
 
 
 def test_inventory_local_artifacts_classifies_pattern_and_bundle(tmp_path):

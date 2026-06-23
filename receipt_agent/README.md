@@ -178,6 +178,11 @@ merchant synthesis contracts, and writes a bundle with:
   category/catalog evidence, quality gates, blockers, and limitations.
 - `candidate_mix`: accepted/rejected counts by merchant, operation, category,
   field replacement, structure similarity, and accepted mix balance.
+- `candidate_quality`: deterministic no-spend quality evidence derived from
+  LayoutLM gate inputs (structure similarity, component pass rate, operation
+  evidence, arithmetic, layout, and real-baseline checks when available).
+  Derived `high_fidelity` additionally requires independent scored layout
+  evidence or a robust in-range real-baseline comparison.
 - `synthetic_training_batch_policy`: a no-spend stoplight for the next
   train-only run. `hold` means do not train the synthetic rows yet,
   `smoke_test_only` means try only the tiny accepted batch with real validation,

@@ -640,6 +640,160 @@ def _candidate_quality_components(candidate: dict[str, Any]) -> dict[str, float]
     return components if isinstance(components, dict) else {}
 
 
+def _candidate_structure_component_pass_rate(
+    candidate: dict[str, Any],
+    structure_component_thresholds: dict[str, float],
+) -> float | None:
+    components = _candidate_structure_components(candidate)
+    checked = [
+        (name, threshold)
+        for name, threshold in structure_component_thresholds.items()
+        if name in components
+    ]
+    if not checked:
+        return None
+    passed = sum(1 for name, threshold in checked if components[name] >= threshold)
+    return round(passed / len(checked), 3)
+
+
+def _candidate_layout_integrity_score(candidate: dict[str, Any]) -> float | None:
+    metadata = _candidate_metadata(candidate)
+    accuracy = metadata.get("synthesis_accuracy_evidence")
+    accuracy = accuracy if isinstance(accuracy, dict) else {}
+    layout = metadata.get("layout_integrity") or accuracy.get("layout_integrity")
+    if not isinstance(layout, dict):
+        return None
+    score = _safe_float(layout.get("score"))
+    if layout.get("passed") is True:
+        return score
+    if layout.get("passed") is False:
+        return 0.0
+    return score
+
+
+def _candidate_real_baseline_alignment_score(
+    candidate: dict[str, Any],
+) -> float | None:
+    baseline = _candidate_real_baseline_comparison(candidate)
+    if not isinstance(baseline, dict):
+        return None
+    pair_count = _safe_int(baseline.get("baseline_pair_count"))
+    if pair_count is None or pair_count < 3:
+        return None
+    if baseline.get("within_real_score_range") is False:
+        return 0.0
+    candidate_score = _safe_float(baseline.get("candidate_score"))
+    baseline_min = _safe_float(baseline.get("baseline_min"))
+    baseline_max = _safe_float(baseline.get("baseline_max"))
+    if candidate_score is None or baseline_min is None or baseline_max is None:
+        return None
+    return 1.0 if baseline_min <= candidate_score <= baseline_max else 0.0
+
+
+def _derived_candidate_quality(
+    candidate: dict[str, Any],
+    *,
+    min_structure_similarity: float,
+    structure_component_thresholds: dict[str, float],
+    quality_failure: str | None,
+) -> dict[str, Any] | None:
+    """Derive no-spend candidate quality from deterministic gate evidence."""
+    if _candidate_quality(candidate):
+        return None
+    if quality_failure:
+        return None
+
+    structure_score = _candidate_structure_score(candidate)
+    if structure_score is None:
+        return None
+
+    components: dict[str, float] = {"structure_similarity": structure_score}
+    pass_rate = _candidate_structure_component_pass_rate(
+        candidate,
+        structure_component_thresholds,
+    )
+    if pass_rate is not None:
+        components["structure_component_pass_rate"] = pass_rate
+
+    operation_evidence = 1.0 if _candidate_has_operation_evidence(candidate) else 0.0
+    components["operation_evidence"] = operation_evidence
+    operation = _candidate_operation(candidate)
+    if operation == "add_line_item":
+        components["cross_receipt_grounding"] = (
+            1.0 if _candidate_is_grounded(candidate) else 0.0
+        )
+    if operation in {"add_line_item", "remove_line_item"}:
+        components["arithmetic_reconciliation"] = (
+            1.0 if _candidate_has_arithmetic(candidate) else 0.0
+        )
+    if (layout_score := _candidate_layout_integrity_score(candidate)) is not None:
+        components["layout_integrity"] = layout_score
+    if (
+        baseline_score := _candidate_real_baseline_alignment_score(candidate)
+    ) is not None:
+        components["real_baseline_alignment"] = baseline_score
+
+    score = round(sum(components.values()) / len(components), 3)
+    independent_evidence = any(
+        components.get(name) == 1.0
+        for name in ("layout_integrity", "real_baseline_alignment")
+    )
+    high_fidelity = (
+        score >= 0.85
+        and structure_score >= max(0.85, min_structure_similarity)
+        and pass_rate is not None
+        and pass_rate >= 1.0
+        and operation_evidence >= 1.0
+        and independent_evidence
+    )
+    return {
+        "schema_version": "synthetic-candidate-quality-v1",
+        "source": "deterministic_layoutlm_gate_evidence",
+        "score": score,
+        "high_fidelity": high_fidelity,
+        "components": components,
+        "structure_gate": {
+            "passed": True,
+            "min_structure_similarity": min_structure_similarity,
+            "structure_component_thresholds": structure_component_thresholds,
+            "requires_independent_layout_or_real_baseline": True,
+        },
+    }
+
+
+def _with_derived_candidate_quality(
+    rows: list[dict[str, Any]],
+    *,
+    min_structure_similarity: float,
+    structure_component_thresholds: dict[str, float],
+    quality_failure_fn: Any,
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict) or metadata.get("candidate_quality"):
+            enriched.append(row)
+            continue
+        quality = _derived_candidate_quality(
+            row,
+            min_structure_similarity=min_structure_similarity,
+            structure_component_thresholds=structure_component_thresholds,
+            quality_failure=quality_failure_fn(
+                row,
+                min_structure_similarity=min_structure_similarity,
+            ),
+        )
+        if not quality:
+            enriched.append(row)
+            continue
+        next_row = dict(row)
+        next_metadata = dict(metadata)
+        next_metadata["candidate_quality"] = quality
+        next_row["metadata"] = next_metadata
+        enriched.append(next_row)
+    return enriched
+
+
 def _candidate_selection_evidence(candidate: dict[str, Any]) -> dict[str, Any]:
     evidence = _candidate_metadata(candidate).get("selection_evidence")
     if not isinstance(evidence, dict):
@@ -4338,6 +4492,7 @@ def build_local_synthetic_training_bundle(
         _candidate_rows,
         _merchant_synthesis_contracts_by_merchant,
         _select_synthetic_training_examples,
+        _synthetic_candidate_quality_failure,
         _synthetic_structure_component_thresholds,
     )
 
@@ -4348,7 +4503,12 @@ def build_local_synthetic_training_bundle(
         min_avg_readiness_score=min_avg_readiness_score,
         min_grounded_candidate_share=min_grounded_candidate_share,
     )
-    rows = _candidate_rows(artifacts)
+    rows = _with_derived_candidate_quality(
+        _candidate_rows(artifacts),
+        min_structure_similarity=min_structure_similarity,
+        structure_component_thresholds=structure_component_thresholds,
+        quality_failure_fn=_synthetic_candidate_quality_failure,
+    )
     preliminary_contracts = build_merchant_synthesis_contracts(
         artifacts,
         min_structure_similarity=min_structure_similarity,
