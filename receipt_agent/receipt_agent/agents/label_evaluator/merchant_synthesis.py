@@ -99,6 +99,14 @@ class MerchantLineItem:
     center_y: float
     taxable: bool
     category: str = UNKNOWN_CATEGORY
+    # The item's full vertical BAND — every contiguous receipt line it occupies
+    # (code / name / flag / quantity / price), not just the labeled name+total
+    # lines, plus the band's pixel extent (y-high-is-top, so top_y > bottom_y).
+    # Populated by _segment_item_bands; drives gap-aware insertion, whole-band
+    # removal, and whole-band cloning.
+    band_line_indices: list[int] = field(default_factory=list)
+    band_top_y: float = 0.0
+    band_bottom_y: float = 0.0
 
 
 @dataclass
@@ -988,19 +996,10 @@ def _build_remove_item_candidate_from_plan(
 
     removed_center = removed.center_y
     line_step = _line_step(refreshed.line_items)
-    # Delete the item's FULL contiguous row group, then sweep up to two adjacent
-    # fragment lines on each side (a stranded tax flag, bare price, or quantity
-    # multiplier) so a removal does not orphan satellites of the deleted item.
-    lines = receipt.get("lines", [])
-    lo = min(removed.line_indices)
-    hi = max(removed.line_indices)
-    for _ in range(2):
-        if lo - 1 >= 0 and _is_item_satellite_line(lines[lo - 1]):
-            lo -= 1
-    for _ in range(2):
-        if hi + 1 < len(lines) and _is_item_satellite_line(lines[hi + 1]):
-            hi += 1
-    for line_index in range(hi, lo - 1, -1):
+    # Delete the item's FULL band (every line it occupies — code, name, flag,
+    # quantity, price), so a removal never strands a satellite of the item.
+    band = removed.band_line_indices or sorted(removed.line_indices)
+    for line_index in sorted(set(band), reverse=True):
         if 0 <= line_index < len(receipt.get("lines", [])):
             del receipt["lines"][line_index]
     shift_summary = _shift_lines_below(receipt, removed_center, line_step)
@@ -1392,6 +1391,16 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
         for index in range(len(line_ys) - 1)
         if line_ys[index] < line_ys[index + 1] - _LINE_ORDER_EPSILON
     )
+    # An overlap that touches a SYNTHETIC line (inserted at id >= 20000) is a
+    # collision the synthesis itself introduced (an added row landing on a
+    # neighbor or a summary line) — always a hard defect, unlike the mild
+    # base-OCR overlaps from a rotated photo that the budget tolerates.
+    synthetic_overlap_count = sum(
+        1
+        for overlap in overlaps
+        if (overlap.get("left_line_id") or 0) >= _SYNTHETIC_LINE_ID_BASE
+        or (overlap.get("right_line_id") or 0) >= _SYNTHETIC_LINE_ID_BASE
+    )
     line_order_valid = line_inversion_count == 0
     word_count = len(words) + len(invalid_words) + len(out_of_bounds_words)
     score = _layout_integrity_score_from_counts(
@@ -1402,6 +1411,7 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
         word_count=word_count,
         line_count=len(lines),
         line_inversion_count=line_inversion_count,
+        synthetic_overlap_count=synthetic_overlap_count,
     )
     return {
         "schema_version": "synthetic-layout-integrity-v1",
@@ -1410,6 +1420,7 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
         "line_count": len(lines),
         "word_count": word_count,
         "overlap_pair_count": len(overlaps),
+        "synthetic_overlap_pair_count": synthetic_overlap_count,
         "out_of_bounds_word_count": len(out_of_bounds_words),
         "invalid_word_box_count": len(invalid_words),
         "line_order_valid": line_order_valid,
@@ -1941,10 +1952,13 @@ def _layout_integrity_score_from_counts(
     word_count: int = 0,
     line_count: int = 0,
     line_inversion_count: int = 0,
+    synthetic_overlap_count: int = 0,
 ) -> float:
     # An invalid or out-of-bounds box is a hard geometry failure (a malformed
-    # or off-canvas word) and is never tolerated.
-    if invalid_count or out_of_bounds_count:
+    # or off-canvas word) and is never tolerated. Neither is a collision the
+    # synthesis introduced (an inserted row overlapping a neighbor / summary
+    # line) — that is a defect, not the rotated-OCR grazing the budget forgives.
+    if invalid_count or out_of_bounds_count or synthetic_overlap_count:
         return 0.0
     # A handful of mild axis-aligned box overlaps and line-centroid inversions
     # are inherent to real rotated OCR, not synthesis defects. Forgive a budget
@@ -1968,6 +1982,10 @@ def _layout_integrity_score_from_counts(
 # height, so rotation near-ties between adjacent lines are not counted as a
 # reading-order inversion.
 _LINE_ORDER_EPSILON = 0.01
+
+# Inserted synthetic lines carry ids at/above this base (see _build_line and
+# _clone_row_group_lines); an overlap touching one is a synthesis collision.
+_SYNTHETIC_LINE_ID_BASE = 20_000
 
 
 def _token_budget_score(token_count: int | None) -> float:
@@ -2340,6 +2358,75 @@ def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _segment_item_bands(
+    receipt: dict[str, Any], line_items: list[MerchantLineItem]
+) -> None:
+    """Assign each line item its full vertical band.
+
+    Every receipt line is attributed to the nearest line item whose labeled
+    (name/total) line it sits beside, without crossing a category heading or a
+    summary line (SUBTOTAL/TAX/GRAND_TOTAL). An item's band is then the
+    contiguous line range attributed to it, and its pixel extent spans those
+    lines' word boxes — recovering the code/flag/quantity rows the name+total
+    labels miss, so add/remove/clone can act on whole items.
+    """
+    lines = receipt.get("lines") or []
+    count = len(lines)
+    owner: dict[int, MerchantLineItem] = {}
+    for item in line_items:
+        for index in item.line_indices:
+            if 0 <= index < count:
+                owner[index] = item
+
+    def is_barrier(index: int) -> bool:
+        line = lines[index]
+        if _line_category_heading(line):
+            return True
+        labels = {
+            label
+            for word in line.get("words", [])
+            for label in (word.get("labels") or [])
+        }
+        return bool(labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"})
+
+    attribution: dict[int, MerchantLineItem] = dict(owner)
+    for index in range(count):
+        if index in owner or is_barrier(index):
+            continue
+        nearest: MerchantLineItem | None = None
+        nearest_dist: int | None = None
+        for direction in (-1, 1):
+            cursor, dist = index + direction, 1
+            while 0 <= cursor < count:
+                if is_barrier(cursor):
+                    break
+                if cursor in owner:
+                    if nearest_dist is None or dist < nearest_dist:
+                        nearest_dist, nearest = dist, owner[cursor]
+                    break
+                cursor += direction
+                dist += 1
+        if nearest is not None:
+            attribution[index] = nearest
+
+    by_item: dict[int, list[int]] = defaultdict(list)
+    for index, item in attribution.items():
+        by_item[id(item)].append(index)
+
+    for item in line_items:
+        idxs = sorted(by_item.get(id(item)) or list(item.line_indices))
+        band = list(range(min(idxs), max(idxs) + 1))
+        ys: list[float] = []
+        for index in band:
+            for word in lines[index].get("words", []):
+                box = word.get("bbox")
+                if box:
+                    ys.extend((float(box[1]), float(box[3])))
+        item.band_line_indices = band
+        item.band_top_y = max(ys) if ys else item.center_y
+        item.band_bottom_y = min(ys) if ys else item.center_y
+
+
 def _analyze_receipt(receipt: dict[str, Any]) -> MerchantAnalysis:
     product_rows: list[dict[str, Any]] = []
     total_rows: list[dict[str, Any]] = []
@@ -2469,6 +2556,7 @@ def _analyze_receipt(receipt: dict[str, Any]) -> MerchantAnalysis:
             )
         )
 
+    _segment_item_bands(receipt, line_items)
     return MerchantAnalysis(
         receipt=receipt,
         line_items=line_items,
@@ -2491,7 +2579,7 @@ def _capture_row_group(
     line inclusive so the merchant's complete row grammar is preserved.
     """
     lines = analysis.receipt.get("lines") or []
-    idxs = item.line_indices or [item.line_index]
+    idxs = item.band_line_indices or item.line_indices or [item.line_index]
     lo, hi = min(idxs), max(idxs)
     captured: list[dict[str, Any]] = []
     for li in range(lo, hi + 1):
@@ -2845,8 +2933,15 @@ def _category_insert_y(
     items = [item for item in analysis.line_items if item.category == category]
     if not items:
         return None
-    lower_item_y = min(item.center_y for item in items)
-    return max(24.0, lower_item_y - max(24, _line_step(analysis.line_items)))
+    # Insert into the GAP below the lowest item of the category — below its
+    # full band's bottom edge — never at an item's center (which, for a two-row
+    # item, sits between its name and price rows and would collide with them).
+    lowest = min(
+        items, key=lambda item: item.band_bottom_y or item.center_y
+    )
+    gap = max(12, _line_step(analysis.line_items) // 2)
+    bottom = lowest.band_bottom_y or lowest.center_y
+    return max(24.0, bottom - gap)
 
 
 def _category_insertion_context(

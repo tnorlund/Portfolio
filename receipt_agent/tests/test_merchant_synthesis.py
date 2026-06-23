@@ -951,6 +951,7 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "line_count": 5,
         "word_count": 10,
         "overlap_pair_count": 0,
+        "synthetic_overlap_pair_count": 0,
         "out_of_bounds_word_count": 0,
         "invalid_word_box_count": 0,
         "line_order_valid": True,
@@ -1048,7 +1049,7 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
     }
     assert evidence["category_placement"] == {
         "category": "PRODUCE",
-        "insert_y": 661.5,
+        "insert_y": 662.0,
         "shifted_lower_lines_by": 33,
         "shifted_line_count": 1,
         "shifted_lower_line_shift_min": 33,
@@ -1069,7 +1070,7 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
     }
     assert metadata["category_insertion"] == {
         "category": "PRODUCE",
-        "y_center": 661.5,
+        "y_center": 662.0,
         "line_step": 26,
         "shifted_lower_lines_by": 33,
         "shifted_line_count": 1,
