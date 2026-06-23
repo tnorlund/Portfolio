@@ -83,6 +83,8 @@ def _artifact(
                     "add_line_item",
                 ],
                 "candidate_capacity": 4,
+                "hard_negative_label_count": 1,
+                "grounded_add_item_candidate_count": 1,
                 "blockers": [] if status != "blocked" else ["no_line_items"],
                 "limitations": [],
             }
@@ -857,7 +859,6 @@ def test_source_quality_blocked_artifact_cannot_feed_training_bundle():
             "reasons": [
                 "source_receipt_quality_blocked",
                 "readiness_status_blocked",
-                "no_cross_receipt_grounded_add_items",
             ],
         }
     ]
@@ -1000,7 +1001,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
                 },
                 "add_line_item": {
                     "ready": True,
-                    "candidate_count": 0,
+                    "candidate_count": 1,
                     "requires": [
                         "item_seen_in_other_receipt",
                         "base_receipt_has_category",
@@ -1245,6 +1246,125 @@ def test_build_local_synthetic_training_bundle_enforces_contract_before_writing(
     assert contract["bundle_acceptance"]["rejection_reasons"] == {
         "operation_not_supported_by_contract": 1
     }
+
+
+def test_build_local_synthetic_training_bundle_requires_contract_capacity():
+    module = _load_module()
+    artifact = _artifact("Market Mart")
+    readiness = artifact["merchant_receipt_parameterization"]["synthesis_readiness"]
+    readiness["supported_operations"] = ["add_line_item"]
+    readiness["grounded_add_item_candidate_count"] = 0
+    readiness["hard_negative_label_count"] = 0
+
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+
+    assert bundle["ready"] is False
+    assert bundle["selection"]["candidates_seen"] == 2
+    assert bundle["selection"]["candidates_accepted"] == 0
+    assert bundle["selection"]["rejection_reasons"] == {
+        "operation_not_supported_by_contract": 2
+    }
+    assert bundle["selection"]["rejected_candidate_examples"] == [
+        {
+            "candidate_id": "grounded-add-item",
+            "receipt_key": "synthetic-Market Mart-add#00001",
+            "image_id": "synthetic-Market Mart-add",
+            "merchant_name": "Market Mart",
+            "operation": "add_line_item",
+            "reason": "operation_not_supported_by_contract",
+            "idx": 0,
+            "category": "PRODUCE",
+            "structure_similarity": 0.92,
+        },
+        {
+            "candidate_id": "hard-negative",
+            "receipt_key": "synthetic-Market Mart-hard-negative#00001",
+            "image_id": "synthetic-Market Mart-hard-negative",
+            "merchant_name": "Market Mart",
+            "operation": "hard_negative",
+            "reason": "operation_not_supported_by_contract",
+            "idx": 1,
+            "structure_similarity": 0.88,
+        },
+    ]
+    assert bundle["candidate_mix"]["accepted_count"] == 0
+    assert bundle["candidate_mix"]["rejection_reasons"] == {
+        "operation_not_supported_by_contract": 2
+    }
+    contract = bundle["merchant_synthesis_contracts"][0]
+    assert contract["supported_operations"] == ["add_line_item"]
+    assert contract["operation_contracts"]["add_line_item"]["ready"] is False
+    assert contract["operation_contracts"]["add_line_item"]["candidate_count"] == 0
+    assert contract["operation_contracts"]["hard_negative"]["ready"] is False
+    assert bundle["synthesis_quality_report"]["training_ready"] is False
+    audit = module.summarize_merchant_synthesis_audit([artifact])[0]
+    audit_operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert audit_operations["add_line_item"]["supported"] is True
+    assert audit_operations["add_line_item"]["ready"] is False
+    assert audit_operations["add_line_item"]["blockers"] == [
+        "no_cross_receipt_grounded_add_items"
+    ]
+
+
+def test_merchant_contract_readiness_requires_support_and_capacity():
+    module = _load_module()
+    artifact = _artifact("Capacity Mart", candidates=False)
+    readiness = artifact["merchant_receipt_parameterization"]["synthesis_readiness"]
+    readiness["supported_operations"] = ["remove_line_item", "replace_field"]
+    readiness["hard_negative_label_count"] = 1
+    readiness["grounded_add_item_candidate_count"] = 1
+    readiness["removable_item_candidate_count"] = 1
+    readiness["mutable_field_count"] = 2
+    readiness["mutable_fields"] = {
+        "DATE": {
+            "label": "DATE",
+            "safe_to_mutate": True,
+            "stable_format": "MM/DD/YYYY",
+            "stable_geometry": True,
+            "observed_count": 2,
+        },
+        "TIME": {
+            "label": "TIME",
+            "safe_to_mutate": True,
+            "stable_format": "HH:MM",
+            "stable_geometry": True,
+            "observed_count": 2,
+        },
+    }
+
+    contract = module.build_merchant_synthesis_contracts([artifact])[0]
+
+    operations = contract["operation_contracts"]
+    assert operations["hard_negative"]["ready"] is False
+    assert operations["add_line_item"]["ready"] is False
+    assert operations["add_line_item"]["candidate_count"] == 1
+    assert operations["remove_line_item"]["ready"] is True
+    assert operations["remove_line_item"]["candidate_count"] == 1
+    assert operations["replace_field"]["ready"] is True
+    assert operations["replace_field"]["candidate_count"] == 2
+    assert sorted(operations["replace_field"]["fields"]) == ["DATE", "TIME"]
+
+    audit = module.summarize_merchant_synthesis_audit([artifact])[0]
+    audit_operations = {row["operation"]: row for row in audit["operation_readiness"]}
+    assert audit_operations["hard_negative"]["ready"] is False
+    assert audit_operations["hard_negative"]["blockers"] == [
+        "operation_not_supported_by_contract"
+    ]
+    assert audit_operations["add_line_item"]["ready"] is False
+    assert audit_operations["add_line_item"]["blockers"] == [
+        "operation_not_supported_by_contract"
+    ]
+    assert audit_operations["remove_line_item"]["ready"] is True
+    assert audit_operations["replace_field"]["ready"] is True
+    assert audit["next_synthesis_actions"] == [
+        "mine_confusion_targets_for_hard_negative_slots",
+        "collect_cross_receipt_item_and_category_evidence",
+        "generate_remove_line_item_candidate_from_ready_contract",
+        "generate_replace_field_candidate_from_ready_contract",
+    ]
 
 
 def test_build_local_synthetic_training_bundle_includes_tax_contract():

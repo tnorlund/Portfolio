@@ -1511,9 +1511,13 @@ def build_merchant_synthesis_contracts(
         ]
         mix = mix_by_merchant.get(merchant, {})
         supported_operations = list(readiness.get("supported_operations") or [])
+        supported_operation_set = set(supported_operations)
         source_quality = _artifact_source_quality(artifact)
         source_quality_operation_blockers = _source_quality_operation_blockers(
             source_quality
+        )
+        hard_negative_label_count = (
+            _safe_int(readiness.get("hard_negative_label_count")) or 0
         )
         grounded_add_count = (
             _safe_int(readiness.get("grounded_add_item_candidate_count")) or 0
@@ -1537,9 +1541,12 @@ def build_merchant_synthesis_contracts(
             "supported_operations": supported_operations[:8],
             "operation_contracts": {
                 "hard_negative": {
-                    "ready": bool(
-                        readiness.get("ready_hard_negative_labels")
-                        or "hard_negative" in supported_operations
+                    "ready": (
+                        "hard_negative" in supported_operation_set
+                        and bool(
+                            readiness.get("ready_hard_negative_labels")
+                            or hard_negative_label_count > 0
+                        )
                     )
                     and "hard_negative" not in source_quality_operation_blockers,
                     "source_quality_blocker": source_quality_operation_blockers.get(
@@ -1551,8 +1558,8 @@ def build_merchant_synthesis_contracts(
                 },
                 "add_line_item": {
                     "ready": (
-                        grounded_add_count > 0
-                        or "add_line_item" in supported_operations
+                        "add_line_item" in supported_operation_set
+                        and grounded_add_count > 0
                     )
                     and "add_line_item" not in source_quality_operation_blockers,
                     "source_quality_blocker": source_quality_operation_blockers.get(
@@ -1567,8 +1574,8 @@ def build_merchant_synthesis_contracts(
                 },
                 "remove_line_item": {
                     "ready": (
-                        removable_item_count > 0
-                        or "remove_line_item" in supported_operations
+                        "remove_line_item" in supported_operation_set
+                        and removable_item_count > 0
                     )
                     and "remove_line_item" not in source_quality_operation_blockers,
                     "source_quality_blocker": source_quality_operation_blockers.get(
@@ -1581,7 +1588,10 @@ def build_merchant_synthesis_contracts(
                     ],
                 },
                 "replace_field": {
-                    "ready": mutable_field_count > 0
+                    "ready": (
+                        "replace_field" in supported_operation_set
+                        and mutable_field_count > 0
+                    )
                     and "replace_field" not in source_quality_operation_blockers,
                     "source_quality_blocker": source_quality_operation_blockers.get(
                         "replace_field"
