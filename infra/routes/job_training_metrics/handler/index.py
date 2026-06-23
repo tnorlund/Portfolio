@@ -2121,6 +2121,9 @@ def _compact_quality_examples(rows: Any) -> List[Dict[str, Any]]:
         category_placement = row.get("category_placement")
         if isinstance(category_placement, dict):
             example["category_placement"] = category_placement
+        removal_context = _compact_removal_context(row.get("removal_context"))
+        if removal_context:
+            example["removal_context"] = removal_context
         layout_integrity = _compact_layout_integrity_evidence(
             row.get("layout_integrity")
         )
@@ -3317,6 +3320,7 @@ def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
         return {}
     catalog_grounding = value.get("catalog_grounding")
     category_placement = value.get("category_placement")
+    removal_context = _compact_removal_context(value.get("removal_context"))
     layout_integrity = _compact_layout_integrity_evidence(value.get("layout_integrity"))
     structure_similarity = _compact_structure_accuracy_evidence(
         value.get("structure_similarity")
@@ -3334,10 +3338,39 @@ def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
         "category_placement": (
             category_placement if isinstance(category_placement, dict) else None
         ),
+        "removal_context": removal_context,
         "layout_integrity": layout_integrity,
         "structure_similarity": structure_similarity,
     }
     return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_removal_context(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        "category": value.get("category"),
+        "removed_y": _safe_float(value.get("removed_y")),
+        "line_step": _safe_int(value.get("line_step")),
+        "shifted_lower_lines_by": _safe_int(value.get("shifted_lower_lines_by")),
+        "shifted_line_count": _safe_int(value.get("shifted_line_count")),
+        "shifted_lower_line_shift_min": _safe_int(
+            value.get("shifted_lower_line_shift_min")
+        ),
+        "shifted_lower_line_shift_max": _safe_int(
+            value.get("shifted_lower_line_shift_max")
+        ),
+        "category_item_count_before": _safe_int(
+            value.get("category_item_count_before")
+        ),
+        "category_item_count_after": _safe_int(
+            value.get("category_item_count_after")
+        ),
+        "selection_reason": _clip_text(str(value.get("selection_reason") or ""), 180),
+    }
+    return {
+        key: item for key, item in result.items() if item not in (None, "", [], {})
+    }
 
 
 def _compact_catalog_grounding_evidence(value: Any) -> Dict[str, Any]:

@@ -731,6 +731,71 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(clippedSegment.length).toBeLessThanOrEqual(96);
   });
 
+  it("summarizes remove-line context for accepted synthetic examples", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        merchants: [
+          {
+            merchant_name: "Market Mart",
+            readiness_status: "ready",
+            candidate_count: 2,
+            accepted_count: 1,
+            accepted_examples: [
+              {
+                candidate_id: "market-remove-pears",
+                operation: "remove_line_item",
+                category: "PRODUCE",
+                changed_text: "PEARS",
+                accuracy_checks: [
+                  "removed_from_multi_item_category",
+                  "lower_lines_shifted_to_close_gap",
+                ],
+                removal_context: {
+                  category: "PRODUCE",
+                  shifted_line_count: 5,
+                  category_item_count_before: 2,
+                  category_item_count_after: 1,
+                },
+                total_change: {
+                  old_grand_total: "10.00",
+                  new_grand_total: "8.00",
+                  tax_delta: "0.00",
+                },
+                preview_lines: [
+                  {
+                    line_number: 3,
+                    text: "APPLES 8.00",
+                    role: "line_item",
+                    synthetic_insert: false,
+                    modified_labels: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("PEARS")).toBeInTheDocument();
+    expect(screen.getByText("PEARS").parentElement).toHaveTextContent(
+      "Produce 2 -> 1 items",
+    );
+    expect(screen.getByText("PEARS").parentElement).toHaveTextContent(
+      "5 shifted lines",
+    );
+  });
+
   it("does not headline contract-ready operations as reusable evidence", async () => {
     const metrics = trainingMetrics();
     metrics.synthesis = {

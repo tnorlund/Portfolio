@@ -939,6 +939,53 @@ def test_compact_synthesis_quality_report_redacts_legacy_source_keys(monkeypatch
     ]
 
 
+def test_compact_synthesis_accuracy_evidence_whitelists_removal_context(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    compact = module._compact_synthesis_accuracy_evidence(
+        {
+            "operation": "remove_line_item",
+            "checks": ["removed_item_non_taxable"],
+            "changed_text": "PEARS",
+            "category": "PRODUCE",
+            "removal_context": {
+                "category": "PRODUCE",
+                "removed_y": "667.5",
+                "line_step": "40",
+                "shifted_lower_lines_by": "40",
+                "shifted_line_count": "5",
+                "shifted_lower_line_shift_min": "40",
+                "shifted_lower_line_shift_max": "40",
+                "category_item_count_before": "2",
+                "category_item_count_after": "1",
+                "selection_reason": (
+                    "removed non-taxable item from a multi-item category "
+                    "and shifted lower receipt lines to close the gap"
+                ),
+                "debug_notes": "must not leak",
+            },
+        }
+    )
+
+    assert compact["operation"] == "remove_line_item"
+    assert compact["removal_context"] == {
+        "category": "PRODUCE",
+        "removed_y": 667.5,
+        "line_step": 40,
+        "shifted_lower_lines_by": 40,
+        "shifted_line_count": 5,
+        "shifted_lower_line_shift_min": 40,
+        "shifted_lower_line_shift_max": 40,
+        "category_item_count_before": 2,
+        "category_item_count_after": 1,
+        "selection_reason": (
+            "removed non-taxable item from a multi-item category "
+            "and shifted lower receipt lines to close the gap"
+        ),
+    }
+    assert "debug_notes" not in compact["removal_context"]
+
+
 def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
     module = _load_module(monkeypatch)
 

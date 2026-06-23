@@ -1,6 +1,9 @@
 """Tests for generic merchant synthesis profiles and candidates."""
 
 from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+    _analyze_receipt,
+    _build_remove_item_candidate_from_plan,
+    _normalize_receipt,
     build_merchant_synthesis_profile,
     build_merchant_synthesis_readiness,
     build_synthesis_candidate_quality,
@@ -1021,9 +1024,133 @@ def test_generate_merchant_synthesis_candidates_can_remove_supported_item():
     assert metadata["old_subtotal"] == "10.00"
     assert metadata["new_subtotal"] == "8.00"
     assert metadata["arithmetic_reconciliation"]["tax_delta"] == "0.00"
+    assert metadata["removal_context"] == {
+        "category": "PRODUCE",
+        "removed_y": 667.5,
+        "line_step": 40,
+        "shifted_lower_lines_by": 40,
+        "shifted_line_count": 5,
+        "shifted_lower_line_shift_min": 40,
+        "shifted_lower_line_shift_max": 40,
+        "category_item_count_before": 2,
+        "category_item_count_after": 1,
+        "selection_reason": (
+            "removed non-taxable item from a multi-item category "
+            "and shifted lower receipt lines to close the gap"
+        ),
+    }
     assert "PEARS" not in removed["tokens"]
     assert "APPLES" in removed["tokens"]
     assert "8.00" in removed["tokens"]
+    evidence = metadata["synthesis_accuracy_evidence"]
+    assert evidence["removal_context"] == metadata["removal_context"]
+    assert "removed_from_multi_item_category" in evidence["checks"]
+    assert "lower_lines_shifted_to_close_gap" in evidence["checks"]
+
+
+def test_remove_candidate_does_not_claim_unknown_category_block():
+    receipts = [
+        {
+            "receipt_id": "uncategorized_1",
+            "image_id": "31000000-0000-0000-0000-000000000001",
+            "receipt_num": 1,
+            "lines": [
+                {
+                    "line_id": 1,
+                    "y": 0.96,
+                    "words": [
+                        _word("MARKET", [410, 950, 500, 975], ["MERCHANT_NAME"]),
+                        _word("MART", [510, 950, 575, 975], ["MERCHANT_NAME"]),
+                    ],
+                },
+                {
+                    "line_id": 2,
+                    "y": 0.685,
+                    "words": [
+                        _word("APPLES", [85, 675, 165, 700], ["PRODUCT_NAME"]),
+                        _word("3.00", [830, 675, 885, 700], ["LINE_TOTAL"]),
+                    ],
+                },
+                {
+                    "line_id": 3,
+                    "y": 0.645,
+                    "words": [
+                        _word("PEARS", [85, 635, 155, 660], ["PRODUCT_NAME"]),
+                        _word("2.00", [830, 635, 885, 660], ["LINE_TOTAL"]),
+                    ],
+                },
+                {
+                    "line_id": 4,
+                    "y": 0.600,
+                    "words": [
+                        _word("SUBTOTAL", [500, 590, 600, 615]),
+                        _word("5.00", [830, 590, 885, 615], ["SUBTOTAL"]),
+                    ],
+                },
+                {
+                    "line_id": 5,
+                    "y": 0.555,
+                    "words": [
+                        _word("BALANCE", [500, 545, 595, 570]),
+                        _word("DUE", [605, 545, 650, 570]),
+                        _word("5.00", [830, 545, 885, 570], ["GRAND_TOTAL"]),
+                    ],
+                },
+            ],
+        }
+    ]
+
+    candidates = generate_merchant_synthesis_candidates(_plan(), receipts)
+
+    removed = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "remove_line_item"
+    ][0]
+    metadata = removed["metadata"]
+    context = metadata["removal_context"]
+    assert metadata["removed_item"]["category"] == "UNCATEGORIZED"
+    assert context["category"] == "UNCATEGORIZED"
+    assert context["category_item_count_before"] is None
+    assert context["category_item_count_after"] is None
+    assert context["selection_reason"] == (
+        "removed non-taxable item and shifted lower receipt lines to close the gap"
+    )
+    evidence = metadata["synthesis_accuracy_evidence"]
+    assert "removed_from_multi_item_category" not in evidence["checks"]
+    assert "lower_lines_shifted_to_close_gap" in evidence["checks"]
+
+
+def test_remove_candidate_does_not_claim_single_item_category_is_multi_item():
+    receipts = _merchant_receipts()
+    profile = build_merchant_synthesis_profile("Market Mart", receipts)
+    assert profile is not None
+    receipt = _normalize_receipt(receipts[0])
+    analysis = _analyze_receipt(receipt)
+    removed = [
+        item for item in analysis.line_items if item.product_text == "APPLES"
+    ][0]
+
+    candidate = _build_remove_item_candidate_from_plan(
+        "Market Mart",
+        profile,
+        [analysis],
+        analysis,
+        removed,
+        index=1,
+        plan_rank=1,
+        plan_count=1,
+        plan_score=1.0,
+    )
+
+    assert candidate is not None
+    context = candidate["metadata"]["removal_context"]
+    assert context["category"] == "PRODUCE"
+    assert context["category_item_count_before"] == 1
+    assert context["category_item_count_after"] == 0
+    assert "multi-item category" not in context["selection_reason"]
+    evidence = candidate["metadata"]["synthesis_accuracy_evidence"]
+    assert "removed_from_multi_item_category" not in evidence["checks"]
 
 
 def test_generic_entry_point_uses_merchant_synthesis_for_non_sprouts():

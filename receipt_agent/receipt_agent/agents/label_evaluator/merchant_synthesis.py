@@ -786,13 +786,40 @@ def _build_remove_item_candidate_from_plan(
     for line_index in sorted(set(removed.line_indices), reverse=True):
         if line_index < len(receipt.get("lines", [])):
             del receipt["lines"][line_index]
-    _shift_lines_below(receipt, removed_center, line_step)
+    shift_summary = _shift_lines_below(receipt, removed_center, line_step)
     _refresh_words(receipt)
     arithmetic = _apply_non_taxable_delta(
         receipt,
         refreshed,
         delta=-removed.amount,
     )
+    known_category = removed.category != UNKNOWN_CATEGORY
+    category_item_count = (
+        sum(1 for item in refreshed.line_items if item.category == removed.category)
+        if known_category
+        else None
+    )
+    post_analysis = _analyze_receipt(receipt)
+    category_item_count_after = (
+        sum(1 for item in post_analysis.line_items if item.category == removed.category)
+        if known_category
+        else None
+    )
+    multi_item_category = (
+        (category_item_count or 0) > 1
+        and (category_item_count_after or 0) >= 1
+    )
+    category_reason = (
+        "removed non-taxable item from a multi-item category"
+        if multi_item_category
+        else "removed non-taxable item"
+    )
+    shift_reason = (
+        "and shifted lower receipt lines to close the gap"
+        if shift_summary["line_count"] > 0
+        else "with no lower receipt lines requiring a shift"
+    )
+    selection_reason = f"{category_reason} {shift_reason}"
 
     return _candidate_from_receipt(
         receipt,
@@ -809,6 +836,18 @@ def _build_remove_item_candidate_from_plan(
                 "category": removed.category,
                 "taxable": removed.taxable,
             },
+            "removal_context": {
+                "category": removed.category,
+                "removed_y": round(float(removed_center), 1),
+                "line_step": line_step,
+                "shifted_lower_lines_by": shift_summary["median_shift"],
+                "shifted_line_count": shift_summary["line_count"],
+                "shifted_lower_line_shift_min": shift_summary["min_shift"],
+                "shifted_lower_line_shift_max": shift_summary["max_shift"],
+                "category_item_count_before": category_item_count,
+                "category_item_count_after": category_item_count_after,
+                "selection_reason": selection_reason,
+            },
             "old_grand_total": _format_money(old_total),
             "new_grand_total": _format_money(new_total),
             "old_subtotal": (
@@ -820,7 +859,7 @@ def _build_remove_item_candidate_from_plan(
             "tax_delta": "0.00",
             "arithmetic_reconciliation": arithmetic,
             "structure_similarity": _score_structure_similarity(
-                _analyze_receipt(receipt),
+                post_analysis,
                 analyses,
             ),
             "generation_plan": {
@@ -1220,6 +1259,7 @@ def build_synthesis_accuracy_evidence(
     if operation == "remove_line_item":
         removed = metadata.get("removed_item")
         arithmetic = metadata.get("arithmetic_reconciliation")
+        removal_context = metadata.get("removal_context")
         if (
             isinstance(arithmetic, dict)
             and arithmetic.get("summary_update_policy")
@@ -1229,6 +1269,17 @@ def build_synthesis_accuracy_evidence(
             checks.append("non_taxable_arithmetic_reconciled")
         if isinstance(removed, dict) and removed.get("taxable") is False:
             checks.append("removed_item_non_taxable")
+        if (
+            isinstance(removal_context, dict)
+            and removal_context.get("category") != UNKNOWN_CATEGORY
+            and (_safe_int(removal_context.get("category_item_count_before")) or 0) > 1
+            and (_safe_int(removal_context.get("category_item_count_after")) or 0) >= 1
+        ):
+            checks.append("removed_from_multi_item_category")
+        if isinstance(removal_context, dict) and (
+            _safe_int(removal_context.get("shifted_line_count")) or 0
+        ):
+            checks.append("lower_lines_shifted_to_close_gap")
         return {
             "operation": operation,
             "checks": checks,
@@ -1245,6 +1296,11 @@ def build_synthesis_accuracy_evidence(
             "tax_delta": metadata.get("tax_delta"),
             "layout_integrity": _compact_layout_integrity_evidence(layout),
             "structure_similarity": _compact_structure_evidence(structure),
+            "removal_context": (
+                removal_context
+                if isinstance(removal_context, dict)
+                else None
+            ),
         }
 
     if operation == "replace_field":
@@ -2644,15 +2700,33 @@ def _shift_lines_below(
     receipt: dict[str, Any],
     removed_center_y: float,
     delta: int,
-) -> None:
+) -> dict[str, int]:
+    realized_shifts: list[int] = []
     for line in receipt.get("lines", []):
         if _line_y(line) * 1000 >= removed_center_y:
             continue
+        before_y = _line_y(line) * 1000
         for word in line.get("words", []):
             word["bbox"][1] = min(1000, word["bbox"][1] + delta)
             word["bbox"][3] = min(1000, word["bbox"][3] + delta)
         line["y"] = min(1.0, _line_y(line))
+        realized_shift = int(round((_line_y(line) * 1000) - before_y))
+        if realized_shift > 0:
+            realized_shifts.append(realized_shift)
     _refresh_words(receipt)
+    if not realized_shifts:
+        return {
+            "line_count": 0,
+            "median_shift": 0,
+            "min_shift": 0,
+            "max_shift": 0,
+        }
+    return {
+        "line_count": len(realized_shifts),
+        "median_shift": int(round(statistics.median(realized_shifts))),
+        "min_shift": min(realized_shifts),
+        "max_shift": max(realized_shifts),
+    }
 
 
 def _score_structure_similarity(

@@ -514,8 +514,22 @@ export interface TrainingSynthesisAccuracyEvidence {
     category_heading_seen_count?: number | null;
     category_alignment?: string | null;
   };
+  removal_context?: TrainingSynthesisRemovalContext;
   layout_integrity?: TrainingSynthesisLayoutIntegrityEvidence;
   structure_similarity?: TrainingSynthesisStructureEvidence;
+}
+
+export interface TrainingSynthesisRemovalContext {
+  category?: string | null;
+  removed_y?: number | null;
+  line_step?: number | null;
+  shifted_lower_lines_by?: number | null;
+  shifted_line_count?: number | null;
+  shifted_lower_line_shift_min?: number | null;
+  shifted_lower_line_shift_max?: number | null;
+  category_item_count_before?: number | null;
+  category_item_count_after?: number | null;
+  selection_reason?: string | null;
 }
 
 export interface TrainingSynthesisCandidateExample {
@@ -818,6 +832,7 @@ export interface TrainingSynthesisQualityExample {
     category_heading_seen_count?: number | null;
     category_alignment?: string | null;
   };
+  removal_context?: TrainingSynthesisRemovalContext;
   field_replacement?: {
     old_text?: string | null;
     new_text?: string | null;

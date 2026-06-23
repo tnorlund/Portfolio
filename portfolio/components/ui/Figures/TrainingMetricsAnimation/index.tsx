@@ -1884,6 +1884,7 @@ const summarizeExampleGrounding = (
   if (!example) return null;
   const catalog = example.catalog_grounding;
   const placement = example.category_placement;
+  const removal = example.removal_context;
   const structure = example.structure_evidence;
   const parts: string[] = [];
   const outsideCount = catalog?.product_seen_outside_base_count;
@@ -1910,6 +1911,25 @@ const summarizeExampleGrounding = (
 
   if (placement?.category_alignment === "same_category_as_base") {
     parts.push("same section");
+  }
+
+  if (
+    removal?.category_item_count_before != null &&
+    removal.category_item_count_before > 1 &&
+    removal.category_item_count_after != null &&
+    removal.category_item_count_after >= 1
+  ) {
+    const after = removal.category_item_count_after;
+    const categoryLabel = removal.category
+      ? formatCategoryName(removal.category)
+      : "category";
+    parts.push(
+      `${categoryLabel} ${formatCount(removal.category_item_count_before)} -> ${formatCount(after)} items`
+    );
+  }
+
+  if (removal?.shifted_line_count && removal.shifted_line_count > 0) {
+    parts.push(formatPlural(removal.shifted_line_count, "shifted line"));
   }
 
   const shapeCheckCount = structure?.match_summary?.shape_checks?.length || 0;
@@ -2246,6 +2266,7 @@ const candidateExampleToQualityExample = (
   accuracy_checks: example.accuracy_evidence?.checks || [],
   catalog_grounding: example.accuracy_evidence?.catalog_grounding,
   category_placement: example.accuracy_evidence?.category_placement,
+  removal_context: example.accuracy_evidence?.removal_context,
   receipt_shape: {
     line_count: example.receipt_preview?.line_count,
     token_count: example.receipt_preview?.token_count,
@@ -2428,13 +2449,17 @@ const SynthesisMerchantQualityPanel: React.FC<SynthesisEvidenceStripProps> = ({
         const candidateCount = merchant.candidate_count ?? 0;
         const rejected = merchant.rejected_count ?? 0;
         const firstExample = (merchant.accepted_examples || [])[0];
+        const operation = firstExample?.operation;
         const previewLine =
-          firstExample?.preview_lines?.find((line) => line.synthetic_insert)?.text ||
-          firstExample?.preview_lines?.[0]?.text ||
-          firstExample?.changed_text ||
-          (firstExample?.label && firstExample?.field_replacement?.new_text
-            ? `${formatFieldName(firstExample.label)} ${firstExample.field_replacement.new_text}`
-            : null);
+          operation === "remove_line_item" && firstExample?.changed_text
+            ? firstExample.changed_text
+            : firstExample?.preview_lines?.find((line) => line.synthetic_insert)
+                ?.text ||
+              firstExample?.preview_lines?.[0]?.text ||
+              firstExample?.changed_text ||
+              (firstExample?.label && firstExample?.field_replacement?.new_text
+                ? `${formatFieldName(firstExample.label)} ${firstExample.field_replacement.new_text}`
+                : null);
         const checks = (firstExample?.accuracy_checks || [])
           .slice(0, 2)
           .map(formatEvidenceCheck);

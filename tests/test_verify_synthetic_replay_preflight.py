@@ -2090,6 +2090,84 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
     ]
 
 
+def test_compact_report_candidate_keeps_remove_line_geometry_context():
+    module = _load_module()
+    candidate = {
+        "candidate_id": "market-remove-pears",
+        "receipt_key": "synthetic-market-remove-pears#00001",
+        "metadata": {
+            "operation": "remove_line_item",
+            "removed_item": {
+                "product_text": "PEARS",
+                "category": "PRODUCE",
+                "line_total": "2.00",
+                "taxable": False,
+            },
+            "synthesis_accuracy_evidence": {
+                "operation": "remove_line_item",
+                "checks": [
+                    "removed_item_non_taxable",
+                    "removed_from_multi_item_category",
+                    "lower_lines_shifted_to_close_gap",
+                ],
+                "changed_text": "PEARS",
+                "category": "PRODUCE",
+                "old_grand_total": "10.00",
+                "new_grand_total": "8.00",
+                "tax_delta": "0.00",
+                "removal_context": {
+                    "category": "PRODUCE",
+                    "removed_y": 667.5,
+                    "line_step": 30,
+                    "shifted_lower_lines_by": 30,
+                    "shifted_line_count": 5,
+                    "shifted_lower_line_shift_min": 30,
+                    "shifted_lower_line_shift_max": 30,
+                    "category_item_count_before": 2,
+                    "category_item_count_after": 1,
+                    "selection_reason": (
+                        "removed non-taxable item from a multi-item category "
+                        "and shifted lower receipt lines to close the gap"
+                    ),
+                    "debug_notes": "must not leak into compact API payload",
+                },
+            },
+        },
+    }
+
+    compact = module._compact_report_candidate(candidate)
+
+    assert compact["operation"] == "remove_line_item"
+    assert compact["changed_text"] == "PEARS"
+    assert compact["category"] == "PRODUCE"
+    assert compact["total_change"] == {
+        "old_grand_total": "10.00",
+        "new_grand_total": "8.00",
+        "tax_delta": "0.00",
+    }
+    assert compact["removal_context"] == {
+        "category": "PRODUCE",
+        "removed_y": 667.5,
+        "line_step": 30,
+        "shifted_lower_lines_by": 30,
+        "shifted_line_count": 5,
+        "shifted_lower_line_shift_min": 30,
+        "shifted_lower_line_shift_max": 30,
+        "category_item_count_before": 2,
+        "category_item_count_after": 1,
+        "selection_reason": (
+            "removed non-taxable item from a multi-item category "
+            "and shifted lower receipt lines to close the gap"
+        ),
+    }
+    assert "debug_notes" not in compact["removal_context"]
+    assert compact["accuracy_checks"] == [
+        "removed_item_non_taxable",
+        "removed_from_multi_item_category",
+        "lower_lines_shifted_to_close_gap",
+    ]
+
+
 def test_build_local_synthesis_quality_report_requires_base_lineage_coverage():
     module = _load_module()
     artifact = _artifact("Market Mart")

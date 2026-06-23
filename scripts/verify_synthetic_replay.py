@@ -2457,6 +2457,9 @@ def _compact_report_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         result["catalog_grounding"] = accuracy["catalog_grounding"]
     if isinstance(accuracy.get("category_placement"), dict):
         result["category_placement"] = accuracy["category_placement"]
+    removal_context = _compact_removal_context(accuracy.get("removal_context"))
+    if removal_context:
+        result["removal_context"] = removal_context
     if isinstance(preview, dict):
         result["receipt_shape"] = {
             "line_count": _safe_int(preview.get("line_count")),
@@ -2468,6 +2471,34 @@ def _compact_report_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         if focus_lines:
             result["preview_lines"] = focus_lines
     return result
+
+
+def _compact_removal_context(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        "category": value.get("category"),
+        "removed_y": _safe_float(value.get("removed_y")),
+        "line_step": _safe_int(value.get("line_step")),
+        "shifted_lower_lines_by": _safe_int(value.get("shifted_lower_lines_by")),
+        "shifted_line_count": _safe_int(value.get("shifted_line_count")),
+        "shifted_lower_line_shift_min": _safe_int(
+            value.get("shifted_lower_line_shift_min")
+        ),
+        "shifted_lower_line_shift_max": _safe_int(
+            value.get("shifted_lower_line_shift_max")
+        ),
+        "category_item_count_before": _safe_int(
+            value.get("category_item_count_before")
+        ),
+        "category_item_count_after": _safe_int(
+            value.get("category_item_count_after")
+        ),
+        "selection_reason": _clip_text(value.get("selection_reason"), max_chars=180),
+    }
+    return {
+        key: item for key, item in result.items() if item not in (None, "", [], {})
+    }
 
 
 def _selection_reason(candidate: dict[str, Any]) -> str:
