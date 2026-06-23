@@ -3965,3 +3965,30 @@ def test_payload_words_prefer_receipt_level_set():
         payload_no_receipt, receipt, label_lookup={}
     )
     assert sum(len(ws) for ws in by_line2.values()) == 1
+
+
+def test_canonical_place_merchant_used_for_grouping():
+    """Receipts are grouped by the canonical Google Places merchant name (from
+    receipt_places), not by noisy MERCHANT_NAME-label/header text that would
+    splinter one chain into many variants."""
+    module = _load_module()
+    payload = {
+        "receipts": [
+            {"image_id": "i1", "receipt_id": 1},
+            {"image_id": "i2", "receipt_id": 1},
+        ],
+        "receipt_places": [
+            {"image_id": "i1", "receipt_id": 1, "merchant_name": "Sprouts Farmers Market"},
+            {"image_id": "i2", "receipt_id": 1, "merchant_name": "Sprouts Farmers Market"},
+        ],
+        "receipt_words": [
+            {"image_id": "i1", "receipt_id": 1, "line_id": 1, "word_id": 1,
+             "text": "SPROUTS", "bounding_box": {"x": 0.1, "y": 0.94, "width": 0.4, "height": 0.04}},
+            {"image_id": "i2", "receipt_id": 1, "line_id": 1, "word_id": 1,
+             "text": "001 SPROUTS", "bounding_box": {"x": 0.1, "y": 0.94, "width": 0.4, "height": 0.04}},
+        ],
+    }
+    canon = module._payload_canonical_merchants(payload)
+    assert canon[("i1", "1")] == "Sprouts Farmers Market"
+    out = module._attach_payload_lines(payload["receipts"], payload)
+    assert {r.get("merchant_name") for r in out} == {"Sprouts Farmers Market"}

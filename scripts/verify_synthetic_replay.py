@@ -4022,6 +4022,34 @@ def _merge_payload_words_into_line(
     return next_line
 
 
+def _payload_canonical_merchants(
+    payload: dict[str, Any],
+) -> dict[tuple[str, str], str]:
+    """Map ``(image_id, receipt_id) -> canonical merchant name`` from places.
+
+    Keyed to match ``_receipt_identity`` so a receipt can look up its Google
+    Places merchant name. Only non-empty names are recorded.
+    """
+    out: dict[tuple[str, str], str] = {}
+    for key in ("receipt_places", "places"):
+        rows = payload.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("merchant_name") or "").strip()
+            if not name:
+                continue
+            out[
+                (
+                    _id_value(row, "image_id"),
+                    _id_value(row, "receipt_id", "receipt_num"),
+                )
+            ] = name
+    return out
+
+
 def _attach_payload_lines(
     receipts: list[dict[str, Any]],
     payload: dict[str, Any],
@@ -4036,6 +4064,12 @@ def _attach_payload_lines(
         line for line in source_lines or [] if isinstance(line, dict)
     ]
     label_lookup = _payload_label_lookup(payload)
+    # Canonical Google Places merchant name (from ``receipt_places``) is the
+    # clean per-chain grouping key: every receipt of a chain shares it, whereas
+    # MERCHANT_NAME-label / header-text inference fragments one chain into many
+    # variants ("SPROUTS", "001 SPROUTS", "5.99 SPROUTS"). Attach it so the
+    # merchant grouping does not splinter the same merchant across receipts.
+    canonical_merchant = _payload_canonical_merchants(payload)
 
     normalized_receipts: list[dict[str, Any]] = []
     for receipt in receipts:
@@ -4046,6 +4080,10 @@ def _attach_payload_lines(
             label_lookup=label_lookup,
         )
         image_id, receipt_id = _receipt_identity(receipt)
+        if not str(next_receipt.get("merchant_name") or "").strip():
+            canonical = canonical_merchant.get((image_id, receipt_id))
+            if canonical:
+                next_receipt["merchant_name"] = canonical
         matching_lines = [
             line
             for line in payload_lines
@@ -4687,6 +4725,7 @@ def run_local_synthetic_pipeline(
         min_structure_similarity=min_structure_similarity,
         max_per_merchant=max_per_merchant,
         max_per_merchant_operation=max_per_merchant_operation,
+        require_high_fidelity=True,
     )
     bundle_path = Path(bundle_output)
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
@@ -4995,6 +5034,7 @@ def build_local_synthetic_training_bundle(
     min_structure_similarity: float = 0.6,
     max_per_merchant: int = 5,
     max_per_merchant_operation: int = 2,
+    require_high_fidelity: bool = False,
 ) -> dict[str, Any]:
     """Build a local LayoutLM synthetic training bundle from pattern artifacts."""
     from receipt_layoutlm.data_loader import (
@@ -5034,6 +5074,11 @@ def build_local_synthetic_training_bundle(
         max_per_merchant_operation=max_per_merchant_operation,
         min_structure_similarity=min_structure_similarity,
         merchant_contracts=merchant_contracts,
+        # A curated, ready-to-train bundle requires every accepted candidate to
+        # be high-fidelity (rejecting the rest rather than holding the whole
+        # batch). Off by default so the lower-level builder and ordinary
+        # training keep the looser structure threshold.
+        require_high_fidelity=require_high_fidelity,
     )
     reasons = list(preflight["reasons"])
     if not selection.candidates_accepted:
@@ -5327,6 +5372,7 @@ def main() -> int:
             min_structure_similarity=args.min_structure_similarity,
             max_per_merchant=args.max_per_merchant,
             max_per_merchant_operation=args.max_per_merchant_operation,
+            require_high_fidelity=True,
         )
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
