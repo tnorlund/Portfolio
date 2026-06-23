@@ -859,6 +859,8 @@ export interface TrainingSynthesisMerchantGapSummary {
 
 export interface TrainingSynthesisQualityReport {
   ready?: boolean;
+  training_ready?: boolean;
+  training_ready_reasons?: string[];
   bundle_ready?: boolean;
   bundle_reasons?: string[];
   summary?: {
@@ -895,6 +897,13 @@ export interface TrainingSynthesisQualityReport {
     max_per_merchant_operation?: number | null;
     min_structure_similarity?: number | null;
     structure_component_thresholds?: Record<string, number>;
+    accepted_operation_coverage_gate?: {
+      enabled?: boolean;
+      passed?: boolean;
+      ready_operation_count?: number | null;
+      accepted_ready_operation_count?: number | null;
+      uncovered_ready_operations?: string[];
+    };
   };
   recommendations?: string[];
   merchants?: TrainingSynthesisQualityMerchant[];

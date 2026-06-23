@@ -1828,6 +1828,38 @@ def _report_recommendations(
     return recommendations[:8]
 
 
+def _training_ready_reasons(
+    bundle: dict[str, Any],
+    *,
+    candidate_mix: dict[str, Any],
+    contracts: list[dict[str, Any]],
+    accepted_operation_coverage: dict[str, Any] | None = None,
+) -> list[str]:
+    """Return blocking reasons before synthetic rows should train LayoutLM."""
+    reasons: list[str] = []
+    if bundle.get("ready") is not True:
+        reasons.append("resolve_bundle_reasons_before_training")
+    if not _safe_int(candidate_mix.get("accepted_count")):
+        reasons.append("collect_more_receipts_or_fix_parameterization")
+    if any(str(contract.get("status") or "") != "ready" for contract in contracts):
+        reasons.append("collect_more_receipts_for_not_ready_merchants")
+    if any(
+        "source_receipt_quality_blocked" in set(contract.get("blockers") or [])
+        or str((contract.get("source_receipt_quality") or {}).get("status") or "")
+        == "blocked"
+        for contract in contracts
+    ):
+        reasons.append("fix_source_receipt_quality_before_synthesis")
+    if accepted_operation_coverage and accepted_operation_coverage.get(
+        "uncovered_ready_operations"
+    ):
+        reasons.append("cover_ready_operations_before_training")
+    balance = candidate_mix.get("accepted_mix_balance") or {}
+    if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
+        reasons.append("rebalance_synthetic_mix_before_training")
+    return reasons[:8]
+
+
 def _synthetic_mix_balance_failure(
     *,
     preflight: dict[str, Any],
@@ -1968,6 +2000,12 @@ def build_local_synthesis_quality_report(
     merchant_gap_summary = _merchant_gap_summary(merchant_rows)
     accepted_count = _safe_int(candidate_mix.get("accepted_count")) or 0
     candidate_count = _safe_int(candidate_mix.get("candidate_count")) or 0
+    training_ready_reasons = _training_ready_reasons(
+        bundle,
+        candidate_mix=candidate_mix,
+        contracts=contracts,
+        accepted_operation_coverage=accepted_operation_coverage,
+    )
     source_quality_status_counts = _count_by(
         [
             str(row.get("source_quality_status"))
@@ -1978,6 +2016,8 @@ def build_local_synthesis_quality_report(
     report = {
         "schema_version": "local-synthesis-quality-report-v1",
         "ready": bundle.get("ready") is True and accepted_count > 0,
+        "training_ready": not training_ready_reasons,
+        "training_ready_reasons": training_ready_reasons,
         "bundle_ready": bundle.get("ready") is True,
         "bundle_reasons": list(bundle.get("reasons") or [])[:10],
         "summary": {
@@ -2052,6 +2092,22 @@ def build_local_synthesis_quality_report(
                 (bundle.get("selection") or {}).get("structure_component_thresholds")
                 or {}
             ),
+            "accepted_operation_coverage_gate": {
+                "enabled": True,
+                "passed": not accepted_operation_coverage.get(
+                    "uncovered_ready_operations"
+                ),
+                "ready_operation_count": accepted_operation_coverage.get(
+                    "ready_operation_count"
+                ),
+                "accepted_ready_operation_count": accepted_operation_coverage.get(
+                    "accepted_ready_operation_count"
+                ),
+                "uncovered_ready_operations": list(
+                    accepted_operation_coverage.get("uncovered_ready_operations")
+                    or []
+                )[:8],
+            },
         },
         "recommendations": _report_recommendations(
             bundle,
@@ -4156,7 +4212,7 @@ def main() -> int:
             )
         )
         json_print(report)
-        return 0 if report["ready"] else 2
+        return 0 if report.get("training_ready", report["ready"]) else 2
 
     outputs = load_outputs(args.env)
     status = describe_deployment(outputs, env=args.env, region=args.region)

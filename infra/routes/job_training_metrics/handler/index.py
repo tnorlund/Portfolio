@@ -1864,8 +1864,39 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
     llm_execution = _compact_llm_execution_summary(summary.get("llm_execution"))
     if llm_execution:
         compact_summary["llm_execution"] = llm_execution
+    raw_training_ready = value.get("training_ready")
+    training_ready = (
+        raw_training_ready
+        if isinstance(raw_training_ready, bool)
+        else value.get("ready") is True
+    )
+    coverage_gate = quality_gates.get("accepted_operation_coverage_gate")
+    compact_coverage_gate = (
+        {
+            "enabled": coverage_gate.get("enabled") is True,
+            "passed": coverage_gate.get("passed") is True,
+            "ready_operation_count": _safe_int(
+                coverage_gate.get("ready_operation_count")
+            ),
+            "accepted_ready_operation_count": _safe_int(
+                coverage_gate.get("accepted_ready_operation_count")
+            ),
+            "uncovered_ready_operations": [
+                str(item)
+                for item in (
+                    coverage_gate.get("uncovered_ready_operations") or []
+                )[:8]
+            ],
+        }
+        if isinstance(coverage_gate, dict) and coverage_gate
+        else {}
+    )
     return {
         "ready": value.get("ready") is True,
+        "training_ready": training_ready,
+        "training_ready_reasons": [
+            str(item) for item in (value.get("training_ready_reasons") or [])[:8]
+        ],
         "bundle_ready": value.get("bundle_ready") is True,
         "bundle_reasons": list(value.get("bundle_reasons") or [])[:10],
         "summary": compact_summary,
@@ -1896,6 +1927,7 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
                 ).items()
                 if (threshold := _safe_float(value)) is not None
             },
+            "accepted_operation_coverage_gate": compact_coverage_gate,
         },
         "recommendations": [
             str(item) for item in (value.get("recommendations") or [])[:8]
@@ -2076,6 +2108,23 @@ def _derive_synthesis_quality_report(
     for recommendation in accepted_operation_coverage.get("recommendations") or []:
         if recommendation not in recommendations:
             recommendations.append(str(recommendation))
+    training_ready_reasons: list[str] = []
+    if bundle.get("ready") is False:
+        training_ready_reasons.append("resolve_bundle_reasons_before_training")
+    if not accepted_count:
+        training_ready_reasons.append("collect_more_receipts_or_fix_parameterization")
+    if any(contract.get("status") != "ready" for contract in contracts):
+        training_ready_reasons.append("collect_more_receipts_for_not_ready_merchants")
+    if any(
+        str(row.get("source_quality_status") or "").lower() == "blocked"
+        for row in merchant_rows
+    ):
+        training_ready_reasons.append("fix_source_receipt_quality_before_synthesis")
+    if accepted_operation_coverage.get("uncovered_ready_operations"):
+        training_ready_reasons.append("cover_ready_operations_before_training")
+    balance = candidate_mix.get("accepted_mix_balance") or {}
+    if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
+        training_ready_reasons.append("rebalance_synthetic_mix_before_training")
     merchant_gap_summary = {
         "blocked_merchant_count": sum(
             1
@@ -2119,6 +2168,8 @@ def _derive_synthesis_quality_report(
     return _compact_synthesis_quality_report(
         {
             "ready": bundle.get("ready") is not False and bool(accepted_count),
+            "training_ready": not training_ready_reasons,
+            "training_ready_reasons": training_ready_reasons,
             "bundle_ready": bundle.get("ready") is not False,
             "bundle_reasons": list(bundle.get("reasons") or [])[:10],
             "summary": {
@@ -2187,6 +2238,24 @@ def _derive_synthesis_quality_report(
                     "structure_component_thresholds"
                 )
                 or {},
+                "accepted_operation_coverage_gate": {
+                    "enabled": True,
+                    "passed": not accepted_operation_coverage.get(
+                        "uncovered_ready_operations"
+                    ),
+                    "ready_operation_count": accepted_operation_coverage.get(
+                        "ready_operation_count"
+                    ),
+                    "accepted_ready_operation_count": accepted_operation_coverage.get(
+                        "accepted_ready_operation_count"
+                    ),
+                    "uncovered_ready_operations": list(
+                        accepted_operation_coverage.get(
+                            "uncovered_ready_operations"
+                        )
+                        or []
+                    )[:8],
+                },
             },
             "recommendations": recommendations,
             "merchants": merchant_rows,

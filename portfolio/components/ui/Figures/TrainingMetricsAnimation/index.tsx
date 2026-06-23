@@ -838,6 +838,12 @@ const summarizeContractCoverage = (
         .map(formatOperationName)
         .join(", ")}`
     : null;
+  const trainingReadyTitle =
+    synthesis.quality_report?.training_ready === false
+      ? `Training hold: ${(synthesis.quality_report.training_ready_reasons || [])
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+      : null;
   return {
     label:
       total != null
@@ -845,7 +851,13 @@ const summarizeContractCoverage = (
         : acceptedReadyOperations != null && readyAcceptedTotal != null
           ? `${formatCount(acceptedReadyOperations)} / ${formatCount(readyAcceptedTotal)} accepted`
         : "—",
-    title: [operationTitle, coverageTitle, acceptedCoverageTitle, uncoveredTitle]
+    title: [
+      operationTitle,
+      coverageTitle,
+      acceptedCoverageTitle,
+      uncoveredTitle,
+      trainingReadyTitle,
+    ]
       .filter((value): value is string => Boolean(value))
       .join(" | ") || undefined,
   };

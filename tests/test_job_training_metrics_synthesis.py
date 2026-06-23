@@ -1400,6 +1400,12 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         },
     }
     assert summary["quality_report"]["ready"] is True
+    assert summary["quality_report"]["training_ready"] is False
+    assert summary["quality_report"]["training_ready_reasons"] == [
+        "collect_more_receipts_for_not_ready_merchants",
+        "fix_source_receipt_quality_before_synthesis",
+        "cover_ready_operations_before_training",
+    ]
     assert summary["quality_report"]["summary"]["acceptance_rate"] == 0.6
     assert summary["quality_report"]["summary"]["ready_contract_count"] == 2
     assert summary["quality_report"]["summary"]["accepted_candidate_quality"] == {
@@ -1552,6 +1558,13 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "category_sequence": 0.4,
             "category_set": 0.4,
             "token_count": 0.35,
+        },
+        "accepted_operation_coverage_gate": {
+            "enabled": True,
+            "passed": False,
+            "ready_operation_count": 3,
+            "accepted_ready_operation_count": 2,
+            "uncovered_ready_operations": ["replace_field"],
         },
     }
     assert summary["quality_report"]["recommendations"] == [

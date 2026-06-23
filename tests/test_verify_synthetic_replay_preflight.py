@@ -1409,6 +1409,8 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
 
     assert report["schema_version"] == "local-synthesis-quality-report-v1"
     assert report["ready"] is True
+    assert report["training_ready"] is True
+    assert report["training_ready_reasons"] == []
     assert report["summary"]["merchant_count"] == 1
     assert report["summary"]["accepted_count"] == 2
     assert report["summary"]["acceptance_rate"] == 1.0
@@ -1457,6 +1459,13 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         report["quality_gates"]["structure_component_thresholds"]
         == STRUCTURE_COMPONENT_THRESHOLDS
     )
+    assert report["quality_gates"]["accepted_operation_coverage_gate"] == {
+        "enabled": True,
+        "passed": True,
+        "ready_operation_count": 2,
+        "accepted_ready_operation_count": 2,
+        "uncovered_ready_operations": [],
+    }
     assert report["recommendations"] == [
         "verify_total_and_tax_reconciliation_in_preview",
         "prefer_cross_receipt_grounded_item_mutations",

@@ -114,6 +114,8 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
       },
     ],
     quality_report: {
+      training_ready: false,
+      training_ready_reasons: ["cover_ready_operations_before_training"],
       accepted_operation_coverage: {
         operation_count: 4,
         ready_operation_count: 3,
@@ -162,6 +164,10 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
       "title",
       expect.stringContaining("Uncovered ready ops: Field edits"),
+    );
+    expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Training hold: cover ready operations before training"),
     );
   });
 
