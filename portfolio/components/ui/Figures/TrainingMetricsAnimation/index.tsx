@@ -1428,6 +1428,12 @@ const summarizeSourceLineage = (
   const hasExpected = lineage.expected_candidate_count != null;
   const expected = lineage.expected_candidate_count ?? null;
   const candidateCount = lineage.candidate_count ?? null;
+  const baseCoverage = lineage.with_base_receipt_count ?? null;
+  const acceptedCandidateCount =
+    synthesis.quality_report?.summary?.accepted_count ??
+    synthesis.bundle_candidates_accepted ??
+    synthesis.synthetic_candidates_accepted ??
+    null;
   const sourceCount = lineage.source_receipt_key_count ?? 0;
   const coverageStatus = (lineage.coverage_status || "").toLowerCase();
   const isCompleteStatus =
@@ -1439,28 +1445,70 @@ const summarizeSourceLineage = (
     observed != null && expected != null && observed !== expected;
   const missingObservedCoverage =
     observed == null && (expected != null || candidateCount != null);
+  const hasAcceptedCandidateTarget =
+    acceptedCandidateCount != null && acceptedCandidateCount > 0;
+  const baseCoverageUnavailable =
+    supportedSchema &&
+    isCompleteStatus &&
+    !nonAuthoritative &&
+    hasAcceptedCandidateTarget &&
+    baseCoverage == null;
+  const baseCoverageMismatch =
+    supportedSchema &&
+    isCompleteStatus &&
+    !nonAuthoritative &&
+    hasAcceptedCandidateTarget &&
+    baseCoverage != null &&
+    baseCoverage !== acceptedCandidateCount;
+  const hasCompleteBaseCoverage =
+    supportedSchema &&
+    isCompleteStatus &&
+    !nonAuthoritative &&
+    hasAcceptedCandidateTarget &&
+    baseCoverage != null &&
+    baseCoverage === acceptedCandidateCount;
+  // Candidate coverage counts can be bounded diagnostics; exact accepted
+  // base-link coverage is the training gate surfaced by this badge.
+  const blockingBaseCoverage =
+    baseCoverageUnavailable || baseCoverageMismatch;
+  const blockingCountMismatch = countMismatch && !hasCompleteBaseCoverage;
+  const blockingMissingObservedCoverage =
+    missingObservedCoverage && !hasCompleteBaseCoverage;
   const statusPrefix = isCoverageSampled
     ? "sampled"
     : nonAuthoritative
       ? "not auth"
-      : countMismatch
+      : blockingCountMismatch
         ? "gap"
-        : unverifiedCoverageStatus
-          ? "review"
-          : null;
+        : blockingBaseCoverage
+          ? "base"
+          : unverifiedCoverageStatus
+            ? "review"
+            : null;
   const warning =
     !supportedSchema ||
     nonAuthoritative ||
     isCoverageSampled ||
     unverifiedCoverageStatus ||
-    countMismatch ||
-    missingObservedCoverage ||
+    blockingCountMismatch ||
+    blockingMissingObservedCoverage ||
+    blockingBaseCoverage ||
     Boolean(lineage.coverage_warning) ||
     Boolean(lineage.source_receipt_keys_truncated);
 
   let label = "reported";
   if (!supportedSchema) {
     label = "schema review";
+  } else if (
+    statusPrefix === "base" &&
+    baseCoverage != null &&
+    acceptedCandidateCount != null
+  ) {
+    label = `base ${formatCount(baseCoverage)} / ${formatCount(
+      acceptedCandidateCount
+    )}`;
+  } else if (statusPrefix === "base" && acceptedCandidateCount != null) {
+    label = `base expected ${formatCount(acceptedCandidateCount)}`;
   } else if (statusPrefix && observed != null && expected != null) {
     label = `${statusPrefix} ${formatCount(observed)} / ${formatCount(expected)}`;
   } else if (statusPrefix && observed != null) {
@@ -1469,6 +1517,8 @@ const summarizeSourceLineage = (
     label = `${statusPrefix} expected ${formatCount(expected)}`;
   } else if (statusPrefix && candidateCount != null) {
     label = `${statusPrefix} expected ${formatCount(candidateCount)}`;
+  } else if (hasCompleteBaseCoverage && baseCoverage != null) {
+    label = `${formatCount(baseCoverage)} base-linked`;
   } else if (observed != null) {
     label = `${formatCount(observed)} candidate${observed === 1 ? "" : "s"}`;
   } else if (candidateCount != null) {
@@ -1486,8 +1536,10 @@ const summarizeSourceLineage = (
     statusLabel = "Lineage (sampled)";
   } else if (!supportedSchema) {
     statusLabel = "Lineage (schema)";
-  } else if (countMismatch || missingObservedCoverage) {
+  } else if (blockingCountMismatch || blockingMissingObservedCoverage) {
     statusLabel = "Lineage (gap)";
+  } else if (blockingBaseCoverage) {
+    statusLabel = "Lineage (base)";
   } else if (unverifiedCoverageStatus) {
     statusLabel = "Lineage (review)";
   }
@@ -1520,10 +1572,14 @@ const summarizeSourceLineage = (
     statusTitle = "Source lineage is sampled";
   } else if (nonAuthoritative) {
     statusTitle = "Source lineage is not authoritative";
-  } else if (countMismatch) {
+  } else if (blockingCountMismatch) {
     statusTitle = "Source lineage count does not match expected coverage";
-  } else if (missingObservedCoverage) {
+  } else if (blockingMissingObservedCoverage) {
     statusTitle = "Source lineage observed coverage is unavailable";
+  } else if (baseCoverageUnavailable) {
+    statusTitle = "Source lineage base evidence is unavailable";
+  } else if (baseCoverageMismatch) {
+    statusTitle = "Source lineage base evidence does not match accepted coverage";
   } else if (unverifiedCoverageStatus) {
     statusTitle = "Source lineage coverage status needs review";
   }
@@ -1535,6 +1591,9 @@ const summarizeSourceLineage = (
       : null,
     observed == null && hasExpected && expected != null
       ? `Observed candidates: unavailable / ${formatCount(expected)} expected`
+      : null,
+    acceptedCandidateCount != null
+      ? `Accepted candidates: ${formatCount(acceptedCandidateCount)}`
       : null,
     candidateCount != null ? `Candidate count: ${formatCount(candidateCount)}` : null,
     sourceCount

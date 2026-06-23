@@ -525,6 +525,7 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
         candidate_count: 1,
         observed_candidate_count: 1,
         expected_candidate_count: 1,
+        with_base_receipt_count: 1,
         source_receipt_key_count: 2,
       },
     };
@@ -536,7 +537,7 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
     });
 
-    expect(await screen.findByText("1 candidate")).toHaveAttribute(
+    expect(await screen.findByText("1 base-linked")).toHaveAttribute(
       "title",
       expect.stringContaining("Source lineage covers accepted candidates"),
     );
@@ -604,6 +605,185 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       "title",
       expect.stringContaining("Coverage: 3 / 5"),
     );
+  });
+
+  it("does not warn on bounded diagnostics when base lineage covers accepted candidates", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      synthetic_train_examples: 2,
+      synthetic_candidates_accepted: 2,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        summary: {
+          ...metrics.synthesis!.quality_report!.summary!,
+          accepted_count: 2,
+        },
+      },
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 1,
+        expected_candidate_count: 2,
+        with_base_receipt_count: 2,
+        source_receipt_key_count: 4,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Source lineage covers accepted candidates"),
+    );
+    expect(screen.getByText("2 base-linked")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Coverage: 1 / 2"),
+    );
+    expect(screen.getByText("2 base-linked")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Accepted candidates: 2"),
+    );
+    expect(screen.getByText("2 base-linked")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Base receipt evidence: 2"),
+    );
+    expect(screen.queryByText("Lineage (gap)")).not.toBeInTheDocument();
+  });
+
+  it("keeps warning when base lineage does not cover accepted candidates", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      synthetic_train_examples: 2,
+      synthetic_candidates_accepted: 2,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        summary: {
+          ...metrics.synthesis!.quality_report!.summary!,
+          accepted_count: 2,
+        },
+      },
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 2,
+        expected_candidate_count: 2,
+        with_base_receipt_count: 1,
+        source_receipt_key_count: 4,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage (base)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("base evidence does not match accepted coverage"),
+    );
+    expect(screen.getByText("base 1 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Base receipt evidence: 1"),
+    );
+  });
+
+  it("keeps warning when base lineage exceeds accepted candidates", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      synthetic_train_examples: 2,
+      synthetic_candidates_accepted: 2,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        summary: {
+          ...metrics.synthesis!.quality_report!.summary!,
+          accepted_count: 2,
+        },
+      },
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 2,
+        expected_candidate_count: 2,
+        with_base_receipt_count: 3,
+        source_receipt_key_count: 4,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage (base)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("base evidence does not match accepted coverage"),
+    );
+    expect(screen.getByText("base 3 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Accepted candidates: 2"),
+    );
+  });
+
+  it("keeps warning when accepted candidate coverage is unavailable", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      synthetic_train_examples: 2,
+      bundle_candidates_accepted: undefined,
+      synthetic_candidates_accepted: undefined,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        summary: {
+          ...metrics.synthesis!.quality_report!.summary!,
+          accepted_count: undefined,
+        },
+      },
+      accepted_source_lineage: {
+        schema_version: "accepted-source-lineage-v1",
+        coverage_status: "complete",
+        authoritative: true,
+        candidate_count: 2,
+        observed_candidate_count: 1,
+        expected_candidate_count: 2,
+        with_base_receipt_count: 2,
+        source_receipt_key_count: 4,
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("Lineage (gap)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("count does not match expected coverage"),
+    );
+    expect(screen.getByText("gap 1 / 2")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Base receipt evidence: 2"),
+    );
+    expect(screen.queryByText("2 base-linked")).not.toBeInTheDocument();
   });
 
   it("flags unknown source lineage coverage status", async () => {
