@@ -19,11 +19,12 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
-from pulumi_aws.cloudwatch import LogGroup
+from pulumi_aws.cloudwatch import EventRule, EventTarget, LogGroup
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
     Function,
     FunctionEnvironmentArgs,
+    Permission,
 )
 from pulumi_aws.s3 import (
     Bucket,
@@ -86,6 +87,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
         spark_artifacts_bucket: Optional[pulumi.Input[str]] = None,
         # Viz-cache integration (optional, writes cache via Lambda)
         cache_bucket: Optional[pulumi.Input[str]] = None,
+        # Optional LayoutLM start-training Lambda for synthetic replay launches
+        layoutlm_start_training_lambda_arn: Optional[
+            pulumi.Input[str]
+        ] = None,
         # External batch bucket (optional - if not provided, creates one internally)
         # Use this to break circular dependencies with EMR analytics
         batch_bucket_name: Optional[pulumi.Input[str]] = None,
@@ -109,6 +114,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.viz_cache_enabled = cache_bucket is not None
         self.cache_bucket = cache_bucket
         self.spark_artifacts_bucket = spark_artifacts_bucket
+        self.layoutlm_start_training_lambda_arn = (
+            layoutlm_start_training_lambda_arn
+        )
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -304,6 +312,24 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
+        RolePolicy(
+            f"{name}-lambda-sagemaker-audit-policy",
+            role=lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["sagemaker:ListTags"],
+                            "Resource": "arn:aws:sagemaker:*:*:training-job/*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
         if ocr_job_queue_arn is not None:
             RolePolicy(
                 f"{name}-lambda-sqs-send-policy",
@@ -442,7 +468,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": "openai/gpt-5.5",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
                 # rate-limit contention when 40 Lambdas run concurrently.
@@ -486,14 +512,20 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "timeout": 900,  # 15 minutes (Lambda max)
             "memory_size": 10240,
             "tags": {"environment": stack},
-            "ephemeral_storage": 512,
+            "ephemeral_storage": 10240,
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                # Pattern builder uses S3 snapshots by default so parallel
+                # merchant-map runs do not contend with Chroma Cloud limits.
+                "CHROMA_CLOUD_ENABLED": "false",
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": "openai/gpt-5.5",
                 "LLM_STRICT_STRUCTURED_OUTPUT": "true",
                 "LLM_STRUCTURED_OUTPUT_RETRIES": "3",
                 **tracing_env,
@@ -523,6 +555,87 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         unified_pattern_builder_lambda = (
             unified_pattern_builder_docker_image.lambda_function
+        )
+
+        # ============================================================
+        # Container Lambda: synthetic_augmentation_audit
+        # Compares synthetic-augmented LayoutLM runs against baseline metrics
+        # ============================================================
+        synthetic_augmentation_audit_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 120,
+            "memory_size": 1024,
+            "tags": {"environment": stack},
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+            },
+            "image_config": {
+                "commands": ["synthetic_augmentation_audit.handler"],
+            },
+        }
+
+        synthetic_augmentation_audit_docker_image = CodeBuildDockerImage(
+            f"{name}-synthetic-audit-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.unified_pattern_builder"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-synthetic-augmentation-audit",
+            lambda_config=synthetic_augmentation_audit_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        synthetic_augmentation_audit_lambda = (
+            synthetic_augmentation_audit_docker_image.lambda_function
+        )
+
+        synthetic_augmentation_completion_rule = EventRule(
+            f"{name}-synthetic-augmentation-complete",
+            description=(
+                "Audit synthetic LayoutLM augmentation runs when SageMaker "
+                "training completes"
+            ),
+            event_pattern=json.dumps(
+                {
+                    "source": ["aws.sagemaker"],
+                    "detail-type": [
+                        "SageMaker Training Job State Change",
+                    ],
+                    "detail": {
+                        "TrainingJobStatus": ["Completed"],
+                        "TrainingJobName": [{"prefix": "layoutlm-"}],
+                    },
+                }
+            ),
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+        EventTarget(
+            f"{name}-synthetic-augmentation-complete-target",
+            rule=synthetic_augmentation_completion_rule.name,
+            arn=synthetic_augmentation_audit_lambda.arn,
+            target_id="synthetic-augmentation-audit",
+            opts=ResourceOptions(parent=self),
+        )
+        Permission(
+            f"{name}-synthetic-augmentation-eventbridge-permission",
+            action="lambda:InvokeFunction",
+            function=synthetic_augmentation_audit_lambda.name,
+            principal="events.amazonaws.com",
+            source_arn=synthetic_augmentation_completion_rule.arn,
+            opts=ResourceOptions(parent=self),
         )
 
         # ============================================================
@@ -646,7 +759,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
             final_aggregate_lambda.arn,
             unified_evaluator_lambda.arn,
             unified_pattern_builder_lambda.arn,
+            synthetic_augmentation_audit_lambda.arn,
         ]
+        if self.layoutlm_start_training_lambda_arn is not None:
+            lambda_arn_list.append(self.layoutlm_start_training_lambda_arn)
 
         if build_viz_cache_lambda:
             lambda_arn_list.append(build_viz_cache_lambda.arn)
@@ -789,23 +905,27 @@ class LabelEvaluatorStepFunction(ComponentResource):
         )
 
         # Base Lambda ARNs (indices 0-3) + batch bucket (4)
+        # + optional LayoutLM start-training Lambda (5, empty when disabled)
         base_outputs = [
             list_all_receipts_lambda.arn,  # 0
             unified_evaluator_lambda.arn,  # 1
             unified_pattern_builder_lambda.arn,  # 2
             final_aggregate_lambda.arn,  # 3
             self.batch_bucket.bucket,  # 4
+            Output.from_input(
+                self.layoutlm_start_training_lambda_arn or ""
+            ),  # 5
         ]
 
-        # Add EMR outputs if enabled (indices 5-9)
+        # Add EMR outputs if enabled (indices 6-10)
         if self.emr_enabled:
             base_outputs.extend(
                 [
-                    self.emr_application_id,  # 5
-                    self.emr_job_execution_role_arn,  # 6
-                    self.langsmith_export_bucket,  # 7
-                    self.analytics_output_bucket,  # 8
-                    self.spark_artifacts_bucket,  # 9
+                    self.emr_application_id,  # 6
+                    self.emr_job_execution_role_arn,  # 7
+                    self.langsmith_export_bucket,  # 8
+                    self.analytics_output_bucket,  # 9
+                    self.spark_artifacts_bucket,  # 10
                 ]
             )
 
@@ -820,7 +940,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         def build_emr_config(args):
             """Build EmrConfig from resolved outputs."""
-            emr_base_idx = 5
+            emr_base_idx = 6
             return EmrConfig(
                 application_id=(args[emr_base_idx] if self.emr_enabled else None),
                 job_execution_role_arn=(
@@ -839,7 +959,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         def build_viz_cache_config(args):
             """Build VizCacheConfig from resolved outputs."""
-            viz_base_idx = 10 if self.emr_enabled else 5
+            viz_base_idx = 11 if self.emr_enabled else 6
             if self.viz_cache_enabled and len(args) > viz_base_idx:
                 return VizCacheConfig(
                     cache_bucket=args[viz_base_idx],
@@ -860,6 +980,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         unified_evaluator=args[1],
                         unified_pattern_builder=args[2],
                         final_aggregate=args[3],
+                        layoutlm_start_training=(args[5] or None),
                     ),
                     runtime=RuntimeConfig(
                         batch_bucket=args[4],
@@ -877,6 +998,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # ============================================================
         self.state_machine_arn = self.state_machine.arn
         self.batch_bucket_name = self.batch_bucket.bucket
+        self.synthetic_augmentation_audit_lambda_arn = (
+            synthetic_augmentation_audit_lambda.arn
+        )
 
         self.register_outputs(
             {
@@ -886,6 +1010,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "unified_evaluator_lambda_arn": unified_evaluator_lambda.arn,
                 "unified_pattern_builder_lambda_arn": (
                     unified_pattern_builder_lambda.arn
+                ),
+                "synthetic_augmentation_audit_lambda_arn": (
+                    synthetic_augmentation_audit_lambda.arn
                 ),
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
             }

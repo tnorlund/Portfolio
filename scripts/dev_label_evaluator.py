@@ -82,7 +82,7 @@ def apply_env(config: dict[str, str], model: str | None) -> None:
     if model:
         os.environ["OPENROUTER_MODEL"] = model
     else:
-        os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+        os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-5.5")
 
 
 def _coerce_receipt_id(value: Any) -> int | None:

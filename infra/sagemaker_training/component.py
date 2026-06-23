@@ -46,6 +46,7 @@ class SageMakerTrainingInfra(ComponentResource):
         name: str,
         dynamodb_table_name: Output[str],
         raw_bucket_arn: Output[str] | None = None,
+        synthetic_source_bucket_arn: Output[str] | None = None,
         opts: ResourceOptions | None = None,
     ):
         super().__init__("custom:ml:SageMakerTrainingInfra", name, None, opts)
@@ -173,6 +174,7 @@ class SageMakerTrainingInfra(ComponentResource):
             self.ecr_repo.arn,
             dynamodb_table_name,
             raw_bucket_arn or "",
+            synthetic_source_bucket_arn or "",
         ]
         sagemaker_policy = aws.iam.RolePolicy(
             f"{name}-sagemaker-policy",
@@ -194,7 +196,15 @@ class SageMakerTrainingInfra(ComponentResource):
                                 "Resource": [
                                     args[0],
                                     f"{args[0]}/*",
-                                ],
+                                ]
+                                + (
+                                    [
+                                        args[4],
+                                        f"{args[4]}/*",
+                                    ]
+                                    if args[4]
+                                    else []
+                                ),
                             },
                             # ECR access to pull training image
                             {
@@ -595,6 +605,13 @@ from datetime import datetime
 
 sagemaker = boto3.client("sagemaker")
 
+def _tag_value(value):
+    """Return a SageMaker tag-safe string value."""
+    if value is None:
+        return None
+    text = str(value)
+    return text[:256] if text else None
+
 def handler(event, context):
     """Start a SageMaker training job.
 
@@ -625,6 +642,33 @@ def handler(event, context):
         "early_stopping_patience": "2",
         **{k: str(v) for k, v in event.get("hyperparameters", {}).items()},
     }
+
+    batch_bucket = event.get("batch_bucket")
+    line_item_patterns_prefix = event.get("line_item_patterns_s3_prefix")
+    synthetic_training_examples = (
+        event.get("synthetic_training_examples")
+        or event.get("synthetic_training_examples_s3")
+        or event.get("line_item_patterns_s3_uri")
+    )
+    if not synthetic_training_examples:
+        line_item_patterns_key = event.get("line_item_patterns_s3_key")
+        if batch_bucket and line_item_patterns_key:
+            synthetic_training_examples = f"s3://{batch_bucket}/{line_item_patterns_key}"
+        elif (
+            isinstance(line_item_patterns_prefix, str)
+            and line_item_patterns_prefix.startswith("s3://")
+        ):
+            synthetic_training_examples = line_item_patterns_prefix
+        elif batch_bucket and line_item_patterns_prefix:
+            synthetic_training_examples = f"s3://{batch_bucket}/{line_item_patterns_prefix}"
+        elif batch_bucket and event.get("execution_id"):
+            synthetic_training_examples = (
+                f"s3://{batch_bucket}/line_item_patterns/{event['execution_id']}/"
+            )
+    if synthetic_training_examples:
+        hyperparameters.setdefault(
+            "synthetic_training_examples", str(synthetic_training_examples)
+        )
 
     # Add required parameters
     hyperparameters["dynamo_table"] = os.environ["DYNAMO_TABLE_NAME"]
@@ -663,10 +707,45 @@ def handler(event, context):
             "S3Uri": f"s3://{os.environ['OUTPUT_BUCKET']}/checkpoints/{job_name}",
         }
 
+    tags = []
     # Skip CoreML auto-export for v3 runs (Swift inference not yet supported)
     if hyperparameters.get("model_version") == "v3":
+        tags.append({"Key": "skip-coreml-export", "Value": "true"})
+
+    baseline_job_ref = (
+        event.get("baseline_job_ref")
+        or event.get("baseline_job_id")
+        or event.get("baseline_job_name")
+    )
+    if baseline_job_ref and synthetic_training_examples:
+        tags.append({"Key": "synthetic-augmentation", "Value": "true"})
+        tags.append({
+            "Key": "baseline-job-ref",
+            "Value": _tag_value(baseline_job_ref),
+        })
+        tags.append({
+            "Key": "pattern-artifact-s3-uri",
+            "Value": _tag_value(synthetic_training_examples),
+        })
+        if event.get("batch_bucket"):
+            tags.append({
+                "Key": "batch-bucket",
+                "Value": _tag_value(event.get("batch_bucket")),
+            })
+        if event.get("line_item_patterns_s3_key"):
+            tags.append({
+                "Key": "line-item-patterns-s3-key",
+                "Value": _tag_value(event.get("line_item_patterns_s3_key")),
+            })
+        if event.get("line_item_patterns_s3_prefix"):
+            tags.append({
+                "Key": "line-item-patterns-s3-prefix",
+                "Value": _tag_value(event.get("line_item_patterns_s3_prefix")),
+            })
+
+    if tags:
         training_job_config["Tags"] = [
-            {"Key": "skip-coreml-export", "Value": "true"},
+            tag for tag in tags if tag.get("Value") is not None
         ]
 
     # Create the training job
@@ -679,6 +758,7 @@ def handler(event, context):
             "job_arn": response["TrainingJobArn"],
             "instance_type": instance_type,
             "use_spot": use_spot,
+            "synthetic_training_examples": hyperparameters.get("synthetic_training_examples"),
         }),
     }
 '''

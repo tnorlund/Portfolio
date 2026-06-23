@@ -39,7 +39,10 @@ Usage:
 Environment Variables:
     OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
     OPENROUTER_API_KEY: OpenRouter API key (required)
-    OPENROUTER_MODEL: Model name (default: openai/gpt-oss-120b)
+    OPENROUTER_MODEL: Model name (default: openai/gpt-5.5)
+    OPENROUTER_MODEL_PROFILE: Model profile when no model is set:
+        quality, balanced, cheap, or nano.
+    RECEIPT_AGENT_DISABLE_PAID_LLM: Disable paid LLM client creation.
 """
 
 import asyncio
@@ -49,12 +52,94 @@ import random
 import time
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
+
+OpenRouterModelProfile = Literal["quality", "balanced", "cheap", "nano"]
+
+OPENAI_LATEST_MODEL_DOC_URL = (
+    "https://developers.openai.com/api/docs/guides/latest-model"
+)
+OPENAI_LATEST_MODEL_ID = "gpt-5.5"
+OPENAI_LATEST_MODEL_VERIFIED_AT = "2026-06-23"
+DEFAULT_OPENROUTER_MODEL = f"openai/{OPENAI_LATEST_MODEL_ID}"
+OPENROUTER_MODEL_PROFILES: dict[str, str] = {
+    "quality": DEFAULT_OPENROUTER_MODEL,
+    "balanced": "openai/gpt-5.4",
+    "cheap": "openai/gpt-5.4-mini",
+    "nano": "openai/gpt-5.4-nano",
+}
+OPENROUTER_MODEL_PROFILE_DESCRIPTIONS: dict[str, str] = {
+    "quality": "Latest OpenAI quality profile for high-accuracy receipt reasoning.",
+    "balanced": "Lower-latency profile for routine receipt review and extraction.",
+    "cheap": "Lower-cost profile for exploratory local runs and bulk experiments.",
+    "nano": "Smallest profile for smoke tests and deterministic plumbing checks.",
+}
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def paid_llm_calls_disabled() -> bool:
+    """Return whether paid LLM/API calls are disabled for this process."""
+    return _env_flag("RECEIPT_AGENT_DISABLE_PAID_LLM") or _env_flag(
+        "DISABLE_PAID_LLM"
+    )
+
+
+def resolve_openrouter_model(
+    model: Optional[str] = None,
+    *,
+    profile: Optional[str] = None,
+) -> str:
+    """Resolve the OpenRouter model from explicit value, env, or cost profile."""
+    if model:
+        return model
+    env_model = os.environ.get("OPENROUTER_MODEL") or os.environ.get(
+        "RECEIPT_AGENT_OPENROUTER_MODEL"
+    )
+    if env_model:
+        return env_model
+
+    selected_profile = (
+        profile
+        or os.environ.get("OPENROUTER_MODEL_PROFILE")
+        or os.environ.get("RECEIPT_AGENT_OPENROUTER_MODEL_PROFILE")
+        or "quality"
+    )
+    normalized = selected_profile.strip().lower()
+    if normalized not in OPENROUTER_MODEL_PROFILES:
+        valid = ", ".join(sorted(OPENROUTER_MODEL_PROFILES))
+        raise ValueError(
+            f"Unsupported OpenRouter model profile {selected_profile!r}. "
+            f"Expected one of: {valid}."
+        )
+    return OPENROUTER_MODEL_PROFILES[normalized]
+
+
+def openrouter_model_catalog() -> dict[str, Any]:
+    """Return the current model catalog without creating any API clients."""
+    return {
+        "latest_openai_model": OPENAI_LATEST_MODEL_ID,
+        "latest_model_source": OPENAI_LATEST_MODEL_DOC_URL,
+        "latest_model_verified_at": OPENAI_LATEST_MODEL_VERIFIED_AT,
+        "default_openrouter_model": DEFAULT_OPENROUTER_MODEL,
+        "profiles": {
+            profile: {
+                "model": model,
+                "description": OPENROUTER_MODEL_PROFILE_DESCRIPTIONS[profile],
+            }
+            for profile, model in OPENROUTER_MODEL_PROFILES.items()
+        },
+    }
 
 
 # =============================================================================
@@ -219,6 +304,7 @@ is_server_error = is_service_error
 
 def create_llm(
     model: Optional[str] = None,
+    model_profile: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     temperature: float = 0.0,
@@ -232,6 +318,9 @@ def create_llm(
 
     Args:
         model: Model name (default from OPENROUTER_MODEL env var)
+        model_profile: Cost/quality profile when no explicit model is set.
+            Supported values are "quality" (GPT-5.5), "balanced" (GPT-5.4),
+            "cheap" (GPT-5.4 mini), and "nano" (GPT-5.4 nano).
         base_url: API URL (default from OPENROUTER_BASE_URL env var)
         api_key: API key (default from OPENROUTER_API_KEY env var)
         temperature: LLM temperature (default 0.0)
@@ -243,7 +332,7 @@ def create_llm(
         reasoning_effort: Reasoning effort level ("low", "medium", "high").
             Controls how much thinking the model does before responding.
             Only supported by models with reasoning capability (e.g.,
-            openai/gpt-oss-120b). Takes precedence over ``reasoning``.
+            openai/gpt-5.5). Takes precedence over ``reasoning``.
         **kwargs: Additional arguments passed to ChatOpenAI
 
     Returns:
@@ -252,15 +341,16 @@ def create_llm(
     Raises:
         ValueError: If OpenRouter API key is not provided
     """
+    if paid_llm_calls_disabled():
+        raise ValueError(
+            "Paid LLM calls are disabled. Unset "
+            "RECEIPT_AGENT_DISABLE_PAID_LLM or DISABLE_PAID_LLM to create an "
+            "OpenRouter client."
+        )
+
     from langchain_openai import ChatOpenAI
 
-    _model = (
-        model
-        or os.environ.get("OPENROUTER_MODEL")
-        or os.environ.get(
-            "RECEIPT_AGENT_OPENROUTER_MODEL", "openai/gpt-oss-120b"
-        )
-    )
+    _model = resolve_openrouter_model(model, profile=model_profile)
     _base_url = (
         base_url
         or os.environ.get("OPENROUTER_BASE_URL")
@@ -329,6 +419,7 @@ def create_llm_from_settings(
 
     return create_llm(
         model=settings.openrouter_model,
+        model_profile=settings.openrouter_model_profile,
         base_url=settings.openrouter_base_url,
         api_key=settings.openrouter_api_key.get_secret_value(),
         temperature=temperature,
@@ -702,9 +793,7 @@ class LLMInvoker:
 
             try:
                 response = await asyncio.wait_for(
-                    self.llm.ainvoke(
-                        messages, config=merged_config, **kwargs
-                    ),
+                    self.llm.ainvoke(messages, config=merged_config, **kwargs),
                     timeout=self.invoke_timeout,
                 )
 
@@ -849,6 +938,7 @@ RateLimitedLLMInvoker = LLMInvoker
 
 def create_llm_invoker(
     model: Optional[str] = None,
+    model_profile: Optional[str] = None,
     temperature: float = 0.0,
     timeout: int = 120,
     max_jitter_seconds: float = 0.25,
@@ -864,6 +954,7 @@ def create_llm_invoker(
 
     Args:
         model: Model name (default from OPENROUTER_MODEL env var)
+        model_profile: Cost/quality profile when no explicit model is set.
         temperature: LLM temperature (default 0.0)
         timeout: Request timeout in seconds (default 120)
         max_jitter_seconds: Max random delay between calls (default 0.25s)
@@ -878,6 +969,7 @@ def create_llm_invoker(
     """
     llm = create_llm(
         model=model,
+        model_profile=model_profile,
         temperature=temperature,
         timeout=timeout,
         reasoning=reasoning,

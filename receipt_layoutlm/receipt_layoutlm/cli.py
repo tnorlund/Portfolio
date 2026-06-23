@@ -3,7 +3,13 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
+from .config import (
+    MODEL_DEFAULTS,
+    MERGE_PRESETS,
+    DataConfig,
+    ModelVersion,
+    TrainingConfig,
+)
 from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
@@ -249,8 +255,16 @@ def main() -> None:
         "--receipt-allowlist-s3",
         default=None,
         help=(
-            "S3 URI of a JSON file ({\"receipt_keys\": [\"img#rec\", ...]}) "
+            'S3 URI of a JSON file ({"receipt_keys": ["img#rec", ...]}) '
             "restricting training/eval to a curated subset of receipts."
+        ),
+    )
+    train_p.add_argument(
+        "--synthetic-training-examples",
+        default=None,
+        help=(
+            "Local path or S3 URI containing train-only LayoutLM-style synthetic "
+            "examples generated from confusion heatmap recipes."
         ),
     )
     train_p.add_argument(
@@ -505,7 +519,10 @@ def main() -> None:
             raise SystemExit(
                 f"--model-version v1 is incompatible with v3 model '{pretrained}'. Use --model-version v3."
             )
-        if args.model_version == "v3" and pretrained == "microsoft/layoutlm-base-uncased":
+        if (
+            args.model_version == "v3"
+            and pretrained == "microsoft/layoutlm-base-uncased"
+        ):
             raise SystemExit(
                 f"--model-version v3 requires a v3 model, not '{pretrained}'."
             )
@@ -541,7 +558,16 @@ def main() -> None:
         if getattr(args, "scope", "full") and args.scope != "full":
             os.environ["LAYOUTLM_SCOPE"] = args.scope
         if getattr(args, "receipt_allowlist_s3", None):
-            os.environ["LAYOUTLM_RECEIPT_ALLOWLIST_S3"] = args.receipt_allowlist_s3
+            os.environ["LAYOUTLM_RECEIPT_ALLOWLIST_S3"] = (
+                args.receipt_allowlist_s3
+            )
+        if getattr(args, "synthetic_training_examples", None):
+            os.environ["LAYOUTLM_SYNTHETIC_TRAINING_EXAMPLES"] = (
+                args.synthetic_training_examples
+            )
+            data_cfg.synthetic_training_examples = (
+                args.synthetic_training_examples
+            )
 
         # Optional label whitelist
         data_cfg.allowed_labels = (

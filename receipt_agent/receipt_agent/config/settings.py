@@ -5,10 +5,17 @@ Uses pydantic-settings for environment variable management with validation.
 """
 
 from functools import lru_cache
-from typing import Literal, Optional
+from typing import Literal, Optional, Self
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from receipt_agent.utils.llm_factory import (
+    DEFAULT_OPENROUTER_MODEL,
+    OPENAI_LATEST_MODEL_ID,
+    OpenRouterModelProfile,
+    resolve_openrouter_model,
+)
 
 
 class Settings(BaseSettings):
@@ -43,12 +50,23 @@ class Settings(BaseSettings):
         ),
     )
     openrouter_model: str = Field(
-        default="openai/gpt-oss-120b",
-        description="Model to use on OpenRouter. Default is GPT-OSS-120B paid tier. "
+        default=DEFAULT_OPENROUTER_MODEL,
+        description=f"Model to use on OpenRouter. Default is {OPENAI_LATEST_MODEL_ID}. "
         "See https://openrouter.ai/models for available models.",
         validation_alias=AliasChoices(
             "OPENROUTER_MODEL",
             "RECEIPT_AGENT_OPENROUTER_MODEL",
+        ),
+    )
+    openrouter_model_profile: OpenRouterModelProfile = Field(
+        default="quality",
+        description=(
+            "Cost/quality profile to use when the model is not explicitly "
+            "overridden: quality, balanced, cheap, or nano."
+        ),
+        validation_alias=AliasChoices(
+            "OPENROUTER_MODEL_PROFILE",
+            "RECEIPT_AGENT_OPENROUTER_MODEL_PROFILE",
         ),
     )
 
@@ -62,6 +80,16 @@ class Settings(BaseSettings):
     embedding_model: str = Field(
         default="text-embedding-3-small",
         description="OpenAI embedding model",
+    )
+    disable_paid_llm: bool = Field(
+        default=False,
+        description=(
+            "Disable paid LLM/API calls for local synthesis, audits, and tests."
+        ),
+        validation_alias=AliasChoices(
+            "RECEIPT_AGENT_DISABLE_PAID_LLM",
+            "DISABLE_PAID_LLM",
+        ),
     )
 
     # ==========================================================================
@@ -88,7 +116,9 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(
         default="us-east-1",
-        validation_alias=AliasChoices("RECEIPT_AGENT_AWS_REGION", "AWS_REGION"),
+        validation_alias=AliasChoices(
+            "RECEIPT_AGENT_AWS_REGION", "AWS_REGION"
+        ),
         description="AWS region for DynamoDB",
     )
 
@@ -143,6 +173,15 @@ class Settings(BaseSettings):
         default="INFO",
         description="Logging level",
     )
+
+    @model_validator(mode="after")
+    def resolve_profile_model(self) -> Self:
+        """Apply the profile resolver when the model is still the default."""
+        if self.openrouter_model == DEFAULT_OPENROUTER_MODEL:
+            self.openrouter_model = resolve_openrouter_model(
+                profile=self.openrouter_model_profile
+            )
+        return self
 
 
 @lru_cache

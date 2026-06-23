@@ -37,11 +37,14 @@ COPY infra/label_evaluator_step_functions/lambdas/utils/tracing.py ${LAMBDA_TASK
 # Copy the unified pattern builder handler
 COPY infra/label_evaluator_step_functions/lambdas/unified_pattern_builder.py ${LAMBDA_TASK_ROOT}/handler.py
 
+# Copy the synthetic augmentation audit handler for sibling Lambda commands
+COPY infra/label_evaluator_step_functions/lambdas/synthetic_augmentation_audit.py ${LAMBDA_TASK_ROOT}/synthetic_augmentation_audit.py
+
 # Copy utils module (for s3_helpers)
 COPY infra/label_evaluator_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
 
 # Ensure files are readable
-RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py
+RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py ${LAMBDA_TASK_ROOT}/synthetic_augmentation_audit.py
 
 # Set the handler
 CMD ["handler.handler"]

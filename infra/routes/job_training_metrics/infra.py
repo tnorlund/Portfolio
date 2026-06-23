@@ -67,7 +67,15 @@ lambda_policy = aws.iam.Policy(
                             f"{arn}/index/GSITYPE",
                             f"{arn}/index/GSI1",
                         ],
-                    }
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject", "s3:ListBucket"],
+                        "Resource": [
+                            "arn:aws:s3:::label-evaluator-*-batch-bucket*",
+                            "arn:aws:s3:::label-evaluator-*-batch-bucket*/*",
+                        ],
+                    },
                 ],
             }
         )
@@ -113,8 +121,6 @@ job_training_metrics_lambda = aws.lambda_.Function(
 # CloudWatch log group for the Lambda function
 log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
-    name=job_training_metrics_lambda.name.apply(
-        lambda name: f"/aws/lambda/{name}"
-    ),
+    name=job_training_metrics_lambda.name.apply(lambda name: f"/aws/lambda/{name}"),
     retention_in_days=30,
 )

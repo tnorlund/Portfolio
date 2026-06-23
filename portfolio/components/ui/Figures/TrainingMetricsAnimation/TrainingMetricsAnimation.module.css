@@ -73,6 +73,14 @@
   min-width: 70px;
 }
 
+.statNote {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: rgba(var(--text-color-rgb), 0.62);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Epoch Timeline (Desktop) */
 .timeline {
   grid-column: 1 / -1;
@@ -99,19 +107,101 @@
    scrub to the nearest epoch. Sizes responsively to fill the timeline row. */
 .sparkline {
   width: 100%;
-  height: 80px;
+  height: 118px;
   cursor: pointer;
   display: block;
   overflow: visible;
 }
 
+.sparklinePostBestRegion {
+  fill: rgba(var(--text-color-rgb), 0.055);
+  pointer-events: none;
+}
+
 .sparklinePath {
   fill: none;
   stroke: var(--text-color);
-  stroke-width: 1.5;
+  stroke-width: 1.75;
   stroke-linejoin: round;
   stroke-linecap: round;
-  opacity: 0.85;
+  opacity: 0.9;
+}
+
+.sparklinePrecisionPath,
+.sparklineRecallPath,
+.sparklineTrainLossPath,
+.sparklineEvalLossPath {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.sparklinePrecisionPath {
+  stroke: var(--color-blue);
+  stroke-width: 1.15;
+  stroke-dasharray: 5 4;
+  opacity: 0.75;
+}
+
+.sparklineRecallPath {
+  stroke: var(--color-orange);
+  stroke-width: 1.15;
+  stroke-dasharray: 1 4;
+  opacity: 0.8;
+}
+
+.sparklineTrainLossPath {
+  stroke: rgba(var(--text-color-rgb), 0.5);
+  stroke-width: 1.1;
+}
+
+.sparklineEvalLossPath {
+  stroke: var(--color-red);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 3;
+  opacity: 0.78;
+}
+
+.sparklineLossDivider {
+  stroke: rgba(var(--text-color-rgb), 0.14);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.sparklineLossLabel {
+  font-size: 9px;
+  font-weight: 600;
+  fill: rgba(var(--text-color-rgb), 0.45);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.sparklineMetricLegend {
+  pointer-events: none;
+}
+
+.sparklineMetricLegend line {
+  stroke: var(--text-color);
+  stroke-width: 1.5;
+}
+
+.sparklineMetricLegend text {
+  font-size: 9px;
+  font-weight: 600;
+  fill: rgba(var(--text-color-rgb), 0.58);
+  font-variant-numeric: tabular-nums;
+}
+
+.sparklineMetricLegend .sparklinePrecisionSample {
+  stroke: var(--color-blue);
+  stroke-dasharray: 5 4;
+}
+
+.sparklineMetricLegend .sparklineRecallSample {
+  stroke: var(--color-orange);
+  stroke-dasharray: 1 4;
 }
 
 .sparklineActiveLine {
@@ -151,6 +241,175 @@
   opacity: 0.55;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+}
+
+.synthesisEvidencePanel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.synthesisEvidenceStrip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 42px;
+  margin-top: -0.7rem;
+  padding: 0 0.15rem 0.35rem;
+}
+
+.synthesisEvidenceMetric,
+.synthesisEvidenceItem {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.12rem;
+  padding: 0.38rem 0.45rem;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.12);
+  background: rgba(var(--text-color-rgb), 0.025);
+}
+
+.synthesisEvidenceMetric span,
+.synthesisEvidenceItem span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.54rem;
+  font-weight: 650;
+  color: rgba(var(--text-color-rgb), 0.45);
+}
+
+.synthesisEvidenceMetric strong,
+.synthesisEvidenceItem strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  font-weight: 760;
+  color: rgba(var(--text-color-rgb), 0.82);
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesisEvidenceItem {
+  background: rgba(var(--color-green-rgb), 0.055);
+  border-top-color: rgba(var(--color-green-rgb), 0.35);
+}
+
+.synthesisEvidenceItem span {
+  color: rgba(var(--color-green-rgb), 0.82);
+}
+
+.synthesisMerchantQuality {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0.15rem 0.15rem;
+}
+
+.synthesisMerchantCard {
+  min-width: 0;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  padding: 0.46rem 0.5rem;
+  border-left: 2px solid rgba(var(--text-color-rgb), 0.22);
+  background: rgba(var(--text-color-rgb), 0.025);
+}
+
+.synthesisMerchantCard[data-status="ready"] {
+  border-left-color: rgba(var(--color-green-rgb), 0.58);
+}
+
+.synthesisMerchantCard[data-status="blocked"] {
+  border-left-color: rgba(var(--color-red-rgb), 0.62);
+}
+
+.synthesisMerchantHeader,
+.synthesisMerchantMeta {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.synthesisMerchantHeader strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.67rem;
+  font-weight: 780;
+  color: rgba(var(--text-color-rgb), 0.84);
+}
+
+.synthesisMerchantHeader span,
+.synthesisMerchantMeta span,
+.synthesisMerchantOps,
+.synthesisMerchantGap,
+.synthesisMerchantEvidence {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.55rem;
+  color: rgba(var(--text-color-rgb), 0.54);
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesisMerchantHeader span {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: rgba(var(--text-color-rgb), 0.48);
+}
+
+.synthesisMerchantMeta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 0.08rem;
+}
+
+.synthesisMerchantOps {
+  font-weight: 720;
+  color: rgba(var(--text-color-rgb), 0.74);
+}
+
+.synthesisMerchantGap {
+  font-weight: 720;
+  color: rgba(var(--color-red-rgb), 0.78);
+}
+
+.synthesisMerchantEvidence {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.synthesisMerchantEvidence span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synthesisMerchantEvidence em {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+  color: rgba(var(--color-green-rgb), 0.82);
 }
 
 .timelineLine {
@@ -244,8 +503,10 @@
 
 .rightPanel {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.75rem;
 }
 
 /* F1 Score Gauge */
@@ -484,6 +745,239 @@
   color: var(--color-red);
 }
 
+.confusionPairs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: min(100%, 366px);
+}
+
+.confusionPairsHeader {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0.75rem;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: rgba(var(--text-color-rgb), 0.48);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.confusionPairRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: start;
+  min-height: 48px;
+}
+
+.confusionPairMetric,
+.confusionPairTarget {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.confusionPairMetric {
+  gap: 0.25rem;
+}
+
+.confusionPairTarget {
+  gap: 0.12rem;
+}
+
+.confusionPairLabels {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: rgba(var(--text-color-rgb), 0.82);
+}
+
+.confusionPairLabels span:first-child,
+.confusionPairLabels span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confusionArrow {
+  color: rgba(var(--text-color-rgb), 0.45);
+  flex: 0 0 auto;
+}
+
+.confusionPairBar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb), 0.12);
+  overflow: hidden;
+}
+
+.confusionPairBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-red);
+  opacity: 0.82;
+}
+
+.confusionPairCount {
+  font-size: 0.56rem;
+  color: rgba(var(--text-color-rgb), 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.patternTarget {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: rgba(var(--text-color-rgb), 0.82);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syntheticTarget,
+.llmCue {
+  font-size: 0.56rem;
+  line-height: 1.2;
+  color: rgba(var(--text-color-rgb), 0.5);
+}
+
+.llmCue {
+  color: rgba(var(--text-color-rgb), 0.38);
+}
+
+.patternMiningPanel {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.15rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
+}
+
+.receiptHeatmap {
+  width: 118px;
+  aspect-ratio: 190 / 310;
+  overflow: visible;
+}
+
+.receiptHeatmapPaper {
+  fill: rgba(var(--text-color-rgb), 0.03);
+  stroke: rgba(var(--text-color-rgb), 0.18);
+  stroke-width: 1;
+}
+
+.receiptHeatmapZone {
+  stroke: rgba(var(--color-red-rgb), 0.18);
+  stroke-width: 1;
+}
+
+.receiptHeatmapLabel,
+.receiptHeatmapCount {
+  fill: rgba(var(--text-color-rgb), 0.62);
+  font-size: 9px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.receiptHeatmapCount {
+  fill: rgba(var(--color-red-rgb), 0.86);
+  font-variant-numeric: tabular-nums;
+}
+
+.receiptHeatmapFold {
+  fill: none;
+  stroke: rgba(var(--text-color-rgb), 0.18);
+  stroke-width: 1;
+}
+
+.patternMiningSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.patternMiningTitle {
+  font-size: 0.62rem;
+  font-weight: 750;
+  color: rgba(var(--text-color-rgb), 0.84);
+}
+
+.patternMiningMeta {
+  margin-top: -0.3rem;
+  font-size: 0.54rem;
+  color: rgba(var(--text-color-rgb), 0.42);
+  font-variant-numeric: tabular-nums;
+}
+
+.patternHeatmapCellRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.patternHeatmapCellHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: rgba(var(--text-color-rgb), 0.72);
+}
+
+.patternHeatmapCellHeader span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patternHeatmapCellHeader span:last-child {
+  flex: 0 0 auto;
+  color: rgba(var(--color-red-rgb), 0.86);
+  font-variant-numeric: tabular-nums;
+}
+
+.patternHeatmapCellBar {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb), 0.1);
+  overflow: hidden;
+}
+
+.patternHeatmapCellBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(var(--color-red-rgb), 0.82);
+}
+
+.patternHeatmapSynthetic,
+.patternHeatmapPrompt {
+  font-size: 0.53rem;
+  line-height: 1.18;
+  color: rgba(var(--text-color-rgb), 0.54);
+}
+
+.patternHeatmapPrompt {
+  color: rgba(var(--text-color-rgb), 0.38);
+}
+
+.confusionPairSkeletonText {
+  display: block;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: rgba(var(--text-color-rgb), 0.08);
+}
+
 /* Loading state */
 .loading {
   display: flex;
@@ -511,6 +1005,58 @@
   /* Hide desktop timeline, show mobile */
   .timeline {
     display: none;
+  }
+
+  .synthesisEvidenceStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
+    min-height: auto;
+    margin-top: -0.4rem;
+    padding: 0 0 0.25rem;
+  }
+
+  .synthesisEvidenceMetric,
+  .synthesisEvidenceItem {
+    min-height: 38px;
+    padding: 0.34rem 0.4rem;
+  }
+
+  .synthesisEvidenceMetric:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .synthesisEvidenceItem {
+    grid-column: 1 / -1;
+  }
+
+  .synthesisMerchantQuality {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0 0 0.1rem;
+  }
+
+  .synthesisMerchantCard {
+    min-height: 72px;
+    padding: 0.42rem 0.45rem;
+  }
+
+  .synthesisMerchantHeader strong {
+    font-size: 0.62rem;
+  }
+
+  .synthesisEvidenceMetric span,
+  .synthesisEvidenceItem span,
+  .synthesisMerchantHeader span,
+  .synthesisMerchantMeta span,
+  .synthesisMerchantOps,
+  .synthesisMerchantGap,
+  .synthesisMerchantEvidence {
+    font-size: 0.5rem;
+  }
+
+  .synthesisEvidenceMetric strong,
+  .synthesisEvidenceItem strong {
+    font-size: 0.58rem;
   }
 
   .timelineMobile {
@@ -664,6 +1210,7 @@
   /* Center confusion matrix */
   .rightPanel {
     justify-content: center;
+    gap: 0.9rem;
   }
 
   .matrixContainer {
@@ -678,6 +1225,62 @@
   }
 
   .matrixAxisLabel {
+    font-size: 0.5rem;
+  }
+
+  .confusionPairs {
+    width: min(100%, 336px);
+  }
+
+  .confusionPairsHeader,
+  .confusionPairRow {
+    grid-template-columns: 1fr;
+    row-gap: 0.25rem;
+  }
+
+  .confusionPairsHeader span:last-child {
+    display: none;
+  }
+
+  .confusionPairRow {
+    min-height: 64px;
+  }
+
+  .confusionPairLabels,
+  .patternTarget {
+    font-size: 0.6rem;
+  }
+
+  .syntheticTarget,
+  .llmCue,
+  .confusionPairCount {
+    font-size: 0.54rem;
+  }
+
+  .patternMiningPanel {
+    grid-template-columns: 92px minmax(0, 1fr);
+    column-gap: 0.6rem;
+  }
+
+  .receiptHeatmap {
+    width: 92px;
+  }
+
+  .patternMiningSummary {
+    gap: 0.35rem;
+  }
+
+  .patternMiningTitle {
+    font-size: 0.6rem;
+  }
+
+  .patternMiningMeta,
+  .patternHeatmapCellHeader {
+    font-size: 0.52rem;
+  }
+
+  .patternHeatmapSynthetic,
+  .patternHeatmapPrompt {
     font-size: 0.5rem;
   }
 }

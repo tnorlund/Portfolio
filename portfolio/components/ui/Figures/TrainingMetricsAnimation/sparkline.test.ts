@@ -3,6 +3,8 @@ import {
   clickXToEpochIndex,
   computeAxisLabels,
   axisLabelAnchor,
+  buildMetricPath,
+  countMetricValues,
   type SparklineDims,
 } from "./sparkline";
 import type { TrainingMetricsEpoch } from "../../../../types/api";
@@ -67,6 +69,59 @@ describe("computeScales", () => {
     const s = computeScales(epochs, DIMS);
     // Polyline should have 3 points (no gap support yet — intentional).
     expect(s.points.split(" ")).toHaveLength(3);
+  });
+
+  test("optional metric keys expand the shared ratio scale", () => {
+    const epochs = [
+      {
+        ...e(1, 0.8),
+        metrics: { val_f1: 0.8, val_precision: 0.95, val_recall: 0.7 },
+      },
+      {
+        ...e(2, 0.82),
+        metrics: { val_f1: 0.82, val_precision: 0.96, val_recall: 0.72 },
+      },
+    ] as TrainingMetricsEpoch[];
+    const f1Only = computeScales(epochs, DIMS);
+    const withOverlay = computeScales(epochs, DIMS, [
+      "val_f1",
+      "val_precision",
+      "val_recall",
+    ]);
+
+    expect(withOverlay.dataMax).toBeGreaterThan(f1Only.dataMax);
+    expect(withOverlay.dataMin).toBeLessThan(f1Only.dataMin);
+  });
+});
+
+describe("metric path helpers", () => {
+  test("countMetricValues ignores missing metrics", () => {
+    const epochs = [
+      e(1, 0.5),
+      { epoch: 2, is_best: false, metrics: {}, per_label: {} } as any,
+      { ...e(3, 0.7), metrics: { val_f1: 0.7, val_precision: 0.8 } },
+    ] as TrainingMetricsEpoch[];
+
+    expect(countMetricValues(epochs, "val_f1")).toBe(2);
+    expect(countMetricValues(epochs, "val_precision")).toBe(1);
+  });
+
+  test("buildMetricPath preserves gaps with new move commands", () => {
+    const epochs = [
+      { ...e(1, 0.5), metrics: { val_f1: 0.5, val_precision: 0.6 } },
+      { epoch: 2, is_best: false, metrics: {}, per_label: {} } as any,
+      { ...e(3, 0.7), metrics: { val_f1: 0.7, val_precision: 0.8 } },
+    ] as TrainingMetricsEpoch[];
+    const s = computeScales(epochs, DIMS, ["val_precision"]);
+    const path = buildMetricPath(
+      epochs,
+      "val_precision",
+      s.xScale,
+      s.yScale
+    );
+
+    expect(path.match(/M/g)).toHaveLength(2);
+    expect(path).not.toContain("L");
   });
 });
 

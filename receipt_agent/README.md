@@ -96,7 +96,10 @@ Configure via environment variables (prefix: `RECEIPT_AGENT_`):
 # LLM Configuration (OpenRouter)
 export OPENROUTER_API_KEY="your-openrouter-key"
 export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
-export OPENROUTER_MODEL="openai/gpt-oss-120b"
+export OPENROUTER_MODEL="openai/gpt-5.5"
+# Optional cost controls for local synthesis/audits:
+export RECEIPT_AGENT_DISABLE_PAID_LLM="1"        # no paid LLM client creation
+export OPENROUTER_MODEL_PROFILE="cheap"         # quality|balanced|cheap|nano
 
 # Embeddings (OpenAI)
 export RECEIPT_AGENT_OPENAI_API_KEY="your-openai-key"
@@ -122,6 +125,139 @@ export RECEIPT_AGENT_MAX_ITERATIONS="10"
 export RECEIPT_AGENT_SIMILARITY_THRESHOLD="0.75"
 export RECEIPT_AGENT_MIN_MATCHES_FOR_VALIDATION="3"
 ```
+
+## Synthetic Receipt Augmentation
+
+Use the offline synthetic replay tools when you want to synthesize high-fidelity
+train-only LayoutLM examples from local receipt JSON without paying for LLM,
+AWS, or Places calls.
+The workflow is merchant-generic: include all exported merchants in the input
+directory, then use Sprouts or any other dense merchant as a focused validation
+case when inspecting quality. Already grouped merchant exports work directly;
+ungrouped exports are normalized by attaching matching top-level `lines`,
+`words`, and `word_labels`, normalizing bounding boxes, ignoring invalid labels,
+and inferring merchants from `MERCHANT_NAME` labels before falling back to
+header text.
+
+### No-Spend Local Workflow
+
+Run these commands from the Portfolio repo root:
+
+```bash
+# Prevent paid LLM client creation while building/auditing local artifacts.
+export RECEIPT_AGENT_DISABLE_PAID_LLM="1"
+export DISABLE_PAID_LLM="1"
+
+# Build merchant pattern artifacts, create a LayoutLM-ready bundle, and embed
+# a bounded synthesis_quality_report in the bundle JSON.
+python3.12 scripts/verify_synthetic_replay.py local-pipeline \
+  --receipt-dir ./local_receipt_json \
+  --artifact-output-dir ./.tmp/synthetic-artifacts \
+  --bundle-output ./.tmp/synthetic-bundle.json \
+  --min-ready-share 0.0 \
+  --min-avg-readiness-score 0.0 \
+  --min-grounded-candidate-share 0.0
+
+# Re-read the embedded report without rebuilding artifacts.
+python3.12 scripts/verify_synthetic_replay.py report \
+  --bundle-file ./.tmp/synthetic-bundle.json
+```
+
+The local pipeline groups receipts by merchant, discovers receipt structure,
+generates merchant-local candidates, applies LayoutLM quality gates, enforces
+merchant synthesis contracts, and writes a bundle with:
+
+- `synthetic_training_examples`: train-only LayoutLM rows (`tokens`, `bboxes`,
+  `ner_tags`) accepted by the same loader used during training.
+- `selection.accepted_candidate_examples`: ranked accepted examples with
+  merchant, operation, structure similarity, candidate quality, preview lines,
+  and selection reason for no-spend review.
+- `source_receipt_quality`: per-merchant input coverage for receipts, lines,
+  words, usable labels, line-item labels, totals, blockers, and limitations.
+- `merchant_synthesis_contracts`: per-merchant safe operations, mutable fields,
+  category/catalog evidence, quality gates, blockers, and limitations.
+- `candidate_mix`: accepted/rejected counts by merchant, operation, category,
+  field replacement, structure similarity, and accepted mix balance.
+- `synthesis_quality_report`: bounded reviewer-facing evidence with readiness,
+  recommendations, merchant acceptance rates, preview lines, arithmetic checks,
+  and grounding checks.
+
+### Training Handoff
+
+Point LayoutLM training at the generated bundle. Synthetic rows are loaded only
+into the training split; validation remains real receipts only.
+
+```bash
+export LAYOUTLM_SYNTHETIC_TRAINING_EXAMPLES="./.tmp/synthetic-bundle.json"
+
+# Or pass the equivalent CLI flag when launching training:
+python3.12 -m receipt_layoutlm.cli train \
+  --synthetic-training-examples ./.tmp/synthetic-bundle.json
+```
+
+The loader rejects candidates that are not `train_only`, have invalid sequence
+shape or bounding boxes, fall below the structure-similarity threshold, lack
+cross-receipt grounding for added items, fail non-taxable arithmetic
+reconciliation, mutate unsupported fields, or are not allowed by the merchant
+contract. Per-merchant and per-operation caps prevent one merchant or mutation
+type from dominating augmentation. The bundle and training metrics also expose
+`accepted_mix_balance`, which reports top-merchant/top-operation share,
+normalized entropy, and concentration risk for overtraining review. The
+synthetic augmentation audit treats medium/high mix-balance risk as a promotion
+hold even when targeted F1/confusion metrics improve.
+If an artifact includes blocked `source_receipt_quality`, the merchant contract
+is marked blocked and all of that merchant's synthetic candidates are rejected
+before training. Limited source quality can also disable specific operations,
+such as line-item arithmetic when labeled line items or grand-total labels are
+missing. The synthesis quality report and training-metrics API expose the same
+source-quality status, label counts, and per-operation blockers for review.
+Candidate quality also includes a nearest-real structure gate. Inspect
+`structure_similarity.nearest_real_receipt_key`, `shape_deltas`, and
+`match_summary.shape_checks` to see which real receipt the candidate resembles
+and how closely its line count, item count, token count, price column, spacing,
+and category pattern match. Inspect `real_baseline_comparison` to see whether
+the synthetic score falls inside the merchant's normal real-to-real structure
+range. `high_fidelity` requires the same structure-similarity and component
+thresholds used by the LayoutLM loader.
+
+### What Can Be Safely Mutated
+
+The current deterministic path supports:
+
+- Merchant-local hard negatives for known false positives.
+- Adding observed, non-taxable line items seen on other receipts from the same
+  merchant, with category placement and total reconciliation.
+- Removing removable non-taxable line items, with summary totals adjusted.
+- Replacing stable DATE/TIME fields only when format, geometry, and multiple
+  observed values agree.
+- Recording taxable item and tax-rate evidence in the merchant contract while
+  keeping tax-changing mutations blocked until the loader has explicit gates for
+  taxable arithmetic.
+
+For Sprouts receipts, the synthesizer uses the Sprouts-specific geometry and
+section patterns first. Other merchants use the generic merchant synthesis
+profile until a merchant-specific parameterizer is added.
+Do not promote a merchant-specific parameterizer unless the generic contract
+path already shows the repeatable structure it is specializing.
+
+### LLM Model Controls
+
+The default OpenRouter model follows the current OpenAI latest-model guidance:
+`openai/gpt-5.5`. The source is the official OpenAI latest model page:
+https://developers.openai.com/api/docs/guides/latest-model
+This was last verified against official OpenAI developer docs on 2026-06-23.
+
+For cost-controlled runs, prefer profiles unless a specific model is required:
+
+```bash
+export OPENROUTER_MODEL_PROFILE="cheap"   # quality|balanced|cheap|nano
+unset OPENROUTER_MODEL                    # explicit model overrides profile
+```
+
+For fully local synthesis and tests, keep `RECEIPT_AGENT_DISABLE_PAID_LLM=1`.
+Commands that start deployed replay or wait on deployed audits (`start`, `audit`,
+and deployment `status`) can touch AWS resources; use them only when you intend
+to run deployed infrastructure.
 
 ## Architecture
 
@@ -351,4 +487,3 @@ See [docs/ACCESS_PATTERNS.md](docs/ACCESS_PATTERNS.md) for detailed cost analysi
 ## License
 
 MIT
-

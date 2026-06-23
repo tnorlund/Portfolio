@@ -497,6 +497,36 @@ class XPositionZones(BaseModel):
         }
 
 
+class ConfusionPatternOutput(BaseModel):
+    """Pattern explanation for a model confusion pair."""
+
+    actual_label: str = Field(
+        description="Actual label from confusion matrix, or O for background"
+    )
+    predicted_label: str = Field(
+        description="Predicted label from confusion matrix, or O for background"
+    )
+    pattern: str = Field(
+        description="Merchant/layout pattern that explains this confusion"
+    )
+    heatmap_rationale: str = Field(
+        description="Why the observed receipt heatmap zones matter"
+    )
+    synthetic_receipt_strategy: str = Field(
+        description="How to synthesize receipts that target this confusion"
+    )
+
+    def to_dict(self) -> dict:
+        """Convert to dict format for backwards compatibility."""
+        return {
+            "actual_label": self.actual_label,
+            "predicted_label": self.predicted_label,
+            "pattern": self.pattern,
+            "heatmap_rationale": self.heatmap_rationale,
+            "synthetic_receipt_strategy": self.synthetic_receipt_strategy,
+        }
+
+
 class PatternDiscoveryResponse(BaseModel):
     """Response for line item pattern discovery."""
 
@@ -544,6 +574,14 @@ class PatternDiscoveryResponse(BaseModel):
     product_name_patterns: list[str] = Field(
         default_factory=list, description="Common patterns for product names"
     )
+    confusion_patterns: list[ConfusionPatternOutput] = Field(
+        default_factory=list,
+        description="Optional pattern explanations for top model confusion pairs",
+    )
+    synthetic_receipt_guidance: list[str] = Field(
+        default_factory=list,
+        description="Optional augmentation rules for synthetic training receipts",
+    )
 
     def to_dict(self) -> dict:
         """Convert to dict format for backwards compatibility."""
@@ -576,4 +614,12 @@ class PatternDiscoveryResponse(BaseModel):
             result["label_positions"] = self.label_positions.to_dict()
         if self.grouping_rule:
             result["grouping_rule"] = self.grouping_rule
+        if self.confusion_patterns:
+            result["confusion_patterns"] = [
+                pattern.to_dict() for pattern in self.confusion_patterns
+            ]
+        if self.synthetic_receipt_guidance:
+            result["synthetic_receipt_guidance"] = (
+                self.synthetic_receipt_guidance
+            )
         return result

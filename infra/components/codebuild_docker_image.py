@@ -1126,9 +1126,16 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
         # Add image config if provided (for container-based Lambda handler)
         if self.lambda_config.get("image_config"):
             img_cfg = self.lambda_config.get("image_config")
+            commands = img_cfg.get("commands")
+            if commands is None:
+                commands = img_cfg.get("command")
+            entry_points = img_cfg.get("entry_points")
+            if entry_points is None:
+                entry_points = img_cfg.get("entry_point")
+
             lambda_args["image_config"] = FunctionImageConfigArgs(
-                command=img_cfg.get("command"),
-                entry_point=img_cfg.get("entry_point"),
+                commands=commands,
+                entry_points=entry_points,
                 working_directory=img_cfg.get("working_directory"),
             )
 

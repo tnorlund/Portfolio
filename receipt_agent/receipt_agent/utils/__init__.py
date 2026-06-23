@@ -40,6 +40,8 @@ from .llm_factory import (  # Primary exports; Backward compatibility aliases (k
     is_retriable_error,
     is_service_error,
     is_timeout_error,
+    openrouter_model_catalog,
+    resolve_openrouter_model,
 )
 from .structured_output import (
     DEFAULT_STRICT_STRUCTURED_OUTPUT,
@@ -83,6 +85,8 @@ __all__ = [
     "create_llm_invoker",
     "create_llm_from_settings",
     "create_production_invoker",
+    "resolve_openrouter_model",
+    "openrouter_model_catalog",
     "is_rate_limit_error",
     "is_service_error",
     "is_timeout_error",

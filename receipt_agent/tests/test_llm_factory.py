@@ -12,6 +12,7 @@ from receipt_agent.utils.llm_factory import (  # Primary exports; Backward compa
     LLMRateLimitError,
     RateLimitedLLMInvoker,
     create_llm,
+    create_llm_from_settings,
     create_llm_invoker,
     create_production_invoker,
     create_resilient_llm,
@@ -20,7 +21,11 @@ from receipt_agent.utils.llm_factory import (  # Primary exports; Backward compa
     is_retriable_error,
     is_service_error,
     is_timeout_error,
+    openrouter_model_catalog,
+    paid_llm_calls_disabled,
+    resolve_openrouter_model,
 )
+from receipt_agent.config.settings import get_settings
 
 
 class TestLLMRateLimitError:
@@ -128,7 +133,61 @@ class TestErrorDetection:
 class TestCreateLLM:
     """Tests for create_llm function."""
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    def test_openrouter_model_catalog_exposes_current_quality_source(self):
+        """Model catalog should document the latest-model source."""
+        catalog = openrouter_model_catalog()
+
+        assert catalog["latest_openai_model"] == "gpt-5.5"
+        assert (
+            catalog["latest_model_source"]
+            == "https://developers.openai.com/api/docs/guides/latest-model"
+        )
+        assert catalog["latest_model_verified_at"] == "2026-06-23"
+        assert catalog["default_openrouter_model"] == "openai/gpt-5.5"
+        assert catalog["profiles"]["quality"]["model"] == "openai/gpt-5.5"
+        assert catalog["profiles"]["cheap"]["model"] == "openai/gpt-5.4-mini"
+
+    def test_resolve_openrouter_model_defaults_to_quality_profile(self):
+        """Default model stays on the current quality profile."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_openrouter_model() == "openai/gpt-5.5"
+
+    def test_resolve_openrouter_model_uses_cheap_profile(self):
+        """Cheap profile gives scripts a lower-cost model without literals."""
+        with patch.dict(
+            os.environ,
+            {"RECEIPT_AGENT_OPENROUTER_MODEL_PROFILE": "cheap"},
+            clear=True,
+        ):
+            assert resolve_openrouter_model() == "openai/gpt-5.4-mini"
+
+    def test_resolve_openrouter_model_prefers_explicit_model_over_profile(
+        self,
+    ):
+        """Explicit model overrides cost profile selection."""
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_MODEL": "provider/specific-model",
+                "RECEIPT_AGENT_OPENROUTER_MODEL_PROFILE": "cheap",
+            },
+            clear=True,
+        ):
+            assert resolve_openrouter_model() == "provider/specific-model"
+
+    def test_resolve_openrouter_model_rejects_unknown_profile(self):
+        """Unknown profile should fail before any client/API work."""
+        with patch.dict(
+            os.environ,
+            {"OPENROUTER_MODEL_PROFILE": "expensive"},
+            clear=True,
+        ):
+            with pytest.raises(
+                ValueError, match="Unsupported OpenRouter model profile"
+            ):
+                resolve_openrouter_model()
+
+    @patch("langchain_openai.ChatOpenAI")
     def test_creates_openrouter_with_env_vars(self, mock_chat_openai):
         """Test that create_llm creates ChatOpenAI for OpenRouter."""
         mock_chat_openai.return_value = MagicMock()
@@ -136,7 +195,7 @@ class TestCreateLLM:
         with patch.dict(
             os.environ,
             {
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
+                "OPENROUTER_MODEL": "openai/gpt-5.5",
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_API_KEY": "or_test_key",
             },
@@ -145,12 +204,53 @@ class TestCreateLLM:
 
         mock_chat_openai.assert_called_once()
         call_kwargs = mock_chat_openai.call_args[1]
-        assert call_kwargs["model"] == "openai/gpt-oss-120b"
+        assert call_kwargs["model"] == "openai/gpt-5.5"
         assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
         assert call_kwargs["api_key"] == "or_test_key"
         assert call_kwargs["temperature"] == 0.0
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
+    def test_creates_openrouter_with_cost_profile(self, mock_chat_openai):
+        """create_llm can choose a lower-cost profile without an API call."""
+        mock_chat_openai.return_value = MagicMock()
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "or_test_key",
+                "OPENROUTER_MODEL_PROFILE": "nano",
+            },
+            clear=True,
+        ):
+            _ = create_llm()
+
+        call_kwargs = mock_chat_openai.call_args[1]
+        assert call_kwargs["model"] == "openai/gpt-5.4-nano"
+
+    @patch("langchain_openai.ChatOpenAI")
+    def test_create_llm_from_settings_respects_cost_profile(
+        self,
+        mock_chat_openai,
+    ):
+        """Settings-based agents should use the same profile resolver."""
+        mock_chat_openai.return_value = MagicMock()
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "or_test_key",
+                "OPENROUTER_MODEL_PROFILE": "nano",
+            },
+            clear=True,
+        ):
+            get_settings.cache_clear()
+            _ = create_llm_from_settings()
+            get_settings.cache_clear()
+
+        call_kwargs = mock_chat_openai.call_args[1]
+        assert call_kwargs["model"] == "openai/gpt-5.4-nano"
+
+    @patch("langchain_openai.ChatOpenAI")
     def test_creates_with_custom_params(self, mock_chat_openai):
         """Test that create_llm respects custom parameters."""
         mock_chat_openai.return_value = MagicMock()
@@ -167,7 +267,7 @@ class TestCreateLLM:
         assert call_kwargs["temperature"] == 0.7
         assert call_kwargs["timeout"] == 300
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_includes_openrouter_headers(self, mock_chat_openai):
         """Test that create_llm includes OpenRouter-specific headers."""
         mock_chat_openai.return_value = MagicMock()
@@ -191,7 +291,7 @@ class TestCreateLLM:
             ):
                 create_llm()
 
-    @patch("receipt_agent.utils.llm_factory.ChatOpenAI")
+    @patch("langchain_openai.ChatOpenAI")
     def test_uses_receipt_agent_prefix_env_vars(self, mock_chat_openai):
         """Test that RECEIPT_AGENT_ prefixed env vars are used."""
         mock_chat_openai.return_value = MagicMock()
@@ -214,6 +314,25 @@ class TestCreateLLM:
         assert call_kwargs["model"] == "prefixed-model"
         assert call_kwargs["base_url"] == "https://prefixed.url"
         assert call_kwargs["api_key"] == "prefixed-key"
+
+    @patch("langchain_openai.ChatOpenAI")
+    def test_disable_paid_llm_blocks_client_creation(self, mock_chat_openai):
+        """Cost guard should stop paid LLM client creation before API use."""
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "test-key",
+                "RECEIPT_AGENT_DISABLE_PAID_LLM": "1",
+            },
+            clear=True,
+        ):
+            assert paid_llm_calls_disabled() is True
+            with pytest.raises(
+                ValueError, match="Paid LLM calls are disabled"
+            ):
+                create_llm()
+
+        mock_chat_openai.assert_not_called()
 
 
 class TestLLMInvoker:
@@ -360,40 +479,46 @@ class TestLLMInvoker:
 class TestLLMInvokerAsync:
     """Tests for async LLMInvoker methods."""
 
-    @pytest.mark.asyncio
-    async def test_ainvoke_success(self):
+    def test_ainvoke_success(self):
         """Test successful async invoke."""
-        mock_llm = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = "test response"
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        invoker = LLMInvoker(llm=mock_llm, max_jitter_seconds=0)
-        response = await invoker.ainvoke("test message")
+        async def run_test():
+            mock_llm = MagicMock()
+            mock_response = MagicMock()
+            mock_response.content = "test response"
+            mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        assert response == mock_response
-        mock_llm.ainvoke.assert_called_once()
-        assert invoker.call_count == 1
+            invoker = LLMInvoker(llm=mock_llm, max_jitter_seconds=0)
+            response = await invoker.ainvoke("test message")
 
-    @pytest.mark.asyncio
-    async def test_ainvoke_retry_on_rate_limit(self):
+            assert response == mock_response
+            mock_llm.ainvoke.assert_called_once()
+            assert invoker.call_count == 1
+
+        asyncio.run(run_test())
+
+    def test_ainvoke_retry_on_rate_limit(self):
         """Test that async rate limit errors trigger retry."""
-        mock_llm = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = "success"
 
-        mock_llm.ainvoke = AsyncMock(
-            side_effect=[
-                Exception("429 Rate Limit"),
-                mock_response,
-            ]
-        )
+        async def run_test():
+            mock_llm = MagicMock()
+            mock_response = MagicMock()
+            mock_response.content = "success"
 
-        invoker = LLMInvoker(llm=mock_llm, max_jitter_seconds=0)
-        response = await invoker.ainvoke("test message")
+            mock_llm.ainvoke = AsyncMock(
+                side_effect=[
+                    Exception("429 Rate Limit"),
+                    mock_response,
+                ]
+            )
 
-        assert response == mock_response
-        assert mock_llm.ainvoke.call_count == 2
+            invoker = LLMInvoker(llm=mock_llm, max_jitter_seconds=0)
+            response = await invoker.ainvoke("test message")
+
+            assert response == mock_response
+            assert mock_llm.ainvoke.call_count == 2
+
+        asyncio.run(run_test())
 
 
 class TestCreateLLMInvoker:
@@ -418,8 +543,11 @@ class TestCreateLLMInvoker:
         assert invoker.max_retries == 5
         mock_create_llm.assert_called_once_with(
             model="test-model",
+            model_profile=None,
             temperature=0.5,
             timeout=120,
+            reasoning=None,
+            reasoning_effort=None,
         )
 
 

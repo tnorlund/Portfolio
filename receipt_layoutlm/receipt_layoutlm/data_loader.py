@@ -1,9 +1,12 @@
 import hashlib
 import importlib
+import json
+import math
 import os
 import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
@@ -44,6 +47,62 @@ class SplitMetadata:
     # different window/stride shifts the F1 curve by inference, not quality).
     window_size: Optional[int] = None
     window_stride: Optional[int] = None
+    # Train-only synthetic examples appended from confusion/heatmap recipes.
+    synthetic_train_examples: int = 0
+    synthetic_source: Optional[str] = None
+    synthetic_candidates_seen: int = 0
+    synthetic_candidates_accepted: int = 0
+    synthetic_candidates_rejected: int = 0
+    synthetic_rejection_reasons: Dict[str, int] = field(default_factory=dict)
+    synthetic_accepted_operation_counts: Dict[str, int] = field(default_factory=dict)
+    synthetic_accepted_category_counts: Dict[str, int] = field(default_factory=dict)
+    synthetic_accepted_field_replacement_counts: Dict[str, int] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_structure_similarity: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_structure_components: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_candidate_quality: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_candidate_quality_components: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_real_baseline_comparison: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    synthetic_accepted_mix_balance: Dict[str, Any] = field(default_factory=dict)
+    synthetic_accepted_grounded_count: int = 0
+    synthetic_accepted_arithmetic_count: int = 0
+
+
+@dataclass
+class SyntheticTrainingLoad:
+    """Accepted synthetic rows plus bounded audit stats for rejected rows."""
+
+    examples: List[dict[str, Any]] = field(default_factory=list)
+    accepted_rows: List[dict[str, Any]] = field(default_factory=list)
+    rejected_rows: List[dict[str, Any]] = field(default_factory=list)
+    candidates_seen: int = 0
+    candidates_accepted: int = 0
+    candidates_rejected: int = 0
+    rejection_reasons: Dict[str, int] = field(default_factory=dict)
+    accepted_operation_counts: Dict[str, int] = field(default_factory=dict)
+    accepted_category_counts: Dict[str, int] = field(default_factory=dict)
+    accepted_field_replacement_counts: Dict[str, int] = field(default_factory=dict)
+    accepted_structure_similarity: Dict[str, Any] = field(default_factory=dict)
+    accepted_structure_components: Dict[str, Any] = field(default_factory=dict)
+    accepted_candidate_quality: Dict[str, Any] = field(default_factory=dict)
+    accepted_candidate_quality_components: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    accepted_real_baseline_comparison: Dict[str, Any] = field(default_factory=dict)
+    accepted_mix_balance: Dict[str, Any] = field(default_factory=dict)
+    accepted_grounded_count: int = 0
+    accepted_arithmetic_count: int = 0
 
 
 @dataclass
@@ -373,10 +432,24 @@ def download_receipt_images(
                 s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, local_path)
                 downloaded += 1
             else:
-                logger.warning("Receipt %s/%d has no S3 location, will use placeholder", image_id, receipt_id)
+                logger.warning(
+                    "Receipt %s/%d has no S3 location, will use placeholder",
+                    image_id,
+                    receipt_id,
+                )
         except Exception as e:
-            logger.warning("Failed to download receipt image %s/%d: %s", image_id, receipt_id, e)
-    logger.info("Receipt images: %d downloaded, %d cached, %d total", downloaded, skipped, len(receipt_keys))
+            logger.warning(
+                "Failed to download receipt image %s/%d: %s",
+                image_id,
+                receipt_id,
+                e,
+            )
+    logger.info(
+        "Receipt images: %d downloaded, %d cached, %d total",
+        downloaded,
+        skipped,
+        len(receipt_keys),
+    )
     return cache_dir
 
 
@@ -397,9 +470,7 @@ def _load_fixed_val_keys() -> Optional[set]:
 
     boto3 = importlib.import_module("boto3")
     p = urlparse(uri)
-    obj = boto3.client("s3").get_object(
-        Bucket=p.netloc, Key=p.path.lstrip("/")
-    )
+    obj = boto3.client("s3").get_object(Bucket=p.netloc, Key=p.path.lstrip("/"))
     data = json.loads(obj["Body"].read().decode("utf-8"))
     keys = data.get("val_receipt_keys") if isinstance(data, dict) else data
     return set(keys) if keys else None
@@ -421,15 +492,1212 @@ def _load_receipt_allowlist() -> Optional[set]:
 
     boto3 = importlib.import_module("boto3")
     p = urlparse(uri)
-    obj = boto3.client("s3").get_object(
-        Bucket=p.netloc, Key=p.path.lstrip("/")
-    )
+    obj = boto3.client("s3").get_object(Bucket=p.netloc, Key=p.path.lstrip("/"))
     data = json.loads(obj["Body"].read().decode("utf-8"))
     keys = data.get("receipt_keys") if isinstance(data, dict) else data
     # When the env var IS set we always return a set (possibly empty), so an
     # empty/failed curation filters to nothing instead of silently falling back
     # to the full corpus. None is reserved for "env var unset".
     return set(keys or [])
+
+
+def _read_json_source(source: str) -> Any:
+    """Read JSON from a local path, local directory, S3 object, or S3 prefix."""
+    if source.startswith("s3://"):
+        boto3 = importlib.import_module("boto3")
+        parsed = urlparse(source)
+        client = boto3.client("s3")
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        if key.endswith("/") or not os.path.splitext(key)[1]:
+            payloads = []
+            paginator = client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=key):
+                for obj in sorted(
+                    page.get("Contents", []),
+                    key=lambda item: item.get("Key", ""),
+                ):
+                    obj_key = obj.get("Key", "")
+                    if not obj_key.endswith(".json"):
+                        continue
+                    payloads.append(_read_s3_json_object(client, bucket, obj_key))
+            return payloads
+        return _read_s3_json_object(client, bucket, key)
+
+    path = os.path.abspath(source)
+    if os.path.isdir(path):
+        payloads = []
+        for name in sorted(os.listdir(path)):
+            if not name.endswith(".json"):
+                continue
+            with open(os.path.join(path, name), encoding="utf-8") as handle:
+                payloads.append(json.load(handle))
+        return payloads
+
+    with open(source, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _read_s3_json_object(client: Any, bucket: str, key: str) -> Any:
+    obj = client.get_object(Bucket=bucket, Key=key)
+    return json.loads(obj["Body"].read().decode("utf-8"))
+
+
+def _artifact_synthesis_readiness(
+    payload: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    profile = payload.get("merchant_receipt_parameterization")
+    if not isinstance(profile, dict):
+        return None
+    readiness = profile.get("synthesis_readiness")
+    if not isinstance(readiness, dict):
+        return None
+    status = str(readiness.get("status") or "").strip()
+    if not status:
+        return None
+    return {
+        "status": status,
+        "score": readiness.get("score"),
+        "blockers": list(readiness.get("blockers") or [])[:10],
+    }
+
+
+def _with_artifact_context(
+    rows: List[dict],
+    payload: dict[str, Any],
+) -> List[dict]:
+    readiness = _artifact_synthesis_readiness(payload)
+    merchant_name = payload.get("merchant_name")
+    if not readiness and not merchant_name:
+        return rows
+
+    enriched: List[dict] = []
+    for row in rows:
+        next_row = dict(row)
+        metadata = row.get("metadata")
+        next_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        if readiness:
+            next_metadata.setdefault("artifact_synthesis_readiness", readiness)
+        if next_metadata:
+            next_row["metadata"] = next_metadata
+        if merchant_name and not next_row.get("merchant_name"):
+            next_row["merchant_name"] = merchant_name
+        enriched.append(next_row)
+    return enriched
+
+
+def _candidate_rows(payload: Any) -> List[dict]:
+    """Extract candidate rows from supported synthetic artifact shapes."""
+    if isinstance(payload, list):
+        rows: List[dict] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            if (
+                "synthetic_receipt_candidates" in item
+                or "synthetic_training_examples" in item
+                or "candidates" in item
+                or "examples" in item
+                or "line_item_patterns" in item
+            ):
+                rows.extend(_candidate_rows(item))
+            else:
+                rows.append(item)
+        return rows
+    if not isinstance(payload, dict):
+        return []
+    for key in (
+        "synthetic_receipt_candidates",
+        "synthetic_training_examples",
+        "candidates",
+        "examples",
+    ):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            candidate_rows = [row for row in rows if isinstance(row, dict)]
+            if key == "synthetic_receipt_candidates":
+                return _with_artifact_context(candidate_rows, payload)
+            return candidate_rows
+    patterns = payload.get("line_item_patterns")
+    if isinstance(patterns, dict):
+        return _candidate_rows(patterns)
+    return []
+
+
+def _valid_box(box: Any) -> bool:
+    """Return True when a bbox is a four-int LayoutLM box."""
+    return (
+        isinstance(box, list)
+        and len(box) == 4
+        and all(isinstance(coord, int) and 0 <= coord <= 1000 for coord in box)
+    )
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _synthetic_quality_gate_enabled() -> bool:
+    return os.getenv("LAYOUTLM_SYNTHETIC_QUALITY_GATE", "1") not in {
+        "0",
+        "false",
+        "False",
+    }
+
+
+def _synthetic_structure_threshold() -> float:
+    value = _safe_float(os.getenv("LAYOUTLM_SYNTHETIC_MIN_STRUCTURE_SIMILARITY"))
+    if value is None:
+        return 0.60
+    return max(0.0, min(1.0, value))
+
+
+def _synthetic_max_examples_per_merchant() -> int:
+    value = _safe_int(os.getenv("LAYOUTLM_SYNTHETIC_MAX_PER_MERCHANT"))
+    return max(1, value if value is not None else 5)
+
+
+def _synthetic_max_examples_per_merchant_operation() -> int:
+    value = _safe_int(os.getenv("LAYOUTLM_SYNTHETIC_MAX_PER_MERCHANT_OPERATION"))
+    return max(1, value if value is not None else 2)
+
+
+def _synthetic_row_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    metadata = row.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _synthetic_merchant_key(row: dict[str, Any]) -> str:
+    metadata = _synthetic_row_metadata(row)
+    merchant = row.get("merchant_name")
+    if not merchant:
+        profile = metadata.get("profile")
+        if isinstance(profile, dict):
+            merchant = profile.get("merchant_name")
+    return str(merchant or "unknown").strip().lower() or "unknown"
+
+
+def _synthetic_merchant_name(row: dict[str, Any]) -> str:
+    metadata = _synthetic_row_metadata(row)
+    merchant = row.get("merchant_name")
+    if not merchant:
+        profile = metadata.get("profile")
+        if isinstance(profile, dict):
+            merchant = profile.get("merchant_name")
+    return str(merchant or "unknown").strip() or "unknown"
+
+
+def _synthetic_operation(row: dict[str, Any]) -> str:
+    metadata = _synthetic_row_metadata(row)
+    return str(metadata.get("operation") or row.get("operation") or "unknown")
+
+
+def _count_synthetic_values(values: List[str]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for value in values:
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _normalized_entropy(counts: Dict[str, int]) -> Optional[float]:
+    positive = [count for count in counts.values() if count > 0]
+    total = sum(positive)
+    if total <= 0:
+        return None
+    if len(positive) <= 1:
+        return 0.0
+    entropy = -sum((count / total) * math.log(count / total) for count in positive)
+    return round(entropy / math.log(len(positive)), 3)
+
+
+def _top_count_share(counts: Dict[str, int]) -> tuple[str | None, int, float | None]:
+    positive = {
+        str(key): count
+        for key, count in counts.items()
+        if isinstance(count, int) and count > 0
+    }
+    total = sum(positive.values())
+    if total <= 0:
+        return None, 0, None
+    key, count = max(positive.items(), key=lambda item: (item[1], item[0]))
+    return key, count, round(count / total, 3)
+
+
+def _synthetic_balance_risk(
+    *,
+    accepted_count: int,
+    top_merchant_share: float | None,
+    top_operation_share: float | None,
+    merchant_count: int,
+    operation_count: int,
+) -> tuple[str, list[str]]:
+    if accepted_count <= 0:
+        return "none", ["no_accepted_synthetic_examples"]
+    if accepted_count < 3:
+        return "low", ["too_few_examples_for_balance_assessment"]
+
+    level = "low"
+    reasons: list[str] = []
+    if merchant_count <= 1:
+        level = "high"
+        reasons.append("single_merchant_accepted")
+    elif top_merchant_share is not None and top_merchant_share >= 0.80:
+        level = "high"
+        reasons.append("top_merchant_share_ge_80pct")
+    elif top_merchant_share is not None and top_merchant_share >= 0.67:
+        level = "medium"
+        reasons.append("top_merchant_share_ge_67pct")
+
+    if operation_count <= 1:
+        if level != "high":
+            level = "medium"
+        reasons.append("single_operation_accepted")
+    elif top_operation_share is not None and top_operation_share >= 0.80:
+        if level != "high":
+            level = "medium"
+        reasons.append("top_operation_share_ge_80pct")
+    elif top_operation_share is not None and top_operation_share >= 0.67:
+        if level == "low":
+            level = "medium"
+        reasons.append("top_operation_share_ge_67pct")
+
+    return level, reasons
+
+
+def _synthetic_mix_balance(rows: List[dict[str, Any]]) -> Dict[str, Any]:
+    merchant_counts = _count_synthetic_values(
+        [_synthetic_merchant_name(row) for row in rows]
+    )
+    operation_counts = _count_synthetic_values(
+        [_synthetic_operation(row) for row in rows]
+    )
+    accepted_count = len(rows)
+    top_merchant, top_merchant_count, top_merchant_share = _top_count_share(
+        merchant_counts
+    )
+    top_operation, top_operation_count, top_operation_share = _top_count_share(
+        operation_counts
+    )
+    risk_level, risk_reasons = _synthetic_balance_risk(
+        accepted_count=accepted_count,
+        top_merchant_share=top_merchant_share,
+        top_operation_share=top_operation_share,
+        merchant_count=len(merchant_counts),
+        operation_count=len(operation_counts),
+    )
+    return {
+        "accepted_count": accepted_count,
+        "merchant_count": len(merchant_counts),
+        "operation_count": len(operation_counts),
+        "top_merchant": top_merchant,
+        "top_merchant_count": top_merchant_count,
+        "top_merchant_share": top_merchant_share,
+        "top_operation": top_operation,
+        "top_operation_count": top_operation_count,
+        "top_operation_share": top_operation_share,
+        "merchant_entropy": _normalized_entropy(merchant_counts),
+        "operation_entropy": _normalized_entropy(operation_counts),
+        "risk_level": risk_level,
+        "risk_reasons": risk_reasons,
+    }
+
+
+def _synthetic_field_replacement_label(row: dict[str, Any]) -> Optional[str]:
+    replacement = _synthetic_row_metadata(row).get("field_replacement")
+    if not isinstance(replacement, dict):
+        return None
+    label = str(replacement.get("label") or "").strip().upper()
+    return label or None
+
+
+def _merchant_synthesis_contract_rows(payload: Any) -> List[dict[str, Any]]:
+    if isinstance(payload, list):
+        rows: List[dict[str, Any]] = []
+        for item in payload:
+            rows.extend(_merchant_synthesis_contract_rows(item))
+        return rows
+    if not isinstance(payload, dict):
+        return []
+
+    rows = [
+        row
+        for row in payload.get("merchant_synthesis_contracts") or []
+        if isinstance(row, dict)
+    ]
+    for key in ("bundle", "line_item_patterns"):
+        nested = payload.get(key)
+        if isinstance(nested, (dict, list)):
+            rows.extend(_merchant_synthesis_contract_rows(nested))
+    return rows
+
+
+def _merchant_synthesis_contracts_by_merchant(
+    payload: Any,
+) -> dict[str, dict[str, Any]]:
+    contracts: dict[str, dict[str, Any]] = {}
+    for contract in _merchant_synthesis_contract_rows(payload):
+        merchant = str(contract.get("merchant_name") or "").strip().lower()
+        if merchant:
+            contracts[merchant] = contract
+    return contracts
+
+
+def _contract_operation_contract(
+    contract: dict[str, Any],
+    operation: str,
+) -> dict[str, Any]:
+    operation_contracts = contract.get("operation_contracts")
+    if not isinstance(operation_contracts, dict):
+        return {}
+    operation_contract = operation_contracts.get(operation)
+    return operation_contract if isinstance(operation_contract, dict) else {}
+
+
+def _contract_operation_ready(
+    contract: dict[str, Any],
+    operation: str,
+) -> bool:
+    supported_operations = {
+        str(value).strip()
+        for value in contract.get("supported_operations") or []
+        if str(value).strip()
+    }
+    operation_contract = _contract_operation_contract(contract, operation)
+    if operation_contract:
+        ready = operation_contract.get("ready")
+        if ready is True:
+            return True
+        if ready is False:
+            return False
+    return operation in supported_operations
+
+
+def _contract_field_for_label(
+    fields: Any,
+    label: str,
+) -> Optional[dict[str, Any]]:
+    if not isinstance(fields, dict):
+        return None
+    for key, field in fields.items():
+        if not isinstance(field, dict):
+            continue
+        if str(key).strip().upper() == label:
+            return field
+        if str(field.get("label") or "").strip().upper() == label:
+            return field
+    return None
+
+
+def _synthetic_contract_quality_failure(
+    row: dict[str, Any],
+    *,
+    merchant_contracts: Optional[dict[str, dict[str, Any]]] = None,
+) -> Optional[str]:
+    """Return a contract-level rejection reason when contracts are present."""
+    if not merchant_contracts:
+        return None
+
+    contract = merchant_contracts.get(_synthetic_merchant_key(row))
+    if not contract:
+        return "missing_merchant_synthesis_contract"
+
+    status = str(contract.get("status") or "").strip().lower()
+    if status != "ready":
+        return "merchant_contract_not_ready"
+
+    operation = _synthetic_operation(row).strip()
+    if not _contract_operation_ready(contract, operation):
+        return "operation_not_supported_by_contract"
+
+    if operation != "replace_field":
+        return None
+
+    metadata = _synthetic_row_metadata(row)
+    replacement = metadata.get("field_replacement")
+    label = (
+        str(replacement.get("label") or "").strip().upper()
+        if isinstance(replacement, dict)
+        else ""
+    )
+    operation_contract = _contract_operation_contract(contract, operation)
+    field_contract = _contract_field_for_label(
+        operation_contract.get("fields"),
+        label,
+    )
+    if not label or not field_contract:
+        return "replace_field_not_contract_safe"
+    if field_contract.get("safe_to_mutate") is not True:
+        return "replace_field_not_contract_safe"
+    if field_contract.get("stable_geometry") is False:
+        return "replace_field_not_contract_safe"
+
+    stable_format = field_contract.get("stable_format")
+    replacement_format = (
+        replacement.get("format") if isinstance(replacement, dict) else None
+    )
+    if stable_format and replacement_format and stable_format != replacement_format:
+        return "replace_field_contract_format_mismatch"
+
+    observed_count = _safe_int(field_contract.get("observed_count"))
+    if observed_count is not None and observed_count < 2:
+        return "replace_field_not_contract_safe"
+    return None
+
+
+def _synthetic_category(row: dict[str, Any]) -> Optional[str]:
+    metadata = _synthetic_row_metadata(row)
+    for item_key in ("added_item", "removed_item"):
+        item = metadata.get(item_key)
+        if isinstance(item, dict):
+            category = str(item.get("category") or "").strip()
+            if category:
+                return category
+    observed = metadata.get("observed_item_evidence")
+    if isinstance(observed, dict):
+        category = str(observed.get("category") or "").strip()
+        if category:
+            return category
+    return None
+
+
+def _synthetic_structure_score(row: dict[str, Any]) -> Optional[float]:
+    structure = _synthetic_row_metadata(row).get("structure_similarity")
+    if not isinstance(structure, dict):
+        return None
+    return _safe_float(structure.get("score"))
+
+
+def _synthetic_score_summary(scores: List[float]) -> Dict[str, Any]:
+    if not scores:
+        return {"count": 0}
+    return {
+        "count": len(scores),
+        "avg": round(sum(scores) / len(scores), 3),
+        "min": round(min(scores), 3),
+        "max": round(max(scores), 3),
+    }
+
+
+def _synthetic_structure_components(row: dict[str, Any]) -> Dict[str, float]:
+    structure = _synthetic_row_metadata(row).get("structure_similarity")
+    if not isinstance(structure, dict):
+        return {}
+    components = structure.get("components")
+    if not isinstance(components, dict):
+        return {}
+    result: Dict[str, float] = {}
+    for key, raw_value in components.items():
+        value = _safe_float(raw_value)
+        if value is not None:
+            result[str(key)] = value
+    return result
+
+
+def _synthetic_real_baseline_comparison(
+    row: dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    structure = _synthetic_row_metadata(row).get("structure_similarity")
+    if not isinstance(structure, dict):
+        return None
+    baseline = structure.get("real_baseline_comparison")
+    return baseline if isinstance(baseline, dict) else None
+
+
+def _synthetic_real_baseline_min_pair_count() -> int:
+    raw = os.environ.get("LAYOUTLM_SYNTHETIC_MIN_REAL_BASELINE_PAIRS")
+    if raw is None:
+        return 3
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3
+
+
+def _synthetic_real_baseline_failure(row: dict[str, Any]) -> Optional[str]:
+    """Return a rejection reason when candidate geometry falls outside real range."""
+    comparison = _synthetic_real_baseline_comparison(row)
+    if not comparison:
+        return None
+
+    pair_count = _safe_int(comparison.get("baseline_pair_count"))
+    if (
+        pair_count is None
+        or pair_count < _synthetic_real_baseline_min_pair_count()
+    ):
+        return None
+
+    within_real_range = comparison.get("within_real_score_range")
+    if within_real_range is False:
+        return "below_real_structure_baseline"
+    if within_real_range is True:
+        return None
+
+    candidate_score = _safe_float(comparison.get("candidate_score"))
+    baseline_min = _safe_float(comparison.get("baseline_min"))
+    if (
+        candidate_score is not None
+        and baseline_min is not None
+        and candidate_score < baseline_min
+    ):
+        return "below_real_structure_baseline"
+    return None
+
+
+def _synthetic_real_baseline_summary(
+    rows: List[dict[str, Any]],
+) -> Dict[str, Any]:
+    comparisons = [
+        comparison
+        for row in rows
+        if (comparison := _synthetic_real_baseline_comparison(row))
+    ]
+    if not comparisons:
+        return {"count": 0}
+
+    within_count = sum(
+        1 for comparison in comparisons if comparison.get("within_real_score_range")
+    )
+
+    def values_for(key: str) -> List[float]:
+        return [
+            value
+            for comparison in comparisons
+            if (value := _safe_float(comparison.get(key))) is not None
+        ]
+
+    return {
+        "count": len(comparisons),
+        "within_real_score_range_count": within_count,
+        "below_real_score_range_count": len(comparisons) - within_count,
+        "within_real_score_range_share": round(within_count / len(comparisons), 3),
+        "candidate_score": _synthetic_score_summary(values_for("candidate_score")),
+        "baseline_avg": _synthetic_score_summary(values_for("baseline_avg")),
+        "baseline_min": _synthetic_score_summary(values_for("baseline_min")),
+        "baseline_pair_count": _synthetic_score_summary(
+            values_for("baseline_pair_count")
+        ),
+        "delta_from_avg": _synthetic_score_summary(values_for("delta_from_avg")),
+        "delta_from_min": _synthetic_score_summary(values_for("delta_from_min")),
+    }
+
+
+def _synthetic_component_score_summary(
+    rows: List[dict[str, Any]],
+) -> Dict[str, Any]:
+    values_by_component: Dict[str, List[float]] = {}
+    for row in rows:
+        for component, value in _synthetic_structure_components(row).items():
+            values_by_component.setdefault(component, []).append(value)
+    return {
+        component: _synthetic_score_summary(values)
+        for component, values in sorted(values_by_component.items())
+    }
+
+
+def _synthetic_structure_component_thresholds() -> Dict[str, float]:
+    return {
+        "price_column": 0.75,
+        "line_step": 0.45,
+        "category_sequence": 0.40,
+        "category_set": 0.40,
+        "token_count": 0.35,
+    }
+
+
+def _synthetic_structure_component_failure(
+    structure: dict[str, Any],
+) -> Optional[str]:
+    components = structure.get("components")
+    if not isinstance(components, dict) or not components:
+        return None
+
+    reasons = {
+        "price_column": "low_price_column_similarity",
+        "line_step": "low_line_step_similarity",
+        "category_sequence": "low_category_sequence_similarity",
+        "category_set": "low_category_set_similarity",
+        "token_count": "low_token_count_similarity",
+    }
+    for key, threshold in _synthetic_structure_component_thresholds().items():
+        value = _safe_float(components.get(key))
+        if value is not None and value < threshold:
+            return reasons[key]
+    return None
+
+
+def _synthetic_is_grounded(row: dict[str, Any]) -> bool:
+    metadata = _synthetic_row_metadata(row)
+    added = metadata.get("added_item")
+    observed = metadata.get("observed_item_evidence")
+    if isinstance(added, dict) and added.get("seen_in_other_receipt"):
+        return True
+    if isinstance(observed, dict) and observed.get("product_seen_outside_base"):
+        return True
+    return False
+
+
+def _synthetic_has_arithmetic(row: dict[str, Any]) -> bool:
+    arithmetic = _synthetic_row_metadata(row).get("arithmetic_reconciliation")
+    return isinstance(arithmetic, dict) and bool(arithmetic)
+
+
+def _synthetic_declared_candidate_quality(row: dict[str, Any]) -> Optional[float]:
+    quality = _synthetic_row_metadata(row).get("candidate_quality")
+    if not isinstance(quality, dict):
+        return None
+    score = _safe_float(quality.get("score"))
+    if score is None:
+        return None
+    return max(0.0, min(1.0, score))
+
+
+def _synthetic_declared_candidate_quality_components(
+    row: dict[str, Any],
+) -> Dict[str, float]:
+    quality = _synthetic_row_metadata(row).get("candidate_quality")
+    if not isinstance(quality, dict):
+        return {}
+    components = quality.get("components")
+    if not isinstance(components, dict):
+        return {}
+    result: Dict[str, float] = {}
+    for key, raw_value in components.items():
+        value = _safe_float(raw_value)
+        if value is not None:
+            result[str(key)] = value
+    return result
+
+
+def _synthetic_candidate_quality_component_summary(
+    rows: List[dict[str, Any]],
+) -> Dict[str, Any]:
+    values_by_component: Dict[str, List[float]] = {}
+    for row in rows:
+        for component, value in _synthetic_declared_candidate_quality_components(
+            row
+        ).items():
+            values_by_component.setdefault(component, []).append(value)
+    return {
+        component: _synthetic_score_summary(values)
+        for component, values in sorted(values_by_component.items())
+    }
+
+
+def _synthetic_candidate_quality_threshold() -> float:
+    raw = os.environ.get("LAYOUTLM_SYNTHETIC_MIN_CANDIDATE_QUALITY")
+    if raw is None:
+        return 0.70
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.70
+
+
+def _synthetic_rejection_record(
+    row: dict[str, Any],
+    *,
+    idx: int,
+    reason: str,
+) -> dict[str, Any]:
+    metadata = _synthetic_row_metadata(row)
+    structure = metadata.get("structure_similarity")
+    score = _safe_float(structure.get("score")) if isinstance(structure, dict) else None
+    record = {
+        "candidate_id": str(row.get("candidate_id") or ""),
+        "receipt_key": str(row.get("receipt_key") or ""),
+        "image_id": str(row.get("image_id") or ""),
+        "merchant_name": _synthetic_merchant_name(row),
+        "operation": _synthetic_operation(row),
+        "reason": reason,
+        "idx": idx,
+    }
+    category = _synthetic_category(row)
+    if category:
+        record["category"] = category
+    if score is not None:
+        record["structure_similarity"] = score
+    if reason == "below_real_structure_baseline":
+        baseline = _synthetic_real_baseline_comparison(row)
+        if baseline:
+            record["real_baseline_comparison"] = {
+                key: baseline[key]
+                for key in (
+                    "candidate_score",
+                    "baseline_min",
+                    "baseline_avg",
+                    "within_real_score_range",
+                    "delta_from_min",
+                    "delta_from_avg",
+                )
+                if key in baseline
+            }
+    quality_score = _synthetic_declared_candidate_quality(row)
+    if quality_score is not None:
+        record["candidate_quality"] = quality_score
+    return record
+
+
+def _synthetic_fidelity_score(row: dict[str, Any]) -> float:
+    declared_quality = _synthetic_declared_candidate_quality(row)
+    if declared_quality is not None:
+        return declared_quality
+
+    metadata = _synthetic_row_metadata(row)
+    structure = metadata.get("structure_similarity")
+    score = (
+        _safe_float(structure.get("score")) if isinstance(structure, dict) else None
+    ) or 0.0
+
+    operation = _synthetic_operation(row)
+    if operation in {"add_line_item", "remove_line_item"} and isinstance(
+        metadata.get("arithmetic_reconciliation"),
+        dict,
+    ):
+        score += 0.15
+    if operation == "add_line_item":
+        observed = metadata.get("observed_item_evidence")
+        if isinstance(observed, dict) and observed.get("product_seen_outside_base"):
+            score += 0.10
+        if (
+            isinstance(observed, dict)
+            and observed.get("base_receipt_has_category") is True
+        ):
+            score += 0.05
+        accuracy = metadata.get("synthesis_accuracy_evidence")
+        if isinstance(accuracy, dict):
+            catalog = accuracy.get("catalog_grounding")
+            placement = accuracy.get("category_placement")
+            if isinstance(catalog, dict):
+                outside_count = _safe_int(
+                    catalog.get("product_seen_outside_base_count")
+                )
+                if outside_count and outside_count > 0:
+                    score += min(0.06, outside_count * 0.02)
+                heading_count = _safe_int(catalog.get("category_heading_seen_count"))
+                if heading_count and heading_count > 0:
+                    score += 0.03
+            if isinstance(placement, dict):
+                if placement.get("category_alignment") == "same_category_as_base":
+                    score += 0.04
+                if placement.get("base_receipt_has_category") is True:
+                    score += 0.02
+    if operation == "hard_negative":
+        score += 0.03
+    if operation == "replace_field":
+        evidence = metadata.get("mutable_field_evidence")
+        if isinstance(evidence, dict) and evidence.get("safe_to_mutate") is True:
+            score += 0.08
+    return score
+
+
+def _add_item_optional_evidence_failure(
+    *,
+    added: dict[str, Any],
+    observed: dict[str, Any],
+    metadata: dict[str, Any],
+) -> Optional[str]:
+    accuracy = metadata.get("synthesis_accuracy_evidence")
+    if not isinstance(accuracy, dict):
+        return None
+
+    added_category = str(added.get("category") or "").strip()
+    observed_category = str(observed.get("category") or "").strip()
+    catalog = accuracy.get("catalog_grounding")
+    if isinstance(catalog, dict):
+        catalog_category = str(catalog.get("category") or "").strip()
+        if catalog_category and added_category and catalog_category != added_category:
+            return "add_item_catalog_category_mismatch"
+        outside_count = _safe_int(catalog.get("product_seen_outside_base_count"))
+        if outside_count is not None and outside_count <= 0:
+            return "add_item_catalog_not_cross_receipt_grounded"
+        catalog_seen_count = _safe_int(catalog.get("category_seen_count"))
+        if catalog_seen_count is not None and catalog_seen_count <= 0:
+            return "add_item_catalog_missing_category_evidence"
+
+    placement = accuracy.get("category_placement")
+    if isinstance(placement, dict):
+        placement_category = str(placement.get("category") or "").strip()
+        expected_category = observed_category or added_category
+        if (
+            placement_category
+            and expected_category
+            and placement_category != expected_category
+        ):
+            return "add_item_placement_category_mismatch"
+        if placement.get("base_receipt_has_category") is False:
+            return "add_item_placement_base_category_missing"
+        alignment = placement.get("category_alignment")
+        if alignment and alignment != "same_category_as_base":
+            return "add_item_placement_category_mismatch"
+    return None
+
+
+def _synthetic_candidate_quality_failure(
+    row: dict[str, Any],
+    *,
+    min_structure_similarity: Optional[float] = None,
+) -> Optional[str]:
+    """Return a rejection reason, or None when a candidate is trainable."""
+    if not _synthetic_quality_gate_enabled():
+        return None
+
+    metadata = row.get("metadata")
+    if not isinstance(metadata, dict):
+        return "missing_metadata"
+
+    artifact_readiness = metadata.get("artifact_synthesis_readiness")
+    if isinstance(artifact_readiness, dict):
+        status = str(artifact_readiness.get("status") or "").strip().lower()
+        if status and status not in {"ready", "partial"}:
+            return "merchant_synthesis_not_ready"
+
+    structure = metadata.get("structure_similarity")
+    if not isinstance(structure, dict):
+        return "missing_structure_similarity"
+    score = _safe_float(structure.get("score"))
+    threshold = (
+        max(0.0, min(1.0, min_structure_similarity))
+        if min_structure_similarity is not None
+        else _synthetic_structure_threshold()
+    )
+    if score is None or score < threshold:
+        return "low_structure_similarity"
+    if component_failure := _synthetic_structure_component_failure(structure):
+        return component_failure
+    if baseline_failure := _synthetic_real_baseline_failure(row):
+        return baseline_failure
+
+    declared_quality = _synthetic_declared_candidate_quality(row)
+    if (
+        declared_quality is not None
+        and declared_quality < _synthetic_candidate_quality_threshold()
+    ):
+        return "low_candidate_quality"
+
+    operation = str(metadata.get("operation") or "").strip()
+    if operation == "hard_negative":
+        if (
+            str(metadata.get("error_kind") or "") == "false_positive"
+            and str(metadata.get("actual_label") or "").upper() == "O"
+            and bool(metadata.get("predicted_label"))
+        ):
+            return None
+        return "invalid_hard_negative_metadata"
+
+    if operation == "add_line_item":
+        added = metadata.get("added_item")
+        observed = metadata.get("observed_item_evidence")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        if not isinstance(added, dict) or not isinstance(observed, dict):
+            return "add_item_missing_observed_evidence"
+        if added.get("seen_in_other_receipt") is not True or not observed.get(
+            "product_seen_outside_base"
+        ):
+            return "add_item_not_cross_receipt_grounded"
+        added_category = str(added.get("category") or "").strip()
+        observed_category = str(observed.get("category") or "").strip()
+        category_seen_count = _safe_int(observed.get("category_seen_count"))
+        category_seen_sources = observed.get("category_seen_in_receipts")
+        if not added_category:
+            return "add_item_missing_category_evidence"
+        if observed_category and observed_category != added_category:
+            return "add_item_category_mismatch"
+        if observed.get("base_receipt_has_category") is not True:
+            return "add_item_base_category_missing"
+        if not (
+            category_seen_count
+            and category_seen_count > 0
+            or isinstance(category_seen_sources, list)
+            and category_seen_sources
+        ):
+            return "add_item_missing_category_evidence"
+        if optional_failure := _add_item_optional_evidence_failure(
+            added=added,
+            observed=observed,
+            metadata=metadata,
+        ):
+            return optional_failure
+        if not isinstance(arithmetic, dict):
+            return "missing_arithmetic_reconciliation"
+        if (
+            arithmetic.get("summary_update_policy") != "non_taxable_item_delta"
+            or arithmetic.get("tax_delta") != "0.00"
+        ):
+            return "invalid_arithmetic_reconciliation"
+        return None
+
+    if operation == "remove_line_item":
+        removed = metadata.get("removed_item")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        if not isinstance(removed, dict):
+            return "remove_item_missing_evidence"
+        if removed.get("taxable") is not False:
+            return "remove_item_taxable_or_unknown"
+        if not isinstance(arithmetic, dict):
+            return "missing_arithmetic_reconciliation"
+        if (
+            arithmetic.get("summary_update_policy") != "non_taxable_item_delta"
+            or arithmetic.get("tax_delta") != "0.00"
+        ):
+            return "invalid_arithmetic_reconciliation"
+        return None
+
+    if operation == "replace_field":
+        replacement = metadata.get("field_replacement")
+        evidence = metadata.get("mutable_field_evidence")
+        if not isinstance(replacement, dict) or not isinstance(evidence, dict):
+            return "replace_field_missing_evidence"
+        label = str(replacement.get("label") or "").upper()
+        if label not in {"DATE", "TIME"}:
+            return "replace_field_unsupported_label"
+        if str(evidence.get("label") or "").upper() != label:
+            return "replace_field_label_mismatch"
+        if evidence.get("safe_to_mutate") is not True:
+            return "replace_field_not_mutable"
+        if evidence.get("stable_geometry") is not True:
+            return "replace_field_unstable_geometry"
+        if not evidence.get("stable_format"):
+            return "replace_field_missing_format"
+        observed_count = _safe_int(evidence.get("observed_count"))
+        if observed_count is None or observed_count < 2:
+            return "replace_field_insufficient_observations"
+        old_text = str(replacement.get("old_text") or "")
+        new_text = str(replacement.get("new_text") or "")
+        if not old_text or not new_text or old_text == new_text:
+            return "replace_field_invalid_value"
+        if replacement.get("format") != evidence.get("stable_format"):
+            return "replace_field_format_mismatch"
+        return None
+
+    return "unsupported_operation"
+
+
+def _synthetic_candidate_quality_passes(row: dict[str, Any]) -> bool:
+    """Return True when a synthetic candidate is grounded enough for training."""
+    return _synthetic_candidate_quality_failure(row) is None
+
+
+def _select_synthetic_training_examples(
+    rows: List[dict[str, Any]],
+    *,
+    max_per_merchant: Optional[int] = None,
+    max_per_merchant_operation: Optional[int] = None,
+    min_structure_similarity: Optional[float] = None,
+    merchant_contracts: Optional[dict[str, dict[str, Any]]] = None,
+) -> SyntheticTrainingLoad:
+    """Apply LayoutLM synthetic quality gates and diversity caps to rows."""
+    examples: List[dict[str, Any]] = []
+    accepted: List[dict[str, Any]] = []
+    rejected_rows: List[dict[str, Any]] = []
+    rejection_reasons: Dict[str, int] = {}
+
+    def reject(
+        reason: str,
+        *,
+        row: Optional[dict[str, Any]] = None,
+        idx: int = -1,
+    ) -> None:
+        rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+        if row is not None:
+            rejected_rows.append(
+                _synthetic_rejection_record(row, idx=idx, reason=reason)
+            )
+
+    for idx, row in enumerate(rows):
+        if row.get("train_only", True) is False:
+            reject("not_train_only", row=row, idx=idx)
+            continue
+
+        tokens = row.get("tokens")
+        bboxes = row.get("bboxes")
+        ner_tags = row.get("ner_tags")
+        if not (
+            isinstance(tokens, list)
+            and isinstance(bboxes, list)
+            and isinstance(ner_tags, list)
+        ):
+            reject("missing_sequence_fields", row=row, idx=idx)
+            continue
+        if not tokens or len(tokens) != len(bboxes) or len(tokens) != len(ner_tags):
+            reject("empty_or_mismatched_lengths", row=row, idx=idx)
+            continue
+        if not all(isinstance(token, str) and token for token in tokens):
+            reject("invalid_tokens", row=row, idx=idx)
+            continue
+        if not all(_valid_box(box) for box in bboxes):
+            reject("invalid_bboxes", row=row, idx=idx)
+            continue
+        if not all(isinstance(tag, str) and tag for tag in ner_tags):
+            reject("invalid_ner_tags", row=row, idx=idx)
+            continue
+        quality_failure = _synthetic_candidate_quality_failure(
+            row,
+            min_structure_similarity=min_structure_similarity,
+        )
+        if quality_failure:
+            reject(quality_failure, row=row, idx=idx)
+            continue
+        contract_failure = _synthetic_contract_quality_failure(
+            row,
+            merchant_contracts=merchant_contracts,
+        )
+        if contract_failure:
+            reject(contract_failure, row=row, idx=idx)
+            continue
+
+        image_id = str(row.get("image_id") or f"synthetic-{idx:04d}")
+        receipt_key = str(row.get("receipt_key") or f"{image_id}#00001")
+        if "#" not in receipt_key:
+            receipt_key = f"{receipt_key}#00001"
+
+        accepted.append(
+            {
+                "row": row,
+                "idx": idx,
+                "example": {
+                    "tokens": tokens,
+                    "bboxes": bboxes,
+                    "ner_tags": ner_tags,
+                    "receipt_key": receipt_key,
+                    "image_id": image_id,
+                },
+            }
+        )
+
+    merchant_cap = max(1, max_per_merchant or _synthetic_max_examples_per_merchant())
+    operation_cap = max(
+        1,
+        max_per_merchant_operation or _synthetic_max_examples_per_merchant_operation(),
+    )
+    merchant_counts: Dict[str, int] = {}
+    operation_counts: Dict[tuple[str, str], int] = {}
+    accepted_rows: List[dict[str, Any]] = []
+    accepted.sort(
+        key=lambda item: (
+            -_synthetic_fidelity_score(item["row"]),
+            item["idx"],
+        )
+    )
+    for item in accepted:
+        row = item["row"]
+        merchant = _synthetic_merchant_key(row)
+        operation = _synthetic_operation(row)
+        operation_key = (merchant, operation)
+        if merchant_counts.get(merchant, 0) >= merchant_cap:
+            reject("merchant_synthetic_cap", row=row, idx=item["idx"])
+            continue
+        if operation_counts.get(operation_key, 0) >= operation_cap:
+            reject(
+                "merchant_operation_synthetic_cap",
+                row=row,
+                idx=item["idx"],
+            )
+            continue
+        accepted_rows.append(row)
+        examples.append(item["example"])
+        merchant_counts[merchant] = merchant_counts.get(merchant, 0) + 1
+        operation_counts[operation_key] = operation_counts.get(operation_key, 0) + 1
+
+    accepted_scores = [
+        score
+        for row in accepted_rows
+        if (score := _synthetic_structure_score(row)) is not None
+    ]
+    accepted_candidate_quality_scores = [
+        score
+        for row in accepted_rows
+        if (score := _synthetic_declared_candidate_quality(row)) is not None
+    ]
+
+    return SyntheticTrainingLoad(
+        examples=examples,
+        accepted_rows=accepted_rows,
+        rejected_rows=rejected_rows,
+        candidates_seen=len(rows),
+        candidates_accepted=len(examples),
+        candidates_rejected=sum(rejection_reasons.values()),
+        rejection_reasons=rejection_reasons,
+        accepted_operation_counts=_count_synthetic_values(
+            [_synthetic_operation(row) for row in accepted_rows]
+        ),
+        accepted_category_counts=_count_synthetic_values(
+            [
+                category
+                for row in accepted_rows
+                if (category := _synthetic_category(row))
+            ]
+        ),
+        accepted_field_replacement_counts=_count_synthetic_values(
+            [
+                label
+                for row in accepted_rows
+                if (label := _synthetic_field_replacement_label(row))
+            ]
+        ),
+        accepted_structure_similarity=_synthetic_score_summary(accepted_scores),
+        accepted_structure_components=_synthetic_component_score_summary(accepted_rows),
+        accepted_candidate_quality=_synthetic_score_summary(
+            accepted_candidate_quality_scores
+        ),
+        accepted_candidate_quality_components=(
+            _synthetic_candidate_quality_component_summary(accepted_rows)
+        ),
+        accepted_real_baseline_comparison=_synthetic_real_baseline_summary(
+            accepted_rows
+        ),
+        accepted_mix_balance=_synthetic_mix_balance(accepted_rows),
+        accepted_grounded_count=sum(
+            1 for row in accepted_rows if _synthetic_is_grounded(row)
+        ),
+        accepted_arithmetic_count=sum(
+            1 for row in accepted_rows if _synthetic_has_arithmetic(row)
+        ),
+    )
+
+
+def _load_synthetic_training_examples(
+    source: Optional[str],
+) -> List[dict[str, Any]]:
+    """Load accepted train-only synthetic examples from JSON."""
+    return _load_synthetic_training_examples_with_summary(source).examples
+
+
+def _load_synthetic_training_examples_with_summary(
+    source: Optional[str],
+) -> SyntheticTrainingLoad:
+    """Load train-only synthetic LayoutLM examples from JSON.
+
+    Accepted row shape matches the raw training dataset fields:
+    ``tokens``, ``bboxes``, ``ner_tags``, ``receipt_key``, and ``image_id``.
+    Rows with ``train_only: false`` are ignored so synthetic examples cannot
+    leak into validation through this path.
+    """
+    if not source:
+        return SyntheticTrainingLoad()
+
+    payload = _read_json_source(source)
+    rows = _candidate_rows(payload)
+    merchant_contracts = _merchant_synthesis_contracts_by_merchant(payload)
+    return _select_synthetic_training_examples(
+        rows,
+        merchant_contracts=merchant_contracts,
+    )
 
 
 # Anchor labels used to dynamically bound the line-item region per receipt.
@@ -472,9 +1740,7 @@ def _crop_to_line_item_band(
     hc = statistics.median(header)
     lo, hi = min(hc, tc), max(hc, tc)
     excl = _LI_HEADER_ANCHORS | _LI_TOTALS_ANCHORS
-    return [
-        wi for wi in words if lo < cy(wi) < hi and not (raw(wi) & excl)
-    ]
+    return [wi for wi in words if lo < cy(wi) < hi and not (raw(wi) & excl)]
 
 
 def load_datasets(
@@ -484,6 +1750,7 @@ def load_datasets(
     label_merges: Optional[Dict[str, List[str]]] = None,
     allowed_labels: Optional[List[str]] = None,
     model_version: str = "v1",
+    synthetic_training_examples: Optional[str] = None,
 ) -> Tuple[Any, SplitMetadata, MergeInfo]:
     """Load and process datasets from DynamoDB.
 
@@ -494,6 +1761,8 @@ def load_datasets(
         label_merges: Dict mapping target labels to source labels to merge.
             E.g., {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}
         allowed_labels: Optional list of allowed labels (whitelist).
+        synthetic_training_examples: Optional local path or S3 URI containing
+            train-only LayoutLM-style synthetic candidates.
 
     Returns:
         Tuple of (DatasetDict, SplitMetadata, MergeInfo).
@@ -566,9 +1835,7 @@ def load_datasets(
         allowed_labels_env = os.getenv("LAYOUTLM_ALLOWED_LABELS")
         if allowed_labels_env:
             allowed = {
-                s.strip().upper()
-                for s in allowed_labels_env.split(",")
-                if s.strip()
+                s.strip().upper() for s in allowed_labels_env.split(",") if s.strip()
             }
 
     # Add merge targets to allowed set so they pass through filtering
@@ -686,9 +1953,7 @@ def load_datasets(
         # pinned-val runs must seed identically to keep the SAME training lines.
         random.seed(random_seed)
         val_receipts_list = [r for r in unique_receipts if r in fixed_val]
-        train_receipts_list = [
-            r for r in unique_receipts if r not in fixed_val
-        ]
+        train_receipts_list = [r for r in unique_receipts if r not in fixed_val]
     else:
         # Use provided seed or generate one for reproducibility
         if random_seed is None:
@@ -712,9 +1977,7 @@ def load_datasets(
     train_indices = [
         i for i, ex in enumerate(examples) if ex.receipt_key in train_receipts
     ]
-    val_indices = [
-        i for i, ex in enumerate(examples) if ex.receipt_key in val_receipts
-    ]
+    val_indices = [i for i, ex in enumerate(examples) if ex.receipt_key in val_receipts]
 
     # Downsample all-O lines in training to reach target O:entity token ratio
     # Only affects training; validation remains untouched
@@ -739,9 +2002,7 @@ def load_datasets(
         if has_entity:
             entity_lines_count += 1
             entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
-            o_tokens_in_entity_lines += sum(
-                1 for tag in ex.ner_tags if tag == "O"
-            )
+            o_tokens_in_entity_lines += sum(1 for tag in ex.ner_tags if tag == "O")
         else:
             o_only_lines_count += 1
             o_only_tokens_total += len(ex.tokens)
@@ -749,9 +2010,7 @@ def load_datasets(
     # Compute O:entity ratio before downsampling
     total_o_tokens_before = o_tokens_in_entity_lines + o_only_tokens_total
     o_entity_ratio_before = (
-        total_o_tokens_before / entity_tokens
-        if entity_tokens > 0
-        else float("inf")
+        total_o_tokens_before / entity_tokens if entity_tokens > 0 else float("inf")
     )
 
     keep_ratio = 1.0
@@ -775,9 +2034,7 @@ def load_datasets(
     # Compute O:entity ratio after downsampling
     total_o_tokens_after = o_tokens_in_entity_lines + o_tokens_kept
     o_entity_ratio_after = (
-        total_o_tokens_after / entity_tokens
-        if entity_tokens > 0
-        else float("inf")
+        total_o_tokens_after / entity_tokens if entity_tokens > 0 else float("inf")
     )
 
     # Compute validation O:entity ratio
@@ -788,9 +2045,7 @@ def load_datasets(
         val_entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
         val_o_tokens += sum(1 for tag in ex.ner_tags if tag == "O")
     o_entity_ratio_val = (
-        val_o_tokens / val_entity_tokens
-        if val_entity_tokens > 0
-        else float("inf")
+        val_o_tokens / val_entity_tokens if val_entity_tokens > 0 else float("inf")
     )
 
     # Download warped receipt images for v3 training
@@ -798,6 +2053,12 @@ def load_datasets(
     if model_version == "v3":
         unique_receipt_keys = {(ex.image_id, ex.receipt_id) for ex in examples}
         image_cache_dir = download_receipt_images(dynamo, unique_receipt_keys)
+
+    synthetic_source = synthetic_training_examples or os.getenv(
+        "LAYOUTLM_SYNTHETIC_TRAINING_EXAMPLES"
+    )
+    synthetic_load = _load_synthetic_training_examples_with_summary(synthetic_source)
+    synthetic_examples = synthetic_load.examples
 
     # Create split metadata
     split_metadata = SplitMetadata(
@@ -820,12 +2081,56 @@ def load_datasets(
         val_receipt_keys=sorted(val_receipts_list),
         window_size=window_size,
         window_stride=window_stride,
+        synthetic_train_examples=len(synthetic_examples),
+        synthetic_source=synthetic_source,
+        synthetic_candidates_seen=synthetic_load.candidates_seen,
+        synthetic_candidates_accepted=synthetic_load.candidates_accepted,
+        synthetic_candidates_rejected=synthetic_load.candidates_rejected,
+        synthetic_rejection_reasons=synthetic_load.rejection_reasons,
+        synthetic_accepted_operation_counts=synthetic_load.accepted_operation_counts,
+        synthetic_accepted_category_counts=synthetic_load.accepted_category_counts,
+        synthetic_accepted_field_replacement_counts=(
+            synthetic_load.accepted_field_replacement_counts
+        ),
+        synthetic_accepted_structure_similarity=(
+            synthetic_load.accepted_structure_similarity
+        ),
+        synthetic_accepted_structure_components=(
+            synthetic_load.accepted_structure_components
+        ),
+        synthetic_accepted_candidate_quality=(
+            synthetic_load.accepted_candidate_quality
+        ),
+        synthetic_accepted_candidate_quality_components=(
+            synthetic_load.accepted_candidate_quality_components
+        ),
+        synthetic_accepted_real_baseline_comparison=(
+            synthetic_load.accepted_real_baseline_comparison
+        ),
+        synthetic_accepted_mix_balance=synthetic_load.accepted_mix_balance,
+        synthetic_accepted_grounded_count=synthetic_load.accepted_grounded_count,
+        synthetic_accepted_arithmetic_count=synthetic_load.accepted_arithmetic_count,
     )
 
     # v3 needs receipt_key during preprocessing (image cache lookup); removed later in trainer.map()
     remove_after_split = ["receipt_key"] if model_version != "v3" else []
     train_ds = dataset.select(filtered_train_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
     val_ds = dataset.select(val_indices).remove_columns(remove_after_split)  # type: ignore[attr-defined]
+
+    if synthetic_examples:
+        synthetic_ds = Dataset.from_dict(
+            {
+                "tokens": [ex["tokens"] for ex in synthetic_examples],
+                "bboxes": [ex["bboxes"] for ex in synthetic_examples],
+                "ner_tags": [ex["ner_tags"] for ex in synthetic_examples],
+                "receipt_key": [ex["receipt_key"] for ex in synthetic_examples],
+                "image_id": [ex["image_id"] for ex in synthetic_examples],
+            },
+            features=features,
+        ).remove_columns(remove_after_split)
+        concatenate_datasets = getattr(ds_mod, "concatenate_datasets")
+        train_ds = concatenate_datasets([train_ds, synthetic_ds])
+        split_metadata.num_train_lines += len(synthetic_examples)
 
     # Build merge info for tracking
     merge_info = MergeInfo(

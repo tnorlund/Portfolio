@@ -1,0 +1,650 @@
+{
+  "image_path": "/Users/tnorlund/.codex/worktrees/6ccd/Portfolio/screenshots/synthetic_receipts/sprouts_synthetic_address_hard_negative.png",
+  "candidate_id": "sprouts-1-address-line-00ded398-af6f-4a49-86f7-c79ccb554e48-00002",
+  "metadata": {
+    "source": "sprouts_parameterized_geometry",
+    "parameterization_version": "sprouts-v1",
+    "base_receipt_key": "00ded398-af6f-4a49-86f7-c79ccb554e48#00002",
+    "actual_label": "O",
+    "predicted_label": "ADDRESS_LINE",
+    "error_kind": "false_positive",
+    "mutation": "address_zone_loyalty_hard_negative",
+    "target_zone": {
+      "slot": "address_block",
+      "x": 550,
+      "y": 893
+    },
+    "expected_label_effect": "Improve ADDRESS_LINE precision with one high-fidelity O hard negative.",
+    "train_only_reason": "Synthetic examples target known model confusions and must not enter validation."
+  },
+  "token_count": 183,
+  "line_count": 52,
+  "lines": [
+    {
+      "y": 983.5,
+      "text": "SPROUTS",
+      "labels": [
+        "MERCHANT_NAME"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 943.2,
+      "text": "1012 WESTLAKE BLVD.",
+      "labels": [
+        "ADDRESS_LINE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 927.1,
+      "text": "WESTLAKE, CA 91361",
+      "labels": [
+        "ADDRESS_LINE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 915.5,
+      "text": "(805)917-4200",
+      "labels": [
+        "PHONE_NUMBER"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 881.0,
+      "text": "LOCAL FAVORITES",
+      "labels": [],
+      "mutation": true
+    },
+    {
+      "y": 870.2,
+      "text": "09/04/2025 17:55:27",
+      "labels": [
+        "DATE",
+        "TIME"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 855.2,
+      "text": "US DEBIT Entry Method: Ontotless",
+      "labels": [
+        "ADDRESS_LINE",
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 841.5,
+      "text": "CARD #: XXXXXXXXXXXX3931",
+      "labels": [
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 827.5,
+      "text": "PURCHASE - APPROVED",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 811.6,
+      "text": "AUTH CODE: 949136",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 782.5,
+      "text": "Mode: Issuer-PIN Verified",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 768.5,
+      "text": "AID: A0000000980840",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 753.5,
+      "text": "TVR: 0000000000",
+      "labels": [
+        "PHONE_NUMBER"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 738.5,
+      "text": "IAD: 1F42016EA0000000001003027300000",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 724.5,
+      "text": "000400000000000000000000000000000",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 710.2,
+      "text": "TSI: 0000",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 696.0,
+      "text": "ARC: 00",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 681.0,
+      "text": "TC: A0E59F224C411FB3",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 666.2,
+      "text": "MID: 910664 TID: 001 SEQ: 343619",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 636.1,
+      "text": "Total: USD$ 10.78",
+      "labels": [
+        "GRAND_TOTAL"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 607.4,
+      "text": "1012 WESTLAKE BLVD.",
+      "labels": [
+        "ADDRESS_LINE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 593.4,
+      "text": "WESTLAKE, , CA 91361",
+      "labels": [
+        "ADDRESS_LINE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 582.5,
+      "text": "(805) 917-4200",
+      "labels": [
+        "PHONE_NUMBER"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 564.5,
+      "text": "Store Hours MON-SUN 7AM-10PM",
+      "labels": [
+        "STORE_HOURS"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 519.5,
+      "text": "DAIRY",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 505.2,
+      "text": "ORG A2/A2 6% FAT MLK 7.99",
+      "labels": [
+        "LINE_TOTAL",
+        "PRODUCT_NAME"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 491.4,
+      "text": "SOUR CREAM 2.79",
+      "labels": [
+        "LINE_TOTAL",
+        "PRODUCT_NAME"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 461.6,
+      "text": "BALANCE DUE 10.78",
+      "labels": [
+        "GRAND_TOTAL"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 447.0,
+      "text": "DEBIT $10.78",
+      "labels": [
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 433.0,
+      "text": "[ 1 XXXXXXXXXXXX3931",
+      "labels": [
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 418.4,
+      "text": "Auth# 949136 Ref# 343619",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 404.5,
+      "text": "CHANGE 0.00",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 374.2,
+      "text": "** ****",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 302.5,
+      "text": "99022003402972471754",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 286.0,
+      "text": "We need your feedback!",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 271.5,
+      "text": "Take a quick survey & enter for the chan",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 257.5,
+      "text": "to WIN a $250 Sprouts gift card. Go to:",
+      "labels": [
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 243.0,
+      "text": "SproutsFeedback.com",
+      "labels": [
+        "WEBSITE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 229.0,
+      "text": "*5 Winners Monthly*",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 214.5,
+      "text": "*********************: ***",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 184.5,
+      "text": "Cashier: SSCO 34 Store: 220",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 170.0,
+      "text": "POS: 034 Transaction: 0297",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 154.5,
+      "text": "Thursday, September 4, 2025 05:54 PM",
+      "labels": [
+        "TIME"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 138.1,
+      "text": "Save money, save paper -",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 125.5,
+      "text": "sign up to receive our weekly ad",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 111.0,
+      "text": "by email at Sprouts.com",
+      "labels": [
+        "WEBSITE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 81.0,
+      "text": "Please keep your original receipt, th",
+      "labels": [
+        "ADDRESS_LINE"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 67.0,
+      "text": "type of credit given is determined by",
+      "labels": [
+        "PAYMENT_METHOD"
+      ],
+      "mutation": false
+    },
+    {
+      "y": 52.0,
+      "text": "the method of payment used.",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 38.5,
+      "text": "ID is required for returns without a",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 24.0,
+      "text": "receipt. Limits apply to returns",
+      "labels": [],
+      "mutation": false
+    },
+    {
+      "y": 10.0,
+      "text": "without a receipt.",
+      "labels": [],
+      "mutation": false
+    }
+  ],
+  "parameterization": {
+    "merchant_name": "Sprouts Farmers Market",
+    "receipt_count": 8,
+    "source_receipt_keys": [
+      "00ded398-af6f-4a49-86f7-c79ccb554e48#00002",
+      "03fa2d0f-33c6-43be-88b0-dae73ec26c93#00001",
+      "04a1dfe7-1858-403a-b74f-6edb23d0deb4#00001",
+      "04ebdb8a-b560-4c00-aa09-f6afa3bda458#00001",
+      "069e270a-a3ce-40dc-81bc-1f05d7f23ac2#00001",
+      "06e54f95-6c95-4567-9fe4-6d5803e8c04d#00003",
+      "08239059-378e-4c09-ac15-5d7de5dc23ac#00001",
+      "082f1bfa-ca36-4f11-ba76-dd4c0b8d83cc#00001"
+    ],
+    "word_count": {
+      "n": 8,
+      "p10": 183.0,
+      "p50": 186.0,
+      "p90": 198.0
+    },
+    "slots": {
+      "merchant_header": {
+        "name": "merchant_header",
+        "labels": [
+          "MERCHANT_NAME"
+        ],
+        "x": {
+          "n": 22,
+          "p10": 423.0,
+          "p50": 546.0,
+          "p90": 689.5
+        },
+        "y": {
+          "n": 22,
+          "p10": 752.5,
+          "p50": 967.0,
+          "p90": 986.0
+        },
+        "examples": [
+          "SPROUTS",
+          "FARMERS",
+          "MARKET"
+        ],
+        "synthesis_role": "Preserve the centered SPROUTS / FARMERS MARKET header.",
+        "required": true
+      },
+      "address_block": {
+        "name": "address_block",
+        "labels": [
+          "ADDRESS_LINE"
+        ],
+        "x": {
+          "n": 76,
+          "p10": 358.5,
+          "p50": 550.0,
+          "p90": 728.5
+        },
+        "y": {
+          "n": 76,
+          "p10": 436.5,
+          "p50": 839.5,
+          "p90": 943.0
+        },
+        "examples": [
+          "1012",
+          "WESTLAKE",
+          "BLVD.",
+          "WESTLAKE,",
+          "CA",
+          "91361",
+          "US",
+          "th",
+          "to:",
+          "AL,",
+          "MD,"
+        ],
+        "synthesis_role": "Preserve the real store address; add only O hard negatives nearby.",
+        "required": true
+      },
+      "contact_block": {
+        "name": "contact_block",
+        "labels": [
+          "PHONE_NUMBER",
+          "STORE_HOURS"
+        ],
+        "x": {
+          "n": 63,
+          "p10": 280.5,
+          "p50": 562.5,
+          "p90": 807.0
+        },
+        "y": {
+          "n": 63,
+          "p10": 564.5,
+          "p50": 809.5,
+          "p90": 908.5
+        },
+        "examples": [
+          "(805)917-4200",
+          "0000000000",
+          "(805)",
+          "917-4200",
+          "Store",
+          "Hours",
+          "MON-SUN",
+          "7AM-10PM",
+          "(805>917-4200",
+          "0000008001",
+          "7AM",
+          "10PM"
+        ],
+        "synthesis_role": "Keep phone and store-hours lines as header anchors.",
+        "required": true
+      },
+      "product_column": {
+        "name": "product_column",
+        "labels": [
+          "PRODUCT_NAME"
+        ],
+        "x": {
+          "n": 75,
+          "p10": 85.0,
+          "p50": 224.0,
+          "p90": 429.5
+        },
+        "y": {
+          "n": 75,
+          "p10": 498.5,
+          "p50": 624.5,
+          "p90": 755.0
+        },
+        "examples": [
+          "ORG",
+          "A2/A2",
+          "6%",
+          "FAT",
+          "MLK",
+          "SOUR",
+          "CREAM",
+          "FLAX",
+          "OAT",
+          "BRAN",
+          "PITA",
+          "ORGANIC"
+        ],
+        "synthesis_role": "Left-column grocery product descriptions.",
+        "required": true
+      },
+      "line_total_column": {
+        "name": "line_total_column",
+        "labels": [
+          "LINE_TOTAL"
+        ],
+        "x": {
+          "n": 25,
+          "p10": 827.0,
+          "p50": 860.5,
+          "p90": 877.0
+        },
+        "y": {
+          "n": 25,
+          "p10": 498.0,
+          "p50": 611.0,
+          "p90": 732.0
+        },
+        "examples": [
+          "7.99",
+          "2.79",
+          "4.99",
+          "8.49",
+          "16.99",
+          "17.99",
+          "2.99",
+          "6.99",
+          "18.99",
+          "1.49",
+          "3.00",
+          "5.79"
+        ],
+        "synthesis_role": "Right-column item prices aligned with product rows.",
+        "required": true
+      },
+      "grand_total_column": {
+        "name": "grand_total_column",
+        "labels": [
+          "GRAND_TOTAL"
+        ],
+        "x": {
+          "n": 12,
+          "p10": 812.5,
+          "p50": 858.2,
+          "p90": 917.5
+        },
+        "y": {
+          "n": 12,
+          "p10": 461.0,
+          "p50": 624.8,
+          "p90": 685.0
+        },
+        "examples": [
+          "10.78",
+          "14.10",
+          "39.97",
+          "7.48",
+          "$7.48",
+          "23.78",
+          "26.75",
+          "$26.75",
+          "22.12"
+        ],
+        "synthesis_role": "Right-column final amount; add nearby O amounts sparingly.",
+        "required": true
+      },
+      "discount_like_zone": {
+        "name": "discount_like_zone",
+        "labels": [
+          "DISCOUNT"
+        ],
+        "x": null,
+        "y": null,
+        "examples": [],
+        "synthesis_role": "Sparse discount evidence; synthesize at most one O hard negative.",
+        "required": false
+      }
+    },
+    "product_name_patterns": [
+      "Uppercase grocery descriptions in the left column.",
+      "Organic prefixes such as ORG or ORGANIC are common.",
+      "Percent-bearing product descriptors like 6% FAT are product text.",
+      "Slash-bearing product descriptors like A2/A2 occur inside product names."
+    ],
+    "mutation_slots": [
+      {
+        "target": "O -> ADDRESS_LINE",
+        "slot": "address_block",
+        "mutation": "Insert one centered O-labeled loyalty/header line near the address block.",
+        "max_examples": 1
+      },
+      {
+        "target": "O -> DISCOUNT",
+        "slot": "product_column",
+        "mutation": "Insert one O-labeled weekly-special line in the item band without changing product labels.",
+        "max_examples": 1
+      },
+      {
+        "target": "O -> GRAND_TOTAL",
+        "slot": "grand_total_column",
+        "mutation": "Insert one O-labeled tender/change amount near totals while preserving the real grand total.",
+        "max_examples": 1
+      }
+    ],
+    "generation_limits": {
+      "max_candidates_per_training_run": 3,
+      "max_mutation_lines_per_candidate": 1,
+      "validation_split": "real_receipts_only",
+      "prefer_base_receipts_under_tokens": 185
+    },
+    "confidence_notes": [
+      "Built from VALID word labels only.",
+      "Synthetic examples clone real receipt token order and geometry.",
+      "Each candidate mutates one confusion target to reduce overtraining risk."
+    ]
+  }
+}

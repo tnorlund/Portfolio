@@ -101,6 +101,42 @@ test.describe("Skeleton height stability", () => {
     page,
   }) => {
     await mockImages(page);
+    await page.addInitScript(() => {
+      window.IntersectionObserver = class {
+        callback: (...args: unknown[]) => void;
+        root = null;
+        rootMargin = "0px";
+        thresholds = [1];
+
+        constructor(callback: (...args: unknown[]) => void) {
+          this.callback = callback;
+        }
+
+        observe(target: Element) {
+          const rect = target.getBoundingClientRect();
+          this.callback(
+            [
+              {
+                boundingClientRect: rect,
+                intersectionRatio: 1,
+                intersectionRect: rect,
+                isIntersecting: true,
+                rootBounds: null,
+                target,
+                time: Date.now(),
+              } as IntersectionObserverEntry,
+            ],
+            this as unknown as IntersectionObserver
+          );
+        }
+
+        unobserve() {}
+        disconnect() {}
+        takeRecords() {
+          return [];
+        }
+      } as unknown as typeof IntersectionObserver;
+    });
 
     // Collect pending routes to fulfill later
     const pendingRoutes: Route[] = [];
@@ -117,6 +153,7 @@ test.describe("Skeleton height stability", () => {
 
     // Measure skeleton height
     const container = page.locator('[class*="TrainingMetricsAnimation"]').first();
+    await container.scrollIntoViewIfNeeded();
     await expect(container).toBeVisible({ timeout: 10000 });
     const skeletonBox = await container.boundingBox();
     expect(skeletonBox).not.toBeNull();
@@ -124,6 +161,12 @@ test.describe("Skeleton height stability", () => {
     console.log(`  TrainingMetrics skeleton height: ${skeletonHeight}px`);
 
     // Fulfill the blocked API request
+    await expect
+      .poll(() => pendingRoutes.length, {
+        message: "training metrics API request was captured",
+        timeout: 15000,
+      })
+      .toBeGreaterThan(0);
     for (const route of pendingRoutes) {
       await route.fulfill({
         status: 200,
@@ -132,8 +175,43 @@ test.describe("Skeleton height stability", () => {
       });
     }
 
-    // Wait for loaded state — the epoch timeline appears when loaded
-    await page.waitForTimeout(3000);
+    // Wait for loaded state — the synthetic evidence strip appears when loaded
+    const evidenceStrip = container.getByLabel("Synthetic receipt grounding evidence");
+    await expect(evidenceStrip).toBeVisible({ timeout: 15000 });
+    await expect(evidenceStrip.getByText("Accepted merchants")).toBeVisible();
+    await expect(evidenceStrip.getByText("Fidelity")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 1 high")).toBeVisible();
+    await expect(evidenceStrip.getByText("Merchant gaps")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 2 gaps")).toBeVisible();
+    await expect(evidenceStrip.getByText("Source receipts")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 2 usable")).toBeVisible();
+    await expect(evidenceStrip.getByText("Contracts")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 2 ready")).toBeVisible();
+    await expect(evidenceStrip.getByText("Real baseline")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 1 in range")).toBeVisible();
+    await expect(evidenceStrip.getByText("7 rejected (2 capped)")).toBeVisible();
+    await expect(evidenceStrip.getByText("Receipt preview")).toBeVisible();
+    await expect(
+      evidenceStrip.getByText("YELLOW BANANAS 1.95").first()
+    ).toBeVisible();
+    await expect(evidenceStrip.getByText("1 external receipt")).toBeVisible();
+    await expect(evidenceStrip.getByText(/layout ok/i)).toBeVisible();
+    await expect(evidenceStrip.getByText("Produce in 4 receipts")).toBeVisible();
+    await expect(evidenceStrip.getByText("selected from 4")).toBeVisible();
+    await expect(evidenceStrip.getByText("Field edits", { exact: true })).toBeVisible();
+    await expect(evidenceStrip.getByText("Date: 1, Time: 1")).toBeVisible();
+    await expect(evidenceStrip.getByText("Sprouts Farmers Market")).toBeVisible();
+    await expect(evidenceStrip.getByText("12 src · 180 labels")).toBeVisible();
+    await expect(evidenceStrip.getByText("0.93 sim")).toBeVisible();
+    await expect(evidenceStrip.getByText("1 / 2 ready")).toHaveAttribute(
+      "title",
+      /Operations ready: 4 \/ 4/
+    );
+    await expect(evidenceStrip.getByText("Thin Merchant")).toBeVisible();
+    await expect(evidenceStrip.getByText("No accepted mutations")).toBeVisible();
+    await expect(
+      evidenceStrip.getByText("Needs Add Line Item, Remove Line Item, +1")
+    ).toBeVisible();
     const loadedBox = await container.boundingBox();
     expect(loadedBox).not.toBeNull();
     const loadedHeight = loadedBox!.height;

@@ -18,6 +18,7 @@ class LambdaArns:
     unified_evaluator: str
     unified_pattern_builder: str
     final_aggregate: str
+    layoutlm_start_training: Optional[str] = None
 
 
 @dataclass
@@ -121,6 +122,13 @@ def build_input_normalization_states() -> dict[str, Any]:
                     "States.Format('label-eval-{}', $$.Execution.StartTime)"
                 ),
                 "run_analytics": True,
+                "run_synthetic_replay": False,
+                "baseline_job_ref": None,
+                "synthetic_replay_hyperparameters": {},
+                "synthetic_replay_instance_type": "ml.g5.xlarge",
+                "synthetic_replay_instance_count": 1,
+                "synthetic_replay_use_spot": False,
+                "synthetic_replay_max_runtime_hours": 24,
             },
             "ResultPath": "$.defaults",
             "Next": "MergeInputWithDefaults",
@@ -399,9 +407,13 @@ def build_summarize_states(
     final_aggregate_arn: str,
     *,
     viz_cache_enabled: bool = False,
+    synthetic_replay_enabled: bool = False,
 ) -> dict[str, Any]:
     """Build states for summarizing execution results."""
-    next_state = "BuildVizCache" if viz_cache_enabled else "CheckRunAnalytics"
+    replay_or_analytics = (
+        "CheckRunSyntheticReplay" if synthetic_replay_enabled else "CheckRunAnalytics"
+    )
+    next_state = "BuildVizCache" if viz_cache_enabled else replay_or_analytics
     return {
         "SummarizeExecutionResults": {
             "Type": "Task",
@@ -421,11 +433,18 @@ def build_summarize_states(
     }
 
 
-def build_viz_cache_states(viz_cache: VizCacheConfig) -> dict[str, Any]:
+def build_viz_cache_states(
+    viz_cache: VizCacheConfig,
+    *,
+    synthetic_replay_enabled: bool = False,
+) -> dict[str, Any]:
     """Build BuildVizCache state that writes cache directly via Lambda."""
     if not viz_cache.enabled:
         return {}
 
+    next_state = (
+        "CheckRunSyntheticReplay" if synthetic_replay_enabled else "CheckRunAnalytics"
+    )
     return {
         "BuildVizCache": {
             "Type": "Task",
@@ -444,13 +463,123 @@ def build_viz_cache_states(viz_cache: VizCacheConfig) -> dict[str, Any]:
                     interval_seconds=5,
                 )
             ],
+            "Next": next_state,
+        },
+    }
+
+
+def build_synthetic_replay_states(
+    layoutlm_start_training_arn: Optional[str],
+) -> dict[str, Any]:
+    """Build optional synthetic LayoutLM replay launch states.
+
+    The label-evaluator run has already written per-merchant pattern artifacts
+    under ``line_item_patterns/<execution_id>/``. When enabled, these states
+    start a train-only synthetic replay using that prefix and attach the
+    baseline job ref needed by the audit Lambda.
+    """
+    if not layoutlm_start_training_arn:
+        return {}
+
+    return {
+        "CheckRunSyntheticReplay": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": ("$.config.merged.run_synthetic_replay"),
+                            "BooleanEquals": True,
+                        },
+                        {
+                            "Variable": "$.config.merged.baseline_job_ref",
+                            "IsString": True,
+                        },
+                    ],
+                    "Next": "StartSyntheticReplayTraining",
+                }
+            ],
+            "Default": "SkipSyntheticReplay",
+        },
+        "StartSyntheticReplayTraining": {
+            "Type": "Task",
+            "Resource": layoutlm_start_training_arn,
+            "TimeoutSeconds": 60,
+            "Parameters": {
+                "baseline_job_ref.$": "$.config.merged.baseline_job_ref",
+                "batch_bucket.$": "$.init.batch_bucket",
+                "execution_id.$": "$.init.execution_id",
+                "line_item_patterns_s3_prefix.$": (
+                    "States.Format('line_item_patterns/{}/', " "$.init.execution_id)"
+                ),
+                "synthetic_training_examples.$": (
+                    "States.Format('s3://{}/line_item_patterns/{}/', "
+                    "$.init.batch_bucket, $.init.execution_id)"
+                ),
+                "hyperparameters.$": (
+                    "$.config.merged.synthetic_replay_hyperparameters"
+                ),
+                "instance_type.$": ("$.config.merged.synthetic_replay_instance_type"),
+                "instance_count.$": ("$.config.merged.synthetic_replay_instance_count"),
+                "use_spot.$": "$.config.merged.synthetic_replay_use_spot",
+                "max_runtime_hours.$": (
+                    "$.config.merged.synthetic_replay_max_runtime_hours"
+                ),
+            },
+            "ResultPath": "$.synthetic_replay_result",
+            "Retry": [
+                build_retry_config(
+                    ["States.TaskFailed"],
+                    interval_seconds=5,
+                    max_attempts=2,
+                )
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": ["States.ALL"],
+                    "ResultPath": "$.synthetic_replay_error",
+                    "Next": "SyntheticReplayLaunchFailed",
+                }
+            ],
+            "Next": "CheckRunAnalytics",
+        },
+        "SyntheticReplayLaunchFailed": {
+            "Type": "Pass",
+            "Parameters": {
+                "status": "failed",
+                "error.$": "$.synthetic_replay_error.Error",
+                "cause.$": "$.synthetic_replay_error.Cause",
+            },
+            "ResultPath": "$.synthetic_replay_result",
+            "Next": "CheckRunAnalytics",
+        },
+        "SkipSyntheticReplay": {
+            "Type": "Pass",
+            "Result": {"status": "skipped"},
+            "ResultPath": "$.synthetic_replay_result",
             "Next": "CheckRunAnalytics",
         },
     }
 
 
+def _with_synthetic_replay_output(
+    parameters: dict[str, Any],
+    synthetic_replay_enabled: bool,
+) -> dict[str, Any]:
+    """Include replay launch metadata in terminal outputs when configured."""
+    if not synthetic_replay_enabled:
+        return parameters
+
+    return {
+        **parameters,
+        "synthetic_replay_result.$": "$.synthetic_replay_result",
+    }
+
+
 def build_analytics_decision_states(
     emr_enabled: bool,
+    *,
+    synthetic_replay_enabled: bool = False,
 ) -> dict[str, Any]:
     """Build states for deciding whether to run analytics.
 
@@ -474,15 +603,18 @@ def build_analytics_decision_states(
         },
         "SkipAnalytics": {
             "Type": "Pass",
-            "Parameters": {
-                "status.$": "$.summary_result.status",
-                "execution_id.$": "$.summary_result.execution_id",
-                "total_merchants.$": "$.summary_result.total_merchants",
-                "total_receipts.$": "$.summary_result.total_receipts",
-                "total_issues.$": "$.summary_result.total_issues",
-                "analytics_status": "skipped",
-                "langchain_project.$": "$.init.langchain_project",
-            },
+            "Parameters": _with_synthetic_replay_output(
+                {
+                    "status.$": "$.summary_result.status",
+                    "execution_id.$": "$.summary_result.execution_id",
+                    "total_merchants.$": "$.summary_result.total_merchants",
+                    "total_receipts.$": "$.summary_result.total_receipts",
+                    "total_issues.$": "$.summary_result.total_issues",
+                    "analytics_status": "skipped",
+                    "langchain_project.$": "$.init.langchain_project",
+                },
+                synthetic_replay_enabled,
+            ),
             "End": True,
         },
     }
@@ -503,7 +635,11 @@ def build_analytics_decision_states(
     return states
 
 
-def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
+def build_emr_states(
+    emr: EmrConfig,
+    *,
+    synthetic_replay_enabled: bool = False,
+) -> dict[str, Any]:
     """Build EMR Serverless analytics states if EMR is configured."""
     if not emr.enabled:
         return {}
@@ -549,8 +685,7 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
             "ApplicationId": emr.application_id,
             "ExecutionRoleArn": emr.job_execution_role_arn,
             "Name.$": (
-                "States.Format('analytics-{}', "
-                "$.summary_result.execution_id)"
+                "States.Format('analytics-{}', " "$.summary_result.execution_id)"
             ),
             "JobDriver": {
                 "SparkSubmit": {
@@ -562,9 +697,7 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
             "ConfigurationOverrides": {
                 "MonitoringConfiguration": {
                     "S3MonitoringConfiguration": {
-                        "LogUri": (
-                            f"s3://{emr.analytics_output_bucket}/logs/"
-                        ),
+                        "LogUri": (f"s3://{emr.analytics_output_bucket}/logs/"),
                     }
                 }
             },
@@ -589,34 +722,38 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
 
     states["AnalyticsComplete"] = {
         "Type": "Pass",
-        "Parameters": {
-            "status.$": "$.summary_result.status",
-            "execution_id.$": "$.summary_result.execution_id",
-            "total_merchants.$": "$.summary_result.total_merchants",
-            "total_receipts.$": "$.summary_result.total_receipts",
-            "total_issues.$": "$.summary_result.total_issues",
-            "analytics_status": "completed",
-            "analytics_job_id.$": "$.spark_result.JobRunId",
-            "analytics_output": (
-                f"s3://{emr.analytics_output_bucket}/analytics/"
-            ),
-            "langchain_project.$": "$.init.langchain_project",
-        },
+        "Parameters": _with_synthetic_replay_output(
+            {
+                "status.$": "$.summary_result.status",
+                "execution_id.$": "$.summary_result.execution_id",
+                "total_merchants.$": "$.summary_result.total_merchants",
+                "total_receipts.$": "$.summary_result.total_receipts",
+                "total_issues.$": "$.summary_result.total_issues",
+                "analytics_status": "completed",
+                "analytics_job_id.$": "$.spark_result.JobRunId",
+                "analytics_output": (f"s3://{emr.analytics_output_bucket}/analytics/"),
+                "langchain_project.$": "$.init.langchain_project",
+            },
+            synthetic_replay_enabled,
+        ),
         "End": True,
     }
 
     states["AnalyticsFailed"] = {
         "Type": "Pass",
-        "Parameters": {
-            "status.$": "$.summary_result.status",
-            "execution_id.$": "$.summary_result.execution_id",
-            "total_merchants.$": "$.summary_result.total_merchants",
-            "total_receipts.$": "$.summary_result.total_receipts",
-            "total_issues.$": "$.summary_result.total_issues",
-            "analytics_status": "failed",
-            "analytics_error.$": "$.spark_error.Error",
-            "langchain_project.$": "$.init.langchain_project",
-        },
+        "Parameters": _with_synthetic_replay_output(
+            {
+                "status.$": "$.summary_result.status",
+                "execution_id.$": "$.summary_result.execution_id",
+                "total_merchants.$": "$.summary_result.total_merchants",
+                "total_receipts.$": "$.summary_result.total_receipts",
+                "total_issues.$": "$.summary_result.total_issues",
+                "analytics_status": "failed",
+                "analytics_error.$": "$.spark_error.Error",
+                "langchain_project.$": "$.init.langchain_project",
+            },
+            synthetic_replay_enabled,
+        ),
         "End": True,
     }
 
@@ -648,6 +785,7 @@ def create_step_function_definition(
         JSON string of the Step Function definition
     """
     vc_enabled = viz_cache.enabled if viz_cache else False
+    synthetic_replay_enabled = lambdas.layoutlm_start_training is not None
 
     # Build all state groups
     states: dict[str, Any] = {}
@@ -686,18 +824,37 @@ def create_step_function_definition(
         build_summarize_states(
             lambdas.final_aggregate,
             viz_cache_enabled=vc_enabled,
+            synthetic_replay_enabled=synthetic_replay_enabled,
         )
     )
 
     # Viz-cache states (if enabled — BuildVizCache Lambda)
     if viz_cache:
-        states.update(build_viz_cache_states(viz_cache))
+        states.update(
+            build_viz_cache_states(
+                viz_cache,
+                synthetic_replay_enabled=synthetic_replay_enabled,
+            )
+        )
+
+    # Optional synthetic LayoutLM replay launch
+    states.update(build_synthetic_replay_states(lambdas.layoutlm_start_training))
 
     # Analytics decision states
-    states.update(build_analytics_decision_states(emr.enabled))
+    states.update(
+        build_analytics_decision_states(
+            emr.enabled,
+            synthetic_replay_enabled=synthetic_replay_enabled,
+        )
+    )
 
     # EMR states (if enabled)
-    states.update(build_emr_states(emr))
+    states.update(
+        build_emr_states(
+            emr,
+            synthetic_replay_enabled=synthetic_replay_enabled,
+        )
+    )
 
     # Build final definition
     definition = {

@@ -8,9 +8,11 @@ import json
 import logging
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
@@ -18,6 +20,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+SYNTHESIS_OPERATION_FAMILIES = (
+    "hard_negative",
+    "add_line_item",
+    "remove_line_item",
+    "replace_field",
+)
 
 # Featured job ID for the portfolio demo.
 #
@@ -81,9 +89,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         job_id = path_params.get("job_id")
 
         if not job_id:
-            return _error_response(
-                400, "Missing required path parameter: job_id"
-            )
+            return _error_response(400, "Missing required path parameter: job_id")
 
         # "featured" is resolved after the client is created (below) so it can
         # track the newest run dynamically.
@@ -98,17 +104,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return _error_response(400, "epoch must be an integer")
 
         include_cm = (
-            query_params.get("include_confusion_matrix", "true").lower()
-            != "false"
+            query_params.get("include_confusion_matrix", "true").lower() != "false"
         )
-        collapse_bio = (
-            query_params.get("collapse_bio", "false").lower() == "true"
-        )
+        collapse_bio = query_params.get("collapse_bio", "false").lower() == "true"
 
         # Initialize DynamoDB client
-        client = DynamoClient(
-            table_name=DYNAMODB_TABLE_NAME, region="us-east-1"
-        )
+        client = DynamoClient(table_name=DYNAMODB_TABLE_NAME, region="us-east-1")
 
         # Resolve "featured" to the newest layoutlm run — the same model the
         # inference viz auto-selects — falling back to the configured default.
@@ -129,6 +130,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Get dataset-level metrics (already extracted in _fetch_all_metrics)
         dataset_metrics = metrics_data.get("dataset_metrics", {})
+        synthesis_summary = _build_synthesis_summary(job, dataset_metrics)
 
         # Aggregate metrics by epoch
         epochs = _aggregate_by_epoch(
@@ -157,6 +159,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "status": job.status,
             "created_at": job.created_at,
             "dataset_metrics": dataset_metrics if dataset_metrics else None,
+            "synthesis": synthesis_summary,
             "epochs": epochs,
             "best_epoch": best_epoch,
             "best_f1": best_f1,
@@ -200,15 +203,11 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
     all_metrics = []
     last_key = None
     while True:
-        metrics, last_key = client.list_job_metrics(
-            job_id, last_evaluated_key=last_key
-        )
+        metrics, last_key = client.list_job_metrics(job_id, last_evaluated_key=last_key)
         all_metrics.extend(metrics)
         if not last_key:
             break
-    label_metrics = [
-        m for m in all_metrics if m.metric_name.startswith("label_")
-    ]
+    label_metrics = [m for m in all_metrics if m.metric_name.startswith("label_")]
     result["label_metrics"] = label_metrics
 
     # Extract dataset-level metrics (epoch=None) from the same fetch
@@ -279,22 +278,2179 @@ def _aggregate_by_epoch(
         parts = m.metric_name.split("_")
         if len(parts) >= 3:
             metric_type = parts[-1]  # f1, precision, recall, support
-            label_name = "_".join(
-                parts[1:-1]
-            )  # Handle labels with underscores
+            label_name = "_".join(parts[1:-1])  # Handle labels with underscores
 
             epochs_dict[m.epoch]["epoch"] = m.epoch
             if label_name not in epochs_dict[m.epoch]["per_label"]:
                 epochs_dict[m.epoch]["per_label"][label_name] = {}
-            epochs_dict[m.epoch]["per_label"][label_name][
-                metric_type
-            ] = m.value
+            epochs_dict[m.epoch]["per_label"][label_name][metric_type] = m.value
 
     # Convert to sorted list
     epochs_list = [v for v in epochs_dict.values() if v["epoch"] is not None]
     epochs_list.sort(key=lambda x: x["epoch"])
 
     return epochs_list
+
+
+def _build_synthesis_summary(
+    job: Any,
+    dataset_metrics: Dict[str, Any] | None,
+) -> Dict[str, Any] | None:
+    """Build a compact synthetic-receipt evidence summary for the UI.
+
+    Full synthetic candidates can include token arrays and boxes. This API only
+    returns bounded proof that generated examples are train-only, merchant-local,
+    and grounded in observed item/category/layout evidence.
+    """
+    synthetic_examples = _safe_int(
+        (dataset_metrics or {}).get("synthetic_train_examples")
+    )
+    loader_summary = _synthetic_loader_summary(dataset_metrics)
+    artifact_ref = _pattern_artifact_ref(job)
+
+    if artifact_ref:
+        try:
+            artifacts = _load_pattern_artifacts(artifact_ref)
+            if artifacts:
+                summary = _summarize_synthesis_artifacts(
+                    artifacts,
+                    artifact_ref=artifact_ref,
+                    synthetic_train_examples=synthetic_examples,
+                )
+                summary.update(loader_summary)
+                return summary
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Could not load synthesis artifact for job %s",
+                getattr(job, "job_id", None),
+                exc_info=True,
+            )
+            return {
+                "status": "artifact_unavailable",
+                "synthetic_train_examples": synthetic_examples,
+                "artifact_s3_uri": artifact_ref.get("s3_uri"),
+                "validation_policy": "real_receipts_only",
+                **loader_summary,
+            }
+
+    if synthetic_examples or loader_summary:
+        return {
+            "status": "metrics_only",
+            "synthetic_train_examples": synthetic_examples,
+            "validation_policy": "real_receipts_only",
+            **loader_summary,
+        }
+    return None
+
+
+def _synthetic_loader_summary(
+    dataset_metrics: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    metrics = dataset_metrics or {}
+    result: Dict[str, Any] = {}
+    for key in (
+        "synthetic_candidates_seen",
+        "synthetic_candidates_accepted",
+        "synthetic_candidates_rejected",
+    ):
+        value = _safe_int(metrics.get(key))
+        if value is not None:
+            result[key] = value
+
+    reasons = metrics.get("synthetic_rejection_reasons")
+    if isinstance(reasons, dict):
+        compact_reasons = {
+            str(key): value
+            for key, raw_value in reasons.items()
+            if (value := _safe_int(raw_value)) is not None and value > 0
+        }
+        if compact_reasons:
+            result["synthetic_rejection_reasons"] = compact_reasons
+
+    accepted_operation_counts = _compact_count_map(
+        metrics.get("synthetic_accepted_operation_counts")
+    )
+    if accepted_operation_counts:
+        result["synthetic_accepted_operation_counts"] = accepted_operation_counts
+        result["accepted_operation_counts"] = accepted_operation_counts
+
+    accepted_category_counts = _compact_count_map(
+        metrics.get("synthetic_accepted_category_counts")
+    )
+    if accepted_category_counts:
+        result["synthetic_accepted_category_counts"] = accepted_category_counts
+        result["accepted_category_counts"] = accepted_category_counts
+
+    accepted_field_replacement_counts = _compact_count_map(
+        metrics.get("synthetic_accepted_field_replacement_counts")
+    )
+    if accepted_field_replacement_counts:
+        result["synthetic_accepted_field_replacement_counts"] = (
+            accepted_field_replacement_counts
+        )
+        result["accepted_field_replacement_counts"] = accepted_field_replacement_counts
+
+    accepted_structure_similarity = _compact_score_summary(
+        metrics.get("synthetic_accepted_structure_similarity")
+    )
+    if accepted_structure_similarity:
+        result["synthetic_accepted_structure_similarity"] = (
+            accepted_structure_similarity
+        )
+        result["accepted_structure_similarity"] = accepted_structure_similarity
+
+    accepted_structure_components = _compact_component_score_summary(
+        metrics.get("synthetic_accepted_structure_components")
+    )
+    if accepted_structure_components:
+        result["synthetic_accepted_structure_components"] = (
+            accepted_structure_components
+        )
+        result["accepted_structure_components"] = accepted_structure_components
+
+    accepted_candidate_quality = _compact_score_summary(
+        metrics.get("synthetic_accepted_candidate_quality")
+    )
+    if accepted_candidate_quality:
+        result["synthetic_accepted_candidate_quality"] = accepted_candidate_quality
+        result["accepted_candidate_quality"] = accepted_candidate_quality
+
+    accepted_candidate_quality_components = _compact_component_score_summary(
+        metrics.get("synthetic_accepted_candidate_quality_components")
+    )
+    if accepted_candidate_quality_components:
+        result["synthetic_accepted_candidate_quality_components"] = (
+            accepted_candidate_quality_components
+        )
+        result["accepted_candidate_quality_components"] = (
+            accepted_candidate_quality_components
+        )
+
+    accepted_real_baseline = _compact_real_baseline_comparison_summary(
+        metrics.get("synthetic_accepted_real_baseline_comparison")
+    )
+    if accepted_real_baseline:
+        result["synthetic_accepted_real_baseline_comparison"] = accepted_real_baseline
+        result["accepted_real_baseline_comparison"] = accepted_real_baseline
+
+    accepted_mix_balance = _compact_mix_balance(
+        metrics.get("synthetic_accepted_mix_balance")
+    )
+    if accepted_mix_balance:
+        result["synthetic_accepted_mix_balance"] = accepted_mix_balance
+        result["accepted_mix_balance"] = accepted_mix_balance
+
+    accepted_grounded = _safe_int(metrics.get("synthetic_accepted_grounded_count"))
+    if accepted_grounded is not None:
+        result["synthetic_accepted_grounded_count"] = accepted_grounded
+        result["accepted_grounded_candidate_count"] = accepted_grounded
+        result["grounded_candidate_count"] = accepted_grounded
+
+    accepted_arithmetic = _safe_int(metrics.get("synthetic_accepted_arithmetic_count"))
+    if accepted_arithmetic is not None:
+        result["synthetic_accepted_arithmetic_count"] = accepted_arithmetic
+        result["accepted_arithmetic_candidate_count"] = accepted_arithmetic
+        result["arithmetic_candidate_count"] = accepted_arithmetic
+    return result
+
+
+def _pattern_artifact_ref(job: Any) -> Dict[str, str] | None:
+    tags = getattr(job, "tags", None) or {}
+    config = getattr(job, "job_config", None) or {}
+
+    s3_uri = (
+        tags.get("pattern-artifact-s3-uri")
+        or tags.get("line-item-patterns-s3-uri")
+        or config.get("synthetic_training_examples")
+        or config.get("line_item_patterns_s3_uri")
+    )
+    bucket = tags.get("batch-bucket") or config.get("batch_bucket")
+    key = tags.get("line-item-patterns-s3-key") or config.get(
+        "line_item_patterns_s3_key"
+    )
+    prefix = tags.get("line-item-patterns-s3-prefix") or config.get(
+        "line_item_patterns_s3_prefix"
+    )
+
+    if s3_uri:
+        parsed = _parse_s3_uri(str(s3_uri))
+        if parsed:
+            return parsed
+    if bucket and key:
+        return {
+            "bucket": str(bucket),
+            "key": str(key),
+            "s3_uri": f"s3://{bucket}/{key}",
+        }
+    if bucket and prefix:
+        prefix_value = str(prefix)
+        return {
+            "bucket": str(bucket),
+            "prefix": prefix_value,
+            "s3_uri": f"s3://{bucket}/{prefix_value}",
+        }
+    return None
+
+
+def _parse_s3_uri(uri: str) -> Dict[str, str] | None:
+    parsed = urlparse(uri)
+    if parsed.scheme != "s3" or not parsed.netloc:
+        return None
+    key = parsed.path.lstrip("/")
+    ref = {
+        "bucket": parsed.netloc,
+        "s3_uri": uri,
+    }
+    if key.endswith("/"):
+        ref["prefix"] = key
+    elif key:
+        ref["key"] = key
+    return ref
+
+
+def _load_pattern_artifacts(ref: Dict[str, str]) -> List[Dict[str, Any]]:
+    bucket = ref.get("bucket")
+    if not bucket:
+        return []
+    s3_client = boto3.client("s3")
+    if ref.get("key"):
+        return [_read_pattern_artifact(s3_client, bucket, ref["key"])]
+
+    prefix = ref.get("prefix")
+    if not prefix:
+        return []
+    artifacts: list[dict[str, Any]] = []
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for item in page.get("Contents", []):
+            key = item.get("Key")
+            if not key or not str(key).endswith(".json"):
+                continue
+            artifacts.append(_read_pattern_artifact(s3_client, bucket, key))
+            if len(artifacts) >= 8:
+                return artifacts
+    return artifacts
+
+
+def _read_pattern_artifact(
+    s3_client: Any,
+    bucket: str,
+    key: str,
+) -> Dict[str, Any]:
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    body = response["Body"].read()
+    return json.loads(body.decode("utf-8"))
+
+
+def _summarize_synthesis_artifacts(
+    artifacts: List[Dict[str, Any]],
+    *,
+    artifact_ref: Dict[str, str],
+    synthetic_train_examples: int | None,
+) -> Dict[str, Any]:
+    bundle = next(
+        (
+            artifact
+            for artifact in artifacts
+            if artifact.get("schema_version") == "layoutlm-synthetic-training-bundle-v1"
+        ),
+        None,
+    )
+    if bundle:
+        return _summarize_synthesis_bundle(
+            bundle,
+            artifact_ref=artifact_ref,
+            synthetic_train_examples=synthetic_train_examples,
+        )
+
+    source_counts: Counter[str] = Counter()
+    operation_counts: Counter[str] = Counter()
+    field_replacement_counts: Counter[str] = Counter()
+    merchants: Counter[str] = Counter()
+    examples: list[dict[str, Any]] = []
+    profile_receipt_count = 0
+    catalog_item_count = 0
+    category_count = 0
+    top_catalog_items: list[dict[str, Any]] = []
+    similarities: list[float] = []
+    structure_component_totals: Counter[str] = Counter()
+    structure_component_counts: Counter[str] = Counter()
+    arithmetic_update_counts: Counter[str] = Counter()
+    grounded_candidate_count = 0
+    arithmetic_candidate_count = 0
+    non_taxable_arithmetic_candidate_count = 0
+    recipe_count = 0
+    candidate_count = 0
+    readiness_status_counts: Counter[str] = Counter()
+    readiness_scores: list[float] = []
+    merchant_readiness: list[dict[str, Any]] = []
+
+    for artifact in artifacts:
+        profile = artifact.get("merchant_receipt_parameterization") or {}
+        merchant = str(
+            artifact.get("merchant_name")
+            or profile.get("merchant_name")
+            or "Unknown merchant"
+        )
+        merchants[merchant] += 1
+        plan = artifact.get("synthetic_receipt_plan") or {}
+        recipe_count += len(plan.get("recipes") or [])
+
+        profile_receipt_count += int(profile.get("receipt_count") or 0)
+        catalog = profile.get("observed_item_catalog") or []
+        catalog_item_count += len(catalog)
+        category_patterns = profile.get("category_patterns") or {}
+        heading_counts = category_patterns.get("heading_counts") or {}
+        top_by_category = category_patterns.get("top_items_by_category") or {}
+        category_count += max(len(heading_counts), len(top_by_category))
+        for item in catalog[:4]:
+            if len(top_catalog_items) >= 6:
+                break
+            top_catalog_items.append(_compact_catalog_item(item))
+        readiness = profile.get("synthesis_readiness") or {}
+        if isinstance(readiness, dict) and readiness:
+            readiness_status = str(readiness.get("status") or "unknown")
+            readiness_status_counts[readiness_status] += 1
+            readiness_score = _safe_float(readiness.get("score"))
+            if readiness_score is not None:
+                readiness_scores.append(readiness_score)
+            if len(merchant_readiness) < 6:
+                merchant_readiness.append(
+                    _compact_readiness(readiness, merchant=merchant)
+                )
+
+        for candidate in artifact.get("synthetic_receipt_candidates") or []:
+            candidate_count += 1
+            metadata = candidate.get("metadata") or {}
+            source = str(metadata.get("source") or "unknown")
+            operation = str(metadata.get("operation") or "unknown")
+            source_counts[source] += 1
+            operation_counts[operation] += 1
+            field_label = _field_replacement_label(candidate)
+            if field_label:
+                field_replacement_counts[field_label] += 1
+
+            structure = metadata.get("structure_similarity") or {}
+            score = _safe_float(structure.get("score"))
+            if score is not None:
+                similarities.append(score)
+            for key, value in (structure.get("components") or {}).items():
+                component_score = _safe_float(value)
+                if component_score is None:
+                    continue
+                structure_component_totals[str(key)] += component_score
+                structure_component_counts[str(key)] += 1
+
+            added_item = metadata.get("added_item") or {}
+            observed = metadata.get("observed_item_evidence") or {}
+            if added_item.get("seen_in_other_receipt") or observed.get(
+                "product_seen_outside_base"
+            ):
+                grounded_candidate_count += 1
+
+            arithmetic = metadata.get("arithmetic_reconciliation") or {}
+            if arithmetic:
+                arithmetic_candidate_count += 1
+                if arithmetic.get("tax_delta") == "0.00":
+                    non_taxable_arithmetic_candidate_count += 1
+                for key, value in (
+                    arithmetic.get("updated_summary_labels") or {}
+                ).items():
+                    arithmetic_update_counts[str(key)] += _safe_int(value) or 0
+
+            if len(examples) < 4:
+                examples.append(
+                    _compact_candidate_example(candidate, merchant=merchant)
+                )
+
+    summary = {
+        "status": "available",
+        "artifact_s3_uri": artifact_ref.get("s3_uri"),
+        "synthetic_train_examples": synthetic_train_examples,
+        "candidate_count": candidate_count,
+        "recipe_count": recipe_count,
+        "merchant_count": len(merchants),
+        "merchants": list(merchants.keys())[:6],
+        "source_counts": dict(source_counts),
+        "operation_counts": dict(operation_counts),
+        "field_replacement_counts": dict(field_replacement_counts),
+        "grounded_candidate_count": grounded_candidate_count,
+        "grounded_candidate_share": (
+            round(grounded_candidate_count / candidate_count, 3)
+            if candidate_count
+            else None
+        ),
+        "best_structure_similarity": (
+            round(max(similarities), 3) if similarities else None
+        ),
+        "avg_structure_similarity": (
+            round(sum(similarities) / len(similarities), 3) if similarities else None
+        ),
+        "avg_structure_components": {
+            key: round(
+                structure_component_totals[key] / structure_component_counts[key],
+                3,
+            )
+            for key in sorted(structure_component_totals)
+            if structure_component_counts[key]
+        },
+        "arithmetic_candidate_count": arithmetic_candidate_count,
+        "non_taxable_arithmetic_candidate_count": (
+            non_taxable_arithmetic_candidate_count
+        ),
+        "arithmetic_update_counts": dict(arithmetic_update_counts),
+        "profile_receipt_count": profile_receipt_count,
+        "catalog_item_count": catalog_item_count,
+        "category_count": category_count,
+        "readiness_status_counts": dict(readiness_status_counts),
+        "ready_merchant_count": readiness_status_counts.get("ready", 0),
+        "avg_readiness_score": (
+            round(sum(readiness_scores) / len(readiness_scores), 3)
+            if readiness_scores
+            else None
+        ),
+        "merchant_readiness": merchant_readiness,
+        "top_catalog_items": top_catalog_items,
+        "candidate_examples": examples,
+        "validation_policy": "real_receipts_only",
+    }
+    source_receipt_quality = _summarize_source_receipt_quality_from_artifacts(artifacts)
+    if source_receipt_quality:
+        summary["source_receipt_quality"] = source_receipt_quality
+    return summary
+
+
+def _summarize_synthesis_bundle(
+    bundle: Dict[str, Any],
+    *,
+    artifact_ref: Dict[str, str],
+    synthetic_train_examples: int | None,
+) -> Dict[str, Any]:
+    candidate_mix = bundle.get("candidate_mix") or {}
+    selection = bundle.get("selection") or {}
+    examples = bundle.get("synthetic_training_examples") or []
+    candidate_count = _safe_int(
+        candidate_mix.get("candidate_count")
+        or selection.get("candidates_seen")
+        or len(examples)
+    )
+    accepted_count = _safe_int(
+        candidate_mix.get("accepted_count")
+        or selection.get("candidates_accepted")
+        or len(examples)
+    )
+    synthetic_examples = synthetic_train_examples
+    if synthetic_examples is None:
+        synthetic_examples = accepted_count
+
+    merchants = [
+        str(row.get("merchant_name"))
+        for row in candidate_mix.get("merchants") or []
+        if row.get("merchant_name")
+    ]
+    accepted_grounded = _safe_int(
+        candidate_mix.get("accepted_grounded_candidate_count")
+    )
+    accepted_arithmetic = _safe_int(
+        candidate_mix.get("accepted_arithmetic_candidate_count")
+    )
+    contracts = [
+        contract
+        for contract in bundle.get("merchant_synthesis_contracts") or []
+        if isinstance(contract, dict)
+    ]
+    contract_merchant_count = len(contracts) if contracts else None
+    contract_ready_merchant_count = (
+        sum(1 for contract in contracts if contract.get("status") == "ready")
+        if contracts
+        else None
+    )
+    summary = {
+        "status": "available",
+        "artifact_s3_uri": artifact_ref.get("s3_uri"),
+        "artifact_schema_version": bundle.get("schema_version"),
+        "synthetic_train_examples": synthetic_examples,
+        "candidate_count": candidate_count,
+        "rejected_count": _safe_int(candidate_mix.get("rejected_count")),
+        "rejection_reasons": _compact_count_map(candidate_mix.get("rejection_reasons")),
+        "merchant_count": _safe_int(candidate_mix.get("merchant_count")),
+        "accepted_merchant_count": _safe_int(
+            candidate_mix.get("accepted_merchant_count")
+        ),
+        "merchants": merchants[:6],
+        "operation_counts": _compact_count_map(candidate_mix.get("operation_counts")),
+        "accepted_operation_counts": _compact_count_map(
+            candidate_mix.get("accepted_operation_counts")
+        ),
+        "accepted_field_replacement_counts": _compact_count_map(
+            candidate_mix.get("accepted_field_replacement_counts")
+        )
+        or _summarize_field_replacements(examples),
+        "category_counts": _compact_count_map(candidate_mix.get("category_counts")),
+        "accepted_category_counts": _compact_count_map(
+            candidate_mix.get("accepted_category_counts")
+        ),
+        "accepted_structure_similarity": _compact_score_summary(
+            candidate_mix.get("accepted_structure_similarity")
+        ),
+        "accepted_grounded_candidate_count": accepted_grounded,
+        "accepted_arithmetic_candidate_count": accepted_arithmetic,
+        "grounded_candidate_count": accepted_grounded,
+        "arithmetic_candidate_count": accepted_arithmetic,
+        "contract_merchant_count": contract_merchant_count,
+        "contract_ready_merchant_count": contract_ready_merchant_count,
+        "contract_operation_counts": _summarize_contract_operations(contracts),
+        "contract_field_replacement_counts": _summarize_contract_fields(contracts),
+        "merchant_synthesis_contracts": _compact_merchant_synthesis_contracts(
+            contracts
+        ),
+        "candidate_mix_merchants": _compact_candidate_mix_merchants(
+            candidate_mix.get("merchants") or []
+        ),
+        "candidate_examples": [
+            _compact_candidate_example(
+                candidate,
+                merchant=str(candidate.get("merchant_name") or "Unknown merchant"),
+            )
+            for candidate in examples[:4]
+            if isinstance(candidate, dict)
+        ],
+        "validation_policy": bundle.get("validation_policy") or "real_receipts_only",
+    }
+    source_receipt_quality = _compact_source_receipt_quality(
+        bundle.get("source_receipt_quality")
+    )
+    if source_receipt_quality:
+        summary["source_receipt_quality"] = source_receipt_quality
+    accepted_components = _compact_component_score_summary(
+        candidate_mix.get("accepted_structure_components")
+    )
+    if accepted_components:
+        summary["accepted_structure_components"] = accepted_components
+    accepted_mix_balance = _compact_mix_balance(
+        candidate_mix.get("accepted_mix_balance")
+    )
+    if accepted_mix_balance:
+        summary["accepted_mix_balance"] = accepted_mix_balance
+    accepted_candidate_quality = _compact_score_summary(
+        candidate_mix.get("accepted_candidate_quality")
+    )
+    if accepted_candidate_quality:
+        summary["accepted_candidate_quality"] = accepted_candidate_quality
+    accepted_quality_components = _compact_component_score_summary(
+        candidate_mix.get("accepted_candidate_quality_components")
+    )
+    if accepted_quality_components:
+        summary["accepted_candidate_quality_components"] = accepted_quality_components
+    accepted_real_baseline = _compact_real_baseline_comparison_summary(
+        candidate_mix.get("accepted_real_baseline_comparison")
+    )
+    if accepted_real_baseline:
+        summary["accepted_real_baseline_comparison"] = accepted_real_baseline
+    preflight = (
+        bundle.get("preflight") if isinstance(bundle.get("preflight"), dict) else {}
+    )
+    llm_execution = _compact_llm_execution_summary(
+        preflight.get("llm_execution") if isinstance(preflight, dict) else None
+    )
+    if llm_execution:
+        summary["llm_execution"] = llm_execution
+    quality_report = _compact_synthesis_quality_report(
+        bundle.get("synthesis_quality_report")
+        or bundle.get("quality_report")
+        or bundle.get("report")
+    )
+    if not quality_report:
+        quality_report = _derive_synthesis_quality_report(
+            bundle=bundle,
+            candidate_mix=candidate_mix,
+            selection=selection,
+            contracts=contracts,
+            candidate_examples=summary["candidate_examples"],
+        )
+    if quality_report:
+        summary["quality_report"] = quality_report
+    if candidate_count:
+        summary["grounded_candidate_share"] = (
+            round(accepted_grounded / candidate_count, 3)
+            if accepted_grounded is not None
+            else None
+        )
+    if isinstance(selection, dict):
+        for key in (
+            "candidates_seen",
+            "candidates_accepted",
+            "candidates_rejected",
+            "rejection_reasons",
+            "max_per_merchant",
+            "max_per_merchant_operation",
+            "min_structure_similarity",
+        ):
+            if key in selection:
+                summary[f"bundle_{key}"] = selection[key]
+    return summary
+
+
+def _compact_count_map(value: Any) -> Dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): count
+        for key, raw_value in value.items()
+        if (count := _safe_int(raw_value)) is not None and count > 0
+    }
+
+
+def _count_values(values: Any) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for value in values:
+        if value:
+            counts[str(value)] += 1
+    return dict(counts)
+
+
+def _compact_score_summary(value: Any) -> Dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    result: Dict[str, Any] = {}
+    count = _safe_int(value.get("count"))
+    if count is not None:
+        result["count"] = count
+    for key in ("avg", "min", "max"):
+        score = _safe_float(value.get(key))
+        if score is not None:
+            result[key] = score
+    return result or None
+
+
+def _compact_mix_balance(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        "accepted_count": _safe_int(value.get("accepted_count")),
+        "merchant_count": _safe_int(value.get("merchant_count")),
+        "operation_count": _safe_int(value.get("operation_count")),
+        "top_merchant": value.get("top_merchant"),
+        "top_merchant_count": _safe_int(value.get("top_merchant_count")),
+        "top_merchant_share": _safe_float(value.get("top_merchant_share")),
+        "top_operation": value.get("top_operation"),
+        "top_operation_count": _safe_int(value.get("top_operation_count")),
+        "top_operation_share": _safe_float(value.get("top_operation_share")),
+        "merchant_entropy": _safe_float(value.get("merchant_entropy")),
+        "operation_entropy": _safe_float(value.get("operation_entropy")),
+        "risk_level": value.get("risk_level"),
+        "risk_reasons": [
+            str(item) for item in (value.get("risk_reasons") or [])[:8] if item
+        ],
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_real_baseline_comparison_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result: Dict[str, Any] = {
+        "count": _safe_int(value.get("count")),
+        "within_real_score_range_count": _safe_int(
+            value.get("within_real_score_range_count")
+        ),
+        "below_real_score_range_count": _safe_int(
+            value.get("below_real_score_range_count")
+        ),
+        "within_real_score_range_share": _safe_float(
+            value.get("within_real_score_range_share")
+        ),
+    }
+    for key in (
+        "candidate_score",
+        "baseline_avg",
+        "baseline_min",
+        "baseline_pair_count",
+        "delta_from_avg",
+        "delta_from_min",
+    ):
+        compact = _compact_score_summary(value.get(key))
+        if compact:
+            result[key] = compact
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_component_score_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result: Dict[str, Any] = {}
+    for name, summary in value.items():
+        compact = _compact_score_summary(summary)
+        if compact:
+            result[str(name)] = compact
+    return result
+
+
+def _compact_llm_execution_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result: Dict[str, Any] = {
+        "mode_counts": _compact_count_map(value.get("mode_counts")),
+        "paid_llm_disabled_count": _safe_int(value.get("paid_llm_disabled_count")),
+        "api_call_allowed_count": _safe_int(value.get("api_call_allowed_count")),
+        "configured_models": [
+            str(item) for item in (value.get("configured_models") or [])[:5] if item
+        ],
+        "latest_model_sources": [
+            str(item) for item in (value.get("latest_model_sources") or [])[:3] if item
+        ],
+        "latest_model_verified_at": value.get("latest_model_verified_at"),
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_source_receipt_quality_merchant(row: Any) -> Dict[str, Any]:
+    if not isinstance(row, dict):
+        return {}
+    result = {
+        "merchant_name": row.get("merchant_name"),
+        "status": row.get("status"),
+        "receipt_count": _safe_int(row.get("receipt_count")),
+        "receipts_with_lines": _safe_int(row.get("receipts_with_lines")),
+        "receipts_with_words": _safe_int(row.get("receipts_with_words")),
+        "receipts_with_labels": _safe_int(row.get("receipts_with_labels")),
+        "receipts_with_merchant_name_label": _safe_int(
+            row.get("receipts_with_merchant_name_label")
+        ),
+        "receipts_with_line_item_labels": _safe_int(
+            row.get("receipts_with_line_item_labels")
+        ),
+        "receipts_with_grand_total_label": _safe_int(
+            row.get("receipts_with_grand_total_label")
+        ),
+        "receipts_with_date_or_time_label": _safe_int(
+            row.get("receipts_with_date_or_time_label")
+        ),
+        "line_count": _safe_int(row.get("line_count")),
+        "word_count": _safe_int(row.get("word_count")),
+        "labeled_word_count": _safe_int(row.get("labeled_word_count")),
+        "top_labels": _compact_count_map(row.get("top_labels")),
+        "blockers": list(row.get("blockers") or [])[:5],
+        "limitations": list(row.get("limitations") or [])[:5],
+    }
+    return {
+        key: value for key, value in result.items() if value not in (None, "", [], {})
+    }
+
+
+def _summarize_source_receipt_quality_rows(rows: List[Any]) -> Dict[str, Any]:
+    merchants = [
+        row
+        for row in (_compact_source_receipt_quality_merchant(item) for item in rows)
+        if row
+    ]
+    if not merchants:
+        return {}
+    status_counts = Counter(str(row.get("status") or "missing") for row in merchants)
+    return {
+        "merchant_count": len(merchants),
+        "usable_merchant_count": status_counts.get("usable", 0),
+        "limited_merchant_count": status_counts.get("limited", 0),
+        "blocked_merchant_count": status_counts.get("blocked", 0),
+        "status_counts": dict(status_counts),
+        "receipt_count": sum(
+            _safe_int(row.get("receipt_count")) or 0 for row in merchants
+        ),
+        "labeled_word_count": sum(
+            _safe_int(row.get("labeled_word_count")) or 0 for row in merchants
+        ),
+        "merchants": merchants[:8],
+    }
+
+
+def _compact_source_receipt_quality(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    raw_merchants = value.get("merchants")
+    if isinstance(raw_merchants, list):
+        summary = _summarize_source_receipt_quality_rows(raw_merchants)
+        if not summary:
+            return {}
+        status_counts = _compact_count_map(value.get("status_counts"))
+        if status_counts:
+            summary["status_counts"] = status_counts
+        for key in (
+            "merchant_count",
+            "usable_merchant_count",
+            "limited_merchant_count",
+            "blocked_merchant_count",
+            "receipt_count",
+            "labeled_word_count",
+        ):
+            compact_value = _safe_int(value.get(key))
+            if compact_value is not None:
+                summary[key] = compact_value
+        return summary
+
+    if value.get("merchant_name"):
+        return _summarize_source_receipt_quality_rows([value])
+    return {}
+
+
+def _source_quality_operation_blocker(
+    source_quality: Dict[str, Any],
+    operation: str,
+) -> Optional[str]:
+    if not isinstance(source_quality, dict) or not source_quality:
+        return None
+    status = str(source_quality.get("status") or "").strip().lower()
+    if status == "blocked":
+        return "source_receipt_quality_blocked"
+
+    limitations = {
+        str(item)
+        for item in source_quality.get("limitations") or []
+        if str(item).strip()
+    }
+    line_item_receipts = _safe_int(source_quality.get("receipts_with_line_item_labels"))
+    grand_total_receipts = _safe_int(
+        source_quality.get("receipts_with_grand_total_label")
+    )
+    date_time_receipts = _safe_int(
+        source_quality.get("receipts_with_date_or_time_label")
+    )
+    receipt_count = _safe_int(source_quality.get("receipt_count")) or 0
+
+    if operation in {"add_line_item", "remove_line_item"}:
+        if "no_labeled_line_items" in limitations or line_item_receipts == 0:
+            return "source_quality_no_labeled_line_items"
+        if "no_grand_total_labels" in limitations or grand_total_receipts == 0:
+            return "source_quality_no_grand_total_labels"
+    if operation == "add_line_item" and (
+        "single_receipt_limits_cross_receipt_grounding" in limitations
+        or receipt_count < 2
+    ):
+        return "source_quality_single_receipt_grounding"
+    if operation == "replace_field" and date_time_receipts == 0:
+        return "source_quality_no_date_time_labels"
+    return None
+
+
+def _source_quality_operation_blockers(
+    source_quality: Dict[str, Any],
+) -> Dict[str, str]:
+    return {
+        operation: blocker
+        for operation in SYNTHESIS_OPERATION_FAMILIES
+        if (blocker := _source_quality_operation_blocker(source_quality, operation))
+    }
+
+
+def _source_quality_operation_blockers_from_contract(
+    contract: Dict[str, Any],
+) -> Dict[str, str]:
+    operations = contract.get("operation_contracts") or {}
+    if not isinstance(operations, dict):
+        return {}
+    return {
+        str(operation): str(operation_contract.get("source_quality_blocker"))
+        for operation, operation_contract in operations.items()
+        if isinstance(operation_contract, dict)
+        and operation_contract.get("source_quality_blocker")
+    }
+
+
+def _report_source_quality_fields(
+    source_quality: Dict[str, Any],
+    *,
+    operation_blockers: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
+    if not isinstance(source_quality, dict) or not source_quality:
+        return {}
+    blockers = operation_blockers or _source_quality_operation_blockers(source_quality)
+    result = {
+        "source_quality_status": source_quality.get("status"),
+        "source_quality_receipt_count": _safe_int(source_quality.get("receipt_count")),
+        "source_quality_labeled_word_count": _safe_int(
+            source_quality.get("labeled_word_count")
+        ),
+        "source_quality_receipts_with_line_item_labels": _safe_int(
+            source_quality.get("receipts_with_line_item_labels")
+        ),
+        "source_quality_receipts_with_grand_total_label": _safe_int(
+            source_quality.get("receipts_with_grand_total_label")
+        ),
+        "source_quality_receipts_with_date_or_time_label": _safe_int(
+            source_quality.get("receipts_with_date_or_time_label")
+        ),
+        "source_quality_operation_blockers": {
+            str(operation): str(reason)
+            for operation, reason in blockers.items()
+            if reason
+        },
+    }
+    return {
+        key: value for key, value in result.items() if value not in (None, "", [], {})
+    }
+
+
+def _source_quality_by_merchant(value: Any) -> Dict[str, Dict[str, Any]]:
+    summary = _compact_source_receipt_quality(value)
+    return {
+        str(row.get("merchant_name")): row
+        for row in summary.get("merchants", [])
+        if isinstance(row, dict) and row.get("merchant_name")
+    }
+
+
+def _summarize_source_receipt_quality_from_artifacts(
+    artifacts: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return _summarize_source_receipt_quality_rows(
+        [
+            artifact.get("source_receipt_quality")
+            for artifact in artifacts
+            if isinstance(artifact.get("source_receipt_quality"), dict)
+        ]
+    )
+
+
+def _summarize_contract_operations(contracts: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for contract in contracts:
+        operation_contracts = contract.get("operation_contracts") or {}
+        if not isinstance(operation_contracts, dict):
+            continue
+        for operation, evidence in operation_contracts.items():
+            if isinstance(evidence, dict) and evidence.get("ready") is True:
+                counts[str(operation)] += 1
+    return dict(counts)
+
+
+def _summarize_contract_fields(contracts: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for contract in contracts:
+        operation_contracts = contract.get("operation_contracts") or {}
+        if not isinstance(operation_contracts, dict):
+            continue
+        replace_contract = operation_contracts.get("replace_field") or {}
+        fields = (
+            replace_contract.get("fields") if isinstance(replace_contract, dict) else {}
+        )
+        if not isinstance(fields, dict):
+            continue
+        for label, evidence in fields.items():
+            if isinstance(evidence, dict) and evidence.get("safe_to_mutate") is True:
+                counts[str(label)] += 1
+    return dict(counts)
+
+
+def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
+    top = _safe_int(numerator)
+    bottom = _safe_int(denominator)
+    if bottom is None:
+        return None
+    if bottom <= 0:
+        return 0.0
+    return round((top or 0) / bottom, 3)
+
+
+def _compact_operation_coverage(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    operations = value.get("operations")
+    if not isinstance(operations, dict):
+        return {}
+    compact_operations: Dict[str, Any] = {}
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        row = operations.get(operation)
+        if not isinstance(row, dict):
+            continue
+        compact_operations[operation] = {
+            "ready_merchant_count": _safe_int(row.get("ready_merchant_count")),
+            "merchant_count": _safe_int(row.get("merchant_count")),
+            "ready_share": _safe_float(row.get("ready_share")),
+            "candidate_count": _safe_int(row.get("candidate_count")),
+            "ready_merchants": [str(item) for item in row.get("ready_merchants") or []][
+                :8
+            ],
+            "blocked_merchants": [
+                {
+                    "merchant_name": item.get("merchant_name"),
+                    "reasons": [str(reason) for reason in item.get("reasons") or []][
+                        :5
+                    ],
+                }
+                for item in (row.get("blocked_merchants") or [])[:8]
+                if isinstance(item, dict)
+            ],
+        }
+    return {
+        "operation_count": _safe_int(value.get("operation_count"))
+        or len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": _safe_int(value.get("ready_operation_count")),
+        "ready_operation_share": _safe_float(value.get("ready_operation_share")),
+        "operations": compact_operations,
+        "recommendations": [str(item) for item in value.get("recommendations") or []][
+            :8
+        ],
+    }
+
+
+def _derive_operation_coverage_from_merchants(
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    merchant_count = len(rows)
+    operations: Dict[str, Any] = {}
+    for operation in SYNTHESIS_OPERATION_FAMILIES:
+        ready_merchants: list[str] = []
+        candidate_count = 0
+        blocked: list[dict[str, Any]] = []
+        for row in rows:
+            merchant = str(row.get("merchant_name") or "Unknown merchant")
+            ready_operations = set(
+                row.get("contract_ready_operations")
+                or row.get("ready_operations")
+                or row.get("supported_operations")
+                or []
+            )
+            counts = row.get("accepted_operation_counts") or row.get("operation_counts")
+            if isinstance(counts, dict):
+                operation_count = _safe_int(counts.get(operation)) or 0
+                candidate_count += operation_count
+            else:
+                operation_count = 0
+            if operation in ready_operations or operation_count > 0:
+                ready_merchants.append(merchant)
+            else:
+                reasons = list(row.get("blockers") or row.get("limitations") or [])
+                if reasons:
+                    blocked.append(
+                        {
+                            "merchant_name": merchant,
+                            "reasons": [str(reason) for reason in reasons[:5]],
+                        }
+                    )
+        operations[operation] = {
+            "ready_merchant_count": len(ready_merchants),
+            "merchant_count": merchant_count,
+            "ready_share": _safe_ratio(len(ready_merchants), merchant_count),
+            "candidate_count": candidate_count,
+            "ready_merchants": ready_merchants[:8],
+            "blocked_merchants": blocked[:8],
+        }
+    ready_operation_count = sum(
+        1
+        for row in operations.values()
+        if (_safe_int(row.get("ready_merchant_count")) or 0) > 0
+    )
+    return {
+        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "ready_operation_count": ready_operation_count,
+        "ready_operation_share": _safe_ratio(
+            ready_operation_count,
+            len(SYNTHESIS_OPERATION_FAMILIES),
+        ),
+        "operations": operations,
+        "recommendations": [],
+    }
+
+
+def _compact_merchant_gap_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    merchants = []
+    for row in (value.get("merchants") or [])[:8]:
+        if not isinstance(row, dict):
+            continue
+        merchants.append(
+            {
+                "merchant_name": row.get("merchant_name"),
+                "status": row.get("status"),
+                "score": _safe_float(row.get("score")),
+                "candidate_count": _safe_int(row.get("candidate_count")),
+                "accepted_count": _safe_int(row.get("accepted_count")),
+                "ready_operation_count": _safe_int(row.get("ready_operation_count")),
+                "missing_operations": list(row.get("missing_operations") or [])[:8],
+                "operation_gap_reasons": row.get("operation_gap_reasons") or {},
+                "blockers": list(row.get("blockers") or [])[:5],
+                "limitations": list(row.get("limitations") or [])[:5],
+            }
+        )
+    return {
+        "blocked_merchant_count": _safe_int(value.get("blocked_merchant_count")),
+        "merchant_gap_count": _safe_int(value.get("merchant_gap_count")),
+        "top_blockers": _compact_count_map(value.get("top_blockers")),
+        "top_limitations": _compact_count_map(value.get("top_limitations")),
+        "merchants": merchants,
+    }
+
+
+def _contract_ready_operations(contract: Dict[str, Any]) -> List[str]:
+    operation_contracts = contract.get("operation_contracts") or {}
+    if not isinstance(operation_contracts, dict):
+        return list(contract.get("ready_operations") or [])[:8]
+    return [
+        str(operation)
+        for operation, evidence in operation_contracts.items()
+        if isinstance(evidence, dict) and evidence.get("ready") is True
+    ][:8]
+
+
+def _compact_quality_examples(rows: Any) -> List[Dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    examples: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        example = {
+            "candidate_id": row.get("candidate_id"),
+            "receipt_key": row.get("receipt_key"),
+            "operation": row.get("operation"),
+            "category": row.get("category"),
+            "changed_text": _clip_text(str(row.get("changed_text") or ""), 96),
+            "label": row.get("label"),
+            "structure_similarity": _safe_float(row.get("structure_similarity")),
+            "candidate_quality": _compact_candidate_quality(
+                row.get("candidate_quality")
+            ),
+            "accuracy_checks": [
+                str(check) for check in (row.get("accuracy_checks") or [])[:8]
+            ],
+            "receipt_shape": row.get("receipt_shape") or {},
+            "preview_lines": [
+                {
+                    "line_number": _safe_int(line.get("line_number")),
+                    "text": _clip_text(str(line.get("text") or ""), 96),
+                    "role": line.get("role"),
+                    "synthetic_insert": line.get("synthetic_insert") is True,
+                    "modified_labels": list(line.get("modified_labels") or [])[:4],
+                }
+                for line in (row.get("preview_lines") or [])[:3]
+                if isinstance(line, dict)
+            ],
+        }
+        selection_evidence = _compact_selection_evidence(row.get("selection_evidence"))
+        if selection_evidence:
+            example["selection_evidence"] = selection_evidence
+        structure_evidence = _compact_structure_accuracy_evidence(
+            row.get("structure_evidence")
+        )
+        if structure_evidence:
+            example["structure_evidence"] = structure_evidence
+        total_change = row.get("total_change")
+        if isinstance(total_change, dict):
+            example["total_change"] = {
+                "old_grand_total": total_change.get("old_grand_total"),
+                "new_grand_total": total_change.get("new_grand_total"),
+                "tax_delta": total_change.get("tax_delta"),
+            }
+        field_replacement = row.get("field_replacement")
+        if isinstance(field_replacement, dict):
+            example["field_replacement"] = {
+                "old_text": field_replacement.get("old_text"),
+                "new_text": field_replacement.get("new_text"),
+                "format": field_replacement.get("format"),
+            }
+        catalog_grounding = row.get("catalog_grounding")
+        if isinstance(catalog_grounding, dict):
+            example["catalog_grounding"] = catalog_grounding
+        category_placement = row.get("category_placement")
+        if isinstance(category_placement, dict):
+            example["category_placement"] = category_placement
+        layout_integrity = _compact_layout_integrity_evidence(
+            row.get("layout_integrity")
+        )
+        if layout_integrity:
+            example["layout_integrity"] = layout_integrity
+        examples.append(
+            {
+                key: value
+                for key, value in example.items()
+                if value not in (None, "", [], {})
+            }
+        )
+        if len(examples) >= 3:
+            break
+    return examples
+
+
+def _compact_selection_evidence(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    selected_score = value.get("selected_score")
+    selected_score = selected_score if isinstance(selected_score, dict) else {}
+    compact_score = {
+        "candidate_quality": _safe_float(selected_score.get("candidate_quality")),
+        "high_fidelity": (
+            selected_score.get("high_fidelity")
+            if isinstance(selected_score.get("high_fidelity"), bool)
+            else None
+        ),
+        "structure_similarity": _safe_float(selected_score.get("structure_similarity")),
+        "structure_component_pass_rate": _safe_float(
+            selected_score.get("structure_component_pass_rate")
+        ),
+        "layout_integrity": _safe_float(selected_score.get("layout_integrity")),
+        "token_budget": _safe_float(selected_score.get("token_budget")),
+        "within_real_score_range": (
+            selected_score.get("within_real_score_range")
+            if isinstance(selected_score.get("within_real_score_range"), bool)
+            else None
+        ),
+        "delta_from_min": _safe_float(selected_score.get("delta_from_min")),
+        "baseline_pair_count": _safe_int(selected_score.get("baseline_pair_count")),
+        "token_count": _safe_int(selected_score.get("token_count")),
+    }
+    result = {
+        "schema_version": value.get("schema_version"),
+        "selected_from_candidate_count": _safe_int(
+            value.get("selected_from_candidate_count")
+        ),
+        "selected_input_index": _safe_int(value.get("selected_input_index")),
+        "ranked_by": [str(item) for item in (value.get("ranked_by") or [])[:8] if item],
+        "selected_score": {
+            key: item
+            for key, item in compact_score.items()
+            if item not in (None, "", [], {})
+        },
+        "selection_policy": _clip_text(str(value.get("selection_policy") or ""), 160),
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_candidate_quality(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    components = {
+        str(name): score
+        for name, raw_score in (value.get("components") or {}).items()
+        if (score := _safe_float(raw_score)) is not None
+    }
+    result = {
+        "score": _safe_float(value.get("score")),
+        "high_fidelity": value.get("high_fidelity") is True,
+        "components": components,
+    }
+    structure_gate = value.get("structure_gate")
+    if isinstance(structure_gate, dict):
+        result["structure_gate"] = {
+            "min_structure_similarity": _safe_float(
+                structure_gate.get("min_structure_similarity")
+            ),
+            "structure_similarity_passed": (
+                structure_gate.get("structure_similarity_passed") is True
+            ),
+            "component_thresholds": {
+                str(name): threshold
+                for name, raw_threshold in (
+                    structure_gate.get("component_thresholds") or {}
+                ).items()
+                if (threshold := _safe_float(raw_threshold)) is not None
+            },
+            "passed_components": [
+                str(item)
+                for item in (structure_gate.get("passed_components") or [])[:8]
+                if item
+            ],
+            "failed_components": {
+                str(name): {
+                    "value": _safe_float(details.get("value")),
+                    "threshold": _safe_float(details.get("threshold")),
+                }
+                for name, details in (
+                    structure_gate.get("failed_components") or {}
+                ).items()
+                if isinstance(details, dict)
+            },
+            "missing_components": [
+                str(item)
+                for item in (structure_gate.get("missing_components") or [])[:8]
+                if item
+            ],
+            "pass_rate": _safe_float(structure_gate.get("pass_rate")),
+            "passed": structure_gate.get("passed") is True,
+        }
+    return {key: item for key, item in result.items() if item not in (None, {}, [])}
+
+
+def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
+    candidate_count = _safe_int(row.get("candidate_count"))
+    accepted_count = _safe_int(row.get("accepted_count"))
+    source_quality_operation_blockers = row.get("source_quality_operation_blockers")
+    if not isinstance(source_quality_operation_blockers, dict):
+        source_quality_operation_blockers = {}
+    result = {
+        "merchant_name": row.get("merchant_name"),
+        "readiness_status": row.get("readiness_status") or row.get("status"),
+        "readiness_score": _safe_float(row.get("readiness_score") or row.get("score")),
+        "source_receipt_count": _safe_int(row.get("source_receipt_count")),
+        "source_quality_status": row.get("source_quality_status"),
+        "source_quality_receipt_count": _safe_int(
+            row.get("source_quality_receipt_count")
+        ),
+        "source_quality_labeled_word_count": _safe_int(
+            row.get("source_quality_labeled_word_count")
+        ),
+        "source_quality_receipts_with_line_item_labels": _safe_int(
+            row.get("source_quality_receipts_with_line_item_labels")
+        ),
+        "source_quality_receipts_with_grand_total_label": _safe_int(
+            row.get("source_quality_receipts_with_grand_total_label")
+        ),
+        "source_quality_receipts_with_date_or_time_label": _safe_int(
+            row.get("source_quality_receipts_with_date_or_time_label")
+        ),
+        "candidate_count": candidate_count,
+        "accepted_count": accepted_count,
+        "rejected_count": _safe_int(row.get("rejected_count")),
+        "acceptance_rate": (
+            _safe_float(row.get("acceptance_rate"))
+            if row.get("acceptance_rate") is not None
+            else _safe_ratio(accepted_count, candidate_count)
+        ),
+        "supported_operations": list(row.get("supported_operations") or [])[:8],
+        "contract_ready_operations": list(
+            row.get("contract_ready_operations") or row.get("ready_operations") or []
+        )[:8],
+        "accepted_operation_counts": _compact_count_map(
+            row.get("accepted_operation_counts")
+        ),
+        "accepted_category_counts": _compact_count_map(
+            row.get("accepted_category_counts")
+        ),
+        "accepted_field_replacement_counts": _compact_count_map(
+            row.get("accepted_field_replacement_counts")
+        ),
+        "safe_mutable_fields": list(row.get("safe_mutable_fields") or [])[:8],
+        "accepted_structure_similarity": _compact_score_summary(
+            row.get("accepted_structure_similarity")
+        ),
+        "rejection_reasons": _compact_count_map(row.get("rejection_reasons")),
+        "blockers": list(row.get("blockers") or [])[:5],
+        "limitations": list(row.get("limitations") or [])[:5],
+        "accepted_examples": _compact_quality_examples(row.get("accepted_examples")),
+        "rejected_examples": [
+            item
+            for item in (row.get("rejected_examples") or [])[:5]
+            if isinstance(item, dict)
+        ],
+    }
+    accepted_components = _compact_component_score_summary(
+        row.get("accepted_structure_components")
+    )
+    if accepted_components:
+        result["accepted_structure_components"] = accepted_components
+    accepted_real_baseline = _compact_real_baseline_comparison_summary(
+        row.get("accepted_real_baseline_comparison")
+    )
+    if _safe_int(accepted_real_baseline.get("count")):
+        result["accepted_real_baseline_comparison"] = accepted_real_baseline
+    accepted_candidate_quality = _compact_score_summary(
+        row.get("accepted_candidate_quality")
+    )
+    if accepted_candidate_quality:
+        result["accepted_candidate_quality"] = accepted_candidate_quality
+    accepted_quality_components = _compact_component_score_summary(
+        row.get("accepted_candidate_quality_components")
+    )
+    if accepted_quality_components:
+        result["accepted_candidate_quality_components"] = accepted_quality_components
+    if source_quality_operation_blockers:
+        result["source_quality_operation_blockers"] = {
+            str(operation): str(reason)
+            for operation, reason in source_quality_operation_blockers.items()
+            if reason
+        }
+    return {key: value for key, value in result.items() if value not in (None, "", [])}
+
+
+def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    summary = value.get("summary") or {}
+    quality_gates = value.get("quality_gates") or {}
+    compact_summary = {
+        "merchant_count": _safe_int(summary.get("merchant_count")),
+        "accepted_merchant_count": _safe_int(summary.get("accepted_merchant_count")),
+        "candidate_count": _safe_int(summary.get("candidate_count")),
+        "accepted_count": _safe_int(summary.get("accepted_count")),
+        "rejected_count": _safe_int(summary.get("rejected_count")),
+        "acceptance_rate": _safe_float(summary.get("acceptance_rate")),
+        "accepted_operation_counts": _compact_count_map(
+            summary.get("accepted_operation_counts")
+        ),
+        "accepted_category_counts": _compact_count_map(
+            summary.get("accepted_category_counts")
+        ),
+        "accepted_field_replacement_counts": _compact_count_map(
+            summary.get("accepted_field_replacement_counts")
+        ),
+        "accepted_structure_similarity": _compact_score_summary(
+            summary.get("accepted_structure_similarity")
+        ),
+        "rejection_reasons": _compact_count_map(summary.get("rejection_reasons")),
+        "contract_count": _safe_int(summary.get("contract_count")),
+        "ready_contract_count": _safe_int(summary.get("ready_contract_count")),
+        "source_quality_status_counts": _compact_count_map(
+            summary.get("source_quality_status_counts")
+        ),
+        "blocked_source_quality_merchant_count": _safe_int(
+            summary.get("blocked_source_quality_merchant_count")
+        ),
+    }
+    accepted_components = _compact_component_score_summary(
+        summary.get("accepted_structure_components")
+    )
+    if accepted_components:
+        compact_summary["accepted_structure_components"] = accepted_components
+    accepted_real_baseline = _compact_real_baseline_comparison_summary(
+        summary.get("accepted_real_baseline_comparison")
+    )
+    if _safe_int(accepted_real_baseline.get("count")):
+        compact_summary["accepted_real_baseline_comparison"] = accepted_real_baseline
+    accepted_mix_balance = _compact_mix_balance(summary.get("accepted_mix_balance"))
+    if accepted_mix_balance:
+        compact_summary["accepted_mix_balance"] = accepted_mix_balance
+    accepted_candidate_quality = _compact_score_summary(
+        summary.get("accepted_candidate_quality")
+    )
+    if accepted_candidate_quality:
+        compact_summary["accepted_candidate_quality"] = accepted_candidate_quality
+    accepted_quality_components = _compact_component_score_summary(
+        summary.get("accepted_candidate_quality_components")
+    )
+    if accepted_quality_components:
+        compact_summary["accepted_candidate_quality_components"] = (
+            accepted_quality_components
+        )
+    llm_execution = _compact_llm_execution_summary(summary.get("llm_execution"))
+    if llm_execution:
+        compact_summary["llm_execution"] = llm_execution
+    return {
+        "ready": value.get("ready") is True,
+        "bundle_ready": value.get("bundle_ready") is True,
+        "bundle_reasons": list(value.get("bundle_reasons") or [])[:10],
+        "summary": compact_summary,
+        "operation_coverage": _compact_operation_coverage(
+            value.get("operation_coverage")
+        ),
+        "merchant_gap_summary": _compact_merchant_gap_summary(
+            value.get("merchant_gap_summary")
+        ),
+        "quality_gates": {
+            "validation_policy": quality_gates.get("validation_policy"),
+            "train_only_examples": quality_gates.get("train_only_examples") is True,
+            "contract_gate": quality_gates.get("contract_gate") or {},
+            "max_per_merchant": _safe_int(quality_gates.get("max_per_merchant")),
+            "max_per_merchant_operation": _safe_int(
+                quality_gates.get("max_per_merchant_operation")
+            ),
+            "min_structure_similarity": _safe_float(
+                quality_gates.get("min_structure_similarity")
+            ),
+            "structure_component_thresholds": {
+                str(name): threshold
+                for name, value in (
+                    quality_gates.get("structure_component_thresholds") or {}
+                ).items()
+                if (threshold := _safe_float(value)) is not None
+            },
+        },
+        "recommendations": [
+            str(item) for item in (value.get("recommendations") or [])[:8]
+        ],
+        "merchants": [
+            _compact_report_merchant(row)
+            for row in (value.get("merchants") or [])[:8]
+            if isinstance(row, dict)
+        ],
+    }
+
+
+def _derive_synthesis_quality_report(
+    *,
+    bundle: Dict[str, Any],
+    candidate_mix: Dict[str, Any],
+    selection: Dict[str, Any],
+    contracts: List[Dict[str, Any]],
+    candidate_examples: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    mix_rows = [
+        row for row in candidate_mix.get("merchants") or [] if isinstance(row, dict)
+    ]
+    contracts_by_merchant = {
+        str(contract.get("merchant_name") or "Unknown merchant"): contract
+        for contract in contracts
+        if isinstance(contract, dict)
+    }
+    source_quality_by_merchant = _source_quality_by_merchant(
+        bundle.get("source_receipt_quality")
+    )
+    examples_by_merchant: Dict[str, list[dict[str, Any]]] = {}
+    for example in candidate_examples:
+        merchant = str(example.get("merchant_name") or "Unknown merchant")
+        accuracy = (
+            example.get("accuracy_evidence")
+            if isinstance(example.get("accuracy_evidence"), dict)
+            else {}
+        )
+        examples_by_merchant.setdefault(merchant, []).append(
+            {
+                "candidate_id": example.get("candidate_id"),
+                "operation": example.get("operation"),
+                "category": example.get("category") or accuracy.get("category"),
+                "changed_text": (
+                    accuracy.get("changed_text")
+                    or example.get("item_text")
+                    or example.get("new_text")
+                ),
+                "label": example.get("field_label"),
+                "structure_similarity": example.get("structure_similarity"),
+                "candidate_quality": example.get("candidate_quality"),
+                "selection_evidence": example.get("selection_evidence"),
+                "structure_evidence": accuracy.get("structure_similarity"),
+                "accuracy_checks": accuracy.get("checks") or [],
+                "layout_integrity": accuracy.get("layout_integrity"),
+                "catalog_grounding": accuracy.get("catalog_grounding"),
+                "category_placement": accuracy.get("category_placement"),
+                "receipt_shape": {
+                    "line_count": (example.get("receipt_preview") or {}).get(
+                        "line_count"
+                    ),
+                    "token_count": (example.get("receipt_preview") or {}).get(
+                        "token_count"
+                    ),
+                    "truncated": (example.get("receipt_preview") or {}).get(
+                        "truncated"
+                    ),
+                },
+                "preview_lines": (example.get("receipt_preview") or {}).get("lines")
+                or [],
+            }
+        )
+    merchant_names = sorted(
+        {str(row.get("merchant_name") or "Unknown merchant") for row in mix_rows}
+        | set(contracts_by_merchant)
+        | set(examples_by_merchant)
+    )
+    mix_by_merchant = {
+        str(row.get("merchant_name") or "Unknown merchant"): row for row in mix_rows
+    }
+    merchant_rows = []
+    for merchant in merchant_names:
+        mix = mix_by_merchant.get(merchant, {})
+        contract = contracts_by_merchant.get(merchant, {})
+        source_quality = source_quality_by_merchant.get(merchant) or (
+            contract.get("source_receipt_quality") or {}
+        )
+        source_quality_operation_blockers = (
+            _source_quality_operation_blockers_from_contract(contract)
+            or _source_quality_operation_blockers(source_quality)
+        )
+        candidate_count = _safe_int(mix.get("candidate_count"))
+        accepted_count = _safe_int(mix.get("accepted_count"))
+        merchant_row = {
+            "merchant_name": merchant,
+            "readiness_status": contract.get("status"),
+            "readiness_score": _safe_float(contract.get("score")),
+            "source_receipt_count": _safe_int(contract.get("source_receipt_count")),
+            "candidate_count": candidate_count,
+            "accepted_count": accepted_count,
+            "rejected_count": _safe_int(mix.get("rejected_count")),
+            "acceptance_rate": _safe_ratio(accepted_count, candidate_count),
+            "supported_operations": list(contract.get("supported_operations") or [])[
+                :8
+            ],
+            "contract_ready_operations": _contract_ready_operations(contract),
+            "accepted_operation_counts": _compact_count_map(
+                mix.get("accepted_operation_counts")
+                or (contract.get("bundle_acceptance") or {}).get(
+                    "accepted_operation_counts"
+                )
+            ),
+            "accepted_category_counts": _compact_count_map(
+                mix.get("accepted_category_counts")
+                or (contract.get("bundle_acceptance") or {}).get(
+                    "accepted_category_counts"
+                )
+            ),
+            "accepted_field_replacement_counts": _compact_count_map(
+                (contract.get("bundle_acceptance") or {}).get(
+                    "accepted_field_replacement_counts"
+                )
+            ),
+            "accepted_structure_similarity": _compact_score_summary(
+                mix.get("accepted_structure_similarity")
+            ),
+            "accepted_real_baseline_comparison": (
+                _compact_real_baseline_comparison_summary(
+                    mix.get("accepted_real_baseline_comparison")
+                )
+            ),
+            "accepted_structure_components": _compact_component_score_summary(
+                mix.get("accepted_structure_components")
+            ),
+            "accepted_candidate_quality": _compact_score_summary(
+                mix.get("accepted_candidate_quality")
+            ),
+            "accepted_candidate_quality_components": (
+                _compact_component_score_summary(
+                    mix.get("accepted_candidate_quality_components")
+                )
+            ),
+            "rejection_reasons": _compact_count_map(mix.get("rejection_reasons")),
+            "blockers": list(contract.get("blockers") or [])[:5],
+            "limitations": list(contract.get("limitations") or [])[:5],
+            "accepted_examples": examples_by_merchant.get(merchant, [])[:3],
+        }
+        merchant_row.update(
+            _report_source_quality_fields(
+                source_quality,
+                operation_blockers=source_quality_operation_blockers,
+            )
+        )
+        merchant_rows.append(merchant_row)
+    candidate_count = _safe_int(candidate_mix.get("candidate_count"))
+    accepted_count = _safe_int(candidate_mix.get("accepted_count"))
+    recommendations: list[str] = []
+    if candidate_mix.get("rejection_reasons", {}).get("merchant_synthesis_not_ready"):
+        recommendations.append("collect_more_receipts_for_not_ready_merchants")
+    if any(
+        str(row.get("source_quality_status") or "").lower() == "blocked"
+        for row in merchant_rows
+    ):
+        recommendations.append("fix_source_receipt_quality_before_synthesis")
+    if candidate_mix.get("rejection_reasons", {}).get(
+        "operation_not_supported_by_contract"
+    ):
+        recommendations.append("enable_only_contract_supported_mutations")
+    if _safe_int(candidate_mix.get("accepted_arithmetic_candidate_count")):
+        recommendations.append("verify_total_and_tax_reconciliation_in_preview")
+    if _safe_int(candidate_mix.get("accepted_grounded_candidate_count")):
+        recommendations.append("prefer_cross_receipt_grounded_item_mutations")
+    operation_coverage = _derive_operation_coverage_from_merchants(merchant_rows)
+    merchant_gap_summary = {
+        "blocked_merchant_count": sum(
+            1
+            for row in merchant_rows
+            if str(row.get("readiness_status") or "").lower()
+            not in {"ready", "partial"}
+        ),
+        "merchant_gap_count": sum(
+            1 for row in merchant_rows if row.get("rejected_count")
+        ),
+        "top_blockers": _count_values(
+            blocker
+            for row in merchant_rows
+            for blocker in row.get("blockers", [])
+            if blocker
+        ),
+        "top_limitations": _count_values(
+            limitation
+            for row in merchant_rows
+            for limitation in row.get("limitations", [])
+            if limitation
+        ),
+        "merchants": [
+            {
+                "merchant_name": row.get("merchant_name"),
+                "status": row.get("readiness_status"),
+                "score": row.get("readiness_score"),
+                "candidate_count": row.get("candidate_count"),
+                "accepted_count": row.get("accepted_count"),
+                "ready_operation_count": len(
+                    row.get("contract_ready_operations") or []
+                ),
+                "missing_operations": [],
+                "operation_gap_reasons": {},
+                "blockers": row.get("blockers") or [],
+                "limitations": row.get("limitations") or [],
+            }
+            for row in merchant_rows[:8]
+        ],
+    }
+    return _compact_synthesis_quality_report(
+        {
+            "ready": bundle.get("ready") is not False and bool(accepted_count),
+            "bundle_ready": bundle.get("ready") is not False,
+            "bundle_reasons": list(bundle.get("reasons") or [])[:10],
+            "summary": {
+                "merchant_count": candidate_mix.get("merchant_count"),
+                "accepted_merchant_count": candidate_mix.get("accepted_merchant_count"),
+                "candidate_count": candidate_count,
+                "accepted_count": accepted_count,
+                "rejected_count": candidate_mix.get("rejected_count"),
+                "acceptance_rate": _safe_ratio(accepted_count, candidate_count),
+                "accepted_operation_counts": candidate_mix.get(
+                    "accepted_operation_counts"
+                ),
+                "accepted_category_counts": candidate_mix.get(
+                    "accepted_category_counts"
+                ),
+                "accepted_field_replacement_counts": candidate_mix.get(
+                    "accepted_field_replacement_counts"
+                ),
+                "accepted_structure_similarity": candidate_mix.get(
+                    "accepted_structure_similarity"
+                ),
+                "accepted_structure_components": candidate_mix.get(
+                    "accepted_structure_components"
+                ),
+                "accepted_real_baseline_comparison": candidate_mix.get(
+                    "accepted_real_baseline_comparison"
+                ),
+                "accepted_candidate_quality": candidate_mix.get(
+                    "accepted_candidate_quality"
+                ),
+                "accepted_candidate_quality_components": candidate_mix.get(
+                    "accepted_candidate_quality_components"
+                ),
+                "accepted_mix_balance": candidate_mix.get("accepted_mix_balance"),
+                "llm_execution": (bundle.get("preflight") or {}).get("llm_execution"),
+                "rejection_reasons": candidate_mix.get("rejection_reasons"),
+                "contract_count": len(contracts),
+                "ready_contract_count": sum(
+                    1 for contract in contracts if contract.get("status") == "ready"
+                ),
+                "source_quality_status_counts": _count_values(
+                    str(row.get("source_quality_status"))
+                    for row in merchant_rows
+                    if row.get("source_quality_status")
+                ),
+                "blocked_source_quality_merchant_count": sum(
+                    1
+                    for row in merchant_rows
+                    if str(row.get("source_quality_status") or "").lower() == "blocked"
+                ),
+            },
+            "operation_coverage": operation_coverage,
+            "merchant_gap_summary": merchant_gap_summary,
+            "quality_gates": {
+                "validation_policy": bundle.get("validation_policy")
+                or "real_receipts_only",
+                "train_only_examples": True,
+                "contract_gate": selection.get("contract_gate") or {},
+                "max_per_merchant": selection.get("max_per_merchant"),
+                "max_per_merchant_operation": selection.get(
+                    "max_per_merchant_operation"
+                ),
+                "min_structure_similarity": selection.get("min_structure_similarity"),
+                "structure_component_thresholds": selection.get(
+                    "structure_component_thresholds"
+                )
+                or {},
+            },
+            "recommendations": recommendations,
+            "merchants": merchant_rows,
+        }
+    )
+
+
+def _compact_merchant_synthesis_contracts(
+    rows: List[Any],
+) -> List[Dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        operation_contracts = row.get("operation_contracts") or {}
+        ready_operations = [
+            str(operation)
+            for operation, evidence in (
+                operation_contracts.items()
+                if isinstance(operation_contracts, dict)
+                else []
+            )
+            if isinstance(evidence, dict) and evidence.get("ready") is True
+        ]
+        acceptance = row.get("bundle_acceptance") or {}
+        compact_row = {
+            "merchant_name": row.get("merchant_name"),
+            "status": row.get("status"),
+            "score": _safe_float(row.get("score")),
+            "source_receipt_count": _safe_int(row.get("source_receipt_count")),
+            "supported_operations": list(row.get("supported_operations") or [])[:8],
+            "ready_operations": ready_operations[:8],
+            "accepted_operation_counts": _compact_count_map(
+                acceptance.get("accepted_operation_counts")
+            ),
+            "accepted_category_counts": _compact_count_map(
+                acceptance.get("accepted_category_counts")
+            ),
+            "accepted_field_replacement_counts": _compact_count_map(
+                acceptance.get("accepted_field_replacement_counts")
+            ),
+            "blockers": list(row.get("blockers") or [])[:5],
+            "limitations": list(row.get("limitations") or [])[:5],
+        }
+        tax_contract = row.get("tax_contract")
+        if isinstance(tax_contract, dict):
+            compact_row["tax_contract"] = {
+                "supported_policy": tax_contract.get("supported_policy"),
+                "taxable_item_count": _safe_int(tax_contract.get("taxable_item_count")),
+                "tax_rate_observation_count": _safe_int(
+                    tax_contract.get("tax_rate_observation_count")
+                ),
+                "stable_tax_rate": tax_contract.get("stable_tax_rate") is True,
+                "avg_tax_rate_percent": tax_contract.get("avg_tax_rate_percent"),
+                "tax_changing_synthesis_ready": (
+                    tax_contract.get("tax_changing_synthesis_ready") is True
+                ),
+                "tax_changing_synthesis_blockers": list(
+                    tax_contract.get("tax_changing_synthesis_blockers") or []
+                )[:5],
+            }
+        compact.append(compact_row)
+        if len(compact) >= 8:
+            break
+    return compact
+
+
+def _compact_candidate_mix_merchants(rows: List[Any]) -> List[Dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        next_row = {
+            "merchant_name": row.get("merchant_name"),
+            "candidate_count": _safe_int(row.get("candidate_count")),
+            "accepted_count": _safe_int(row.get("accepted_count")),
+            "rejected_count": _safe_int(row.get("rejected_count")),
+            "rejection_reasons": _compact_count_map(row.get("rejection_reasons")),
+            "accepted_operation_counts": _compact_count_map(
+                row.get("accepted_operation_counts")
+            ),
+            "accepted_category_counts": _compact_count_map(
+                row.get("accepted_category_counts")
+            ),
+            "accepted_grounded_candidate_count": _safe_int(
+                row.get("accepted_grounded_candidate_count")
+            ),
+            "accepted_arithmetic_candidate_count": _safe_int(
+                row.get("accepted_arithmetic_candidate_count")
+            ),
+            "accepted_structure_similarity": _compact_score_summary(
+                row.get("accepted_structure_similarity")
+            ),
+            "accepted_candidate_quality": _compact_score_summary(
+                row.get("accepted_candidate_quality")
+            ),
+        }
+        accepted_real_baseline = _compact_real_baseline_comparison_summary(
+            row.get("accepted_real_baseline_comparison")
+        )
+        if _safe_int(accepted_real_baseline.get("count")):
+            next_row["accepted_real_baseline_comparison"] = accepted_real_baseline
+        accepted_components = _compact_component_score_summary(
+            row.get("accepted_structure_components")
+        )
+        if accepted_components:
+            next_row["accepted_structure_components"] = accepted_components
+        accepted_quality_components = _compact_component_score_summary(
+            row.get("accepted_candidate_quality_components")
+        )
+        if accepted_quality_components:
+            next_row["accepted_candidate_quality_components"] = (
+                accepted_quality_components
+            )
+        compact.append(
+            {
+                key: value
+                for key, value in next_row.items()
+                if value not in (None, "", [])
+            }
+        )
+        if len(compact) >= 8:
+            break
+    return compact
+
+
+def _compact_catalog_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "product_text": item.get("product_text"),
+        "category": item.get("category"),
+        "observed_count": item.get("observed_count"),
+    }
+
+
+def _compact_readiness(
+    readiness: Dict[str, Any],
+    *,
+    merchant: str,
+) -> Dict[str, Any]:
+    return {
+        "merchant_name": readiness.get("merchant_name") or merchant,
+        "status": readiness.get("status"),
+        "score": _safe_float(readiness.get("score")),
+        "supported_operations": list(readiness.get("supported_operations") or [])[:5],
+        "candidate_capacity": _safe_int(readiness.get("candidate_capacity")),
+        "catalog_item_count": _safe_int(readiness.get("catalog_item_count")),
+        "category_count": _safe_int(readiness.get("category_count")),
+        "grounded_add_item_candidate_count": _safe_int(
+            readiness.get("grounded_add_item_candidate_count")
+        ),
+        "removable_item_candidate_count": _safe_int(
+            readiness.get("removable_item_candidate_count")
+        ),
+        "blockers": list(readiness.get("blockers") or [])[:5],
+        "limitations": list(readiness.get("limitations") or [])[:5],
+    }
+
+
+def _compact_candidate_example(
+    candidate: Dict[str, Any],
+    *,
+    merchant: str,
+) -> Dict[str, Any]:
+    metadata = candidate.get("metadata") or {}
+    added_item = metadata.get("added_item") or {}
+    removed_item = metadata.get("removed_item") or {}
+    replacement = metadata.get("field_replacement") or {}
+    mutable_evidence = metadata.get("mutable_field_evidence") or {}
+    observed = metadata.get("observed_item_evidence") or {}
+    structure = metadata.get("structure_similarity") or {}
+    preview = metadata.get("synthetic_receipt_preview") or {}
+    accuracy_evidence = metadata.get("synthesis_accuracy_evidence") or {}
+    candidate_quality = _compact_candidate_quality(metadata.get("candidate_quality"))
+    result = {
+        "candidate_id": candidate.get("candidate_id"),
+        "merchant_name": merchant,
+        "source": metadata.get("source"),
+        "operation": metadata.get("operation"),
+        "actual_label": metadata.get("actual_label"),
+        "predicted_label": metadata.get("predicted_label"),
+        "item_text": added_item.get("product_text") or removed_item.get("product_text"),
+        "category": added_item.get("category") or removed_item.get("category"),
+        "line_total": added_item.get("line_total") or removed_item.get("line_total"),
+        "seen_in_other_receipt": added_item.get("seen_in_other_receipt"),
+        "evidence_receipts": (
+            observed.get("product_seen_outside_base")
+            or added_item.get("source_receipt_keys")
+            or []
+        )[:3],
+        "structure_similarity": _safe_float(structure.get("score")),
+        "nearest_real_receipt_key": structure.get("nearest_real_receipt_key"),
+    }
+    if candidate_quality:
+        result["candidate_quality"] = candidate_quality
+    selection_evidence = _compact_selection_evidence(metadata.get("selection_evidence"))
+    if selection_evidence:
+        result["selection_evidence"] = selection_evidence
+    compact_preview = _compact_synthetic_receipt_preview(preview)
+    if compact_preview:
+        result["receipt_preview"] = compact_preview
+    compact_accuracy = _compact_synthesis_accuracy_evidence(accuracy_evidence)
+    if compact_accuracy:
+        result["accuracy_evidence"] = compact_accuracy
+    if replacement:
+        result.update(
+            {
+                "field_label": replacement.get("label"),
+                "old_text": replacement.get("old_text"),
+                "new_text": replacement.get("new_text"),
+                "field_format": replacement.get("format"),
+                "field_observed_count": _safe_int(
+                    mutable_evidence.get("observed_count")
+                ),
+            }
+        )
+    return result
+
+
+def _compact_synthetic_receipt_preview(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    raw_text = str(value.get("text") or "").strip()
+    lines = [
+        line
+        for line in value.get("lines") or []
+        if isinstance(line, dict) and str(line.get("text") or "").strip()
+    ]
+    if not raw_text and not lines:
+        return {}
+    compact_lines: list[dict[str, Any]] = []
+    for line in lines[:6]:
+        compact_lines.append(
+            {
+                "line_number": _safe_int(line.get("line_number")),
+                "text": _clip_text(str(line.get("text") or ""), 96),
+                "role": line.get("role"),
+                "synthetic_insert": line.get("synthetic_insert") is True,
+                "modified_labels": list(line.get("modified_labels") or [])[:4],
+            }
+        )
+    text = raw_text or "\n".join(str(line.get("text") or "") for line in compact_lines)
+    return {
+        "coordinate_system": value.get("coordinate_system"),
+        "line_count": _safe_int(value.get("line_count")),
+        "token_count": _safe_int(value.get("token_count")),
+        "truncated": value.get("truncated") is True or len(lines) > len(compact_lines),
+        "text": _clip_text(text, 420),
+        "lines": compact_lines,
+    }
+
+
+def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    catalog_grounding = value.get("catalog_grounding")
+    category_placement = value.get("category_placement")
+    layout_integrity = _compact_layout_integrity_evidence(value.get("layout_integrity"))
+    structure_similarity = _compact_structure_accuracy_evidence(
+        value.get("structure_similarity")
+    )
+    result = {
+        "operation": value.get("operation"),
+        "checks": [str(check) for check in (value.get("checks") or [])[:8]],
+        "changed_text": value.get("changed_text"),
+        "label": value.get("label"),
+        "old_text": value.get("old_text"),
+        "new_text": value.get("new_text"),
+        "category": value.get("category"),
+        "tax_delta": value.get("tax_delta"),
+        "catalog_grounding": (
+            catalog_grounding if isinstance(catalog_grounding, dict) else None
+        ),
+        "category_placement": (
+            category_placement if isinstance(category_placement, dict) else None
+        ),
+        "layout_integrity": layout_integrity,
+        "structure_similarity": structure_similarity,
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_layout_integrity_evidence(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        "score": _safe_float(value.get("score")),
+        "passed": (
+            value.get("passed") if isinstance(value.get("passed"), bool) else None
+        ),
+        "line_count": _safe_int(value.get("line_count")),
+        "word_count": _safe_int(value.get("word_count")),
+        "overlap_pair_count": _safe_int(value.get("overlap_pair_count")),
+        "out_of_bounds_word_count": _safe_int(value.get("out_of_bounds_word_count")),
+        "invalid_word_box_count": _safe_int(value.get("invalid_word_box_count")),
+        "line_order_valid": (
+            value.get("line_order_valid")
+            if isinstance(value.get("line_order_valid"), bool)
+            else None
+        ),
+    }
+    for key in (
+        "overlap_examples",
+        "out_of_bounds_examples",
+        "invalid_word_examples",
+    ):
+        examples = value.get(key)
+        if isinstance(examples, list) and examples:
+            result[key] = examples[:3]
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_structure_accuracy_evidence(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    components = {
+        str(key): score
+        for key, raw_score in (value.get("components") or {}).items()
+        if (score := _safe_float(raw_score)) is not None
+    }
+    shape_deltas = {
+        str(key): delta
+        for key, raw_delta in (value.get("shape_deltas") or {}).items()
+        if (delta := _safe_float(raw_delta)) is not None
+    }
+    match_summary = value.get("match_summary")
+    compact_match_summary = None
+    if isinstance(match_summary, dict):
+        compact_match_summary = {
+            "matched_components": [
+                str(item)
+                for item in (match_summary.get("matched_components") or [])[:8]
+            ],
+            "weak_components": [
+                str(item) for item in (match_summary.get("weak_components") or [])[:8]
+            ],
+            "shape_checks": [
+                str(item) for item in (match_summary.get("shape_checks") or [])[:8]
+            ],
+        }
+    real_baseline = value.get("real_baseline_comparison")
+    compact_real_baseline = None
+    if isinstance(real_baseline, dict):
+        within_real_range = real_baseline.get("within_real_score_range")
+        compact_real_baseline = {
+            "baseline_receipt_count": _safe_int(
+                real_baseline.get("baseline_receipt_count")
+            ),
+            "baseline_pair_count": _safe_int(real_baseline.get("baseline_pair_count")),
+            "candidate_score": _safe_float(real_baseline.get("candidate_score")),
+            "baseline_avg": _safe_float(real_baseline.get("baseline_avg")),
+            "baseline_min": _safe_float(real_baseline.get("baseline_min")),
+            "baseline_max": _safe_float(real_baseline.get("baseline_max")),
+            "within_real_score_range": (
+                within_real_range if isinstance(within_real_range, bool) else None
+            ),
+            "delta_from_avg": _safe_float(real_baseline.get("delta_from_avg")),
+            "delta_from_min": _safe_float(real_baseline.get("delta_from_min")),
+        }
+        compact_real_baseline = {
+            key: item for key, item in compact_real_baseline.items() if item is not None
+        }
+    result = {
+        "score": _safe_float(value.get("score")),
+        "nearest_real_receipt_key": value.get("nearest_real_receipt_key"),
+        "components": components,
+        "shape_deltas": shape_deltas,
+        "match_summary": compact_match_summary,
+        "real_baseline_comparison": compact_real_baseline,
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _clip_text(value: str, limit: int) -> str:
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 3)].rstrip()}..."
+
+
+def _field_replacement_label(candidate: Dict[str, Any]) -> str | None:
+    metadata = candidate.get("metadata") or {}
+    replacement = metadata.get("field_replacement") or {}
+    label = replacement.get("label")
+    if not label:
+        return None
+    return str(label)
+
+
+def _summarize_field_replacements(candidates: List[Any]) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        label = _field_replacement_label(candidate)
+        if label:
+            counts[label] += 1
+    return dict(counts)
+
+
+def _safe_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _collapse_bio_tags(cm_data: Dict[str, Any]) -> Dict[str, Any]:

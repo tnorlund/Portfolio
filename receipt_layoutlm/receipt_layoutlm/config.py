@@ -33,6 +33,8 @@ class DataConfig:
     # S3 URI of the pinned canonical val split (recorded for run lineage so the
     # Job entity / run.json says which shared val set this run held out).
     val_keys_s3: Optional[str] = None
+    # JSON local path or S3 URI of train-only synthetic LayoutLM examples.
+    synthetic_training_examples: Optional[str] = None
 
     def get_effective_label_merges(self) -> Dict[str, List[str]]:
         """Return the effective label merges, combining explicit config and legacy flags.

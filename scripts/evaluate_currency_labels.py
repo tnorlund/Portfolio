@@ -54,7 +54,7 @@ def load_config() -> dict:
         os.environ["LANGCHAIN_PROJECT"] = "currency-evaluator-dev"
 
     os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-5.5")
 
     return config
 
@@ -80,9 +80,7 @@ def main():
         action="store_true",
         help="Skip pattern discovery, use default patterns",
     )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose output"
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
     if args.verbose:
@@ -164,9 +162,7 @@ def main():
                 llm_config = PatternDiscoveryConfig.from_env()
                 patterns = discover_patterns_with_llm(prompt, llm_config)
                 if patterns:
-                    logger.info(
-                        "  Item structure: %s", patterns.get("item_structure")
-                    )
+                    logger.info("  Item structure: %s", patterns.get("item_structure"))
                     logger.info(
                         "  Label positions: %s",
                         patterns.get("label_positions"),
@@ -213,9 +209,7 @@ def main():
     if args.apply and decisions:
         # Filter to only INVALID decisions (VALID and NEEDS_REVIEW don't change anything)
         apply_decisions = [
-            d
-            for d in decisions
-            if d.get("llm_review", {}).get("decision") == "INVALID"
+            d for d in decisions if d.get("llm_review", {}).get("decision") == "INVALID"
         ]
 
         if apply_decisions:
@@ -255,9 +249,7 @@ def main():
 
         print(f"\n  [{i}] {status_icon} {decision} ({confidence})")
         print(f"      Word: \"{issue.get('word_text', '')}\"")
-        print(
-            f"      Current Label: {issue.get('current_label') or 'unlabeled'}"
-        )
+        print(f"      Current Label: {issue.get('current_label') or 'unlabeled'}")
         reasoning = review.get("reasoning", "")
         print(f"      Reasoning: {reasoning[:80] if reasoning else ''}")
         if review.get("suggested_label"):
@@ -269,9 +261,7 @@ def main():
     print("=" * 70)
 
     if config["langchain_api_key"]:
-        print(
-            "\nTrace: https://smith.langchain.com/ (project: currency-evaluator-dev)"
-        )
+        print("\nTrace: https://smith.langchain.com/ (project: currency-evaluator-dev)")
 
 
 if __name__ == "__main__":

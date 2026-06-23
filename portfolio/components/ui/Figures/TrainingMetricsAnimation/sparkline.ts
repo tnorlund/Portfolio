@@ -10,6 +10,8 @@
 
 import type { TrainingMetricsEpoch } from "../../../../types/api";
 
+export type TrainingMetricKey = keyof TrainingMetricsEpoch["metrics"];
+
 export interface SparklineDims {
   /** SVG viewBox width in user units. */
   width: number;
@@ -54,7 +56,8 @@ const MIN_Y_SPAN = 0.1;
  */
 export function computeScales(
   epochs: TrainingMetricsEpoch[],
-  dims: SparklineDims
+  dims: SparklineDims,
+  metricKeys: TrainingMetricKey[] = ["val_f1"]
 ): SparklineScales {
   const { width, height, padX, padTop, padBottom } = dims;
   const plotLeft = padX;
@@ -74,9 +77,15 @@ export function computeScales(
     };
   }
 
+  const values = epochs.flatMap((e) =>
+    metricKeys
+      .map((key) => e.metrics?.[key])
+      .filter((value): value is number => Number.isFinite(value))
+  );
   const f1Values = epochs.map((e) => e.metrics?.val_f1 ?? 0);
-  let dataMin = Math.max(0, Math.min(...f1Values) - 0.05);
-  let dataMax = Math.min(1, Math.max(...f1Values) + 0.05);
+  const scaleValues = values.length > 0 ? values : f1Values;
+  let dataMin = Math.max(0, Math.min(...scaleValues) - 0.05);
+  let dataMax = Math.min(1, Math.max(...scaleValues) + 0.05);
 
   // Enforce minimum visible span so converged-run noise doesn't look dramatic.
   if (dataMax - dataMin < MIN_Y_SPAN) {
@@ -102,6 +111,49 @@ export function computeScales(
     .join(" ");
 
   return { xScale, yScale, points, dataMin, dataMax };
+}
+
+/** Count valid numeric values for a metric across the epoch series. */
+export function countMetricValues(
+  epochs: TrainingMetricsEpoch[],
+  metricKey: TrainingMetricKey
+): number {
+  return epochs.reduce(
+    (count, epoch) =>
+      Number.isFinite(epoch.metrics?.[metricKey]) ? count + 1 : count,
+    0
+  );
+}
+
+/**
+ * Build an SVG path for a metric, preserving gaps when a metric is missing.
+ * This avoids visually connecting unrelated runs through absent values.
+ */
+export function buildMetricPath(
+  epochs: TrainingMetricsEpoch[],
+  metricKey: TrainingMetricKey,
+  xScale: (i: number) => number,
+  yScale: (v: number) => number
+): string {
+  let hasOpenSegment = false;
+  const commands: string[] = [];
+
+  epochs.forEach((epoch, i) => {
+    const value = epoch.metrics?.[metricKey];
+    if (!Number.isFinite(value)) {
+      hasOpenSegment = false;
+      return;
+    }
+
+    commands.push(
+      `${hasOpenSegment ? "L" : "M"}${xScale(i).toFixed(1)},${yScale(
+        value as number
+      ).toFixed(1)}`
+    );
+    hasOpenSegment = true;
+  });
+
+  return commands.join(" ");
 }
 
 /**

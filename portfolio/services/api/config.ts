@@ -8,9 +8,9 @@ const isTest = env === "test";
 
 // In development, use local proxy to avoid CORS issues when testing from other devices
 // In test/production, use direct API URLs
-const devApiUrl = "/api"; // Proxied via next.config.js rewrites
-const prodApiUrl =
-  process.env.NEXT_PUBLIC_API_URL || "https://api.tylernorlund.com";
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const devApiUrl = configuredApiUrl || "/api"; // Proxied via next.config.js rewrites
+const prodApiUrl = configuredApiUrl || "https://api.tylernorlund.com";
 
 // Determine base URL: dev proxy only in actual development, not tests
 const baseUrl = isDev && !isTest ? devApiUrl : prodApiUrl;

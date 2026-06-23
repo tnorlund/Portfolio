@@ -60,7 +60,7 @@ def load_config(env: str = "dev"):
 
     # Default OpenRouter settings
     os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-5.5")
 
     return config
 
@@ -75,9 +75,7 @@ def load_chroma_client(chromadb_bucket: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Test pattern discovery locally"
-    )
+    parser = argparse.ArgumentParser(description="Test pattern discovery locally")
     parser.add_argument(
         "merchant_name",
         help="Name of the merchant to analyze",
@@ -161,9 +159,7 @@ def main():
             sys.exit(1)
 
         try:
-            chroma_client, embed_fn = load_chroma_client(
-                config["chromadb_bucket"]
-            )
+            chroma_client, embed_fn = load_chroma_client(config["chromadb_bucket"])
             logger.info(
                 f"Querying Chroma for label examples from: {args.merchant_name}"
             )
@@ -183,9 +179,7 @@ def main():
                 print(label_examples.format_for_prompt())
                 print("=" * 80 + "\n")
             else:
-                logger.warning(
-                    "No label examples found in Chroma for this merchant"
-                )
+                logger.warning("No label examples found in Chroma for this merchant")
         except Exception as e:
             logger.warning("Failed to load Chroma: %s", e)
             logger.info("Continuing without Chroma examples...")
@@ -201,9 +195,7 @@ def main():
     )
 
     if not receipts_data:
-        logger.error(
-            "No receipt data found for merchant: %s", args.merchant_name
-        )
+        logger.error("No receipt data found for merchant: %s", args.merchant_name)
         sys.exit(1)
 
     logger.info("Found %d receipts", len(receipts_data))

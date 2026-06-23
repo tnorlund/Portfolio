@@ -86,7 +86,7 @@ def load_config(env: str = "dev"):
 
     # Default OpenRouter settings
     os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-5.5")
 
     return config
 
@@ -101,9 +101,7 @@ def get_all_merchants(dynamo_client) -> list[tuple[str, int]]:
 
     page_count = 1
     while result[1]:
-        result = dynamo_client.list_receipt_places(
-            last_evaluated_key=result[1]
-        )
+        result = dynamo_client.list_receipt_places(last_evaluated_key=result[1])
         all_places.extend(result[0])
         page_count += 1
         if page_count % 10 == 0:
@@ -167,8 +165,7 @@ def analyze_merchant(
         # Calculate line stats
         total_lines = sum(len(r.get("lines", [])) for r in receipts_data)
         total_original = sum(
-            r.get("total_lines", len(r.get("lines", [])))
-            for r in receipts_data
+            r.get("total_lines", len(r.get("lines", []))) for r in receipts_data
         )
         analysis.avg_lines_selected = total_lines / len(receipts_data)
         analysis.avg_total_lines = total_original / len(receipts_data)
@@ -183,9 +180,7 @@ def analyze_merchant(
 
                 if result:
                     analysis.receipt_type = result.get("receipt_type", "")
-                    analysis.receipt_type_reason = result.get(
-                        "receipt_type_reason", ""
-                    )
+                    analysis.receipt_type_reason = result.get("receipt_type_reason", "")
 
                     # Flat schema: item_structure is at top level
                     item_structure = result.get("item_structure")
@@ -254,9 +249,7 @@ def main():
         sys.exit(1)
 
     if not args.no_llm and not config["openrouter_api_key"]:
-        logger.error(
-            "OPENROUTER_API_KEY not found. Use --no-llm to skip LLM calls."
-        )
+        logger.error("OPENROUTER_API_KEY not found. Use --no-llm to skip LLM calls.")
         sys.exit(1)
 
     logger.info("Using DynamoDB table: %s", config["dynamodb_table_name"])
@@ -289,9 +282,7 @@ def main():
 
     # Filter by min_receipts
     merchants = [
-        (name, count)
-        for name, count in all_merchants
-        if count >= args.min_receipts
+        (name, count) for name, count in all_merchants if count >= args.min_receipts
     ]
     logger.info(
         f"Filtered to {len(merchants)} merchants with >= {args.min_receipts} receipts"
@@ -334,11 +325,7 @@ def main():
         elif analysis.llm_error:
             logger.warning("  LLM Error: %s", analysis.llm_error)
         else:
-            type_str = (
-                analysis.receipt_type.upper()
-                if analysis.receipt_type
-                else "N/A"
-            )
+            type_str = analysis.receipt_type.upper() if analysis.receipt_type else "N/A"
             logger.info(
                 f"  Type: {type_str}, "
                 f"Patterns: {analysis.has_patterns}, "
@@ -359,9 +346,7 @@ def main():
         print("No merchants analyzed.")
         return
 
-    merchants_with_data = len(
-        [r for r in results if r.receipts_with_words > 0]
-    )
+    merchants_with_data = len([r for r in results if r.receipts_with_words > 0])
     merchants_with_errors = len([r for r in results if r.error])
 
     print(f"Total merchants analyzed: {total_merchants}")
@@ -399,14 +384,10 @@ def main():
 
         # Group by item structure
         single_line = [
-            r
-            for r in itemized_with_patterns
-            if r.item_structure == "single-line"
+            r for r in itemized_with_patterns if r.item_structure == "single-line"
         ]
         multi_line = [
-            r
-            for r in itemized_with_patterns
-            if r.item_structure == "multi-line"
+            r for r in itemized_with_patterns if r.item_structure == "multi-line"
         ]
 
         print(f"  Single-line structure: {len(single_line)}")

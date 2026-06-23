@@ -83,7 +83,7 @@ def load_config() -> dict:
         os.environ["LANGCHAIN_PROJECT"] = "label-evaluator-dev"
 
     os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+    os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-5.5")
 
     return config
 

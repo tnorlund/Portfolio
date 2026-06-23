@@ -2,37 +2,40 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from "react"
 import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
-import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
+import {
+  DatasetMetrics,
+  TrainingMetricsEpoch,
+  TrainingSynthesisCandidateQuality,
+  TrainingSynthesisLayoutIntegrityEvidence,
+  TrainingSynthesisMerchantGapSummary,
+  TrainingSynthesisMixBalance,
+  TrainingSynthesisQualityMerchant,
+  TrainingSynthesisRealBaselineSummary,
+  TrainingSynthesisSourceQualityMerchant,
+  TrainingSynthesisStructureEvidence,
+  TrainingSynthesisSummary,
+} from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 import {
   axisLabelAnchor,
+  buildMetricPath,
   clickXToEpochIndex,
   computeAxisLabels,
   computeScales,
+  countMetricValues,
 } from "./sparkline";
+import {
+  buildPatternHeatmapPlan,
+  buildTopConfusionPairs,
+  ConfusionPair,
+  PatternHeatmapCell,
+  ReceiptHeatmapZone,
+} from "./confusionPairs";
 
 // Normalize ADDRESS_LINE to ADDRESS for display purposes
 const normalizeLabel = (label: string): string => {
   if (label === "ADDRESS_LINE") return "ADDRESS";
   return label;
-};
-
-// Label color mapping for hybrid model
-const LABEL_COLORS: Record<string, string> = {
-  MERCHANT_NAME: "var(--color-yellow)",
-  DATE: "var(--color-blue)",
-  TIME: "var(--color-blue)",
-  AMOUNT: "var(--color-green)",
-  ADDRESS: "var(--color-red)",
-  PHONE_NUMBER: "var(--color-pink)",
-  WEBSITE: "var(--color-purple)",
-  STORE_HOURS: "var(--color-orange)",
-  PAYMENT_METHOD: "var(--color-orange)",
-  O: "var(--color-purple)",
-};
-
-const getLabelColor = (label: string): string => {
-  return LABEL_COLORS[normalizeLabel(label)] || "var(--color-gray, #888)";
 };
 
 // Format label: "MERCHANT_NAME" -> "Merchant Name", "O" -> "None"
@@ -170,6 +173,7 @@ interface EpochSparklineProps {
   currentIndex: number;
   onSelectEpoch: (index: number) => void;
   showBestLabel: boolean;
+  synthesis?: TrainingSynthesisSummary | null;
 }
 
 // SVG viewBox dims (internal coordinates). The viewBox width tracks the
@@ -178,18 +182,21 @@ interface EpochSparklineProps {
 // distortion would otherwise make the early-epoch climb look gentler
 // than it really is.
 const SVG_W_FALLBACK = 600; // before measurement / SSR
-const SVG_H = 80;
+const SVG_H = 118;
+const F1_CHART_H = 76;
 const SVG_PAD_X = 8; // left/right inset so end markers don't clip
 const SVG_PAD_TOP = 18; // room for "BEST" label
-const SVG_PAD_BOTTOM = 14; // room for x-axis epoch numbers
+const F1_PAD_BOTTOM = 8;
+const LOSS_STRIP_TOP = 86;
+const LOSS_STRIP_BOTTOM = 104;
 const AXIS_LABEL_MIN_GAP_PX = 24; // min viewBox-x distance before suppressing best label
 
 const SPARKLINE_DIMS_FALLBACK = {
   width: SVG_W_FALLBACK,
-  height: SVG_H,
+  height: F1_CHART_H,
   padX: SVG_PAD_X,
   padTop: SVG_PAD_TOP,
-  padBottom: SVG_PAD_BOTTOM,
+  padBottom: F1_PAD_BOTTOM,
 };
 
 const EpochSparkline: React.FC<EpochSparklineProps> = ({
@@ -197,6 +204,7 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   currentIndex,
   onSelectEpoch,
   showBestLabel,
+  synthesis,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [svgWidth, setSvgWidth] = useState<number>(SVG_W_FALLBACK);
@@ -221,11 +229,56 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
     [svgWidth]
   );
 
+  const ratioMetricKeys = useMemo(
+    () =>
+      (["val_f1", "val_precision", "val_recall"] as const).filter(
+        (metricKey) => countMetricValues(epochs, metricKey) >= 2
+      ),
+    [epochs]
+  );
+
   const { points, yScale, xScale, dataMin, dataMax } = useMemo(
-    () => computeScales(epochs, dims),
-    [epochs, dims]
+    () => computeScales(epochs, dims, [...ratioMetricKeys]),
+    [epochs, dims, ratioMetricKeys]
   );
   const bestIdx = useMemo(() => epochs.findIndex((e) => e.is_best), [epochs]);
+  const precisionPath = useMemo(
+    () => buildMetricPath(epochs, "val_precision", xScale, yScale),
+    [epochs, xScale, yScale]
+  );
+  const recallPath = useMemo(
+    () => buildMetricPath(epochs, "val_recall", xScale, yScale),
+    [epochs, xScale, yScale]
+  );
+
+  const lossPaths = useMemo(() => {
+    const values = epochs.flatMap((epoch) =>
+      [epoch.metrics?.train_loss, epoch.metrics?.eval_loss].filter(
+        (value): value is number => Number.isFinite(value)
+      )
+    );
+    if (values.length === 0) {
+      return null;
+    }
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min;
+    const pad = span === 0 ? Math.max(0.01, max * 0.05) : span * 0.08;
+    const dataMinLoss = Math.max(0, min - pad);
+    const dataMaxLoss = max + pad;
+    const yLossScale = (value: number) =>
+      LOSS_STRIP_BOTTOM -
+      ((value - dataMinLoss) / (dataMaxLoss - dataMinLoss || 1)) *
+        (LOSS_STRIP_BOTTOM - LOSS_STRIP_TOP);
+
+    return {
+      train: buildMetricPath(epochs, "train_loss", xScale, yLossScale),
+      eval: buildMetricPath(epochs, "eval_loss", xScale, yLossScale),
+      hasTrain: countMetricValues(epochs, "train_loss") >= 2,
+      hasEval: countMetricValues(epochs, "eval_loss") >= 2,
+    };
+  }, [epochs, xScale]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -287,6 +340,10 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
 
   const currentEpoch = epochs[currentIndex];
   const currentF1 = currentEpoch?.metrics?.val_f1 ?? 0;
+  const currentPrecision = currentEpoch?.metrics?.val_precision;
+  const currentRecall = currentEpoch?.metrics?.val_recall;
+  const currentTrainLoss = currentEpoch?.metrics?.train_loss;
+  const currentEvalLoss = currentEpoch?.metrics?.eval_loss;
   const cx = xScale(currentIndex);
   const cy = yScale(currentF1);
   const bestEpoch = bestIdx >= 0 ? epochs[bestIdx] : null;
@@ -295,6 +352,10 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   const by = bestIdx >= 0 ? yScale(bestF1) : 0;
   const lastIdx = epochs.length - 1;
   const showBest = bestIdx >= 0 && showBestLabel;
+  const showPostBestRegion = bestIdx >= 0 && bestIdx < lastIdx;
+  const postBestWidth = showPostBestRegion
+    ? Math.max(0, svgWidth - SVG_PAD_X - bx)
+    : 0;
 
   const axisLabels = useMemo(
     () => computeAxisLabels(epochs, bestIdx, xScale, AXIS_LABEL_MIN_GAP_PX),
@@ -302,6 +363,24 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
   );
   void dataMin;
   void dataMax;
+
+  const ariaMetricText = [
+    `F1 ${currentF1.toFixed(3)}`,
+    Number.isFinite(currentPrecision)
+      ? `precision ${(currentPrecision as number).toFixed(3)}`
+      : null,
+    Number.isFinite(currentRecall)
+      ? `recall ${(currentRecall as number).toFixed(3)}`
+      : null,
+    Number.isFinite(currentTrainLoss)
+      ? `train loss ${(currentTrainLoss as number).toFixed(3)}`
+      : null,
+    Number.isFinite(currentEvalLoss)
+      ? `eval loss ${(currentEvalLoss as number).toFixed(3)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <>
@@ -324,11 +403,75 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
             currentEpoch
               ? `Epoch ${currentEpoch.epoch}${
                   currentIndex === bestIdx ? " (best)" : ""
-                }, F1 ${currentF1.toFixed(3)}`
+                }, ${ariaMetricText}`
               : undefined
           }
         >
+          <title>
+            Training metrics by epoch. Solid line is F1, dashed line is
+            precision, dotted line is recall, and the lower strip shows train
+            and evaluation loss.
+          </title>
+
+          {showPostBestRegion && (
+            <rect
+              x={bx}
+              y={SVG_PAD_TOP - 4}
+              width={postBestWidth}
+              height={LOSS_STRIP_BOTTOM - SVG_PAD_TOP + 4}
+              className={styles.sparklinePostBestRegion}
+            >
+              <title>
+                Epochs after the best validation F1. Watch for train loss
+                falling while validation metrics stop improving.
+              </title>
+            </rect>
+          )}
+
+          <g className={styles.sparklineMetricLegend} aria-hidden="true">
+            <line x1={SVG_PAD_X} x2={SVG_PAD_X + 15} y1={8} y2={8} />
+            <text x={SVG_PAD_X + 19} y={11}>
+              F1
+            </text>
+            <line
+              x1={SVG_PAD_X + 45}
+              x2={SVG_PAD_X + 60}
+              y1={8}
+              y2={8}
+              className={styles.sparklinePrecisionSample}
+            />
+            <text x={SVG_PAD_X + 64} y={11}>
+              P
+            </text>
+            <line
+              x1={SVG_PAD_X + 84}
+              x2={SVG_PAD_X + 99}
+              y1={8}
+              y2={8}
+              className={styles.sparklineRecallSample}
+            />
+            <text x={SVG_PAD_X + 103} y={11}>
+              R
+            </text>
+          </g>
+
           {/* Convergence curve */}
+          {precisionPath && (
+            <path
+              d={precisionPath}
+              className={styles.sparklinePrecisionPath}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {recallPath && (
+            <path
+              d={recallPath}
+              className={styles.sparklineRecallPath}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
           {epochs.length >= 2 && (
             <polyline
               points={points}
@@ -342,10 +485,45 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
             x1={cx}
             x2={cx}
             y1={cy}
-            y2={SVG_H - SVG_PAD_BOTTOM}
+            y2={LOSS_STRIP_BOTTOM}
             className={styles.sparklineActiveLine}
             vectorEffect="non-scaling-stroke"
           />
+
+          <line
+            x1={SVG_PAD_X}
+            x2={svgWidth - SVG_PAD_X}
+            y1={LOSS_STRIP_TOP - 7}
+            y2={LOSS_STRIP_TOP - 7}
+            className={styles.sparklineLossDivider}
+            vectorEffect="non-scaling-stroke"
+          />
+
+          {lossPaths && (lossPaths.hasTrain || lossPaths.hasEval) && (
+            <g className={styles.sparklineLossGroup}>
+              {lossPaths.hasEval && (
+                <path
+                  d={lossPaths.eval}
+                  className={styles.sparklineEvalLossPath}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {lossPaths.hasTrain && (
+                <path
+                  d={lossPaths.train}
+                  className={styles.sparklineTrainLossPath}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              <text
+                x={SVG_PAD_X}
+                y={LOSS_STRIP_TOP + 3}
+                className={styles.sparklineLossLabel}
+              >
+                loss
+              </text>
+            </g>
+          )}
 
           {/* Best epoch marker (open ring under the curve, labeled) */}
           {bestIdx >= 0 && (
@@ -428,7 +606,1539 @@ const EpochSparkline: React.FC<EpochSparklineProps> = ({
           ›
         </button>
       </div>
+      <SynthesisEvidenceStrip synthesis={synthesis} />
     </>
+  );
+};
+
+interface SynthesisEvidenceStripProps {
+  synthesis?: TrainingSynthesisSummary | null;
+}
+
+const formatCount = (value?: number | null): string =>
+  Number.isFinite(value) ? (value as number).toLocaleString() : "—";
+
+const formatSimilarity = (value?: number | null): string =>
+  Number.isFinite(value) ? (value as number).toFixed(2) : "—";
+
+const formatPercent = (value?: number | null): string =>
+  Number.isFinite(value) ? `${Math.round((value as number) * 100)}%` : "—";
+
+const SYNTHETIC_REJECTION_REASON_LABELS: Record<string, string> = {
+  add_item_base_category_missing: "wrong section",
+  add_item_catalog_category_mismatch: "catalog category mismatch",
+  add_item_catalog_missing_category_evidence: "catalog missing category",
+  add_item_catalog_not_cross_receipt_grounded: "catalog ungrounded item",
+  add_item_category_mismatch: "category mismatch",
+  add_item_missing_category_evidence: "missing category",
+  add_item_not_cross_receipt_grounded: "ungrounded item",
+  add_item_placement_base_category_missing: "placement missing section",
+  add_item_placement_category_mismatch: "placement category mismatch",
+  invalid_arithmetic_reconciliation: "bad arithmetic",
+  below_real_structure_baseline: "below real baseline",
+  low_category_sequence_similarity: "weak category order",
+  low_category_set_similarity: "weak category match",
+  low_line_step_similarity: "weak row spacing",
+  low_price_column_similarity: "weak price column",
+  low_structure_similarity: "low similarity",
+  low_token_count_similarity: "weak token count",
+  merchant_operation_synthetic_cap: "operation cap",
+  merchant_synthesis_not_ready: "merchant not ready",
+  merchant_synthetic_cap: "merchant cap",
+  missing_arithmetic_reconciliation: "missing arithmetic",
+  missing_metadata: "missing metadata",
+  missing_structure_similarity: "missing similarity",
+  replace_field_format_mismatch: "format mismatch",
+  replace_field_insufficient_observations: "few field examples",
+  replace_field_invalid_value: "bad field value",
+  replace_field_label_mismatch: "label mismatch",
+  replace_field_missing_evidence: "missing field evidence",
+  replace_field_missing_format: "missing field format",
+  replace_field_not_mutable: "field not mutable",
+  replace_field_unsupported_label: "unsupported field",
+  replace_field_unstable_geometry: "unstable field geometry",
+};
+
+const formatSyntheticRejectionReason = (reason: string): string =>
+  SYNTHETIC_REJECTION_REASON_LABELS[reason] ||
+  reason.replaceAll("_", " ");
+
+const summarizeSyntheticRejections = (
+  reasons: Record<string, number> | undefined,
+  rejectedCount: number
+): { label: string; title?: string } => {
+  const entries = Object.entries(reasons || {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const title = entries.length
+    ? entries
+        .map(
+          ([reason, count]) =>
+            `${formatCount(count)} ${formatSyntheticRejectionReason(reason)}`
+        )
+        .join(", ")
+    : undefined;
+  const cappedCount = entries.reduce(
+    (sum, [reason, count]) =>
+      reason === "merchant_synthetic_cap" ||
+      reason === "merchant_operation_synthetic_cap"
+        ? sum + count
+        : sum,
+    0
+  );
+  if (cappedCount > 0) {
+    const label =
+      cappedCount === rejectedCount
+        ? `${formatCount(rejectedCount)} capped`
+        : `${formatCount(rejectedCount)} rejected (${formatCount(cappedCount)} capped)`;
+    return { label, title };
+  }
+  return { label: `${formatCount(rejectedCount)} rejected`, title };
+};
+
+const formatCategoryName = (category: string): string =>
+  category
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
+const formatFieldName = (field: string): string => formatCategoryName(field);
+
+const formatOperationName = (operation: string): string =>
+  operation === "replace_field"
+    ? "Field edits"
+    : formatCategoryName(operation);
+
+type TrainingSynthesisMerchantGap = NonNullable<
+  TrainingSynthesisMerchantGapSummary["merchants"]
+>[number];
+
+const summarizeCategoryCounts = (
+  counts: Record<string, number> | undefined
+): { label: string; title?: string } | null => {
+  const entries = Object.entries(counts || {})
+    .filter(([category, count]) => category && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (!entries.length) return null;
+  const [topCategory, topCount] = entries[0];
+  return {
+    label: `${formatCategoryName(topCategory)}: ${formatCount(topCount)}`,
+    title: entries
+      .map(([category, count]) => `${formatCategoryName(category)}: ${formatCount(count)}`)
+      .join(", "),
+  };
+};
+
+const summarizeFieldReplacementCounts = (
+  counts: Record<string, number> | undefined,
+  examples: TrainingSynthesisSummary["candidate_examples"] | undefined
+): { label: string; title?: string } | null => {
+  const merged = new Map<string, number>();
+  Object.entries(counts || {}).forEach(([field, count]) => {
+    if (field && count > 0) merged.set(field, count);
+  });
+  (examples || []).forEach((example) => {
+    if (example.operation !== "replace_field" || !example.field_label) return;
+    if (!merged.has(example.field_label)) {
+      merged.set(example.field_label, 1);
+    }
+  });
+
+  const entries = Array.from(merged.entries()).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+  );
+  if (!entries.length) return null;
+
+  const examplesByField = new Map(
+    (examples || [])
+      .filter((example) => example.field_label)
+      .map((example) => [example.field_label as string, example])
+  );
+  const label = entries
+    .slice(0, 2)
+    .map(([field, count]) => `${formatFieldName(field)}: ${formatCount(count)}`)
+    .join(", ");
+  const title = entries
+    .map(([field, count]) => {
+      const example = examplesByField.get(field);
+      const replacement =
+        example?.old_text && example?.new_text
+          ? ` (${example.old_text} -> ${example.new_text}${
+              example.field_format ? `, ${example.field_format}` : ""
+            })`
+          : "";
+      return `${formatFieldName(field)}: ${formatCount(count)}${replacement}`;
+    })
+    .join(", ");
+
+  return {
+    label:
+      entries.length > 2
+        ? `${label}, +${formatCount(entries.length - 2)}`
+        : label,
+    title,
+  };
+};
+
+const summarizeContractCoverage = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const contracts = synthesis.merchant_synthesis_contracts || [];
+  const total =
+    synthesis.contract_merchant_count ??
+    (contracts.length ? contracts.length : null);
+  const ready =
+    synthesis.contract_ready_merchant_count ??
+    (contracts.length
+      ? contracts.filter((contract) => contract.status === "ready").length
+      : null);
+  const operationEntries = Object.entries(synthesis.contract_operation_counts || {})
+    .filter(([operation, count]) => operation && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  if (total == null && !operationEntries.length) return null;
+
+  const operationTitle = operationEntries
+    .map(
+      ([operation, count]) =>
+        `${formatOperationName(operation)}: ${formatCount(count)}`
+    )
+    .join(", ");
+  const operationCoverage = synthesis.quality_report?.operation_coverage;
+  const readyOperations = operationCoverage?.ready_operation_count;
+  const totalOperations = operationCoverage?.operation_count;
+  const coverageTitle =
+    readyOperations != null && totalOperations
+      ? `Operations ready: ${formatCount(readyOperations)} / ${formatCount(totalOperations)}`
+      : null;
+  return {
+    label:
+      total != null
+        ? `${formatCount(ready ?? 0)} / ${formatCount(total)} ready`
+        : "—",
+    title: [operationTitle, coverageTitle]
+      .filter((value): value is string => Boolean(value))
+      .join(" | ") || undefined,
+  };
+};
+
+const summarizeLlmExecution = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const execution =
+    synthesis.llm_execution ?? synthesis.quality_report?.summary?.llm_execution;
+  if (!execution) return null;
+
+  const entries = Object.entries(execution.mode_counts || {})
+    .filter(([mode, count]) => mode && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const apiAllowed = execution.api_call_allowed_count ?? 0;
+  const disabled = execution.paid_llm_disabled_count ?? 0;
+  if (!entries.length && !apiAllowed && !disabled) return null;
+
+  const primaryMode = entries[0]?.[0];
+  let label = "Unknown";
+  if (apiAllowed > 0) {
+    label = "LLM assisted";
+  } else if (primaryMode === "deterministic_fallback" || disabled > 0) {
+    label = "Local only";
+  } else if (primaryMode) {
+    label = formatFieldName(primaryMode);
+  }
+  const modeTitle = entries
+    .map(([mode, count]) => `${formatFieldName(mode)}: ${formatCount(count)}`)
+    .join(", ");
+  const modelTitle = (execution.configured_models || []).length
+    ? `Models: ${(execution.configured_models || []).join(", ")}`
+    : null;
+  const sourceTitle = (execution.latest_model_sources || []).length
+    ? `Latest model source: ${(execution.latest_model_sources || []).join(", ")}`
+    : null;
+  const verifiedTitle = execution.latest_model_verified_at
+    ? `Latest model verified: ${execution.latest_model_verified_at}`
+    : null;
+
+  return {
+    label,
+    title:
+      [
+        modeTitle,
+        `Paid LLM disabled: ${formatCount(disabled)}`,
+        `API allowed: ${formatCount(apiAllowed)}`,
+        modelTitle,
+        sourceTitle,
+        verifiedTitle,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" | ") || undefined,
+  };
+};
+
+const summarizeCountRecord = (
+  counts: Record<string, number> | undefined,
+  formatter: (value: string) => string,
+  limit = 3
+): string | null => {
+  const entries = Object.entries(counts || {})
+    .filter(([key, count]) => key && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (!entries.length) return null;
+  return entries
+    .slice(0, limit)
+    .map(([key, count]) => `${formatter(key)}: ${formatCount(count)}`)
+    .join(", ");
+};
+
+const hasMerchantGap = (merchant: TrainingSynthesisMerchantGap): boolean =>
+  merchant.status === "blocked" ||
+  Boolean(merchant.blockers?.length) ||
+  Boolean(merchant.limitations?.length) ||
+  Boolean(merchant.missing_operations?.length);
+
+const summarizeMerchantGaps = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const summary = synthesis.quality_report?.merchant_gap_summary;
+  if (!summary) return null;
+
+  const merchants = summary.merchants || [];
+  const derivedGapCount = merchants.filter(hasMerchantGap).length;
+  const gapCount = summary.merchant_gap_count ?? derivedGapCount;
+  const blockedCount =
+    summary.blocked_merchant_count ??
+    merchants.filter((merchant) => merchant.status === "blocked").length;
+  const total = synthesis.merchant_count ?? (merchants.length || null);
+  const topBlockers = summarizeCountRecord(
+    summary.top_blockers,
+    formatSyntheticRejectionReason
+  );
+  const topLimitations = summarizeCountRecord(
+    summary.top_limitations,
+    formatSyntheticRejectionReason
+  );
+  const missingOperations = Array.from(
+    new Set(merchants.flatMap((merchant) => merchant.missing_operations || []))
+  ).filter(Boolean);
+  const title = [
+    topBlockers ? `Blockers: ${topBlockers}` : null,
+    topLimitations ? `Limitations: ${topLimitations}` : null,
+    missingOperations.length
+      ? `Missing ops: ${missingOperations.map(formatOperationName).join(", ")}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  if (gapCount > 0) {
+    return {
+      label: `${formatCount(gapCount)}${total ? ` / ${formatCount(total)}` : ""} gaps`,
+      title: title || undefined,
+    };
+  }
+  if (blockedCount > 0) {
+    return {
+      label: `${formatCount(blockedCount)} blocked`,
+      title: title || undefined,
+    };
+  }
+  return {
+    label: "No gaps",
+    title: title || undefined,
+  };
+};
+
+const summarizeReasonList = (
+  merchants: TrainingSynthesisSourceQualityMerchant[],
+  field: "blockers" | "limitations"
+): string | null => {
+  const counts = new Map<string, number>();
+  merchants.forEach((merchant) => {
+    (merchant[field] || []).forEach((reason) => {
+      if (!reason) return;
+      counts.set(reason, (counts.get(reason) || 0) + 1);
+    });
+  });
+  const entries = Array.from(counts.entries()).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+  );
+  if (!entries.length) return null;
+  return entries
+    .slice(0, 3)
+    .map(([reason, count]) => `${formatSyntheticRejectionReason(reason)}: ${formatCount(count)}`)
+    .join(", ");
+};
+
+const summarizeSourceLabels = (
+  merchants: TrainingSynthesisSourceQualityMerchant[]
+): string | null => {
+  const counts = new Map<string, number>();
+  merchants.forEach((merchant) => {
+    Object.entries(merchant.top_labels || {}).forEach(([label, count]) => {
+      if (!label || !count) return;
+      counts.set(label, (counts.get(label) || 0) + count);
+    });
+  });
+  const entries = Array.from(counts.entries()).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+  );
+  if (!entries.length) return null;
+  return entries
+    .slice(0, 4)
+    .map(([label, count]) => `${formatFieldName(label)}: ${formatCount(count)}`)
+    .join(", ");
+};
+
+const sourceQualityMerchantMap = (
+  synthesis: TrainingSynthesisSummary
+): Map<string, TrainingSynthesisSourceQualityMerchant> =>
+  new Map(
+    (synthesis.source_receipt_quality?.merchants || [])
+      .filter((merchant) => merchant.merchant_name)
+      .map((merchant) => [merchant.merchant_name as string, merchant])
+  );
+
+const reportMerchantSourceQuality = (
+  merchant: TrainingSynthesisQualityMerchant
+): TrainingSynthesisSourceQualityMerchant | undefined => {
+  if (
+    !merchant.source_quality_status &&
+    merchant.source_quality_receipt_count == null &&
+    merchant.source_quality_labeled_word_count == null
+  ) {
+    return undefined;
+  }
+  return {
+    merchant_name: merchant.merchant_name,
+    status: merchant.source_quality_status,
+    receipt_count: merchant.source_quality_receipt_count,
+    labeled_word_count: merchant.source_quality_labeled_word_count,
+    receipts_with_line_item_labels:
+      merchant.source_quality_receipts_with_line_item_labels,
+    receipts_with_grand_total_label:
+      merchant.source_quality_receipts_with_grand_total_label,
+    receipts_with_date_or_time_label:
+      merchant.source_quality_receipts_with_date_or_time_label,
+    blockers: Array.from(
+      new Set(Object.values(merchant.source_quality_operation_blockers || {}))
+    ),
+  };
+};
+
+const summarizeSourceQualityMerchant = (
+  merchant?: TrainingSynthesisSourceQualityMerchant
+): { label: string; title?: string } | null => {
+  if (!merchant) return null;
+  const receiptCount = merchant.receipt_count ?? 0;
+  const labeledWordCount = merchant.labeled_word_count ?? 0;
+  const lineItemReceipts = merchant.receipts_with_line_item_labels ?? 0;
+  const totalReceipts = receiptCount || merchant.receipts_with_labels || 0;
+  const title = [
+    `${formatReadinessStatus(merchant.status)} source receipts`,
+    `Receipts: ${formatCount(receiptCount)}`,
+    `Labeled words: ${formatCount(labeledWordCount)}`,
+    `Line item labels: ${formatCount(lineItemReceipts)} / ${formatCount(totalReceipts)}`,
+    merchant.receipts_with_grand_total_label != null
+      ? `Grand total labels: ${formatCount(merchant.receipts_with_grand_total_label)}`
+      : null,
+    merchant.receipts_with_date_or_time_label != null
+      ? `Date/time labels: ${formatCount(merchant.receipts_with_date_or_time_label)}`
+      : null,
+    merchant.blockers?.length
+      ? `Blockers: ${merchant.blockers.map(formatSyntheticRejectionReason).join(", ")}`
+      : null,
+    merchant.limitations?.length
+      ? `Limitations: ${merchant.limitations.map(formatSyntheticRejectionReason).join(", ")}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+  return {
+    label: `${formatCount(receiptCount)} src · ${formatCount(labeledWordCount)} labels`,
+    title,
+  };
+};
+
+const summarizeSourceReceiptQuality = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const quality = synthesis.source_receipt_quality;
+  if (!quality) return null;
+  const merchants = quality.merchants || [];
+  const merchantCount = quality.merchant_count ?? merchants.length;
+  const usable =
+    quality.usable_merchant_count ??
+    quality.status_counts?.usable ??
+    merchants.filter((merchant) => merchant.status === "usable").length;
+  const limited =
+    quality.limited_merchant_count ??
+    quality.status_counts?.limited ??
+    merchants.filter((merchant) => merchant.status === "limited").length;
+  const blocked =
+    quality.blocked_merchant_count ??
+    quality.status_counts?.blocked ??
+    merchants.filter((merchant) => merchant.status === "blocked").length;
+  const receiptCount =
+    quality.receipt_count ??
+    merchants.reduce((sum, merchant) => sum + (merchant.receipt_count || 0), 0);
+  const labeledWordCount =
+    quality.labeled_word_count ??
+    merchants.reduce(
+      (sum, merchant) => sum + (merchant.labeled_word_count || 0),
+      0
+    );
+  const blockers = summarizeReasonList(merchants, "blockers");
+  const limitations = summarizeReasonList(merchants, "limitations");
+  const labels = summarizeSourceLabels(merchants);
+  const title = [
+    `Receipts: ${formatCount(receiptCount)}`,
+    `Labeled words: ${formatCount(labeledWordCount)}`,
+    `Usable: ${formatCount(usable)}`,
+    limited ? `Limited: ${formatCount(limited)}` : null,
+    blocked ? `Blocked: ${formatCount(blocked)}` : null,
+    blockers ? `Blockers: ${blockers}` : null,
+    limitations ? `Limitations: ${limitations}` : null,
+    labels ? `Top labels: ${labels}` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+  return {
+    label:
+      merchantCount != null
+        ? `${formatCount(usable)} / ${formatCount(merchantCount)} usable`
+        : `${formatCount(usable)} usable`,
+    title,
+  };
+};
+
+const summarizeCandidateQuality = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const byId = new Map<string, TrainingSynthesisCandidateQuality>();
+  (synthesis.candidate_examples || []).forEach((example, index) => {
+    if (example.candidate_quality) {
+      byId.set(example.candidate_id || `candidate-${index}`, example.candidate_quality);
+    }
+  });
+  (synthesis.quality_report?.merchants || []).forEach((merchant) => {
+    (merchant.accepted_examples || []).forEach((example, index) => {
+      if (example.candidate_quality) {
+        byId.set(
+          example.candidate_id || `${merchant.merchant_name || "merchant"}-${index}`,
+          example.candidate_quality
+        );
+      }
+    });
+  });
+  const qualities = Array.from(byId.values()).filter(
+    (quality): quality is TrainingSynthesisCandidateQuality =>
+      Boolean(quality) && Number.isFinite(quality.score)
+  );
+  const aggregate =
+    synthesis.accepted_candidate_quality ??
+    synthesis.quality_report?.summary?.accepted_candidate_quality;
+  const aggregateComponents =
+    synthesis.accepted_candidate_quality_components ??
+    synthesis.quality_report?.summary?.accepted_candidate_quality_components;
+
+  if (!qualities.length && !aggregate) return null;
+  if (!qualities.length && aggregate) {
+    const componentTitle = Object.entries(aggregateComponents || {})
+      .filter(([, value]) => Number.isFinite(value.avg))
+      .sort(
+        (a, b) =>
+          (a[1].avg as number) - (b[1].avg as number) ||
+          a[0].localeCompare(b[0])
+      )
+      .slice(0, 4)
+      .map(
+        ([name, value]) =>
+          `${formatFieldName(name)} ${formatSimilarity(value.avg)}`
+      )
+      .join(", ");
+    return {
+      label:
+        aggregate.avg != null
+          ? `avg ${formatSimilarity(aggregate.avg)}`
+          : `${formatCount(aggregate.count)} scored`,
+      title:
+        [
+          aggregate.count != null ? `Scored candidates: ${formatCount(aggregate.count)}` : null,
+          aggregate.min != null ? `Min: ${formatSimilarity(aggregate.min)}` : null,
+          aggregate.max != null ? `Max: ${formatSimilarity(aggregate.max)}` : null,
+          componentTitle ? `Weakest components: ${componentTitle}` : null,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" | ") || undefined,
+    };
+  }
+
+  const highFidelityCount = qualities.filter(
+    (quality) => quality.high_fidelity
+  ).length;
+  const avgScore =
+    qualities.reduce((sum, quality) => sum + (quality.score as number), 0) /
+    qualities.length;
+  const componentTotals = new Map<string, { sum: number; count: number }>();
+  qualities.forEach((quality) => {
+    Object.entries(quality.components || {}).forEach(([name, value]) => {
+      if (!Number.isFinite(value)) return;
+      const current = componentTotals.get(name) || { sum: 0, count: 0 };
+      componentTotals.set(name, {
+        sum: current.sum + value,
+        count: current.count + 1,
+      });
+    });
+  });
+  const componentTitle = Array.from(componentTotals.entries())
+    .map(([name, value]) => ({
+      name,
+      avg: value.count ? value.sum / value.count : 0,
+    }))
+    .sort((a, b) => a.avg - b.avg || a.name.localeCompare(b.name))
+    .slice(0, 4)
+    .map(({ name, avg }) => `${formatFieldName(name)} ${formatSimilarity(avg)}`)
+    .join(", ");
+  const structureGateIssues = qualities.flatMap((quality) => {
+    const gate = quality.structure_gate;
+    if (!gate || gate.passed) return [];
+    const failed = Object.entries(gate.failed_components || {}).map(
+      ([component, detail]) =>
+        `${formatFieldName(component)} ${formatSimilarity(detail.value)} < ${formatSimilarity(detail.threshold)}`
+    );
+    const missing = (gate.missing_components || []).map(
+      (component) => `${formatFieldName(component)} missing`
+    );
+    return [...failed, ...missing];
+  });
+  const gateTitle = Array.from(new Set(structureGateIssues)).slice(0, 4).join(", ");
+
+  return {
+    label: `${formatCount(highFidelityCount)} / ${formatCount(qualities.length)} high`,
+    title:
+      [
+        `Average fidelity: ${formatSimilarity(avgScore)}`,
+        componentTitle ? `Weakest components: ${componentTitle}` : null,
+        gateTitle ? `Structure gate issues: ${gateTitle}` : null,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" | ") || undefined,
+  };
+};
+
+const summarizeMixBalance = (
+  balance?: TrainingSynthesisMixBalance
+): { label: string; title?: string } | null => {
+  if (!balance) return null;
+  const risk = (balance.risk_level || "").toLowerCase();
+  const label =
+    risk && risk !== "none"
+      ? `${formatCategoryName(risk)} risk`
+      : balance.merchant_count != null && balance.operation_count != null
+        ? `${formatCount(balance.merchant_count)} merchants · ${formatCount(balance.operation_count)} ops`
+        : null;
+  if (!label) return null;
+
+  const title = [
+    balance.top_merchant
+      ? `Top merchant: ${balance.top_merchant}${
+          balance.top_merchant_share != null
+            ? ` (${formatPercent(balance.top_merchant_share)})`
+            : ""
+        }`
+      : null,
+    balance.top_operation
+      ? `Top operation: ${formatOperationName(balance.top_operation)}${
+          balance.top_operation_share != null
+            ? ` (${formatPercent(balance.top_operation_share)})`
+            : ""
+        }`
+      : null,
+    balance.merchant_entropy != null
+      ? `Merchant entropy: ${formatSimilarity(balance.merchant_entropy)}`
+      : null,
+    balance.operation_entropy != null
+      ? `Operation entropy: ${formatSimilarity(balance.operation_entropy)}`
+      : null,
+    (balance.risk_reasons || []).length
+      ? `Reasons: ${(balance.risk_reasons || [])
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return { label, title: title || undefined };
+};
+
+const summarizeRealBaselineComparison = (
+  baseline?: TrainingSynthesisRealBaselineSummary | null
+): { label: string; title?: string } | null => {
+  if (!baseline || !baseline.count) return null;
+  const within = baseline.within_real_score_range_count ?? 0;
+  const label = `${formatCount(within)} / ${formatCount(
+    baseline.count
+  )} in range`;
+  const title = [
+    baseline.within_real_score_range_share != null
+      ? `In-range share: ${formatPercent(baseline.within_real_score_range_share)}`
+      : null,
+    baseline.delta_from_avg?.avg != null
+      ? `Avg delta vs real avg: ${baseline.delta_from_avg.avg >= 0 ? "+" : ""}${formatSimilarity(
+          baseline.delta_from_avg.avg
+        )}`
+      : null,
+    baseline.delta_from_min?.min != null
+      ? `Worst delta vs real min: ${baseline.delta_from_min.min >= 0 ? "+" : ""}${formatSimilarity(
+          baseline.delta_from_min.min
+        )}`
+      : null,
+    baseline.baseline_pair_count?.avg != null
+      ? `Avg real receipt pairs: ${formatSimilarity(baseline.baseline_pair_count.avg)}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return { label, title: title || undefined };
+};
+
+const STRUCTURE_COMPONENT_LABELS: Record<string, string> = {
+  price_column: "Price column",
+  line_step: "Row spacing",
+  category_sequence: "Category order",
+  category_set: "Category match",
+  token_count: "Token count",
+};
+
+const summarizeStructureComponentGate = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string } | null => {
+  const thresholds =
+    synthesis.quality_report?.quality_gates?.structure_component_thresholds;
+  const acceptedComponents =
+    synthesis.quality_report?.summary?.accepted_structure_components ??
+    synthesis.accepted_structure_components;
+  const entries = Object.entries(thresholds || {})
+    .filter(([, value]) => Number.isFinite(value))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (!entries.length) return null;
+
+  const [primaryName, primaryThreshold] = entries[0];
+  const title = entries
+    .map(([name, threshold]) => {
+      const avg = acceptedComponents?.[name]?.avg;
+      const accepted = Number.isFinite(avg)
+        ? `, accepted avg ${formatSimilarity(avg)}`
+        : "";
+      return `${STRUCTURE_COMPONENT_LABELS[name] || formatFieldName(name)} >= ${formatPercent(threshold)}${accepted}`;
+    })
+    .join(", ");
+  return {
+    label: `${STRUCTURE_COMPONENT_LABELS[primaryName] || formatFieldName(primaryName)} ${formatPercent(primaryThreshold)}`,
+    title,
+  };
+};
+
+const formatEvidenceCheck = (check: string): string =>
+  check
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+type SynthesisQualityExample = NonNullable<
+  TrainingSynthesisQualityMerchant["accepted_examples"]
+>[number];
+
+const formatPlural = (count: number, singular: string, plural = `${singular}s`): string =>
+  `${formatCount(count)} ${count === 1 ? singular : plural}`;
+
+const summarizeExampleGrounding = (
+  example?: SynthesisQualityExample
+): string | null => {
+  if (!example) return null;
+  const catalog = example.catalog_grounding;
+  const placement = example.category_placement;
+  const structure = example.structure_evidence;
+  const parts: string[] = [];
+  const outsideCount = catalog?.product_seen_outside_base_count;
+  if (outsideCount && outsideCount > 0) {
+    parts.push(formatPlural(outsideCount, "external receipt"));
+  }
+
+  const category = placement?.category || catalog?.category || example.category;
+  const categoryCount =
+    placement?.category_seen_count ?? catalog?.category_seen_count ?? null;
+  if (category && categoryCount && categoryCount > 0) {
+    parts.push(
+      `${formatCategoryName(category)} in ${formatPlural(categoryCount, "receipt")}`
+    );
+  }
+
+  const headingCount =
+    placement?.category_heading_seen_count ??
+    catalog?.category_heading_seen_count ??
+    null;
+  if (headingCount && headingCount > 0) {
+    parts.push(formatPlural(headingCount, "heading"));
+  }
+
+  if (placement?.category_alignment === "same_category_as_base") {
+    parts.push("same section");
+  }
+
+  const shapeCheckCount = structure?.match_summary?.shape_checks?.length || 0;
+  if (shapeCheckCount > 0) {
+    parts.push(formatPlural(shapeCheckCount, "shape check"));
+  } else if (structure?.nearest_real_receipt_key) {
+    parts.push("nearest real shape");
+  }
+
+  return parts.slice(0, 2).join(" · ") || null;
+};
+
+const summarizeStructureEvidence = (
+  structure?: TrainingSynthesisStructureEvidence
+): { label?: string; title?: string } => {
+  if (!structure) return {};
+  const shapeChecks = structure.match_summary?.shape_checks || [];
+  const weakComponents = structure.match_summary?.weak_components || [];
+  const baseline = structure.real_baseline_comparison;
+  const baselineStatus =
+    baseline?.within_real_score_range === true
+      ? "within real range"
+      : baseline?.within_real_score_range === false
+        ? "below real range"
+        : null;
+  const similarityLabel =
+    structure.score != null ? `${formatSimilarity(structure.score)} sim` : null;
+  const label = shapeChecks.length
+    ? [
+        formatPlural(shapeChecks.length, "shape check"),
+        similarityLabel,
+        baselineStatus,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : structure.nearest_real_receipt_key
+      ? ["nearest real", similarityLabel, baselineStatus]
+          .filter(Boolean)
+          .join(" · ")
+      : undefined;
+  const delta = structure.shape_deltas || {};
+  const baselineDelta =
+    baseline?.delta_from_avg != null
+      ? `, candidate ${baseline.delta_from_avg >= 0 ? "+" : ""}${formatSimilarity(
+          baseline.delta_from_avg
+        )} vs avg`
+      : "";
+  const title = [
+    structure.nearest_real_receipt_key
+      ? `Nearest real receipt: ${structure.nearest_real_receipt_key}`
+      : null,
+    baseline
+      ? `Real baseline: avg ${formatSimilarity(
+          baseline.baseline_avg
+        )}, range ${formatSimilarity(baseline.baseline_min)}-${formatSimilarity(
+          baseline.baseline_max
+        )}${baselineDelta}`
+      : null,
+    shapeChecks.length
+      ? `Shape checks: ${shapeChecks.map(formatEvidenceCheck).join(", ")}`
+      : null,
+    weakComponents.length
+      ? `Weak components: ${weakComponents.map(formatEvidenceCheck).join(", ")}`
+      : null,
+    Object.keys(delta).length
+      ? `Deltas: ${Object.entries(delta)
+          .map(([key, value]) => `${formatEvidenceCheck(key)} ${value}`)
+          .join(", ")}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return { label, title: title || undefined };
+};
+
+const summarizeLayoutIntegrity = (
+  layout?: TrainingSynthesisLayoutIntegrityEvidence
+): { label?: string; title?: string } => {
+  if (!layout) return {};
+  const issueCount =
+    (layout.overlap_pair_count ?? 0) +
+    (layout.out_of_bounds_word_count ?? 0) +
+    (layout.invalid_word_box_count ?? 0) +
+    (layout.line_order_valid === false ? 1 : 0);
+  const score =
+    layout.score != null ? ` ${formatSimilarity(layout.score)}` : "";
+  const label =
+    layout.passed === true
+      ? `layout ok${score}`
+      : issueCount > 0
+        ? `layout risk ${formatCount(issueCount)}`
+        : `layout unchecked${score}`;
+  const title = [
+    layout.passed === true
+      ? "Layout integrity passed"
+      : layout.passed === false
+        ? "Layout integrity did not pass"
+        : "Layout integrity not reported",
+    layout.score != null ? `score ${formatSimilarity(layout.score)}` : null,
+    layout.overlap_pair_count != null
+      ? `${formatCount(layout.overlap_pair_count)} overlap pairs`
+      : null,
+    layout.out_of_bounds_word_count != null
+      ? `${formatCount(layout.out_of_bounds_word_count)} out-of-bounds words`
+      : null,
+    layout.invalid_word_box_count != null
+      ? `${formatCount(layout.invalid_word_box_count)} invalid boxes`
+      : null,
+    layout.line_order_valid === false ? "line order invalid" : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+  return { label, title: title || undefined };
+};
+
+const summarizeSelectionEvidence = (
+  example?: SynthesisQualityExample
+): { label?: string; title?: string } => {
+  const evidence = example?.selection_evidence;
+  if (!evidence) return {};
+  const selectedFrom = evidence.selected_from_candidate_count;
+  const score = evidence.selected_score || {};
+  const labelParts = [
+    selectedFrom && selectedFrom > 1
+      ? `selected from ${formatCount(selectedFrom)}`
+      : null,
+    Number.isFinite(score.candidate_quality)
+      ? `quality ${formatSimilarity(score.candidate_quality)}`
+      : null,
+    score.within_real_score_range === true
+      ? "real range"
+      : score.within_real_score_range === false
+        ? "below range"
+        : null,
+  ].filter((value): value is string => Boolean(value));
+  const rankedBy = (evidence.ranked_by || [])
+    .slice(0, 4)
+    .map(formatEvidenceCheck);
+  const title = [
+    selectedFrom != null
+      ? `Selected from ${formatCount(selectedFrom)} feasible mutation${
+          selectedFrom === 1 ? "" : "s"
+        }`
+      : null,
+    score.candidate_quality != null
+      ? `Candidate quality: ${formatSimilarity(score.candidate_quality)}`
+      : null,
+    score.structure_similarity != null
+      ? `Structure similarity: ${formatSimilarity(score.structure_similarity)}`
+      : null,
+    score.layout_integrity != null
+      ? `Layout integrity: ${formatSimilarity(score.layout_integrity)}`
+      : null,
+    score.delta_from_min != null
+      ? `Delta from real baseline min: ${
+          score.delta_from_min >= 0 ? "+" : ""
+        }${formatSimilarity(score.delta_from_min)}`
+      : null,
+    score.baseline_pair_count != null
+      ? `Real baseline pairs: ${formatCount(score.baseline_pair_count)}`
+      : null,
+    rankedBy.length ? `Ranked by: ${rankedBy.join(", ")}` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+  return {
+    label: labelParts.join(" · ") || undefined,
+    title: title || undefined,
+  };
+};
+
+const summarizeReceiptPreview = (
+  examples: TrainingSynthesisSummary["candidate_examples"] | undefined
+): { label: string; title?: string } | null => {
+  const example = (examples || []).find(
+    (candidate) =>
+      candidate.receipt_preview?.text ||
+      candidate.accuracy_evidence?.changed_text ||
+      candidate.item_text ||
+      candidate.new_text
+  );
+  if (!example) return null;
+
+  const previewLines = example.receipt_preview?.lines || [];
+  const changedLine =
+    previewLines.find((line) => line.synthetic_insert)?.text ||
+    previewLines.find((line) => (line.modified_labels || []).length > 0)?.text ||
+    example.accuracy_evidence?.changed_text ||
+    example.item_text ||
+    (example.field_label && example.new_text
+      ? `${formatFieldName(example.field_label)} ${example.new_text}`
+      : null);
+  if (!changedLine) return null;
+
+  const category =
+    example.category || example.accuracy_evidence?.category || undefined;
+  const detailParts = [
+    example.merchant_name,
+    example.operation ? formatOperationName(example.operation) : null,
+    category ? formatCategoryName(category) : null,
+    example.structure_similarity != null
+      ? `similarity ${formatSimilarity(example.structure_similarity)}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  const checks = (example.accuracy_evidence?.checks || [])
+    .slice(0, 4)
+    .map(formatEvidenceCheck);
+  const structureSummary = summarizeStructureEvidence(
+    example.accuracy_evidence?.structure_similarity
+  );
+  const layoutSummary = summarizeLayoutIntegrity(
+    example.accuracy_evidence?.layout_integrity
+  );
+  const selectionSummary = summarizeSelectionEvidence(
+    candidateExampleToQualityExample(example)
+  );
+  const titleParts = [
+    detailParts.join(" | "),
+    example.receipt_preview?.text,
+    layoutSummary.title,
+    structureSummary.title,
+    selectionSummary.title,
+    checks.length ? `Checks: ${checks.join(", ")}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    label: changedLine,
+    title: titleParts.join("\n"),
+  };
+};
+
+const summarizeOperationCounts = (
+  counts: Record<string, number> | undefined,
+  fallbackOperations: string[] | undefined
+): string => {
+  const entries = Object.entries(counts || {})
+    .filter(([operation, count]) => operation && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (entries.length) {
+    return entries
+      .slice(0, 2)
+      .map(
+        ([operation, count]) =>
+          `${formatOperationName(operation)} ${formatCount(count)}`
+      )
+      .join(" · ");
+  }
+  const operations = (fallbackOperations || []).filter(Boolean);
+  if (operations.length) {
+    return operations.slice(0, 2).map(formatOperationName).join(" · ");
+  }
+  return "No accepted mutations";
+};
+
+const formatReadinessStatus = (status?: string | null): string =>
+  status ? formatCategoryName(status) : "Unknown";
+
+const candidateExampleToQualityExample = (
+  example: NonNullable<TrainingSynthesisSummary["candidate_examples"]>[number]
+): NonNullable<TrainingSynthesisQualityMerchant["accepted_examples"]>[number] => ({
+  candidate_id: example.candidate_id,
+  operation: example.operation,
+  category: example.category || example.accuracy_evidence?.category,
+  changed_text:
+    example.accuracy_evidence?.changed_text ||
+    example.item_text ||
+    example.new_text,
+  label: example.field_label,
+  structure_similarity: example.structure_similarity,
+  structure_evidence: example.accuracy_evidence?.structure_similarity,
+  candidate_quality: example.candidate_quality,
+  selection_evidence: example.selection_evidence,
+  layout_integrity: example.accuracy_evidence?.layout_integrity,
+  accuracy_checks: example.accuracy_evidence?.checks || [],
+  catalog_grounding: example.accuracy_evidence?.catalog_grounding,
+  category_placement: example.accuracy_evidence?.category_placement,
+  receipt_shape: {
+    line_count: example.receipt_preview?.line_count,
+    token_count: example.receipt_preview?.token_count,
+    truncated: example.receipt_preview?.truncated,
+  },
+  preview_lines: example.receipt_preview?.lines || [],
+});
+
+const merchantGapMap = (
+  synthesis: TrainingSynthesisSummary
+): Map<string, TrainingSynthesisMerchantGap> =>
+  new Map(
+    (synthesis.quality_report?.merchant_gap_summary?.merchants || [])
+      .filter((merchant) => merchant.merchant_name)
+      .map((merchant) => [merchant.merchant_name as string, merchant])
+  );
+
+const mergeMerchantGapDetails = (
+  merchant: TrainingSynthesisQualityMerchant,
+  gap?: TrainingSynthesisMerchantGap
+): TrainingSynthesisQualityMerchant => {
+  if (!gap) return merchant;
+  return {
+    ...merchant,
+    readiness_status: merchant.readiness_status ?? gap.status,
+    readiness_score: merchant.readiness_score ?? gap.score,
+    candidate_count: merchant.candidate_count ?? gap.candidate_count,
+    accepted_count: merchant.accepted_count ?? gap.accepted_count,
+    blockers: merchant.blockers?.length ? merchant.blockers : gap.blockers,
+    limitations: merchant.limitations?.length
+      ? merchant.limitations
+      : gap.limitations,
+    missing_operations: gap.missing_operations,
+    operation_gap_reasons: gap.operation_gap_reasons,
+  };
+};
+
+const buildMerchantQualityRows = (
+  synthesis: TrainingSynthesisSummary
+): TrainingSynthesisQualityMerchant[] => {
+  const gapsByMerchant = merchantGapMap(synthesis);
+  const reportRows = synthesis.quality_report?.merchants || [];
+  if (reportRows.length) {
+    return reportRows
+      .slice(0, 4)
+      .map((merchant) =>
+        mergeMerchantGapDetails(
+          merchant,
+          merchant.merchant_name
+            ? gapsByMerchant.get(merchant.merchant_name)
+            : undefined
+        )
+      );
+  }
+
+  const contractsByMerchant = new Map(
+    (synthesis.merchant_synthesis_contracts || [])
+      .filter((contract) => contract.merchant_name)
+      .map((contract) => [contract.merchant_name as string, contract])
+  );
+  const examplesByMerchant = new Map<string, ReturnType<typeof candidateExampleToQualityExample>[]>();
+  (synthesis.candidate_examples || []).forEach((example) => {
+    const merchant = example.merchant_name || "Unknown merchant";
+    const rows = examplesByMerchant.get(merchant) || [];
+    rows.push(candidateExampleToQualityExample(example));
+    examplesByMerchant.set(merchant, rows);
+  });
+
+  return (synthesis.candidate_mix_merchants || []).slice(0, 4).map((merchant) => {
+    const merchantName = merchant.merchant_name || "Unknown merchant";
+    const contract = contractsByMerchant.get(merchantName);
+    const candidateCount = merchant.candidate_count ?? null;
+    const acceptedCount = merchant.accepted_count ?? null;
+    const acceptanceRate =
+      candidateCount && acceptedCount != null ? acceptedCount / candidateCount : null;
+    return mergeMerchantGapDetails({
+      merchant_name: merchantName,
+      readiness_status: contract?.status,
+      readiness_score: contract?.score,
+      source_receipt_count: contract?.source_receipt_count,
+      candidate_count: candidateCount,
+      accepted_count: acceptedCount,
+      rejected_count: merchant.rejected_count,
+      acceptance_rate: acceptanceRate,
+      supported_operations: contract?.supported_operations,
+      contract_ready_operations: contract?.ready_operations,
+      accepted_operation_counts: merchant.accepted_operation_counts,
+      accepted_category_counts: merchant.accepted_category_counts,
+      accepted_field_replacement_counts: contract?.accepted_field_replacement_counts,
+      accepted_structure_similarity: merchant.accepted_structure_similarity,
+      rejection_reasons: merchant.rejection_reasons,
+      blockers: contract?.blockers,
+      limitations: contract?.limitations,
+      accepted_examples: examplesByMerchant.get(merchantName)?.slice(0, 3) || [],
+    }, gapsByMerchant.get(merchantName));
+  });
+};
+
+const summarizeMerchantOperationGaps = (
+  merchant: TrainingSynthesisQualityMerchant
+): { label: string; title?: string } | null => {
+  const missingOperations = (merchant.missing_operations || []).filter(Boolean);
+  const blockers = (merchant.blockers || []).filter(Boolean);
+  const limitations = (merchant.limitations || []).filter(Boolean);
+  const operationReasonEntries = Object.entries(
+    merchant.operation_gap_reasons || {}
+  ).filter(([operation, reasons]) => operation && reasons.length);
+
+  if (
+    !missingOperations.length &&
+    !blockers.length &&
+    !limitations.length &&
+    !operationReasonEntries.length
+  ) {
+    return null;
+  }
+
+  const label = missingOperations.length
+    ? `Needs ${missingOperations.slice(0, 2).map(formatOperationName).join(", ")}${
+        missingOperations.length > 2 ? `, +${formatCount(missingOperations.length - 2)}` : ""
+      }`
+    : blockers.length
+      ? `Blocked: ${formatSyntheticRejectionReason(blockers[0])}`
+      : `Limited: ${formatSyntheticRejectionReason(limitations[0])}`;
+
+  const title = [
+    missingOperations.length
+      ? `Missing operations: ${missingOperations.map(formatOperationName).join(", ")}`
+      : null,
+    blockers.length
+      ? `Blockers: ${blockers.map(formatSyntheticRejectionReason).join(", ")}`
+      : null,
+    limitations.length
+      ? `Limitations: ${limitations.map(formatSyntheticRejectionReason).join(", ")}`
+      : null,
+    ...operationReasonEntries.map(
+      ([operation, reasons]) =>
+        `${formatOperationName(operation)}: ${reasons
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+    ),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  return {
+    label,
+    title: title || undefined,
+  };
+};
+
+const SynthesisMerchantQualityPanel: React.FC<SynthesisEvidenceStripProps> = ({
+  synthesis,
+}) => {
+  if (!synthesis) return null;
+  const rows = buildMerchantQualityRows(synthesis);
+  if (!rows.length) return null;
+  const sourceByMerchant = sourceQualityMerchantMap(synthesis);
+
+  return (
+    <div
+      className={styles.synthesisMerchantQuality}
+      aria-label="Synthetic merchant quality"
+    >
+      {rows.slice(0, 3).map((merchant) => {
+        const merchantName = merchant.merchant_name || "Unknown merchant";
+        const accepted = merchant.accepted_count ?? 0;
+        const candidateCount = merchant.candidate_count ?? 0;
+        const rejected = merchant.rejected_count ?? 0;
+        const firstExample = (merchant.accepted_examples || [])[0];
+        const previewLine =
+          firstExample?.preview_lines?.find((line) => line.synthetic_insert)?.text ||
+          firstExample?.preview_lines?.[0]?.text ||
+          firstExample?.changed_text ||
+          (firstExample?.label && firstExample?.field_replacement?.new_text
+            ? `${formatFieldName(firstExample.label)} ${firstExample.field_replacement.new_text}`
+            : null);
+        const checks = (firstExample?.accuracy_checks || [])
+          .slice(0, 2)
+          .map(formatEvidenceCheck);
+        const grounding = summarizeExampleGrounding(firstExample);
+        const shapeSummary = summarizeStructureEvidence(
+          firstExample?.structure_evidence
+        );
+        const layoutSummary = summarizeLayoutIntegrity(
+          firstExample?.layout_integrity
+        );
+        const selectionSummary = summarizeSelectionEvidence(firstExample);
+        const evidenceTitle = [
+          layoutSummary.title,
+          shapeSummary.title,
+          selectionSummary.title,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        const evidenceDetail = [
+          grounding,
+          layoutSummary.label,
+          shapeSummary.label,
+          selectionSummary.label,
+          ...checks,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .slice(0, 3)
+          .join(" · ");
+        const rejectionTitle = summarizeSyntheticRejections(
+          merchant.rejection_reasons,
+          rejected
+        );
+        const operationSummary = summarizeOperationCounts(
+          merchant.accepted_operation_counts,
+          merchant.contract_ready_operations
+        );
+        const operationGapSummary = summarizeMerchantOperationGaps(merchant);
+        const status = merchant.readiness_status || "unknown";
+        const sourceSummary = summarizeSourceQualityMerchant(
+          sourceByMerchant.get(merchantName) || reportMerchantSourceQuality(merchant)
+        );
+
+        return (
+          <div
+            key={merchantName}
+            className={styles.synthesisMerchantCard}
+            data-status={status}
+          >
+            <div className={styles.synthesisMerchantHeader}>
+              <strong>{merchantName}</strong>
+              <span>{formatReadinessStatus(status)}</span>
+            </div>
+            <div className={styles.synthesisMerchantMeta}>
+              {sourceSummary && (
+                <span title={sourceSummary.title}>{sourceSummary.label}</span>
+              )}
+              <span>
+                {formatCount(accepted)}
+                {candidateCount ? ` / ${formatCount(candidateCount)}` : ""} accepted
+              </span>
+              <span>{formatSimilarity(merchant.accepted_structure_similarity?.avg)} sim</span>
+              {rejected > 0 && (
+                <span title={rejectionTitle.title}>
+                  {formatCount(rejected)} rejected
+                </span>
+              )}
+            </div>
+            <div className={styles.synthesisMerchantOps}>{operationSummary}</div>
+            {operationGapSummary && (
+              <div
+                className={styles.synthesisMerchantGap}
+                title={operationGapSummary.title}
+              >
+                {operationGapSummary.label}
+              </div>
+            )}
+            {previewLine && (
+              <div
+                className={styles.synthesisMerchantEvidence}
+                title={evidenceTitle}
+              >
+                <span>{previewLine}</span>
+                {evidenceDetail && <em>{evidenceDetail}</em>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
+  synthesis,
+}) => {
+  if (!synthesis) return null;
+
+  const candidateCount = synthesis.candidate_count ?? 0;
+  const groundedCount =
+    synthesis.accepted_grounded_candidate_count ??
+    synthesis.grounded_candidate_count ??
+    0;
+  const acceptedSynthetic =
+    synthesis.bundle_candidates_accepted ??
+    synthesis.synthetic_candidates_accepted ??
+    synthesis.synthetic_train_examples ??
+    null;
+  const seenSynthetic =
+    synthesis.bundle_candidates_seen ?? synthesis.synthetic_candidates_seen ?? null;
+  const rejectedSynthetic =
+    synthesis.bundle_candidates_rejected ??
+    synthesis.synthetic_candidates_rejected ??
+    synthesis.rejected_count ??
+    0;
+  const groundedShare =
+    synthesis.grounded_candidate_share ??
+    (candidateCount ? groundedCount / candidateCount : null);
+  const acceptedMerchantCount = synthesis.accepted_merchant_count ?? null;
+  const readyMerchantCount =
+    acceptedMerchantCount ??
+    synthesis.ready_merchant_count ??
+    synthesis.readiness_status_counts?.ready ??
+    null;
+  const blockedMerchantCount =
+    synthesis.readiness_status_counts?.blocked ??
+    synthesis.candidate_mix_merchants?.filter(
+      (merchant) =>
+        (merchant.rejection_reasons?.merchant_synthesis_not_ready ?? 0) > 0
+    ).length ??
+    0;
+  const merchantEvidenceLabel =
+    acceptedMerchantCount != null ? "Accepted merchants" : "Ready merchants";
+  const readinessTotal = synthesis.merchant_count ?? null;
+  const avgReadinessScore = synthesis.avg_readiness_score ?? null;
+  const merchantEvidenceDetails = [
+    blockedMerchantCount ? `${formatCount(blockedMerchantCount)} blocked` : null,
+    acceptedMerchantCount == null && avgReadinessScore
+      ? formatPercent(avgReadinessScore)
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  const arithmeticUpdateCount = Object.values(
+    synthesis.arithmetic_update_counts || {}
+  ).reduce((sum, count) => sum + count, 0);
+  const arithmeticCandidateCount =
+    synthesis.accepted_arithmetic_candidate_count ??
+    synthesis.arithmetic_candidate_count ??
+    0;
+  const hasArtifact = synthesis.status === "available";
+  const statusLabel = hasArtifact ? "Artifact" : "Metrics";
+  const rejectionSummary = rejectedSynthetic
+    ? summarizeSyntheticRejections(
+        synthesis.bundle_rejection_reasons ??
+          synthesis.synthetic_rejection_reasons ??
+          synthesis.rejection_reasons,
+        rejectedSynthetic
+      )
+    : null;
+  const categorySummary = summarizeCategoryCounts(
+    synthesis.accepted_category_counts ?? synthesis.category_counts
+  );
+  const fieldReplacementSummary = summarizeFieldReplacementCounts(
+    synthesis.accepted_field_replacement_counts ??
+      synthesis.field_replacement_counts,
+    synthesis.candidate_examples
+  );
+  const candidateQualitySummary = summarizeCandidateQuality(synthesis);
+  const merchantGapSummary = summarizeMerchantGaps(synthesis);
+  const sourceReceiptQualitySummary = summarizeSourceReceiptQuality(synthesis);
+  const contractSummary = summarizeContractCoverage(synthesis);
+  const llmExecutionSummary = summarizeLlmExecution(synthesis);
+  const receiptPreviewSummary = summarizeReceiptPreview(
+    synthesis.candidate_examples
+  );
+  const structureGateSummary = summarizeStructureComponentGate(synthesis);
+  const realBaselineSummary = summarizeRealBaselineComparison(
+    synthesis.accepted_real_baseline_comparison ??
+      synthesis.synthetic_accepted_real_baseline_comparison ??
+      synthesis.quality_report?.summary?.accepted_real_baseline_comparison
+  );
+  const mixBalanceSummary = summarizeMixBalance(
+    synthesis.accepted_mix_balance ??
+      synthesis.synthetic_accepted_mix_balance ??
+      synthesis.quality_report?.summary?.accepted_mix_balance
+  );
+
+  return (
+    <div
+      className={styles.synthesisEvidencePanel}
+      aria-label="Synthetic receipt grounding evidence"
+    >
+      <div className={styles.synthesisEvidenceStrip}>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={rejectionSummary?.title}>
+            {rejectionSummary ? rejectionSummary.label : statusLabel}
+          </span>
+          <strong>
+            {formatCount(acceptedSynthetic)}
+            {seenSynthetic ? ` / ${formatCount(seenSynthetic)}` : ""} synth
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>Grounded</span>
+          <strong>
+            {formatCount(groundedCount)}
+            {candidateCount ? ` / ${formatCount(candidateCount)}` : ""}
+            {candidateCount ? ` (${formatPercent(groundedShare)})` : ""}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={candidateQualitySummary?.title}>Fidelity</span>
+          <strong title={candidateQualitySummary?.title}>
+            {candidateQualitySummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>{merchantEvidenceLabel}</span>
+          <strong>
+            {formatCount(readyMerchantCount)}
+            {readinessTotal ? ` / ${formatCount(readinessTotal)}` : ""}
+            {merchantEvidenceDetails.length
+              ? ` (${merchantEvidenceDetails.join(", ")})`
+              : ""}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={merchantGapSummary?.title}>Merchant gaps</span>
+          <strong title={merchantGapSummary?.title}>
+            {merchantGapSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={mixBalanceSummary?.title}>Mix balance</span>
+          <strong title={mixBalanceSummary?.title}>
+            {mixBalanceSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={sourceReceiptQualitySummary?.title}>Source receipts</span>
+          <strong title={sourceReceiptQualitySummary?.title}>
+            {sourceReceiptQualitySummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>Contracts</span>
+          <strong title={contractSummary?.title}>
+            {contractSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={llmExecutionSummary?.title}>LLM mode</span>
+          <strong title={llmExecutionSummary?.title}>
+            {llmExecutionSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={structureGateSummary?.title}>Avg similarity</span>
+          <strong title={structureGateSummary?.title}>
+            {formatSimilarity(
+              synthesis.accepted_structure_similarity?.avg ??
+                synthesis.avg_structure_similarity ??
+                synthesis.best_structure_similarity
+            )}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={realBaselineSummary?.title}>Real baseline</span>
+          <strong title={realBaselineSummary?.title}>
+            {realBaselineSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span title={structureGateSummary?.title}>Geometry gate</span>
+          <strong title={structureGateSummary?.title}>
+            {structureGateSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>Receipt preview</span>
+          <strong title={receiptPreviewSummary?.title}>
+            {receiptPreviewSummary?.label ?? categorySummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>Field edits</span>
+          <strong title={fieldReplacementSummary?.title}>
+            {fieldReplacementSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div className={styles.synthesisEvidenceMetric}>
+          <span>Arithmetic</span>
+          <strong>
+            {formatCount(arithmeticCandidateCount)} edits
+            {arithmeticUpdateCount
+              ? ` / ${formatCount(arithmeticUpdateCount)} rows`
+              : ""}
+          </strong>
+        </div>
+      </div>
+      <SynthesisMerchantQualityPanel synthesis={synthesis} />
+    </div>
   );
 };
 
@@ -448,8 +2158,12 @@ const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
     return null;
   }
 
-  const { num_train_samples, num_val_samples, o_entity_ratio_train } =
-    datasetMetrics;
+  const {
+    num_train_samples,
+    num_val_samples,
+    o_entity_ratio_train,
+    synthetic_train_examples,
+  } = datasetMetrics;
 
   // Calculate percentages for train/val split
   const total = num_train_samples + num_val_samples;
@@ -457,6 +2171,9 @@ const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
 
   const trainPercent = (num_train_samples / total) * 100;
   const valPercent = (num_val_samples / total) * 100;
+  const hasSyntheticExamples =
+    Number.isFinite(synthetic_train_examples) &&
+    (synthetic_train_examples as number) > 0;
 
   // Calculate percentages for O:entity ratio
   // ratio = O / entity, so entity% = 1 / (1 + ratio), O% = ratio / (1 + ratio)
@@ -484,6 +2201,14 @@ const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
         <span className={styles.statValues}>
           {num_train_samples.toLocaleString()} / {num_val_samples.toLocaleString()}
         </span>
+        {hasSyntheticExamples && (
+          <span
+            className={styles.statNote}
+            title="Train-only synthetic examples included in the training count"
+          >
+            {(synthetic_train_examples as number).toLocaleString()} synth
+          </span>
+        )}
       </div>
 
       {/* O:Entity Ratio Bar */}
@@ -740,6 +2465,210 @@ const MatrixCell: React.FC<MatrixCellProps> = ({ value, rowSum, isDiagonal }) =>
   );
 };
 
+interface TopConfusionPairsProps {
+  labels: string[];
+  matrix: number[][];
+}
+
+const TopConfusionPairs: React.FC<TopConfusionPairsProps> = ({
+  labels,
+  matrix,
+}) => {
+  const pairs = useMemo(
+    () => buildTopConfusionPairs(labels, matrix, 3),
+    [labels, matrix]
+  );
+
+  if (pairs.length === 0) return null;
+
+  const maxCount = Math.max(...pairs.map((pair) => pair.count), 1);
+
+  return (
+    <div
+      className={styles.confusionPairs}
+      aria-label="Top confusion pairs and synthetic receipt targets"
+    >
+      <div className={styles.confusionPairsHeader}>
+        <span>Top Confusions</span>
+        <span>Pattern Target</span>
+      </div>
+      {pairs.map((pair) => (
+        <ConfusionPairRow
+          key={pair.id}
+          pair={pair}
+          maxCount={maxCount}
+        />
+      ))}
+      <PatternHeatmapPanel pairs={pairs} />
+    </div>
+  );
+};
+
+interface ConfusionPairRowProps {
+  pair: ConfusionPair;
+  maxCount: number;
+}
+
+const ConfusionPairRow: React.FC<ConfusionPairRowProps> = ({
+  pair,
+  maxCount,
+}) => {
+  const widthPct = Math.max(8, Math.min(100, (pair.count / maxCount) * 100));
+
+  return (
+    <div className={styles.confusionPairRow}>
+      <div className={styles.confusionPairMetric}>
+        <div className={styles.confusionPairLabels}>
+          <span>{formatLabel(pair.actualLabel)}</span>
+          <span className={styles.confusionArrow}>→</span>
+          <span>{formatLabel(pair.predictedLabel)}</span>
+        </div>
+        <div className={styles.confusionPairBar}>
+          <span style={{ width: `${widthPct}%` }} />
+        </div>
+        <div className={styles.confusionPairCount}>
+          {pair.count.toLocaleString()} · {(pair.share * 100).toFixed(0)}%
+        </div>
+      </div>
+      <div className={styles.confusionPairTarget}>
+        <span className={styles.patternTarget}>{pair.patternTarget}</span>
+        <span className={styles.syntheticTarget}>{pair.syntheticTarget}</span>
+        <span className={styles.llmCue}>{pair.llmCue}</span>
+      </div>
+    </div>
+  );
+};
+
+const RECEIPT_HEATMAP_BANDS: {
+  zone: ReceiptHeatmapZone;
+  y: number;
+  height: number;
+}[] = [
+  { zone: "header", y: 18, height: 42 },
+  { zone: "identity", y: 66, height: 50 },
+  { zone: "items", y: 124, height: 86 },
+  { zone: "totals", y: 218, height: 42 },
+  { zone: "footer", y: 266, height: 26 },
+];
+
+const RECEIPT_HEATMAP_LABELS: Record<ReceiptHeatmapZone, string> = {
+  header: "Header",
+  identity: "Identity",
+  items: "Items",
+  totals: "Totals",
+  footer: "Footer",
+};
+
+interface PatternHeatmapPanelProps {
+  pairs: ConfusionPair[];
+}
+
+const PatternHeatmapPanel: React.FC<PatternHeatmapPanelProps> = ({
+  pairs,
+}) => {
+  const plan = useMemo(() => buildPatternHeatmapPlan(pairs), [pairs]);
+  if (plan.cells.length === 0) return null;
+
+  const cellsByZone = new Map(plan.cells.map((cell) => [cell.zone, cell]));
+  const primaryCells = plan.cells.slice(0, 3);
+
+  return (
+    <div
+      className={styles.patternMiningPanel}
+      aria-label="Receipt-zone heatmap and synthetic receipt plan"
+    >
+      <svg
+        className={styles.receiptHeatmap}
+        viewBox="0 0 190 310"
+        role="img"
+        aria-label="Receipt heatmap of confusion-prone zones"
+      >
+        <title>Confusion-pair heatmap projected onto receipt zones</title>
+        <rect
+          className={styles.receiptHeatmapPaper}
+          x="22"
+          y="8"
+          width="146"
+          height="294"
+          rx="4"
+        />
+        {RECEIPT_HEATMAP_BANDS.map((band) => {
+          const cell = cellsByZone.get(band.zone);
+          const alpha = cell ? 0.1 + cell.intensity * 0.48 : 0.05;
+          return (
+            <g key={band.zone}>
+              <rect
+                className={styles.receiptHeatmapZone}
+                x="34"
+                y={band.y}
+                width="122"
+                height={band.height}
+                rx="3"
+                style={{
+                  fill: `rgba(var(--color-red-rgb), ${alpha})`,
+                }}
+              />
+              <text
+                className={styles.receiptHeatmapLabel}
+                x="42"
+                y={band.y + 16}
+              >
+                {cell?.label || RECEIPT_HEATMAP_LABELS[band.zone]}
+              </text>
+              {cell && (
+                <text
+                  className={styles.receiptHeatmapCount}
+                  x="148"
+                  y={band.y + 16}
+                  textAnchor="end"
+                >
+                  {cell.count}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        <path
+          className={styles.receiptHeatmapFold}
+          d="M34 292 L48 278 L62 292 L76 278 L90 292 L104 278 L118 292 L132 278 L156 292"
+        />
+      </svg>
+
+      <div className={styles.patternMiningSummary}>
+        <div className={styles.patternMiningTitle}>Pattern Mining</div>
+        <div className={styles.patternMiningMeta}>
+          {plan.syntheticReceiptCount} train-only synthetic receipts
+        </div>
+        {primaryCells.map((cell) => (
+          <PatternHeatmapCellRow key={cell.zone} cell={cell} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface PatternHeatmapCellRowProps {
+  cell: PatternHeatmapCell;
+}
+
+const PatternHeatmapCellRow: React.FC<PatternHeatmapCellRowProps> = ({
+  cell,
+}) => (
+  <div className={styles.patternHeatmapCellRow}>
+    <div className={styles.patternHeatmapCellHeader}>
+      <span>{cell.label}</span>
+      <span>{cell.count.toLocaleString()}</span>
+    </div>
+    <div className={styles.patternHeatmapCellBar}>
+      <span style={{ width: `${Math.round(cell.intensity * 100)}%` }} />
+    </div>
+    <div className={styles.patternHeatmapSynthetic}>
+      {cell.syntheticBrief}
+    </div>
+    <div className={styles.patternHeatmapPrompt}>{cell.llmPrompt}</div>
+  </div>
+);
+
 // Skeleton placeholder labels (match the 8 entity labels in the loaded state)
 const SKELETON_LABELS = [
   "Address", "Amount", "Date", "Merchant Name",
@@ -790,13 +2719,68 @@ const TrainingMetricsSkeleton: React.FC = () => {
           <line
             x1={SVG_PAD_X}
             x2={SVG_W_FALLBACK - SVG_PAD_X}
-            y1={SVG_H - SVG_PAD_BOTTOM}
-            y2={SVG_H - SVG_PAD_BOTTOM}
+            y1={F1_CHART_H - F1_PAD_BOTTOM}
+            y2={F1_CHART_H - F1_PAD_BOTTOM}
+            stroke={SKELETON_BG}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={SVG_PAD_X}
+            x2={SVG_W_FALLBACK - SVG_PAD_X}
+            y1={LOSS_STRIP_TOP - 7}
+            y2={LOSS_STRIP_TOP - 7}
             stroke={SKELETON_BG}
             strokeWidth={1.5}
             vectorEffect="non-scaling-stroke"
           />
         </svg>
+      </div>
+      <div className={styles.synthesisEvidencePanel} aria-hidden="true">
+        <div className={styles.synthesisEvidenceStrip}>
+          {Array.from({ length: 15 }, (_, idx) => (
+            <div key={idx} className={styles.synthesisEvidenceMetric}>
+              <span
+                className={styles.confusionPairSkeletonText}
+                style={{ width: idx === 3 ? 58 : 42 }}
+              />
+              <strong
+                className={styles.confusionPairSkeletonText}
+                style={{ width: idx === 3 ? 88 : 54 }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className={styles.synthesisMerchantQuality}>
+          {[0, 1, 2].map((idx) => (
+            <div key={idx} className={styles.synthesisMerchantCard}>
+              <div className={styles.synthesisMerchantHeader}>
+                <strong
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: idx === 1 ? 112 : 84 }}
+                />
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: 42 }}
+                />
+              </div>
+              <div className={styles.synthesisMerchantMeta}>
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: 64 }}
+                />
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: 42 }}
+                />
+              </div>
+              <div
+                className={styles.confusionPairSkeletonText}
+                style={{ width: "68%" }}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Mobile timeline skeleton */}
@@ -864,6 +2848,112 @@ const TrainingMetricsSkeleton: React.FC = () => {
             ))}
           </div>
         </div>
+        <div className={styles.confusionPairs} aria-hidden="true">
+          <div className={styles.confusionPairsHeader}>
+            <span>Top Confusions</span>
+            <span>Pattern Target</span>
+          </div>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className={styles.confusionPairRow}>
+              <div className={styles.confusionPairMetric}>
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: row === 0 ? "82%" : row === 1 ? "68%" : "74%" }}
+                />
+                <div className={styles.confusionPairBar}>
+                  <span
+                    style={{
+                      width: row === 0 ? "100%" : row === 1 ? "64%" : "42%",
+                      background: SKELETON_BG,
+                    }}
+                  />
+                </div>
+              </div>
+              <div className={styles.confusionPairTarget}>
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: "76%" }}
+                />
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: "56%" }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={styles.patternMiningPanel} aria-hidden="true">
+          <svg
+            className={styles.receiptHeatmap}
+            viewBox="0 0 190 310"
+            role="img"
+          >
+            <rect
+              className={styles.receiptHeatmapPaper}
+              x="22"
+              y="8"
+              width="146"
+              height="294"
+              rx="4"
+              style={{ opacity: 0.55 }}
+            />
+            {RECEIPT_HEATMAP_BANDS.map((band) => (
+              <rect
+                key={band.zone}
+                x="34"
+                y={band.y}
+                width="122"
+                height={band.height}
+                rx="3"
+                style={{ fill: SKELETON_BG }}
+              />
+            ))}
+            <path
+              className={styles.receiptHeatmapFold}
+              d="M34 292 L48 278 L62 292 L76 278 L90 292 L104 278 L118 292 L132 278 L156 292"
+            />
+          </svg>
+          <div className={styles.patternMiningSummary}>
+            <span
+              className={styles.confusionPairSkeletonText}
+              style={{ width: 92 }}
+            />
+            <span
+              className={styles.confusionPairSkeletonText}
+              style={{ width: 118, opacity: 0.7 }}
+            />
+            {[0, 1, 2].map((row) => (
+              <div key={row} className={styles.patternHeatmapCellRow}>
+                <div className={styles.patternHeatmapCellHeader}>
+                  <span
+                    className={styles.confusionPairSkeletonText}
+                    style={{ width: row === 0 ? 76 : 62 }}
+                  />
+                  <span
+                    className={styles.confusionPairSkeletonText}
+                    style={{ width: 24 }}
+                  />
+                </div>
+                <div className={styles.patternHeatmapCellBar}>
+                  <span
+                    style={{
+                      width: row === 0 ? "92%" : row === 1 ? "64%" : "42%",
+                      background: SKELETON_BG,
+                    }}
+                  />
+                </div>
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: "88%" }}
+                />
+                <span
+                  className={styles.confusionPairSkeletonText}
+                  style={{ width: "72%", opacity: 0.65 }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </>
   );
@@ -874,10 +2964,12 @@ const TrainingMetricsAnimation: React.FC = () => {
   const { ref: lazyRef, inView: nearViewport } = useInView({
     triggerOnce: true,
     rootMargin: "200px",
+    fallbackInView: true,
   });
   const { ref: animRef, inView } = useInView({
     threshold: 0.3,
     triggerOnce: true,
+    fallbackInView: true,
   });
   const setRefs = useCallback(
     (node: HTMLDivElement | null) => {
@@ -888,6 +2980,9 @@ const TrainingMetricsAnimation: React.FC = () => {
   );
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
   const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
+  const [synthesis, setSynthesis] = useState<TrainingSynthesisSummary | null>(
+    null
+  );
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
@@ -904,6 +2999,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       .then((data) => {
         setEpochs(data.epochs);
         setDatasetMetrics(data.dataset_metrics);
+        setSynthesis(data.synthesis ?? null);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -989,6 +3085,7 @@ const TrainingMetricsAnimation: React.FC = () => {
         currentIndex={currentEpochIndex}
         onSelectEpoch={handleSelectEpoch}
         showBestLabel={showBestLabel}
+        synthesis={synthesis}
       />
 
       <div className={styles.leftPanel}>
@@ -999,10 +3096,16 @@ const TrainingMetricsAnimation: React.FC = () => {
 
       <div className={styles.rightPanel}>
         {currentEpoch.confusion_matrix && (
-          <ConfusionMatrix
-            labels={currentEpoch.confusion_matrix.labels}
-            matrix={currentEpoch.confusion_matrix.matrix}
-          />
+          <>
+            <ConfusionMatrix
+              labels={currentEpoch.confusion_matrix.labels}
+              matrix={currentEpoch.confusion_matrix.matrix}
+            />
+            <TopConfusionPairs
+              labels={currentEpoch.confusion_matrix.labels}
+              matrix={currentEpoch.confusion_matrix.matrix}
+            />
+          </>
         )}
       </div>
     </div>

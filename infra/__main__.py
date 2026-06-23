@@ -470,11 +470,20 @@ pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 # -------------------------
 # LayoutLM training via SageMaker (toggle via config: ml-training:enable-sagemaker)
 
+# Shared resources for label evaluator pipeline (buckets used by multiple components)
+# Creating these first lets training consume pattern artifacts from the batch bucket.
+from components.shared_label_evaluator_resources import (
+    create_shared_label_evaluator_resources,
+)
+
+label_evaluator_shared = create_shared_label_evaluator_resources()
+
 ml_cfg = pulumi.Config("ml-training")
 enable_sagemaker = ml_cfg.get_bool("enable-sagemaker") or False
 
 # Training bucket - either from SageMaker training infra or existing bucket name
 layoutlm_training_bucket_name: Optional[Output[str]] = None
+layoutlm_start_training_lambda_arn: Optional[Output[str]] = None
 
 if enable_sagemaker:
     from sagemaker_training import SageMakerTrainingInfra
@@ -483,8 +492,12 @@ if enable_sagemaker:
         "layoutlm-sagemaker",
         dynamodb_table_name=dynamodb_table.name,
         raw_bucket_arn=upload_images.image_bucket.arn,
+        synthetic_source_bucket_arn=label_evaluator_shared.batch_bucket_arn,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
+    layoutlm_start_training_lambda_arn = (
+        sagemaker_training.start_training_lambda.arn
+    )
     pulumi.export(
         "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
     )
@@ -1432,14 +1445,6 @@ pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
-# Shared resources for label evaluator pipeline (buckets used by multiple components)
-# Creating these first breaks circular dependencies between EMR and Step Function
-from components.shared_label_evaluator_resources import (
-    create_shared_label_evaluator_resources,
-)
-
-label_evaluator_shared = create_shared_label_evaluator_resources()
-
 # NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
 # the default EMR image initially. After the CodeBuild pipeline completes, it will
 # update the EMR Application with the custom image (see emr_application_name above).
@@ -1477,6 +1482,7 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
     # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
     cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
+    layoutlm_start_training_lambda_arn=layoutlm_start_training_lambda_arn,
     batch_bucket_name=label_evaluator_shared.batch_bucket_name,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
 )
@@ -1484,6 +1490,10 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
 pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
+)
+pulumi.export(
+    "synthetic_augmentation_audit_lambda_arn",
+    label_evaluator_sf.synthetic_augmentation_audit_lambda_arn,
 )
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)

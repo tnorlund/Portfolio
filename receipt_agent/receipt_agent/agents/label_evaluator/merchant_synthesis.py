@@ -1,0 +1,3440 @@
+"""Generic merchant receipt parameterization and synthesis.
+
+This module is the merchant-agnostic bridge between the LLM's pattern
+understanding and LayoutLM train-only examples. It intentionally uses the
+same structured receipt data that pattern discovery sees: labels, token
+geometry, merchant-local examples, and line-item arithmetic anchors.
+"""
+
+from __future__ import annotations
+
+import copy
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from difflib import SequenceMatcher
+import re
+import statistics
+from typing import Any
+
+from receipt_dynamo.constants import CORE_LABELS
+
+
+CORE_LABEL_SET = set(CORE_LABELS.keys())
+UNKNOWN_CATEGORY = "UNCATEGORIZED"
+GENERIC_CATEGORY_HEADINGS = {
+    "APPAREL",
+    "BAKERY",
+    "BEER",
+    "BEVERAGES",
+    "BULK",
+    "CLOTHING",
+    "CRV",
+    "DAIRY",
+    "DELI",
+    "DRINKS",
+    "ELECTRONICS",
+    "FLORAL",
+    "FOOD",
+    "FROZEN",
+    "GROCERY",
+    "HOUSEWARES",
+    "MEAT",
+    "PHARMACY",
+    "PRODUCE",
+    "SEAFOOD",
+    "VITAMINS",
+    "WINE",
+}
+AMOUNT_LABELS = {
+    "GRAND_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "LINE_TOTAL",
+    "UNIT_PRICE",
+    "DISCOUNT",
+    "COUPON",
+    "TIP",
+    "CHANGE",
+    "CASH_BACK",
+    "REFUND",
+}
+SYNTHETIC_MIN_STRUCTURE_SIMILARITY = 0.60
+SYNTHETIC_STRUCTURE_COMPONENT_THRESHOLDS = {
+    "price_column": 0.75,
+    "line_step": 0.45,
+    "category_sequence": 0.40,
+    "category_set": 0.40,
+    "token_count": 0.35,
+}
+
+
+@dataclass
+class GeometrySummary:
+    """Compact percentile summary for one coordinate family."""
+
+    n: int
+    p10: float
+    p50: float
+    p90: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "n": self.n,
+            "p10": self.p10,
+            "p50": self.p50,
+            "p90": self.p90,
+        }
+
+
+@dataclass
+class MerchantLineItem:
+    """Parsed line item paired with a price row."""
+
+    line_index: int
+    line_indices: list[int]
+    amount: Decimal
+    product_text: str
+    center_y: float
+    taxable: bool
+    category: str = UNKNOWN_CATEGORY
+
+
+@dataclass
+class MerchantAnalysis:
+    """Parsed structure for one real or synthetic receipt."""
+
+    receipt: dict[str, Any]
+    line_items: list[MerchantLineItem]
+    subtotal: Decimal | None
+    tax_total: Decimal | None
+    grand_total: Decimal | None
+    grand_total_line_indices: list[int]
+    category_sequence: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MerchantCatalogEntry:
+    """Observed item text, price, and category evidence."""
+
+    product_text: str
+    amount: Decimal
+    category: str
+    taxable: bool
+    count: int
+    source_receipt_keys: list[str]
+
+    @property
+    def product_tokens(self) -> list[str]:
+        return self.product_text.split()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "product_text": self.product_text,
+            "product_tokens": self.product_tokens,
+            "line_total": _format_money(self.amount),
+            "category": self.category,
+            "taxable": self.taxable,
+            "observed_count": self.count,
+            "source_receipt_keys": self.source_receipt_keys[:5],
+        }
+
+
+def build_merchant_synthesis_profile(
+    merchant_name: str,
+    receipts_data: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Build a merchant-local synthesis profile from current receipt data."""
+    receipts = [
+        receipt
+        for receipt in (
+            _normalize_receipt(receipt) for receipt in receipts_data
+        )
+        if receipt["words"]
+    ]
+    if not receipts:
+        return None
+
+    analyses = [
+        analysis
+        for analysis in (_analyze_receipt(receipt) for receipt in receipts)
+        if analysis.line_items
+    ]
+    catalog = _build_item_catalog(analyses)
+    real_structure_baseline = build_real_structure_baseline(analyses)
+    label_slots = {
+        label: slot
+        for label in sorted(CORE_LABEL_SET)
+        if (slot := _label_slot(receipts, label))
+    }
+    mutable_fields = _summarize_mutable_fields(label_slots)
+    return {
+        "merchant_name": merchant_name,
+        "receipt_count": len(receipts),
+        "source_receipt_keys": [_receipt_key(receipt) for receipt in receipts],
+        "word_count": _summary(
+            [len(receipt["words"]) for receipt in receipts]
+        ).to_dict(),
+        "label_slots": label_slots,
+        "mutable_fields": mutable_fields,
+        "category_patterns": _summarize_categories(analyses),
+        "tax_policy": _summarize_tax_policy(analyses),
+        "real_structure_baseline": real_structure_baseline,
+        "observed_item_catalog": [entry.to_dict() for entry in catalog[:25]],
+        "synthesis_readiness": _build_synthesis_readiness(
+            merchant_name,
+            receipts=receipts,
+            analyses=analyses,
+            catalog=catalog,
+            label_slots=label_slots,
+            mutable_fields=mutable_fields,
+        ),
+        "generation_limits": {
+            "max_candidates_per_training_run": 5,
+            "max_arithmetic_candidates_per_training_run": 1,
+            "validation_split": "real_receipts_only",
+        },
+        "confidence_notes": [
+            "Built from current structured receipt data at pattern-build time.",
+            "Synthetic examples clone merchant-local token order and geometry.",
+            "Observed item additions require catalog evidence from another receipt.",
+        ],
+    }
+
+
+def build_merchant_synthesis_readiness(
+    merchant_name: str,
+    receipts_data: list[dict[str, Any]],
+    *,
+    plan: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Score whether a merchant has enough local evidence to synthesize safely."""
+    receipts = [
+        receipt
+        for receipt in (
+            _normalize_receipt(receipt) for receipt in receipts_data
+        )
+        if receipt["words"]
+    ]
+    if not receipts:
+        return None
+
+    analyses = [
+        analysis
+        for analysis in (_analyze_receipt(receipt) for receipt in receipts)
+        if analysis.line_items
+    ]
+    catalog = _build_item_catalog(analyses)
+    label_slots = {
+        label: slot
+        for label in sorted(CORE_LABEL_SET)
+        if (slot := _label_slot(receipts, label))
+    }
+    return _build_synthesis_readiness(
+        merchant_name,
+        receipts=receipts,
+        analyses=analyses,
+        catalog=catalog,
+        label_slots=label_slots,
+        mutable_fields=_summarize_mutable_fields(label_slots),
+        plan=plan,
+    )
+
+
+def generate_merchant_synthesis_candidates(
+    plan: dict[str, Any],
+    receipts_data: list[dict[str, Any]],
+    *,
+    max_candidates: int = 5,
+) -> list[dict[str, Any]]:
+    """Generate train-only candidates for any merchant with real receipts."""
+    merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
+    profile = build_merchant_synthesis_profile(merchant_name, receipts_data)
+    if profile is None:
+        return []
+
+    receipts = [
+        receipt
+        for receipt in (
+            _normalize_receipt(receipt) for receipt in receipts_data
+        )
+        if receipt["words"]
+    ]
+    analyses = [_analyze_receipt(receipt) for receipt in receipts]
+    catalog = _build_item_catalog(
+        [analysis for analysis in analyses if analysis.line_items]
+    )
+
+    candidates: list[dict[str, Any]] = []
+    for recipe in _false_positive_recipes(plan):
+        if len(candidates) >= min(max_candidates, 3):
+            break
+        candidate = _generate_hard_negative_candidate(
+            merchant_name,
+            profile,
+            receipts,
+            analyses,
+            recipe,
+            index=len(candidates) + 1,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    if len(candidates) < max_candidates:
+        arithmetic = _generate_add_item_candidate(
+            merchant_name,
+            profile,
+            analyses,
+            catalog,
+            index=len(candidates) + 1,
+        )
+        if arithmetic:
+            candidates.append(arithmetic)
+
+    if len(candidates) < max_candidates:
+        arithmetic = _generate_remove_item_candidate(
+            merchant_name,
+            profile,
+            analyses,
+            index=len(candidates) + 1,
+        )
+        if arithmetic:
+            candidates.append(arithmetic)
+
+    for label in ("DATE", "TIME"):
+        if len(candidates) >= max_candidates:
+            break
+        replacement = _generate_mutable_field_candidate(
+            merchant_name,
+            profile,
+            receipts,
+            analyses,
+            label=label,
+            index=len(candidates) + 1,
+        )
+        if replacement:
+            candidates.append(replacement)
+
+    return candidates[:max_candidates]
+
+
+def _false_positive_recipes(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    recipes = [
+        recipe
+        for recipe in plan.get("recipes", [])
+        if recipe.get("error_kind") == "false_positive"
+        and str(recipe.get("actual_label") or "").upper() == "O"
+    ]
+    recipes.sort(key=lambda recipe: str(recipe.get("predicted_label") or ""))
+    return recipes
+
+
+def _build_synthesis_readiness(
+    merchant_name: str,
+    *,
+    receipts: list[dict[str, Any]],
+    analyses: list[MerchantAnalysis],
+    catalog: list[MerchantCatalogEntry],
+    label_slots: dict[str, Any],
+    mutable_fields: dict[str, Any] | None = None,
+    plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a compact offline readiness score for merchant-local synthesis."""
+    mutable_fields = mutable_fields or {}
+    tax_policy = _summarize_tax_policy(analyses)
+    add_plans = _build_add_item_plans(analyses, catalog)
+    remove_plans = _build_remove_item_plans(analyses)
+    false_positive_recipes = _false_positive_recipes(plan or {})
+    ready_hard_negative_labels = _hard_negative_ready_labels(
+        false_positive_recipes,
+        label_slots,
+    )
+    potential_hard_negative_count = (
+        len(ready_hard_negative_labels)
+        if false_positive_recipes
+        else min(3, len(label_slots))
+    )
+
+    category_values = sorted(
+        {
+            item.category
+            for analysis in analyses
+            for item in analysis.line_items
+            if item.category != UNKNOWN_CATEGORY
+        }
+    )
+    receipts_with_grand_total = sum(
+        1 for analysis in analyses if analysis.grand_total is not None
+    )
+    receipts_with_subtotal = sum(
+        1 for analysis in analyses if analysis.subtotal is not None
+    )
+    receipts_with_categories = sum(
+        1 for analysis in analyses if analysis.category_sequence
+    )
+    cross_receipt_catalog_items = [
+        entry for entry in catalog if len(entry.source_receipt_keys) > 1
+    ]
+    supported_operations = []
+    if potential_hard_negative_count:
+        supported_operations.append("hard_negative")
+    if add_plans:
+        supported_operations.append("add_line_item")
+    if remove_plans:
+        supported_operations.append("remove_line_item")
+    if any(
+        field.get("safe_to_mutate") is True
+        for field in mutable_fields.values()
+    ):
+        supported_operations.append("replace_field")
+    mutable_field_count = sum(
+        1
+        for field in mutable_fields.values()
+        if field.get("safe_to_mutate") is True
+    )
+
+    blockers: list[str] = []
+    limitations: list[str] = []
+    if not receipts:
+        blockers.append("no_receipts")
+    if not analyses:
+        blockers.append("no_line_items")
+    if not catalog:
+        blockers.append("no_observed_item_catalog")
+    if not supported_operations:
+        blockers.append("no_supported_operations")
+    if false_positive_recipes and not ready_hard_negative_labels:
+        limitations.append("plan_has_no_supported_hard_negative_slots")
+    if not add_plans:
+        limitations.append("no_cross_receipt_grounded_add_items")
+    if not remove_plans:
+        limitations.append("no_removable_non_taxable_items")
+    if not receipts_with_grand_total:
+        limitations.append("no_grand_total_anchors")
+    if not category_values:
+        limitations.append("no_category_structure")
+    if _safe_int(tax_policy.get("taxable_item_count")) and not tax_policy.get(
+        "tax_changing_synthesis_ready"
+    ):
+        limitations.append("tax_changing_synthesis_not_enabled")
+
+    score_components = {
+        "receipt_depth": min(1.0, len(receipts) / 3.0),
+        "line_item_depth": min(1.0, len(analyses) / 2.0),
+        "catalog_grounding": min(1.0, len(catalog) / 4.0),
+        "category_structure": 1.0 if category_values else 0.0,
+        "summary_anchors": min(1.0, receipts_with_grand_total / 2.0),
+        "operation_support": min(1.0, len(supported_operations) / 2.0),
+        "label_geometry": min(1.0, len(label_slots) / 4.0),
+    }
+    weights = {
+        "receipt_depth": 0.12,
+        "line_item_depth": 0.16,
+        "catalog_grounding": 0.18,
+        "category_structure": 0.14,
+        "summary_anchors": 0.16,
+        "operation_support": 0.18,
+        "label_geometry": 0.06,
+    }
+    score = round(
+        sum(score_components[key] * weights[key] for key in weights),
+        3,
+    )
+    status = "ready"
+    if blockers or score < 0.4:
+        status = "blocked"
+    elif score < 0.7:
+        status = "partial"
+
+    return {
+        "merchant_name": merchant_name,
+        "status": status,
+        "score": score,
+        "score_components": {
+            key: round(value, 3) for key, value in score_components.items()
+        },
+        "supported_operations": supported_operations,
+        "candidate_capacity": min(
+            5,
+            potential_hard_negative_count
+            + len(add_plans)
+            + len(remove_plans)
+            + mutable_field_count,
+        ),
+        "hard_negative_label_count": potential_hard_negative_count,
+        "ready_hard_negative_labels": ready_hard_negative_labels,
+        "grounded_add_item_candidate_count": len(add_plans),
+        "removable_item_candidate_count": len(remove_plans),
+        "mutable_field_count": mutable_field_count,
+        "mutable_fields": {
+            label: field
+            for label, field in mutable_fields.items()
+            if field.get("safe_to_mutate") is True
+        },
+        "tax_policy": tax_policy,
+        "receipt_count": len(receipts),
+        "analyzed_receipt_count": len(analyses),
+        "line_item_count": sum(
+            len(analysis.line_items) for analysis in analyses
+        ),
+        "catalog_item_count": len(catalog),
+        "cross_receipt_catalog_item_count": len(cross_receipt_catalog_items),
+        "category_count": len(category_values),
+        "receipts_with_grand_total": receipts_with_grand_total,
+        "receipts_with_subtotal": receipts_with_subtotal,
+        "receipts_with_categories": receipts_with_categories,
+        "blockers": blockers,
+        "limitations": limitations,
+        "grounded_add_item_examples": [
+            _catalog_readiness_example(entry)
+            for _score, _analysis, entry, _y_center in add_plans[:5]
+        ],
+    }
+
+
+def _hard_negative_ready_labels(
+    recipes: list[dict[str, Any]],
+    label_slots: dict[str, Any],
+) -> list[str]:
+    labels = []
+    for recipe in recipes:
+        label = _normalize_label(recipe.get("predicted_label"))
+        if label != "O" and label in label_slots and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _catalog_readiness_example(entry: MerchantCatalogEntry) -> dict[str, Any]:
+    return {
+        "product_text": entry.product_text,
+        "category": entry.category,
+        "line_total": _format_money(entry.amount),
+        "observed_count": entry.count,
+        "source_receipt_count": len(entry.source_receipt_keys),
+    }
+
+
+def _generate_hard_negative_candidate(
+    merchant_name: str,
+    profile: dict[str, Any],
+    receipts: list[dict[str, Any]],
+    analyses: list[MerchantAnalysis],
+    recipe: dict[str, Any],
+    *,
+    index: int,
+) -> dict[str, Any] | None:
+    predicted_label = _normalize_label(recipe.get("predicted_label"))
+    slot = profile.get("label_slots", {}).get(predicted_label)
+    if not slot:
+        return None
+
+    base = _choose_base_receipt(receipts, used=index - 1)
+    mutated = copy.deepcopy(base)
+    tokens = _hard_negative_tokens(predicted_label)
+    x0 = max(25, min(900, int(round(slot["x"]["p50"] - 60))))
+    y0 = _nearest_open_y(mutated, x0, int(round(slot["y"]["p50"])), tokens)
+    _insert_line_sorted(mutated, _build_line(tokens, [], x0=x0, y0=y0))
+    row = _candidate_from_receipt(
+        mutated,
+        merchant_name,
+        source="merchant_parameterized_geometry",
+        operation="hard_negative",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(base),
+            "actual_label": "O",
+            "predicted_label": predicted_label,
+            "error_kind": "false_positive",
+            "mutation": "merchant_local_hard_negative",
+            "target_zone": recipe.get("target_zone") or {},
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(mutated),
+                analyses,
+            ),
+            "expected_label_effect": (
+                f"Improve {predicted_label} precision with a merchant-local O lookalike."
+            ),
+        },
+    )
+    return row if len(row["tokens"]) <= 220 else None
+
+
+def _generate_add_item_candidate(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    catalog: list[MerchantCatalogEntry],
+    *,
+    index: int,
+) -> dict[str, Any] | None:
+    plans = _build_add_item_plans(analyses, catalog)
+    if not plans:
+        return None
+
+    candidates = []
+    for plan_rank, (plan_score, analysis, entry, y_center) in enumerate(
+        plans,
+        start=1,
+    ):
+        candidate = _build_add_item_candidate_from_plan(
+            merchant_name,
+            profile,
+            analyses,
+            analysis,
+            entry,
+            y_center,
+            index=index,
+            plan_rank=plan_rank,
+            plan_count=len(plans),
+            plan_score=plan_score,
+        )
+        if candidate:
+            candidates.append(candidate)
+    return select_high_fidelity_synthesis_candidate(candidates)
+
+
+def _build_add_item_candidate_from_plan(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    analysis: MerchantAnalysis,
+    entry: MerchantCatalogEntry,
+    y_center: float,
+    *,
+    index: int,
+    plan_rank: int,
+    plan_count: int,
+    plan_score: float,
+) -> dict[str, Any] | None:
+    receipt = copy.deepcopy(analysis.receipt)
+    old_total = analysis.grand_total
+    if old_total is None:
+        return None
+    new_total = _money(old_total + entry.amount)
+    line_step = _line_step(analysis.line_items)
+    shifted_line_count = _shift_lines_below_for_insert(
+        receipt,
+        inserted_center_y=y_center,
+        delta=line_step,
+    )
+    line = _build_line_item_line(receipt, entry, y_center=y_center)
+    _insert_line_sorted(receipt, line)
+    arithmetic = _apply_non_taxable_delta(
+        receipt,
+        analysis,
+        delta=entry.amount,
+    )
+
+    return _candidate_from_receipt(
+        receipt,
+        merchant_name,
+        source="merchant_arithmetic_geometry",
+        operation="add_line_item",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(analysis.receipt),
+            "added_item": {
+                **entry.to_dict(),
+                "seen_in_other_receipt": any(
+                    key != _receipt_key(analysis.receipt)
+                    for key in entry.source_receipt_keys
+                ),
+            },
+            "observed_item_evidence": _observed_item_evidence(
+                entry,
+                analysis,
+                analyses,
+            ),
+            "category_insertion": {
+                "category": entry.category,
+                "y_center": round(float(y_center), 1),
+                "line_step": line_step,
+                "shifted_lower_lines_by": line_step,
+                "shifted_line_count": shifted_line_count,
+                "selection_reason": (
+                    "observed item from another receipt inserted into the "
+                    "same category block on the base receipt"
+                ),
+            },
+            "old_grand_total": _format_money(old_total),
+            "new_grand_total": _format_money(new_total),
+            "old_subtotal": (
+                _format_money(analysis.subtotal)
+                if analysis.subtotal is not None
+                else None
+            ),
+            "new_subtotal": arithmetic["new_subtotal"],
+            "tax_delta": "0.00",
+            "arithmetic_reconciliation": arithmetic,
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(receipt),
+                analyses,
+            ),
+            "generation_plan": {
+                "operation_plan_rank": plan_rank,
+                "operation_plan_count": plan_count,
+                "preselection_score": round(float(plan_score), 3),
+                "selection_basis": "all_feasible_add_item_plans_ranked_by_candidate_quality",
+            },
+            "balancing_strategy": "add observed non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+        },
+    )
+
+
+def _build_add_item_plans(
+    analyses: list[MerchantAnalysis],
+    catalog: list[MerchantCatalogEntry],
+) -> list[tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]]:
+    plans: list[
+        tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]
+    ] = []
+    for analysis in analyses:
+        if analysis.grand_total is None or not analysis.line_items:
+            continue
+        base_key = _receipt_key(analysis.receipt)
+        categories = {item.category for item in analysis.line_items}
+        existing_products = [item.product_text for item in analysis.line_items]
+        for entry in catalog:
+            if entry.taxable or entry.amount <= Decimal("0.00"):
+                continue
+            if entry.category not in categories:
+                continue
+            if _has_similar_product(entry.product_text, existing_products):
+                continue
+            y_center = _category_insert_y(analysis, entry.category)
+            if y_center is None:
+                continue
+            seen_elsewhere = any(
+                source_key != base_key
+                for source_key in entry.source_receipt_keys
+            )
+            if not seen_elsewhere:
+                continue
+            score = entry.count + (10 if seen_elsewhere else 0)
+            score += max(0, 6 - len(entry.product_tokens))
+            plans.append((score, analysis, entry, y_center))
+
+    return sorted(plans, key=lambda item: item[0], reverse=True)
+
+
+def _generate_remove_item_candidate(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    *,
+    index: int,
+) -> dict[str, Any] | None:
+    plans = _build_remove_item_plans(analyses)
+    if not plans:
+        return None
+
+    candidates = []
+    for plan_rank, (plan_score, analysis, removed) in enumerate(
+        plans, start=1
+    ):
+        candidate = _build_remove_item_candidate_from_plan(
+            merchant_name,
+            profile,
+            analyses,
+            analysis,
+            removed,
+            index=index,
+            plan_rank=plan_rank,
+            plan_count=len(plans),
+            plan_score=plan_score,
+        )
+        if candidate:
+            candidates.append(candidate)
+    return select_high_fidelity_synthesis_candidate(candidates)
+
+
+def _build_remove_item_candidate_from_plan(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    analysis: MerchantAnalysis,
+    removed: MerchantLineItem,
+    *,
+    index: int,
+    plan_rank: int,
+    plan_count: int,
+    plan_score: float,
+) -> dict[str, Any] | None:
+    receipt = copy.deepcopy(analysis.receipt)
+    refreshed = _analyze_receipt(receipt)
+    if refreshed.grand_total is None:
+        return None
+
+    matching = [
+        item
+        for item in refreshed.line_items
+        if _normalize_product_text(item.product_text)
+        == _normalize_product_text(removed.product_text)
+        and item.amount == removed.amount
+    ]
+    if not matching:
+        return None
+    removed = matching[0]
+    old_total = refreshed.grand_total
+    new_total = _money(max(Decimal("0.00"), old_total - removed.amount))
+
+    removed_center = removed.center_y
+    line_step = _line_step(refreshed.line_items)
+    for line_index in sorted(set(removed.line_indices), reverse=True):
+        if line_index < len(receipt.get("lines", [])):
+            del receipt["lines"][line_index]
+    _shift_lines_below(receipt, removed_center, line_step)
+    _refresh_words(receipt)
+    arithmetic = _apply_non_taxable_delta(
+        receipt,
+        refreshed,
+        delta=-removed.amount,
+    )
+
+    return _candidate_from_receipt(
+        receipt,
+        merchant_name,
+        source="merchant_arithmetic_geometry",
+        operation="remove_line_item",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(analysis.receipt),
+            "removed_item": {
+                "product_text": removed.product_text,
+                "line_total": _format_money(removed.amount),
+                "category": removed.category,
+                "taxable": removed.taxable,
+            },
+            "old_grand_total": _format_money(old_total),
+            "new_grand_total": _format_money(new_total),
+            "old_subtotal": (
+                _format_money(refreshed.subtotal)
+                if refreshed.subtotal is not None
+                else None
+            ),
+            "new_subtotal": arithmetic["new_subtotal"],
+            "tax_delta": "0.00",
+            "arithmetic_reconciliation": arithmetic,
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(receipt),
+                analyses,
+            ),
+            "generation_plan": {
+                "operation_plan_rank": plan_rank,
+                "operation_plan_count": plan_count,
+                "preselection_score": round(float(plan_score), 3),
+                "selection_basis": "all_feasible_remove_item_plans_ranked_by_candidate_quality",
+            },
+            "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+        },
+    )
+
+
+def _generate_mutable_field_candidate(
+    merchant_name: str,
+    profile: dict[str, Any],
+    receipts: list[dict[str, Any]],
+    analyses: list[MerchantAnalysis],
+    *,
+    label: str,
+    index: int,
+) -> dict[str, Any] | None:
+    field = (profile.get("mutable_fields") or {}).get(label)
+    if not isinstance(field, dict) or field.get("safe_to_mutate") is not True:
+        return None
+
+    base_receipts = [
+        receipt
+        for receipt in receipts
+        if any(
+            label in word.get("labels", [])
+            for word in receipt.get("words", [])
+        )
+    ]
+    if not base_receipts:
+        return None
+
+    base = _choose_base_receipt(base_receipts, used=index - 1)
+    mutated = copy.deepcopy(base)
+    old_text = _replace_first_labeled_word(
+        mutated,
+        label,
+        field=field,
+    )
+    if old_text is None:
+        return None
+    new_text = _next_mutable_field_value(label, old_text, field)
+    if not new_text or new_text == old_text:
+        return None
+    _replace_first_labeled_word(mutated, label, field=field, new_text=new_text)
+    _refresh_words(mutated)
+
+    return _candidate_from_receipt(
+        mutated,
+        merchant_name,
+        source="merchant_mutable_field_geometry",
+        operation="replace_field",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(base),
+            "field_replacement": {
+                "label": label,
+                "old_text": old_text,
+                "new_text": new_text,
+                "format": field.get("stable_format"),
+            },
+            "mutable_field_evidence": field,
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(mutated),
+                analyses,
+            ),
+            "balancing_strategy": (
+                f"replace {label.lower()} in-place; geometry and labels are preserved"
+            ),
+        },
+    )
+
+
+def _replace_first_labeled_word(
+    receipt: dict[str, Any],
+    label: str,
+    *,
+    field: dict[str, Any],
+    new_text: str | None = None,
+) -> str | None:
+    observed = {str(value) for value in field.get("examples") or []}
+    for line in receipt.get("lines", []) or []:
+        for word in line.get("words", []) or []:
+            if label not in word.get("labels", []):
+                continue
+            old_text = str(word.get("text") or "")
+            if observed and old_text not in observed:
+                continue
+            if new_text is not None:
+                word["text"] = new_text
+            return old_text
+    return None
+
+
+def _next_mutable_field_value(
+    label: str,
+    old_text: str,
+    field: dict[str, Any],
+) -> str | None:
+    pattern = str(field.get("stable_format") or "")
+    if label == "DATE":
+        return _next_date_value(old_text, pattern)
+    if label == "TIME":
+        return _next_time_value(old_text, pattern)
+    return None
+
+
+def _next_date_value(old_text: str, pattern: str) -> str | None:
+    formats = {
+        "MM/DD/YYYY": ("%m/%d/%Y", "%m/%d/%Y"),
+        "MM/DD/YY": ("%m/%d/%y", "%m/%d/%y"),
+        "YYYY-MM-DD": ("%Y-%m-%d", "%Y-%m-%d"),
+        "MM-DD-YYYY": ("%m-%d-%Y", "%m-%d-%Y"),
+        "MM-DD-YY": ("%m-%d-%y", "%m-%d-%y"),
+    }
+    if pattern not in formats:
+        return None
+    parse_format, output_format = formats[pattern]
+    try:
+        parsed = datetime.strptime(old_text.strip(), parse_format)
+    except ValueError:
+        return None
+    return (parsed + timedelta(days=1)).strftime(output_format)
+
+
+def _next_time_value(old_text: str, pattern: str) -> str | None:
+    raw = old_text.strip()
+    normalized = raw.upper().replace(" ", "")
+    formats = {
+        "HH:MM": ("%H:%M", "%H:%M"),
+        "HH:MM:SS": ("%H:%M:%S", "%H:%M:%S"),
+        "HH:MM AM/PM": ("%I:%M%p", "%I:%M%p"),
+        "HH:MM:SS AM/PM": ("%I:%M:%S%p", "%I:%M:%S%p"),
+    }
+    if pattern not in formats:
+        return None
+    parse_format, output_format = formats[pattern]
+    try:
+        parsed = datetime.strptime(normalized, parse_format)
+    except ValueError:
+        return None
+    formatted = (parsed + timedelta(minutes=17)).strftime(output_format)
+    if "AM/PM" in pattern and " " in raw:
+        formatted = formatted[:-2] + " " + formatted[-2:]
+    return formatted
+
+
+def _build_remove_item_plans(
+    analyses: list[MerchantAnalysis],
+) -> list[tuple[float, MerchantAnalysis, MerchantLineItem]]:
+    plans: list[tuple[float, MerchantAnalysis, MerchantLineItem]] = []
+    for analysis in analyses:
+        if analysis.grand_total is None or len(analysis.line_items) < 2:
+            continue
+        category_counts = Counter(
+            item.category for item in analysis.line_items
+        )
+        for item in analysis.line_items:
+            if item.taxable or item.amount <= Decimal("0.00"):
+                continue
+            if (
+                item.category != UNKNOWN_CATEGORY
+                and category_counts[item.category] <= 1
+            ):
+                continue
+            score = max(0, 20 - float(item.amount))
+            score += 8 if item.category != UNKNOWN_CATEGORY else 0
+            score += min(6, category_counts[item.category])
+            plans.append((score, analysis, item))
+    return sorted(plans, key=lambda item: item[0], reverse=True)
+
+
+def _candidate_from_receipt(
+    receipt: dict[str, Any],
+    merchant_name: str,
+    *,
+    source: str,
+    operation: str,
+    index: int,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    tokens, bboxes, tags = _flatten_lines(receipt.get("lines", []))
+    slug = _slug(f"{merchant_name}-{source}-{operation}-{index}")
+    candidate_metadata = {
+        "source": source,
+        "parameterization_version": "merchant-generic-v1",
+        "operation": operation,
+        "train_only_reason": (
+            "Synthetic examples target known model confusions and must not enter validation."
+        ),
+        **metadata,
+    }
+    candidate_metadata.setdefault(
+        "layout_integrity",
+        build_layout_integrity_evidence(receipt),
+    )
+    candidate_metadata.setdefault(
+        "candidate_quality",
+        build_synthesis_candidate_quality(
+            operation,
+            candidate_metadata,
+            token_count=len(tokens),
+        ),
+    )
+    candidate_metadata.setdefault(
+        "synthetic_receipt_preview",
+        build_synthetic_receipt_preview(receipt, candidate_metadata),
+    )
+    candidate_metadata.setdefault(
+        "synthesis_accuracy_evidence",
+        build_synthesis_accuracy_evidence(operation, candidate_metadata),
+    )
+    return {
+        "candidate_id": slug,
+        "recipe_id": f"{source}-{operation}",
+        "merchant_name": merchant_name,
+        "tokens": tokens,
+        "bboxes": bboxes,
+        "ner_tags": tags,
+        "receipt_key": f"synthetic-{slug}#00001",
+        "image_id": f"synthetic-{slug}",
+        "train_only": True,
+        "metadata": candidate_metadata,
+    }
+
+
+def build_synthetic_receipt_preview(
+    receipt: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+    *,
+    max_lines: int = 48,
+) -> dict[str, Any]:
+    """Build a compact visual/text preview for UI and audit artifacts."""
+    metadata = metadata or {}
+    raw_lines = [
+        line for line in receipt.get("lines", []) or [] if line.get("words")
+    ]
+    preview_lines = [
+        _preview_line(line, line_number=index + 1, metadata=metadata)
+        for index, line in enumerate(raw_lines[:max_lines])
+    ]
+    words = [
+        word
+        for line in raw_lines
+        for word in line.get("words", []) or []
+        if str(word.get("text") or "").strip()
+    ]
+    return {
+        "coordinate_system": "normalized_receipt_0_1000_y_high_is_top",
+        "line_count": len(raw_lines),
+        "token_count": len(words),
+        "truncated": len(raw_lines) > max_lines,
+        "text": "\n".join(line["text"] for line in preview_lines),
+        "lines": preview_lines,
+    }
+
+
+def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Validate generated receipt geometry before it can reach LayoutLM."""
+    lines = [
+        line for line in receipt.get("lines", []) or [] if line.get("words")
+    ]
+    words: list[dict[str, Any]] = []
+    invalid_words: list[dict[str, Any]] = []
+    out_of_bounds_words: list[dict[str, Any]] = []
+
+    for line_index, line in enumerate(lines):
+        for word_index, word in enumerate(line.get("words", []) or []):
+            bbox = word.get("bbox")
+            ref = {
+                "text": str(word.get("text") or ""),
+                "line_id": line.get("line_id"),
+                "line_index": line_index,
+                "word_index": word_index,
+            }
+            if not _valid_layout_box(bbox):
+                invalid_words.append(ref)
+                continue
+            if not _box_in_layout_bounds(bbox):
+                out_of_bounds_words.append({**ref, "bbox": list(bbox)})
+                continue
+            words.append({**ref, "bbox": list(bbox)})
+
+    overlaps: list[dict[str, Any]] = []
+    for left_index, left in enumerate(words):
+        for right in words[left_index + 1 :]:
+            if _boxes_have_significant_overlap(left["bbox"], right["bbox"]):
+                overlaps.append(
+                    {
+                        "left_text": left["text"],
+                        "right_text": right["text"],
+                        "left_line_id": left.get("line_id"),
+                        "right_line_id": right.get("line_id"),
+                    }
+                )
+
+    line_ys = [_line_y(line) for line in lines]
+    line_order_valid = all(
+        line_ys[index] >= line_ys[index + 1]
+        for index in range(len(line_ys) - 1)
+    )
+    score = _layout_integrity_score_from_counts(
+        overlap_count=len(overlaps),
+        invalid_count=len(invalid_words),
+        out_of_bounds_count=len(out_of_bounds_words),
+        line_order_valid=line_order_valid,
+    )
+    return {
+        "schema_version": "synthetic-layout-integrity-v1",
+        "score": score,
+        "passed": score >= 1.0,
+        "line_count": len(lines),
+        "word_count": len(words)
+        + len(invalid_words)
+        + len(out_of_bounds_words),
+        "overlap_pair_count": len(overlaps),
+        "out_of_bounds_word_count": len(out_of_bounds_words),
+        "invalid_word_box_count": len(invalid_words),
+        "line_order_valid": line_order_valid,
+        "overlap_examples": overlaps[:5],
+        "out_of_bounds_examples": out_of_bounds_words[:5],
+        "invalid_word_examples": invalid_words[:5],
+    }
+
+
+def build_synthesis_accuracy_evidence(
+    operation: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize why a generated candidate is considered safe enough."""
+    checks: list[str] = [
+        "train_only_real_validation_policy",
+        "merchant_local_geometry",
+    ]
+    structure = metadata.get("structure_similarity")
+    if isinstance(structure, dict) and structure.get("score") is not None:
+        checks.append("nearest_real_structure_similarity")
+    layout = metadata.get("layout_integrity")
+    if isinstance(layout, dict):
+        checks.append("layout_integrity_checked")
+        if layout.get("passed") is True:
+            checks.append("no_overlapping_or_out_of_bounds_boxes")
+
+    if operation == "add_line_item":
+        observed = metadata.get("observed_item_evidence")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        added = metadata.get("added_item")
+        if isinstance(observed, dict) and observed.get(
+            "product_seen_outside_base"
+        ):
+            checks.append("item_seen_in_other_receipt")
+        if isinstance(observed, dict) and observed.get(
+            "base_receipt_has_category"
+        ):
+            checks.append("base_receipt_has_category")
+        if isinstance(observed, dict) and _safe_int(
+            observed.get("category_heading_seen_count")
+        ):
+            checks.append("category_heading_seen_in_real_receipts")
+        if (
+            isinstance(arithmetic, dict)
+            and arithmetic.get("summary_update_policy")
+            == "non_taxable_item_delta"
+            and arithmetic.get("tax_delta") == "0.00"
+        ):
+            checks.append("non_taxable_arithmetic_reconciled")
+        return {
+            "operation": operation,
+            "checks": checks,
+            "changed_text": (
+                added.get("product_text") if isinstance(added, dict) else None
+            ),
+            "category": (
+                added.get("category") if isinstance(added, dict) else None
+            ),
+            "old_grand_total": metadata.get("old_grand_total"),
+            "new_grand_total": metadata.get("new_grand_total"),
+            "tax_delta": metadata.get("tax_delta"),
+            "layout_integrity": _compact_layout_integrity_evidence(layout),
+            "structure_similarity": _compact_structure_evidence(structure),
+            "catalog_grounding": _compact_catalog_grounding_evidence(
+                observed,
+                added,
+            ),
+            "category_placement": _compact_category_placement_evidence(
+                metadata,
+                observed,
+            ),
+        }
+
+    if operation == "remove_line_item":
+        removed = metadata.get("removed_item")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        if (
+            isinstance(arithmetic, dict)
+            and arithmetic.get("summary_update_policy")
+            == "non_taxable_item_delta"
+            and arithmetic.get("tax_delta") == "0.00"
+        ):
+            checks.append("non_taxable_arithmetic_reconciled")
+        if isinstance(removed, dict) and removed.get("taxable") is False:
+            checks.append("removed_item_non_taxable")
+        return {
+            "operation": operation,
+            "checks": checks,
+            "changed_text": (
+                removed.get("product_text")
+                if isinstance(removed, dict)
+                else None
+            ),
+            "category": (
+                removed.get("category") if isinstance(removed, dict) else None
+            ),
+            "old_grand_total": metadata.get("old_grand_total"),
+            "new_grand_total": metadata.get("new_grand_total"),
+            "tax_delta": metadata.get("tax_delta"),
+            "layout_integrity": _compact_layout_integrity_evidence(layout),
+            "structure_similarity": _compact_structure_evidence(structure),
+        }
+
+    if operation == "replace_field":
+        replacement = metadata.get("field_replacement")
+        field = metadata.get("mutable_field_evidence")
+        if isinstance(field, dict) and field.get("safe_to_mutate") is True:
+            checks.append("field_marked_safe_to_mutate")
+        if isinstance(field, dict) and field.get("stable_geometry") is True:
+            checks.append("stable_field_geometry")
+        if isinstance(field, dict) and field.get("stable_format"):
+            checks.append("stable_field_format")
+        return {
+            "operation": operation,
+            "checks": checks,
+            "label": (
+                replacement.get("label")
+                if isinstance(replacement, dict)
+                else None
+            ),
+            "old_text": (
+                replacement.get("old_text")
+                if isinstance(replacement, dict)
+                else None
+            ),
+            "new_text": (
+                replacement.get("new_text")
+                if isinstance(replacement, dict)
+                else None
+            ),
+            "format": (
+                replacement.get("format")
+                if isinstance(replacement, dict)
+                else None
+            ),
+            "layout_integrity": _compact_layout_integrity_evidence(layout),
+            "structure_similarity": _compact_structure_evidence(structure),
+        }
+
+    if operation == "hard_negative":
+        checks.append("inserted_o_label_distractor")
+        return {
+            "operation": operation,
+            "checks": checks,
+            "actual_label": metadata.get("actual_label"),
+            "predicted_label": metadata.get("predicted_label"),
+            "error_kind": metadata.get("error_kind"),
+            "layout_integrity": _compact_layout_integrity_evidence(layout),
+            "structure_similarity": _compact_structure_evidence(structure),
+        }
+
+    return {
+        "operation": operation,
+        "checks": checks,
+        "layout_integrity": _compact_layout_integrity_evidence(layout),
+        "structure_similarity": _compact_structure_evidence(structure),
+    }
+
+
+def build_synthesis_candidate_quality(
+    operation: str,
+    metadata: dict[str, Any],
+    *,
+    token_count: int | None = None,
+) -> dict[str, Any]:
+    """Score candidate fidelity from evidence already used by hard gates."""
+    structure = metadata.get("structure_similarity")
+    structure_score = 0.0
+    if isinstance(structure, dict):
+        structure_score = _safe_float(structure.get("score"), 0.0)
+    structure_gate = _structure_gate_details(structure)
+    layout_integrity = _layout_integrity_score(
+        metadata.get("layout_integrity")
+    )
+
+    components: dict[str, float] = {
+        "structure_similarity": _bounded_score(structure_score),
+        "structure_component_pass_rate": structure_gate["pass_rate"],
+        "layout_integrity": layout_integrity,
+        "token_budget": _token_budget_score(token_count),
+    }
+    weights: dict[str, float] = {
+        "structure_similarity": 0.50,
+        "structure_component_pass_rate": 0.10,
+        "layout_integrity": 0.18,
+        "token_budget": 0.22,
+    }
+
+    if operation == "add_line_item":
+        observed = metadata.get("observed_item_evidence")
+        added = metadata.get("added_item")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        components.update(
+            {
+                "cross_receipt_grounding": _cross_receipt_grounding_score(
+                    observed,
+                    added,
+                ),
+                "category_alignment": _category_alignment_score(observed),
+                "arithmetic_reconciliation": _arithmetic_reconciliation_score(
+                    arithmetic,
+                    expected_tax_delta="0.00",
+                ),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.24,
+            "structure_component_pass_rate": 0.06,
+            "layout_integrity": 0.10,
+            "cross_receipt_grounding": 0.22,
+            "category_alignment": 0.15,
+            "arithmetic_reconciliation": 0.18,
+            "token_budget": 0.05,
+        }
+    elif operation == "remove_line_item":
+        removed = metadata.get("removed_item")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        components.update(
+            {
+                "removed_item_safe": (
+                    1.0
+                    if isinstance(removed, dict)
+                    and removed.get("taxable") is False
+                    else 0.0
+                ),
+                "arithmetic_reconciliation": _arithmetic_reconciliation_score(
+                    arithmetic,
+                    expected_tax_delta="0.00",
+                ),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.32,
+            "structure_component_pass_rate": 0.08,
+            "layout_integrity": 0.12,
+            "removed_item_safe": 0.22,
+            "arithmetic_reconciliation": 0.24,
+            "token_budget": 0.02,
+        }
+    elif operation == "replace_field":
+        field = metadata.get("mutable_field_evidence")
+        components.update(
+            {
+                "safe_mutable_field": (
+                    1.0
+                    if isinstance(field, dict)
+                    and field.get("safe_to_mutate") is True
+                    else 0.0
+                ),
+                "stable_field_geometry": (
+                    1.0
+                    if isinstance(field, dict)
+                    and field.get("stable_geometry") is True
+                    else 0.0
+                ),
+                "stable_field_format": (
+                    1.0
+                    if isinstance(field, dict) and field.get("stable_format")
+                    else 0.0
+                ),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.26,
+            "structure_component_pass_rate": 0.08,
+            "layout_integrity": 0.10,
+            "safe_mutable_field": 0.22,
+            "stable_field_geometry": 0.16,
+            "stable_field_format": 0.16,
+            "token_budget": 0.02,
+        }
+    elif operation == "hard_negative":
+        components.update(
+            {
+                "target_label_slot": (
+                    1.0
+                    if metadata.get("actual_label") == "O"
+                    and metadata.get("predicted_label")
+                    else 0.0
+                ),
+                "local_distractor": (1.0 if metadata.get("mutation") else 0.0),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.36,
+            "structure_component_pass_rate": 0.08,
+            "layout_integrity": 0.12,
+            "target_label_slot": 0.22,
+            "local_distractor": 0.16,
+            "token_budget": 0.06,
+        }
+
+    score = round(
+        sum(
+            components.get(name, 0.0) * weight
+            for name, weight in weights.items()
+        ),
+        3,
+    )
+    return {
+        "schema_version": "synthetic-candidate-quality-v1",
+        "score": score,
+        "high_fidelity": (
+            score >= 0.75
+            and components["structure_similarity"]
+            >= SYNTHETIC_MIN_STRUCTURE_SIMILARITY
+            and components["layout_integrity"] >= 1.0
+            and structure_gate["passed"] is True
+        ),
+        "components": {
+            key: round(value, 3) for key, value in sorted(components.items())
+        },
+        "structure_gate": structure_gate,
+        "selection_policy": (
+            "Prefer merchant-local candidates with strong nearest-real structure, "
+            "cross-receipt grounding for item additions, arithmetic reconciliation "
+            "for total-changing edits, and stable geometry for field replacements."
+        ),
+    }
+
+
+def select_high_fidelity_synthesis_candidate(
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Select the best feasible mutation using the same fidelity evidence as gates."""
+    if not candidates:
+        return None
+
+    ranked = sorted(
+        enumerate(candidates),
+        key=lambda item: (*_candidate_selection_key(item[1]), -item[0]),
+        reverse=True,
+    )
+    selected_index, selected = ranked[0]
+    metadata = selected.get("metadata")
+    if not isinstance(metadata, dict):
+        return selected
+
+    metadata["selection_evidence"] = {
+        "schema_version": "synthetic-candidate-selection-v1",
+        "selected_from_candidate_count": len(candidates),
+        "selected_input_index": selected_index,
+        "ranked_by": [
+            "candidate_quality.high_fidelity",
+            "real_baseline_comparison.within_real_score_range",
+            "candidate_quality.score",
+            "real_baseline_comparison.delta_from_min",
+            "structure_similarity.score",
+            "structure_component_pass_rate",
+            "layout_integrity",
+            "token_budget",
+        ],
+        "selected_score": _candidate_selection_summary(selected),
+        "selection_policy": (
+            "Generate feasible merchant-local mutations, then keep the highest "
+            "fidelity option instead of maximizing synthetic volume."
+        ),
+    }
+    return selected
+
+
+def _candidate_selection_key(candidate: dict[str, Any]) -> tuple[float, ...]:
+    metadata = candidate.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    quality = metadata.get("candidate_quality")
+    quality = quality if isinstance(quality, dict) else {}
+    components = quality.get("components")
+    components = components if isinstance(components, dict) else {}
+    structure = metadata.get("structure_similarity")
+    structure = structure if isinstance(structure, dict) else {}
+    baseline = structure.get("real_baseline_comparison")
+    baseline = baseline if isinstance(baseline, dict) else {}
+
+    within_baseline = baseline.get("within_real_score_range")
+    baseline_signal = 0.5
+    if within_baseline is True:
+        baseline_signal = 1.0
+    elif within_baseline is False:
+        baseline_signal = 0.0
+
+    return (
+        1.0 if quality.get("high_fidelity") is True else 0.0,
+        baseline_signal,
+        _bounded_score(quality.get("score")),
+        _safe_float(baseline.get("delta_from_min"), 0.0),
+        _bounded_score(structure.get("score")),
+        _bounded_score(components.get("structure_component_pass_rate")),
+        _bounded_score(components.get("layout_integrity")),
+        _bounded_score(components.get("token_budget")),
+        -float(len(candidate.get("tokens") or [])),
+    )
+
+
+def _candidate_selection_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+    metadata = candidate.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    quality = metadata.get("candidate_quality")
+    quality = quality if isinstance(quality, dict) else {}
+    components = quality.get("components")
+    components = components if isinstance(components, dict) else {}
+    structure = metadata.get("structure_similarity")
+    structure = structure if isinstance(structure, dict) else {}
+    baseline = structure.get("real_baseline_comparison")
+    baseline = baseline if isinstance(baseline, dict) else {}
+    summary = {
+        "candidate_quality": _safe_float(quality.get("score"), 0.0),
+        "high_fidelity": quality.get("high_fidelity") is True,
+        "structure_similarity": _safe_float(structure.get("score"), 0.0),
+        "structure_component_pass_rate": _safe_float(
+            components.get("structure_component_pass_rate"),
+            0.0,
+        ),
+        "layout_integrity": _safe_float(
+            components.get("layout_integrity"),
+            0.0,
+        ),
+        "token_budget": _safe_float(components.get("token_budget"), 0.0),
+        "within_real_score_range": baseline.get("within_real_score_range"),
+        "delta_from_min": _maybe_float(baseline.get("delta_from_min")),
+        "baseline_pair_count": _safe_int(baseline.get("baseline_pair_count")),
+        "token_count": len(candidate.get("tokens") or []),
+    }
+    return {
+        key: value
+        for key, value in summary.items()
+        if value not in (None, "", [], {})
+    }
+
+
+def _structure_gate_details(structure: Any) -> dict[str, Any]:
+    structure = structure if isinstance(structure, dict) else {}
+    structure_score = _bounded_score(structure.get("score"))
+    raw_components = structure.get("components")
+    components = raw_components if isinstance(raw_components, dict) else {}
+
+    passed_components: list[str] = []
+    failed_components: dict[str, dict[str, float]] = {}
+    missing_components: list[str] = []
+    for (
+        component,
+        threshold,
+    ) in SYNTHETIC_STRUCTURE_COMPONENT_THRESHOLDS.items():
+        value = _safe_float(components.get(component), None)
+        if value is None:
+            missing_components.append(component)
+            continue
+        if value >= threshold:
+            passed_components.append(component)
+        else:
+            failed_components[component] = {
+                "value": round(value, 3),
+                "threshold": threshold,
+            }
+
+    threshold_count = len(SYNTHETIC_STRUCTURE_COMPONENT_THRESHOLDS)
+    pass_rate = round(len(passed_components) / threshold_count, 3)
+    score_passed = structure_score >= SYNTHETIC_MIN_STRUCTURE_SIMILARITY
+    return {
+        "min_structure_similarity": SYNTHETIC_MIN_STRUCTURE_SIMILARITY,
+        "structure_similarity_passed": score_passed,
+        "component_thresholds": SYNTHETIC_STRUCTURE_COMPONENT_THRESHOLDS,
+        "passed_components": passed_components,
+        "failed_components": failed_components,
+        "missing_components": missing_components,
+        "pass_rate": pass_rate,
+        "passed": (
+            score_passed and not failed_components and not missing_components
+        ),
+    }
+
+
+def _bounded_score(value: Any) -> float:
+    return max(0.0, min(1.0, _safe_float(value, 0.0)))
+
+
+def _layout_integrity_score(value: Any) -> float:
+    if not isinstance(value, dict):
+        return 0.0
+    score = _maybe_float(value.get("score"))
+    if score is not None:
+        return _bounded_score(score)
+    return 1.0 if value.get("passed") is True else 0.0
+
+
+def _layout_integrity_score_from_counts(
+    *,
+    overlap_count: int,
+    invalid_count: int,
+    out_of_bounds_count: int,
+    line_order_valid: bool,
+) -> float:
+    if invalid_count or out_of_bounds_count:
+        return 0.0
+    score = max(0.0, 1.0 - min(overlap_count, 5) * 0.20)
+    if not line_order_valid:
+        score = min(score, 0.5)
+    return round(score, 3)
+
+
+def _token_budget_score(token_count: int | None) -> float:
+    if token_count is None:
+        return 0.75
+    if token_count <= 180:
+        return 1.0
+    if token_count >= 220:
+        return 0.0
+    return max(0.0, 1.0 - ((token_count - 180) / 40.0))
+
+
+def _cross_receipt_grounding_score(observed: Any, item: Any) -> float:
+    observed = observed if isinstance(observed, dict) else {}
+    item = item if isinstance(item, dict) else {}
+    if observed.get("product_seen_outside_base") or item.get(
+        "seen_in_other_receipt"
+    ):
+        return 1.0
+    if observed.get("product_seen_in_receipts") or item.get(
+        "source_receipt_keys"
+    ):
+        return 0.5
+    return 0.0
+
+
+def _category_alignment_score(observed: Any) -> float:
+    if not isinstance(observed, dict):
+        return 0.0
+    score = 0.0
+    if observed.get("category"):
+        score += 0.30
+    if observed.get("base_receipt_has_category") is True:
+        score += 0.35
+    if _safe_int(observed.get("category_seen_count")):
+        score += 0.20
+    if _safe_int(observed.get("category_heading_seen_count")):
+        score += 0.15
+    return min(1.0, score)
+
+
+def _arithmetic_reconciliation_score(
+    arithmetic: Any,
+    *,
+    expected_tax_delta: str,
+) -> float:
+    if not isinstance(arithmetic, dict):
+        return 0.0
+    score = 0.0
+    if arithmetic.get("summary_update_policy") == "non_taxable_item_delta":
+        score += 0.35
+    if str(arithmetic.get("tax_delta") or "") == expected_tax_delta:
+        score += 0.25
+    updated = arithmetic.get("updated_summary_labels")
+    if isinstance(updated, dict):
+        if _safe_int(updated.get("grand_total")):
+            score += 0.20
+        if _safe_int(updated.get("subtotal")):
+            score += 0.10
+        if _safe_int(updated.get("payment_or_balance")):
+            score += 0.10
+    return min(1.0, score)
+
+
+def _preview_line(
+    line: dict[str, Any],
+    *,
+    line_number: int,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    words = sorted(
+        [word for word in line.get("words", []) or [] if word.get("text")],
+        key=lambda word: (
+            _safe_float((word.get("bbox") or [0])[0], 0.0),
+            _safe_int(word.get("word_id")) or 0,
+        ),
+    )
+    labels = sorted(
+        {
+            label
+            for word in words
+            for label in (word.get("labels") or [])
+            if label
+        }
+    )
+    text = " ".join(str(word.get("text") or "") for word in words).strip()
+    field_replacement = metadata.get("field_replacement")
+    replacement_label = (
+        str(field_replacement.get("label") or "")
+        if isinstance(field_replacement, dict)
+        else ""
+    )
+    replacement_text = (
+        str(field_replacement.get("new_text") or "")
+        if isinstance(field_replacement, dict)
+        else ""
+    )
+    modified_labels = (
+        [replacement_label]
+        if replacement_label
+        and replacement_label in labels
+        and replacement_text
+        and any(
+            str(word.get("text") or "") == replacement_text for word in words
+        )
+        else []
+    )
+    return {
+        "line_number": line_number,
+        "line_id": line.get("line_id"),
+        "y": round(_line_y(line), 4),
+        "text": text,
+        "labels": labels,
+        "role": _preview_line_role(text, labels),
+        "bbox": _preview_line_bbox(words),
+        "synthetic_insert": _is_synthetic_insert_id(line.get("line_id"))
+        or any(_is_synthetic_insert_id(word.get("line_id")) for word in words),
+        "modified_labels": modified_labels,
+    }
+
+
+def _is_synthetic_insert_id(value: Any) -> bool:
+    return value in {10_000, 20_000}
+
+
+def _preview_line_bbox(words: list[dict[str, Any]]) -> list[int] | None:
+    boxes = [
+        word.get("bbox")
+        for word in words
+        if isinstance(word.get("bbox"), list) and len(word["bbox"]) == 4
+    ]
+    if not boxes:
+        return None
+    return [
+        min(int(box[0]) for box in boxes),
+        min(int(box[1]) for box in boxes),
+        max(int(box[2]) for box in boxes),
+        max(int(box[3]) for box in boxes),
+    ]
+
+
+def _preview_line_role(text: str, labels: list[str]) -> str:
+    label_set = set(labels)
+    if label_set & {"PRODUCT_NAME", "LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}:
+        return "line_item"
+    if label_set & {"SUBTOTAL", "TAX", "GRAND_TOTAL", "DISCOUNT", "COUPON"}:
+        return "summary"
+    if label_set & {
+        "MERCHANT_NAME",
+        "ADDRESS_LINE",
+        "PHONE_NUMBER",
+        "STORE_HOURS",
+        "DATE",
+        "TIME",
+    }:
+        return "header"
+    if text.strip().upper().strip(":") in GENERIC_CATEGORY_HEADINGS:
+        return "category_heading"
+    return "context"
+
+
+def _compact_structure_evidence(structure: Any) -> dict[str, Any] | None:
+    if not isinstance(structure, dict):
+        return None
+    result = {
+        "score": structure.get("score"),
+        "nearest_real_receipt_key": structure.get("nearest_real_receipt_key"),
+        "components": structure.get("components") or {},
+    }
+    shape_deltas = structure.get("shape_deltas")
+    if isinstance(shape_deltas, dict):
+        result["shape_deltas"] = shape_deltas
+    match_summary = structure.get("match_summary")
+    if isinstance(match_summary, dict):
+        result["match_summary"] = match_summary
+    baseline = structure.get("real_baseline_comparison")
+    if isinstance(baseline, dict):
+        result["real_baseline_comparison"] = baseline
+    return result
+
+
+def _compact_layout_integrity_evidence(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    result = {
+        "score": _maybe_float(value.get("score")),
+        "passed": value.get("passed") is True,
+        "line_count": _safe_int(value.get("line_count")),
+        "word_count": _safe_int(value.get("word_count")),
+        "overlap_pair_count": _safe_int(value.get("overlap_pair_count")),
+        "out_of_bounds_word_count": _safe_int(
+            value.get("out_of_bounds_word_count")
+        ),
+        "invalid_word_box_count": _safe_int(
+            value.get("invalid_word_box_count")
+        ),
+        "line_order_valid": value.get("line_order_valid") is True,
+    }
+    for key in (
+        "overlap_examples",
+        "out_of_bounds_examples",
+        "invalid_word_examples",
+    ):
+        examples = value.get(key)
+        if isinstance(examples, list) and examples:
+            result[key] = examples[:3]
+    return {
+        key: item
+        for key, item in result.items()
+        if item not in (None, "", [], {})
+    }
+
+
+def _compact_catalog_grounding_evidence(
+    observed: Any,
+    item: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(observed, dict):
+        return None
+    item = item if isinstance(item, dict) else {}
+    product_sources = [
+        str(source)
+        for source in observed.get("product_seen_in_receipts") or []
+        if source
+    ]
+    outside_sources = [
+        str(source)
+        for source in observed.get("product_seen_outside_base") or []
+        if source
+    ]
+    category_sources = [
+        str(source)
+        for source in observed.get("category_seen_in_receipts") or []
+        if source
+    ]
+    product_observed_count = _safe_int(
+        observed.get("product_observed_count")
+        or item.get("observed_count")
+        or item.get("count")
+    )
+    result = {
+        "product_observed_count": product_observed_count,
+        "product_seen_receipt_count": len(product_sources) or None,
+        "product_seen_outside_base_count": len(outside_sources),
+        "product_seen_outside_base": outside_sources[:3],
+        "category": observed.get("category") or item.get("category"),
+        "category_seen_count": _safe_int(observed.get("category_seen_count")),
+        "category_heading_seen_count": _safe_int(
+            observed.get("category_heading_seen_count")
+        ),
+        "category_seen_in_receipts": category_sources[:3],
+    }
+    return {
+        key: value
+        for key, value in result.items()
+        if value not in (None, "", [])
+    }
+
+
+def _compact_category_placement_evidence(
+    metadata: dict[str, Any],
+    observed: Any,
+) -> dict[str, Any] | None:
+    insertion = metadata.get("category_insertion")
+    observed = observed if isinstance(observed, dict) else {}
+    result: dict[str, Any] = {}
+    if isinstance(insertion, dict):
+        result.update(
+            {
+                "category": insertion.get("category"),
+                "insert_y": insertion.get("y_center"),
+                "shifted_lower_lines_by": _safe_int(
+                    insertion.get("shifted_lower_lines_by")
+                ),
+                "shifted_line_count": _safe_int(
+                    insertion.get("shifted_line_count")
+                ),
+                "line_step": _safe_int(insertion.get("line_step")),
+                "selection_reason": insertion.get("selection_reason"),
+            }
+        )
+    elif observed:
+        result["category"] = observed.get("category")
+
+    if observed:
+        base_has_category = observed.get("base_receipt_has_category") is True
+        result.update(
+            {
+                "base_receipt_has_category": base_has_category,
+                "category_seen_count": _safe_int(
+                    observed.get("category_seen_count")
+                ),
+                "category_heading_seen_count": _safe_int(
+                    observed.get("category_heading_seen_count")
+                ),
+                "category_alignment": (
+                    "same_category_as_base"
+                    if base_has_category
+                    else "category_unverified_on_base"
+                ),
+            }
+        )
+
+    return {
+        key: value
+        for key, value in result.items()
+        if value not in (None, "", [])
+    } or None
+
+
+def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
+    lines: list[dict[str, Any]] = []
+    words: list[dict[str, Any]] = []
+    source_lines = receipt.get("all_lines") or receipt.get("lines", []) or []
+    for line_index, line in enumerate(source_lines):
+        line_words = []
+        line_y = _safe_float(line.get("y"), 0.5)
+        line_id = int(line.get("line_id") or line_index + 1)
+        for word_index, word in enumerate(line.get("words", []) or []):
+            text = str(word.get("text") or "").strip()
+            if not text:
+                continue
+            labels = [
+                label
+                for label in (
+                    _normalize_label(label)
+                    for label in (word.get("labels") or [])
+                )
+                if label != "O"
+            ]
+            row = {
+                "text": text,
+                "bbox": _coerce_bbox(word.get("bbox"), word.get("x"), line_y),
+                "labels": labels,
+                "line_id": line_id,
+                "word_id": int(word.get("word_id") or word_index + 1),
+            }
+            line_words.append(row)
+            words.append(row)
+        if line_words:
+            line_words.sort(key=lambda row: (row["bbox"][0], row["word_id"]))
+            lines.append(
+                {"line_id": line_id, "y": line_y, "words": line_words}
+            )
+
+    lines.sort(key=lambda line: -_line_y(line))
+    return {
+        "receipt_id": receipt.get("receipt_id"),
+        "image_id": receipt.get("image_id"),
+        "receipt_num": receipt.get("receipt_num"),
+        "lines": lines,
+        "words": words,
+    }
+
+
+def _analyze_receipt(receipt: dict[str, Any]) -> MerchantAnalysis:
+    product_rows: list[dict[str, Any]] = []
+    total_rows: list[dict[str, Any]] = []
+    line_items: list[MerchantLineItem] = []
+    subtotal: Decimal | None = None
+    tax_total: Decimal | None = None
+    grand_total: Decimal | None = None
+    grand_total_line_indices: list[int] = []
+    current_category = UNKNOWN_CATEGORY
+    category_sequence: list[str] = []
+    category_by_line: dict[int, str] = {}
+
+    for line_index, line in enumerate(receipt.get("lines", [])):
+        heading = _line_category_heading(line)
+        if heading:
+            current_category = heading
+            category_sequence.append(heading)
+        category_by_line[line_index] = current_category
+
+        product_words = [
+            word
+            for word in line.get("words", [])
+            if "PRODUCT_NAME" in word.get("labels", [])
+        ]
+        total_words = [
+            word
+            for word in line.get("words", [])
+            if "LINE_TOTAL" in word.get("labels", [])
+            and _parse_money(word.get("text")) is not None
+        ]
+        if product_words:
+            product_rows.append(
+                {
+                    "line_index": line_index,
+                    "line": line,
+                    "product_words": product_words,
+                    "center_y": _line_y(line) * 1000,
+                    "category": current_category,
+                }
+            )
+        if total_words:
+            total_rows.append(
+                {
+                    "line_index": line_index,
+                    "line": line,
+                    "amount": _parse_money(total_words[-1].get("text")),
+                    "center_y": _line_y(line) * 1000,
+                    "category": current_category,
+                }
+            )
+
+        if any(
+            "GRAND_TOTAL" in word.get("labels", [])
+            for word in line.get("words", [])
+        ):
+            parsed = [
+                _parse_money(word.get("text"))
+                for word in line.get("words", [])
+                if _parse_money(word.get("text")) is not None
+            ]
+            if parsed:
+                grand_total_line_indices.append(line_index)
+                if grand_total is None:
+                    grand_total = parsed[-1]
+        if any(
+            "SUBTOTAL" in word.get("labels", [])
+            for word in line.get("words", [])
+        ):
+            parsed = [
+                _parse_money(word.get("text"))
+                for word in line.get("words", [])
+                if _parse_money(word.get("text")) is not None
+            ]
+            if parsed and subtotal is None:
+                subtotal = parsed[-1]
+        if any(
+            "TAX" in word.get("labels", []) for word in line.get("words", [])
+        ):
+            parsed = [
+                _parse_money(word.get("text"))
+                for word in line.get("words", [])
+                if _parse_money(word.get("text")) is not None
+            ]
+            if parsed:
+                tax_total = _money_sum(
+                    [tax_total or Decimal("0.00"), parsed[-1]]
+                )
+
+    used_total_lines: set[int] = set()
+    for product_row in product_rows:
+        total_row = _match_total_row(product_row, total_rows, used_total_lines)
+        if total_row is None or total_row["amount"] is None:
+            continue
+        used_total_lines.add(total_row["line_index"])
+        category = product_row["category"]
+        if category == UNKNOWN_CATEGORY:
+            category = total_row["category"]
+        line_items.append(
+            MerchantLineItem(
+                line_index=product_row["line_index"],
+                line_indices=sorted(
+                    {product_row["line_index"], total_row["line_index"]}
+                ),
+                amount=total_row["amount"],
+                product_text=" ".join(
+                    word["text"] for word in product_row["product_words"]
+                ),
+                center_y=statistics.median(
+                    [product_row["center_y"], total_row["center_y"]]
+                ),
+                taxable=_line_is_taxable(
+                    product_row["line"], total_row["line"]
+                ),
+                category=category
+                or category_by_line.get(
+                    product_row["line_index"], UNKNOWN_CATEGORY
+                ),
+            )
+        )
+
+    return MerchantAnalysis(
+        receipt=receipt,
+        line_items=line_items,
+        subtotal=subtotal,
+        tax_total=tax_total,
+        grand_total=grand_total,
+        grand_total_line_indices=grand_total_line_indices,
+        category_sequence=category_sequence,
+    )
+
+
+def _build_item_catalog(
+    analyses: list[MerchantAnalysis],
+) -> list[MerchantCatalogEntry]:
+    grouped: dict[tuple[str, str, bool], dict[str, Any]] = {}
+    for analysis in analyses:
+        receipt_key = _receipt_key(analysis.receipt)
+        for item in analysis.line_items:
+            if not _is_catalog_item(item):
+                continue
+            key = (
+                item.category,
+                _normalize_product_text(item.product_text),
+                item.taxable,
+            )
+            grouped.setdefault(
+                key,
+                {
+                    "product_text": item.product_text,
+                    "amounts": [],
+                    "source_receipt_keys": set(),
+                },
+            )
+            grouped[key]["amounts"].append(item.amount)
+            grouped[key]["source_receipt_keys"].add(receipt_key)
+
+    entries = [
+        MerchantCatalogEntry(
+            product_text=value["product_text"],
+            amount=_median_money(value["amounts"]),
+            category=category,
+            taxable=taxable,
+            count=len(value["amounts"]),
+            source_receipt_keys=sorted(value["source_receipt_keys"]),
+        )
+        for (category, _product, taxable), value in grouped.items()
+    ]
+    entries.sort(
+        key=lambda entry: (
+            entry.category == UNKNOWN_CATEGORY,
+            -entry.count,
+            entry.product_text,
+        )
+    )
+    return entries
+
+
+def _label_slot(
+    receipts: list[dict[str, Any]], label: str
+) -> dict[str, Any] | None:
+    words = [
+        word
+        for receipt in receipts
+        for word in receipt.get("words", [])
+        if label in word.get("labels", [])
+    ]
+    if not words:
+        return None
+    return {
+        "x": _summary([_cx(word["bbox"]) for word in words]).to_dict(),
+        "y": _summary([_cy(word["bbox"]) for word in words]).to_dict(),
+        "examples": _dedupe(word["text"] for word in words)[:8],
+    }
+
+
+def _summarize_mutable_fields(
+    label_slots: dict[str, Any],
+) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    for label in ("DATE", "TIME"):
+        slot = label_slots.get(label)
+        if not isinstance(slot, dict):
+            continue
+        examples = [str(value) for value in slot.get("examples") or []]
+        patterns = Counter(
+            pattern
+            for example in examples
+            if (pattern := _datetime_pattern(label, example)) is not None
+        )
+        x = slot.get("x") or {}
+        y = slot.get("y") or {}
+        observed_count = _safe_int(x.get("n")) or len(examples)
+        stable_geometry = _slot_spread(x) <= 160 and _slot_spread(y) <= 80
+        stable_format = len(patterns) == 1
+        safe_to_mutate = bool(
+            observed_count >= 2
+            and patterns
+            and stable_format
+            and stable_geometry
+        )
+        top_pattern = patterns.most_common(1)[0][0] if patterns else None
+        fields[label] = {
+            "label": label,
+            "safe_to_mutate": safe_to_mutate,
+            "observed_count": observed_count,
+            "examples": examples[:5],
+            "format_counts": dict(sorted(patterns.items())),
+            "stable_format": top_pattern if stable_format else None,
+            "stable_geometry": stable_geometry,
+            "mutation_strategy": (
+                f"replace {label.lower()} text in-place using observed format and bbox"
+                if safe_to_mutate
+                else None
+            ),
+            "blockers": _mutable_field_blockers(
+                observed_count=observed_count,
+                patterns=patterns,
+                stable_format=stable_format,
+                stable_geometry=stable_geometry,
+            ),
+        }
+    return fields
+
+
+def _datetime_pattern(label: str, text: str) -> str | None:
+    value = text.strip().upper().replace(" ", "")
+    if label == "DATE":
+        if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", value):
+            year = value.rsplit("/", 1)[-1]
+            return "MM/DD/YYYY" if len(year) == 4 else "MM/DD/YY"
+        if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", value):
+            return "YYYY-MM-DD"
+        if re.fullmatch(r"\d{1,2}-\d{1,2}-\d{2,4}", value):
+            year = value.rsplit("-", 1)[-1]
+            return "MM-DD-YYYY" if len(year) == 4 else "MM-DD-YY"
+    if label == "TIME":
+        if re.fullmatch(r"\d{1,2}:\d{2}:\d{2}(AM|PM)?", value):
+            return (
+                "HH:MM:SS AM/PM"
+                if value.endswith(("AM", "PM"))
+                else "HH:MM:SS"
+            )
+        if re.fullmatch(r"\d{1,2}:\d{2}(AM|PM)?", value):
+            return "HH:MM AM/PM" if value.endswith(("AM", "PM")) else "HH:MM"
+    return None
+
+
+def _slot_spread(summary: dict[str, Any]) -> float:
+    p10 = _safe_float(summary.get("p10"), 0.0)
+    p90 = _safe_float(summary.get("p90"), 0.0)
+    return abs(p90 - p10)
+
+
+def _mutable_field_blockers(
+    *,
+    observed_count: int,
+    patterns: Counter[str],
+    stable_format: bool,
+    stable_geometry: bool,
+) -> list[str]:
+    blockers: list[str] = []
+    if observed_count < 2:
+        blockers.append("needs_multiple_observed_values")
+    if not patterns:
+        blockers.append("unsupported_format")
+    elif not stable_format:
+        blockers.append("mixed_formats")
+    if not stable_geometry:
+        blockers.append("unstable_geometry")
+    return blockers
+
+
+def _summarize_categories(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
+    heading_counts = Counter(
+        category
+        for analysis in analyses
+        for category in analysis.category_sequence
+    )
+    item_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    for analysis in analyses:
+        for item in analysis.line_items:
+            item_counts[item.category][item.product_text] += 1
+    return {
+        "heading_counts": dict(heading_counts.most_common()),
+        "top_items_by_category": {
+            category: [
+                {"product_text": text, "count": count}
+                for text, count in counts.most_common(8)
+            ]
+            for category, counts in sorted(item_counts.items())
+        },
+    }
+
+
+def _summarize_tax_policy(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
+    taxable_item_count = sum(
+        1
+        for analysis in analyses
+        for item in analysis.line_items
+        if item.taxable
+    )
+    non_taxable_item_count = sum(
+        1
+        for analysis in analyses
+        for item in analysis.line_items
+        if not item.taxable
+    )
+    receipts_with_tax_total = sum(
+        1
+        for analysis in analyses
+        if analysis.tax_total is not None
+        and analysis.tax_total > Decimal("0.00")
+    )
+    receipts_with_taxable_items = sum(
+        1
+        for analysis in analyses
+        if any(item.taxable for item in analysis.line_items)
+    )
+    rate_observations = _tax_rate_observations(analyses)
+    stable_tax_rate = len(rate_observations) >= 2 and max(
+        rate_observations
+    ) - min(rate_observations) <= Decimal("0.0050")
+    blockers: list[str] = []
+    if taxable_item_count <= 0:
+        blockers.append("no_taxable_item_evidence")
+    if receipts_with_tax_total <= 0:
+        blockers.append("no_tax_total_anchors")
+    if len(rate_observations) < 2:
+        blockers.append("needs_multiple_tax_rate_observations")
+    elif not stable_tax_rate:
+        blockers.append("unstable_tax_rate")
+    blockers.append("tax_changing_loader_gate_not_enabled")
+
+    result: dict[str, Any] = {
+        "supported_policy": "non_taxable_item_delta",
+        "taxable_item_count": taxable_item_count,
+        "non_taxable_item_count": non_taxable_item_count,
+        "receipts_with_tax_total": receipts_with_tax_total,
+        "receipts_with_taxable_items": receipts_with_taxable_items,
+        "tax_rate_observation_count": len(rate_observations),
+        "stable_tax_rate": stable_tax_rate,
+        "tax_changing_synthesis_ready": False,
+        "tax_changing_synthesis_blockers": blockers,
+    }
+    if rate_observations:
+        average_rate = sum(rate_observations, Decimal("0.0000")) / Decimal(
+            len(rate_observations)
+        )
+        result.update(
+            {
+                "avg_tax_rate": _format_rate(average_rate),
+                "min_tax_rate": _format_rate(min(rate_observations)),
+                "max_tax_rate": _format_rate(max(rate_observations)),
+                "avg_tax_rate_percent": _format_rate_percent(average_rate),
+            }
+        )
+    return result
+
+
+def _tax_rate_observations(analyses: list[MerchantAnalysis]) -> list[Decimal]:
+    observations: list[Decimal] = []
+    for analysis in analyses:
+        if analysis.tax_total is None or analysis.tax_total <= Decimal("0.00"):
+            continue
+        taxable_subtotal = _money_sum(
+            item.amount for item in analysis.line_items if item.taxable
+        )
+        if taxable_subtotal <= Decimal("0.00"):
+            continue
+        observations.append(
+            (analysis.tax_total / taxable_subtotal).quantize(
+                Decimal("0.0001"),
+                rounding=ROUND_HALF_UP,
+            )
+        )
+    return observations
+
+
+def _format_rate(value: Decimal) -> str:
+    return f"{value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP):.4f}"
+
+
+def _format_rate_percent(value: Decimal) -> str:
+    percent = value * Decimal("100")
+    return f"{percent.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):.2f}%"
+
+
+def _profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "merchant_name": profile["merchant_name"],
+        "receipt_count": profile["receipt_count"],
+        "generation_limits": profile["generation_limits"],
+        "category_patterns": profile["category_patterns"],
+        "tax_policy": profile.get("tax_policy") or {},
+        "real_structure_baseline": profile.get("real_structure_baseline")
+        or {},
+    }
+
+
+def _match_total_row(
+    product_row: dict[str, Any],
+    total_rows: list[dict[str, Any]],
+    used_total_lines: set[int],
+) -> dict[str, Any] | None:
+    same_line = [
+        row
+        for row in total_rows
+        if row["line_index"] == product_row["line_index"]
+        and row["line_index"] not in used_total_lines
+    ]
+    if same_line:
+        return same_line[0]
+    nearby = [
+        row
+        for row in total_rows
+        if row["line_index"] not in used_total_lines
+        and abs(row["center_y"] - product_row["center_y"]) <= 16
+    ]
+    if not nearby:
+        return None
+    return min(
+        nearby,
+        key=lambda row: (
+            abs(row["center_y"] - product_row["center_y"]),
+            abs(row["line_index"] - product_row["line_index"]),
+        ),
+    )
+
+
+def _category_insert_y(
+    analysis: MerchantAnalysis,
+    category: str,
+) -> float | None:
+    items = [item for item in analysis.line_items if item.category == category]
+    if not items:
+        return None
+    lower_item_y = min(item.center_y for item in items)
+    return max(24.0, lower_item_y - max(24, _line_step(analysis.line_items)))
+
+
+def _build_line_item_line(
+    receipt: dict[str, Any],
+    entry: MerchantCatalogEntry,
+    *,
+    y_center: float,
+) -> dict[str, Any]:
+    product_x = _label_x_p50(receipt, "PRODUCT_NAME") or 90
+    total_x = _label_x_p50(receipt, "LINE_TOTAL") or 850
+    product_x = max(25, int(round(product_x - 35)))
+    price = _format_money(entry.amount)
+    price_width = _token_width(price)
+    price_x = max(
+        0, min(1000 - price_width, int(round(total_x - price_width / 2)))
+    )
+    return _build_line(
+        entry.product_tokens + [price],
+        ["PRODUCT_NAME"] * len(entry.product_tokens) + ["LINE_TOTAL"],
+        x0=product_x,
+        y0=max(0, min(976, int(round(y_center - 12)))),
+        price_x=price_x,
+    )
+
+
+def _observed_item_evidence(
+    entry: MerchantCatalogEntry,
+    base_analysis: MerchantAnalysis,
+    analyses: list[MerchantAnalysis],
+) -> dict[str, Any]:
+    base_key = _receipt_key(base_analysis.receipt)
+    product_sources = sorted(entry.source_receipt_keys)
+    category_sources = sorted(
+        {
+            _receipt_key(analysis.receipt)
+            for analysis in analyses
+            if any(
+                item.category == entry.category for item in analysis.line_items
+            )
+        }
+    )
+    category_heading_sources = sorted(
+        {
+            _receipt_key(analysis.receipt)
+            for analysis in analyses
+            if entry.category in analysis.category_sequence
+        }
+    )
+    return {
+        "base_receipt_key": base_key,
+        "product_seen_in_receipts": product_sources[:8],
+        "product_seen_outside_base": [
+            source for source in product_sources if source != base_key
+        ][:8],
+        "product_observed_count": entry.count,
+        "category": entry.category,
+        "category_seen_in_receipts": category_sources[:8],
+        "category_seen_count": len(category_sources),
+        "category_heading_seen_count": len(category_heading_sources),
+        "base_receipt_has_category": base_key in category_sources,
+    }
+
+
+def _build_line(
+    tokens: list[str],
+    labels: list[str],
+    *,
+    x0: int,
+    y0: int,
+    price_x: int | None = None,
+) -> dict[str, Any]:
+    words = []
+    cursor = x0
+    for idx, token in enumerate(tokens, start=1):
+        label = labels[idx - 1] if idx - 1 < len(labels) else "O"
+        width = _token_width(token)
+        if price_x is not None and idx == len(tokens):
+            cursor = price_x
+        words.append(
+            {
+                "text": token,
+                "bbox": [cursor, y0, min(1000, cursor + width), y0 + 24],
+                "labels": [] if label == "O" else [label],
+                "line_id": 20_000,
+                "word_id": idx,
+            }
+        )
+        cursor = min(1000, cursor + width + 10)
+    return {"line_id": 20_000, "y": y0 / 1000, "words": words}
+
+
+def _insert_line_sorted(receipt: dict[str, Any], line: dict[str, Any]) -> None:
+    lines = receipt.setdefault("lines", [])
+    inserted_y = _line_y(line)
+    insert_at = len(lines)
+    for idx, existing in enumerate(lines):
+        if _line_y(existing) < inserted_y:
+            insert_at = idx
+            break
+    lines.insert(insert_at, line)
+    _refresh_words(receipt)
+
+
+def _shift_lines_below_for_insert(
+    receipt: dict[str, Any],
+    *,
+    inserted_center_y: float,
+    delta: int,
+) -> int:
+    shifted = 0
+    for line in receipt.get("lines", []):
+        if _line_y(line) * 1000 >= inserted_center_y:
+            continue
+        shifted += 1
+        for word in line.get("words", []):
+            word["bbox"][1] = max(0, word["bbox"][1] - delta)
+            word["bbox"][3] = max(0, word["bbox"][3] - delta)
+        line["y"] = max(0.0, _line_y(line))
+    _refresh_words(receipt)
+    return shifted
+
+
+def _apply_non_taxable_delta(
+    receipt: dict[str, Any],
+    analysis: MerchantAnalysis,
+    *,
+    delta: Decimal,
+) -> dict[str, Any]:
+    old_subtotal = analysis.subtotal
+    if old_subtotal is None:
+        old_subtotal = _money_sum(item.amount for item in analysis.line_items)
+    old_grand_total = analysis.grand_total
+    if old_grand_total is None:
+        old_grand_total = old_subtotal
+
+    new_subtotal = _money(max(Decimal("0.00"), old_subtotal + delta))
+    new_grand_total = _money(max(Decimal("0.00"), old_grand_total + delta))
+    updated = {
+        "subtotal": 0,
+        "grand_total": 0,
+        "payment_or_balance": 0,
+    }
+
+    for line in receipt.get("lines", []):
+        for word in line.get("words", []):
+            labels = set(word.get("labels") or [])
+            value = _parse_money(word.get("text"))
+            if value is None:
+                continue
+            if "SUBTOTAL" in labels:
+                word["text"] = _format_money_like(word["text"], new_subtotal)
+                _right_align_money_box(word)
+                updated["subtotal"] += 1
+            elif "GRAND_TOTAL" in labels:
+                word["text"] = _format_money_like(
+                    word["text"], new_grand_total
+                )
+                _right_align_money_box(word)
+                updated["grand_total"] += 1
+            elif value == old_grand_total and not labels & {
+                "LINE_TOTAL",
+                "TAX",
+                "SUBTOTAL",
+                "GRAND_TOTAL",
+            }:
+                word["text"] = _format_money_like(
+                    word["text"], new_grand_total
+                )
+                _right_align_money_box(word)
+                updated["payment_or_balance"] += 1
+
+    _refresh_words(receipt)
+    return {
+        "summary_update_policy": "non_taxable_item_delta",
+        "old_subtotal": _format_money(old_subtotal),
+        "new_subtotal": _format_money(new_subtotal),
+        "old_grand_total": _format_money(old_grand_total),
+        "new_grand_total": _format_money(new_grand_total),
+        "subtotal_delta": _format_money(delta),
+        "grand_total_delta": _format_money(delta),
+        "tax_delta": "0.00",
+        "tax_policy": "left unchanged because synthesized item is non-taxable",
+        "updated_summary_labels": updated,
+    }
+
+
+def _shift_lines_below(
+    receipt: dict[str, Any],
+    removed_center_y: float,
+    delta: int,
+) -> None:
+    for line in receipt.get("lines", []):
+        if _line_y(line) * 1000 >= removed_center_y:
+            continue
+        for word in line.get("words", []):
+            word["bbox"][1] = min(1000, word["bbox"][1] + delta)
+            word["bbox"][3] = min(1000, word["bbox"][3] + delta)
+        line["y"] = min(1.0, _line_y(line))
+    _refresh_words(receipt)
+
+
+def _score_structure_similarity(
+    candidate: MerchantAnalysis,
+    real_analyses: list[MerchantAnalysis],
+) -> dict[str, Any]:
+    candidate_key = _receipt_key(candidate.receipt)
+    pool = [
+        analysis
+        for analysis in real_analyses
+        if _receipt_key(analysis.receipt) != candidate_key
+    ] or real_analyses
+    if not pool:
+        return {
+            "score": 0.0,
+            "nearest_real_receipt_key": None,
+            "components": {},
+        }
+
+    scored = [
+        (_structure_components(candidate, analysis), analysis)
+        for analysis in pool
+    ]
+    best_components, best = max(
+        scored,
+        key=lambda item: _weighted_structure_score(item[0]),
+    )
+    candidate_signature = _receipt_signature(candidate)
+    nearest_signature = _receipt_signature(best)
+    nearest_real_evidence = build_nearest_real_structure_evidence(
+        best_components,
+        candidate_signature,
+        nearest_signature,
+    )
+    score = round(_weighted_structure_score(best_components), 3)
+    baseline_comparison = compare_structure_to_real_baseline(
+        score,
+        build_real_structure_baseline(real_analyses),
+    )
+    return {
+        "score": score,
+        "nearest_real_receipt_key": _receipt_key(best.receipt),
+        "components": {
+            key: round(value, 3) for key, value in best_components.items()
+        },
+        "candidate_signature": candidate_signature,
+        "nearest_signature": nearest_signature,
+        "real_baseline_comparison": baseline_comparison,
+        **nearest_real_evidence,
+    }
+
+
+def _structure_components(
+    candidate: MerchantAnalysis,
+    real: MerchantAnalysis,
+) -> dict[str, float]:
+    candidate_price_x = _label_x_p50(candidate.receipt, "LINE_TOTAL")
+    real_price_x = _label_x_p50(real.receipt, "LINE_TOTAL")
+    return {
+        "category_sequence": _sequence_similarity(
+            candidate.category_sequence,
+            real.category_sequence,
+        ),
+        "category_set": _set_similarity(
+            candidate.category_sequence,
+            real.category_sequence,
+        ),
+        "item_count": _ratio_close(
+            len(candidate.line_items), len(real.line_items)
+        ),
+        "token_count": _ratio_close(
+            len(candidate.receipt.get("words", [])),
+            len(real.receipt.get("words", [])),
+        ),
+        "price_column": (
+            _distance_score(abs(candidate_price_x - real_price_x), scale=250)
+            if candidate_price_x is not None and real_price_x is not None
+            else 0.0
+        ),
+        "line_step": _distance_score(
+            abs(
+                _line_step(candidate.line_items) - _line_step(real.line_items)
+            ),
+            scale=40,
+        ),
+    }
+
+
+def _weighted_structure_score(components: dict[str, float]) -> float:
+    return (
+        components.get("category_sequence", 0.0) * 0.25
+        + components.get("category_set", 0.0) * 0.15
+        + components.get("item_count", 0.0) * 0.18
+        + components.get("token_count", 0.0) * 0.12
+        + components.get("price_column", 0.0) * 0.18
+        + components.get("line_step", 0.0) * 0.12
+    )
+
+
+def build_real_structure_baseline(
+    analyses: list[MerchantAnalysis],
+) -> dict[str, Any]:
+    """Summarize normal real-to-real structure variation for one merchant."""
+    valid = [analysis for analysis in analyses if analysis.line_items]
+    component_values: dict[str, list[float]] = defaultdict(list)
+    scores: list[float] = []
+
+    for left_index, left in enumerate(valid):
+        for right in valid[left_index + 1 :]:
+            components = _structure_components(left, right)
+            scores.append(
+                _bounded_score(_weighted_structure_score(components))
+            )
+            for key, value in components.items():
+                component_values[key].append(_bounded_score(value))
+
+    return {
+        "schema_version": "real-structure-baseline-v1",
+        "receipt_count": len(valid),
+        "pair_count": len(scores),
+        "score_summary": _score_distribution_summary(scores),
+        "component_summaries": {
+            key: _score_distribution_summary(values)
+            for key, values in sorted(component_values.items())
+        },
+    }
+
+
+def compare_structure_to_real_baseline(
+    structure_score: Any,
+    baseline: Any,
+) -> dict[str, Any] | None:
+    """Compare one candidate structure score to real-to-real variation."""
+    if not isinstance(baseline, dict):
+        return None
+    summary = baseline.get("score_summary")
+    if not isinstance(summary, dict):
+        return None
+    pair_count = _safe_int(summary.get("count")) or _safe_int(
+        baseline.get("pair_count")
+    )
+    if not pair_count:
+        return None
+
+    candidate_score = _maybe_float(structure_score)
+    baseline_avg = _maybe_float(summary.get("avg"))
+    baseline_min = _maybe_float(summary.get("min"))
+    baseline_max = _maybe_float(summary.get("max"))
+    if candidate_score is None or baseline_min is None:
+        return None
+
+    result: dict[str, Any] = {
+        "baseline_receipt_count": _safe_int(baseline.get("receipt_count")),
+        "baseline_pair_count": pair_count,
+        "candidate_score": round(candidate_score, 3),
+        "baseline_min": round(baseline_min, 3),
+        "within_real_score_range": candidate_score >= baseline_min,
+        "delta_from_min": round(candidate_score - baseline_min, 3),
+    }
+    if baseline_avg is not None:
+        result["baseline_avg"] = round(baseline_avg, 3)
+        result["delta_from_avg"] = round(candidate_score - baseline_avg, 3)
+    if baseline_max is not None:
+        result["baseline_max"] = round(baseline_max, 3)
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def _score_distribution_summary(values: list[float]) -> dict[str, Any]:
+    if not values:
+        return {"count": 0}
+    bounded = [_bounded_score(value) for value in values]
+    return {
+        "count": len(bounded),
+        "avg": round(statistics.mean(bounded), 3),
+        "min": round(min(bounded), 3),
+        "max": round(max(bounded), 3),
+    }
+
+
+def build_nearest_real_structure_evidence(
+    components: dict[str, float],
+    candidate_signature: dict[str, Any],
+    nearest_signature: dict[str, Any],
+) -> dict[str, Any]:
+    """Explain how a synthetic receipt's shape compares with nearest real one."""
+    rounded_components = {
+        key: round(_bounded_score(value), 3)
+        for key, value in sorted(components.items())
+    }
+    shape_deltas = _receipt_signature_deltas(
+        candidate_signature,
+        nearest_signature,
+    )
+    return {
+        "shape_deltas": shape_deltas,
+        "match_summary": _structure_match_summary(
+            rounded_components,
+            shape_deltas,
+        ),
+    }
+
+
+def _receipt_signature_deltas(
+    candidate_signature: dict[str, Any],
+    nearest_signature: dict[str, Any],
+) -> dict[str, Any]:
+    deltas: dict[str, Any] = {}
+    for key in ("token_count", "line_count", "line_item_count"):
+        candidate_value = _safe_int(candidate_signature.get(key))
+        nearest_value = _safe_int(nearest_signature.get(key))
+        if candidate_value is not None and nearest_value is not None:
+            deltas[f"{key}_delta"] = candidate_value - nearest_value
+
+    candidate_step = _safe_float(candidate_signature.get("line_step"), None)
+    nearest_step = _safe_float(nearest_signature.get("line_step"), None)
+    if candidate_step is not None and nearest_step is not None:
+        deltas["line_step_delta"] = round(candidate_step - nearest_step, 3)
+
+    candidate_price_x = _safe_float(
+        candidate_signature.get("line_total_x_p50"),
+        None,
+    )
+    nearest_price_x = _safe_float(
+        nearest_signature.get("line_total_x_p50"),
+        None,
+    )
+    if candidate_price_x is not None and nearest_price_x is not None:
+        deltas["line_total_x_delta"] = round(
+            candidate_price_x - nearest_price_x, 3
+        )
+
+    return deltas
+
+
+def _structure_match_summary(
+    components: dict[str, float],
+    shape_deltas: dict[str, Any],
+) -> dict[str, Any]:
+    thresholds = {
+        **SYNTHETIC_STRUCTURE_COMPONENT_THRESHOLDS,
+        "item_count": 0.50,
+    }
+    matched_components = [
+        component
+        for component, value in components.items()
+        if value >= thresholds.get(component, 0.75)
+    ]
+    weak_components = [
+        component
+        for component, value in components.items()
+        if value < thresholds.get(component, 0.75)
+    ]
+    shape_checks: list[str] = []
+    if abs(_safe_int(shape_deltas.get("line_count_delta")) or 0) <= 1:
+        shape_checks.append("line_count_close")
+    if abs(_safe_int(shape_deltas.get("line_item_count_delta")) or 0) <= 1:
+        shape_checks.append("line_item_count_close")
+    if components.get("token_count", 0.0) >= thresholds["token_count"]:
+        shape_checks.append("token_count_close")
+    if components.get("price_column", 0.0) >= thresholds["price_column"]:
+        shape_checks.append("price_column_aligned")
+    if components.get("line_step", 0.0) >= thresholds["line_step"]:
+        shape_checks.append("line_spacing_close")
+    if (
+        components.get("category_sequence", 0.0)
+        >= thresholds["category_sequence"]
+    ):
+        shape_checks.append("category_order_close")
+    if components.get("category_set", 0.0) >= thresholds["category_set"]:
+        shape_checks.append("category_set_close")
+
+    return {
+        "matched_components": matched_components,
+        "weak_components": weak_components,
+        "shape_checks": shape_checks,
+    }
+
+
+def _receipt_signature(analysis: MerchantAnalysis) -> dict[str, Any]:
+    return {
+        "token_count": len(analysis.receipt.get("words", [])),
+        "line_count": len(analysis.receipt.get("lines", [])),
+        "line_item_count": len(analysis.line_items),
+        "category_sequence": analysis.category_sequence,
+        "line_step": _line_step(analysis.line_items),
+        "line_total_x_p50": _label_x_p50(analysis.receipt, "LINE_TOTAL"),
+    }
+
+
+def _flatten_lines(
+    lines: list[dict[str, Any]],
+) -> tuple[list[str], list[list[int]], list[str]]:
+    tokens: list[str] = []
+    bboxes: list[list[int]] = []
+    tags: list[str] = []
+    for line in lines:
+        line_labels = []
+        for word in line.get("words", []):
+            tokens.append(word["text"])
+            bboxes.append(word["bbox"])
+            line_labels.append(_first_label(word.get("labels", [])))
+        tags.extend(_bio_tags(line_labels))
+    return tokens, bboxes, tags
+
+
+def _hard_negative_tokens(label: str) -> list[str]:
+    if label == "MERCHANT_NAME":
+        return ["REWARDS", "CLUB"]
+    if label == "ADDRESS_LINE":
+        return ["LOCAL", "FAVORITES"]
+    if label in AMOUNT_LABELS:
+        return ["CHANGE", "0.00"]
+    if label in {"DATE", "TIME", "STORE_HOURS"}:
+        return ["SURVEY", "CODE"]
+    return ["REF", "INFO"]
+
+
+def _nearest_open_y(
+    receipt: dict[str, Any],
+    x0: int,
+    desired_y: int,
+    tokens: list[str],
+) -> int:
+    for delta in (0, -18, 18, -36, 36, -54, 54, -72, 72):
+        y0 = max(0, min(976, desired_y + delta))
+        if not _line_collides(receipt, x0, y0, tokens):
+            return y0
+    return max(0, min(976, desired_y))
+
+
+def _line_collides(
+    receipt: dict[str, Any],
+    x0: int,
+    y0: int,
+    tokens: list[str],
+) -> bool:
+    proposed = []
+    cursor = x0
+    for token in tokens:
+        width = _token_width(token)
+        proposed.append([cursor, y0, min(1000, cursor + width), y0 + 24])
+        cursor = min(1000, cursor + width + 10)
+    existing = [
+        word["bbox"]
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+    ]
+    return any(
+        _boxes_overlap(candidate, box, padding=3)
+        for candidate in proposed
+        for box in existing
+    )
+
+
+def _boxes_overlap(a: list[int], b: list[int], *, padding: int = 0) -> bool:
+    return not (
+        a[2] + padding <= b[0]
+        or a[0] - padding >= b[2]
+        or a[3] + padding <= b[1]
+        or a[1] - padding >= b[3]
+    )
+
+
+def _boxes_have_significant_overlap(
+    a: list[int],
+    b: list[int],
+    *,
+    min_area_ratio: float = 0.35,
+) -> bool:
+    if not _boxes_overlap(a, b):
+        return False
+    x_overlap = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    y_overlap = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    overlap_area = x_overlap * y_overlap
+    if overlap_area <= 0:
+        return False
+    left_area = max(1, (a[2] - a[0]) * (a[3] - a[1]))
+    right_area = max(1, (b[2] - b[0]) * (b[3] - b[1]))
+    return overlap_area / min(left_area, right_area) >= min_area_ratio
+
+
+def _valid_layout_box(value: Any) -> bool:
+    if not isinstance(value, list) or len(value) != 4:
+        return False
+    if any(isinstance(item, bool) for item in value):
+        return False
+    try:
+        x0, y0, x1, y1 = [int(item) for item in value]
+    except (TypeError, ValueError):
+        return False
+    return x0 < x1 and y0 < y1
+
+
+def _box_in_layout_bounds(value: list[int]) -> bool:
+    x0, y0, x1, y1 = [int(item) for item in value]
+    return (
+        0 <= x0 <= 1000
+        and 0 <= x1 <= 1000
+        and 0 <= y0 <= 1000
+        and 0 <= y1 <= 1000
+    )
+
+
+def _line_category_heading(line: dict[str, Any]) -> str | None:
+    if any(word.get("labels") for word in line.get("words", [])):
+        return None
+    tokens = [
+        str(word.get("text") or "").strip().upper().strip(":")
+        for word in line.get("words", [])
+    ]
+    tokens = [token for token in tokens if token]
+    if not tokens or len(tokens) > 3:
+        return None
+    text = " ".join(tokens)
+    reject = {
+        "AGAIN",
+        "BALANCE",
+        "BALANCE DUE",
+        "CHANGE",
+        "COME",
+        "COME AGAIN",
+        "CREDIT",
+        "DEBIT",
+        "ITEMS SOLD",
+        "INSTANT SAVINGS",
+        "PLEASE",
+        "PLEASE COME",
+        "PLEASE COME AGAIN",
+        "POLICY INFORMATION",
+        "RESP",
+        "RESP APPROVED",
+        "SELF CHECKOUT",
+        "SUBTOTAL",
+        "TAX",
+        "THANK",
+        "TOTAL",
+        "TOTAL TAX",
+        "VERIFIED BY PIN",
+    }
+    if text in reject:
+        return None
+    noisy_terms = {
+        "APPROVED",
+        "AUTH",
+        "PIN",
+        "POLICY",
+        "RESP",
+        "RETURN",
+        "SOLD",
+        "SWIPED",
+        "THANK",
+    }
+    if set(tokens) & noisy_terms:
+        return None
+    if any(len(token) < 3 for token in tokens):
+        return None
+    if not all(token.replace("&", "").isalpha() for token in tokens):
+        return None
+    return text if text in GENERIC_CATEGORY_HEADINGS else None
+
+
+def _choose_base_receipt(
+    receipts: list[dict[str, Any]],
+    *,
+    used: int,
+) -> dict[str, Any]:
+    preferred = [
+        receipt for receipt in receipts if len(receipt.get("words", [])) <= 190
+    ]
+    pool = sorted(preferred or receipts, key=lambda row: (_receipt_key(row)))
+    return pool[min(used, len(pool) - 1)]
+
+
+def _is_catalog_item(item: MerchantLineItem) -> bool:
+    if item.taxable or item.amount <= Decimal("0.00"):
+        return False
+    text = _normalize_product_text(item.product_text)
+    if not text or text.replace(".", "").isdigit():
+        return False
+    return len(text.split()) <= 7
+
+
+def _has_similar_product(
+    product_text: str,
+    existing_product_texts: list[str],
+) -> bool:
+    target = _product_identity_tokens(product_text)
+    normalized = _normalize_product_text(product_text)
+    for existing in existing_product_texts:
+        if _normalize_product_text(existing) == normalized:
+            return True
+        existing_tokens = _product_identity_tokens(existing)
+        if target and existing_tokens and target & existing_tokens:
+            return True
+    return False
+
+
+def _product_identity_tokens(product_text: str) -> set[str]:
+    stop_words = {"FRESH", "ORG", "ORGANIC", "THE", "GREEN", "YELLOW", "RED"}
+    tokens = set()
+    for token in _normalize_product_text(product_text).split():
+        token = token.strip("-_/")
+        if not token or token in stop_words or len(token) <= 2:
+            continue
+        if token.endswith("S") and len(token) > 4:
+            token = token[:-1]
+        tokens.add(token)
+    return tokens
+
+
+def _line_is_taxable(*lines: dict[str, Any]) -> bool:
+    return any(
+        str(word.get("text") or "").upper().endswith("T")
+        for line in lines
+        for word in line.get("words", [])
+    )
+
+
+def _line_step(items: list[MerchantLineItem]) -> int:
+    centers = sorted({round(item.center_y, 1) for item in items}, reverse=True)
+    gaps = [
+        abs(centers[idx] - centers[idx + 1])
+        for idx in range(len(centers) - 1)
+        if abs(centers[idx] - centers[idx + 1]) >= 8
+    ]
+    if not gaps:
+        return 26
+    return max(18, min(44, int(round(statistics.median(gaps)))))
+
+
+def _label_x_p50(receipt: dict[str, Any], label: str) -> float | None:
+    xs = [
+        _cx(word["bbox"])
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+        if label in word.get("labels", [])
+    ]
+    summary = _summary(xs)
+    return summary.p50 if summary else None
+
+
+def _summary(values: list[float | int]) -> GeometrySummary:
+    numeric = sorted(float(value) for value in values)
+    if not numeric:
+        return GeometrySummary(n=0, p10=0.0, p50=0.0, p90=0.0)
+    return GeometrySummary(
+        n=len(numeric),
+        p10=round(_percentile(numeric, 0.10), 1),
+        p50=round(statistics.median(numeric), 1),
+        p90=round(_percentile(numeric, 0.90), 1),
+    )
+
+
+def _percentile(values: list[float], q: float) -> float:
+    if len(values) == 1:
+        return values[0]
+    idx = round(q * (len(values) - 1))
+    return values[max(0, min(len(values) - 1, idx))]
+
+
+def _parse_money(value: Any) -> Decimal | None:
+    text = str(value or "").strip().upper()
+    if not text:
+        return None
+    text = text.replace("USD$", "").replace("$", "").replace(",", "")
+    text = text.rstrip("T")
+    try:
+        return _money(Decimal(text))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _format_money(value: Decimal) -> str:
+    return f"{_money(value):.2f}"
+
+
+def _format_money_like(original: Any, value: Decimal) -> str:
+    text = str(original or "")
+    formatted = _format_money(value)
+    if text.strip().upper().startswith("USD$"):
+        return f"USD${formatted}"
+    if text.strip().startswith("$"):
+        return f"${formatted}"
+    return formatted
+
+
+def _right_align_money_box(word: dict[str, Any]) -> None:
+    width = _token_width(str(word.get("text") or ""))
+    bbox = word.get("bbox")
+    if isinstance(bbox, list) and len(bbox) == 4:
+        bbox[0] = max(0, bbox[2] - width)
+
+
+def _median_money(values: list[Decimal]) -> Decimal:
+    ordered = sorted(values)
+    if not ordered:
+        return Decimal("0.00")
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return _money(ordered[mid])
+    return _money((ordered[mid - 1] + ordered[mid]) / Decimal("2"))
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _money_sum(values) -> Decimal:
+    total = Decimal("0.00")
+    for value in values:
+        total += value
+    return _money(total)
+
+
+def _bio_tags(labels: list[str]) -> list[str]:
+    tags: list[str] = []
+    previous = "O"
+    for label in labels:
+        if label == "O":
+            tags.append("O")
+            previous = "O"
+        elif label == previous:
+            tags.append(f"I-{label}")
+        else:
+            tags.append(f"B-{label}")
+            previous = label
+    return tags
+
+
+def _first_label(labels: list[str]) -> str:
+    for label in labels:
+        normalized = _normalize_label(label)
+        if normalized != "O":
+            return normalized
+    return "O"
+
+
+def _normalize_label(label: Any) -> str:
+    value = str(label or "").strip().upper().replace(" ", "_")
+    if value.startswith("B-") or value.startswith("I-"):
+        value = value[2:]
+    if value == "PHONE":
+        value = "PHONE_NUMBER"
+    return value if value in CORE_LABEL_SET else "O"
+
+
+def _coerce_bbox(value: Any, x_value: Any, y_value: Any) -> list[int]:
+    if (
+        isinstance(value, list)
+        and len(value) == 4
+        and all(isinstance(coord, int | float) for coord in value)
+    ):
+        x0, y0, x1, y1 = [int(round(coord)) for coord in value]
+        x0, x1 = sorted((max(0, x0), min(1000, x1)))
+        y0, y1 = sorted((max(0, y0), min(1000, y1)))
+        return [x0, y0, x1, y1]
+
+    x = int(round(_safe_float(x_value, 0.5) * 1000))
+    y = int(round(_safe_float(y_value, 0.5) * 1000))
+    return [
+        max(0, x - 30),
+        max(0, y - 12),
+        min(1000, x + 50),
+        min(1000, y + 12),
+    ]
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _maybe_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _line_y(line: dict[str, Any]) -> float:
+    words = line.get("words") or []
+    if words:
+        return statistics.median(_cy(word["bbox"]) / 1000 for word in words)
+    return _safe_float(line.get("y"), 0.5)
+
+
+def _cx(bbox: list[int]) -> float:
+    return (bbox[0] + bbox[2]) / 2
+
+
+def _cy(bbox: list[int]) -> float:
+    return (bbox[1] + bbox[3]) / 2
+
+
+def _token_width(token: str) -> int:
+    return max(34, min(140, 10 + len(str(token)) * 9))
+
+
+def _normalize_product_text(value: Any) -> str:
+    return " ".join(str(value or "").upper().split())
+
+
+def _sequence_similarity(left: list[str], right: list[str]) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    return float(SequenceMatcher(None, left, right).ratio())
+
+
+def _set_similarity(left: list[str], right: list[str]) -> float:
+    left_set = set(left)
+    right_set = set(right)
+    if not left_set and not right_set:
+        return 1.0
+    if not left_set or not right_set:
+        return 0.0
+    return len(left_set & right_set) / len(left_set | right_set)
+
+
+def _ratio_close(left: int, right: int) -> float:
+    denominator = max(left, right, 1)
+    return max(0.0, 1.0 - abs(left - right) / denominator)
+
+
+def _distance_score(distance: float, *, scale: float) -> float:
+    return max(0.0, 1.0 - min(distance / scale, 1.0))
+
+
+def _refresh_words(receipt: dict[str, Any]) -> None:
+    receipt["words"] = [
+        word
+        for line in receipt.get("lines", [])
+        for word in line.get("words", [])
+    ]
+
+
+def _receipt_key(receipt: dict[str, Any]) -> str:
+    image_id = str(receipt.get("image_id") or "unknown")
+    receipt_num = receipt.get("receipt_num")
+    if receipt_num is None:
+        raw_receipt_id = str(receipt.get("receipt_id") or "00001")
+        receipt_num = raw_receipt_id.rsplit("_", maxsplit=1)[-1]
+    try:
+        suffix = f"{int(receipt_num):05d}"
+    except (TypeError, ValueError):
+        suffix = str(receipt_num)
+    return f"{image_id}#{suffix}"
+
+
+def _dedupe(values: Any) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        text = str(value or "").strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result
+
+
+def _slug(value: str) -> str:
+    slug = []
+    previous_dash = False
+    for char in value.lower():
+        if char.isalnum():
+            slug.append(char)
+            previous_dash = False
+        elif not previous_dash:
+            slug.append("-")
+            previous_dash = True
+    return "".join(slug).strip("-")[:120] or "merchant-synthetic"
