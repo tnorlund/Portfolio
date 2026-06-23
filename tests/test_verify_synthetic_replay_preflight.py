@@ -1077,6 +1077,43 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "grounded-add-item",
         "hard-negative",
     ]
+    expected_source_lineage = {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "source_receipt_key_count": 2,
+        "source_receipt_keys": ["base#00001", "source#00001"],
+        "product_source_receipt_keys": ["source#00001"],
+        "category_source_receipt_keys": ["base#00001", "source#00001"],
+        "evidence_flags": {
+            "has_base_receipt": False,
+            "has_cross_receipt_item": True,
+            "has_category_evidence": True,
+            "has_nearest_real_structure": False,
+            "has_layout_integrity": False,
+            "has_arithmetic_reconciliation": True,
+            "has_selection_evidence": False,
+        },
+    }
+    expected_accepted_source_lineage = {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": "complete",
+        "authoritative": True,
+        "candidate_count": 2,
+        "observed_candidate_count": 2,
+        "expected_candidate_count": 2,
+        "with_base_receipt_count": 0,
+        "with_cross_receipt_item_count": 1,
+        "with_category_evidence_count": 1,
+        "with_nearest_real_structure_count": 0,
+        "with_layout_integrity_count": 0,
+        "with_arithmetic_reconciliation_count": 1,
+        "with_selection_evidence_count": 0,
+        "source_receipt_key_count": 2,
+        "source_receipt_keys": ["base#00001", "source#00001"],
+        "source_receipt_keys_truncated": False,
+    }
+    assert bundle["candidate_mix"]["accepted_source_lineage"] == (
+        expected_accepted_source_lineage
+    )
     assert bundle["selection"]["accepted_candidate_examples"][0] == {
         "rank": 1,
         "candidate_id": "grounded-add-item",
@@ -1087,6 +1124,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "accuracy_checks": [],
         "merchant_name": "Market Mart",
         "image_id": "synthetic-Market Mart-add",
+        "source_lineage": expected_source_lineage,
         "selection_reason": (
             "grounded_add_item_with_arithmetic_and_structure_similarity"
         ),
@@ -1111,6 +1149,9 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     )
     assert bundle["synthesis_quality_report"]["ready"] is True
     assert bundle["synthesis_quality_report"]["summary"]["accepted_count"] == 2
+    assert bundle["synthesis_quality_report"]["summary"]["accepted_source_lineage"] == (
+        expected_accepted_source_lineage
+    )
     assert bundle["synthesis_quality_report"]["summary"]["llm_execution"] == {
         "mode_counts": {"deterministic_fallback": 1},
         "paid_llm_disabled_count": 1,
@@ -1390,6 +1431,41 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         ),
     }
     assert accepted_examples[0]["selection_evidence"] == expected_selection_evidence
+    expected_source_lineage = {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "source_receipt_key_count": 2,
+        "source_receipt_keys": ["base#00001", "source#00001"],
+        "product_source_receipt_keys": ["source#00001"],
+        "category_source_receipt_keys": ["base#00001", "source#00001"],
+        "evidence_flags": {
+            "has_base_receipt": False,
+            "has_cross_receipt_item": True,
+            "has_category_evidence": True,
+            "has_nearest_real_structure": False,
+            "has_layout_integrity": False,
+            "has_arithmetic_reconciliation": True,
+            "has_selection_evidence": True,
+        },
+    }
+    expected_accepted_source_lineage = {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": "complete",
+        "authoritative": True,
+        "candidate_count": 2,
+        "observed_candidate_count": 2,
+        "expected_candidate_count": 2,
+        "with_base_receipt_count": 0,
+        "with_cross_receipt_item_count": 1,
+        "with_category_evidence_count": 1,
+        "with_nearest_real_structure_count": 0,
+        "with_layout_integrity_count": 0,
+        "with_arithmetic_reconciliation_count": 1,
+        "with_selection_evidence_count": 1,
+        "source_receipt_key_count": 2,
+        "source_receipt_keys": ["base#00001", "source#00001"],
+        "source_receipt_keys_truncated": False,
+    }
+    assert accepted_examples[0]["source_lineage"] == expected_source_lineage
     assert accepted_examples[0]["preview_lines"] == [
         {
             "line_number": 3,
@@ -1418,6 +1494,9 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "add_line_item": 1,
         "hard_negative": 1,
     }
+    assert report["summary"]["accepted_source_lineage"] == (
+        expected_accepted_source_lineage
+    )
     assert (
         report["summary"]["accepted_structure_components"]
         == bundle["candidate_mix"]["accepted_structure_components"]
@@ -1504,6 +1583,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         },
     }
     assert example["selection_evidence"] == expected_selection_evidence
+    assert example["source_lineage"] == expected_source_lineage
     assert example["total_change"] == {
         "old_grand_total": "8.49",
         "new_grand_total": "10.44",
@@ -2355,6 +2435,24 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
             "line_step": {"count": 2, "avg": 0.6, "min": 0.55, "max": 0.65},
             "price_column": {"count": 2, "avg": 1.0, "min": 1.0, "max": 1.0},
             "token_count": {"count": 2, "avg": 0.47, "min": 0.47, "max": 0.47},
+        },
+        "accepted_source_lineage": {
+            "schema_version": "accepted-source-lineage-v1",
+            "coverage_status": "complete",
+            "authoritative": True,
+            "candidate_count": 2,
+            "observed_candidate_count": 2,
+            "expected_candidate_count": 2,
+            "with_base_receipt_count": 0,
+            "with_cross_receipt_item_count": 1,
+            "with_category_evidence_count": 1,
+            "with_nearest_real_structure_count": 0,
+            "with_layout_integrity_count": 0,
+            "with_arithmetic_reconciliation_count": 1,
+            "with_selection_evidence_count": 0,
+            "source_receipt_key_count": 2,
+            "source_receipt_keys": ["base#00001", "source#00001"],
+            "source_receipt_keys_truncated": False,
         },
     }
     written = json.loads(output_path.read_text(encoding="utf-8"))

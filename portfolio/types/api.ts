@@ -433,6 +433,8 @@ export interface TrainingSynthesisReceiptPreview {
 export interface TrainingSynthesisStructureEvidence {
   score?: number | null;
   nearest_real_receipt_key?: string | null;
+  nearest_real_receipt_available?: boolean;
+  nearest_real_receipt_key_redacted?: boolean;
   components?: Record<string, number>;
   shape_deltas?: {
     token_count_delta?: number | null;
@@ -492,10 +494,13 @@ export interface TrainingSynthesisAccuracyEvidence {
     product_seen_receipt_count?: number | null;
     product_seen_outside_base_count?: number | null;
     product_seen_outside_base?: string[];
+    product_seen_outside_base_redacted?: boolean;
     category?: string | null;
     category_seen_count?: number | null;
     category_heading_seen_count?: number | null;
+    category_seen_receipt_count?: number | null;
     category_seen_in_receipts?: string[];
+    category_seen_in_receipts_redacted?: boolean;
   };
   category_placement?: {
     category?: string | null;
@@ -528,10 +533,15 @@ export interface TrainingSynthesisCandidateExample {
   field_format?: string | null;
   field_observed_count?: number | null;
   evidence_receipts?: string[];
+  evidence_receipt_count?: number | null;
+  evidence_receipts_redacted?: boolean;
   structure_similarity?: number | null;
   nearest_real_receipt_key?: string | null;
+  nearest_real_receipt_available?: boolean;
+  nearest_real_receipt_key_redacted?: boolean;
   candidate_quality?: TrainingSynthesisCandidateQuality;
   selection_evidence?: TrainingSynthesisSelectionEvidence;
+  source_lineage?: TrainingSynthesisSourceLineage;
   receipt_preview?: TrainingSynthesisReceiptPreview;
   accuracy_evidence?: TrainingSynthesisAccuracyEvidence;
 }
@@ -667,6 +677,41 @@ export interface TrainingSynthesisSelectionEvidence {
   selection_policy?: string | null;
 }
 
+export interface TrainingSynthesisSourceLineage {
+  schema_version?: string | null;
+  base_receipt_key?: string | null;
+  nearest_real_receipt_key?: string | null;
+  source_receipt_key_count?: number | null;
+  product_source_receipt_key_count?: number | null;
+  category_source_receipt_key_count?: number | null;
+  source_receipt_keys?: string[];
+  product_source_receipt_keys?: string[];
+  category_source_receipt_keys?: string[];
+  source_receipt_keys_redacted?: boolean;
+  evidence_flags?: Record<string, boolean>;
+}
+
+export interface TrainingSynthesisAcceptedSourceLineage {
+  schema_version?: string | null;
+  coverage_status?: "complete" | "sampled" | string | null;
+  authoritative?: boolean;
+  coverage_warning?: string | null;
+  candidate_count?: number | null;
+  observed_candidate_count?: number | null;
+  expected_candidate_count?: number | null;
+  with_base_receipt_count?: number | null;
+  with_cross_receipt_item_count?: number | null;
+  with_category_evidence_count?: number | null;
+  with_nearest_real_structure_count?: number | null;
+  with_layout_integrity_count?: number | null;
+  with_arithmetic_reconciliation_count?: number | null;
+  with_selection_evidence_count?: number | null;
+  source_receipt_key_count?: number | null;
+  source_receipt_keys?: string[];
+  source_receipt_keys_redacted?: boolean;
+  source_receipt_keys_truncated?: boolean;
+}
+
 export interface TrainingSynthesisCandidateMixMerchant {
   merchant_name?: string;
   candidate_count?: number | null;
@@ -682,6 +727,7 @@ export interface TrainingSynthesisCandidateMixMerchant {
   accepted_real_baseline_comparison?: TrainingSynthesisRealBaselineSummary | null;
   accepted_candidate_quality?: TrainingSynthesisScoreSummary | null;
   accepted_candidate_quality_components?: Record<string, TrainingSynthesisScoreSummary>;
+  accepted_source_lineage?: TrainingSynthesisAcceptedSourceLineage;
 }
 
 export interface TrainingSynthesisMerchantContract {
@@ -718,6 +764,7 @@ export interface TrainingSynthesisQualityExample {
   structure_evidence?: TrainingSynthesisStructureEvidence;
   candidate_quality?: TrainingSynthesisCandidateQuality;
   selection_evidence?: TrainingSynthesisSelectionEvidence;
+  source_lineage?: TrainingSynthesisSourceLineage;
   layout_integrity?: TrainingSynthesisLayoutIntegrityEvidence;
   accuracy_checks?: string[];
   receipt_shape?: {
@@ -736,10 +783,13 @@ export interface TrainingSynthesisQualityExample {
     product_seen_receipt_count?: number | null;
     product_seen_outside_base_count?: number | null;
     product_seen_outside_base?: string[];
+    product_seen_outside_base_redacted?: boolean;
     category?: string | null;
     category_seen_count?: number | null;
     category_heading_seen_count?: number | null;
+    category_seen_receipt_count?: number | null;
     category_seen_in_receipts?: string[];
+    category_seen_in_receipts_redacted?: boolean;
   };
   category_placement?: {
     category?: string | null;
@@ -785,6 +835,7 @@ export interface TrainingSynthesisQualityMerchant {
   accepted_real_baseline_comparison?: TrainingSynthesisRealBaselineSummary | null;
   accepted_candidate_quality?: TrainingSynthesisScoreSummary | null;
   accepted_candidate_quality_components?: Record<string, TrainingSynthesisScoreSummary>;
+  accepted_source_lineage?: TrainingSynthesisAcceptedSourceLineage;
   rejection_reasons?: Record<string, number>;
   blockers?: string[];
   limitations?: string[];
@@ -879,6 +930,7 @@ export interface TrainingSynthesisQualityReport {
     accepted_candidate_quality?: TrainingSynthesisScoreSummary | null;
     accepted_candidate_quality_components?: Record<string, TrainingSynthesisScoreSummary>;
     accepted_mix_balance?: TrainingSynthesisMixBalance;
+    accepted_source_lineage?: TrainingSynthesisAcceptedSourceLineage;
     llm_execution?: TrainingSynthesisLlmExecutionSummary;
     rejection_reasons?: Record<string, number>;
     contract_count?: number | null;
@@ -963,6 +1015,7 @@ export interface TrainingSynthesisSummary {
   accepted_candidate_quality?: TrainingSynthesisScoreSummary | null;
   accepted_candidate_quality_components?: Record<string, TrainingSynthesisScoreSummary>;
   accepted_mix_balance?: TrainingSynthesisMixBalance;
+  accepted_source_lineage?: TrainingSynthesisAcceptedSourceLineage;
   synthetic_accepted_mix_balance?: TrainingSynthesisMixBalance;
   avg_structure_components?: Record<string, number>;
   arithmetic_candidate_count?: number;

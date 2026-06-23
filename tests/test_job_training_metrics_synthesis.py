@@ -300,9 +300,27 @@ def test_summarize_synthesis_artifacts_bounds_candidate_evidence(monkeypatch):
         "category": "PRODUCE",
         "line_total": "1.95",
         "seen_in_other_receipt": True,
-        "evidence_receipts": ["source#00001"],
+        "evidence_receipt_count": 1,
+        "evidence_receipts_redacted": True,
         "structure_similarity": 0.94,
-        "nearest_real_receipt_key": "neighbor#00001",
+        "nearest_real_receipt_available": True,
+        "nearest_real_receipt_key_redacted": True,
+        "source_lineage": {
+            "schema_version": "synthetic-candidate-lineage-v1",
+            "source_receipt_key_count": 3,
+            "product_source_receipt_key_count": 1,
+            "category_source_receipt_key_count": 2,
+            "source_receipt_keys_redacted": True,
+            "evidence_flags": {
+                "has_base_receipt": False,
+                "has_cross_receipt_item": True,
+                "has_category_evidence": True,
+                "has_nearest_real_structure": True,
+                "has_layout_integrity": False,
+                "has_arithmetic_reconciliation": True,
+                "has_selection_evidence": False,
+            },
+        },
     }
     assert "tokens" not in summary["candidate_examples"][0]
     assert "bboxes" not in summary["candidate_examples"][0]
@@ -367,12 +385,125 @@ def test_summarize_synthesis_artifacts_exposes_field_replacement_evidence(
         "new_text": "05/14/2026",
         "field_format": "MM/DD/YYYY",
         "field_observed_count": 4,
-        "evidence_receipts": [],
+        "evidence_receipt_count": 0,
+        "evidence_receipts_redacted": False,
         "structure_similarity": 0.96,
-        "nearest_real_receipt_key": "neighbor#00002",
+        "nearest_real_receipt_available": True,
+        "nearest_real_receipt_key_redacted": True,
+        "source_lineage": {
+            "schema_version": "synthetic-candidate-lineage-v1",
+            "source_receipt_key_count": 1,
+            "product_source_receipt_key_count": 0,
+            "category_source_receipt_key_count": 0,
+            "source_receipt_keys_redacted": True,
+            "evidence_flags": {
+                "has_base_receipt": False,
+                "has_cross_receipt_item": False,
+                "has_category_evidence": False,
+                "has_nearest_real_structure": True,
+                "has_layout_integrity": False,
+                "has_arithmetic_reconciliation": False,
+                "has_selection_evidence": False,
+            },
+        },
     }
     assert "tokens" not in summary["candidate_examples"][0]
     assert "bboxes" not in summary["candidate_examples"][0]
+
+
+def test_compact_synthesis_quality_report_redacts_legacy_source_keys(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    raw_source_lineage = {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "base_receipt_key": "base#00001",
+        "nearest_real_receipt_key": "neighbor#00001",
+        "source_receipt_key_count": 2,
+        "product_source_receipt_key_count": 1,
+        "category_source_receipt_key_count": 1,
+        "source_receipt_keys": ["base#00001", "neighbor#00001"],
+        "product_source_receipt_keys": ["neighbor#00001"],
+        "category_source_receipt_keys": ["base#00001"],
+        "source_receipt_keys_redacted": True,
+        "evidence_flags": {
+            "has_base_receipt": True,
+            "has_cross_receipt_item": True,
+            "has_category_evidence": True,
+            "has_nearest_real_structure": True,
+        },
+    }
+    compact = module._compact_synthesis_quality_report(
+        {
+            "summary": {
+                "accepted_source_lineage": {
+                    "schema_version": "accepted-source-lineage-v1",
+                    "coverage_status": "complete",
+                    "authoritative": True,
+                    "candidate_count": 1,
+                    "observed_candidate_count": 1,
+                    "expected_candidate_count": 1,
+                    "source_receipt_key_count": 2,
+                    "source_receipt_keys": ["base#00001", "neighbor#00001"],
+                }
+            },
+            "merchants": [
+                {
+                    "merchant_name": "Sprouts Farmers Market",
+                    "accepted_examples": [
+                        {
+                            "candidate_id": "legacy-raw",
+                            "source_lineage": raw_source_lineage,
+                            "structure_evidence": {
+                                "score": 0.94,
+                                "nearest_real_receipt_key": "neighbor#00001",
+                                "nearest_real_receipt_key_redacted": True,
+                            },
+                            "catalog_grounding": {
+                                "product_seen_outside_base_count": 1,
+                                "product_seen_outside_base": ["neighbor#00001"],
+                                "product_seen_outside_base_redacted": True,
+                                "category_seen_in_receipts": ["base#00001"],
+                                "category_seen_in_receipts_redacted": True,
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    compact_json = json.dumps(compact, sort_keys=True)
+    assert "base#00001" not in compact_json
+    assert "neighbor#00001" not in compact_json
+
+    summary_lineage = compact["summary"]["accepted_source_lineage"]
+    assert summary_lineage["source_receipt_key_count"] == 2
+    assert summary_lineage["source_receipt_keys_redacted"] is True
+    assert "source_receipt_keys" not in summary_lineage
+    example = compact["merchants"][0]["accepted_examples"][0]
+    assert example["source_lineage"] == {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "source_receipt_key_count": 2,
+        "product_source_receipt_key_count": 1,
+        "category_source_receipt_key_count": 1,
+        "source_receipt_keys_redacted": True,
+        "evidence_flags": {
+            "has_base_receipt": True,
+            "has_cross_receipt_item": True,
+            "has_category_evidence": True,
+            "has_nearest_real_structure": True,
+        },
+    }
+    assert example["structure_evidence"] == {
+        "score": 0.94,
+        "nearest_real_receipt_available": True,
+        "nearest_real_receipt_key_redacted": True,
+    }
+    assert example["catalog_grounding"] == {
+        "product_seen_outside_base_count": 1,
+        "product_seen_outside_base_redacted": True,
+        "category_seen_receipt_count": 1,
+        "category_seen_in_receipts_redacted": True,
+    }
 
 
 def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
@@ -1298,6 +1429,45 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
     assert summary["candidate_examples"][0]["selection_evidence"] == (
         expected_selection_evidence
     )
+    expected_source_lineage = {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "source_receipt_key_count": 4,
+        "product_source_receipt_key_count": 2,
+        "category_source_receipt_key_count": 4,
+        "source_receipt_keys_redacted": True,
+        "evidence_flags": {
+            "has_base_receipt": False,
+            "has_cross_receipt_item": True,
+            "has_category_evidence": True,
+            "has_nearest_real_structure": True,
+            "has_layout_integrity": True,
+            "has_arithmetic_reconciliation": False,
+            "has_selection_evidence": True,
+        },
+    }
+    assert summary["candidate_examples"][0]["source_lineage"] == (
+        expected_source_lineage
+    )
+    expected_sampled_source_lineage = {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": "sampled",
+        "authoritative": False,
+        "coverage_warning": "sampled_source_lineage_not_authoritative",
+        "candidate_count": 1,
+        "observed_candidate_count": 1,
+        "expected_candidate_count": 3,
+        "with_base_receipt_count": 0,
+        "with_cross_receipt_item_count": 1,
+        "with_category_evidence_count": 1,
+        "with_nearest_real_structure_count": 1,
+        "with_layout_integrity_count": 1,
+        "with_arithmetic_reconciliation_count": 0,
+        "with_selection_evidence_count": 1,
+        "source_receipt_key_count": 4,
+        "source_receipt_keys_redacted": True,
+        "source_receipt_keys_truncated": False,
+    }
+    assert summary["accepted_source_lineage"] == expected_sampled_source_lineage
     assert summary["candidate_examples"][0]["receipt_preview"] == {
         "coordinate_system": "normalized_receipt_0_1000_y_high_is_top",
         "line_count": 5,
@@ -1336,7 +1506,8 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         },
         "structure_similarity": {
             "score": 0.94,
-            "nearest_real_receipt_key": "receipt-b#00001",
+            "nearest_real_receipt_available": True,
+            "nearest_real_receipt_key_redacted": True,
             "components": {
                 "price_column": 0.99,
                 "line_step": 0.95,
@@ -1377,14 +1548,12 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "product_observed_count": 2,
             "product_seen_receipt_count": 2,
             "product_seen_outside_base_count": 1,
-            "product_seen_outside_base": ["receipt-b#00001"],
+            "product_seen_outside_base_redacted": True,
             "category": "PRODUCE",
             "category_seen_count": 4,
             "category_heading_seen_count": 3,
-            "category_seen_in_receipts": [
-                "receipt-a#00001",
-                "receipt-b#00001",
-            ],
+            "category_seen_receipt_count": 2,
+            "category_seen_in_receipts_redacted": True,
         },
         "category_placement": {
             "category": "PRODUCE",
@@ -1405,6 +1574,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         "collect_more_receipts_for_not_ready_merchants",
         "fix_source_receipt_quality_before_synthesis",
         "cover_ready_operations_before_training",
+        "complete_source_lineage_before_training",
     ]
     assert summary["quality_report"]["summary"]["acceptance_rate"] == 0.6
     assert summary["quality_report"]["summary"]["ready_contract_count"] == 2
@@ -1417,6 +1587,9 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
     assert (
         summary["quality_report"]["summary"]["accepted_real_baseline_comparison"]
         == expected_real_baseline
+    )
+    assert summary["quality_report"]["summary"]["accepted_source_lineage"] == (
+        expected_sampled_source_lineage
     )
     assert summary["quality_report"]["summary"]["source_quality_status_counts"] == {
         "usable": 2,
@@ -1617,6 +1790,13 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
     assert summary["quality_report"]["merchants"][1]["merchant_name"] == (
         "Sprouts Farmers Market"
     )
+    expected_sprouts_sampled_source_lineage = {
+        **expected_sampled_source_lineage,
+        "expected_candidate_count": 2,
+    }
+    assert summary["quality_report"]["merchants"][1]["accepted_source_lineage"] == (
+        expected_sprouts_sampled_source_lineage
+    )
     assert summary["quality_report"]["merchants"][1]["accepted_examples"][0] == {
         "candidate_id": "sprouts-add",
         "operation": "add_line_item",
@@ -1636,6 +1816,7 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             },
         },
         "selection_evidence": expected_selection_evidence,
+        "source_lineage": expected_source_lineage,
         "accuracy_checks": [
             "item_seen_in_other_receipt",
             "base_receipt_has_category",
@@ -1653,7 +1834,8 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
         },
         "structure_evidence": {
             "score": 0.94,
-            "nearest_real_receipt_key": "receipt-b#00001",
+            "nearest_real_receipt_available": True,
+            "nearest_real_receipt_key_redacted": True,
             "components": {
                 "price_column": 0.99,
                 "line_step": 0.95,
@@ -1694,14 +1876,12 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "product_observed_count": 2,
             "product_seen_receipt_count": 2,
             "product_seen_outside_base_count": 1,
-            "product_seen_outside_base": ["receipt-b#00001"],
+            "product_seen_outside_base_redacted": True,
             "category": "PRODUCE",
             "category_seen_count": 4,
             "category_heading_seen_count": 3,
-            "category_seen_in_receipts": [
-                "receipt-a#00001",
-                "receipt-b#00001",
-            ],
+            "category_seen_receipt_count": 2,
+            "category_seen_in_receipts_redacted": True,
         },
         "category_placement": {
             "category": "PRODUCE",

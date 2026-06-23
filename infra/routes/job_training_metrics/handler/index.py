@@ -775,6 +775,23 @@ def _summarize_synthesis_bundle(
         if contracts
         else None
     )
+    candidate_examples = [
+        _compact_candidate_example(
+            candidate,
+            merchant=str(candidate.get("merchant_name") or "Unknown merchant"),
+        )
+        for candidate in examples[:4]
+        if isinstance(candidate, dict)
+    ]
+    accepted_source_lineage = _compact_source_lineage_summary(
+        candidate_mix.get("accepted_source_lineage")
+    )
+    if not accepted_source_lineage:
+        accepted_source_lineage = _accepted_source_lineage_from_candidates(
+            examples,
+            expected_candidate_count=accepted_count,
+        )
+
     summary = {
         "status": "available",
         "artifact_s3_uri": artifact_ref.get("s3_uri"),
@@ -817,14 +834,7 @@ def _summarize_synthesis_bundle(
         "candidate_mix_merchants": _compact_candidate_mix_merchants(
             candidate_mix.get("merchants") or []
         ),
-        "candidate_examples": [
-            _compact_candidate_example(
-                candidate,
-                merchant=str(candidate.get("merchant_name") or "Unknown merchant"),
-            )
-            for candidate in examples[:4]
-            if isinstance(candidate, dict)
-        ],
+        "candidate_examples": candidate_examples,
         "validation_policy": bundle.get("validation_policy") or "real_receipts_only",
     }
     source_receipt_quality = _compact_source_receipt_quality(
@@ -842,6 +852,8 @@ def _summarize_synthesis_bundle(
     )
     if accepted_mix_balance:
         summary["accepted_mix_balance"] = accepted_mix_balance
+    if accepted_source_lineage:
+        summary["accepted_source_lineage"] = accepted_source_lineage
     accepted_candidate_quality = _compact_score_summary(
         candidate_mix.get("accepted_candidate_quality")
     )
@@ -917,6 +929,294 @@ def _count_values(values: Any) -> Dict[str, int]:
         if value:
             counts[str(value)] += 1
     return dict(counts)
+
+
+def _source_key_values(value: Any) -> List[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple, set)):
+        values: list[str] = []
+        for item in value:
+            values.extend(_source_key_values(item))
+        return values
+    return []
+
+
+def _unique_source_keys(*values: Any) -> List[str]:
+    keys: set[str] = set()
+    for value in values:
+        keys.update(_source_key_values(value))
+    return sorted(keys)
+
+
+def _compact_source_lineage(
+    value: Any,
+    *,
+    redact_source_keys: bool = True,
+) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    flags = value.get("evidence_flags")
+    flags = flags if isinstance(flags, dict) else {}
+    source_keys = _unique_source_keys(value.get("source_receipt_keys"))
+    product_keys = _unique_source_keys(value.get("product_source_receipt_keys"))
+    category_keys = _unique_source_keys(value.get("category_source_receipt_keys"))
+    compact_flags = {
+        str(key): flag for key, flag in flags.items() if isinstance(flag, bool)
+    }
+    if not source_keys and not any(compact_flags.values()):
+        return {}
+    result = {
+        "schema_version": value.get("schema_version"),
+        "source_receipt_key_count": _safe_int(value.get("source_receipt_key_count"))
+        or len(source_keys),
+        "product_source_receipt_key_count": _safe_int(
+            value.get("product_source_receipt_key_count")
+        )
+        or len(product_keys),
+        "category_source_receipt_key_count": _safe_int(
+            value.get("category_source_receipt_key_count")
+        )
+        or len(category_keys),
+        "evidence_flags": compact_flags,
+    }
+    if redact_source_keys:
+        if (
+            source_keys
+            or product_keys
+            or category_keys
+            or value.get("source_receipt_keys_redacted") is True
+            or value.get("base_receipt_key")
+            or value.get("nearest_real_receipt_key")
+        ):
+            result["source_receipt_keys_redacted"] = True
+    else:
+        result.update(
+            {
+                "base_receipt_key": value.get("base_receipt_key"),
+                "nearest_real_receipt_key": value.get("nearest_real_receipt_key"),
+                "source_receipt_keys": source_keys[:12],
+                "product_source_receipt_keys": product_keys[:8],
+                "category_source_receipt_keys": category_keys[:8],
+            }
+        )
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_source_lineage_summary(
+    value: Any,
+    *,
+    redact_source_keys: bool = True,
+) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    if not value:
+        return {}
+    source_keys = _unique_source_keys(value.get("source_receipt_keys"))
+    result = {
+        "schema_version": value.get("schema_version"),
+        "coverage_status": value.get("coverage_status"),
+        "authoritative": (
+            value.get("authoritative")
+            if isinstance(value.get("authoritative"), bool)
+            else None
+        ),
+        "coverage_warning": value.get("coverage_warning"),
+        "candidate_count": _safe_int(value.get("candidate_count")),
+        "observed_candidate_count": _safe_int(value.get("observed_candidate_count")),
+        "expected_candidate_count": _safe_int(value.get("expected_candidate_count")),
+        "with_base_receipt_count": _safe_int(value.get("with_base_receipt_count")),
+        "with_cross_receipt_item_count": _safe_int(
+            value.get("with_cross_receipt_item_count")
+        ),
+        "with_category_evidence_count": _safe_int(
+            value.get("with_category_evidence_count")
+        ),
+        "with_nearest_real_structure_count": _safe_int(
+            value.get("with_nearest_real_structure_count")
+        ),
+        "with_layout_integrity_count": _safe_int(
+            value.get("with_layout_integrity_count")
+        ),
+        "with_arithmetic_reconciliation_count": _safe_int(
+            value.get("with_arithmetic_reconciliation_count")
+        ),
+        "with_selection_evidence_count": _safe_int(
+            value.get("with_selection_evidence_count")
+        ),
+        "source_receipt_key_count": _safe_int(value.get("source_receipt_key_count"))
+        or len(source_keys),
+        "source_receipt_keys_truncated": (
+            value.get("source_receipt_keys_truncated")
+            if isinstance(value.get("source_receipt_keys_truncated"), bool)
+            else len(source_keys) > 20
+        ),
+    }
+    if redact_source_keys:
+        if source_keys or result.get("source_receipt_key_count"):
+            result["source_receipt_keys_redacted"] = True
+    else:
+        result["source_receipt_keys"] = source_keys[:20]
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _candidate_source_lineage(
+    candidate: Dict[str, Any],
+    *,
+    redact_source_keys: bool = True,
+) -> Dict[str, Any]:
+    metadata = candidate.get("metadata") if isinstance(candidate, dict) else {}
+    metadata = metadata if isinstance(metadata, dict) else {}
+    accuracy = metadata.get("synthesis_accuracy_evidence")
+    accuracy = accuracy if isinstance(accuracy, dict) else {}
+    structure = metadata.get("structure_similarity")
+    structure = structure if isinstance(structure, dict) else {}
+    accuracy_structure = accuracy.get("structure_similarity")
+    if isinstance(accuracy_structure, dict):
+        if not structure:
+            structure = accuracy_structure
+        elif not structure.get("nearest_real_receipt_key"):
+            structure = {**accuracy_structure, **structure}
+    catalog = accuracy.get("catalog_grounding")
+    catalog = catalog if isinstance(catalog, dict) else {}
+    observed = metadata.get("observed_item_evidence")
+    observed = observed if isinstance(observed, dict) else {}
+    added = metadata.get("added_item")
+    added = added if isinstance(added, dict) else {}
+    layout = metadata.get("layout_integrity") or accuracy.get("layout_integrity")
+    layout = layout if isinstance(layout, dict) else {}
+    arithmetic = metadata.get("arithmetic_reconciliation")
+    arithmetic = arithmetic if isinstance(arithmetic, dict) else {}
+    selection = metadata.get("selection_evidence")
+
+    base_key = str(metadata.get("base_receipt_key") or "").strip()
+    nearest_key = str(structure.get("nearest_real_receipt_key") or "").strip()
+    product_keys = _unique_source_keys(
+        added.get("source_receipt_keys"),
+        observed.get("product_seen_outside_base"),
+        catalog.get("product_seen_outside_base"),
+    )
+    category_keys = _unique_source_keys(
+        observed.get("category_seen_in_receipts"),
+        catalog.get("category_seen_in_receipts"),
+    )
+    source_keys = _unique_source_keys(base_key, nearest_key, product_keys, category_keys)
+    flags = {
+        "has_base_receipt": bool(base_key),
+        "has_cross_receipt_item": (
+            any(key != base_key for key in product_keys)
+            if base_key
+            else bool(product_keys)
+        ),
+        "has_category_evidence": bool(category_keys),
+        "has_nearest_real_structure": bool(nearest_key),
+        "has_layout_integrity": bool(layout),
+        "has_arithmetic_reconciliation": bool(arithmetic),
+        "has_selection_evidence": isinstance(selection, dict),
+    }
+    if not source_keys and not any(flags.values()):
+        return {}
+    return _compact_source_lineage(
+        {
+            "schema_version": "synthetic-candidate-lineage-v1",
+            "base_receipt_key": base_key or None,
+            "nearest_real_receipt_key": nearest_key or None,
+            "source_receipt_key_count": len(source_keys),
+            "source_receipt_keys": source_keys,
+            "product_source_receipt_keys": product_keys,
+            "category_source_receipt_keys": category_keys,
+            "evidence_flags": flags,
+        },
+        redact_source_keys=redact_source_keys,
+    )
+
+
+def _accepted_source_lineage_from_candidates(
+    candidates: Any,
+    *,
+    expected_candidate_count: int | None = None,
+) -> Dict[str, Any]:
+    if not isinstance(candidates, list) or not candidates:
+        return {}
+    candidate_rows = [
+        candidate for candidate in candidates if isinstance(candidate, dict)
+    ]
+    if not candidate_rows:
+        return {}
+    lineages: list[Dict[str, Any]] = []
+    for candidate in candidate_rows:
+        lineage = _compact_source_lineage(
+            candidate.get("source_lineage"),
+            redact_source_keys=False,
+        )
+        if not lineage:
+            lineage = _candidate_source_lineage(
+                candidate,
+                redact_source_keys=False,
+            )
+        lineages.append(lineage)
+    meaningful_lineages = [lineage for lineage in lineages if lineage]
+    if not meaningful_lineages:
+        return {}
+    flags = [
+        lineage.get("evidence_flags") or {}
+        for lineage in meaningful_lineages
+        if isinstance(lineage, dict)
+    ]
+    source_keys = _unique_source_keys(
+        *[
+            lineage.get("source_receipt_keys") or []
+            for lineage in meaningful_lineages
+        ]
+    )
+    lineage_source_counts = [
+        _safe_int(lineage.get("source_receipt_key_count")) or 0
+        for lineage in meaningful_lineages
+    ]
+    source_key_count = (
+        len(source_keys)
+        if source_keys
+        else max(lineage_source_counts, default=0)
+    )
+
+    def count_flag(name: str) -> int:
+        return sum(1 for row in flags if row.get(name) is True)
+
+    expected_count = expected_candidate_count or len(candidate_rows)
+    observed_count = len(candidate_rows)
+    authoritative = observed_count == expected_count
+    return _compact_source_lineage_summary(
+        {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": (
+            "complete" if authoritative else "sampled"
+        ),
+        "authoritative": authoritative,
+        "coverage_warning": (
+            None
+            if authoritative
+            else "sampled_source_lineage_not_authoritative"
+        ),
+        "candidate_count": observed_count,
+        "observed_candidate_count": observed_count,
+        "expected_candidate_count": expected_count,
+        "with_base_receipt_count": count_flag("has_base_receipt"),
+        "with_cross_receipt_item_count": count_flag("has_cross_receipt_item"),
+        "with_category_evidence_count": count_flag("has_category_evidence"),
+        "with_nearest_real_structure_count": count_flag(
+            "has_nearest_real_structure"
+        ),
+        "with_layout_integrity_count": count_flag("has_layout_integrity"),
+        "with_arithmetic_reconciliation_count": count_flag(
+            "has_arithmetic_reconciliation"
+        ),
+        "with_selection_evidence_count": count_flag("has_selection_evidence"),
+        "source_receipt_key_count": source_key_count,
+        "source_receipt_keys": source_keys[:20],
+        "source_receipt_keys_truncated": len(source_keys) > 20,
+        }
+    )
 
 
 def _compact_score_summary(value: Any) -> Dict[str, Any] | None:
@@ -1637,6 +1937,9 @@ def _compact_quality_examples(rows: Any) -> List[Dict[str, Any]]:
         selection_evidence = _compact_selection_evidence(row.get("selection_evidence"))
         if selection_evidence:
             example["selection_evidence"] = selection_evidence
+        source_lineage = _compact_source_lineage(row.get("source_lineage"))
+        if source_lineage:
+            example["source_lineage"] = source_lineage
         structure_evidence = _compact_structure_accuracy_evidence(
             row.get("structure_evidence")
         )
@@ -1658,7 +1961,9 @@ def _compact_quality_examples(rows: Any) -> List[Dict[str, Any]]:
             }
         catalog_grounding = row.get("catalog_grounding")
         if isinstance(catalog_grounding, dict):
-            example["catalog_grounding"] = catalog_grounding
+            example["catalog_grounding"] = _compact_catalog_grounding_evidence(
+                catalog_grounding
+            )
         category_placement = row.get("category_placement")
         if isinstance(category_placement, dict):
             example["category_placement"] = category_placement
@@ -1860,6 +2165,11 @@ def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
     )
     if accepted_quality_components:
         result["accepted_candidate_quality_components"] = accepted_quality_components
+    accepted_source_lineage = _compact_source_lineage_summary(
+        row.get("accepted_source_lineage")
+    )
+    if accepted_source_lineage:
+        result["accepted_source_lineage"] = accepted_source_lineage
     if source_quality_operation_blockers:
         result["source_quality_operation_blockers"] = {
             str(operation): str(reason)
@@ -1916,6 +2226,11 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
     accepted_mix_balance = _compact_mix_balance(summary.get("accepted_mix_balance"))
     if accepted_mix_balance:
         compact_summary["accepted_mix_balance"] = accepted_mix_balance
+    accepted_source_lineage = _compact_source_lineage_summary(
+        summary.get("accepted_source_lineage")
+    )
+    if accepted_source_lineage:
+        compact_summary["accepted_source_lineage"] = accepted_source_lineage
     accepted_candidate_quality = _compact_score_summary(
         summary.get("accepted_candidate_quality")
     )
@@ -2083,6 +2398,7 @@ def _derive_synthesis_quality_report(
                 "structure_similarity": example.get("structure_similarity"),
                 "candidate_quality": example.get("candidate_quality"),
                 "selection_evidence": example.get("selection_evidence"),
+                "source_lineage": example.get("source_lineage"),
                 "structure_evidence": accuracy.get("structure_similarity"),
                 "accuracy_checks": accuracy.get("checks") or [],
                 "layout_integrity": accuracy.get("layout_integrity"),
@@ -2124,6 +2440,18 @@ def _derive_synthesis_quality_report(
         )
         candidate_count = _safe_int(mix.get("candidate_count"))
         accepted_count = _safe_int(mix.get("accepted_count"))
+        accepted_examples = examples_by_merchant.get(merchant, [])[:3]
+        accepted_source_lineage = _compact_source_lineage_summary(
+            mix.get("accepted_source_lineage")
+        )
+        if (
+            not accepted_source_lineage
+            and accepted_count
+        ):
+            accepted_source_lineage = _accepted_source_lineage_from_candidates(
+                examples_by_merchant.get(merchant, []),
+                expected_candidate_count=accepted_count,
+            )
         merchant_row = {
             "merchant_name": merchant,
             "readiness_status": contract.get("status"),
@@ -2173,10 +2501,11 @@ def _derive_synthesis_quality_report(
                     mix.get("accepted_candidate_quality_components")
                 )
             ),
+            "accepted_source_lineage": accepted_source_lineage,
             "rejection_reasons": _compact_count_map(mix.get("rejection_reasons")),
             "blockers": list(contract.get("blockers") or [])[:5],
             "limitations": list(contract.get("limitations") or [])[:5],
-            "accepted_examples": examples_by_merchant.get(merchant, [])[:3],
+            "accepted_examples": accepted_examples,
         }
         merchant_row.update(
             _report_source_quality_fields(
@@ -2187,6 +2516,17 @@ def _derive_synthesis_quality_report(
         merchant_rows.append(merchant_row)
     candidate_count = _safe_int(candidate_mix.get("candidate_count"))
     accepted_count = _safe_int(candidate_mix.get("accepted_count"))
+    accepted_source_lineage = _compact_source_lineage_summary(
+        candidate_mix.get("accepted_source_lineage")
+    )
+    if (
+        not accepted_source_lineage
+        and accepted_count
+    ):
+        accepted_source_lineage = _accepted_source_lineage_from_candidates(
+            candidate_examples,
+            expected_candidate_count=accepted_count,
+        )
     recommendations: list[str] = []
     if candidate_mix.get("rejection_reasons", {}).get("merchant_synthesis_not_ready"):
         recommendations.append("collect_more_receipts_for_not_ready_merchants")
@@ -2233,6 +2573,8 @@ def _derive_synthesis_quality_report(
         and llm_model_freshness_gate.get("passed") is not True
     ):
         training_ready_reasons.append("refresh_latest_model_guidance_before_synthesis")
+    if accepted_source_lineage.get("authoritative") is False:
+        training_ready_reasons.append("complete_source_lineage_before_training")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
         training_ready_reasons.append("rebalance_synthetic_mix_before_training")
@@ -2314,6 +2656,7 @@ def _derive_synthesis_quality_report(
                 "accepted_candidate_quality_components": candidate_mix.get(
                     "accepted_candidate_quality_components"
                 ),
+                "accepted_source_lineage": accepted_source_lineage,
                 "accepted_mix_balance": candidate_mix.get("accepted_mix_balance"),
                 "llm_execution": llm_execution,
                 "rejection_reasons": candidate_mix.get("rejection_reasons"),
@@ -2465,6 +2808,11 @@ def _compact_candidate_mix_merchants(rows: List[Any]) -> List[Dict[str, Any]]:
                 row.get("accepted_candidate_quality")
             ),
         }
+        accepted_source_lineage = _compact_source_lineage_summary(
+            row.get("accepted_source_lineage")
+        )
+        if accepted_source_lineage:
+            next_row["accepted_source_lineage"] = accepted_source_lineage
         accepted_real_baseline = _compact_real_baseline_comparison_summary(
             row.get("accepted_real_baseline_comparison")
         )
@@ -2541,6 +2889,18 @@ def _compact_candidate_example(
     preview = metadata.get("synthetic_receipt_preview") or {}
     accuracy_evidence = metadata.get("synthesis_accuracy_evidence") or {}
     candidate_quality = _compact_candidate_quality(metadata.get("candidate_quality"))
+    evidence_receipts = _unique_source_keys(
+        observed.get("product_seen_outside_base"),
+        added_item.get("source_receipt_keys"),
+    )
+    accuracy_structure = accuracy_evidence.get("structure_similarity")
+    accuracy_structure = (
+        accuracy_structure if isinstance(accuracy_structure, dict) else {}
+    )
+    nearest_key = (
+        structure.get("nearest_real_receipt_key")
+        or accuracy_structure.get("nearest_real_receipt_key")
+    )
     result = {
         "candidate_id": candidate.get("candidate_id"),
         "merchant_name": merchant,
@@ -2552,19 +2912,21 @@ def _compact_candidate_example(
         "category": added_item.get("category") or removed_item.get("category"),
         "line_total": added_item.get("line_total") or removed_item.get("line_total"),
         "seen_in_other_receipt": added_item.get("seen_in_other_receipt"),
-        "evidence_receipts": (
-            observed.get("product_seen_outside_base")
-            or added_item.get("source_receipt_keys")
-            or []
-        )[:3],
+        "evidence_receipt_count": len(evidence_receipts),
+        "evidence_receipts_redacted": bool(evidence_receipts),
         "structure_similarity": _safe_float(structure.get("score")),
-        "nearest_real_receipt_key": structure.get("nearest_real_receipt_key"),
     }
+    if nearest_key:
+        result["nearest_real_receipt_available"] = True
+        result["nearest_real_receipt_key_redacted"] = True
     if candidate_quality:
         result["candidate_quality"] = candidate_quality
     selection_evidence = _compact_selection_evidence(metadata.get("selection_evidence"))
     if selection_evidence:
         result["selection_evidence"] = selection_evidence
+    source_lineage = _candidate_source_lineage(candidate)
+    if source_lineage:
+        result["source_lineage"] = source_lineage
     compact_preview = _compact_synthetic_receipt_preview(preview)
     if compact_preview:
         result["receipt_preview"] = compact_preview
@@ -2637,14 +2999,51 @@ def _compact_synthesis_accuracy_evidence(value: Any) -> Dict[str, Any]:
         "new_text": value.get("new_text"),
         "category": value.get("category"),
         "tax_delta": value.get("tax_delta"),
-        "catalog_grounding": (
-            catalog_grounding if isinstance(catalog_grounding, dict) else None
-        ),
+        "catalog_grounding": _compact_catalog_grounding_evidence(catalog_grounding),
         "category_placement": (
             category_placement if isinstance(category_placement, dict) else None
         ),
         "layout_integrity": layout_integrity,
         "structure_similarity": structure_similarity,
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [], {})}
+
+
+def _compact_catalog_grounding_evidence(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    product_keys = _unique_source_keys(value.get("product_seen_outside_base"))
+    category_keys = _unique_source_keys(value.get("category_seen_in_receipts"))
+    product_redacted = (
+        value.get("product_seen_outside_base_redacted")
+        if isinstance(value.get("product_seen_outside_base_redacted"), bool)
+        else bool(product_keys)
+    )
+    category_redacted = (
+        value.get("category_seen_in_receipts_redacted")
+        if isinstance(value.get("category_seen_in_receipts_redacted"), bool)
+        else bool(category_keys)
+    )
+    result = {
+        "product_observed_count": _safe_int(value.get("product_observed_count")),
+        "product_seen_receipt_count": _safe_int(
+            value.get("product_seen_receipt_count")
+        ),
+        "product_seen_outside_base_count": _safe_int(
+            value.get("product_seen_outside_base_count")
+        )
+        or len(product_keys),
+        "product_seen_outside_base_redacted": product_redacted,
+        "category": value.get("category"),
+        "category_seen_count": _safe_int(value.get("category_seen_count")),
+        "category_heading_seen_count": _safe_int(
+            value.get("category_heading_seen_count")
+        ),
+        "category_seen_receipt_count": _safe_int(
+            value.get("category_seen_receipt_count")
+        )
+        or len(category_keys),
+        "category_seen_in_receipts_redacted": category_redacted,
     }
     return {key: item for key, item in result.items() if item not in (None, "", [], {})}
 
@@ -2731,12 +3130,23 @@ def _compact_structure_accuracy_evidence(value: Any) -> Dict[str, Any]:
         }
     result = {
         "score": _safe_float(value.get("score")),
-        "nearest_real_receipt_key": value.get("nearest_real_receipt_key"),
         "components": components,
         "shape_deltas": shape_deltas,
         "match_summary": compact_match_summary,
         "real_baseline_comparison": compact_real_baseline,
     }
+    nearest_available = (
+        value.get("nearest_real_receipt_available") is True
+        or bool(value.get("nearest_real_receipt_key"))
+    )
+    nearest_redacted = (
+        value.get("nearest_real_receipt_key_redacted") is True
+        or bool(value.get("nearest_real_receipt_key"))
+    )
+    if nearest_available:
+        result["nearest_real_receipt_available"] = True
+    if nearest_redacted:
+        result["nearest_real_receipt_key_redacted"] = True
     return {key: item for key, item in result.items() if item not in (None, "", [], {})}
 
 

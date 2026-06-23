@@ -448,6 +448,96 @@ def _candidate_metadata(candidate: dict[str, Any]) -> dict[str, Any]:
     return metadata if isinstance(metadata, dict) else {}
 
 
+def _source_key_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple, set)):
+        values: list[str] = []
+        for item in value:
+            values.extend(_source_key_values(item))
+        return values
+    return []
+
+
+def _unique_source_keys(*values: Any) -> list[str]:
+    keys: set[str] = set()
+    for value in values:
+        keys.update(_source_key_values(value))
+    return sorted(keys)
+
+
+def _candidate_source_lineage(candidate: dict[str, Any]) -> dict[str, Any]:
+    metadata = _candidate_metadata(candidate)
+    accuracy = metadata.get("synthesis_accuracy_evidence")
+    accuracy = accuracy if isinstance(accuracy, dict) else {}
+    structure = metadata.get("structure_similarity")
+    structure = structure if isinstance(structure, dict) else {}
+    accuracy_structure = accuracy.get("structure_similarity")
+    if isinstance(accuracy_structure, dict):
+        if not structure:
+            structure = accuracy_structure
+        elif not structure.get("nearest_real_receipt_key"):
+            structure = {**accuracy_structure, **structure}
+    catalog = accuracy.get("catalog_grounding")
+    catalog = catalog if isinstance(catalog, dict) else {}
+    observed = metadata.get("observed_item_evidence")
+    observed = observed if isinstance(observed, dict) else {}
+    added = metadata.get("added_item")
+    added = added if isinstance(added, dict) else {}
+    layout = metadata.get("layout_integrity") or accuracy.get("layout_integrity")
+    layout = layout if isinstance(layout, dict) else {}
+    arithmetic = metadata.get("arithmetic_reconciliation")
+    arithmetic = arithmetic if isinstance(arithmetic, dict) else {}
+    selection = metadata.get("selection_evidence")
+
+    base_key = str(metadata.get("base_receipt_key") or "").strip()
+    nearest_key = str(structure.get("nearest_real_receipt_key") or "").strip()
+    product_keys = _unique_source_keys(
+        added.get("source_receipt_keys"),
+        observed.get("product_seen_outside_base"),
+        catalog.get("product_seen_outside_base"),
+    )
+    category_keys = _unique_source_keys(
+        observed.get("category_seen_in_receipts"),
+        catalog.get("category_seen_in_receipts"),
+    )
+    source_keys = _unique_source_keys(
+        base_key,
+        nearest_key,
+        product_keys,
+        category_keys,
+    )
+    flags = {
+        "has_base_receipt": bool(base_key),
+        "has_cross_receipt_item": any(
+            key != base_key for key in product_keys
+        )
+        if base_key
+        else bool(product_keys),
+        "has_category_evidence": bool(category_keys),
+        "has_nearest_real_structure": bool(nearest_key),
+        "has_layout_integrity": bool(layout),
+        "has_arithmetic_reconciliation": bool(arithmetic),
+        "has_selection_evidence": isinstance(selection, dict),
+    }
+    if not source_keys and not any(flags.values()):
+        return {}
+    result = {
+        "schema_version": "synthetic-candidate-lineage-v1",
+        "base_receipt_key": base_key or None,
+        "nearest_real_receipt_key": nearest_key or None,
+        "source_receipt_key_count": len(source_keys),
+        "source_receipt_keys": source_keys[:12],
+        "product_source_receipt_keys": product_keys[:8],
+        "category_source_receipt_keys": category_keys[:8],
+        "evidence_flags": flags,
+    }
+    return {
+        key: value for key, value in result.items() if value not in (None, "", [])
+    }
+
+
 def _candidate_merchant(candidate: dict[str, Any]) -> str:
     metadata = _candidate_metadata(candidate)
     profile = metadata.get("profile")
@@ -1439,6 +1529,50 @@ def _real_baseline_comparison_summary(rows: list[dict[str, Any]]) -> dict[str, A
     }
 
 
+def _accepted_source_lineage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if not rows:
+        return {}
+    lineages = [_candidate_source_lineage(row) for row in rows]
+    flags = [
+        lineage.get("evidence_flags") or {}
+        for lineage in lineages
+        if isinstance(lineage, dict)
+    ]
+    source_keys = _unique_source_keys(
+        *[
+            lineage.get("source_receipt_keys") or []
+            for lineage in lineages
+            if isinstance(lineage, dict)
+        ]
+    )
+
+    def count_flag(name: str) -> int:
+        return sum(1 for row in flags if row.get(name) is True)
+
+    return {
+        "schema_version": "accepted-source-lineage-v1",
+        "coverage_status": "complete",
+        "authoritative": True,
+        "candidate_count": len(rows),
+        "observed_candidate_count": len(rows),
+        "expected_candidate_count": len(rows),
+        "with_base_receipt_count": count_flag("has_base_receipt"),
+        "with_cross_receipt_item_count": count_flag("has_cross_receipt_item"),
+        "with_category_evidence_count": count_flag("has_category_evidence"),
+        "with_nearest_real_structure_count": count_flag(
+            "has_nearest_real_structure"
+        ),
+        "with_layout_integrity_count": count_flag("has_layout_integrity"),
+        "with_arithmetic_reconciliation_count": count_flag(
+            "has_arithmetic_reconciliation"
+        ),
+        "with_selection_evidence_count": count_flag("has_selection_evidence"),
+        "source_receipt_key_count": len(source_keys),
+        "source_receipt_keys": source_keys[:20],
+        "source_receipt_keys_truncated": len(source_keys) > 20,
+    }
+
+
 def summarize_bundle_candidate_mix(
     rows: list[dict[str, Any]],
     selected_rows: list[dict[str, Any]],
@@ -1536,6 +1670,9 @@ def summarize_bundle_candidate_mix(
             "accepted_real_baseline_comparison": (
                 _real_baseline_comparison_summary(merchant_selected)
             ),
+            "accepted_source_lineage": _accepted_source_lineage_summary(
+                merchant_selected
+            ),
             "accepted_candidate_ids": [
                 str(row.get("candidate_id") or row.get("receipt_key") or "")
                 for row in merchant_selected[:10]
@@ -1602,6 +1739,7 @@ def summarize_bundle_candidate_mix(
         "accepted_real_baseline_comparison": _real_baseline_comparison_summary(
             selected_rows
         ),
+        "accepted_source_lineage": _accepted_source_lineage_summary(selected_rows),
         "accepted_grounded_candidate_count": sum(
             1 for row in selected_rows if _candidate_is_grounded(row)
         ),
@@ -1791,6 +1929,9 @@ def _compact_report_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     selection_evidence = _candidate_selection_evidence(candidate)
     if selection_evidence:
         result["selection_evidence"] = selection_evidence
+    source_lineage = _candidate_source_lineage(candidate)
+    if source_lineage:
+        result["source_lineage"] = source_lineage
     if accuracy.get("changed_text"):
         result["changed_text"] = _clip_text(accuracy.get("changed_text"))
     if accuracy.get("label"):
@@ -2054,6 +2195,7 @@ def build_local_synthesis_quality_report(
                 "accepted_candidate_quality_components"
             )
             or {},
+            "accepted_source_lineage": mix.get("accepted_source_lineage") or {},
             "rejection_reasons": mix.get("rejection_reasons") or {},
             "blockers": list(contract.get("blockers") or audit.get("blockers") or [])[
                 :8
@@ -2136,6 +2278,8 @@ def build_local_synthesis_quality_report(
             "accepted_candidate_quality_components": candidate_mix.get(
                 "accepted_candidate_quality_components"
             )
+            or {},
+            "accepted_source_lineage": candidate_mix.get("accepted_source_lineage")
             or {},
             "accepted_mix_balance": candidate_mix.get("accepted_mix_balance") or {},
             "llm_execution": llm_execution,
@@ -3636,6 +3780,10 @@ def run_local_synthetic_pipeline(
         candidate_mix_output["accepted_candidate_quality_components"] = bundle[
             "candidate_mix"
         ]["accepted_candidate_quality_components"]
+    if bundle["candidate_mix"].get("accepted_source_lineage"):
+        candidate_mix_output["accepted_source_lineage"] = bundle["candidate_mix"][
+            "accepted_source_lineage"
+        ]
 
     return {
         "ready": bool(artifacts) and bool(bundle["ready"]),
@@ -4247,6 +4395,10 @@ def main() -> int:
             candidate_mix_output["accepted_candidate_quality_components"] = bundle[
                 "candidate_mix"
             ]["accepted_candidate_quality_components"]
+        if bundle["candidate_mix"].get("accepted_source_lineage"):
+            candidate_mix_output["accepted_source_lineage"] = bundle["candidate_mix"][
+                "accepted_source_lineage"
+            ]
         json_print(
             {
                 "ready": bundle["ready"],

@@ -226,6 +226,7 @@ portfolio/test-results/
 # CI performance metrics and artifacts
 ci-metrics/
 PR_DESCRIPTION.md
+.tmp/
 
 # Receipt data directories (local development/testing only)
 receipt_label/receipt_data/
