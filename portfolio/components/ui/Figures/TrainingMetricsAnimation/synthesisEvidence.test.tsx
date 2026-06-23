@@ -499,6 +499,27 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
                     synthetic_insert: true,
                     modified_labels: [],
                   },
+                  {
+                    line_number: 4,
+                    text: `VERY LONG\nRECEIPT\tCONTEXT ${"X".repeat(120)}`,
+                    role: "line_item",
+                    synthetic_insert: false,
+                    modified_labels: ["LINE_TOTAL"],
+                  },
+                  {
+                    line_number: null,
+                    text: "TOTAL 10.44",
+                    role: "total",
+                    synthetic_insert: false,
+                    modified_labels: [],
+                  },
+                  {
+                    line_number: 6,
+                    text: "SHOULD NOT APPEAR",
+                    role: "footer",
+                    synthetic_insert: false,
+                    modified_labels: [],
+                  },
                 ],
               },
             ],
@@ -524,6 +545,23 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       "title",
       expect.stringContaining("Line y (normalized): 0.70"),
     );
+    expect(screen.getByText("YELLOW BANANAS 1.95").parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Receipt excerpt: [3] YELLOW BANANAS 1.95 ; [4] VERY LONG RECEIPT CONTEXT",
+      ),
+    );
+    const title =
+      screen.getByText("YELLOW BANANAS 1.95").parentElement?.getAttribute("title") ||
+      "";
+    expect(title).toContain("...");
+    expect(title).toContain(" ; TOTAL 10.44 (+1 more)");
+    expect(title).not.toContain("SHOULD NOT APPEAR");
+    expect(title).not.toContain("\n");
+    expect(title).not.toContain("\t");
+    const clippedSegment = (title.match(/\[4\][^;]+/)?.[0] || "").trimEnd();
+    expect(clippedSegment).toContain("[4] VERY LONG RECEIPT CONTEXT");
+    expect(clippedSegment.length).toBeLessThanOrEqual(96);
   });
 
   it("does not headline contract-ready operations as reusable evidence", async () => {

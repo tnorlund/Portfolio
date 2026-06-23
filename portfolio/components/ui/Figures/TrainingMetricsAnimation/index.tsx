@@ -1810,6 +1810,14 @@ type SynthesisQualityExample = NonNullable<
 const formatPlural = (count: number, singular: string, plural = `${singular}s`): string =>
   `${formatCount(count)} ${count === 1 ? singular : plural}`;
 
+const RECEIPT_EXCERPT_LINE_MAX_CHARS = 96;
+const RECEIPT_EXCERPT_LINE_LIMIT = 3;
+
+const clipReceiptExcerptLine = (value: string): string =>
+  value.length <= RECEIPT_EXCERPT_LINE_MAX_CHARS
+    ? value
+    : `${value.slice(0, RECEIPT_EXCERPT_LINE_MAX_CHARS - 3)}...`;
+
 const summarizeExampleGrounding = (
   example?: SynthesisQualityExample
 ): string | null => {
@@ -2035,6 +2043,22 @@ const summarizeReceiptShape = (
     Array.isArray(bbox) && bbox.length === 4
       ? `[${bbox.map((value) => String(value)).join(" / ")}]`
       : null;
+  const receiptExcerptLines = previewLines
+    .map((line) => {
+      const text = line.text?.replace(/\s+/g, " ").trim();
+      if (!text) return null;
+      const prefix = line.line_number != null ? `[${line.line_number}] ` : "";
+      return clipReceiptExcerptLine(`${prefix}${text}`);
+    })
+    .filter((value): value is string => Boolean(value));
+  const receiptExcerpt =
+    receiptExcerptLines.length > 0
+      ? `${receiptExcerptLines.slice(0, RECEIPT_EXCERPT_LINE_LIMIT).join(" ; ")}${
+          receiptExcerptLines.length > RECEIPT_EXCERPT_LINE_LIMIT
+            ? ` (+${receiptExcerptLines.length - RECEIPT_EXCERPT_LINE_LIMIT} more)`
+            : ""
+        }`
+      : "";
   const title = [
     labelParts.length ? `Shape: ${labelParts.join(", ")}` : null,
     shape.truncated === true ? "Preview truncated" : null,
@@ -2046,6 +2070,7 @@ const summarizeReceiptShape = (
       ? `Line y (normalized): ${formatSimilarity(focusedLine.y)}`
       : null,
     bboxLabel ? `Line bbox (receipt coords): ${bboxLabel}` : null,
+    receiptExcerpt ? `Receipt excerpt: ${receiptExcerpt}` : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join(" | ");
