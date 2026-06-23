@@ -124,6 +124,12 @@ class MerchantCatalogEntry:
     taxable: bool
     count: int
     source_receipt_keys: list[str]
+    # Verbatim real row group(s) this item was observed in, keyed by source
+    # receipt key. Each captured group preserves the merchant's full row grammar
+    # (product code, tax flag, exact price token, two-line layout) so the
+    # add-item synthesizer can transplant a real row instead of rebuilding a
+    # lossy "name + price" approximation. See _capture_row_group.
+    source_rows: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def product_tokens(self) -> list[str]:
@@ -698,6 +704,76 @@ def _renumber_candidate(
     candidate["image_id"] = f"synthetic-{slug}"
 
 
+def _select_source_row(
+    entry: MerchantCatalogEntry, *, exclude_key: str
+) -> dict[str, Any] | None:
+    """A captured real row group from a receipt OTHER than the base."""
+    for key, captured in (entry.source_rows or {}).items():
+        if key != exclude_key and captured.get("lines"):
+            return captured
+    return None
+
+
+def _clone_row_group_lines(
+    captured: dict[str, Any], *, y_center: float
+) -> list[dict[str, Any]]:
+    """Transplant a captured real row group to ``y_center`` in the base receipt.
+
+    Each word keeps its original x position and the group keeps its internal
+    vertical spacing (so a code/name/flag/price layout stays intact); only the
+    group is re-anchored vertically. Labels are preserved verbatim so the
+    product code and tax flag train as ``O`` and the name/price keep their tags.
+    """
+    ordered = sorted(
+        captured.get("lines") or [],
+        key=lambda line: -float(line.get("y") or 0.0),  # y-high-is-top
+    )
+    if not ordered:
+        return []
+    top_y = float(ordered[0].get("y") or 0.0)
+    out: list[dict[str, Any]] = []
+    for offset, src in enumerate(ordered):
+        drop = int(round((top_y - float(src.get("y") or 0.0)) * 1000))
+        line_top = max(0, min(976, int(round(y_center)) - 12 - drop))
+        words = []
+        for word_index, word in enumerate(src.get("words") or [], start=1):
+            box = word.get("bbox") or [0, 0, 0, 0]
+            height = max(1, int(box[3]) - int(box[1]))
+            words.append(
+                {
+                    "text": word.get("text", ""),
+                    "bbox": [
+                        int(box[0]),
+                        line_top,
+                        int(box[2]),
+                        line_top + height,
+                    ],
+                    "labels": list(word.get("labels") or []),
+                    "line_id": 20_000 + offset,
+                    "word_id": word_index,
+                }
+            )
+        out.append(
+            {"line_id": 20_000 + offset, "y": line_top / 1000, "words": words}
+        )
+    return out
+
+
+def _row_group_height(
+    group_lines: list[dict[str, Any]], *, fallback: int
+) -> int:
+    tops: list[int] = []
+    bottoms: list[int] = []
+    for line in group_lines:
+        for word in line.get("words") or []:
+            box = word.get("bbox") or [0, 0, 0, 0]
+            tops.append(int(box[1]))
+            bottoms.append(int(box[3]))
+    if not tops:
+        return fallback
+    return max(fallback, (max(bottoms) - min(tops)) + 8)
+
+
 def _build_add_item_candidate_from_plan(
     merchant_name: str,
     profile: dict[str, Any],
@@ -715,20 +791,42 @@ def _build_add_item_candidate_from_plan(
     old_total = analysis.grand_total
     if old_total is None:
         return None
-    new_total = _money(old_total + entry.amount)
+    base_key = _receipt_key(analysis.receipt)
     line_step = _line_step(analysis.line_items)
     insertion_context = _category_insertion_context(analysis, entry.category, y_center)
-    shift_summary = _shift_lines_below_for_insert(
-        receipt,
-        inserted_center_y=y_center,
-        delta=line_step,
-    )
-    line = _build_line_item_line(receipt, entry, y_center=y_center)
-    _insert_line_sorted(receipt, line)
+
+    # Prefer cloning the grounded real row verbatim (full merchant row grammar:
+    # product code, tax flag, exact price token) over rebuilding a lossy
+    # name+price approximation.
+    captured = _select_source_row(entry, exclude_key=base_key)
+    if captured:
+        delta_amount = _parse_money(captured.get("amount")) or entry.amount
+        group_lines = _clone_row_group_lines(captured, y_center=y_center)
+        shift_summary = _shift_lines_below_for_insert(
+            receipt,
+            inserted_center_y=y_center,
+            delta=_row_group_height(group_lines, fallback=line_step),
+        )
+        for cloned_line in group_lines:
+            _insert_line_sorted(receipt, cloned_line)
+        row_cloned = True
+    else:
+        delta_amount = entry.amount
+        shift_summary = _shift_lines_below_for_insert(
+            receipt,
+            inserted_center_y=y_center,
+            delta=line_step,
+        )
+        _insert_line_sorted(
+            receipt, _build_line_item_line(receipt, entry, y_center=y_center)
+        )
+        row_cloned = False
+
+    new_total = _money(old_total + delta_amount)
     arithmetic = _apply_non_taxable_delta(
         receipt,
         analysis,
-        delta=entry.amount,
+        delta=delta_amount,
     )
 
     return _candidate_from_receipt(
@@ -742,6 +840,8 @@ def _build_add_item_candidate_from_plan(
             "base_receipt_key": _receipt_key(analysis.receipt),
             "added_item": {
                 **entry.to_dict(),
+                "line_total": _format_money(delta_amount),
+                "row_cloned_from_real_receipt": row_cloned,
                 "seen_in_other_receipt": any(
                     key != _receipt_key(analysis.receipt)
                     for key in entry.source_receipt_keys
@@ -2355,6 +2455,40 @@ def _analyze_receipt(receipt: dict[str, Any]) -> MerchantAnalysis:
     )
 
 
+def _capture_row_group(
+    analysis: MerchantAnalysis, item: MerchantLineItem
+) -> dict[str, Any] | None:
+    """Capture an item's verbatim real line group from its source receipt.
+
+    line_indices only marks the labeled product and price rows; an item's full
+    visual row can also include unlabeled rows between them (a tax-flag line, a
+    quantity multiplier). Capture every line from the first to the last labeled
+    line inclusive so the merchant's complete row grammar is preserved.
+    """
+    lines = analysis.receipt.get("lines") or []
+    idxs = item.line_indices or [item.line_index]
+    lo, hi = min(idxs), max(idxs)
+    captured: list[dict[str, Any]] = []
+    for li in range(lo, hi + 1):
+        if not 0 <= li < len(lines):
+            continue
+        src = lines[li]
+        words = [
+            {
+                "text": str(word.get("text") or ""),
+                "bbox": list(word.get("bbox") or []),
+                "labels": list(word.get("labels") or []),
+            }
+            for word in src.get("words") or []
+            if word.get("bbox") and str(word.get("text") or "").strip()
+        ]
+        if words:
+            captured.append({"y": _line_y(src), "words": words})
+    if not captured:
+        return None
+    return {"lines": captured, "amount": str(item.amount)}
+
+
 def _build_item_catalog(
     analyses: list[MerchantAnalysis],
 ) -> list[MerchantCatalogEntry]:
@@ -2375,10 +2509,15 @@ def _build_item_catalog(
                     "product_text": item.product_text,
                     "amounts": [],
                     "source_receipt_keys": set(),
+                    "source_rows": {},
                 },
             )
             grouped[key]["amounts"].append(item.amount)
             grouped[key]["source_receipt_keys"].add(receipt_key)
+            if receipt_key not in grouped[key]["source_rows"]:
+                captured = _capture_row_group(analysis, item)
+                if captured:
+                    grouped[key]["source_rows"][receipt_key] = captured
 
     entries = [
         MerchantCatalogEntry(
@@ -2388,6 +2527,7 @@ def _build_item_catalog(
             taxable=taxable,
             count=len(value["amounts"]),
             source_receipt_keys=sorted(value["source_receipt_keys"]),
+            source_rows=value["source_rows"],
         )
         for (category, _product, taxable), value in grouped.items()
     ]
