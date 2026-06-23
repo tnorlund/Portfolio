@@ -828,6 +828,7 @@ def _build_add_item_candidate_from_plan(
         analysis,
         delta=delta_amount,
     )
+    item_count_fields_updated = _reconcile_item_count(receipt, delta_count=1)
 
     return _candidate_from_receipt(
         receipt,
@@ -882,6 +883,7 @@ def _build_add_item_candidate_from_plan(
                 "preselection_score": round(float(plan_score), 3),
                 "selection_basis": "all_feasible_add_item_plans_ranked_by_candidate_quality",
             },
+            "item_count_fields_reconciled": item_count_fields_updated,
             "balancing_strategy": "add observed non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
         },
     )
@@ -986,8 +988,20 @@ def _build_remove_item_candidate_from_plan(
 
     removed_center = removed.center_y
     line_step = _line_step(refreshed.line_items)
-    for line_index in sorted(set(removed.line_indices), reverse=True):
-        if line_index < len(receipt.get("lines", [])):
+    # Delete the item's FULL contiguous row group, then sweep up to two adjacent
+    # fragment lines on each side (a stranded tax flag, bare price, or quantity
+    # multiplier) so a removal does not orphan satellites of the deleted item.
+    lines = receipt.get("lines", [])
+    lo = min(removed.line_indices)
+    hi = max(removed.line_indices)
+    for _ in range(2):
+        if lo - 1 >= 0 and _is_item_satellite_line(lines[lo - 1]):
+            lo -= 1
+    for _ in range(2):
+        if hi + 1 < len(lines) and _is_item_satellite_line(lines[hi + 1]):
+            hi += 1
+    for line_index in range(hi, lo - 1, -1):
+        if 0 <= line_index < len(receipt.get("lines", [])):
             del receipt["lines"][line_index]
     shift_summary = _shift_lines_below(receipt, removed_center, line_step)
     _refresh_words(receipt)
@@ -996,6 +1010,7 @@ def _build_remove_item_candidate_from_plan(
         refreshed,
         delta=-removed.amount,
     )
+    item_count_fields_updated = _reconcile_item_count(receipt, delta_count=-1)
     known_category = removed.category != UNKNOWN_CATEGORY
     category_item_count = (
         sum(1 for item in refreshed.line_items if item.category == removed.category)
@@ -1071,6 +1086,7 @@ def _build_remove_item_candidate_from_plan(
                 "preselection_score": round(float(plan_score), 3),
                 "selection_basis": "all_feasible_remove_item_plans_ranked_by_candidate_quality",
             },
+            "item_count_fields_reconciled": item_count_fields_updated,
             "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
         },
     )
@@ -2434,8 +2450,17 @@ def _analyze_receipt(receipt: dict[str, Any]) -> MerchantAnalysis:
                 center_y=statistics.median(
                     [product_row["center_y"], total_row["center_y"]]
                 ),
+                # Classify taxability over the FULL contiguous row group, not
+                # just the labeled product/total lines: a tax flag ('T') can sit
+                # on its own line between them. Missing it mislabels a taxable
+                # item as non-taxable, which then becomes a frozen-tax add whose
+                # cloned row visibly carries a 'T' flag (a contradiction).
                 taxable=_line_is_taxable(
-                    product_row["line"], total_row["line"]
+                    *_span_lines(
+                        receipt,
+                        product_row["line_index"],
+                        total_row["line_index"],
+                    )
                 ),
                 category=category
                 or category_by_line.get(
@@ -3640,12 +3665,93 @@ def _product_identity_tokens(product_text: str) -> set[str]:
     return tokens
 
 
+def _span_lines(
+    receipt: dict[str, Any], *indices: int
+) -> list[dict[str, Any]]:
+    """Contiguous receipt lines spanning min(indices)..max(indices) inclusive."""
+    lines = receipt.get("lines") or []
+    if not indices:
+        return []
+    lo, hi = min(indices), max(indices)
+    return [lines[i] for i in range(lo, hi + 1) if 0 <= i < len(lines)]
+
+
 def _line_is_taxable(*lines: dict[str, Any]) -> bool:
     return any(
         str(word.get("text") or "").upper().endswith("T")
         for line in lines
         for word in line.get("words", [])
     )
+
+
+def _is_item_satellite_line(line: dict[str, Any]) -> bool:
+    """True for a line that is a fragment of an item's row group — a lone tax
+    flag, a bare price, or a quantity multiplier ("6 @ $1.39 ea") — with no
+    product name, category heading, or summary label. Used to sweep the orphan
+    rows a removal would otherwise strand."""
+    words = line.get("words") or []
+    if not words:
+        return True
+    labels = {label for word in words for label in (word.get("labels") or [])}
+    if labels & {
+        "PRODUCT_NAME",
+        "SUBTOTAL",
+        "GRAND_TOTAL",
+        "TAX",
+        "MERCHANT_NAME",
+    }:
+        return False
+    if _line_category_heading(line):
+        return False
+    texts = [str(word.get("text") or "").strip() for word in words]
+    joined = " ".join(texts)
+    if re.search(r"\d+\s*@\s*\$?\d", joined):  # quantity multiplier
+        return True
+    if len(texts) == 1 and re.fullmatch(r"<?[A-Za-z]{1,3}>?", texts[0]):
+        return True  # lone tax flag (NF / T / F / E / <A>)
+    if texts and all(_parse_money(text) is not None for text in texts):
+        return True  # bare price(s), no other content
+    return False
+
+
+_ITEM_COUNT_KEYWORDS = ("sold", "number", "count", "qty", "q ty", "purchased")
+
+
+def _reconcile_item_count(
+    receipt: dict[str, Any], *, delta_count: int
+) -> int:
+    """Adjust an item-count summary field ("ITEMS SOLD 4") by ``delta_count``.
+
+    The arithmetic gate reconciles currency totals only, leaving item counters
+    stale after an add/remove. Match a line that names items in a count context
+    and bump its integer (on the same line, or the immediately following line if
+    the label and number are split). Returns the number of fields updated.
+    """
+    if not delta_count:
+        return 0
+    lines = receipt.get("lines") or []
+    updated = 0
+    for index, line in enumerate(lines):
+        words = line.get("words") or []
+        joined = " ".join(str(word.get("text") or "") for word in words)
+        low = joined.lower()
+        if "item" not in low:
+            continue
+        if not any(keyword in low for keyword in _ITEM_COUNT_KEYWORDS):
+            continue
+        target_words = list(words)
+        if not any(
+            re.fullmatch(r"\d+", str(word.get("text") or "").strip())
+            for word in target_words
+        ) and index + 1 < len(lines):
+            target_words = lines[index + 1].get("words") or []
+        for word in reversed(target_words):
+            text = str(word.get("text") or "").strip()
+            if re.fullmatch(r"\d+", text):
+                word["text"] = str(max(0, int(text) + delta_count))
+                updated += 1
+                break
+    return updated
 
 
 def _line_step(items: list[MerchantLineItem]) -> int:
