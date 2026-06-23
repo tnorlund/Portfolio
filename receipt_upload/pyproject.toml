@@ -59,6 +59,11 @@ dev = [
     "mypy>=1.19.0",
     "pylint>=3.0.0,<5.0.0",
 ]
+# Pinned to match the rest of the monorepo's CI lint job (see receipt_chroma).
+lint = [
+    "black==26.1.0",
+    "isort==8.0.0",
+]
 
 [tool.hatch.build]
 exclude = [
@@ -111,7 +116,7 @@ ignore_errors = true
 minversion = "7.0"
 addopts = "-ra -q"
 testpaths = [
-    "test",
+    "tests",
 ]
 python_files = ["test_*.py"]
 markers = [

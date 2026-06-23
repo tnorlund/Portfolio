@@ -358,15 +358,19 @@ class TestJoinClustersLongAxisMerge:
         """Two clusters stacked along the long axis of a portrait receipt
         should be merged."""
         # Main body: x 0.10-0.50, y 0.20-0.80 (portrait)
-        cluster1 = self._make_cluster([
-            (0.10, 0.20, 0.50, 0.50),
-            (0.10, 0.50, 0.50, 0.80),
-        ])
+        cluster1 = self._make_cluster(
+            [
+                (0.10, 0.20, 0.50, 0.50),
+                (0.10, 0.50, 0.50, 0.80),
+            ]
+        )
         # Footer: same x range, below main body
-        cluster2 = self._make_cluster([
-            (0.10, 0.05, 0.50, 0.18),
-            (0.10, 0.01, 0.50, 0.05),
-        ])
+        cluster2 = self._make_cluster(
+            [
+                (0.10, 0.05, 0.50, 0.18),
+                (0.10, 0.01, 0.50, 0.05),
+            ]
+        )
 
         clusters = {1: cluster1, 2: cluster2}
         result = join_overlapping_clusters(
@@ -380,15 +384,19 @@ class TestJoinClustersLongAxisMerge:
         """Two clusters separated along the short axis (side by side)
         should NOT be merged."""
         # Receipt A: x 0.05-0.45, y 0.10-0.90 (portrait)
-        cluster1 = self._make_cluster([
-            (0.05, 0.10, 0.45, 0.50),
-            (0.05, 0.50, 0.45, 0.90),
-        ])
+        cluster1 = self._make_cluster(
+            [
+                (0.05, 0.10, 0.45, 0.50),
+                (0.05, 0.50, 0.45, 0.90),
+            ]
+        )
         # Receipt B: x 0.55-0.95, y 0.10-0.90 (portrait, side by side)
-        cluster2 = self._make_cluster([
-            (0.55, 0.10, 0.95, 0.50),
-            (0.55, 0.50, 0.95, 0.90),
-        ])
+        cluster2 = self._make_cluster(
+            [
+                (0.55, 0.10, 0.95, 0.50),
+                (0.55, 0.50, 0.95, 0.90),
+            ]
+        )
 
         clusters = {1: cluster1, 2: cluster2}
         result = join_overlapping_clusters(
@@ -406,15 +414,19 @@ class TestJoinClustersLongAxisMerge:
         so the y-pixel separation dominates the x-pixel offset.
         """
         # Main body: x 0.10-0.58, y 0.20-0.80
-        cluster1 = self._make_cluster([
-            (0.10, 0.20, 0.58, 0.50),
-            (0.10, 0.50, 0.58, 0.80),
-        ])
+        cluster1 = self._make_cluster(
+            [
+                (0.10, 0.20, 0.58, 0.50),
+                (0.10, 0.50, 0.58, 0.80),
+            ]
+        )
         # Footer: x 0.74-0.83, y 0.02-0.10  (offset in x AND y)
-        cluster2 = self._make_cluster([
-            (0.74, 0.02, 0.83, 0.06),
-            (0.74, 0.06, 0.83, 0.10),
-        ])
+        cluster2 = self._make_cluster(
+            [
+                (0.74, 0.02, 0.83, 0.06),
+                (0.74, 0.06, 0.83, 0.10),
+            ]
+        )
 
         clusters = {1: cluster1, 2: cluster2}
         result = join_overlapping_clusters(

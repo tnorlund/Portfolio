@@ -465,6 +465,9 @@ upload_images = UploadImages(
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+pulumi.export(
+    "llm_validation_queue_url", upload_images.llm_validation_queue.url
+)
 
 # ML Training Infrastructure
 # -------------------------
@@ -1356,7 +1359,9 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
-pulumi.export("merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name)
+pulumi.export(
+    "merge_receipt_lambda_name", merge_receipt_lambda.lambda_function.name
+)
 
 # Trigger Re-OCR Lambda (for manually triggering regional re-OCR)
 # Can be invoked with: {image_id, receipt_id, reocr_region, reocr_reason}
@@ -1367,7 +1372,9 @@ trigger_reocr_lambda = create_trigger_reocr_lambda(
     ocr_job_queue_arn=upload_images.ocr_queue.arn,
 )
 pulumi.export("trigger_reocr_lambda_arn", trigger_reocr_lambda.lambda_arn)
-pulumi.export("trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name)
+pulumi.export(
+    "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
+)
 
 # Label Refresh Lambda — subscribes to the DynamoDB stream and
 # automatically re-evaluates ReceiptWord labels whenever a word's
@@ -1388,7 +1395,9 @@ label_refresh_lambda = create_label_refresh_lambda(
     dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
 )
 pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
-pulumi.export("label_refresh_lambda_name", label_refresh_lambda.lambda_function.name)
+pulumi.export(
+    "label_refresh_lambda_name", label_refresh_lambda.lambda_function.name
+)
 pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)

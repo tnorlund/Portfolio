@@ -154,6 +154,20 @@ class ChromaDBBuckets(ComponentResource):
                         days=1,
                     ),
                 ),
+                # Async LLM-validation hand-off payloads are deleted by the
+                # consumer on success; this sweeps any that leak on an error path.
+                # Retain 14 days to match the llm-validation DLQ retention so a
+                # DLQ replay always still finds its staged payload (#990).
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-llm-validation-staging",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="llm-validation/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=14,
+                    ),
+                ),
                 # Permanently delete noncurrent object versions after 1 day
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="expire-noncurrent-versions",

@@ -21,7 +21,7 @@ import uuid
 from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import boto3
 from openai import OpenAI
@@ -65,12 +65,70 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
+_TRACE_SANITIZE_LOGGED = False
+
+
+def _sanitize_trace_io(obj):
+    """Stringify tuple dict keys so LangSmith can serialize this module's trace
+    I/O.
+
+    Several traced functions here return ``EmbeddingResult``, whose
+    ``word_embeddings`` field is keyed by ``(line_id, word_id)`` tuples.
+    LangSmith's serializer can't encode tuple dict keys (orjson's
+    OPT_NON_STR_KEYS doesn't cover tuples; the json fallback rejects them too —
+    langchain-ai/langsmith-sdk#3071), so it silently drops the run's outputs
+    with "Unable to process trace outputs: TypeError('keys must be
+    str...not tuple')". This runs ONLY on the copy LangSmith serializes (via
+    ``process_inputs``/``process_outputs``); the real return value keeps its
+    tuple keys, so there is zero functional change.
+    """
+    global _TRACE_SANITIZE_LOGGED
+    if isinstance(obj, dict):
+        out = {}
+        changed = False
+        for k, v in obj.items():
+            if k is not None and not isinstance(k, (str, int, float, bool)):
+                k = "_".join(map(str, k)) if isinstance(k, tuple) else str(k)
+                changed = True
+            out[k] = _sanitize_trace_io(v)
+        if changed and not _TRACE_SANITIZE_LOGGED:
+            _TRACE_SANITIZE_LOGGED = True
+            print(
+                "[TRACE_SANITIZE] receipt_chroma: tuple keys in trace I/O "
+                "(langsmith#3071)",
+                flush=True,
+            )
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_trace_io(x) for x in obj]
+    # LangSmith serializes dataclasses to dicts; recurse into a SHALLOW field
+    # map (not dataclasses.asdict, which would deep-copy non-dataclass fields
+    # like ChromaClient) so a tuple-keyed dict field is coerced. Trace-only, so
+    # never raise.
+    if hasattr(obj, "__dataclass_fields__") and not isinstance(obj, type):
+        try:
+            fields = {
+                name: getattr(obj, name)
+                for name in obj.__dataclass_fields__
+                if not name.startswith("_")
+            }
+            return {k: _sanitize_trace_io(v) for k, v in fields.items()}
+        except Exception:  # pylint: disable=broad-exception-caught
+            return obj
+    return obj
+
+
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
-        from langsmith.run_helpers import (  # pylint: disable=import-outside-toplevel
-            traceable,
+        from langsmith.run_helpers import (
+            traceable as _ls_traceable,  # pylint: disable=import-outside-toplevel
         )
+
+        def traceable(*args, **kwargs):
+            kwargs.setdefault("process_inputs", _sanitize_trace_io)
+            kwargs.setdefault("process_outputs", _sanitize_trace_io)
+            return _ls_traceable(*args, **kwargs)
 
         return traceable
     except ImportError:
@@ -271,31 +329,37 @@ def _download_and_embed_parallel(
     s3_client: "S3Client",
     openai_client: OpenAI,
     model: str,
-) -> tuple[str, str, list[list[float]], list[list[int]], list[list[float]]]:
+    skip_snapshot_download: bool = False,
+) -> tuple[
+    Optional[str],
+    Optional[str],
+    list[list[float]],
+    list[list[int]],
+    list[list[float]],
+]:
     """
-    Run all 4 I/O operations in parallel.
+    Run the I/O operations in parallel.
 
     Uses ContextThreadPoolExecutor from langsmith.utils to automatically
     propagate trace context to child threads, enabling proper trace nesting.
 
+    Args:
+        skip_snapshot_download: When True, do NOT download the lines/words
+            snapshots from S3 (returns ``None`` for both local dirs). Use this
+            when the caller queries a persistent Chroma backend (e.g. Chroma
+            Cloud) instead of a local snapshot — it removes the largest cost in
+            the upload path (~30s/receipt for the ~674MB words snapshot). The
+            embeddings are still generated (they're the query vectors).
+
     Returns:
         Tuple of (lines_dir, words_dir, row_embeddings, row_line_ids_list,
-        word_embeddings)
+        word_embeddings). ``lines_dir``/``words_dir`` are ``None`` when
+        ``skip_snapshot_download`` is True.
     """
     thread_pool_class = _get_context_thread_pool_executor()
 
     with thread_pool_class(max_workers=4) as executor:
         futures = {
-            executor.submit(
-                _download_lines_snapshot,
-                chromadb_bucket,
-                s3_client,
-            ): "download_lines",
-            executor.submit(
-                _download_words_snapshot,
-                chromadb_bucket,
-                s3_client,
-            ): "download_words",
             executor.submit(
                 _embed_rows,
                 openai_client,
@@ -309,6 +373,17 @@ def _download_and_embed_parallel(
                 model,
             ): "embed_words",
         }
+        if not skip_snapshot_download:
+            futures[
+                executor.submit(
+                    _download_lines_snapshot, chromadb_bucket, s3_client
+                )
+            ] = "download_lines"
+            futures[
+                executor.submit(
+                    _download_words_snapshot, chromadb_bucket, s3_client
+                )
+            ] = "download_words"
 
         results: dict[str, Any] = {}
         for future in as_completed(futures):
@@ -324,8 +399,16 @@ def _download_and_embed_parallel(
     row_embeddings, row_line_ids_list = results["embed_rows"]
 
     return (
-        results["download_lines"]["local_path"],
-        results["download_words"]["local_path"],
+        (
+            results["download_lines"]["local_path"]
+            if "download_lines" in results
+            else None
+        ),
+        (
+            results["download_words"]["local_path"]
+            if "download_words" in results
+            else None
+        ),
         row_embeddings,
         row_line_ids_list,
         results["embed_words"],

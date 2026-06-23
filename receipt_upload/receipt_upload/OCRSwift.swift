@@ -152,6 +152,33 @@ func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGPoint, bo
 
 // MARK: - OCR Processing
 
+/// Upscale small crops before OCR. Empirically, on a small, faint crop (e.g. a
+/// warped receipt from a faded thermal print) Vision returns text in the wrong
+/// (180°-rotated) reading order; upscaling the short side restores correct
+/// recognition. Coordinate-safe: Vision returns NORMALIZED (0-1) boxes, so a
+/// uniform pixel scale changes no geometry. The maxDim cap skips already-large
+/// images and pathological long strips. (Keep in sync with VisionOCREngine.swift.)
+func upscaleForOCR(_ cgImage: CGImage, targetMinDimension: Int = 1000, maxScale: CGFloat = 4.0) -> CGImage {
+    let minDim = min(cgImage.width, cgImage.height)
+    let maxDim = max(cgImage.width, cgImage.height)
+    guard minDim > 0, minDim < targetMinDimension, maxDim < 6000 else { return cgImage }
+    let scale = min(maxScale, CGFloat(targetMinDimension) / CGFloat(minDim))
+    let newWidth = Int((CGFloat(cgImage.width) * scale).rounded())
+    let newHeight = Int((CGFloat(cgImage.height) * scale).rounded())
+    guard let ctx = CGContext(
+        data: nil,
+        width: newWidth,
+        height: newHeight,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return cgImage }
+    ctx.interpolationQuality = .high
+    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+    return ctx.makeImage() ?? cgImage
+}
+
 func performOCRSync(from imageURL: URL) throws -> [Line] {
     log("Loading image from \(imageURL.path)")
 
@@ -160,10 +187,11 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         log("❌ Could not load image")
         return []
     }
-    guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    guard let cgImageRaw = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
         log("❌ Could not get CGImage")
         return []
     }
+    let cgImage = upscaleForOCR(cgImageRaw)
 
     // Set up the Vision request.
     // NOTE: We use .accurate mode for better text recognition accuracy.

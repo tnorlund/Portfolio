@@ -1,11 +1,18 @@
 """
 Merchant resolution for receipt processing.
 
-Two-tier resolution strategy:
-1. Tier 1 (ChromaDB Similarity): Query ChromaDB lines collection by embedding
-   similarity, then compare normalized metadata (phone, address) to boost
-   confidence. This handles OCR errors like "Westlake" vs "Mestlake".
-2. Tier 2 (Fallback): Use Place ID Finder agent to search Google Places API
+Places-first resolution ladder:
+1. Tier 1 (Google Places): search by the Apple-NLP phone/address (with the
+   merchant name as a text hint), then validate the result against the receipt's
+   own phone/address. Phone is a unique business key, so this is the
+   authoritative path. It needs no validated labels (phone/address come straight
+   from OCR data detectors), so it leads even at upload time.
+2. Tier 2 (ChromaDB similarity fallback): reuse a previously-resolved similar
+   receipt's place_id when Places returns nothing — fuzzy "seen-before" that
+   covers OCR-garbled or no-phone/no-address receipts. Boosts by normalized
+   phone/address metadata; handles OCR errors like "Westlake" vs "Mestlake".
+3. Tier 3 (Place ID Finder agent): infer the merchant when neither phone/address
+   nor a similar receipt resolves (e.g. a website URL → merchant name).
 
 The ChromaDB query uses the snapshot+delta pre-merged clients from
 create_embeddings_and_compaction_run(), enabling immediate similarity search
@@ -72,11 +79,48 @@ ADDRESS_MATCH_BOOST = 0.15  # Boost when normalized address matches
 _MIN_TOKEN_LEN = 3  # Ignore tokens shorter than this (e.g., "A", "of", "&")
 
 
+# PII redaction for resolver diagnostics. The resolver logs phone/address pulled
+# from the receipt for matching; mask them at the SOURCE so they never reach
+# CloudWatch in the clear — whether the line is printed directly (Lambda thread
+# mode) or captured and re-emitted by the parent (subprocess mode).
+_PHONE_FIELD_RE = re.compile(r"(phone=)(?!none\b)[^\s,)]+")
+_ADDRESS_FIELD_RE = re.compile(r"(address=)(?!none\b)[^)]*")
+# Phones: dashed/dotted/spaced 10-digit, parenthesized "(702) 555-1234", and bare
+# 10+ digit runs.
+_PHONE_NUM_RE = re.compile(r"\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]?\d{4}\b")
+_DIGIT_RUN_RE = re.compile(r"\b\d{10,}\b")
+# Street addresses logged WITHOUT an address= prefix (e.g. raw OCR address lines):
+# <house number> ... <street suffix>. Matches "3411 ST ROSE PKWY",
+# "2716 North Green Valley Parkway", "509D N Stephanie St".
+_STREET_RE = re.compile(
+    r"\b\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'#-]+\s+){0,6}"
+    r"(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|RD|ROAD|DR|DRIVE|LN|LANE|"
+    r"WAY|CT|COURT|PKWY|PARKWAY|HWY|HIGHWAY|PL|PLACE|CIR|CIRCLE|TER|"
+    r"TERRACE|SQ|SUITE|STE|UNIT)\b\.?",
+    re.IGNORECASE,
+)
+
+
+def redact_pii(text: str) -> str:
+    """Mask phone/address values in a resolver log line.
+
+    Covers both prefixed forms (``phone=``/``address=``) and raw values logged
+    without a prefix (street addresses, parenthesized/formatted phones, long
+    digit runs), so address/phone PII never reaches CloudWatch in the clear.
+    """
+    text = _PHONE_FIELD_RE.sub(r"\1<redacted>", text)
+    text = _ADDRESS_FIELD_RE.sub(r"\1<redacted>", text)
+    text = _STREET_RE.sub("<redacted-address>", text)
+    text = _PHONE_NUM_RE.sub("<redacted-phone>", text)
+    text = _DIGIT_RUN_RE.sub("<redacted-phone>", text)
+    return text
+
+
 def _log(msg: str, *args: object) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
-    formatted = msg % args if args else msg
+    formatted = redact_pii(msg % args if args else msg)
     print(f"[MERCHANT_RESOLVER] {formatted}", flush=True)
-    logger.info(msg, *args)
+    logger.info("%s", formatted)
 
 
 def tokenize_text(text: str) -> Set[str]:
@@ -88,23 +132,80 @@ def tokenize_text(text: str) -> Set[str]:
     }
 
 
+# Generic merchant words that recur across unrelated receipts. A lone overlap on
+# one of these is NOT evidence the candidate merchant matches the receipt, so the
+# write-time poison guard requires a *distinctive* (non-generic) token overlap.
+_GENERIC_MERCHANT_TOKENS = {
+    "market",
+    "supermarket",
+    "store",
+    "shop",
+    "foods",
+    "food",
+    "grocery",
+    "pharmacy",
+    "drug",
+    "gas",
+    "station",
+    "restaurant",
+    "cafe",
+    "coffee",
+    "grill",
+    "bar",
+    "kitchen",
+    "the",
+    "and",
+    "of",
+    "for",
+    "inc",
+    "llc",
+    "co",
+    "company",
+    "corp",
+    "group",
+    "center",
+    "outlet",
+}
+
+
 def merchant_name_matches_receipt(
     merchant_name: Optional[str],
     lines: List[ReceiptLine],
-    n_lines: int = 10,
+    n_lines: Optional[
+        int
+    ] = None,  # retained for API compat; no longer windows
+    allow_generic_overlap: bool = False,
 ) -> bool:
     """
     Check whether *merchant_name* has meaningful token overlap with the
-    receipt's OCR text (top *n_lines* lines, where the merchant name
-    usually appears).
+    receipt's OCR text.
+
+    The whole receipt is scanned: a merchant name can appear in the header
+    (e.g. "WHOLE FOODS MARKET") OR the footer (website / "thank you for shopping
+    at X" / loyalty blurb). A previous version only looked at the *N lowest-y*
+    lines, which — for the common bottom-origin layout where the header sits at
+    HIGH y — landed entirely on the footer and rejected valid header merchant
+    names (observed: "Whole Foods Market" nulled to None despite the header
+    clearly reading WHOLE FOODS MARKET).
+
+    Because the scan covers the whole receipt, a single *generic* token
+    (e.g. "market", "store", "pharmacy") could coincidentally match unrelated
+    body/footer text and let a wrong candidate through (the poison the guard
+    exists to stop — e.g. candidate "Sprouts Farmers Market" vs a body line
+    "market salad"). So the overlap must include at least one **distinctive**
+    token (not in the generic stoplist), which a real merchant name reliably
+    contributes ("WHOLE" in "Whole Foods Market", "COSTCO" in "Costco
+    Wholesale") while a coincidental generic collision does not.
 
     Returns ``True`` (pass) when:
     - *merchant_name* is empty / None (nothing to validate)
     - The merchant name has fewer than 2 significant tokens (too short
       to validate reliably — e.g. "JOi")
-    - At least one significant token from the merchant name appears
-      somewhere in the receipt text
+    - At least one **distinctive** merchant token appears in the receipt text
+      (or, for an all-generic merchant name, any overlap)
     """
+    del n_lines  # accepted for backward compatibility; intentionally unused
+
     if not merchant_name:
         return True  # Nothing to validate against
 
@@ -115,14 +216,30 @@ def merchant_name_matches_receipt(
     if not lines:
         return True  # No receipt text to validate against
 
-    # Build a token set from the top N receipt lines (by y-coordinate)
-    sorted_lines = sorted(lines, key=lambda line: line.calculate_centroid()[1])
-    receipt_text = " ".join(
-        line.text for line in sorted_lines[:n_lines] if line.text
-    )
+    # Token set from the ENTIRE receipt (header + body + footer).
+    receipt_text = " ".join(line.text for line in lines if line.text)
     receipt_tokens = tokenize_text(receipt_text)
 
-    return bool(merchant_tokens & receipt_tokens)
+    overlap = merchant_tokens & receipt_tokens
+    # Distinctive = non-generic token of at least the tokenizer's minimum length
+    # (>= _MIN_TOKEN_LEN, not 4) so legitimate 3-char brands like CVS / IGA / KFC
+    # still pass the guard.
+    distinctive = {
+        t
+        for t in overlap
+        if len(t) >= _MIN_TOKEN_LEN and t not in _GENERIC_MERCHANT_TOKENS
+    }
+    if distinctive:
+        return True
+    # No distinctive token. Accept on ANY overlap when either the merchant name
+    # is all-generic (nothing distinctive to require) OR the caller trusts a
+    # strong corroborating signal (``allow_generic_overlap`` — e.g. a
+    # high-confidence embedding match). A candidate with ZERO overlap is still
+    # rejected (the phone-collision poison case: right phone, wrong name, no
+    # OCR overlap).
+    if allow_generic_overlap or merchant_tokens <= _GENERIC_MERCHANT_TOKENS:
+        return bool(overlap)
+    return False
 
 
 @dataclass
@@ -163,10 +280,11 @@ class MerchantResult:
 
 class MerchantResolver:
     """
-    Resolves merchant information using two-tier strategy.
+    Resolves merchant information using a Places-first ladder.
 
-    Tier 1: ChromaDB embedding similarity search with metadata comparison
-    Tier 2: Place ID Finder agent for Google Places API search
+    Tier 1: Google Places by NLP phone/address (name as hint), result validated
+    Tier 2: ChromaDB embedding-similarity fallback (fuzzy "seen-before")
+    Tier 3: Place ID Finder agent (infer merchant from receipt content)
     """
 
     def __init__(
@@ -297,49 +415,109 @@ class MerchantResolver:
         self._line_embeddings = line_embeddings or {}
         # Store receipt lines for merchant name cross-validation
         self._receipt_lines = lines
-        # Extract contact info from receipt
+        # Extract contact info from receipt. Phone and address come from Apple
+        # NLP (extracted_data) and the merchant-name hint from the model's label
+        # — ALL available immediately, with no dependency on label validation,
+        # so resolution can lead with Google Places at upload time.
         word_labels = word_labels or []
-        labeled_merchant_name = self._extract_labeled_text(
-            words, word_labels, "MERCHANT_NAME", require_valid=True
-        )
-        labeled_address = self._extract_labeled_text(
-            words, word_labels, "ADDRESS_LINE", require_valid=True
-        )
         phone = self._extract_phone(words)
-        address = labeled_address or self._extract_address(words)
+        address = self._extract_address(words) or self._extract_labeled_text(
+            words, word_labels, "ADDRESS_LINE", require_valid=False
+        )
+        # Name HINT only (used for the Places text query / agentic). Prefer a
+        # VALID label, else the model's PENDING MERCHANT_NAME, else the top line.
+        merchant_hint = self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME", require_valid=True
+        ) or self._extract_labeled_text(
+            words, word_labels, "MERCHANT_NAME", require_valid=False
+        )
+        merchant_line = self._get_merchant_line(lines)
+        if not merchant_hint:
+            merchant_hint = merchant_line.text if merchant_line else None
+
+        # For the Google Places TEXT query, enrich the labelled name with the rest
+        # of ITS line — that extra text is usually the city ("IN-N-OUT" + "BURGER
+        # HENDERSON"), which disambiguates a chain to the right location (a bare
+        # "IN-N-OUT" returns an arbitrary branch). Guards, so we never query the
+        # wrong text:
+        #   - find the name line via the MERCHANT_NAME *label*, not geometry (the
+        #     top line is often the check #, e.g. "105");
+        #   - exclude validator-rejected labels (INVALID/NEEDS_REVIEW), matching
+        #     the trust filter merchant_hint uses;
+        #   - use the SINGLE line whose tokens contain the labelled name — never a
+        #     join of all labelled lines (a mislabelled footer word would
+        #     otherwise pollute the query);
+        #   - drop pure-numeric/symbol tokens (check/register/store numbers).
+        _rejected_status = {
+            ValidationStatus.INVALID.value,
+            ValidationStatus.NEEDS_REVIEW.value,
+        }
+        merchant_name_line_ids = {
+            lab.line_id
+            for lab in word_labels
+            if lab.label == "MERCHANT_NAME"
+            and lab.validation_status not in _rejected_status
+        }
+        place_text_query = merchant_hint
+        if merchant_hint:
+            hint_tokens = set(re.findall(r"[a-z0-9]+", merchant_hint.lower()))
+            for ln in sorted(lines, key=lambda line: line.line_id):
+                if ln.line_id not in merchant_name_line_ids or not ln.text:
+                    continue
+                ln_tokens = set(re.findall(r"[a-z0-9]+", ln.text.lower()))
+                if (
+                    hint_tokens
+                    and hint_tokens <= ln_tokens
+                    and len(ln.text) > len(merchant_hint)
+                ):
+                    cleaned = " ".join(
+                        tok
+                        for tok in ln.text.split()
+                        if not re.fullmatch(r"[#\d.,:-]+", tok)
+                    ).strip()
+                    place_text_query = cleaned or ln.text
+                    break
 
         _log(
-            "Resolving merchant for %s#%d (merchant_hint=%s, phone=%s, address=%s...)",
+            "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
             image_id[:8],
             receipt_id,
-            labeled_merchant_name or "none",
+            merchant_hint or "none",
             phone or "none",
             (address[:30] + "...") if address else "none",
         )
 
-        if labeled_merchant_name:
+        # Tier 1: Google Places, keyed on the Apple-NLP phone/address (with the
+        # name as a text-query hint). Phone is a unique business identifier and
+        # the result is validated against the receipt's own phone/address, so
+        # this is the authoritative path. It needs no validated labels, so it
+        # leads at upload time — superseding the old "labeled fast path" that was
+        # inert because it required VALID labels that don't exist yet here.
+        if phone or address:
             result = self._run_labeled_place_search(
-                merchant_name=labeled_merchant_name,
+                merchant_name=place_text_query,
                 address=address,
                 phone=phone,
             )
             if result.place_id:
                 _log(
-                    "Labeled fields SUCCESS: %s (place_id=%s, conf=%.2f)",
+                    "Tier 1 SUCCESS (Places): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
                     result.place_id,
                     result.confidence,
                 )
                 return result
 
-        # Tier 1: ChromaDB similarity search with metadata comparison
-        # Uses cached embeddings from orchestration to avoid redundant API calls
+        # Tier 2: ChromaDB similarity fallback — reuse a previously-resolved
+        # similar receipt's place_id when Places returns nothing (fuzzy
+        # "seen-before"; covers OCR-garbled or no-phone/no-address receipts).
+        # Uses cached embeddings from orchestration to avoid redundant API calls.
         # Try phone line first (most reliable identifier)
         if phone:
             phone_line = self._get_line_for_phone(words, lines, phone)
             if phone_line:
                 _log(
-                    "Tier 1: Similarity search for phone line: %s",
+                    "Tier 2: Similarity search for phone line: %s",
                     phone_line.text,
                 )
                 result = self._similarity_search(
@@ -356,7 +534,7 @@ class MerchantResolver:
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
                 ):
                     _log(
-                        "Tier 1 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
+                        "Tier 2 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
                         result.place_id,
                         result.confidence,
@@ -368,7 +546,7 @@ class MerchantResolver:
             address_line = self._get_line_for_address(words, lines, address)
             if address_line:
                 _log(
-                    "Tier 1: Similarity search for address line: %s",
+                    "Tier 2: Similarity search for address line: %s",
                     address_line.text,
                 )
                 result = self._similarity_search(
@@ -385,7 +563,7 @@ class MerchantResolver:
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
                 ):
                     _log(
-                        "Tier 1 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
+                        "Tier 2 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
                         result.merchant_name,
                         result.place_id,
                         result.confidence,
@@ -396,7 +574,7 @@ class MerchantResolver:
         merchant_line = self._get_merchant_line(lines)
         if merchant_line:
             _log(
-                "Tier 1: Similarity search for merchant line: %s",
+                "Tier 2: Similarity search for merchant line: %s",
                 merchant_line.text,
             )
             result = self._similarity_search(
@@ -422,7 +600,7 @@ class MerchantResolver:
                 and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
             ):
                 _log(
-                    "Tier 1 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
+                    "Tier 2 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
                     result.merchant_name,
                     result.place_id,
                     result.confidence,
@@ -430,28 +608,28 @@ class MerchantResolver:
                 return result
             if result.place_id:
                 _log(
-                    "Tier 1 chroma_text below corroboration bar "
-                    "(%s conf=%.2f < %.2f); deferring to Tier 2",
+                    "Tier 2 chroma_text below corroboration bar "
+                    "(%s conf=%.2f < %.2f); deferring to Tier 3",
                     result.merchant_name,
                     result.confidence,
                     HIGH_CONFIDENCE_THRESHOLD,
                 )
 
-        # Tier 2: Fall back to Place ID Finder agent (Google Places API)
-        _log("Tier 1 failed, invoking Tier 2: Place ID Finder agent")
+        # Tier 3: Fall back to Place ID Finder agent (Google Places API)
+        _log("Tier 1/2 failed, invoking Tier 3: Place ID Finder agent")
         result = self._run_place_id_finder(
             lines_client, lines, words, image_id, receipt_id, word_labels
         )
 
         if result.place_id:
             _log(
-                "Tier 2 SUCCESS: Found merchant via Place ID Finder: %s "
+                "Tier 3 SUCCESS: Found merchant via Place ID Finder: %s "
                 "(place_id=%s)",
                 result.merchant_name,
                 result.place_id,
             )
         else:
-            _log("Tier 2: No merchant found")
+            _log("Tier 3: No merchant found")
 
         return result
 
@@ -669,8 +847,16 @@ class MerchantResolver:
             receipt_lines = getattr(self, "_receipt_lines", [])
             validated_matches: List[SimilarityMatch] = []
             for match in matches:
+                # A high-confidence match (>= HIGH_CONFIDENCE_THRESHOLD) is
+                # trusted even when its only OCR overlap is a generic token —
+                # but it must still have SOME overlap. A zero-overlap candidate
+                # (e.g. a phone-collision poison: right phone, wrong merchant
+                # name) is rejected regardless of confidence.
+                high_conf = match.total_confidence >= HIGH_CONFIDENCE_THRESHOLD
                 if self._merchant_name_matches_receipt(
-                    match.merchant_name, receipt_lines
+                    match.merchant_name,
+                    receipt_lines,
+                    allow_generic_overlap=high_conf,
                 ):
                     validated_matches.append(match)
                 else:
@@ -765,9 +951,12 @@ class MerchantResolver:
         merchant_name: Optional[str],
         lines: List[ReceiptLine],
         n_lines: int = 10,
+        allow_generic_overlap: bool = False,
     ) -> bool:
         """Thin wrapper around module-level :func:`merchant_name_matches_receipt`."""
-        return merchant_name_matches_receipt(merchant_name, lines, n_lines)
+        return merchant_name_matches_receipt(
+            merchant_name, lines, n_lines, allow_generic_overlap
+        )
 
     def _extract_labeled_text(
         self,
@@ -812,12 +1001,18 @@ class MerchantResolver:
 
     def _run_labeled_place_search(
         self,
-        merchant_name: str,
+        merchant_name: Optional[str],
         address: Optional[str],
         phone: Optional[str],
     ) -> MerchantResult:
-        """Search Places directly using labeled merchant/address evidence."""
-        if not self.places_client or not merchant_name:
+        """Search Places directly using receipt evidence (phone/address/name).
+
+        Phone and address are the authoritative keys (a phone lookup returns the
+        exact business); ``merchant_name`` is only a text-query hint. Runs as long
+        as ANY of phone/address/name is present — a phone- or address-only receipt
+        resolves without a labeled name.
+        """
+        if not self.places_client or not (merchant_name or address or phone):
             return MerchantResult()
 
         try:
@@ -1095,8 +1290,13 @@ class MerchantResolver:
                 places_api=self.places_client,
             )
 
-            # Run the agent (sync wrapper for async)
-            result = asyncio.get_event_loop().run_until_complete(
+            # Run the agent. Use asyncio.run() rather than get_event_loop():
+            # process_embeddings drives the resolver from a ThreadPoolExecutor
+            # worker thread, which has no current/default event loop, so
+            # asyncio.get_event_loop() raises "There is no current event loop in
+            # thread '...'" and the agentic tier silently never runs.
+            # asyncio.run() creates, drives, and tears down a fresh loop.
+            result = asyncio.run(
                 run_place_id_finder(
                     graph=graph,
                     state_holder=state_holder,
@@ -1131,67 +1331,13 @@ class MerchantResolver:
             )
             # Fall through to simple search below
         except RuntimeError as exc:
-            # Handle "no running event loop" error in Lambda
-            if "no running event loop" in str(
-                exc
-            ) or "cannot be called from a running event loop" in str(exc):
-                _log("Event loop issue, trying asyncio.run(): %s", exc)
-                try:
-                    # pylint: disable=import-outside-toplevel
-                    from receipt_agent.agents.place_id_finder import (
-                        create_place_id_finder_graph,
-                        run_place_id_finder,
-                    )
-
-                    def embed_fn(texts: List[str]) -> List[List[float]]:
-                        if not self.openai_client or not texts:
-                            return []
-                        from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
-                            embed_texts,
-                        )
-
-                        return embed_texts(
-                            client=self.openai_client,
-                            texts=texts,
-                            model="text-embedding-3-small",
-                        )
-
-                    graph, state_holder = create_place_id_finder_graph(
-                        dynamo_client=self.dynamo,
-                        chroma_client=lines_client,
-                        embed_fn=embed_fn,
-                        places_api=self.places_client,
-                    )
-
-                    result = asyncio.run(
-                        run_place_id_finder(
-                            graph=graph,
-                            state_holder=state_holder,
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            callbacks=langsmith_callbacks,
-                        )
-                    )
-
-                    if (
-                        result
-                        and result.get("found")
-                        and result.get("place_id")
-                    ):
-                        return MerchantResult(
-                            place_id=result["place_id"],
-                            merchant_name=result.get("place_name"),
-                            address=result.get("place_address"),
-                            phone=result.get("place_phone"),
-                            confidence=result.get("confidence", 0.0),
-                            resolution_tier="place_id_finder_agentic",
-                        )
-                except (
-                    Exception
-                ) as inner_exc:  # pylint: disable=broad-exception-caught
-                    _log("Agentic fallback also failed: %s", inner_exc)
-            else:
-                _log("RuntimeError in agentic finder: %s", exc)
+            # The primary path already uses asyncio.run(). The only RuntimeError
+            # it can raise here is "cannot be called from a running event loop",
+            # which does not occur on the ThreadPoolExecutor worker that drives
+            # this resolver. Retrying asyncio.run() identically (the old fallback)
+            # could never help, so just log and fall through to the simple
+            # (non-async) Place ID search below.
+            _log("Agentic finder unavailable (%s); using simple search", exc)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log("Error running agentic Place ID Finder: %s", exc)
             logger.exception("Agentic Place ID Finder failed")

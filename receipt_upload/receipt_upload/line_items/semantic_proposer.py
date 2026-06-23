@@ -32,6 +32,116 @@ _PROPOSED_BY = "semantic_product_name"
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS", "MERCHANT_NAME"}
 _MONEY = re.compile(r"\$?\d{1,4}[.,]\d{2}")
 
+# Structural / field-keyword tokens that are never products. The kNN can still
+# vote PRODUCT_NAME on these (historical mislabels poison the validated pool),
+# so guard deterministically: a word whose *entire* normalized text equals one
+# of these is skipped. This only blocks exact structural tokens — multi-letter
+# product descriptions ("TUNA", "Taxidermy") are unaffected — and removes the
+# bulk of the LLM validator's reject load (field keywords + receipt furniture
+# over-proposed as PRODUCT_NAME). See the June21 MCP review.
+_FIELD_KEYWORDS = frozenset(
+    {
+        # totals / currency rows
+        "total",
+        "subtotal",
+        "tax",
+        "taxes",
+        "tip",
+        "gratuity",
+        "balance",
+        "due",
+        "change",
+        "savings",
+        "save",
+        "saved",
+        "discount",
+        "coupon",
+        "amount",
+        "amt",
+        # quantity / unit columns
+        "qty",
+        "quantity",
+        "ea",
+        "each",
+        "weight",
+        "wt",
+        "tare",
+        "oz",
+        "lb",
+        "lbs",
+        "kg",
+        "ct",
+        "pk",
+        # payment / card-slip furniture
+        "cash",
+        "debit",
+        "credit",
+        "visa",
+        "mastercard",
+        "amex",
+        "discover",
+        "card",
+        "tender",
+        "tendered",
+        "payment",
+        "paid",
+        "auth",
+        "approval",
+        "approved",
+        "ref",
+        "invoice",
+        "invoi",
+        "mid",
+        "tid",
+        "aid",
+        "arc",
+        "terminal",
+        "trace",
+        "batch",
+        "seq",
+        # loyalty / membership
+        "member",
+        "members",
+        "membership",
+        "loyalty",
+        "rewards",
+        "reward",
+        "points",
+        "pts",
+        "extracare",
+        # receipt metadata / headers
+        "items",
+        "qty.",
+        "server",
+        "table",
+        "guest",
+        "guests",
+        "receipt",
+        "store",
+        "reg",
+        "register",
+        "trn",
+        "cashier",
+        "cshr",
+        "str",
+        "visit",
+        "transaction",
+        "trans",
+        "return",
+        "refund",
+        "policy",
+        "thank",
+        "you",
+        "welcome",
+    }
+)
+
+
+def _is_field_keyword(text: str) -> bool:
+    """True when the word's entire text is a structural/field keyword."""
+    norm = re.sub(r"[^a-z]", "", text.lower())
+    return bool(norm) and norm in _FIELD_KEYWORDS
+
 
 def _cy(word) -> float | None:
     box = getattr(word, "bounding_box", None)
@@ -48,7 +158,11 @@ def _has_letters(text: str) -> bool:
 
 
 def _knn_is_product(
-    words_client, embedding: List[float], image_id: str, k: int, min_similarity: float
+    words_client,
+    embedding: List[float],
+    image_id: str,
+    k: int,
+    min_similarity: float,
 ) -> bool:
     """kNN over validated words (UNSCOPED); majority-vote PRODUCT_NAME."""
     try:
@@ -70,12 +184,18 @@ def _knn_is_product(
         if max(0.0, 1.0 - (dist / 2.0)) < min_similarity:  # L2 -> similarity
             continue
         labels = meta.get("valid_labels_array") or []
-        primary = "PRODUCT_NAME" if "PRODUCT_NAME" in labels else (labels[0] if labels else None)
+        primary = (
+            "PRODUCT_NAME"
+            if "PRODUCT_NAME" in labels
+            else (labels[0] if labels else None)
+        )
         if primary:
             votes.append(primary)
         if len(votes) >= k:
             break
-    return bool(votes) and Counter(votes).most_common(1)[0][0] == "PRODUCT_NAME"
+    return (
+        bool(votes) and Counter(votes).most_common(1)[0][0] == "PRODUCT_NAME"
+    )
 
 
 def propose_product_names(
@@ -110,10 +230,16 @@ def propose_product_names(
         (lab.line_id, lab.word_id): lab.label for lab in existing_labels
     }
 
-    header = [_cy(w) for w in words if label_at.get((w.line_id, w.word_id)) in _HEADER]
+    header = [
+        _cy(w)
+        for w in words
+        if label_at.get((w.line_id, w.word_id)) in _HEADER
+    ]
     header = [y for y in header if y is not None]
     totals = [
-        _cy(w) for w in words if label_at.get((w.line_id, w.word_id)) == "GRAND_TOTAL"
+        _cy(w)
+        for w in words
+        if label_at.get((w.line_id, w.word_id)) == "GRAND_TOTAL"
     ]
     totals = [y for y in totals if y is not None]
     if not header or not totals:
@@ -129,6 +255,8 @@ def propose_product_names(
         if cy is None or not (lo < cy < hi):
             continue
         if not _has_letters(w.text) or _MONEY.search(w.text):
+            continue
+        if _is_field_keyword(w.text):
             continue
         emb = word_embeddings.get(key)
         if emb is None:
