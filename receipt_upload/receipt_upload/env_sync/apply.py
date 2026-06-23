@@ -84,9 +84,7 @@ def _batch_put(client, table: str, items: List[dict]) -> int:
     written = 0
     for i in range(0, len(items), 25):
         chunk = items[i : i + 25]
-        request = {
-            table: [{"PutRequest": {"Item": it}} for it in chunk]
-        }
+        request = {table: [{"PutRequest": {"Item": it}} for it in chunk]}
         resp = client.batch_write_item(RequestItems=request)
         unprocessed = resp.get("UnprocessedItems") or {}
         while unprocessed:
@@ -158,9 +156,7 @@ def execute_migration(
     backup = {
         "dst_table": getattr(dst_dynamo, "table_name", None),
         "created_at": _now_iso(),
-        "added_keys": [
-            {"PK": it["PK"], "SK": it["SK"]} for it in items
-        ],
+        "added_keys": [{"PK": it["PK"], "SK": it["SK"]} for it in items],
         "s3_created": [],
     }
 
@@ -240,9 +236,7 @@ def rollback(backup_path: str, dst_dynamo, s3) -> dict:
     keys = data.get("added_keys", [])
     for i in range(0, len(keys), 25):
         chunk = keys[i : i + 25]
-        request = {
-            table: [{"DeleteRequest": {"Key": k}} for k in chunk]
-        }
+        request = {table: [{"DeleteRequest": {"Key": k}} for k in chunk]}
         try:
             resp = client.batch_write_item(RequestItems=request)
             unprocessed = resp.get("UnprocessedItems") or {}

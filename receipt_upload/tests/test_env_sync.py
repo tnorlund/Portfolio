@@ -5,8 +5,12 @@ from receipt_upload.env_sync.plan import remap_bucket
 
 
 def test_remap_bucket_dev_prod_roundtrip():
-    assert remap_bucket("raw-image-bucket-c779c32") == "raw-image-bucket-0facc78"
-    assert remap_bucket("raw-image-bucket-0facc78") == "raw-image-bucket-c779c32"
+    assert (
+        remap_bucket("raw-image-bucket-c779c32") == "raw-image-bucket-0facc78"
+    )
+    assert (
+        remap_bucket("raw-image-bucket-0facc78") == "raw-image-bucket-c779c32"
+    )
     assert remap_bucket("sitebucket-ad92f1f") == "sitebucket-778abc9"
 
 

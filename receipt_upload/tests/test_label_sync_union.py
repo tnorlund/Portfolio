@@ -7,16 +7,22 @@ from receipt_upload.label_sync.union import find_multivalid, plan_union
 
 def _lb(image_id, rid, ln, wd, label, status="VALID", proposed_by="x"):
     return SimpleNamespace(
-        image_id=image_id, receipt_id=rid, line_id=ln, word_id=wd,
-        label=label, validation_status=status, label_proposed_by=proposed_by,
+        image_id=image_id,
+        receipt_id=rid,
+        line_id=ln,
+        word_id=wd,
+        label=label,
+        validation_status=status,
+        label_proposed_by=proposed_by,
     )
 
 
 def _byword(*labels):
     out = {}
     for lb in labels:
-        out.setdefault((lb.image_id, lb.receipt_id, lb.line_id, lb.word_id),
-                       []).append(lb)
+        out.setdefault(
+            (lb.image_id, lb.receipt_id, lb.line_id, lb.word_id), []
+        ).append(lb)
     return out
 
 
@@ -62,7 +68,9 @@ def test_fills_existing_but_unlabeled_target_word():
 def test_word_truly_absent_from_target_words_is_skipped():
     # word not in the target's word set -> deferred to record migration
     src = _byword(_lb("a", 1, 2, 3, "TAX", "VALID"))
-    assert plan_union(src, _byword(), from_env="dev", dst_word_keys=set()) == []
+    assert (
+        plan_union(src, _byword(), from_env="dev", dst_word_keys=set()) == []
+    )
 
 
 def test_skips_word_absent_in_target():

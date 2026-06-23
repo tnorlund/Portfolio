@@ -27,19 +27,49 @@ from receipt_upload.dedup._ddb import DYNAMO_ERRORS
 from receipt_upload.dedup.context import is_valid_status
 
 AMOUNT = {
-    "UNIT_PRICE", "LINE_TOTAL", "TAX", "SUBTOTAL", "GRAND_TOTAL", "DISCOUNT",
-    "CHANGE", "TIP", "REFUND", "CASH_BACK", "AVAILABLE_BALANCE", "QUANTITY",
+    "UNIT_PRICE",
+    "LINE_TOTAL",
+    "TAX",
+    "SUBTOTAL",
+    "GRAND_TOTAL",
+    "DISCOUNT",
+    "CHANGE",
+    "TIP",
+    "REFUND",
+    "CASH_BACK",
+    "AVAILABLE_BALANCE",
+    "QUANTITY",
 }
 # higher precedence (lower number) is kept VALID when a same-category tie
 # survives; the order is a deterministic default, the losers go to NEEDS_REVIEW
 _PRECEDENCE = {
-    lab: i for i, lab in enumerate([
-        "GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL", "UNIT_PRICE",
-        "DISCOUNT", "QUANTITY", "CHANGE", "TIP", "REFUND", "CASH_BACK",
-        "MERCHANT_NAME", "ADDRESS_LINE", "PHONE_NUMBER", "WEBSITE",
-        "STORE_HOURS", "PAYMENT_METHOD", "LOYALTY_ID", "DATE", "TIME",
-        "PRODUCT_NAME", "COUPON",
-    ])
+    lab: i
+    for i, lab in enumerate(
+        [
+            "GRAND_TOTAL",
+            "SUBTOTAL",
+            "TAX",
+            "LINE_TOTAL",
+            "UNIT_PRICE",
+            "DISCOUNT",
+            "QUANTITY",
+            "CHANGE",
+            "TIP",
+            "REFUND",
+            "CASH_BACK",
+            "MERCHANT_NAME",
+            "ADDRESS_LINE",
+            "PHONE_NUMBER",
+            "WEBSITE",
+            "STORE_HOURS",
+            "PAYMENT_METHOD",
+            "LOYALTY_ID",
+            "DATE",
+            "TIME",
+            "PRODUCT_NAME",
+            "COUPON",
+        ]
+    )
 }
 
 
@@ -115,16 +145,16 @@ def build_resolution(env_tables: Dict[str, str]):
     seen_words = set()
     for env, byword in per_env.items():
         for key, lbs in byword.items():
-            valid = sorted({
-                lb.label
-                for lb in lbs
-                if is_valid_status(getattr(lb, "validation_status", None))
-            })
+            valid = sorted(
+                {
+                    lb.label
+                    for lb in lbs
+                    if is_valid_status(getattr(lb, "validation_status", None))
+                }
+            )
             if len(valid) < 2:
                 continue
-            demotions = plan_demotions(
-                word_text.get((env, key), ""), valid
-            )
+            demotions = plan_demotions(word_text.get((env, key), ""), valid)
             for label, status in demotions.items():
                 plan.append((env, *key, label, status))
                 summary[status] += 1
@@ -159,8 +189,15 @@ def apply_resolution(plan, env_tables, *, backup_path: str) -> dict:
                 report["missing"] += 1
                 continue
             backup["prior"].append(
-                [env, img, rid, ln, wd, label,
-                 getattr(lb, "validation_status", None)]
+                [
+                    env,
+                    img,
+                    rid,
+                    ln,
+                    wd,
+                    label,
+                    getattr(lb, "validation_status", None),
+                ]
             )
             pending.append((dc, lb, status))
 

@@ -27,11 +27,18 @@ BUCKET_MAP = {
 SHARED_BUCKETS = {"upload-images-image-bucket-4bcea7e"}
 
 _CDN_FIELDS = [
-    "cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key",
-    "cdn_thumbnail_s3_key", "cdn_thumbnail_webp_s3_key",
-    "cdn_thumbnail_avif_s3_key", "cdn_small_s3_key",
-    "cdn_small_webp_s3_key", "cdn_small_avif_s3_key", "cdn_medium_s3_key",
-    "cdn_medium_webp_s3_key", "cdn_medium_avif_s3_key",
+    "cdn_s3_key",
+    "cdn_webp_s3_key",
+    "cdn_avif_s3_key",
+    "cdn_thumbnail_s3_key",
+    "cdn_thumbnail_webp_s3_key",
+    "cdn_thumbnail_avif_s3_key",
+    "cdn_small_s3_key",
+    "cdn_small_webp_s3_key",
+    "cdn_small_avif_s3_key",
+    "cdn_medium_s3_key",
+    "cdn_medium_webp_s3_key",
+    "cdn_medium_avif_s3_key",
 ]
 
 
@@ -93,7 +100,8 @@ def _subtree_items(
         KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
         ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
         ExpressionAttributeValues={
-            ":pk": {"S": f"IMAGE#{image_id}"}, ":sk": {"S": "RECEIPT#"}
+            ":pk": {"S": f"IMAGE#{image_id}"},
+            ":sk": {"S": "RECEIPT#"},
         },
     ):
         parts = it["SK"]["S"].split("#")
@@ -121,7 +129,8 @@ def _field_items(
         KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
         ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
         ExpressionAttributeValues={
-            ":pk": {"S": f"IMAGE#{image_id}"}, ":sk": {"S": "RECEIPT#"}
+            ":pk": {"S": f"IMAGE#{image_id}"},
+            ":sk": {"S": "RECEIPT#"},
         },
     ):
         sk = it.get("GSI1SK", {}).get("S", "")
@@ -161,9 +170,7 @@ def build_plan(
 
     src_receipts = src.list_receipts()[0]
     src_images = {im.image_id: im for im in src.list_images()[0]}
-    dst_keys = {
-        (r.image_id, r.receipt_id) for r in dst.list_receipts()[0]
-    }
+    dst_keys = {(r.image_id, r.receipt_id) for r in dst.list_receipts()[0]}
     dst_image_ids = {im.image_id for im in dst.list_images()[0]}
 
     plan = MigrationPlan(src_env=src_env, dst_env=dst_env)
@@ -196,9 +203,10 @@ def build_plan(
 
     # S3 crops for every receipt being copied (on new images or new keys)
     for r in src_receipts:
-        if r.image_id in new_image_ids or (
-            r.image_id, r.receipt_id
-        ) in new_rkeys:
+        if (
+            r.image_id in new_image_ids
+            or (r.image_id, r.receipt_id) in new_rkeys
+        ):
             s3_refs.extend(_entity_s3_refs(r))
 
     # auxiliary rows (OCR job / routing) reference their own S3 object via a

@@ -57,9 +57,7 @@ def load_labels_by_word(table: str):
     dynamo = DynamoClient(table)
     byword: Dict[WordKey, List] = defaultdict(list)
     for lb in dynamo.list_receipt_word_labels()[0]:
-        byword[
-            (lb.image_id, lb.receipt_id, lb.line_id, lb.word_id)
-        ].append(lb)
+        byword[(lb.image_id, lb.receipt_id, lb.line_id, lb.word_id)].append(lb)
     return dynamo, byword
 
 
@@ -236,8 +234,11 @@ def main() -> None:
         with open(args.rollback, encoding="utf-8") as f:
             bk_table = json.load(f).get("table")
         target = next(
-            (d for d in (dev_dynamo, prod_dynamo)
-             if getattr(d, "table_name", None) == bk_table),
+            (
+                d
+                for d in (dev_dynamo, prod_dynamo)
+                if getattr(d, "table_name", None) == bk_table
+            ),
             None,
         )
         if target is None:
@@ -263,15 +264,27 @@ def main() -> None:
     # (source_name, target_name, target_dynamo, adds)
     jobs = []
     if args.direction in ("dev-to-prod", "both"):
-        jobs.append((
-            "dev", "prod", prod_dynamo,
-            plan_union(dev, prod, from_env="dev", dst_word_keys=prod_words),
-        ))
+        jobs.append(
+            (
+                "dev",
+                "prod",
+                prod_dynamo,
+                plan_union(
+                    dev, prod, from_env="dev", dst_word_keys=prod_words
+                ),
+            )
+        )
     if args.direction in ("prod-to-dev", "both"):
-        jobs.append((
-            "prod", "dev", dev_dynamo,
-            plan_union(prod, dev, from_env="prod", dst_word_keys=dev_words),
-        ))
+        jobs.append(
+            (
+                "prod",
+                "dev",
+                dev_dynamo,
+                plan_union(
+                    prod, dev, from_env="prod", dst_word_keys=dev_words
+                ),
+            )
+        )
 
     for src, dst, _dyn, adds in jobs:
         by_label: Dict[str, int] = defaultdict(int)
@@ -289,9 +302,7 @@ def main() -> None:
         raise SystemExit("--apply requires --backup-dir")
     os.makedirs(args.backup_dir, exist_ok=True)
     for src, dst, dyn, adds in jobs:
-        bp = os.path.join(
-            args.backup_dir, f"union_{src}_to_{dst}.json"
-        )
+        bp = os.path.join(args.backup_dir, f"union_{src}_to_{dst}.json")
         rep = apply_union(adds, dyn, apply=True, backup_path=bp)
         print(f"\nAPPLIED {src}->{dst}: {json.dumps(rep, indent=2)}")
 
