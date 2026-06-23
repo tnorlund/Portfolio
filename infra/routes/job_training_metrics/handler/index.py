@@ -9,6 +9,7 @@ import logging
 import os
 import re
 from collections import Counter, defaultdict
+from datetime import date
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -26,6 +27,8 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "remove_line_item",
     "replace_field",
 )
+LLM_MODEL_FRESHNESS_MAX_AGE_DAYS = 30
+LLM_MODEL_FRESHNESS_CHECK_DATE_ENV = "RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE"
 
 # Featured job ID for the portfolio demo.
 #
@@ -1011,6 +1014,70 @@ def _compact_llm_execution_summary(value: Any) -> Dict[str, Any]:
     return {key: item for key, item in result.items() if item not in (None, "", [], {})}
 
 
+def _model_freshness_check_date() -> date:
+    raw_value = os.environ.get(LLM_MODEL_FRESHNESS_CHECK_DATE_ENV)
+    if raw_value:
+        try:
+            return date.fromisoformat(raw_value)
+        except ValueError:
+            pass
+    return date.today()
+
+
+def _llm_model_freshness_gate(llm_execution: Any) -> Dict[str, Any]:
+    if not isinstance(llm_execution, dict):
+        llm_execution = {}
+    verified_at = str(llm_execution.get("latest_model_verified_at") or "")
+    latest_sources = [
+        str(item) for item in (llm_execution.get("latest_model_sources") or []) if item
+    ][:3]
+    api_call_allowed_count = _safe_int(llm_execution.get("api_call_allowed_count")) or 0
+    mode_counts = llm_execution.get("mode_counts")
+    llm_assisted_mode_count = (
+        sum(
+            count
+            for mode, raw_count in mode_counts.items()
+            if str(mode) not in {"deterministic_fallback", "unknown"}
+            and (count := (_safe_int(raw_count) or 0)) > 0
+        )
+        if isinstance(mode_counts, dict)
+        else 0
+    )
+    requires_current_guidance = (
+        api_call_allowed_count > 0 or llm_assisted_mode_count > 0
+    )
+    parsed_date: date | None = None
+    if verified_at:
+        try:
+            parsed_date = date.fromisoformat(verified_at)
+        except ValueError:
+            parsed_date = None
+    raw_age_days = (
+        max(0, (_model_freshness_check_date() - parsed_date).days)
+        if parsed_date
+        else None
+    )
+    fresh = (
+        raw_age_days is not None and raw_age_days <= LLM_MODEL_FRESHNESS_MAX_AGE_DAYS
+    )
+    passed = (fresh and bool(latest_sources)) or not requires_current_guidance
+    result = {
+        "enabled": True,
+        "passed": passed,
+        "requires_current_model_guidance": requires_current_guidance,
+        "api_call_allowed_count": api_call_allowed_count,
+        "llm_assisted_mode_count": (
+            llm_assisted_mode_count if llm_assisted_mode_count else None
+        ),
+        "latest_model_verified_at": verified_at or None,
+        "latest_model_age_days": raw_age_days if requires_current_guidance else None,
+        "max_age_days": LLM_MODEL_FRESHNESS_MAX_AGE_DAYS,
+        "latest_model_sources": latest_sources,
+        "reason": None if passed else "latest_model_guidance_stale_or_missing",
+    }
+    return {key: item for key, item in result.items() if item not in (None, "", [])}
+
+
 def _compact_source_receipt_quality_merchant(row: Any) -> Dict[str, Any]:
     if not isinstance(row, dict):
         return {}
@@ -1891,6 +1958,40 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
         if isinstance(coverage_gate, dict) and coverage_gate
         else {}
     )
+    llm_freshness_gate = quality_gates.get("llm_model_freshness_gate")
+    compact_llm_freshness_gate = {}
+    if isinstance(llm_freshness_gate, dict) and llm_freshness_gate:
+        compact_llm_freshness_gate = {
+            "enabled": llm_freshness_gate.get("enabled") is True,
+            "passed": llm_freshness_gate.get("passed") is True,
+            "requires_current_model_guidance": (
+                llm_freshness_gate.get("requires_current_model_guidance") is True
+            ),
+            "api_call_allowed_count": _safe_int(
+                llm_freshness_gate.get("api_call_allowed_count")
+            ),
+            "llm_assisted_mode_count": _safe_int(
+                llm_freshness_gate.get("llm_assisted_mode_count")
+            ),
+            "latest_model_verified_at": llm_freshness_gate.get(
+                "latest_model_verified_at"
+            ),
+            "latest_model_age_days": _safe_int(
+                llm_freshness_gate.get("latest_model_age_days")
+            ),
+            "max_age_days": _safe_int(llm_freshness_gate.get("max_age_days")),
+            "latest_model_sources": [
+                str(item)
+                for item in (llm_freshness_gate.get("latest_model_sources") or [])[:3]
+                if item
+            ],
+            "reason": llm_freshness_gate.get("reason"),
+        }
+        compact_llm_freshness_gate = {
+            key: item
+            for key, item in compact_llm_freshness_gate.items()
+            if item not in (None, "", [])
+        }
     return {
         "ready": value.get("ready") is True,
         "training_ready": training_ready,
@@ -1928,6 +2029,7 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
                 if (threshold := _safe_float(value)) is not None
             },
             "accepted_operation_coverage_gate": compact_coverage_gate,
+            "llm_model_freshness_gate": compact_llm_freshness_gate,
         },
         "recommendations": [
             str(item) for item in (value.get("recommendations") or [])[:8]
@@ -2105,6 +2207,10 @@ def _derive_synthesis_quality_report(
     accepted_operation_coverage = _derive_accepted_operation_coverage_from_merchants(
         merchant_rows
     )
+    llm_execution = _compact_llm_execution_summary(
+        (bundle.get("preflight") or {}).get("llm_execution")
+    )
+    llm_model_freshness_gate = _llm_model_freshness_gate(llm_execution)
     for recommendation in accepted_operation_coverage.get("recommendations") or []:
         if recommendation not in recommendations:
             recommendations.append(str(recommendation))
@@ -2122,6 +2228,11 @@ def _derive_synthesis_quality_report(
         training_ready_reasons.append("fix_source_receipt_quality_before_synthesis")
     if accepted_operation_coverage.get("uncovered_ready_operations"):
         training_ready_reasons.append("cover_ready_operations_before_training")
+    if (
+        llm_model_freshness_gate.get("requires_current_model_guidance") is True
+        and llm_model_freshness_gate.get("passed") is not True
+    ):
+        training_ready_reasons.append("refresh_latest_model_guidance_before_synthesis")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
         training_ready_reasons.append("rebalance_synthetic_mix_before_training")
@@ -2204,7 +2315,7 @@ def _derive_synthesis_quality_report(
                     "accepted_candidate_quality_components"
                 ),
                 "accepted_mix_balance": candidate_mix.get("accepted_mix_balance"),
-                "llm_execution": (bundle.get("preflight") or {}).get("llm_execution"),
+                "llm_execution": llm_execution,
                 "rejection_reasons": candidate_mix.get("rejection_reasons"),
                 "contract_count": len(contracts),
                 "ready_contract_count": sum(
@@ -2256,6 +2367,7 @@ def _derive_synthesis_quality_report(
                         or []
                     )[:8],
                 },
+                "llm_model_freshness_gate": llm_model_freshness_gate,
             },
             "recommendations": recommendations,
             "merchants": merchant_rows,

@@ -904,6 +904,18 @@ export interface TrainingSynthesisQualityReport {
       accepted_ready_operation_count?: number | null;
       uncovered_ready_operations?: string[];
     };
+    llm_model_freshness_gate?: {
+      enabled?: boolean;
+      passed?: boolean;
+      requires_current_model_guidance?: boolean;
+      api_call_allowed_count?: number | null;
+      llm_assisted_mode_count?: number | null;
+      latest_model_verified_at?: string | null;
+      latest_model_age_days?: number | null;
+      max_age_days?: number | null;
+      latest_model_sources?: string[];
+      reason?: string | null;
+    };
   };
   recommendations?: string[];
   merchants?: TrainingSynthesisQualityMerchant[];

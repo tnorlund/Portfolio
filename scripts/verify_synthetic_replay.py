@@ -43,6 +43,8 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "replace_field",
 )
 DEFAULT_EXPERIMENT_MAX_AWS_SPEND_USD = 200.0
+LLM_MODEL_FRESHNESS_MAX_AGE_DAYS = 30
+LLM_MODEL_FRESHNESS_CHECK_DATE_ENV = "RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE"
 
 
 def load_outputs(env: str) -> dict[str, Any]:
@@ -785,6 +787,72 @@ def _summarize_llm_execution(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "configured_models": configured_models[:5],
         "latest_model_sources": latest_sources[:3],
         "latest_model_verified_at": verified_dates[-1] if verified_dates else None,
+    }
+    return {key: value for key, value in result.items() if value not in (None, [])}
+
+
+def _model_freshness_check_date() -> date:
+    raw_value = os.environ.get(LLM_MODEL_FRESHNESS_CHECK_DATE_ENV)
+    if raw_value:
+        try:
+            return date.fromisoformat(raw_value)
+        except ValueError:
+            pass
+    return date.today()
+
+
+def _llm_model_freshness_gate(llm_execution: dict[str, Any]) -> dict[str, Any]:
+    """Summarize whether paid LLM synthesis used current model guidance."""
+    verified_at = str(llm_execution.get("latest_model_verified_at") or "")
+    source_values = [
+        str(value)
+        for value in llm_execution.get("latest_model_sources") or []
+        if value
+    ]
+    api_call_allowed_count = _safe_int(llm_execution.get("api_call_allowed_count")) or 0
+    mode_counts = llm_execution.get("mode_counts")
+    llm_assisted_mode_count = (
+        sum(
+            count
+            for mode, raw_count in mode_counts.items()
+            if str(mode) not in {"deterministic_fallback", "unknown"}
+            and (count := (_safe_int(raw_count) or 0)) > 0
+        )
+        if isinstance(mode_counts, dict)
+        else 0
+    )
+    requires_current_guidance = (
+        api_call_allowed_count > 0 or llm_assisted_mode_count > 0
+    )
+    parsed_date: date | None = None
+    if verified_at:
+        try:
+            parsed_date = date.fromisoformat(verified_at)
+        except ValueError:
+            parsed_date = None
+    raw_age_days = (
+        max(0, (_model_freshness_check_date() - parsed_date).days)
+        if parsed_date
+        else None
+    )
+    fresh = (
+        raw_age_days is not None and raw_age_days <= LLM_MODEL_FRESHNESS_MAX_AGE_DAYS
+    )
+    has_source = bool(source_values)
+    passed = (fresh and has_source) or not requires_current_guidance
+    result = {
+        "enabled": True,
+        "passed": passed,
+        "requires_current_model_guidance": requires_current_guidance,
+        "api_call_allowed_count": api_call_allowed_count,
+        "llm_assisted_mode_count": (
+            llm_assisted_mode_count if llm_assisted_mode_count else None
+        ),
+        "latest_model_verified_at": verified_at or None,
+        "latest_model_age_days": raw_age_days if requires_current_guidance else None,
+        "max_age_days": LLM_MODEL_FRESHNESS_MAX_AGE_DAYS,
+        "latest_model_sources": source_values[:3],
+        "reason": None if passed else "latest_model_guidance_stale_or_missing",
     }
     return {key: value for key, value in result.items() if value not in (None, [])}
 
@@ -1834,6 +1902,7 @@ def _training_ready_reasons(
     candidate_mix: dict[str, Any],
     contracts: list[dict[str, Any]],
     accepted_operation_coverage: dict[str, Any] | None = None,
+    llm_model_freshness_gate: dict[str, Any] | None = None,
 ) -> list[str]:
     """Return blocking reasons before synthetic rows should train LayoutLM."""
     reasons: list[str] = []
@@ -1854,6 +1923,12 @@ def _training_ready_reasons(
         "uncovered_ready_operations"
     ):
         reasons.append("cover_ready_operations_before_training")
+    if (
+        llm_model_freshness_gate
+        and llm_model_freshness_gate.get("requires_current_model_guidance") is True
+        and llm_model_freshness_gate.get("passed") is not True
+    ):
+        reasons.append("refresh_latest_model_guidance_before_synthesis")
     balance = candidate_mix.get("accepted_mix_balance") or {}
     if str(balance.get("risk_level") or "").lower() in {"medium", "high"}:
         reasons.append("rebalance_synthetic_mix_before_training")
@@ -2000,11 +2075,14 @@ def build_local_synthesis_quality_report(
     merchant_gap_summary = _merchant_gap_summary(merchant_rows)
     accepted_count = _safe_int(candidate_mix.get("accepted_count")) or 0
     candidate_count = _safe_int(candidate_mix.get("candidate_count")) or 0
+    llm_execution = (bundle.get("preflight") or {}).get("llm_execution") or {}
+    llm_model_freshness_gate = _llm_model_freshness_gate(llm_execution)
     training_ready_reasons = _training_ready_reasons(
         bundle,
         candidate_mix=candidate_mix,
         contracts=contracts,
         accepted_operation_coverage=accepted_operation_coverage,
+        llm_model_freshness_gate=llm_model_freshness_gate,
     )
     source_quality_status_counts = _count_by(
         [
@@ -2060,7 +2138,7 @@ def build_local_synthesis_quality_report(
             )
             or {},
             "accepted_mix_balance": candidate_mix.get("accepted_mix_balance") or {},
-            "llm_execution": (bundle.get("preflight") or {}).get("llm_execution") or {},
+            "llm_execution": llm_execution,
             "rejection_reasons": candidate_mix.get("rejection_reasons") or {},
             "contract_count": len(contracts),
             "ready_contract_count": sum(
@@ -2108,6 +2186,7 @@ def build_local_synthesis_quality_report(
                     or []
                 )[:8],
             },
+            "llm_model_freshness_gate": llm_model_freshness_gate,
         },
         "recommendations": _report_recommendations(
             bundle,

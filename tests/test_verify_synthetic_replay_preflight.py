@@ -1466,6 +1466,17 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "accepted_ready_operation_count": 2,
         "uncovered_ready_operations": [],
     }
+    assert report["quality_gates"]["llm_model_freshness_gate"] == {
+        "enabled": True,
+        "passed": True,
+        "requires_current_model_guidance": False,
+        "api_call_allowed_count": 0,
+        "latest_model_verified_at": "2026-06-23",
+        "max_age_days": 30,
+        "latest_model_sources": [
+            "https://developers.openai.com/api/docs/guides/latest-model"
+        ],
+    }
     assert report["recommendations"] == [
         "verify_total_and_tax_reconciliation_in_preview",
         "prefer_cross_receipt_grounded_item_mutations",
@@ -1515,6 +1526,131 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
             "modified_labels": [],
         }
     ]
+
+
+def test_build_local_synthesis_quality_report_blocks_stale_paid_llm_guidance(
+    monkeypatch,
+):
+    module = _load_module()
+    monkeypatch.setenv("RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE", "2026-06-23")
+    artifact = _artifact("Market Mart")
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+    bundle["preflight"]["llm_execution"] = {
+        "mode_counts": {"llm_assisted": 1},
+        "paid_llm_disabled_count": 0,
+        "api_call_allowed_count": 1,
+        "configured_models": ["openai/gpt-5.5"],
+        "latest_model_sources": [
+            "https://developers.openai.com/api/docs/guides/latest-model"
+        ],
+        "latest_model_verified_at": "2026-04-01",
+    }
+
+    report = module.build_local_synthesis_quality_report(
+        bundle,
+        artifacts=[artifact],
+    )
+
+    assert report["ready"] is True
+    assert report["training_ready"] is False
+    assert report["training_ready_reasons"] == [
+        "refresh_latest_model_guidance_before_synthesis"
+    ]
+    assert report["quality_gates"]["llm_model_freshness_gate"] == {
+        "enabled": True,
+        "passed": False,
+        "requires_current_model_guidance": True,
+        "api_call_allowed_count": 1,
+        "llm_assisted_mode_count": 1,
+        "latest_model_verified_at": "2026-04-01",
+        "latest_model_age_days": 83,
+        "max_age_days": 30,
+        "latest_model_sources": [
+            "https://developers.openai.com/api/docs/guides/latest-model"
+        ],
+        "reason": "latest_model_guidance_stale_or_missing",
+    }
+
+
+def test_build_local_synthesis_quality_report_blocks_missing_paid_llm_guidance(
+    monkeypatch,
+):
+    module = _load_module()
+    monkeypatch.setenv("RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE", "2026-06-23")
+    artifact = _artifact("Market Mart")
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+    bundle["preflight"]["llm_execution"] = {
+        "mode_counts": {"llm_assisted": 1},
+        "paid_llm_disabled_count": 0,
+        "api_call_allowed_count": 0,
+        "configured_models": ["openai/gpt-5.5"],
+    }
+
+    report = module.build_local_synthesis_quality_report(
+        bundle,
+        artifacts=[artifact],
+    )
+
+    assert report["training_ready"] is False
+    assert report["training_ready_reasons"] == [
+        "refresh_latest_model_guidance_before_synthesis"
+    ]
+    assert report["quality_gates"]["llm_model_freshness_gate"] == {
+        "enabled": True,
+        "passed": False,
+        "requires_current_model_guidance": True,
+        "api_call_allowed_count": 0,
+        "llm_assisted_mode_count": 1,
+        "max_age_days": 30,
+        "reason": "latest_model_guidance_stale_or_missing",
+    }
+
+
+def test_build_local_synthesis_quality_report_allows_stale_no_spend_guidance(
+    monkeypatch,
+):
+    module = _load_module()
+    monkeypatch.setenv("RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE", "2026-06-23")
+    artifact = _artifact("Market Mart")
+    bundle = module.build_local_synthetic_training_bundle(
+        [artifact],
+        min_grounded_candidate_share=0.4,
+    )
+    bundle["preflight"]["llm_execution"] = {
+        "mode_counts": {"deterministic_fallback": 1},
+        "paid_llm_disabled_count": 1,
+        "api_call_allowed_count": 0,
+        "configured_models": ["openai/gpt-5.5"],
+        "latest_model_sources": [
+            "https://developers.openai.com/api/docs/guides/latest-model"
+        ],
+        "latest_model_verified_at": "2026-04-01",
+    }
+
+    report = module.build_local_synthesis_quality_report(
+        bundle,
+        artifacts=[artifact],
+    )
+
+    assert report["training_ready"] is True
+    assert report["training_ready_reasons"] == []
+    assert report["quality_gates"]["llm_model_freshness_gate"] == {
+        "enabled": True,
+        "passed": True,
+        "requires_current_model_guidance": False,
+        "api_call_allowed_count": 0,
+        "latest_model_verified_at": "2026-04-01",
+        "max_age_days": 30,
+        "latest_model_sources": [
+            "https://developers.openai.com/api/docs/guides/latest-model"
+        ],
+    }
 
 
 def test_build_local_synthetic_training_bundle_reports_caps():

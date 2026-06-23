@@ -103,6 +103,16 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
       risk_level: "high",
       risk_reasons: ["single_merchant_accepted"],
     },
+    llm_execution: {
+      mode_counts: { deterministic_fallback: 1 },
+      paid_llm_disabled_count: 1,
+      api_call_allowed_count: 0,
+      configured_models: ["openai/gpt-5.5"],
+      latest_model_sources: [
+        "https://developers.openai.com/api/docs/guides/latest-model",
+      ],
+      latest_model_verified_at: "2026-06-23",
+    },
     merchant_synthesis_contracts: [
       {
         merchant_name: "Sprouts Farmers Market",
@@ -116,6 +126,19 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
     quality_report: {
       training_ready: false,
       training_ready_reasons: ["cover_ready_operations_before_training"],
+      quality_gates: {
+        llm_model_freshness_gate: {
+          enabled: true,
+          passed: true,
+          requires_current_model_guidance: false,
+          api_call_allowed_count: 0,
+          latest_model_verified_at: "2026-06-23",
+          max_age_days: 30,
+          latest_model_sources: [
+            "https://developers.openai.com/api/docs/guides/latest-model",
+          ],
+        },
+      },
       accepted_operation_coverage: {
         operation_count: 4,
         ready_operation_count: 3,
@@ -168,6 +191,10 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
       "title",
       expect.stringContaining("Training hold: cover ready operations before training"),
+    );
+    expect(screen.getByText("Local only")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Model guidance: fresh"),
     );
   });
 

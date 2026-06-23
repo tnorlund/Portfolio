@@ -898,6 +898,32 @@ const summarizeLlmExecution = (
   const verifiedTitle = execution.latest_model_verified_at
     ? `Latest model verified: ${execution.latest_model_verified_at}`
     : null;
+  const freshnessGate = synthesis.quality_report?.quality_gates
+    ?.llm_model_freshness_gate;
+  const freshnessTitle = freshnessGate
+    ? `Model guidance: ${
+        freshnessGate.passed ? "fresh" : "stale or missing"
+      }${
+        freshnessGate.latest_model_age_days != null
+          ? ` (${formatCount(freshnessGate.latest_model_age_days)}d old`
+          : ""
+      }${
+        freshnessGate.max_age_days != null
+          ? `${freshnessGate.latest_model_age_days != null ? ", " : " ("}max ${formatCount(freshnessGate.max_age_days)}d`
+          : ""
+      }${
+        freshnessGate.latest_model_age_days != null ||
+        freshnessGate.max_age_days != null
+          ? ")"
+          : ""
+      }`
+    : null;
+  const freshnessHoldTitle =
+    freshnessGate?.requires_current_model_guidance && freshnessGate.passed === false
+      ? `Training hold: ${formatSyntheticRejectionReason(
+          freshnessGate.reason || "refresh_latest_model_guidance_before_synthesis"
+        )}`
+      : null;
 
   return {
     label,
@@ -909,6 +935,8 @@ const summarizeLlmExecution = (
         modelTitle,
         sourceTitle,
         verifiedTitle,
+        freshnessTitle,
+        freshnessHoldTitle,
       ]
         .filter((value): value is string => Boolean(value))
         .join(" | ") || undefined,

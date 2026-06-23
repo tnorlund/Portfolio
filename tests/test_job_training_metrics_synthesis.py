@@ -1566,6 +1566,17 @@ def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):
             "accepted_ready_operation_count": 2,
             "uncovered_ready_operations": ["replace_field"],
         },
+        "llm_model_freshness_gate": {
+            "enabled": True,
+            "passed": True,
+            "requires_current_model_guidance": False,
+            "api_call_allowed_count": 0,
+            "latest_model_verified_at": "2026-06-23",
+            "max_age_days": 30,
+            "latest_model_sources": [
+                "https://developers.openai.com/api/docs/guides/latest-model"
+            ],
+        },
     }
     assert summary["quality_report"]["recommendations"] == [
         "collect_more_receipts_for_not_ready_merchants",
