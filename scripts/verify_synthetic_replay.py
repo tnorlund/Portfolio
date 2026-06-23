@@ -1377,15 +1377,13 @@ def _next_synthesis_actions(
     readiness_status: str,
     source_quality: dict[str, Any] | None = None,
 ) -> list[str]:
-    if readiness_status == "blocked":
-        if _source_quality_has_recoverable_unlabeled_text(source_quality or {}):
-            return [
-                "validate_recoverable_unlabeled_receipts",
-                "resolve_merchant_synthesis_blockers",
-            ]
-        return ["resolve_merchant_synthesis_blockers"]
-
     actions: list[str] = []
+    if _source_quality_has_recoverable_unlabeled_text(source_quality or {}):
+        actions.append("validate_recoverable_unlabeled_receipts")
+    if readiness_status == "blocked":
+        actions.append("resolve_merchant_synthesis_blockers")
+        return actions
+
     rows_by_operation = {str(row.get("operation")): row for row in operation_readiness}
     for operation in SYNTHESIS_OPERATION_ORDER:
         row = rows_by_operation.get(operation) or {}

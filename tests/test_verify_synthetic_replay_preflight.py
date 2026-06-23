@@ -1086,6 +1086,19 @@ def test_source_quality_reports_recoverable_unlabeled_text_structure():
         "resolve_merchant_synthesis_blockers",
     ]
 
+    ready_audit = module.summarize_merchant_synthesis_audit([artifact])[0]
+    assert ready_audit["next_synthesis_actions"][:3] == [
+        "validate_recoverable_unlabeled_receipts",
+        "synthesize_hard_negative_from_existing_evidence",
+        "synthesize_add_line_item_from_existing_evidence",
+    ]
+    assert (
+        ready_audit["next_synthesis_actions"].count(
+            "validate_recoverable_unlabeled_receipts"
+        )
+        == 1
+    )
+
     weak_receipt = module._normalize_local_receipt(
         {
             "lines": [
@@ -1101,6 +1114,17 @@ def test_source_quality_reports_recoverable_unlabeled_text_structure():
         == "unlabeled_text_without_receipt_structure"
     )
     assert "unlabeled_text_requires_label_validation" not in weak_quality["limitations"]
+    weak_artifact = _artifact(
+        "Market Mart",
+        status="ready",
+        score=0.92,
+        source_receipt_quality=weak_quality,
+    )
+    weak_audit = module.summarize_merchant_synthesis_audit([weak_artifact])[0]
+    assert (
+        "validate_recoverable_unlabeled_receipts"
+        not in weak_audit["next_synthesis_actions"]
+    )
 
 
 def test_preflight_cli_loads_local_artifacts_without_deployment_lookup(
