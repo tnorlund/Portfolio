@@ -449,6 +449,49 @@ def test_compact_synthesis_quality_report_redacts_legacy_source_keys(monkeypatch
             "merchants": [
                 {
                     "merchant_name": "Sprouts Farmers Market",
+                    "operation_readiness": [
+                        {
+                            "operation": "add_line_item",
+                            "ready": True,
+                            "supported": True,
+                            "candidate_count": 2,
+                            "evidence_candidate_count": 1,
+                            "evidence": {
+                                "grounded_candidate_count": 2,
+                                "grounded_examples": [
+                                    {
+                                        "product_text": "YELLOW BANANAS",
+                                        "line_total": "1.95",
+                                    }
+                                ],
+                            },
+                            "blockers": [],
+                        },
+                        {
+                            "operation": "replace_field",
+                            "ready": False,
+                            "supported": False,
+                            "candidate_count": 0,
+                            "evidence_candidate_count": 0,
+                            "evidence": {
+                                "labels": ["DATE", "WALMART", "05/12/2026"],
+                                "mutable_field_count": 2,
+                                "mutable_fields": {
+                                    "DATE": {
+                                        "examples": ["05/12/2026"],
+                                        "safe_to_mutate": True,
+                                    },
+                                    "WALMART": {"safe_to_mutate": True},
+                                },
+                            },
+                            "blockers": ["operation_not_supported_by_contract"],
+                        },
+                    ],
+                    "missing_operations": ["replace_field"],
+                    "next_synthesis_actions": [
+                        "synthesize_add_line_item_from_existing_evidence",
+                        "collect_stable_date_time_examples_for_field_replacement",
+                    ],
                     "accepted_examples": [
                         {
                             "candidate_id": "legacy-raw",
@@ -474,6 +517,8 @@ def test_compact_synthesis_quality_report_redacts_legacy_source_keys(monkeypatch
     compact_json = json.dumps(compact, sort_keys=True)
     assert "base#00001" not in compact_json
     assert "neighbor#00001" not in compact_json
+    assert "05/12/2026" not in compact_json
+    assert "WALMART" not in compact_json
 
     summary_lineage = compact["summary"]["accepted_source_lineage"]
     assert summary_lineage["source_receipt_key_count"] == 2
@@ -504,6 +549,35 @@ def test_compact_synthesis_quality_report_redacts_legacy_source_keys(monkeypatch
         "category_seen_receipt_count": 1,
         "category_seen_in_receipts_redacted": True,
     }
+    merchant = compact["merchants"][0]
+    assert merchant["operation_readiness"] == [
+        {
+            "operation": "add_line_item",
+            "ready": True,
+            "supported": True,
+            "candidate_count": 2,
+            "evidence_candidate_count": 1,
+            "evidence": {"grounded_candidate_count": 2},
+        },
+        {
+            "operation": "replace_field",
+            "ready": False,
+            "supported": False,
+            "candidate_count": 0,
+            "evidence_candidate_count": 0,
+            "evidence": {
+                "labels": ["DATE"],
+                "mutable_field_count": 2,
+                "mutable_fields": ["DATE"],
+            },
+            "blockers": ["operation_not_supported_by_contract"],
+        },
+    ]
+    assert merchant["missing_operations"] == ["replace_field"]
+    assert merchant["next_synthesis_actions"] == [
+        "synthesize_add_line_item_from_existing_evidence",
+        "collect_stable_date_time_examples_for_field_replacement",
+    ]
 
 
 def test_summarize_synthesis_bundle_exposes_candidate_mix(monkeypatch):

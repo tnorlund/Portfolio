@@ -2230,6 +2230,28 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
     report_coverage = written_bundle["synthesis_quality_report"]["operation_coverage"]
     assert report_coverage["operations"]["hard_negative"]["ready_merchant_count"] >= 2
     assert report_coverage["operations"]["add_line_item"]["ready_merchant_count"] >= 2
+    report_merchants = {
+        row["merchant_name"]: row
+        for row in written_bundle["synthesis_quality_report"]["merchants"]
+    }
+    report_sprouts_ops = {
+        row["operation"]: row
+        for row in report_merchants["Sprouts Farmers Market"]["operation_readiness"]
+    }
+    assert report_sprouts_ops["add_line_item"]["ready"] is True
+    assert report_sprouts_ops["add_line_item"]["evidence_candidate_count"] == 1
+    assert report_sprouts_ops["remove_line_item"]["ready"] is False
+    assert report_sprouts_ops["remove_line_item"]["evidence_candidate_count"] == 1
+    assert report_merchants["Sprouts Farmers Market"]["missing_operations"] == [
+        "remove_line_item",
+        "replace_field",
+    ]
+    assert report_merchants["Sprouts Farmers Market"]["next_synthesis_actions"] == [
+        "synthesize_hard_negative_from_existing_evidence",
+        "synthesize_add_line_item_from_existing_evidence",
+        "collect_multi_item_non_taxable_receipts_with_totals",
+        "collect_stable_date_time_examples_for_field_replacement",
+    ]
     merchants = {
         row["merchant_name"]: row
         for row in written_bundle["candidate_mix"]["merchants"]

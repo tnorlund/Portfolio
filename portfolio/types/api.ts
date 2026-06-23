@@ -808,6 +808,23 @@ export interface TrainingSynthesisQualityExample {
   };
 }
 
+export interface TrainingSynthesisOperationReadiness {
+  operation?: string | null;
+  ready?: boolean;
+  supported?: boolean;
+  candidate_count?: number | null;
+  evidence_candidate_count?: number | null;
+  evidence?: {
+    labels?: string[];
+    hard_negative_label_count?: number | null;
+    grounded_candidate_count?: number | null;
+    removable_item_candidate_count?: number | null;
+    mutable_field_count?: number | null;
+    mutable_fields?: string[];
+  };
+  blockers?: string[];
+}
+
 export interface TrainingSynthesisQualityMerchant {
   merchant_name?: string;
   readiness_status?: string | null;
@@ -830,6 +847,7 @@ export interface TrainingSynthesisQualityMerchant {
   accepted_category_counts?: Record<string, number>;
   accepted_field_replacement_counts?: Record<string, number>;
   safe_mutable_fields?: string[];
+  operation_readiness?: TrainingSynthesisOperationReadiness[];
   accepted_structure_similarity?: TrainingSynthesisScoreSummary | null;
   accepted_structure_components?: Record<string, TrainingSynthesisScoreSummary>;
   accepted_real_baseline_comparison?: TrainingSynthesisRealBaselineSummary | null;
@@ -841,6 +859,7 @@ export interface TrainingSynthesisQualityMerchant {
   limitations?: string[];
   missing_operations?: string[];
   operation_gap_reasons?: Record<string, string[]>;
+  next_synthesis_actions?: string[];
   accepted_examples?: TrainingSynthesisQualityExample[];
   rejected_examples?: Array<Record<string, unknown>>;
 }

@@ -171,6 +171,63 @@ const trainingMetrics = (): TrainingMetricsResponse => ({
         operation_count: 4,
         ready_operation_count: 3,
       },
+      merchants: [
+        {
+          merchant_name: "Sprouts Farmers Market",
+          readiness_status: "ready",
+          operation_readiness: [
+            {
+              operation: "hard_negative",
+              ready: true,
+              supported: true,
+              candidate_count: 1,
+              evidence_candidate_count: 1,
+              evidence: {
+                hard_negative_label_count: 1,
+              },
+            },
+            {
+              operation: "add_line_item",
+              ready: true,
+              supported: true,
+              candidate_count: 1,
+              evidence_candidate_count: 1,
+              evidence: {
+                grounded_candidate_count: 2,
+              },
+            },
+            {
+              operation: "remove_line_item",
+              ready: false,
+              supported: false,
+              candidate_count: 1,
+              evidence_candidate_count: 1,
+              evidence: {
+                removable_item_candidate_count: 0,
+              },
+              blockers: ["no_removable_non_taxable_items"],
+            },
+            {
+              operation: "replace_field",
+              ready: false,
+              supported: false,
+              candidate_count: 0,
+              evidence_candidate_count: 0,
+              evidence: {
+                mutable_field_count: 0,
+              },
+              blockers: ["no_stable_mutable_fields"],
+            },
+          ],
+          missing_operations: ["remove_line_item", "replace_field"],
+          next_synthesis_actions: [
+            "synthesize_hard_negative_from_existing_evidence",
+            "synthesize_add_line_item_from_existing_evidence",
+            "collect_multi_item_non_taxable_receipts_with_totals",
+            "collect_stable_date_time_examples_for_field_replacement",
+          ],
+        },
+      ],
     },
   },
 });
@@ -215,6 +272,22 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
       "title",
       expect.stringContaining("complete source lineage before training"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Supported operation rows: 2 / 4"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Ready with reusable evidence: 2 / 2"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Missing ops: Remove Line Item, Field edits"),
+    );
+    expect(screen.getByText("2 / 2 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("collect multi item non taxable receipts with totals"),
     );
     expect(screen.getByText("Lineage (not auth)")).toHaveAttribute(
       "title",
@@ -287,6 +360,54 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
       "title",
       expect.stringContaining("Uncovered ready ops: Add Line Item"),
     );
+  });
+
+  it("does not headline contract-ready operations as reusable evidence", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      ...metrics.synthesis!,
+      quality_report: {
+        ...metrics.synthesis!.quality_report!,
+        merchants: [
+          {
+            merchant_name: "Contract Ready Mart",
+            readiness_status: "ready",
+            operation_readiness: [
+              {
+                operation: "add_line_item",
+                ready: true,
+                supported: true,
+                candidate_count: 1,
+                evidence_candidate_count: 0,
+                evidence: {
+                  grounded_candidate_count: 1,
+                },
+              },
+            ],
+            next_synthesis_actions: [
+              "generate_add_line_item_candidate_from_ready_contract",
+            ],
+          },
+        ],
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText("0 / 1 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Contract-ready rows: 1 / 1"),
+    );
+    expect(screen.getByText("0 / 1 reusable")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Ready with reusable evidence: 0 / 1"),
+    );
+    expect(screen.queryByText("1 / 1 ops ready")).not.toBeInTheDocument();
   });
 
   it("renders authoritative source lineage as accepted candidate coverage", async () => {

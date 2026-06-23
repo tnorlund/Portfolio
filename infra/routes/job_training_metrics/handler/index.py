@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import boto3
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 logger = logging.getLogger()
@@ -27,6 +28,7 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "remove_line_item",
     "replace_field",
 )
+SYNTHESIS_OPERATION_LABEL_NAMES = set(CORE_LABELS.keys()) | {"O"}
 LLM_MODEL_FRESHNESS_MAX_AGE_DAYS = 30
 LLM_MODEL_FRESHNESS_CHECK_DATE_ENV = "RECEIPT_AGENT_MODEL_FRESHNESS_CHECK_DATE"
 
@@ -1101,7 +1103,9 @@ def _candidate_source_lineage(
         observed.get("category_seen_in_receipts"),
         catalog.get("category_seen_in_receipts"),
     )
-    source_keys = _unique_source_keys(base_key, nearest_key, product_keys, category_keys)
+    source_keys = _unique_source_keys(
+        base_key, nearest_key, product_keys, category_keys
+    )
     flags = {
         "has_base_receipt": bool(base_key),
         "has_cross_receipt_item": (
@@ -1165,19 +1169,14 @@ def _accepted_source_lineage_from_candidates(
         if isinstance(lineage, dict)
     ]
     source_keys = _unique_source_keys(
-        *[
-            lineage.get("source_receipt_keys") or []
-            for lineage in meaningful_lineages
-        ]
+        *[lineage.get("source_receipt_keys") or [] for lineage in meaningful_lineages]
     )
     lineage_source_counts = [
         _safe_int(lineage.get("source_receipt_key_count")) or 0
         for lineage in meaningful_lineages
     ]
     source_key_count = (
-        len(source_keys)
-        if source_keys
-        else max(lineage_source_counts, default=0)
+        len(source_keys) if source_keys else max(lineage_source_counts, default=0)
     )
 
     def count_flag(name: str) -> int:
@@ -1188,33 +1187,29 @@ def _accepted_source_lineage_from_candidates(
     authoritative = observed_count == expected_count
     return _compact_source_lineage_summary(
         {
-        "schema_version": "accepted-source-lineage-v1",
-        "coverage_status": (
-            "complete" if authoritative else "sampled"
-        ),
-        "authoritative": authoritative,
-        "coverage_warning": (
-            None
-            if authoritative
-            else "sampled_source_lineage_not_authoritative"
-        ),
-        "candidate_count": observed_count,
-        "observed_candidate_count": observed_count,
-        "expected_candidate_count": expected_count,
-        "with_base_receipt_count": count_flag("has_base_receipt"),
-        "with_cross_receipt_item_count": count_flag("has_cross_receipt_item"),
-        "with_category_evidence_count": count_flag("has_category_evidence"),
-        "with_nearest_real_structure_count": count_flag(
-            "has_nearest_real_structure"
-        ),
-        "with_layout_integrity_count": count_flag("has_layout_integrity"),
-        "with_arithmetic_reconciliation_count": count_flag(
-            "has_arithmetic_reconciliation"
-        ),
-        "with_selection_evidence_count": count_flag("has_selection_evidence"),
-        "source_receipt_key_count": source_key_count,
-        "source_receipt_keys": source_keys[:20],
-        "source_receipt_keys_truncated": len(source_keys) > 20,
+            "schema_version": "accepted-source-lineage-v1",
+            "coverage_status": ("complete" if authoritative else "sampled"),
+            "authoritative": authoritative,
+            "coverage_warning": (
+                None if authoritative else "sampled_source_lineage_not_authoritative"
+            ),
+            "candidate_count": observed_count,
+            "observed_candidate_count": observed_count,
+            "expected_candidate_count": expected_count,
+            "with_base_receipt_count": count_flag("has_base_receipt"),
+            "with_cross_receipt_item_count": count_flag("has_cross_receipt_item"),
+            "with_category_evidence_count": count_flag("has_category_evidence"),
+            "with_nearest_real_structure_count": count_flag(
+                "has_nearest_real_structure"
+            ),
+            "with_layout_integrity_count": count_flag("has_layout_integrity"),
+            "with_arithmetic_reconciliation_count": count_flag(
+                "has_arithmetic_reconciliation"
+            ),
+            "with_selection_evidence_count": count_flag("has_selection_evidence"),
+            "source_receipt_key_count": source_key_count,
+            "source_receipt_keys": source_keys[:20],
+            "source_receipt_keys_truncated": len(source_keys) > 20,
         }
     )
 
@@ -1840,9 +1835,7 @@ def _derive_accepted_operation_coverage_from_merchants(
         }
 
     recommendations = (
-        ["cover_ready_operations_before_training"]
-        if uncovered_ready_operations
-        else []
+        ["cover_ready_operations_before_training"] if uncovered_ready_operations else []
     )
     return {
         "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
@@ -2083,6 +2076,66 @@ def _compact_candidate_quality(value: Any) -> Dict[str, Any]:
     return {key: item for key, item in result.items() if item not in (None, {}, [])}
 
 
+def _compact_operation_label_names(value: Any) -> List[str]:
+    labels: List[str] = []
+    for item in (value or [])[:8]:
+        label = str(item or "").strip().upper()
+        if label in SYNTHESIS_OPERATION_LABEL_NAMES:
+            labels.append(label)
+    return labels
+
+
+def _compact_operation_readiness_rows(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for row in value[:8]:
+        if not isinstance(row, dict):
+            continue
+        evidence = row.get("evidence")
+        evidence = evidence if isinstance(evidence, dict) else {}
+        mutable_fields = evidence.get("mutable_fields")
+        compact_evidence = {
+            "labels": _compact_operation_label_names(evidence.get("labels")),
+            "hard_negative_label_count": _safe_int(
+                evidence.get("hard_negative_label_count")
+            ),
+            "grounded_candidate_count": _safe_int(
+                evidence.get("grounded_candidate_count")
+            ),
+            "removable_item_candidate_count": _safe_int(
+                evidence.get("removable_item_candidate_count")
+            ),
+            "mutable_field_count": _safe_int(evidence.get("mutable_field_count")),
+            "mutable_fields": (
+                _compact_operation_label_names(sorted(mutable_fields.keys()))
+                if isinstance(mutable_fields, dict)
+                else []
+            ),
+        }
+        compact = {
+            "operation": row.get("operation"),
+            "ready": row.get("ready") is True,
+            "supported": row.get("supported") is True,
+            "candidate_count": _safe_int(row.get("candidate_count")),
+            "evidence_candidate_count": _safe_int(row.get("evidence_candidate_count")),
+            "evidence": {
+                key: item
+                for key, item in compact_evidence.items()
+                if item not in (None, "", [], {})
+            },
+            "blockers": [str(item) for item in (row.get("blockers") or [])[:8] if item],
+        }
+        rows.append(
+            {
+                key: item
+                for key, item in compact.items()
+                if item not in (None, "", [], {})
+            }
+        )
+    return rows
+
+
 def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
     candidate_count = _safe_int(row.get("candidate_count"))
     accepted_count = _safe_int(row.get("accepted_count"))
@@ -2132,6 +2185,15 @@ def _compact_report_merchant(row: Dict[str, Any]) -> Dict[str, Any]:
             row.get("accepted_field_replacement_counts")
         ),
         "safe_mutable_fields": list(row.get("safe_mutable_fields") or [])[:8],
+        "operation_readiness": _compact_operation_readiness_rows(
+            row.get("operation_readiness")
+        ),
+        "missing_operations": [
+            str(item) for item in (row.get("missing_operations") or [])[:8] if item
+        ],
+        "next_synthesis_actions": [
+            str(item) for item in (row.get("next_synthesis_actions") or [])[:8] if item
+        ],
         "accepted_structure_similarity": _compact_score_summary(
             row.get("accepted_structure_similarity")
         ),
@@ -2265,9 +2327,7 @@ def _compact_synthesis_quality_report(value: Any) -> Dict[str, Any]:
             ),
             "uncovered_ready_operations": [
                 str(item)
-                for item in (
-                    coverage_gate.get("uncovered_ready_operations") or []
-                )[:8]
+                for item in (coverage_gate.get("uncovered_ready_operations") or [])[:8]
             ],
         }
         if isinstance(coverage_gate, dict) and coverage_gate
@@ -2444,10 +2504,7 @@ def _derive_synthesis_quality_report(
         accepted_source_lineage = _compact_source_lineage_summary(
             mix.get("accepted_source_lineage")
         )
-        if (
-            not accepted_source_lineage
-            and accepted_count
-        ):
+        if not accepted_source_lineage and accepted_count:
             accepted_source_lineage = _accepted_source_lineage_from_candidates(
                 examples_by_merchant.get(merchant, []),
                 expected_candidate_count=accepted_count,
@@ -2519,10 +2576,7 @@ def _derive_synthesis_quality_report(
     accepted_source_lineage = _compact_source_lineage_summary(
         candidate_mix.get("accepted_source_lineage")
     )
-    if (
-        not accepted_source_lineage
-        and accepted_count
-    ):
+    if not accepted_source_lineage and accepted_count:
         accepted_source_lineage = _accepted_source_lineage_from_candidates(
             candidate_examples,
             expected_candidate_count=accepted_count,
@@ -2704,9 +2758,7 @@ def _derive_synthesis_quality_report(
                         "accepted_ready_operation_count"
                     ),
                     "uncovered_ready_operations": list(
-                        accepted_operation_coverage.get(
-                            "uncovered_ready_operations"
-                        )
+                        accepted_operation_coverage.get("uncovered_ready_operations")
                         or []
                     )[:8],
                 },
@@ -2897,9 +2949,8 @@ def _compact_candidate_example(
     accuracy_structure = (
         accuracy_structure if isinstance(accuracy_structure, dict) else {}
     )
-    nearest_key = (
-        structure.get("nearest_real_receipt_key")
-        or accuracy_structure.get("nearest_real_receipt_key")
+    nearest_key = structure.get("nearest_real_receipt_key") or accuracy_structure.get(
+        "nearest_real_receipt_key"
     )
     result = {
         "candidate_id": candidate.get("candidate_id"),
@@ -3135,13 +3186,11 @@ def _compact_structure_accuracy_evidence(value: Any) -> Dict[str, Any]:
         "match_summary": compact_match_summary,
         "real_baseline_comparison": compact_real_baseline,
     }
-    nearest_available = (
-        value.get("nearest_real_receipt_available") is True
-        or bool(value.get("nearest_real_receipt_key"))
+    nearest_available = value.get("nearest_real_receipt_available") is True or bool(
+        value.get("nearest_real_receipt_key")
     )
-    nearest_redacted = (
-        value.get("nearest_real_receipt_key_redacted") is True
-        or bool(value.get("nearest_real_receipt_key"))
+    nearest_redacted = value.get("nearest_real_receipt_key_redacted") is True or bool(
+        value.get("nearest_real_receipt_key")
     )
     if nearest_available:
         result["nearest_real_receipt_available"] = True

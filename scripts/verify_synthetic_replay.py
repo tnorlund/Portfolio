@@ -2385,6 +2385,11 @@ def build_local_synthesis_quality_report(
             )
             or {},
             "safe_mutable_fields": _contract_mutable_fields(contract),
+            "operation_readiness": audit.get("operation_readiness") or [],
+            "missing_operations": list(audit.get("missing_operations") or [])[:8],
+            "next_synthesis_actions": list(audit.get("next_synthesis_actions") or [])[
+                :8
+            ],
             "accepted_structure_similarity": mix.get("accepted_structure_similarity")
             or {},
             "accepted_structure_components": mix.get("accepted_structure_components")

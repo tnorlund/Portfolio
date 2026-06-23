@@ -1019,6 +1019,81 @@ const summarizeMerchantGaps = (
   };
 };
 
+const summarizeOperationReadiness = (
+  synthesis: TrainingSynthesisSummary
+): { label: string; title?: string; warning: boolean } | null => {
+  const merchants = synthesis.quality_report?.merchants || [];
+  const operationRows = merchants.flatMap((merchant) =>
+    (merchant.operation_readiness || []).map((row) => ({
+      merchant: merchant.merchant_name || "Unknown merchant",
+      ...row,
+    }))
+  );
+  if (!operationRows.length) return null;
+
+  const supportedRows = operationRows.filter((row) => row.supported);
+  const readyRows = supportedRows.filter((row) => row.ready);
+  const reusableReadyRows = readyRows.filter(
+    (row) => (row.evidence_candidate_count ?? 0) > 0
+  );
+  const missingOperations = Array.from(
+    new Set(merchants.flatMap((merchant) => merchant.missing_operations || []))
+  ).filter(Boolean);
+  const nextActions = Array.from(
+    new Set(merchants.flatMap((merchant) => merchant.next_synthesis_actions || []))
+  ).filter(Boolean);
+  const actionNeedsAttention = nextActions.some(
+    (action) => action.startsWith("collect_") || action.startsWith("resolve_")
+  );
+  const blockedRows = operationRows
+    .filter((row) => !row.ready)
+    .slice(0, 5)
+    .map((row) => {
+      const blockers = (row.blockers || [])
+        .slice(0, 2)
+        .map(formatSyntheticRejectionReason)
+        .join(", ");
+      return `${row.merchant} ${formatOperationName(row.operation || "unknown")}${
+        blockers ? ` (${blockers})` : ""
+      }`;
+    });
+
+  const title = [
+    `Supported operation rows: ${formatCount(supportedRows.length)} / ${formatCount(operationRows.length)}`,
+    `Contract-ready rows: ${formatCount(readyRows.length)} / ${formatCount(supportedRows.length)}`,
+    `Ready with reusable evidence: ${formatCount(reusableReadyRows.length)} / ${formatCount(readyRows.length)}`,
+    missingOperations.length
+      ? `Missing ops: ${missingOperations.map(formatOperationName).join(", ")}`
+      : null,
+    nextActions.length
+      ? `Next actions: ${nextActions
+          .slice(0, 4)
+          .map(formatSyntheticRejectionReason)
+          .join(", ")}`
+      : null,
+    blockedRows.length ? `Blocked rows: ${blockedRows.join(" | ")}` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  const label = readyRows.length
+    ? `${formatCount(reusableReadyRows.length)} / ${formatCount(readyRows.length)} reusable`
+    : supportedRows.length
+      ? `0 / ${formatCount(supportedRows.length)} ready`
+      : "No supported ops";
+
+  return {
+    label,
+    title: title || undefined,
+    warning:
+      supportedRows.length === 0 ||
+      readyRows.length < supportedRows.length ||
+      reusableReadyRows.length < readyRows.length ||
+      missingOperations.length > 0 ||
+      actionNeedsAttention,
+  };
+};
+
 const summarizeReasonList = (
   merchants: TrainingSynthesisSourceQualityMerchant[],
   field: "blockers" | "limitations"
@@ -2237,6 +2312,7 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
   const candidateQualitySummary = summarizeCandidateQuality(synthesis);
   const sourceLineageSummary = summarizeSourceLineage(synthesis);
   const merchantGapSummary = summarizeMerchantGaps(synthesis);
+  const operationReadinessSummary = summarizeOperationReadiness(synthesis);
   const sourceReceiptQualitySummary = summarizeSourceReceiptQuality(synthesis);
   const contractSummary = summarizeContractCoverage(synthesis);
   const llmExecutionSummary = summarizeLlmExecution(synthesis);
@@ -2312,6 +2388,18 @@ const SynthesisEvidenceStrip: React.FC<SynthesisEvidenceStripProps> = ({
           <span title={merchantGapSummary?.title}>Merchant gaps</span>
           <strong title={merchantGapSummary?.title}>
             {merchantGapSummary?.label ?? "—"}
+          </strong>
+        </div>
+        <div
+          className={`${styles.synthesisEvidenceMetric}${
+            operationReadinessSummary?.warning
+              ? ` ${styles.synthesisEvidenceMetricWarning}`
+              : ""
+          }`}
+        >
+          <span title={operationReadinessSummary?.title}>Operation readiness</span>
+          <strong title={operationReadinessSummary?.title}>
+            {operationReadinessSummary?.label ?? "—"}
           </strong>
         </div>
         <div className={styles.synthesisEvidenceMetric}>
