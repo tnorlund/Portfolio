@@ -959,6 +959,8 @@ export interface TrainingSynthesisSummary {
   contract_ready_merchant_count?: number | null;
   contract_operation_counts?: Record<string, number>;
   contract_field_replacement_counts?: Record<string, number>;
+  accepted_operation_coverage?: TrainingSynthesisAcceptedOperationCoverage;
+  synthetic_accepted_operation_coverage?: TrainingSynthesisAcceptedOperationCoverage;
   merchant_synthesis_contracts?: TrainingSynthesisMerchantContract[];
   candidate_mix_merchants?: TrainingSynthesisCandidateMixMerchant[];
   source_receipt_quality?: TrainingSynthesisSourceQualitySummary;

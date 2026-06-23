@@ -800,8 +800,15 @@ const summarizeContractCoverage = (
   const operationEntries = Object.entries(synthesis.contract_operation_counts || {})
     .filter(([operation, count]) => operation && count > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const operationCoverage = synthesis.quality_report?.operation_coverage;
+  const acceptedOperationCoverage =
+    synthesis.quality_report?.accepted_operation_coverage ??
+    synthesis.accepted_operation_coverage ??
+    synthesis.synthetic_accepted_operation_coverage;
 
-  if (total == null && !operationEntries.length) return null;
+  if (total == null && !operationEntries.length && !acceptedOperationCoverage) {
+    return null;
+  }
 
   const operationTitle = operationEntries
     .map(
@@ -809,15 +816,12 @@ const summarizeContractCoverage = (
         `${formatOperationName(operation)}: ${formatCount(count)}`
     )
     .join(", ");
-  const operationCoverage = synthesis.quality_report?.operation_coverage;
   const readyOperations = operationCoverage?.ready_operation_count;
   const totalOperations = operationCoverage?.operation_count;
   const coverageTitle =
     readyOperations != null && totalOperations
       ? `Operations ready: ${formatCount(readyOperations)} / ${formatCount(totalOperations)}`
       : null;
-  const acceptedOperationCoverage =
-    synthesis.quality_report?.accepted_operation_coverage;
   const acceptedReadyOperations =
     acceptedOperationCoverage?.accepted_ready_operation_count;
   const readyAcceptedTotal = acceptedOperationCoverage?.ready_operation_count;
@@ -838,6 +842,8 @@ const summarizeContractCoverage = (
     label:
       total != null
         ? `${formatCount(ready ?? 0)} / ${formatCount(total)} ready`
+        : acceptedReadyOperations != null && readyAcceptedTotal != null
+          ? `${formatCount(acceptedReadyOperations)} / ${formatCount(readyAcceptedTotal)} accepted`
         : "—",
     title: [operationTitle, coverageTitle, acceptedCoverageTitle, uncoveredTitle]
       .filter((value): value is string => Boolean(value))

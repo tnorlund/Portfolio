@@ -41,6 +41,10 @@ jest.mock("../../../../services/api", () => ({
 
 const mockedApi = api as jest.Mocked<typeof api>;
 
+beforeEach(() => {
+  mockedApi.fetchFeaturedTrainingMetrics.mockReset();
+});
+
 const trainingMetrics = (): TrainingMetricsResponse => ({
   job_id: "layoutlm-local",
   job_name: "layoutlm-local",
@@ -158,6 +162,41 @@ describe("TrainingMetricsAnimation synthesis evidence", () => {
     expect(screen.getByText("2 / 2 ready")).toHaveAttribute(
       "title",
       expect.stringContaining("Uncovered ready ops: Field edits"),
+    );
+  });
+
+  it("surfaces loader-only accepted operation coverage", async () => {
+    const metrics = trainingMetrics();
+    metrics.synthesis = {
+      status: "metrics_only",
+      synthetic_train_examples: 2,
+      synthetic_candidates_seen: 3,
+      synthetic_candidates_accepted: 2,
+      accepted_operation_coverage: {
+        operation_count: 4,
+        ready_operation_count: 2,
+        accepted_operation_count: 1,
+        accepted_ready_operation_count: 1,
+        accepted_ready_operation_share: 0.5,
+        uncovered_ready_operations: ["add_line_item"],
+      },
+    };
+    mockedApi.fetchFeaturedTrainingMetrics.mockResolvedValue(metrics);
+
+    render(<TrainingMetricsAnimation />);
+
+    await waitFor(() => {
+      expect(mockedApi.fetchFeaturedTrainingMetrics).toHaveBeenCalledTimes(1);
+    });
+
+    const contractValue = await screen.findByText("1 / 2 accepted");
+    expect(contractValue).toHaveAttribute(
+      "title",
+      expect.stringContaining("Ready ops accepted: 1 / 2"),
+    );
+    expect(contractValue).toHaveAttribute(
+      "title",
+      expect.stringContaining("Uncovered ready ops: Add Line Item"),
     );
   });
 });
