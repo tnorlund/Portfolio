@@ -1091,9 +1091,44 @@ def _reflow_remove_lines(
     }
 
 
+def _item_region_floor_y(receipt: dict[str, Any]) -> float | None:
+    """Bottom edge (lowest y, y-high-is-top) of the REAL line-item region — the
+    top edge of the lowest real PRODUCT_NAME / LINE_TOTAL / QUANTITY /
+    UNIT_PRICE word.
+
+    Derived from the receipt itself (not a pre-reflow analysis) so it stays
+    valid after the add-item reflow rescales every box. Synthetic inserted rows
+    (line_id >= the synthetic base) are excluded so a wrongly placed insert can
+    never lower the floor and hide the genuine footer summary from the gate.
+    """
+    item_labels = {"PRODUCT_NAME", "LINE_TOTAL", "QUANTITY", "UNIT_PRICE"}
+    tops: list[int] = []
+    for line in receipt.get("lines", []):
+        if _is_synthetic_line_id(line.get("line_id")):
+            continue
+        for word in line.get("words", []):
+            box = word.get("bbox")
+            if not box or _is_synthetic_line_id(word.get("line_id")):
+                continue
+            if set(word.get("labels") or []) & item_labels:
+                tops.append(box[1])
+    return float(min(tops)) if tops else None
+
+
 def _summary_block_top_y(receipt: dict[str, Any]) -> float | None:
     """Top edge (highest y) of the SUBTOTAL/TAX/TOTAL summary block — the line
-    above which all item rows must sit (y-high-is-top)."""
+    above which all item rows must sit (y-high-is-top).
+
+    The genuine summary block sits BELOW the line items (lower y). Receipts
+    routinely carry a stray summary-labeled word ABOVE the items too — a header
+    "balance", a repeated total, or a duplicate-OCR'd grand total — and a naive
+    ``max`` over every labeled word would latch onto that stray top total and
+    misread the whole item region as sitting below the summary. Restrict the
+    block to summary words at or below the item region's floor so a stray total
+    above the items can never define the boundary.
+    """
+    tolerance = 4.0
+    item_floor_y = _item_region_floor_y(receipt)
     ys: list[int] = []
     for line in receipt.get("lines", []):
         labels = {
@@ -1101,12 +1136,20 @@ def _summary_block_top_y(receipt: dict[str, Any]) -> float | None:
             for word in line.get("words", [])
             for label in (word.get("labels") or [])
         }
-        if labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"}:
-            ys.extend(
-                word["bbox"][3]
-                for word in line.get("words", [])
-                if word.get("bbox")
-            )
+        if not (labels & {"SUBTOTAL", "TAX", "GRAND_TOTAL"}):
+            continue
+        for word in line.get("words", []):
+            box = word.get("bbox")
+            if not box:
+                continue
+            if (
+                item_floor_y is not None
+                and float(box[3]) > item_floor_y + tolerance
+            ):
+                # Word sits above the lowest item — a stray header total, not
+                # the footer summary block. Skip it.
+                continue
+            ys.append(box[3])
     return float(max(ys)) if ys else None
 
 
@@ -2987,6 +3030,19 @@ _LINE_ORDER_EPSILON = 0.01
 # Inserted synthetic lines carry ids at/above this base (see _build_line and
 # _clone_row_group_lines); an overlap touching one is a synthesis collision.
 _SYNTHETIC_LINE_ID_BASE = 20_000
+# Online-catalog template fill inserts rows under this lower base; add-item
+# cloning uses _SYNTHETIC_LINE_ID_BASE (+ a per-line offset for multi-line
+# bands). Any id at or above this floor is a generator-inserted row.
+_SYNTHETIC_LINE_ID_FLOOR = 10_000
+
+
+def _is_synthetic_line_id(value: Any) -> bool:
+    """True for any generator-inserted line/word id (add-item or online-catalog
+    template fill), including the per-line offsets a multi-line band uses."""
+    try:
+        return int(value) >= _SYNTHETIC_LINE_ID_FLOOR
+    except (TypeError, ValueError):
+        return False
 
 
 def _token_budget_score(token_count: int | None) -> float:
