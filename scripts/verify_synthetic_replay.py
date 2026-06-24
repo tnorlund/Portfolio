@@ -1272,6 +1272,7 @@ SYNTHESIS_OPERATION_ORDER = (
     "add_line_item",
     "remove_line_item",
     "replace_field",
+    "compose_online_catalog",
 )
 
 SYNTHESIS_ACTION_READY_STATUSES = {"ready"}
@@ -1346,6 +1347,15 @@ def _operation_readiness_row(
         )
         if mutable_count <= 0:
             blockers.append("no_stable_mutable_fields")
+    elif operation == "compose_online_catalog":
+        compose_count = (
+            _safe_int(readiness.get("compose_online_catalog_candidate_count")) or 0
+        )
+        contract_capacity_count = compose_count
+        ready = supported_for_operation and compose_count > 0
+        evidence.update({"online_catalog_item_count": compose_count})
+        if compose_count <= 0:
+            blockers.append("no_online_catalog_with_stable_tax")
     else:
         ready = False
 
@@ -1388,6 +1398,19 @@ def _operation_readiness_matrix(
         ]
     )
     readiness_status = str(readiness.get("status") or "missing").strip().lower()
+    # compose_online_catalog is an OPT-IN operation: it only applies to merchants
+    # with a registered/injected online catalog. For everyone else it is not
+    # "missing" (you can't mine it into existence), so omit its readiness row
+    # unless the merchant actually has online-catalog capacity or composed rows.
+    compose_applicable = (
+        (_safe_int(readiness.get("compose_online_catalog_candidate_count")) or 0) > 0
+        or (_safe_int(operation_counts.get("compose_online_catalog")) or 0) > 0
+    )
+    operations = [
+        operation
+        for operation in SYNTHESIS_OPERATION_ORDER
+        if operation != "compose_online_catalog" or compose_applicable
+    ]
     return [
         _operation_readiness_row(
             operation,
@@ -1396,7 +1419,7 @@ def _operation_readiness_matrix(
             operation_evidence_counts,
             readiness_status=readiness_status,
         )
-        for operation in SYNTHESIS_OPERATION_ORDER
+        for operation in operations
     ]
 
 
@@ -1803,6 +1826,9 @@ def build_merchant_synthesis_contracts(
             _safe_int(readiness.get("removable_item_candidate_count")) or 0
         )
         mutable_field_count = _safe_int(readiness.get("mutable_field_count")) or 0
+        compose_online_catalog_count = (
+            _safe_int(readiness.get("compose_online_catalog_candidate_count")) or 0
+        )
         contract = {
             "merchant_name": merchant,
             "status": _source_quality_effective_status(
@@ -1936,6 +1962,27 @@ def build_merchant_synthesis_contracts(
                 )
             )[:8],
         }
+        # compose_online_catalog is opt-in: only emit its operation contract for
+        # merchants that actually have online-catalog capacity, so catalog-less
+        # merchants keep a clean contract.
+        if compose_online_catalog_count > 0:
+            contract["operation_contracts"]["compose_online_catalog"] = {
+                "ready": (
+                    "compose_online_catalog" in supported_operation_set
+                    and compose_online_catalog_count > 0
+                )
+                and "compose_online_catalog"
+                not in source_quality_operation_blockers,
+                "source_quality_blocker": source_quality_operation_blockers.get(
+                    "compose_online_catalog"
+                ),
+                "candidate_count": compose_online_catalog_count,
+                "requires": [
+                    "online_catalog_grounded_rows",
+                    "self_assigned_item_labels",
+                    "stable_observed_tax_rate",
+                ],
+            }
         if not contract["source_receipt_quality"]:
             contract.pop("source_receipt_quality", None)
         for operation, operation_contract in (
@@ -4109,7 +4156,12 @@ def _attach_payload_lines(
         # it OVERRIDES any pre-existing (often noisy, header-derived) per-receipt
         # merchant_name; otherwise receipts sharing the same place can still be
         # split across merchants by their differing header text.
-        canonical = canonical_merchant.get((image_id, receipt_id))
+        # Image-level place rows are keyed under (image_id, "") because they
+        # carry no receipt_id; fall back to that so the canonical Google Places
+        # name is still applied instead of fragmenting on header-derived names.
+        canonical = canonical_merchant.get(
+            (image_id, receipt_id)
+        ) or canonical_merchant.get((image_id, ""))
         if canonical:
             next_receipt["merchant_name"] = canonical
         # Receipt-level lines first (crop frame, matching the words); fall back

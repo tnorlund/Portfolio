@@ -510,6 +510,31 @@ def _build_synthesis_readiness(
         for field in mutable_fields.values()
         if field.get("safe_to_mutate") is True
     )
+    # Online-catalog template fill is supported when the merchant has a
+    # registered/injected online catalog, a stable observed tax rate (to put a
+    # realistic, consistent tax on a composed receipt), and at least one usable
+    # scaffold. Without it, composed candidates have no contract and are rejected
+    # by the loader's contract gate.
+    online_catalog = _merchant_online_catalog(merchant_name)
+    compose_rate, compose_rate_stable, _ = _stable_tax_rate(analyses)
+    compose_scaffolds = [
+        analysis
+        for analysis in analyses
+        if analysis.line_items
+        and analysis.grand_total is not None
+        and analysis.subtotal is not None
+    ]
+    compose_online_catalog_ready = bool(
+        len(online_catalog) >= 2
+        and compose_rate is not None
+        and compose_rate_stable
+        and compose_scaffolds
+    )
+    if compose_online_catalog_ready:
+        supported_operations.append("compose_online_catalog")
+    compose_online_catalog_capacity = (
+        len(online_catalog) if compose_online_catalog_ready else 0
+    )
 
     blockers: list[str] = []
     limitations: list[str] = []
@@ -584,6 +609,7 @@ def _build_synthesis_readiness(
         "grounded_add_item_candidate_count": len(add_plans),
         "removable_item_candidate_count": len(remove_plans),
         "mutable_field_count": mutable_field_count,
+        "compose_online_catalog_candidate_count": compose_online_catalog_capacity,
         "mutable_fields": {
             label: field
             for label, field in mutable_fields.items()
@@ -1176,6 +1202,9 @@ def _build_add_item_candidate_from_plan(
         delta=delta_amount,
     )
     item_count_fields_updated = _reconcile_item_count(receipt, delta_count=1)
+    _add_item_base_overlap, _add_item_base_inversions = _base_layout_counts(
+        analysis.receipt
+    )
 
     return _candidate_from_receipt(
         receipt,
@@ -1186,12 +1215,13 @@ def _build_add_item_candidate_from_plan(
         metadata={
             "profile": _profile_summary(profile),
             "base_receipt_key": _receipt_key(analysis.receipt),
-            # Score geometry relative to the base so an overlap the reflow
-            # introduced between two real rows is caught, not just collisions
-            # touching the inserted synthetic row.
+            # Score geometry relative to the base so an overlap OR reading-order
+            # inversion the reflow introduced between two real rows is caught,
+            # not just collisions touching the inserted synthetic row.
             "layout_integrity": build_layout_integrity_evidence(
                 receipt,
-                base_overlap_count=_base_overlap_count(analysis.receipt),
+                base_overlap_count=_add_item_base_overlap,
+                base_line_inversion_count=_add_item_base_inversions,
             ),
             "added_item": {
                 **entry.to_dict(),
@@ -1383,6 +1413,9 @@ def _build_remove_item_candidate_from_plan(
         else "with no lower receipt lines requiring a shift"
     )
     selection_reason = f"{category_reason} {shift_reason}"
+    _remove_base_overlap, _remove_base_inversions = _base_layout_counts(
+        analysis.receipt
+    )
 
     return _candidate_from_receipt(
         receipt,
@@ -1394,10 +1427,12 @@ def _build_remove_item_candidate_from_plan(
             "profile": _profile_summary(profile),
             "base_receipt_key": _receipt_key(analysis.receipt),
             # Removal shifts real rows without re-IDing them, so compare overlaps
-            # against the pre-edit receipt to catch any the reflow introduced.
+            # and reading order against the pre-edit receipt to catch any the
+            # reflow introduced.
             "layout_integrity": build_layout_integrity_evidence(
                 receipt,
-                base_overlap_count=_base_overlap_count(analysis.receipt),
+                base_overlap_count=_remove_base_overlap,
+                base_line_inversion_count=_remove_base_inversions,
             ),
             "removed_item": {
                 "product_text": removed.product_text,
@@ -1917,7 +1952,18 @@ def _compose_online_catalog_receipt(
     else:
         tax = Decimal("0.00")
     total = _money(subtotal + tax)
-    updated_labels = _write_composed_totals(receipt, subtotal, tax, total)
+    updated_labels = _write_composed_totals(
+        receipt,
+        subtotal,
+        tax,
+        total,
+        old_grand_total=scaffold.grand_total,
+    )
+    # The composed item count differs from the scaffold's, so reconcile any
+    # "ITEMS SOLD" / item-count summary the footer carries.
+    item_count_fields_updated = _reconcile_item_count(
+        receipt, delta_count=len(entries) - len(items)
+    )
 
     _fit_receipt_to_canvas(receipt)
     _refresh_words(receipt)
@@ -1963,6 +2009,7 @@ def _compose_online_catalog_receipt(
             "new_subtotal": _format_money(subtotal),
             "new_tax": _format_money(tax),
             "new_grand_total": _format_money(total),
+            "item_count_fields_reconciled": item_count_fields_updated,
             "balancing_strategy": (
                 "compose a net-new receipt from online catalog rows; recompute "
                 "subtotal, tax on taxable items at the merchant's stable observed "
@@ -1977,26 +2024,63 @@ def _write_composed_totals(
     subtotal: Decimal,
     tax: Decimal,
     total: Decimal,
+    *,
+    old_grand_total: Decimal | None = None,
 ) -> dict[str, int]:
-    """Rewrite the scaffold's SUBTOTAL / TAX / GRAND_TOTAL amounts in place."""
-    counts = {"subtotal": 0, "tax": 0, "grand_total": 0}
+    """Rewrite the scaffold's SUBTOTAL / TAX / GRAND_TOTAL amounts in place, plus
+    any unlabeled footer copy of the old grand total (a paid/balance line), so a
+    composed receipt never shows two conflicting totals."""
+    counts = {
+        "subtotal": 0,
+        "tax": 0,
+        "grand_total": 0,
+        "payment_or_balance": 0,
+    }
+    tax_words: list[tuple[dict[str, Any], Decimal]] = []
     for line in receipt.get("lines", []) or []:
         for word in line.get("words", []) or []:
             labels = set(word.get("labels") or [])
-            if _parse_money(word.get("text")) is None:
+            value = _parse_money(word.get("text"))
+            if value is None:
                 continue
             if "SUBTOTAL" in labels:
                 word["text"] = _format_money_like(word["text"], subtotal)
                 _right_align_money_box(word)
                 counts["subtotal"] += 1
             elif "TAX" in labels:
-                word["text"] = _format_money_like(word["text"], tax)
-                _right_align_money_box(word)
-                counts["tax"] += 1
+                # Defer: a scaffold can show several TAX rows (e.g. state + city)
+                # and writing the full composed tax into each would overstate it.
+                tax_words.append((word, value))
             elif "GRAND_TOTAL" in labels:
                 word["text"] = _format_money_like(word["text"], total)
                 _right_align_money_box(word)
                 counts["grand_total"] += 1
+            elif (
+                old_grand_total is not None
+                and value == old_grand_total
+                and not labels & {"LINE_TOTAL", "TAX", "SUBTOTAL", "GRAND_TOTAL"}
+            ):
+                # An unlabeled paid/balance copy of the original grand total.
+                word["text"] = _format_money_like(word["text"], total)
+                _right_align_money_box(word)
+                counts["payment_or_balance"] += 1
+    # Distribute the composed tax across the scaffold's TAX rows (proportional to
+    # their original split, remainder on the last) so the displayed tax lines sum
+    # to exactly ``tax`` and stay consistent with the grand total.
+    if tax_words:
+        original_total = _money_sum(value for _, value in tax_words)
+        running = Decimal("0.00")
+        for index, (word, value) in enumerate(tax_words):
+            if index == len(tax_words) - 1:
+                share = _money(tax - running)
+            elif original_total > Decimal("0.00"):
+                share = _money(tax * value / original_total)
+            else:
+                share = Decimal("0.00")
+            running += share
+            word["text"] = _format_money_like(word["text"], share)
+            _right_align_money_box(word)
+            counts["tax"] += 1
     return counts
 
 
@@ -2185,13 +2269,15 @@ def build_layout_integrity_evidence(
     receipt: dict[str, Any],
     *,
     base_overlap_count: int | None = None,
+    base_line_inversion_count: int | None = None,
 ) -> dict[str, Any]:
     """Validate generated receipt geometry before it can reach LayoutLM.
 
-    Pass ``base_overlap_count`` (the pre-edit receipt's own overlap-pair count)
-    for edits that shift real rows without re-IDing them (remove/reflow), so an
-    overlap the edit introduces between two real rows is caught even though it
-    does not touch a synthetic line id.
+    Pass ``base_overlap_count`` / ``base_line_inversion_count`` (the pre-edit
+    receipt's own counts) for edits that shift real rows without re-IDing them
+    (remove/reflow), so an overlap or reading-order inversion the edit introduces
+    between two real rows is caught even though it does not touch a synthetic
+    line id, while inherited rotated-photo noise is still tolerated.
     """
     lines = [
         line for line in receipt.get("lines", []) or [] if line.get("words")
@@ -2263,6 +2349,7 @@ def build_layout_integrity_evidence(
         line_inversion_count=line_inversion_count,
         synthetic_overlap_count=synthetic_overlap_count,
         base_overlap_count=base_overlap_count,
+        base_line_inversion_count=base_line_inversion_count,
     )
     edit_introduced_overlap_count = (
         max(0, len(overlaps) - base_overlap_count)
@@ -2859,6 +2946,7 @@ def _layout_integrity_score_from_counts(
     line_inversion_count: int = 0,
     synthetic_overlap_count: int = 0,
     base_overlap_count: int | None = None,
+    base_line_inversion_count: int | None = None,
 ) -> float:
     # layout_integrity measures geometry the SYNTHESIS introduced, not the base
     # receipt's own quality. Hard failures: a malformed / off-canvas box, or a
@@ -2871,6 +2959,14 @@ def _layout_integrity_score_from_counts(
     # rows (unchanged line IDs, so synthetic_overlap_count misses it) onto each
     # other. Inherited base overlaps are tolerated; new ones are not.
     if base_overlap_count is not None and overlap_count > base_overlap_count:
+        return 0.0
+    # Likewise for reading order: a tilted real photo carries inherited
+    # adjacent-line inversions (beyond the rotation epsilon), so only an edit
+    # that INCREASES the inversion count — a reflow that scrambled rows — fails.
+    if (
+        base_line_inversion_count is not None
+        and line_inversion_count > base_line_inversion_count
+    ):
         return 0.0
     # Base-OCR overlaps and line inversions are INHERITED from the real receipt
     # (it carries the same rotated-photo noise), so they must NOT fail a clean
@@ -4644,6 +4740,16 @@ def _base_overlap_count(receipt: dict[str, Any]) -> int:
     return _safe_int(
         build_layout_integrity_evidence(receipt).get("overlap_pair_count")
     ) or 0
+
+
+def _base_layout_counts(receipt: dict[str, Any]) -> tuple[int, int]:
+    """Pre-edit (overlap_pair_count, line_inversion_count) from one evidence
+    build, for edits that shift real rows and must be scored relative to base."""
+    evidence = build_layout_integrity_evidence(receipt)
+    return (
+        _safe_int(evidence.get("overlap_pair_count")) or 0,
+        _safe_int(evidence.get("line_inversion_count")) or 0,
+    )
 
 
 def _choose_base_receipt(
