@@ -37,8 +37,12 @@ echo ">> Running headless MCP smoke test on $REMOTE ..."
 # Do NOT pass --bare (it disables MCP discovery). claude lives at ~/.local/bin
 # (not on the non-interactive PATH), so prepend it. < /dev/null keeps -p from
 # blocking on stdin.
+# Headless claude over SSH cannot read the macOS login Keychain (locked outside
+# the GUI session), so OAuth creds are unavailable. Source ~/.claude_batch_env
+# for ANTHROPIC_API_KEY (kept in a file, not on the process list / argv).
 ssh "$REMOTE" '
   export PATH="$HOME/.local/bin:$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
+  [ -f "$HOME/.claude_batch_env" ] && . "$HOME/.claude_batch_env"
   cd "$HOME/'"$REMOTE_PROJECT"'"
   claude -p "$(cat /tmp/mcp_smoke_prompt.txt)" \
     --permission-mode bypassPermissions --output-format text < /dev/null

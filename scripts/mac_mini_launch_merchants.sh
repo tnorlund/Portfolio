@@ -66,6 +66,7 @@ Step Functions, or any cloud/paid job.
     cp '$EXPORTS_DIR/$SLUG.json' '$EXPORT'
     tmux new-session -d -s 'synth-$SLUG' \
       'export PATH=\"\$HOME/.local/bin:\$PATH\" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1;
+       [ -f \"\$HOME/.claude_batch_env\" ] && . \"\$HOME/.claude_batch_env\";
        claude -p \"\$(cat <<'PROMPT_EOF'
 $PROMPT
 PROMPT_EOF
