@@ -88,9 +88,12 @@ export PATH="\$HOME/.local/bin:\$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_
 cd "$PROJECT"
 mkdir -p "$OUTDIR/grouped" "$OUTDIR/artifacts"
 cp "$EXPORTS_DIR/$SLUG.json" "$EXPORT"
+# START marker is written immediately so liveness is observable even though
+# \`claude -p --output-format text\` buffers all of its output until it finishes.
+echo "STARTED \$(date +%Y-%m-%dT%H:%M:%S)" > "$OUTDIR/job.log"
 claude -p "\$(cat /tmp/synth-prompt-$SLUG.txt)" \\
   --permission-mode bypassPermissions --output-format text < /dev/null \\
-  > "$OUTDIR/job.log" 2>&1
+  >> "$OUTDIR/job.log" 2>&1
 echo DONE >> "$OUTDIR/job.log"
 RUNNER
   if [ "$LOCAL" = "1" ]; then
@@ -100,9 +103,11 @@ RUNNER
   fi
   rm -f "$PF" "$RF"
 
-  # Detach with nohup (tmux isn't installed on the box). The runner already
-  # redirects to job.log; survives the SSH disconnect.
-  "${RUN[@]}" "nohup bash /tmp/synth-run-$SLUG.sh >/dev/null 2>&1 </dev/null & echo \"  pid \$!\""
+  # Detach with nohup + disown (tmux isn't installed on the box). Without disown
+  # the job is killed when the SSH `bash -lc` exits and tears down its process
+  # group; disown removes it from the shell's job table so it truly survives the
+  # disconnect. The runner writes a STARTED marker, then buffers claude into job.log.
+  "${RUN[@]}" "nohup bash /tmp/synth-run-$SLUG.sh >/dev/null 2>&1 </dev/null & disown; echo \"  pid \$!\""
   sleep 1
 done
 
