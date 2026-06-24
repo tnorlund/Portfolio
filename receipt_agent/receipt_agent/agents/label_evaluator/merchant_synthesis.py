@@ -5681,9 +5681,45 @@ def _span_lines(
     return [lines[i] for i in range(lo, hi + 1) if 0 <= i < len(lines)]
 
 
+# Receipt tax-class flags. They print as a SHORT standalone token after the
+# price (e.g. "MILK 3.99 F" = non-taxable food, "SOAP 5.99 T" = taxable), or
+# suffixed to the price ("5.99T"). Matched as whole tokens so a product word
+# that merely ends in 'T' (YOGURT, MINT, OAT) is NOT mistaken for a taxable flag.
+# Only the unambiguous taxable markers seen in real receipts. 'X'/'TX' are
+# deliberately excluded: they double as size markers / a state abbreviation, and
+# a FALSE taxable corrupts recomputed tax, so anything ambiguous stays
+# non-taxable (the safe error direction for the tax model).
+_TAXABLE_FLAGS = frozenset({"T", "TT"})
+_NONTAXABLE_FLAGS = frozenset({"F", "FF", "FT", "FS", "N", "NT"})
+
+
+def _word_taxable_signal(text: Any) -> bool | None:
+    """True/False if a word is a taxable/non-taxable flag, else None."""
+    token = str(text or "").strip().upper().rstrip(".,")
+    if token in _TAXABLE_FLAGS:
+        return True
+    if token in _NONTAXABLE_FLAGS:
+        return False
+    # Flag fused to the price column, e.g. "3.99T" / "12.50F".
+    match = re.fullmatch(r"\$?\d+\.\d{2}([A-Z]{1,2})", token)
+    if match:
+        suffix = match.group(1)
+        if suffix in _TAXABLE_FLAGS:
+            return True
+        if suffix in _NONTAXABLE_FLAGS:
+            return False
+    return None
+
+
 def _line_is_taxable(*lines: dict[str, Any]) -> bool:
+    """An item is taxable only when it carries an EXPLICIT taxable flag.
+
+    A non-taxable (food) flag or no flag at all reads as non-taxable, so the tax
+    model only ever recomputes tax for items the receipt clearly marks taxable —
+    avoiding the old ``endswith("T")`` heuristic that flagged YOGURT/MINT/etc.
+    """
     return any(
-        str(word.get("text") or "").upper().endswith("T")
+        _word_taxable_signal(word.get("text")) is True
         for line in lines
         for word in line.get("words", [])
     )
