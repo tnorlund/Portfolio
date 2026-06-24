@@ -171,6 +171,67 @@ def alternate_profiles(
     ]
 
 
+def reflow_line_boxes(
+    original_boxes: list[list[int]],
+    new_tokens: list[str],
+    *,
+    min_gap: int = 4,
+) -> list[list[int]] | None:
+    """Lay ``new_tokens`` out across the x-span of one receipt line.
+
+    Swapping a store field (e.g. an address line) for a different branch's value
+    changes the token count and widths, so the new tokens must be re-placed in
+    the original line's horizontal band. Each ``[x0, y0, x1, y1]`` (0-1000 scale)
+    is allocated left-to-right, width proportional to token length, separated by
+    a gap — guaranteeing strictly increasing, non-overlapping, in-band boxes so
+    the loader's layout-integrity / valid-box gates accept the result.
+
+    Returns one box per token, or ``None`` when the line has no usable span or
+    the value cannot fit without degenerate (sub-1-unit) boxes — in which case
+    the caller should skip the swap rather than emit corrupted geometry.
+    """
+    tokens = [str(token) for token in new_tokens if str(token).strip()]
+    boxes = [
+        box
+        for box in original_boxes
+        if isinstance(box, (list, tuple)) and len(box) == 4
+    ]
+    if not tokens or not boxes:
+        return None
+
+    x_start = min(int(box[0]) for box in boxes)
+    x_end = max(int(box[2]) for box in boxes)
+    y0 = min(int(box[1]) for box in boxes)
+    y1 = max(int(box[3]) for box in boxes)
+    span = x_end - x_start
+    if span <= 0 or y1 <= y0:
+        return None
+
+    gap = min(min_gap, max(0, span // (len(tokens) * 4 + 1)))
+    usable = span - gap * (len(tokens) - 1)
+    if usable < len(tokens):  # cannot give every token even 1 unit of width
+        return None
+
+    weights = [max(1, len(token)) for token in tokens]
+    total_weight = sum(weights)
+
+    placed: list[list[int]] = []
+    cursor = x_start
+    for index, (token, weight) in enumerate(zip(tokens, weights)):
+        if index == len(tokens) - 1:
+            x1 = x_end  # pin the last token to the original right edge
+        else:
+            width = max(1, round(usable * weight / total_weight))
+            x1 = min(x_end - 1, cursor + width)
+        if x1 <= cursor:  # ran out of room -> degenerate box, skip the swap
+            return None
+        placed.append([cursor, y0, x1, y1])
+        cursor = x1 + gap
+        if cursor >= x_end and index < len(tokens) - 1:
+            return None
+    return placed
+
+
 def store_profile_coverage(
     receipt_places: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:

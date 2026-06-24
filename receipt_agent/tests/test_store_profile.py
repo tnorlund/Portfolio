@@ -4,8 +4,43 @@ from receipt_agent.agents.label_evaluator.store_profile import (
     StoreProfile,
     alternate_profiles,
     extract_store_profiles,
+    reflow_line_boxes,
     store_profile_coverage,
 )
+
+
+def _assert_clean_layout(boxes):
+    assert boxes is not None
+    for box in boxes:
+        assert box[0] < box[2] and box[1] < box[3]  # non-degenerate
+    for left, right in zip(boxes, boxes[1:]):
+        assert left[2] <= right[0]  # ordered, non-overlapping
+
+
+def test_reflow_same_token_count_keeps_band_and_order():
+    original = [[379, 853, 462, 863], [467, 853, 633, 863], [638, 853, 721, 863]]
+    out = reflow_line_boxes(original, ["5671", "Kanan", "Rd"])
+    _assert_clean_layout(out)
+    assert len(out) == 3
+    assert out[0][0] == 379 and out[-1][2] == 721  # spans the original line
+    assert {b[1] for b in out} == {853} and {b[3] for b in out} == {863}
+
+
+def test_reflow_handles_growing_token_count():
+    original = [[379, 853, 462, 863], [638, 853, 721, 863]]
+    out = reflow_line_boxes(original, ["12345", "North", "Industrial", "Park", "Blvd"])
+    _assert_clean_layout(out)
+    assert len(out) == 5  # more tokens than original, still clean
+
+
+def test_reflow_skips_when_value_cannot_fit():
+    # A tiny span cannot hold many tokens without degenerate boxes -> skip.
+    assert reflow_line_boxes([[500, 800, 505, 810]], list("abcdef")) is None
+
+
+def test_reflow_rejects_empty_inputs():
+    assert reflow_line_boxes([], ["x"]) is None
+    assert reflow_line_boxes([[0, 0, 100, 10]], []) is None
 
 
 def _place(place_id, **over):
