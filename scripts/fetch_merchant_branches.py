@@ -8,13 +8,16 @@ for each sibling branch of the SAME merchant, and appends them as
 ``compose_store_header`` the >=2 complete branches it needs to synthesize
 coherent store-location diversity for thin-cache merchants.
 
-Paid: makes Google Places API calls (textsearch + details). Pass the deployed
-key (a Pulumi secret) via --api-key, e.g.
+Paid: makes Google Places API calls (textsearch + details). The API key is read
+ONLY from the environment / a gitignored .env (RECEIPT_AGENT_GOOGLE_PLACES_API_KEY)
+so it never lands on the command line / process list / git. Seed .env once from
+the Pulumi secret:
+
+    echo "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY=$(cd infra && \
+      pulumi config get GOOGLE_PLACES_API_KEY --stack dev)" >> .env
 
     python3.12 scripts/fetch_merchant_branches.py \
-      --export ./grouped/gelsons_westlake_village.json \
-      --api-key "$(cd infra && pulumi config get GOOGLE_PLACES_API_KEY --stack dev)" \
-      --dry-run
+      --export ./grouped/gelsons_westlake_village.json --query "Gelson's" --dry-run
 """
 
 from __future__ import annotations
@@ -27,15 +30,23 @@ from pathlib import Path
 from typing import Any
 
 
-def _merchant_match(name_a: str, name_b: str) -> bool:
-    """Loose same-merchant check: share the first significant token."""
+def _normalize_brand(name: str) -> str:
+    text = str(name).lower().strip()
+    text = re.sub(r"^the\s+", "", text)  # "The UPS Store" -> "ups store"
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
-    def key(name: str) -> str:
-        tokens = re.findall(r"[A-Za-z0-9']+", str(name).lower())
-        return tokens[0] if tokens else ""
 
-    a, b = key(name_a), key(name_b)
-    return bool(a) and a == b
+def _merchant_match(brand_query: str, candidate_name: str) -> bool:
+    """A Google result is the same merchant only when its name is a token-aligned
+    prefix of the brand query — e.g. brand "amazon fresh" matches "Amazon Fresh
+    Thousand Oaks" but NOT "Amazon Go", and "the ups store" never matches "the
+    coffee bean". Comparing whole-brand prefixes (not just the first token)
+    avoids generic-first-word false positives."""
+    brand = _normalize_brand(brand_query)
+    candidate = _normalize_brand(candidate_name)
+    if not brand or not candidate:
+        return False
+    return candidate == brand or candidate.startswith(brand + " ")
 
 
 def _build_client(api_key: str, table_name: str, aws_region: str = "us-east-1"):
@@ -152,13 +163,22 @@ def fetch_branches(
         name = result.get("name") or ""
         if not place_id or place_id in seen:
             continue
-        if not _merchant_match(merchant, name):
+        if not _merchant_match(search_query, name):
             continue
         seen.add(place_id)
-        details = client.get_place_details(place_id)
-        if details is None:
-            continue
-        record = _details_to_record(details, merchant)
+        # Full details give phone + website, but some branches lack them and the
+        # client raises on missing fields. The text-search result already carries
+        # the address (all compose_store_header strictly needs), so fall back to
+        # it rather than dropping the branch.
+        record: dict[str, Any] | None = None
+        try:
+            details = client.get_place_details(place_id)
+            if details is not None:
+                record = _details_to_record(details, merchant)
+        except Exception:  # noqa: BLE001 - any details failure -> use search row
+            record = None
+        if record is None:
+            record = _details_to_record(result, merchant)
         if record and record.get("formatted_address"):
             new_records.append(record)
 
@@ -203,11 +223,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--export", required=True, help="grouped merchant JSON")
     parser.add_argument(
-        "--api-key",
-        default=None,
-        help="Google Places key; defaults to RECEIPT_AGENT_GOOGLE_PLACES_API_KEY",
-    )
-    parser.add_argument(
         "--query",
         default=None,
         help="search query / brand (defaults to the merchant name)",
@@ -219,14 +234,15 @@ def main() -> int:
     args = parser.parse_args()
 
     _load_dotenv()
-    api_key = args.api_key or os.environ.get("RECEIPT_AGENT_GOOGLE_PLACES_API_KEY")
+    # Read ONLY from the environment / .env — never an argv flag — so the secret
+    # stays off the process list and out of shell history.
+    api_key = os.environ.get("RECEIPT_AGENT_GOOGLE_PLACES_API_KEY")
     if not api_key:
         print(
             json.dumps(
                 {
                     "error": "no_api_key",
-                    "hint": "set RECEIPT_AGENT_GOOGLE_PLACES_API_KEY in .env "
-                    "or pass --api-key",
+                    "hint": "set RECEIPT_AGENT_GOOGLE_PLACES_API_KEY in .env",
                 }
             )
         )

@@ -593,6 +593,16 @@ def _build_synthesis_readiness(
             for receipt in receipts
             if isinstance(receipt.get("receipt_place"), dict)
         ]
+    # Scope to this merchant so a mixed-merchant payload cannot over-count
+    # locations and wrongly mark compose_store_header supported.
+    store_place_records = [
+        record
+        for record in store_place_records
+        if isinstance(record, dict)
+        and _store_merchant_match(
+            merchant_name, str(record.get("merchant_name") or "")
+        )
+    ]
     store_profiles = extract_store_profiles(store_place_records)
     store_header_location_count = len(
         [profile for profile in store_profiles if profile.is_complete()]
@@ -2101,6 +2111,17 @@ def _generate_compose_store_header_candidates(
             for receipt in receipts
             if isinstance(receipt.get("receipt_place"), dict)
         ]
+    # Scope to THIS merchant: the payload-wide pool can include other merchants'
+    # places (mixed-merchant exports), and an unrelated branch must never become
+    # a header source.
+    place_records = [
+        record
+        for record in place_records
+        if isinstance(record, dict)
+        and _store_merchant_match(
+            merchant_name, str(record.get("merchant_name") or "")
+        )
+    ]
     pool = extract_store_profiles(place_records)
     if len([profile for profile in pool if profile.is_complete()]) < 2:
         return []  # no alternate branch -> no coherent location diversity
