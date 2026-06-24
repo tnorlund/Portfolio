@@ -3111,16 +3111,19 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
     assert audits["Sprouts Farmers Market"]["readiness_status"] == "ready"
     assert audits["Sprouts Farmers Market"]["grounded_candidate_count"] >= 1
     assert audits["Sprouts Farmers Market"]["arithmetic_candidate_count"] >= 2
+    # Arithmetic add/remove candidates now lead the budget (they clear the
+    # loader's structure gate), so the small fixture yields two grounded add
+    # candidates and one remove ahead of the hard negatives that fill the rest.
     assert audits["Sprouts Farmers Market"]["mutation_inventory"][
         "candidate_operation_counts"
     ] == {
-        "add_line_item": 1,
-        "hard_negative": 3,
+        "add_line_item": 2,
+        "hard_negative": 2,
         "remove_line_item": 1,
     }
     assert audits["Sprouts Farmers Market"]["mutation_inventory"][
         "candidate_category_counts"
-    ] == {"PRODUCE": 2}
+    ] == {"PRODUCE": 3}
     assert (
         audits["Sprouts Farmers Market"]["mutation_inventory"]["mutable_field_count"]
         == 0
@@ -3134,8 +3137,8 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
         "replace_field",
     ]
     assert sprouts_operations["add_line_item"]["ready"] is True
-    assert sprouts_operations["add_line_item"]["candidate_count"] == 1
-    assert sprouts_operations["add_line_item"]["evidence_candidate_count"] == 1
+    assert sprouts_operations["add_line_item"]["candidate_count"] == 2
+    assert sprouts_operations["add_line_item"]["evidence_candidate_count"] == 2
     assert (
         sprouts_operations["add_line_item"]["evidence"]["grounded_candidate_count"] == 2
     )
@@ -3235,7 +3238,7 @@ def test_run_local_synthetic_pipeline_handles_multi_merchant_receipts_without_pa
         for row in report_merchants["Sprouts Farmers Market"]["operation_readiness"]
     }
     assert report_sprouts_ops["add_line_item"]["ready"] is True
-    assert report_sprouts_ops["add_line_item"]["evidence_candidate_count"] == 1
+    assert report_sprouts_ops["add_line_item"]["evidence_candidate_count"] == 2
     assert report_sprouts_ops["remove_line_item"]["ready"] is False
     assert report_sprouts_ops["remove_line_item"]["evidence_candidate_count"] == 1
     assert report_merchants["Sprouts Farmers Market"]["missing_operations"] == [

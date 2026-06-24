@@ -3724,19 +3724,29 @@ def _generate_local_synthesis_candidates(
 ) -> list[dict[str, Any]]:
     merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
     if synthesis_functions["is_sprouts_merchant"](merchant_name):
-        # Scale with the requested budget instead of a flat 5 so a rich merchant
-        # can yield its full synthetic volume; parameterized candidates lead and
-        # arithmetic candidates fill the rest.
+        # Scale with the requested budget instead of a flat 5 so a rich
+        # merchant can yield its full synthetic volume. Arithmetic add/remove
+        # candidates lead: they are arithmetic-reconciled, layout-preserving
+        # edits that clear the loader's structure-similarity gate, whereas
+        # parameterized hard negatives insert a synthetic O row and most are
+        # rejected for low structure similarity. Leading with arithmetic stops
+        # the hard negatives from consuming the budget and starving the
+        # high-fidelity candidates; the remainder still funds hard-negative
+        # label-confusion coverage.
         candidate_limit = max(1, max_candidates)
-        rows = synthesis_functions["generate_parameterized_sprouts_candidates"](
-            plan,
-            receipts,
-            max_candidates=max(1, (candidate_limit * 2) // 3),
+        rows = list(
+            synthesis_functions["generate_arithmetic_sprouts_candidates"](
+                receipts,
+                max_candidates=candidate_limit,
+            )
         )
         remaining = candidate_limit - len(rows)
         if remaining > 0:
             rows.extend(
-                synthesis_functions["generate_arithmetic_sprouts_candidates"](
+                synthesis_functions[
+                    "generate_parameterized_sprouts_candidates"
+                ](
+                    plan,
                     receipts,
                     max_candidates=remaining,
                 )
