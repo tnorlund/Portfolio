@@ -4182,10 +4182,21 @@ def _attach_payload_lines(
     # merchant grouping does not splinter the same merchant across receipts.
     canonical_merchant = _payload_canonical_merchants(payload)
     place_lookup = _payload_place_lookup(payload)
+    # The full set of cached store records for this payload — including sibling
+    # branches fetched via Places that are not tied to any receipt. This is the
+    # store-header composition pool (the generator filters it by merchant match).
+    merchant_place_pool = [
+        row
+        for key in ("receipt_places", "places")
+        for row in (payload.get(key) or [])
+        if isinstance(row, dict) and row.get("place_id")
+    ]
 
     normalized_receipts: list[dict[str, Any]] = []
     for receipt in receipts:
         next_receipt = dict(receipt)
+        if merchant_place_pool:
+            next_receipt["merchant_place_pool"] = merchant_place_pool
         words_by_line = _payload_words_for_receipt(
             payload,
             receipt,

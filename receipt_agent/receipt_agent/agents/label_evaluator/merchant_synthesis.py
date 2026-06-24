@@ -581,13 +581,19 @@ def _build_synthesis_readiness(
     # Places-driven store-header diversity is supported when the cache holds at
     # least two complete store locations for this merchant (one to compose onto,
     # at least one *other* branch to source from).
-    store_profiles = extract_store_profiles(
-        [
+    store_place_records: list[dict[str, Any]] = []
+    for receipt in receipts:
+        pool_records = receipt.get("merchant_place_pool")
+        if isinstance(pool_records, list) and pool_records:
+            store_place_records = [r for r in pool_records if isinstance(r, dict)]
+            break
+    if not store_place_records:
+        store_place_records = [
             receipt.get("receipt_place")
             for receipt in receipts
             if isinstance(receipt.get("receipt_place"), dict)
         ]
-    )
+    store_profiles = extract_store_profiles(store_place_records)
     store_header_location_count = len(
         [profile for profile in store_profiles if profile.is_complete()]
     )
@@ -2081,11 +2087,20 @@ def _generate_compose_store_header_candidates(
     start_index: int,
     limit: int,
 ) -> list[dict[str, Any]]:
-    place_records = [
-        receipt.get("receipt_place")
-        for receipt in receipts
-        if isinstance(receipt.get("receipt_place"), dict)
-    ]
+    # Prefer the merchant's full branch pool (includes Places-fetched siblings
+    # not tied to any receipt); fall back to the receipts' own attached places.
+    place_records: list[dict[str, Any]] = []
+    for receipt in receipts:
+        pool_records = receipt.get("merchant_place_pool")
+        if isinstance(pool_records, list) and pool_records:
+            place_records = [r for r in pool_records if isinstance(r, dict)]
+            break
+    if not place_records:
+        place_records = [
+            receipt.get("receipt_place")
+            for receipt in receipts
+            if isinstance(receipt.get("receipt_place"), dict)
+        ]
     pool = extract_store_profiles(place_records)
     if len([profile for profile in pool if profile.is_complete()]) < 2:
         return []  # no alternate branch -> no coherent location diversity
@@ -3908,6 +3923,9 @@ def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         "receipt_place": receipt.get("receipt_place"),
         "place_id": receipt.get("place_id")
         or (receipt.get("receipt_place") or {}).get("place_id"),
+        # The merchant's full branch pool (incl. fetched siblings) for header
+        # composition; falls back to this receipt's own place when absent.
+        "merchant_place_pool": receipt.get("merchant_place_pool"),
     }
 
 
