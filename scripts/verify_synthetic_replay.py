@@ -3724,18 +3724,21 @@ def _generate_local_synthesis_candidates(
 ) -> list[dict[str, Any]]:
     merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
     if synthesis_functions["is_sprouts_merchant"](merchant_name):
-        candidate_limit = min(max_candidates, 5)
+        # Scale with the requested budget instead of a flat 5 so a rich merchant
+        # can yield its full synthetic volume; parameterized candidates lead and
+        # arithmetic candidates fill the rest.
+        candidate_limit = max(1, max_candidates)
         rows = synthesis_functions["generate_parameterized_sprouts_candidates"](
             plan,
             receipts,
-            max_candidates=min(candidate_limit, 3),
+            max_candidates=max(1, (candidate_limit * 2) // 3),
         )
         remaining = candidate_limit - len(rows)
         if remaining > 0:
             rows.extend(
                 synthesis_functions["generate_arithmetic_sprouts_candidates"](
                     receipts,
-                    max_candidates=min(remaining, 2),
+                    max_candidates=remaining,
                 )
             )
         return [dict(row) for row in rows[:candidate_limit]]
@@ -5277,7 +5280,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_artifacts.add_argument("--receipt-file", action="append", default=[])
     build_artifacts.add_argument("--receipt-dir", action="append", default=[])
     build_artifacts.add_argument("--output-dir", required=True)
-    build_artifacts.add_argument("--max-candidates", type=int, default=5)
+    build_artifacts.add_argument("--max-candidates", type=int, default=25)
 
     local_pipeline = subparsers.add_parser(
         "local-pipeline",
@@ -5287,15 +5290,15 @@ def build_parser() -> argparse.ArgumentParser:
     local_pipeline.add_argument("--receipt-dir", action="append", default=[])
     local_pipeline.add_argument("--artifact-output-dir", required=True)
     local_pipeline.add_argument("--bundle-output", required=True)
-    local_pipeline.add_argument("--max-candidates", type=int, default=5)
+    local_pipeline.add_argument("--max-candidates", type=int, default=25)
     local_pipeline.add_argument("--min-ready-share", type=float, default=0.7)
     local_pipeline.add_argument("--min-avg-readiness-score", type=float, default=0.7)
     local_pipeline.add_argument(
         "--min-grounded-candidate-share", type=float, default=0.5
     )
     local_pipeline.add_argument("--min-structure-similarity", type=float, default=0.6)
-    local_pipeline.add_argument("--max-per-merchant", type=int, default=5)
-    local_pipeline.add_argument("--max-per-merchant-operation", type=int, default=2)
+    local_pipeline.add_argument("--max-per-merchant", type=int, default=20)
+    local_pipeline.add_argument("--max-per-merchant-operation", type=int, default=8)
 
     preflight = subparsers.add_parser(
         "preflight",
@@ -5318,8 +5321,8 @@ def build_parser() -> argparse.ArgumentParser:
     bundle.add_argument("--min-avg-readiness-score", type=float, default=0.7)
     bundle.add_argument("--min-grounded-candidate-share", type=float, default=0.5)
     bundle.add_argument("--min-structure-similarity", type=float, default=0.6)
-    bundle.add_argument("--max-per-merchant", type=int, default=5)
-    bundle.add_argument("--max-per-merchant-operation", type=int, default=2)
+    bundle.add_argument("--max-per-merchant", type=int, default=20)
+    bundle.add_argument("--max-per-merchant-operation", type=int, default=8)
 
     report = subparsers.add_parser(
         "report",
