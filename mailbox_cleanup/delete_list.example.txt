@@ -1,0 +1,5 @@
+# Copy to delete_list.txt and fill from reports/summary.md.
+# One sender substring per line; '#' starts a comment.
+# Drives BOTH unsubscribe.py and imap_delete.py.
+# newsletter@example.com
+# promo@somestore.com

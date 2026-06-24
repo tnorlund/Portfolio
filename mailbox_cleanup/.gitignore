@@ -1,0 +1,11 @@
+# personal data / dataset -- never commit to this public repo
+*.mbox/
+*.mbox
+reports/
+logs/
+delete_list.txt
+logs_*.txt
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
