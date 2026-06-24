@@ -44,7 +44,7 @@ def _shift_lines(lines, dy):
                 w["bbox"][3] += dy
 
 
-def _set_totals(receipt, subtotal, grand_total, old_grand_total):
+def _set_totals(receipt, subtotal, grand_total, old_grand_total, *, tax=None):
     for ln in receipt.get("lines", []):
         for w in ln.get("words", []):
             labels = set(w.get("labels") or [])
@@ -53,6 +53,11 @@ def _set_totals(receipt, subtotal, grand_total, old_grand_total):
                 continue
             if "SUBTOTAL" in labels:
                 w["text"] = ms._format_money_like(w["text"], subtotal)
+                ms._right_align_money_box(w)
+            elif "TAX" in labels and tax is not None:
+                # The composed items are all non-taxable, so the scaffold's TAX
+                # line must be rewritten (not left at the deleted items' tax).
+                w["text"] = ms._format_money_like(w["text"], tax)
                 ms._right_align_money_box(w)
             elif "GRAND_TOTAL" in labels:
                 w["text"] = ms._format_money_like(w["text"], grand_total)
@@ -89,6 +94,7 @@ def compose(scaffold, catalog, *, item_count, rng):
     gap = max(6, pitch // 3)
     cursor = min((w["bbox"][1] for w in _words(header)), default=900) - pitch
     composed = []
+    cloned_amounts = []
     last_cat = None
     for e in chosen:
         if e.category != last_cat and e.category != ms.UNKNOWN_CATEGORY:
@@ -99,6 +105,11 @@ def compose(scaffold, catalog, *, item_count, rng):
             cursor = min(w["bbox"][1] for w in heading["words"] if w.get("bbox")) - gap
             last_cat = e.category
         captured = next(iter(e.source_rows.values()))
+        # Subtotal must match the PRICE the cloned row actually displays, which
+        # can differ from the catalog median (e.amount) when the same product
+        # was seen at different prices; otherwise rows and SUBTOTAL disagree.
+        cloned_amount = ms._parse_money(captured.get("amount"))
+        cloned_amounts.append(cloned_amount if cloned_amount is not None else e.amount)
         band = ms._clone_row_group_lines(captured, y_center=max(12, int(cursor)))
         composed.extend(band)
         cursor = min((w["bbox"][1] for w in _words(band)), default=int(cursor)) - gap
@@ -111,10 +122,13 @@ def compose(scaffold, catalog, *, item_count, rng):
     _shift_lines(summary, int(cursor) - sf_top)
 
     receipt["lines"] = header + composed + summary
-    new_subtotal = ms._money_sum(e.amount for e in chosen)
-    tax = scaffold.tax_total or Decimal("0.00")
+    new_subtotal = ms._money_sum(cloned_amounts)
+    # Every composed item is non-taxable (the sampler keeps only `not taxable`
+    # catalog entries), so the receipt carries no tax — carrying the scaffold's
+    # tax from now-deleted taxable items would make the totals inconsistent.
+    tax = Decimal("0.00")
     new_total = ms._money(new_subtotal + tax)
-    _set_totals(receipt, new_subtotal, new_total, scaffold.grand_total)
+    _set_totals(receipt, new_subtotal, new_total, scaffold.grand_total, tax=tax)
     ms._reconcile_item_count(receipt, delta_count=len(chosen) - len(items))
     ms._fit_receipt_to_canvas(receipt)
     ms._refresh_words(receipt)
@@ -189,7 +203,10 @@ def cmd_generate(args):
             if not c or c["layout_integrity"]["score"] < 1.0:
                 continue
             out.append({
-                "merchant": merchant,
+                # Use the standard field the loaders/summaries read, so composed
+                # rows attribute to the right merchant (not "unknown") and get
+                # merchant-level caps/contracts.
+                "merchant_name": merchant,
                 "item_count": c["item_count"],
                 "subtotal": c["subtotal"],
                 "grand_total": c["grand_total"],

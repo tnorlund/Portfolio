@@ -492,10 +492,13 @@ def test_generate_merchant_synthesis_candidates_replaces_stable_datetime_fields(
         for row in replacements
     )
     date_replacement = replacements[0]["metadata"]["field_replacement"]
+    # The DATE candidate is generated late (index past the receipt count), so
+    # _choose_base_receipt rotates back to the CLEANEST base (image ...0001,
+    # date 05/12) instead of clamping onto the noisiest receipt.
     assert date_replacement == {
         "label": "DATE",
-        "old_text": "05/13/2026",
-        "new_text": "05/14/2026",
+        "old_text": "05/12/2026",
+        "new_text": "05/13/2026",
         "format": "MM/DD/YYYY",
     }
     time_replacement = replacements[1]["metadata"]["field_replacement"]
@@ -509,7 +512,7 @@ def test_generate_merchant_synthesis_candidates_replaces_stable_datetime_fields(
         replacements[0]["metadata"]["mutable_field_evidence"]["safe_to_mutate"]
         is True
     )
-    assert "05/14/2026" in replacements[0]["tokens"]
+    assert "05/13/2026" in replacements[0]["tokens"]
     assert "15:24" in replacements[1]["tokens"]
     assert "B-DATE" in replacements[0]["ner_tags"]
     assert "B-TIME" in replacements[1]["ner_tags"]
@@ -525,7 +528,7 @@ def test_generate_merchant_synthesis_candidates_replaces_stable_datetime_fields(
     assert any("DATE" in line["modified_labels"] for line in preview_lines)
     evidence = replacements[0]["metadata"]["synthesis_accuracy_evidence"]
     assert evidence["label"] == "DATE"
-    assert evidence["new_text"] == "05/14/2026"
+    assert evidence["new_text"] == "05/13/2026"
     assert {
         "field_marked_safe_to_mutate",
         "stable_field_geometry",
@@ -944,6 +947,8 @@ def test_generate_merchant_synthesis_candidates_uses_real_geometry_and_items():
         "word_count": 10,
         "overlap_pair_count": 0,
         "synthetic_overlap_pair_count": 0,
+        "base_overlap_pair_count": 0,
+        "edit_introduced_overlap_pair_count": 0,
         "out_of_bounds_word_count": 0,
         "invalid_word_box_count": 0,
         "line_order_valid": True,
@@ -1352,6 +1357,10 @@ def test_choose_base_receipt_prefers_clean_geometry():
     # Regardless of input order, the clean receipt is chosen first.
     assert _choose_base_receipt([dirty, clean], used=0)["image_id"] == "img-clean"
     assert _choose_base_receipt([clean, dirty], used=0)["image_id"] == "img-clean"
+    # A late candidate (used past the receipt count) must still get the CLEAN
+    # base, not spill onto the noisy one — it rotates back among clean bases.
+    assert _choose_base_receipt([clean, dirty], used=1)["image_id"] == "img-clean"
+    assert _choose_base_receipt([clean, dirty], used=5)["image_id"] == "img-clean"
 
 
 def _online_catalog():

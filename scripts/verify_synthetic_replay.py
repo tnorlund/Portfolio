@@ -4061,13 +4061,33 @@ def _attach_payload_lines(
 ) -> list[dict[str, Any]]:
     # Prefer receipt-level lines for the same reason as words: image-level
     # ``lines`` are in the whole-image frame while ``receipt_lines`` match the
-    # receipt crop the words use. Mixing frames misplaces lines vertically.
-    source_lines = payload.get("receipt_lines")
-    if not isinstance(source_lines, list) or not source_lines:
-        source_lines = payload.get("lines")
-    payload_lines = [
-        line for line in source_lines or [] if isinstance(line, dict)
+    # receipt crop the words use. Mixing frames misplaces lines vertically. The
+    # choice is made PER RECEIPT (below), not globally, so a receipt that lacks
+    # receipt-level lines but has image-level lines still gets them instead of
+    # being dropped — the same per-receipt fallback the word loader uses.
+    receipt_level_lines = [
+        line
+        for line in (payload.get("receipt_lines") or [])
+        if isinstance(line, dict)
     ]
+    image_level_lines = [
+        line for line in (payload.get("lines") or []) if isinstance(line, dict)
+    ]
+
+    def _matching_lines(
+        lines: list[dict[str, Any]], image_id: str, receipt_id: str
+    ) -> list[dict[str, Any]]:
+        return [
+            line
+            for line in lines
+            if (not image_id or str(line.get("image_id") or "") in {"", image_id})
+            and (
+                not receipt_id
+                or str(line.get("receipt_id") or line.get("receipt_num") or "")
+                in {"", receipt_id}
+            )
+        ]
+
     label_lookup = _payload_label_lookup(payload)
     # Canonical Google Places merchant name (from ``receipt_places``) is the
     # clean per-chain grouping key: every receipt of a chain shares it, whereas
@@ -4092,18 +4112,18 @@ def _attach_payload_lines(
         canonical = canonical_merchant.get((image_id, receipt_id))
         if canonical:
             next_receipt["merchant_name"] = canonical
-        matching_lines = [
-            line
-            for line in payload_lines
-            if (not image_id or str(line.get("image_id") or "") in {"", image_id})
-            and (
-                not receipt_id
-                or str(line.get("receipt_id") or line.get("receipt_num") or "")
-                in {"", receipt_id}
+        # Receipt-level lines first (crop frame, matching the words); fall back
+        # to image-level lines for THIS receipt when it has no receipt-level
+        # lines, so it is not left without geometry and dropped.
+        matching_lines = _matching_lines(
+            receipt_level_lines, image_id, receipt_id
+        )
+        if not matching_lines:
+            matching_lines = _matching_lines(
+                image_level_lines, image_id, receipt_id
             )
-        ]
         if not matching_lines and len(receipts) == 1:
-            matching_lines = payload_lines
+            matching_lines = receipt_level_lines or image_level_lines
         if matching_lines and not next_receipt.get("lines"):
             next_receipt["lines"] = matching_lines
         if next_receipt.get("lines"):

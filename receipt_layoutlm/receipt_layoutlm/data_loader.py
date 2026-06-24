@@ -1597,6 +1597,17 @@ def _synthetic_candidate_quality_failure(
     if baseline_failure := _synthetic_real_baseline_failure(row):
         return baseline_failure
 
+    # Hard geometry defects the generator already detected must fail on EVERY
+    # load path, not only require_high_fidelity bundles. A layout_integrity score
+    # below 1.0 means an overlap / off-canvas box / edit-introduced collision;
+    # training on it teaches the model corrupted geometry regardless of how high
+    # the declared candidate-quality score is.
+    layout = metadata.get("layout_integrity")
+    if isinstance(layout, dict):
+        layout_score = _safe_float(layout.get("score"))
+        if layout_score is not None and layout_score < 1.0:
+            return "layout_integrity_failed"
+
     declared_quality = _synthetic_declared_candidate_quality(row)
     if (
         declared_quality is not None
@@ -1620,6 +1631,10 @@ def _synthetic_candidate_quality_failure(
         arithmetic = metadata.get("arithmetic_reconciliation")
         if not isinstance(added, dict) or not isinstance(observed, dict):
             return "add_item_missing_observed_evidence"
+        # An item the generator flagged as inserted below the SUBTOTAL/TOTAL
+        # block is invalid geometry; reject it on every path, not just strict.
+        if added.get("insertion_position_valid") is False:
+            return "insertion_position_invalid"
         if added.get("seen_in_other_receipt") is not True or not observed.get(
             "product_seen_outside_base"
         ):

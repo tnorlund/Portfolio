@@ -3662,11 +3662,14 @@ def test_run_local_synthetic_pipeline_accepts_datetime_replacements(tmp_path):
         for row in written_bundle["synthetic_training_examples"]
         if row["metadata"]["operation"] == "replace_field"
     ]
+    # The DATE candidate is generated past the receipt count, so the base
+    # selector rotates back to the cleanest base (date 05/12) rather than
+    # clamping onto the noisiest receipt.
     assert [row["metadata"]["field_replacement"] for row in replacements] == [
         {
             "label": "DATE",
-            "old_text": "05/13/2026",
-            "new_text": "05/14/2026",
+            "old_text": "05/12/2026",
+            "new_text": "05/13/2026",
             "format": "MM/DD/YYYY",
         },
         {
@@ -3676,7 +3679,7 @@ def test_run_local_synthetic_pipeline_accepts_datetime_replacements(tmp_path):
             "format": "HH:MM",
         },
     ]
-    assert "05/14/2026" in replacements[0]["tokens"]
+    assert "05/13/2026" in replacements[0]["tokens"]
     assert "15:24" in replacements[1]["tokens"]
 
 

@@ -737,14 +737,22 @@ def _generate_add_item_candidates(
     plans = _build_add_item_plans(analyses, catalog)
     if not plans:
         return []
-    built: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
+    # Keep the HIGHEST-fidelity candidate per (category, product) instead of the
+    # first one built. Whether a plan yields a high-fidelity candidate depends on
+    # the chosen base's geometry (layout can fail on one base but pass another),
+    # so trying only the first plan for a key could discard the one valid
+    # duplicate and let the bundle gate reject the merchant's only add-item. A
+    # small per-key build cap bounds the extra work.
+    max_plans_per_key = 3
+    built_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    attempts_by_key: dict[tuple[str, str], int] = {}
     for plan_rank, (plan_score, analysis, entry, y_center) in enumerate(
         plans, start=1
     ):
         key = (entry.category, _normalize_product_text(entry.product_text))
-        if key in seen:
+        if attempts_by_key.get(key, 0) >= max_plans_per_key:
             continue
+        attempts_by_key[key] = attempts_by_key.get(key, 0) + 1
         candidate = _build_add_item_candidate_from_plan(
             merchant_name,
             profile,
@@ -757,9 +765,14 @@ def _generate_add_item_candidates(
             plan_count=len(plans),
             plan_score=plan_score,
         )
-        if candidate:
-            seen.add(key)
-            built.append(candidate)
+        if not candidate:
+            continue
+        existing = built_by_key.get(key)
+        if existing is None or _candidate_selection_key(
+            candidate
+        ) > _candidate_selection_key(existing):
+            built_by_key[key] = candidate
+    built: list[dict[str, Any]] = list(built_by_key.values())
     # Rank high-fidelity grounded add-items first so the strongest distinct
     # options lead; the bundle's acceptance gate drops any that are not
     # high-fidelity from the final curated batch.
@@ -1173,6 +1186,13 @@ def _build_add_item_candidate_from_plan(
         metadata={
             "profile": _profile_summary(profile),
             "base_receipt_key": _receipt_key(analysis.receipt),
+            # Score geometry relative to the base so an overlap the reflow
+            # introduced between two real rows is caught, not just collisions
+            # touching the inserted synthetic row.
+            "layout_integrity": build_layout_integrity_evidence(
+                receipt,
+                base_overlap_count=_base_overlap_count(analysis.receipt),
+            ),
             "added_item": {
                 **entry.to_dict(),
                 "line_total": _format_money(delta_amount),
@@ -1373,6 +1393,12 @@ def _build_remove_item_candidate_from_plan(
         metadata={
             "profile": _profile_summary(profile),
             "base_receipt_key": _receipt_key(analysis.receipt),
+            # Removal shifts real rows without re-IDing them, so compare overlaps
+            # against the pre-edit receipt to catch any the reflow introduced.
+            "layout_integrity": build_layout_integrity_evidence(
+                receipt,
+                base_overlap_count=_base_overlap_count(analysis.receipt),
+            ),
             "removed_item": {
                 "product_text": removed.product_text,
                 "line_total": _format_money(removed.amount),
@@ -2155,8 +2181,18 @@ def build_synthetic_receipt_preview(
     }
 
 
-def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
-    """Validate generated receipt geometry before it can reach LayoutLM."""
+def build_layout_integrity_evidence(
+    receipt: dict[str, Any],
+    *,
+    base_overlap_count: int | None = None,
+) -> dict[str, Any]:
+    """Validate generated receipt geometry before it can reach LayoutLM.
+
+    Pass ``base_overlap_count`` (the pre-edit receipt's own overlap-pair count)
+    for edits that shift real rows without re-IDing them (remove/reflow), so an
+    overlap the edit introduces between two real rows is caught even though it
+    does not touch a synthetic line id.
+    """
     lines = [
         line for line in receipt.get("lines", []) or [] if line.get("words")
     ]
@@ -2226,6 +2262,12 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
         line_count=len(lines),
         line_inversion_count=line_inversion_count,
         synthetic_overlap_count=synthetic_overlap_count,
+        base_overlap_count=base_overlap_count,
+    )
+    edit_introduced_overlap_count = (
+        max(0, len(overlaps) - base_overlap_count)
+        if base_overlap_count is not None
+        else None
     )
     return {
         "schema_version": "synthetic-layout-integrity-v1",
@@ -2235,6 +2277,8 @@ def build_layout_integrity_evidence(receipt: dict[str, Any]) -> dict[str, Any]:
         "word_count": word_count,
         "overlap_pair_count": len(overlaps),
         "synthetic_overlap_pair_count": synthetic_overlap_count,
+        "base_overlap_pair_count": base_overlap_count,
+        "edit_introduced_overlap_pair_count": edit_introduced_overlap_count,
         "out_of_bounds_word_count": len(out_of_bounds_words),
         "invalid_word_box_count": len(invalid_words),
         "line_order_valid": line_order_valid,
@@ -2814,12 +2858,19 @@ def _layout_integrity_score_from_counts(
     line_count: int = 0,
     line_inversion_count: int = 0,
     synthetic_overlap_count: int = 0,
+    base_overlap_count: int | None = None,
 ) -> float:
     # layout_integrity measures geometry the SYNTHESIS introduced, not the base
     # receipt's own quality. Hard failures: a malformed / off-canvas box, or a
     # collision involving an inserted synthetic line (a new row landing on a
     # neighbor / summary line).
     if invalid_count or out_of_bounds_count or synthetic_overlap_count:
+        return 0.0
+    # When the base receipt's own overlap count is known, any INCREASE is an
+    # overlap the edit introduced — e.g. a remove/reflow that shifted two real
+    # rows (unchanged line IDs, so synthetic_overlap_count misses it) onto each
+    # other. Inherited base overlaps are tolerated; new ones are not.
+    if base_overlap_count is not None and overlap_count > base_overlap_count:
         return 0.0
     # Base-OCR overlaps and line inversions are INHERITED from the real receipt
     # (it carries the same rotated-photo noise), so they must NOT fail a clean
@@ -3212,6 +3263,25 @@ def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Labels that belong to an item's vertical band (its name/total and per-row
+# satellites). A line carrying any OTHER label is a header or summary line and
+# acts as a band barrier.
+_ITEM_BODY_LABELS = {"PRODUCT_NAME", "LINE_TOTAL", "QUANTITY", "UNIT_PRICE"}
+# Summary / payment keywords that mark a band barrier even when the OCR left the
+# row unlabeled (so a bare "SUBTOTAL 12.34" still stops band expansion).
+_SUMMARY_TEXT_BARRIER_TOKENS = {
+    "SUBTOTAL",
+    "TOTAL",
+    "TAX",
+    "BALANCE",
+    "CHANGE",
+    "DISCOUNT",
+    "COUPON",
+    "TENDER",
+    "DUE",
+}
+
+
 def _segment_item_bands(
     receipt: dict[str, Any], line_items: list[MerchantLineItem]
 ) -> None:
@@ -3241,13 +3311,22 @@ def _segment_item_bands(
             for word in line.get("words", [])
             for label in (word.get("labels") or [])
         }
-        # Summary / adjustment lines never belong to an item's band, so they are
-        # never swept into a removal. DISCOUNT and COUPON are money-only lines
-        # that a bare-price heuristic would otherwise misread as item satellites.
-        return bool(
-            labels
-            & {"SUBTOTAL", "TAX", "GRAND_TOTAL", "DISCOUNT", "COUPON"}
-        )
+        # A line that carries ONLY non-item labels — header fields like
+        # MERCHANT_NAME / DATE / TIME / ADDRESS, or summary fields like
+        # SUBTOTAL / TAX / GRAND_TOTAL / DISCOUNT / COUPON — never belongs to an
+        # item's band, so it must stop band expansion. Without this a header row
+        # above the first item (no category heading) would be swept into that
+        # item and could be cloned or deleted with it.
+        if labels and not (labels & _ITEM_BODY_LABELS):
+            return True
+        # Summary / adjustment rows whose words are UNLABELED still must not be
+        # attributed to an item (e.g. an OCR'd "SUBTOTAL 12.34" or "TOTAL 13.10"
+        # with no labels); otherwise whole-band removal can delete a totals line.
+        texts = {
+            str(word.get("text") or "").strip().upper().strip(":")
+            for word in line.get("words", [])
+        }
+        return bool(texts & _SUMMARY_TEXT_BARRIER_TOKENS)
 
     attribution: dict[int, MerchantLineItem] = dict(owner)
     for index in range(count):
@@ -3255,7 +3334,11 @@ def _segment_item_bands(
             continue
         nearest: MerchantLineItem | None = None
         nearest_dist: int | None = None
-        for direction in (-1, 1):
+        # Lines are ordered top-to-bottom, so direction +1 is the FOLLOWING item
+        # in reading order. Scan it first so an unlabeled satellite equidistant
+        # between two items (e.g. previous item's price, then this item's code
+        # row) is attributed to the item it actually heads, not the one above.
+        for direction in (1, -1):
             cursor, dist = index + direction, 1
             while 0 <= cursor < count:
                 if is_barrier(cursor):
@@ -4576,11 +4659,18 @@ def _choose_base_receipt(
     # fragment) cannot yield a high-fidelity synthetic candidate regardless of
     # the edit applied, so rank those last while keeping a deterministic
     # receipt-key tiebreak.
-    pool = sorted(
-        preferred or receipts,
-        key=lambda row: (_base_overlap_count(row), _receipt_key(row)),
+    ranked = sorted(
+        ((_base_overlap_count(row), _receipt_key(row), row) for row in (preferred or receipts)),
+        key=lambda item: (item[0], item[1]),
     )
-    return pool[min(used, len(pool) - 1)]
+    # Rotate only among the cleanest bases (those tied at the minimum overlap).
+    # Operations generated late (e.g. hard negatives after several add-items)
+    # call with ``used`` past the receipt count; clamping to the last element
+    # there would hand them the NOISIEST receipt, so cycle back to a clean base
+    # instead — a noisy base can never produce a high-fidelity candidate.
+    best_overlap = ranked[0][0]
+    cleanest = [row for overlap, _, row in ranked if overlap <= best_overlap]
+    return cleanest[used % len(cleanest)]
 
 
 def _is_catalog_item(item: MerchantLineItem) -> bool:

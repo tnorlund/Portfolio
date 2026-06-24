@@ -1686,3 +1686,59 @@ def test_load_synthetic_training_examples_rejects_compose_with_unstable_tax(
 
     assert loaded.candidates_accepted == 0
     assert loaded.rejection_reasons == {"invalid_arithmetic_reconciliation": 1}
+
+
+def _add_item_row(*, layout_score=1.0, insertion_valid=True):
+    """A grounded add_line_item row carrying explicit geometry flags."""
+    metadata = _grounded_add_item_metadata()
+    metadata["added_item"]["insertion_position_valid"] = insertion_valid
+    # Declared quality clears the 0.70 threshold and is NOT high-fidelity, so
+    # only the new hard-geometry checks can reject it.
+    metadata["candidate_quality"] = {"high_fidelity": False, "score": 0.95}
+    metadata["layout_integrity"] = {"score": layout_score}
+    return {
+        "train_only": True,
+        "merchant_name": "Sprouts Farmers Market",
+        "image_id": "synthetic-addgeom",
+        "receipt_key": "synthetic-addgeom#00001",
+        "tokens": ["YELLOW", "BANANAS", "1.95"],
+        "bboxes": [[80, 600, 180, 625], [185, 600, 320, 625], [820, 600, 890, 625]],
+        "ner_tags": ["B-PRODUCT_NAME", "I-PRODUCT_NAME", "B-LINE_TOTAL"],
+        "metadata": metadata,
+    }
+
+
+def test_load_synthetic_training_examples_rejects_failed_layout_on_default_path():
+    """A failed layout_integrity must reject on the ORDINARY path, not only when
+    require_high_fidelity is set — training on overlapping geometry is invalid
+    regardless of the declared candidate-quality score."""
+    from receipt_layoutlm.data_loader import _select_synthetic_training_examples
+
+    loaded = _select_synthetic_training_examples([_add_item_row(layout_score=0.0)])
+
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"layout_integrity_failed": 1}
+
+
+def test_load_synthetic_training_examples_rejects_invalid_insertion_on_default_path():
+    """An item the generator flagged as inserted below the summary block is
+    rejected on the ordinary path too."""
+    from receipt_layoutlm.data_loader import _select_synthetic_training_examples
+
+    loaded = _select_synthetic_training_examples(
+        [_add_item_row(insertion_valid=False)]
+    )
+
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"insertion_position_invalid": 1}
+
+
+def test_load_synthetic_training_examples_accepts_clean_add_item_geometry():
+    """The same row with clean geometry flags is accepted (the new checks do not
+    over-reject)."""
+    from receipt_layoutlm.data_loader import _select_synthetic_training_examples
+
+    loaded = _select_synthetic_training_examples([_add_item_row()])
+
+    assert loaded.candidates_accepted == 1
+    assert loaded.rejection_reasons == {}
