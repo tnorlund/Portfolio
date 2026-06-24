@@ -74,33 +74,46 @@ Step Functions, or any cloud/paid job.
    supported_operations in bundle.json — compose_online_catalog needs a stable observed tax rate);
    bundle 'ready'; accepted synthetic row count; accepted_operation_counts; and any rejection_reasons."
 
-  echo ">> Launching $MERCHANT (session synth-$SLUG)${LOCAL:+ [LOCAL]}"
-  "${RUN[@]}" "
-    cd $PROJECT
-    mkdir -p '$OUTDIR/grouped' '$OUTDIR/artifacts'
-    cp '$EXPORTS_DIR/$SLUG.json' '$EXPORT'
-    tmux new-session -d -s 'synth-$SLUG' \
-      'export PATH=\"\$HOME/.local/bin:\$PATH\" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1;
-       [ -f \"\$HOME/.claude_batch_env\" ] && . \"\$HOME/.claude_batch_env\";
-       claude -p \"\$(cat <<'PROMPT_EOF'
-$PROMPT
-PROMPT_EOF
-)\" --permission-mode bypassPermissions --output-format text
-         > \"$OUTDIR/job.log\" 2>&1;
-       echo DONE >> \"$OUTDIR/job.log\"'
-  "
+  echo ">> Launching $MERCHANT (session synth-$SLUG)$([ "$LOCAL" = 1 ] && echo ' [LOCAL]')"
+
+  # Send the prompt + a runner script as FILES — embedding a multi-line prompt
+  # with parens/heredocs inside an ssh "bash -lc \"...\"" string breaks under the
+  # box's zsh login shell. The runner does all the work; tmux just launches it.
+  PF="$(mktemp)"; printf '%s' "$PROMPT" > "$PF"
+  RF="$(mktemp)"
+  cat > "$RF" <<RUNNER
+#!/bin/bash
+export PATH="\$HOME/.local/bin:\$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
+[ -f "\$HOME/.claude_batch_env" ] && . "\$HOME/.claude_batch_env"
+cd "$PROJECT"
+mkdir -p "$OUTDIR/grouped" "$OUTDIR/artifacts"
+cp "$EXPORTS_DIR/$SLUG.json" "$EXPORT"
+claude -p "\$(cat /tmp/synth-prompt-$SLUG.txt)" \\
+  --permission-mode bypassPermissions --output-format text < /dev/null \\
+  > "$OUTDIR/job.log" 2>&1
+echo DONE >> "$OUTDIR/job.log"
+RUNNER
+  if [ "$LOCAL" = "1" ]; then
+    cp "$PF" "/tmp/synth-prompt-$SLUG.txt"; cp "$RF" "/tmp/synth-run-$SLUG.sh"
+  else
+    scp -q "$PF" "$REMOTE:/tmp/synth-prompt-$SLUG.txt"; scp -q "$RF" "$REMOTE:/tmp/synth-run-$SLUG.sh"
+  fi
+  rm -f "$PF" "$RF"
+
+  # Detach with nohup (tmux isn't installed on the box). The runner already
+  # redirects to job.log; survives the SSH disconnect.
+  "${RUN[@]}" "nohup bash /tmp/synth-run-$SLUG.sh >/dev/null 2>&1 </dev/null & echo \"  pid \$!\""
   sleep 1
 done
 
 echo
 if [ "$LOCAL" = "1" ]; then
-  echo "All jobs launched in this GUI session (subscription). Monitor here:"
-  echo "  tmux ls"
-  echo "  tmux attach -t synth-<slug>      # Ctrl-b d to detach"
+  echo "All jobs launched (nohup). Monitor here:"
+  echo "  pgrep -fl synth-run                                  # running jobs"
   echo "  for d in $PROJECT/results/*/; do echo \"== \$d\"; tail -1 \"\$d/job.log\"; done"
 else
-  echo "All jobs launched. Monitor from this machine:"
-  echo "  ssh $REMOTE 'tmux ls'"
+  echo "All jobs launched (nohup). Monitor from this machine:"
+  echo "  ssh $REMOTE 'pgrep -fl synth-run || echo done'"
   echo "  ssh $REMOTE 'tail -n 40 $PROJECT/results/<slug>/job.log'"
   echo "  ssh $REMOTE 'for d in $PROJECT/results/*/; do echo \"== \$d\"; tail -1 \"\$d/job.log\"; done'"
   echo "Collect results:  scp -r $REMOTE:$PROJECT/results ./batch-results"
