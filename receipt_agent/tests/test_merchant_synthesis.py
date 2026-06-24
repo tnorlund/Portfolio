@@ -10,6 +10,7 @@ from receipt_agent.agents.label_evaluator.merchant_synthesis import (
     _normalize_receipt,
     _shift_lines_below_for_insert,
     _stable_tax_rate,
+    _summary_block_top_y,
     build_merchant_synthesis_profile,
     build_merchant_synthesis_readiness,
     build_synthesis_candidate_quality,
@@ -1130,6 +1131,67 @@ def test_insert_shift_summary_reports_realized_clamped_movement():
     assert receipt["lines"][0]["words"][0]["bbox"] == [80, 0, 160, 0]
     assert receipt["lines"][1]["words"][0]["bbox"] == [80, 162, 160, 186]
     assert receipt["lines"][2]["words"][0]["bbox"] == [80, 388, 160, 412]
+
+
+def test_summary_block_top_y_ignores_stray_total_above_items():
+    """A receipt may carry a duplicate/stray summary-labeled word ABOVE the
+    items (a header balance or duplicate-OCR'd grand total). y-high-is-top, so
+    the genuine footer block sits at LOWER y than the items. The boundary must
+    be the genuine footer's top edge, not the stray top total — otherwise every
+    item reads as sitting "below" the summary and valid inserts are rejected.
+    """
+    receipt = {
+        "lines": [
+            # Stray grand total near the TOP of the receipt (high y).
+            {
+                "line_id": 1,
+                "y": 0.640,
+                "words": [_word("29.40", [400, 626, 460, 638], ["GRAND_TOTAL"])],
+            },
+            # Real item rows in the middle.
+            {
+                "line_id": 2,
+                "y": 0.400,
+                "words": [
+                    _word("SHALLOTS", [80, 388, 240, 412], ["PRODUCT_NAME"]),
+                    _word("1.99", [400, 388, 460, 412], ["LINE_TOTAL"]),
+                ],
+            },
+            {
+                "line_id": 3,
+                "y": 0.300,
+                "words": [
+                    _word("GARLIC", [80, 288, 240, 312], ["PRODUCT_NAME"]),
+                    _word("2.49", [400, 288, 460, 312], ["LINE_TOTAL"]),
+                ],
+            },
+            # Genuine footer summary BELOW the items (low y).
+            {
+                "line_id": 4,
+                "y": 0.240,
+                "words": [_word("29.40", [400, 235, 460, 246], ["GRAND_TOTAL"])],
+            },
+        ]
+    }
+
+    # The boundary is the genuine footer's top edge (246), not the stray 638.
+    assert _summary_block_top_y(receipt) == 246.0
+
+
+def test_summary_block_top_y_falls_back_without_item_anchor():
+    """With no item-labeled words to anchor the floor, every summary word is a
+    candidate (no stray to filter), so the highest summary edge is returned."""
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "y": 0.200,
+                "words": [_word("10.00", [400, 188, 460, 212], ["GRAND_TOTAL"])],
+            }
+        ]
+    }
+
+    assert _summary_block_top_y(receipt) == 212.0
 
 
 def test_generate_merchant_synthesis_candidates_can_remove_supported_item():
