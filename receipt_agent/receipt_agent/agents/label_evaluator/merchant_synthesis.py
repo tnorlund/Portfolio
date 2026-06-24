@@ -9,8 +9,11 @@ geometry, merchant-local examples, and line-item arithmetic anchors.
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
+import json
 from collections import Counter, defaultdict
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -216,16 +219,58 @@ _MERCHANT_ONLINE_CATALOG: dict[str, list[OnlineCatalogEntry]] = {
 }
 
 
+# Directory of per-merchant online-catalog JSON files. Each file is one merchant
+# ({"merchant_name": str, "entries": [{"name", "price", "upc"?, "taxable"?}]}),
+# so parallel agents can each contribute a merchant's catalog as a SEPARATE file
+# with no merge conflicts. Files merge with (and extend) the in-code catalog.
+_ONLINE_CATALOG_DIR = Path(__file__).resolve().parent / "online_catalogs"
+
+
+@functools.lru_cache(maxsize=1)
+def _file_online_catalogs() -> dict[str, tuple[OnlineCatalogEntry, ...]]:
+    catalogs: dict[str, list[OnlineCatalogEntry]] = {}
+    if not _ONLINE_CATALOG_DIR.is_dir():
+        return {}
+    for path in sorted(_ONLINE_CATALOG_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        merchant = str(data.get("merchant_name") or "").strip().lower()
+        entries: list[OnlineCatalogEntry] = []
+        for raw in data.get("entries") or []:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()
+            price = _parse_money(raw.get("price") or raw.get("line_total"))
+            if not name or price is None or price <= Decimal("0.00"):
+                continue
+            entries.append(
+                OnlineCatalogEntry(
+                    name=name,
+                    price=price,
+                    upc=str(raw.get("upc") or "").strip(),
+                    taxable=bool(raw.get("taxable", True)),
+                    source=f"online_catalog_file:{path.name}",
+                )
+            )
+        if merchant and entries:
+            catalogs.setdefault(merchant, []).extend(entries)
+    return {merchant: tuple(items) for merchant, items in catalogs.items()}
+
+
 def _merchant_online_catalog(
     merchant_name: str,
     override: list[OnlineCatalogEntry] | None = None,
 ) -> list[OnlineCatalogEntry]:
-    """Online catalog entries for a merchant (explicit override wins)."""
+    """Online catalog entries for a merchant (explicit override wins, else the
+    in-code catalog plus any per-merchant JSON file in ``online_catalogs/``)."""
     if override:
         return list(override)
-    return list(
-        _MERCHANT_ONLINE_CATALOG.get(merchant_name.strip().lower(), [])
-    )
+    key = merchant_name.strip().lower()
+    entries = list(_MERCHANT_ONLINE_CATALOG.get(key, []))
+    entries.extend(_file_online_catalogs().get(key, ()))
+    return entries
 
 
 def build_merchant_synthesis_profile(
