@@ -32,7 +32,8 @@ echo ">> Running headless MCP smoke test on $REMOTE ..."
 ssh "$REMOTE" bash -lc "
   cd $PROJECT
   export RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
-  claude -p \"$PROMPT\" \
+  CLAUDE_BIN=\"\$(command -v claude || echo \$HOME/.local/bin/claude)\"
+  \"\$CLAUDE_BIN\" -p \"$PROMPT\" \
     --permission-mode bypassPermissions \
     --output-format text
 " | tee /tmp/mcp_smoke_test.out

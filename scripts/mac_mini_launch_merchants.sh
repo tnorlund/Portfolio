@@ -65,7 +65,7 @@ Step Functions, or any cloud/paid job.
     mkdir -p '$OUTDIR/grouped' '$OUTDIR/artifacts'
     cp '$EXPORTS_DIR/$SLUG.json' '$EXPORT'
     tmux new-session -d -s 'synth-$SLUG' \
-      'export RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1;
+      'export PATH=\"\$HOME/.local/bin:\$PATH\" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1;
        claude -p \"\$(cat <<'PROMPT_EOF'
 $PROMPT
 PROMPT_EOF
