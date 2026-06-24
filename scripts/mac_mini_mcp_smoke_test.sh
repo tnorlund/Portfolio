@@ -30,23 +30,31 @@ Step 2: call update_word_label with image_id ed28a4ce-2258-4745-87ba-2fc662c94ab
 Finally output exactly one line: SMOKE_TEST read=PASS_OR_FAIL write=PASS_OR_FAIL
 If the receipt-tools MCP tools are not available at all, output exactly: SMOKE_TEST read=NO_MCP write=NO_MCP
 EOF
-scp -q "$PROMPT_FILE" "$REMOTE:/tmp/mcp_smoke_prompt.txt"
-rm -f "$PROMPT_FILE"
-
-echo ">> Running headless MCP smoke test on $REMOTE ..."
-# Do NOT pass --bare (it disables MCP discovery). claude lives at ~/.local/bin
-# (not on the non-interactive PATH), so prepend it. < /dev/null keeps -p from
-# blocking on stdin.
-# Headless claude over SSH cannot read the macOS login Keychain (locked outside
-# the GUI session), so OAuth creds are unavailable. Source ~/.claude_batch_env
-# for ANTHROPIC_API_KEY (kept in a file, not on the process list / argv).
-ssh "$REMOTE" '
+LOCAL="${LOCAL:-0}"
+# Do NOT pass --bare (it disables MCP discovery). claude lives at ~/.local/bin.
+if [ "$LOCAL" = "1" ]; then
+  # Run IN the Mac Mini's GUI session → unlocked Keychain → SUBSCRIPTION auth,
+  # no API key. (Run this script on the Mac Mini itself, not from the MacBook.)
+  echo ">> Running MCP smoke test LOCALLY (GUI session / subscription) ..."
   export PATH="$HOME/.local/bin:$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
-  [ -f "$HOME/.claude_batch_env" ] && . "$HOME/.claude_batch_env"
-  cd "$HOME/'"$REMOTE_PROJECT"'"
-  claude -p "$(cat /tmp/mcp_smoke_prompt.txt)" \
-    --permission-mode bypassPermissions --output-format text < /dev/null
-' 2>&1 | tee /tmp/mcp_smoke_test.out
+  claude -p "$(cat "$PROMPT_FILE")" \
+    --permission-mode bypassPermissions --output-format text < /dev/null \
+    2>&1 | tee /tmp/mcp_smoke_test.out
+  rm -f "$PROMPT_FILE"
+else
+  scp -q "$PROMPT_FILE" "$REMOTE:/tmp/mcp_smoke_prompt.txt"
+  rm -f "$PROMPT_FILE"
+  echo ">> Running headless MCP smoke test on $REMOTE ..."
+  # Over SSH the login Keychain is locked, so source ~/.claude_batch_env for
+  # ANTHROPIC_API_KEY (kept off the process list).
+  ssh "$REMOTE" '
+    export PATH="$HOME/.local/bin:$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
+    [ -f "$HOME/.claude_batch_env" ] && . "$HOME/.claude_batch_env"
+    cd "$HOME/'"$REMOTE_PROJECT"'"
+    claude -p "$(cat /tmp/mcp_smoke_prompt.txt)" \
+      --permission-mode bypassPermissions --output-format text < /dev/null
+  ' 2>&1 | tee /tmp/mcp_smoke_test.out
+fi
 
 echo
 if grep -q "SMOKE_TEST read=PASS write=PASS" /tmp/mcp_smoke_test.out; then

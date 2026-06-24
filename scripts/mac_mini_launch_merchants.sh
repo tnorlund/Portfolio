@@ -11,16 +11,28 @@
 #   - Per-merchant grouped exports at $EXPORTS_DIR/<slug>.json
 #
 # Usage:
-#   ./scripts/mac_mini_launch_merchants.sh "Costco Wholesale" "Target" "Vons"
+#   # over SSH from the MacBook (needs ANTHROPIC_API_KEY in ~/.claude_batch_env,
+#   # because SSH can't read the macOS login Keychain):
+#   ./scripts/mac_mini_launch_merchants.sh "Costco Wholesale" "Target"
+#
+#   # IN the Mac Mini's GUI Terminal (Screen Sharing) — uses your SUBSCRIPTION
+#   # via the unlocked Keychain, no API key. Run with LOCAL=1, and first remove
+#   # any placeholder key:  rm -f ~/.claude_batch_env
+#   LOCAL=1 ./scripts/mac_mini_launch_merchants.sh "Costco Wholesale" "Target"
 set -euo pipefail
 
 REMOTE="${REMOTE:-tnorlund@192.168.0.147}"
+LOCAL="${LOCAL:-0}"
 PROJECT="${PROJECT:-\$HOME/Portfolio}"          # repo path ON the Mac Mini
 EXPORTS_DIR="${EXPORTS_DIR:-\$HOME/Portfolio/exports}"  # per-merchant grouped JSON
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <merchant> [<merchant> ...]" >&2; exit 1
 fi
+
+# Run a shell block either locally (GUI session → subscription Keychain) or over
+# SSH (needs an API key in ~/.claude_batch_env).
+if [ "$LOCAL" = "1" ]; then RUN=(bash -lc); else RUN=(ssh "$REMOTE" bash -lc); fi
 
 slugify() { echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g; s/^_+|_+$//g'; }
 
@@ -59,8 +71,8 @@ Step Functions, or any cloud/paid job.
    supported_operations in bundle.json — compose_online_catalog needs a stable observed tax rate);
    bundle 'ready'; accepted synthetic row count; accepted_operation_counts; and any rejection_reasons."
 
-  echo ">> Launching $MERCHANT (session synth-$SLUG)"
-  ssh "$REMOTE" bash -lc "
+  echo ">> Launching $MERCHANT (session synth-$SLUG)${LOCAL:+ [LOCAL]}"
+  "${RUN[@]}" "
     cd $PROJECT
     mkdir -p '$OUTDIR/grouped' '$OUTDIR/artifacts'
     cp '$EXPORTS_DIR/$SLUG.json' '$EXPORT'
@@ -78,8 +90,15 @@ PROMPT_EOF
 done
 
 echo
-echo "All jobs launched. Monitor from this machine:"
-echo "  ssh $REMOTE 'tmux ls'"
-echo "  ssh $REMOTE 'tail -n 40 $PROJECT/results/<slug>/job.log'"
-echo "  ssh $REMOTE 'for d in $PROJECT/results/*/; do echo \"== \$d\"; tail -1 \"\$d/job.log\"; done'"
-echo "Collect results:  scp -r $REMOTE:$PROJECT/results ./batch-results"
+if [ "$LOCAL" = "1" ]; then
+  echo "All jobs launched in this GUI session (subscription). Monitor here:"
+  echo "  tmux ls"
+  echo "  tmux attach -t synth-<slug>      # Ctrl-b d to detach"
+  echo "  for d in $PROJECT/results/*/; do echo \"== \$d\"; tail -1 \"\$d/job.log\"; done"
+else
+  echo "All jobs launched. Monitor from this machine:"
+  echo "  ssh $REMOTE 'tmux ls'"
+  echo "  ssh $REMOTE 'tail -n 40 $PROJECT/results/<slug>/job.log'"
+  echo "  ssh $REMOTE 'for d in $PROJECT/results/*/; do echo \"== \$d\"; tail -1 \"\$d/job.log\"; done'"
+  echo "Collect results:  scp -r $REMOTE:$PROJECT/results ./batch-results"
+fi
