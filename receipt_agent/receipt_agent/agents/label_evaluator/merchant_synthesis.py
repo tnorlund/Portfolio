@@ -1171,7 +1171,7 @@ def _build_add_item_candidate_from_plan(
     if old_total is None:
         return None
     base_key = _receipt_key(analysis.receipt)
-    line_step = _line_step(analysis.line_items)
+    line_step = _line_step(analysis.line_items, analysis.receipt)
     insertion_context = _category_insertion_context(analysis, entry.category, y_center)
 
     # Row-order reflow (no free-floating placement): insert the new band right
@@ -1415,7 +1415,7 @@ def _build_remove_item_candidate_from_plan(
     new_total = _money(max(Decimal("0.00"), old_total - removed.amount))
 
     removed_center = removed.center_y
-    line_step = _line_step(refreshed.line_items)
+    line_step = _line_step(refreshed.line_items, refreshed.receipt)
     # Row-order reflow: delete the item's FULL band by INDEX and pull every lower
     # row up to close the gap — no orphaned satellites, no displaced neighbors.
     shift_summary = _reflow_remove_lines(
@@ -1938,7 +1938,7 @@ def _compose_online_catalog_receipt(
     header, summary = lines[:first_i], lines[last_i + 1 :]
     geo = _template_fill_geometry(scaffold)
 
-    pitch = _line_step(items)
+    pitch = _line_step(items, scaffold.receipt)
     gap = max(6, pitch // 3)
     cursor = (
         min(
@@ -4034,7 +4034,7 @@ def _category_insert_y(
     lowest = min(
         items, key=lambda item: item.band_bottom_y or item.center_y
     )
-    gap = max(12, _line_step(analysis.line_items) // 2)
+    gap = max(12, _line_step(analysis.line_items, analysis.receipt) // 2)
     bottom = lowest.band_bottom_y or lowest.center_y
     return max(24.0, bottom - gap)
 
@@ -4398,7 +4398,8 @@ def _structure_components(
         ),
         "line_step": _distance_score(
             abs(
-                _line_step(candidate.line_items) - _line_step(real.line_items)
+                _line_step(candidate.line_items, candidate.receipt)
+                - _line_step(real.line_items, real.receipt)
             ),
             scale=40,
         ),
@@ -4601,7 +4602,7 @@ def _receipt_signature(analysis: MerchantAnalysis) -> dict[str, Any]:
         "line_count": len(analysis.receipt.get("lines", [])),
         "line_item_count": len(analysis.line_items),
         "category_sequence": analysis.category_sequence,
-        "line_step": _line_step(analysis.line_items),
+        "line_step": _line_step(analysis.line_items, analysis.receipt),
         "line_total_x_p50": _label_x_p50(analysis.receipt, "LINE_TOTAL"),
     }
 
@@ -4947,16 +4948,67 @@ def _reconcile_item_count(
     return updated
 
 
-def _line_step(items: list[MerchantLineItem]) -> int:
-    centers = sorted({round(item.center_y, 1) for item in items}, reverse=True)
+# Default row pitch used only when no real row geometry can be measured at all
+# (no matched items AND no labeled item-region rows). Kept as the historical
+# constant so well-formed receipts are unaffected.
+_DEFAULT_LINE_STEP = 26
+
+
+def _row_pitch(centers: list[float]) -> int | None:
+    """Median vertical gap between consecutive row centers, clamped to the
+    realistic single-row pitch range. ``None`` when fewer than two distinct rows
+    exist (no measurable pitch)."""
+    ordered = sorted({round(value, 1) for value in centers}, reverse=True)
     gaps = [
-        abs(centers[idx] - centers[idx + 1])
-        for idx in range(len(centers) - 1)
-        if abs(centers[idx] - centers[idx + 1]) >= 8
+        abs(ordered[idx] - ordered[idx + 1])
+        for idx in range(len(ordered) - 1)
+        if abs(ordered[idx] - ordered[idx + 1]) >= 8
     ]
     if not gaps:
-        return 26
+        return None
     return max(18, min(44, int(round(statistics.median(gaps)))))
+
+
+def _label_row_centers(receipt: dict[str, Any], label: str) -> list[float]:
+    """Vertical centers (in the 0-1000 ``center_y`` frame used by line items) of
+    every receipt line carrying ``label`` — the labeled item-region row rhythm,
+    independent of whether each row also matched a paired line item."""
+    centers: list[float] = []
+    for line in receipt.get("lines", []) or []:
+        ys = [
+            _cy(word["bbox"])
+            for word in line.get("words", []) or []
+            if label in (word.get("labels") or [])
+        ]
+        if ys:
+            centers.append(statistics.median(ys))
+    return centers
+
+
+def _line_step(
+    items: list[MerchantLineItem],
+    receipt: dict[str, Any] | None = None,
+) -> int:
+    """Estimate the merchant's single item-row pitch.
+
+    Matched line items are the most precise signal, so they are used first.
+    When labeling is sparse — common for thin merchants where PRODUCT_NAME /
+    LINE_TOTAL pairing yields fewer than two matched items — the row rhythm is
+    instead measured from the receipt's labeled item-region rows (LINE_TOTAL
+    first, then PRODUCT_NAME). This keeps the geometry comparison anchored to the
+    merchant's real row spacing instead of collapsing to a flat constant that no
+    real or synthetic receipt actually matches. The constant fallback is reached
+    only when no row geometry exists at all.
+    """
+    pitch = _row_pitch([item.center_y for item in items])
+    if pitch is not None:
+        return pitch
+    if receipt is not None:
+        for label in ("LINE_TOTAL", "PRODUCT_NAME"):
+            pitch = _row_pitch(_label_row_centers(receipt, label))
+            if pitch is not None:
+                return pitch
+    return _DEFAULT_LINE_STEP
 
 
 def _label_x_p50(receipt: dict[str, Any], label: str) -> float | None:
