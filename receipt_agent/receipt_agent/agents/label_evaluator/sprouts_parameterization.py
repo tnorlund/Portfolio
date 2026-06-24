@@ -220,6 +220,10 @@ class SproutsAddItemPlan:
     shift_delta: int
     seen_in_other_receipt: bool
     selection_reason: str
+    # "down" pushes the lines below the insertion point toward the receipt
+    # bottom; "up" pushes the lines above it toward the top. Whichever side has
+    # whitespace is used so a densely packed receipt can still host one row.
+    shift_direction: str = "down"
 
 
 def is_sprouts_merchant(merchant_name: str | None) -> bool:
@@ -425,29 +429,41 @@ def generate_parameterized_sprouts_candidates(
         }.get(str(recipe.get("predicted_label")), 99)
     )
 
+    # Each recipe targets one model confusion (e.g. ADDRESS_LINE precision).
+    # The original loop emitted at most one hard negative per label, which
+    # capped this path at the number of distinct recipes (~3). The same
+    # mutation is equally valid on every real base layout, so emit one
+    # candidate per (label, base receipt) — distinct real geometry, distinct
+    # candidate id — and let the loader's structure gate accept the strong
+    # ones. Round-robin across labels so no single confusion dominates.
     candidates: list[dict[str, Any]] = []
-    used_targets: set[str] = set()
-    for recipe in recipes:
+    used_pairs: set[tuple[str, str]] = set()
+    for base_offset in range(len(base_receipts)):
         if len(candidates) >= max_candidates:
             break
-        predicted_label = str(recipe.get("predicted_label") or "")
-        if predicted_label in used_targets:
-            continue
-        mutation = _mutation_for_label(predicted_label, parameters)
-        if mutation is None:
-            continue
-        base = _choose_base_receipt(base_receipts, used=len(candidates))
-        candidate = _candidate_from_base(
-            base,
-            parameters,
-            recipe,
-            mutation,
-            analyses,
-            index=len(candidates) + 1,
-        )
-        if candidate:
-            candidates.append(candidate)
-            used_targets.add(predicted_label)
+        base = _choose_base_receipt(base_receipts, used=base_offset)
+        base_key = _receipt_key(base)
+        for recipe in recipes:
+            if len(candidates) >= max_candidates:
+                break
+            predicted_label = str(recipe.get("predicted_label") or "")
+            pair = (predicted_label, base_key)
+            if pair in used_pairs:
+                continue
+            mutation = _mutation_for_label(predicted_label, parameters)
+            if mutation is None:
+                continue
+            candidate = _candidate_from_base(
+                base,
+                parameters,
+                recipe,
+                mutation,
+                analyses,
+                index=len(candidates) + 1,
+            )
+            if candidate:
+                candidates.append(candidate)
+                used_pairs.add(pair)
 
     return candidates
 
@@ -473,17 +489,47 @@ def generate_arithmetic_sprouts_candidates(
     if not analyses:
         return []
 
-    candidates: list[dict[str, Any]] = []
-    add_candidate = _generate_add_item_candidate(parameters, analyses)
-    if add_candidate:
-        candidates.append(add_candidate.candidate)
+    catalog = _build_item_catalog(analyses)
+    add_plans = _rank_add_item_plans(analyses, catalog)
+    remove_analyses = _rank_remove_item_analyses(analyses)
 
-    if len(candidates) < max_candidates:
-        remove_candidate = _generate_remove_item_candidate(
-            parameters, analyses
+    add_candidates: list[dict[str, Any]] = []
+    for plan in add_plans:
+        if len(add_candidates) >= max_candidates:
+            break
+        built = _generate_add_item_candidate(
+            parameters, analyses, plan=plan
         )
-        if remove_candidate:
-            candidates.append(remove_candidate.candidate)
+        if built:
+            add_candidates.append(built.candidate)
+
+    remove_candidates: list[dict[str, Any]] = []
+    for analysis in remove_analyses:
+        if len(remove_candidates) >= max_candidates:
+            break
+        built = _generate_remove_item_candidate(
+            parameters, analyses, analysis=analysis
+        )
+        if built:
+            remove_candidates.append(built.candidate)
+
+    # Interleave add/remove so the accepted mix stays balanced rather than
+    # saturating one operation, mirroring the concentration guard the loader
+    # and audit apply downstream.
+    candidates: list[dict[str, Any]] = []
+    add_iter = iter(add_candidates)
+    remove_iter = iter(remove_candidates)
+    while len(candidates) < max_candidates:
+        added = next(add_iter, None)
+        if added is not None:
+            candidates.append(added)
+            if len(candidates) >= max_candidates:
+                break
+        removed = next(remove_iter, None)
+        if removed is not None:
+            candidates.append(removed)
+        if added is None and removed is None:
+            break
 
     return candidates[:max_candidates]
 
@@ -653,9 +699,12 @@ def _candidate_from_base(
 def _generate_add_item_candidate(
     parameters: SproutsReceiptParameters,
     analyses: list[SproutsArithmeticAnalysis],
+    *,
+    plan: SproutsAddItemPlan | None = None,
 ) -> SproutsArithmeticCandidate | None:
-    catalog = _build_item_catalog(analyses)
-    plan = _choose_add_item_plan(analyses, catalog)
+    if plan is None:
+        catalog = _build_item_catalog(analyses)
+        plan = _choose_add_item_plan(analyses, catalog)
     if plan is None:
         return None
 
@@ -669,7 +718,14 @@ def _generate_add_item_candidate(
     old_total = refreshed.grand_total
     new_total = _money(old_total + added_amount)
     if plan.shift_anchor_y is not None and plan.shift_delta > 0:
-        _shift_lines_below_down(receipt, plan.shift_anchor_y, plan.shift_delta)
+        if plan.shift_direction == "up":
+            _shift_lines_above_up(
+                receipt, plan.shift_anchor_y, plan.shift_delta
+            )
+        else:
+            _shift_lines_below_down(
+                receipt, plan.shift_anchor_y, plan.shift_delta
+            )
     added_line = _build_line_item_line(
         parameters,
         plan.item.product_tokens,
@@ -735,15 +791,19 @@ def _generate_add_item_candidate(
 def _generate_remove_item_candidate(
     parameters: SproutsReceiptParameters,
     analyses: list[SproutsArithmeticAnalysis],
+    *,
+    analysis: SproutsArithmeticAnalysis | None = None,
 ) -> SproutsArithmeticCandidate | None:
-    removable = [
-        analysis
-        for analysis in analyses
-        if len(analysis.line_items) >= 2 and analysis.grand_total_line_indices
-    ]
-    if not removable:
-        return None
-    analysis = min(removable, key=lambda item: item.subtotal)
+    if analysis is None:
+        removable = [
+            candidate
+            for candidate in analyses
+            if len(candidate.line_items) >= 2
+            and candidate.grand_total_line_indices
+        ]
+        if not removable:
+            return None
+        analysis = min(removable, key=lambda item: item.subtotal)
     receipt = copy.deepcopy(analysis.receipt)
     refreshed = _analyze_arithmetic_receipt(receipt)
     if refreshed is None or len(refreshed.line_items) < 2:
@@ -800,6 +860,26 @@ def _generate_remove_item_candidate(
         old_grand_total=old_total,
         new_grand_total=new_total,
     )
+
+
+def _rank_remove_item_analyses(
+    analyses: list[SproutsArithmeticAnalysis],
+) -> list[SproutsArithmeticAnalysis]:
+    """Removable receipts (>=2 items, a grand total, a non-taxable item).
+
+    Same gate the single-candidate path used, but returns every qualifying
+    base receipt — one removal each — ordered by subtotal so smaller, simpler
+    receipts (which the loader scores most cleanly) come first.
+    """
+    removable = [
+        analysis
+        for analysis in analyses
+        if len(analysis.line_items) >= 2
+        and analysis.grand_total_line_indices
+        and any(not item.taxable for item in analysis.line_items)
+    ]
+    removable.sort(key=lambda analysis: analysis.subtotal)
+    return removable
 
 
 def _analyze_arithmetic_receipt(
@@ -1067,6 +1147,81 @@ def _build_item_catalog(
     return entries
 
 
+def _resolve_shift_direction(
+    receipt: dict[str, Any],
+    shift_anchor_y: float | None,
+    shift_delta: int,
+) -> str | None:
+    """Pick the shift side that has whitespace, or None if neither does.
+
+    No anchor means no shift is needed (the slot is already empty), so "down"
+    is returned as a no-op-compatible default. Otherwise the down side (push
+    the block below the insertion point toward the receipt bottom) is preferred
+    to preserve historical behaviour, falling back to the up side when the
+    bottom is full.
+    """
+    if shift_anchor_y is None:
+        return "down"
+    if _can_shift_lines_below_down(receipt, shift_anchor_y, shift_delta):
+        return "down"
+    if _can_shift_lines_above_up(receipt, shift_anchor_y, shift_delta):
+        return "up"
+    return None
+
+
+def _build_add_item_plan(
+    analysis: SproutsArithmeticAnalysis,
+    entry: SproutsItemCatalogEntry,
+    present_products: list[str],
+    base_key: str,
+) -> tuple[float, SproutsAddItemPlan] | None:
+    """Build one grounded, geometry-checked add-item plan, or None.
+
+    Centralizes the per-(receipt, entry) gates so the single-best chooser and
+    the per-receipt ranker stay in lock-step: catalog grounding, category
+    presence, no duplicate product, a valid insertion anchor, and a shift
+    direction with real whitespace.
+    """
+    if entry.taxable or entry.category == UNKNOWN_CATEGORY:
+        return None
+    if _has_similar_product(entry.product_text, present_products):
+        return None
+    anchor = _category_insert_anchor(analysis, entry.category)
+    if anchor is None:
+        return None
+    y_center, shift_anchor_y, shift_delta = anchor
+    direction = _resolve_shift_direction(
+        analysis.receipt, shift_anchor_y, shift_delta
+    )
+    if direction is None:
+        return None
+    seen_in_other_receipt = any(
+        source_key != base_key for source_key in entry.source_receipt_keys
+    )
+    if not seen_in_other_receipt:
+        return None
+    score = _add_item_plan_score(
+        analysis,
+        entry,
+        seen_in_other_receipt=seen_in_other_receipt,
+    )
+    return (
+        score,
+        SproutsAddItemPlan(
+            analysis=analysis,
+            item=entry,
+            y_center=y_center,
+            shift_anchor_y=shift_anchor_y,
+            shift_delta=shift_delta,
+            seen_in_other_receipt=seen_in_other_receipt,
+            selection_reason=(
+                "observed in another Sprouts receipt with the same category"
+            ),
+            shift_direction=direction,
+        ),
+    )
+
+
 def _choose_add_item_plan(
     analyses: list[SproutsArithmeticAnalysis],
     catalog: list[SproutsItemCatalogEntry],
@@ -1081,55 +1236,57 @@ def _choose_add_item_plan(
         }
         present_products = [item.product_text for item in analysis.line_items]
         for entry in catalog:
-            if entry.taxable or entry.category == UNKNOWN_CATEGORY:
-                continue
             if entry.category not in present_categories:
                 continue
-            if _has_similar_product(entry.product_text, present_products):
-                continue
-            anchor = _category_insert_anchor(analysis, entry.category)
-            if anchor is None:
-                continue
-            y_center, shift_anchor_y, shift_delta = anchor
-            if shift_anchor_y is not None and not _can_shift_lines_below_down(
-                analysis.receipt,
-                shift_anchor_y,
-                shift_delta,
-            ):
-                continue
-            seen_in_other_receipt = any(
-                source_key != base_key
-                for source_key in entry.source_receipt_keys
+            built = _build_add_item_plan(
+                analysis, entry, present_products, base_key
             )
-            if not seen_in_other_receipt:
-                continue
-            score = _add_item_plan_score(
-                analysis,
-                entry,
-                seen_in_other_receipt=seen_in_other_receipt,
-            )
-            reason = (
-                "observed in another Sprouts receipt with the same category"
-            )
-            plans.append(
-                (
-                    score,
-                    SproutsAddItemPlan(
-                        analysis=analysis,
-                        item=entry,
-                        y_center=y_center,
-                        shift_anchor_y=shift_anchor_y,
-                        shift_delta=shift_delta,
-                        seen_in_other_receipt=seen_in_other_receipt,
-                        selection_reason=reason,
-                    ),
-                )
-            )
+            if built is not None:
+                plans.append(built)
 
     if not plans:
         return None
     plans.sort(key=lambda item: item[0], reverse=True)
     return plans[0][1]
+
+
+def _rank_add_item_plans(
+    analyses: list[SproutsArithmeticAnalysis],
+    catalog: list[SproutsItemCatalogEntry],
+) -> list[SproutsAddItemPlan]:
+    """Best grounded add-item plan per base receipt, ranked high to low.
+
+    ``_choose_add_item_plan`` returns only the single highest-scoring plan,
+    which caps the rich Sprouts merchant at one add-item candidate. This keeps
+    every per-candidate gate (catalog grounding via ``seen_in_other_receipt``,
+    category presence, shiftable geometry) and simply emits one accepted plan
+    per distinct base receipt so the generator can scale with the data.
+    """
+    best_by_receipt: dict[str, tuple[float, SproutsAddItemPlan]] = {}
+    for analysis in analyses:
+        if not analysis.section_headings:
+            continue
+        base_key = _receipt_key(analysis.receipt)
+        present_categories = {
+            item.category for item in analysis.line_items if item.category
+        }
+        present_products = [item.product_text for item in analysis.line_items]
+        for entry in catalog:
+            if entry.category not in present_categories:
+                continue
+            built = _build_add_item_plan(
+                analysis, entry, present_products, base_key
+            )
+            if built is None:
+                continue
+            score, plan = built
+            current = best_by_receipt.get(base_key)
+            if current is None or score > current[0]:
+                best_by_receipt[base_key] = (score, plan)
+    ranked = sorted(
+        best_by_receipt.values(), key=lambda item: item[0], reverse=True
+    )
+    return [plan for _score, plan in ranked]
 
 
 def _category_insert_anchor(
@@ -1698,6 +1855,40 @@ def _shift_lines_below_down(
             word["bbox"][1] = max(0, word["bbox"][1] - delta)
             word["bbox"][3] = max(0, word["bbox"][3] - delta)
         line["y"] = max(0.0, _line_y(line))
+    _refresh_receipt_words(receipt)
+
+
+def _can_shift_lines_above_up(
+    receipt: dict[str, Any],
+    anchor_y: float,
+    delta: int,
+) -> bool:
+    # Top of the receipt is high y, so "up" moves the block above the insertion
+    # point toward y=1000. The fix succeeds only if the topmost word keeps a
+    # margin from the ceiling, mirroring the bottom-margin check on the down
+    # path so neither direction clips real content off the receipt.
+    top_margin = 8
+    for line in receipt.get("lines", []):
+        if _line_y(line) * 1000 <= anchor_y + 1:
+            continue
+        for word in line.get("words", []):
+            if word["bbox"][3] + delta > 1000 - top_margin:
+                return False
+    return True
+
+
+def _shift_lines_above_up(
+    receipt: dict[str, Any],
+    anchor_y: float,
+    delta: int,
+) -> None:
+    for line in receipt.get("lines", []):
+        if _line_y(line) * 1000 <= anchor_y + 1:
+            continue
+        for word in line.get("words", []):
+            word["bbox"][1] = min(1000, word["bbox"][1] + delta)
+            word["bbox"][3] = min(1000, word["bbox"][3] + delta)
+        line["y"] = min(1.0, _line_y(line))
     _refresh_receipt_words(receipt)
 
 

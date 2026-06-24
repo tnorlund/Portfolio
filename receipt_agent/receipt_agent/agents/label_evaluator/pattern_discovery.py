@@ -1375,18 +1375,25 @@ def generate_synthetic_receipt_candidates(
             )
 
             if is_sprouts_merchant(synthetic_plan.merchant_name):
-                sprouts_candidate_limit = min(max_candidates, 5)
-                sprouts_rows = generate_parameterized_sprouts_candidates(
-                    synthetic_plan.to_dict(),
-                    receipts_data,
-                    max_candidates=min(sprouts_candidate_limit, 3),
+                sprouts_candidate_limit = max(1, max_candidates)
+                # Arithmetic add/remove candidates lead because they clear the
+                # loader's structure-similarity gate, while parameterized hard
+                # negatives mostly do not; leading with arithmetic keeps the
+                # hard negatives from starving the high-fidelity candidates.
+                # Mirrors verify_synthetic_replay._generate_local_synthesis_candidates.
+                sprouts_rows = list(
+                    generate_arithmetic_sprouts_candidates(
+                        receipts_data,
+                        max_candidates=sprouts_candidate_limit,
+                    )
                 )
                 remaining = sprouts_candidate_limit - len(sprouts_rows)
                 if remaining > 0:
                     sprouts_rows.extend(
-                        generate_arithmetic_sprouts_candidates(
+                        generate_parameterized_sprouts_candidates(
+                            synthetic_plan.to_dict(),
                             receipts_data,
-                            max_candidates=min(remaining, 2),
+                            max_candidates=remaining,
                         )
                     )
                 if sprouts_rows:

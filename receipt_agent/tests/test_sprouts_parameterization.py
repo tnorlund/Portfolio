@@ -481,11 +481,22 @@ def test_generic_candidate_generator_uses_sprouts_parameterization():
     )
 
     assert len(candidates) == 4
-    assert candidates[0].metadata["source"] == "sprouts_parameterized_geometry"
-    assert len(candidates[0].tokens) > 20
-    assert "ORG" in candidates[0].tokens
-    assert candidates[-1].metadata["source"] == "sprouts_arithmetic_geometry"
-    assert candidates[-1].metadata["operation"] == "remove_line_item"
+    sources = {candidate.metadata["source"] for candidate in candidates}
+    assert sources == {
+        "sprouts_arithmetic_geometry",
+        "sprouts_parameterized_geometry",
+    }
+    # Arithmetic candidates lead because they clear the loader's structure
+    # gate; the parameterized hard negatives fill the remaining budget.
+    assert candidates[0].metadata["source"] == "sprouts_arithmetic_geometry"
+    assert candidates[0].metadata["operation"] == "remove_line_item"
+    parameterized = next(
+        candidate
+        for candidate in candidates
+        if candidate.metadata["source"] == "sprouts_parameterized_geometry"
+    )
+    assert len(parameterized.tokens) > 20
+    assert "ORG" in parameterized.tokens
 
 
 def test_generate_arithmetic_sprouts_candidates_requires_observed_add_items():
