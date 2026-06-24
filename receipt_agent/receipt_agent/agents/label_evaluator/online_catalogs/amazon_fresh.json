@@ -1,0 +1,78 @@
+{
+  "merchant_name": "Amazon Fresh",
+  "source_url": "https://www.amazon.com/fmc/storefront/fresh",
+  "entries": [
+    {
+      "name": "AMZN FRESH CAGE FREE LG EGGS 18CT",
+      "price": "8.39",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH SM CURD COTTAGE CHEESE 16OZ",
+      "price": "1.99",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH GREEK NONFAT YOGURT 16OZ",
+      "price": "3.59",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "BLUEBERRIES 1 PINT",
+      "price": "2.97",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "ORGANIC WHITE ONION",
+      "price": "1.49",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "TITOS HANDMADE VODKA 750ML",
+      "price": "15.99",
+      "upc": "061994700002",
+      "taxable": true
+    },
+    {
+      "name": "KNUDSEN LOWFAT SM CURD COTT CH 24OZ",
+      "price": "3.59",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "ROCKENWAGNER FRENCH LOAF",
+      "price": "4.99",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "CLOROX DISINFECTING BLEACH 121OZ",
+      "price": "8.99",
+      "upc": "044600324166",
+      "taxable": true
+    },
+    {
+      "name": "SIR KENSINGTONS CLASSIC MAYO 16OZ",
+      "price": "8.99",
+      "upc": "850551005074",
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH HICKORY SMK BACON 12OZ",
+      "price": "4.99",
+      "upc": null,
+      "taxable": false
+    },
+    {
+      "name": "BANANA BUNCH 4-5CT",
+      "price": "0.99",
+      "upc": null,
+      "taxable": false
+    }
+  ]
+}
