@@ -1,10 +1,15 @@
 """Tests for generic merchant synthesis profiles and candidates."""
 
+from decimal import Decimal
+
 from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+    OnlineCatalogEntry,
     _analyze_receipt,
     _build_remove_item_candidate_from_plan,
+    _merchant_online_catalog,
     _normalize_receipt,
     _shift_lines_below_for_insert,
+    _stable_tax_rate,
     build_merchant_synthesis_profile,
     build_merchant_synthesis_readiness,
     build_synthesis_candidate_quality,
@@ -1347,3 +1352,132 @@ def test_choose_base_receipt_prefers_clean_geometry():
     # Regardless of input order, the clean receipt is chosen first.
     assert _choose_base_receipt([dirty, clean], used=0)["image_id"] == "img-clean"
     assert _choose_base_receipt([clean, dirty], used=0)["image_id"] == "img-clean"
+
+
+def _online_catalog():
+    """A small online product catalog (name + price + UPC) for template fill."""
+    return [
+        OnlineCatalogEntry("ACME WIDGET PRO 12CT", Decimal("12.50"), "012345678905"),
+        OnlineCatalogEntry("ACME BOLT KIT 50PC", Decimal("8.25"), "098765432105"),
+        OnlineCatalogEntry("ACME TAPE 2IN ROLL", Decimal("4.75"), "076543210982"),
+    ]
+
+
+def _compose_candidate(max_candidates=4):
+    receipts = _merchant_receipts_with_taxable_items()
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        receipts,
+        max_candidates=max_candidates,
+        online_catalog=_online_catalog(),
+    )
+    composed = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "compose_online_catalog"
+    ]
+    return composed
+
+
+def test_compose_online_catalog_assigns_clean_item_labels():
+    """Template fill gives the item region the labels WE assign (clean
+    supervision a transplanted real row cannot guarantee)."""
+    composed = _compose_candidate()
+    assert composed, "expected at least one compose_online_catalog candidate"
+    candidate = composed[0]
+    metadata = candidate["metadata"]
+
+    # Exhaustive: every composed item-row token carries its expected label.
+    assert metadata["label_control"]["all_correct"] is True
+    assert metadata["label_control"]["item_token_count"] > 0
+    assert (
+        metadata["label_control"]["correctly_labeled"]
+        == metadata["label_control"]["item_token_count"]
+    )
+
+    # Independent token/tag spot check on the flattened sequence: composed
+    # prices ($-prefixed) are the only LINE_TOTAL tokens, and tax flags are O.
+    price_tokens = 0
+    name_tokens = 0
+    for token, tag in zip(candidate["tokens"], candidate["ner_tags"]):
+        if token.startswith("$"):
+            assert tag.endswith("LINE_TOTAL"), (token, tag)
+            price_tokens += 1
+        if token == "<A>":
+            assert tag == "O", (token, tag)
+        if tag.endswith("PRODUCT_NAME"):
+            name_tokens += 1
+    assert price_tokens >= 2
+    assert name_tokens >= 2
+
+    # High fidelity + valid layout (the LayoutLM-loader gate conditions).
+    quality = metadata["candidate_quality"]
+    assert quality["high_fidelity"] is True
+    assert metadata["layout_integrity"]["score"] == 1.0
+    assert candidate["train_only"] is True
+
+
+def test_compose_online_catalog_recomputes_tax_at_stable_observed_rate():
+    """Totals are recomputed: subtotal from the composed items, tax at the
+    merchant's stable EFFECTIVE rate, grand total consistent."""
+    composed = _compose_candidate()
+    assert composed
+    arithmetic = composed[0]["metadata"]["arithmetic_reconciliation"]
+
+    subtotal = Decimal(arithmetic["new_subtotal"])
+    tax = Decimal(arithmetic["new_tax"])
+    total = Decimal(arithmetic["new_grand_total"])
+    rate = Decimal(arithmetic["tax_rate"])
+
+    assert arithmetic["tax_rate_stable"] is True
+    assert arithmetic["subtotal_consistent"] is True
+    assert arithmetic["tax_basis"] == "effective_rate_on_subtotal"
+    # tax = round(subtotal * effective_rate); grand total reconciles.
+    assert tax == (subtotal * rate).quantize(Decimal("0.01"))
+    assert total == subtotal + tax
+    # A realistic sales-tax rate, not a per-item-detection artifact.
+    assert Decimal("0.001") <= rate <= Decimal("0.20")
+
+
+def test_compose_online_catalog_absent_without_a_catalog():
+    """Merchants with no registered/injected online catalog are unaffected."""
+    receipts = _merchant_receipts_with_taxable_items()
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        receipts,
+        max_candidates=4,
+    )
+    assert all(
+        candidate["metadata"]["operation"] != "compose_online_catalog"
+        for candidate in candidates
+    )
+
+
+def test_compose_online_catalog_skips_without_stable_tax_rate():
+    """A single receipt yields one tax observation, which is not enough to
+    establish a stable rate, so no taxable receipt is composed."""
+    receipts = _merchant_receipts_with_taxable_items()[:1]
+    rate, stable, observations = _stable_tax_rate(
+        [_analyze_receipt(_normalize_receipt(r)) for r in receipts]
+    )
+    assert rate is None and stable is False and len(observations) < 2
+
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        receipts,
+        max_candidates=4,
+        online_catalog=_online_catalog(),
+    )
+    assert all(
+        candidate["metadata"]["operation"] != "compose_online_catalog"
+        for candidate in candidates
+    )
+
+
+def test_home_depot_online_catalog_is_registered():
+    """The seeded Home Depot catalog is available via case-insensitive lookup."""
+    entries = _merchant_online_catalog("The Home Depot")
+    assert len(entries) >= 3
+    assert all(entry.price > Decimal("0.00") and entry.name for entry in entries)
+    assert _merchant_online_catalog("the home depot")
+    assert _merchant_online_catalog("Unknown Merchant") == []

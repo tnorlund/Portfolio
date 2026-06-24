@@ -155,6 +155,71 @@ class MerchantCatalogEntry:
         }
 
 
+@dataclass
+class OnlineCatalogEntry:
+    """A real product sourced from a merchant's ONLINE catalog: name + price
+    (+ optional UPC).
+
+    Unlike ``MerchantCatalogEntry`` (mined from our own receipts and bounded by
+    what we have already seen), this supplies fresh CONTENT that template-fill
+    renders into the merchant's real row FORMAT with labels WE assign — so the
+    item-region supervision is clean by construction, instead of inheriting the
+    base receipt's label noise the way a transplanted real row does.
+    """
+
+    name: str
+    price: Decimal
+    upc: str = ""
+    taxable: bool = True
+    source: str = "online_catalog"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "line_total": _format_money(self.price),
+            "upc": self.upc,
+            "taxable": self.taxable,
+            "source": self.source,
+        }
+
+
+# Verified online catalog entries — name + price confirmed against the
+# merchant's public storefront, UPCs taken from real product listings. Keyed by
+# normalized (lowercased) merchant name. Callers may also inject their own list
+# via ``generate_merchant_synthesis_candidates(online_catalog=...)``.
+_MERCHANT_ONLINE_CATALOG: dict[str, list[OnlineCatalogEntry]] = {
+    "the home depot": [
+        OnlineCatalogEntry(
+            "FEIT 100W ST19 AMBER LED 4PK", Decimal("28.97"), "017801185775"
+        ),
+        OnlineCatalogEntry(
+            "GRIP-RITE 1-1/4 DRYWALL SCREW 1LB", Decimal("5.97"), "764666104983"
+        ),
+        OnlineCatalogEntry(
+            "GORILLA WOOD GLUE 8OZ", Decimal("4.98"), "052427620002"
+        ),
+        OnlineCatalogEntry(
+            "BEHR PREM PLUS INT FLAT 1GAL", Decimal("26.98"), "082901105001"
+        ),
+        OnlineCatalogEntry(
+            "DAP ALEX PLUS CAULK 10.1OZ WHT", Decimal("3.98"), "070798181030"
+        ),
+    ],
+}
+
+
+def _merchant_online_catalog(
+    merchant_name: str,
+    override: list[OnlineCatalogEntry] | None = None,
+) -> list[OnlineCatalogEntry]:
+    """Online catalog entries for a merchant (explicit override wins)."""
+    if override:
+        return list(override)
+    return list(
+        _MERCHANT_ONLINE_CATALOG.get(merchant_name.strip().lower(), [])
+    )
+
+
 def build_merchant_synthesis_profile(
     merchant_name: str,
     receipts_data: list[dict[str, Any]],
@@ -261,8 +326,16 @@ def generate_merchant_synthesis_candidates(
     receipts_data: list[dict[str, Any]],
     *,
     max_candidates: int = 5,
+    online_catalog: list[OnlineCatalogEntry] | None = None,
 ) -> list[dict[str, Any]]:
-    """Generate train-only candidates for any merchant with real receipts."""
+    """Generate train-only candidates for any merchant with real receipts.
+
+    When an online catalog is available for the merchant (registered in
+    ``_MERCHANT_ONLINE_CATALOG`` or passed via ``online_catalog``), a share of
+    the budget is spent on ``compose_online_catalog`` candidates: net-new
+    receipts whose item rows are rendered from online products with labels we
+    assign, giving clean item-region supervision a cloned real row cannot.
+    """
     merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
     profile = build_merchant_synthesis_profile(merchant_name, receipts_data)
     if profile is None:
@@ -298,6 +371,27 @@ def generate_merchant_synthesis_candidates(
             limit=add_target,
         )
     )
+
+    # Online-catalog template fill: high-value clean-supervision candidates that
+    # exist only for merchants with a registered/injected online catalog, so all
+    # other merchants are unaffected. Cap its share so the grounded add-items,
+    # arithmetic, field replacements, and hard negatives still get budget.
+    catalog_entries = _merchant_online_catalog(merchant_name, online_catalog)
+    if catalog_entries and len(candidates) < max_candidates:
+        compose_limit = min(
+            max_candidates - len(candidates),
+            max(1, max_candidates // 3),
+        )
+        candidates.extend(
+            _generate_compose_online_catalog_candidates(
+                merchant_name,
+                profile,
+                analyses,
+                catalog_entries,
+                start_index=len(candidates) + 1,
+                limit=compose_limit,
+            )
+        )
 
     if len(candidates) < max_candidates:
         arithmetic = _generate_remove_item_candidate(
@@ -1488,6 +1582,494 @@ def _build_remove_item_plans(
     return sorted(plans, key=lambda item: item[0], reverse=True)
 
 
+# ---------------------------------------------------------------------------
+# Online-catalog template fill (compose_online_catalog)
+#
+# Render fresh online products into a merchant's real row FORMAT with labels we
+# assign, then COMPOSE them onto the geometrically cleanest real scaffold. The
+# item region carries clean supervision (UPC/flag -> O, name -> PRODUCT_NAME,
+# price -> LINE_TOTAL) because we control it; the header/totals/footer come from
+# a real receipt so the surrounding structure stays authentic.
+# ---------------------------------------------------------------------------
+
+_ONLINE_NAME_STOPWORDS = {"THE", "PLUS", "PREMIUM", "OF", "AND", "WITH", "FOR"}
+
+
+def _abbrev_product_name(name: str, *, max_len: int = 24) -> str:
+    """Receipt-style abbreviation: uppercase, drop filler, clip to a width that
+    fits the name column (real receipts abbreviate item names too)."""
+    tokens = [
+        token
+        for token in str(name).upper().split()
+        if token not in _ONLINE_NAME_STOPWORDS
+    ]
+    return " ".join(tokens)[:max_len].rstrip()
+
+
+def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
+    """Char pitch, name/price columns and row height from the scaffold's ITEM
+    region (the small print), not the larger header fonts. The local
+    ``width / len(text)`` pitch is the same measurement PR #994's
+    ``width_per_char`` formalizes; swap it in here once that lands."""
+    receipt = analysis.receipt
+    band_idx = {
+        index
+        for item in analysis.line_items
+        for index in item.band_line_indices
+    }
+    char_ws: list[float] = []
+    heights: list[float] = []
+    right_margin = 0
+    for index, line in enumerate(receipt.get("lines", []) or []):
+        for word in line.get("words", []) or []:
+            bbox = word.get("bbox")
+            if not (isinstance(bbox, list) and len(bbox) == 4):
+                continue
+            right_margin = max(right_margin, bbox[2])
+            text = str(word.get("text") or "")
+            if index in band_idx and len(text) >= 3:
+                char_ws.append((bbox[2] - bbox[0]) / len(text))
+                heights.append(bbox[3] - bbox[1])
+    char_w = max(6, int(statistics.median(char_ws)) if char_ws else 16)
+    # Right-align composed prices so their CENTER lands on the scaffold's real
+    # LINE_TOTAL column (that center x is exactly what the price_column structure
+    # score compares); fall back to the receipt's right margin if unlabeled.
+    typical_price_half_width = 3 * char_w  # half of "$dd.dd"
+    real_price_center = _label_x_p50(receipt, "LINE_TOTAL")
+    if real_price_center is not None:
+        price_x1 = int(real_price_center + typical_price_half_width)
+    else:
+        price_x1 = int(right_margin) or 960
+    price_x1 = min(price_x1, 996)
+    return {
+        "char_w": char_w,
+        # name column starts just past a 12-digit UPC + one space
+        "name_x0": 8 + 13 * char_w,
+        "price_x1": price_x1,
+        "height": int(statistics.median(heights)) if heights else 18,
+    }
+
+
+def _build_template_filled_row(
+    entry: OnlineCatalogEntry,
+    *,
+    y0: int,
+    geo: dict[str, Any],
+    line_id: int,
+) -> dict[str, Any]:
+    """One item row with NON-OVERLAPPING columns and labels we assign:
+    UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL."""
+    char_w = geo["char_w"]
+    y1 = y0 + geo["height"]
+    words: list[dict[str, Any]] = []
+
+    price_text = f"${_format_money(entry.price)}"
+    price_x0 = geo["price_x1"] - len(price_text) * char_w
+    flag_x1 = price_x0 - char_w
+    flag_x0 = flag_x1 - 3 * char_w
+
+    word_id = 1
+    upc = str(entry.upc or "")
+    if upc:
+        words.append(
+            {
+                "text": upc,
+                "bbox": [8, y0, 8 + len(upc) * char_w, y1],
+                "labels": [],
+                "line_id": line_id,
+                "word_id": word_id,
+            }
+        )
+        word_id += 1
+    cursor = geo["name_x0"]
+    for token in _abbrev_product_name(entry.name).split():
+        width = len(token) * char_w
+        if cursor + width > flag_x0 - char_w:  # keep clear of the flag/price
+            break
+        words.append(
+            {
+                "text": token,
+                "bbox": [cursor, y0, cursor + width, y1],
+                "labels": ["PRODUCT_NAME"],
+                "line_id": line_id,
+                "word_id": word_id,
+            }
+        )
+        cursor += width + char_w
+        word_id += 1
+    words.append(
+        {
+            "text": "<A>",
+            "bbox": [flag_x0, y0, flag_x1, y1],
+            "labels": [],
+            "line_id": line_id,
+            "word_id": word_id,
+        }
+    )
+    word_id += 1
+    words.append(
+        {
+            "text": price_text,
+            "bbox": [price_x0, y0, geo["price_x1"], y1],
+            "labels": ["LINE_TOTAL"],
+            "line_id": line_id,
+            "word_id": word_id,
+        }
+    )
+    return {"line_id": line_id, "y": y0 / 1000, "words": words}
+
+
+def _expected_template_label(text: Any) -> str:
+    """The label a composed item-row token MUST carry (the supervision we assert
+    and later verify, so a regression in row rendering is caught)."""
+    value = str(text or "")
+    if value.startswith("$") and _parse_money(value) is not None:
+        return "LINE_TOTAL"
+    if value == "<A>" or value.isdigit():
+        return "O"
+    return "PRODUCT_NAME"
+
+
+def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Confirm every composed item-row token (line_id >= base) carries exactly
+    the label we assigned — the clean-supervision guarantee of this path."""
+    total = 0
+    correct = 0
+    for line in receipt.get("lines", []) or []:
+        if (line.get("line_id") or 0) < _SYNTHETIC_LINE_ID_BASE:
+            continue
+        for word in line.get("words", []) or []:
+            expected = _expected_template_label(word.get("text"))
+            labels = word.get("labels") or []
+            got = labels[0] if labels else "O"
+            total += 1
+            correct += int(got == expected)
+    return {
+        "item_token_count": total,
+        "correctly_labeled": correct,
+        "all_correct": total > 0 and correct == total,
+    }
+
+
+# Plausible US sales-tax band; ratios outside it are OCR/label noise (e.g. a
+# mis-read tax token of $58 on an $18 subtotal), not a tax rate.
+_MIN_PLAUSIBLE_TAX_RATE = Decimal("0.001")
+_MAX_PLAUSIBLE_TAX_RATE = Decimal("0.20")
+
+
+def _stable_tax_rate(
+    analyses: list[MerchantAnalysis],
+) -> tuple[Decimal | None, bool, list[Decimal]]:
+    """Robust EFFECTIVE tax rate (median of ``tax_total / subtotal``) plus
+    whether it is stable across the merchant's receipts.
+
+    Per-item taxability detection is unreliable (many receipts parse 0-1 items),
+    so ``tax / taxable_subtotal`` is fragile. The labeled SUBTOTAL and TAX
+    summary amounts are reliable, and their ratio is the effective rate that
+    reproduces the merchant's real tax-to-subtotal relationship on a composed
+    receipt. Implausible ratios are dropped before the median. The rate is
+    EVIDENCE for composing an internally consistent net-new receipt — not
+    permission to edit a real receipt's tax, which the edit path still freezes.
+    """
+    rates: list[Decimal] = []
+    for analysis in analyses:
+        subtotal = analysis.subtotal
+        tax_total = analysis.tax_total
+        if (
+            subtotal is None
+            or tax_total is None
+            or subtotal <= Decimal("0.00")
+            or tax_total <= Decimal("0.00")
+        ):
+            continue
+        rate = (tax_total / subtotal).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        if _MIN_PLAUSIBLE_TAX_RATE <= rate <= _MAX_PLAUSIBLE_TAX_RATE:
+            rates.append(rate)
+    if len(rates) < 2:
+        return None, False, rates
+    median = statistics.median(rates)
+    if not isinstance(median, Decimal):
+        median = Decimal(str(median))
+    median = median.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    # Stable when a clear majority cluster within a percentage point of the
+    # median (tolerates a minority of different-jurisdiction receipts).
+    within = sum(
+        1 for rate in rates if abs(rate - median) <= Decimal("0.01")
+    )
+    stable = (within / len(rates)) >= 0.6
+    return median, stable, rates
+
+
+def _rotate(values: list[Any], offset: int) -> list[Any]:
+    if not values:
+        return []
+    pivot = offset % len(values)
+    return values[pivot:] + values[:pivot]
+
+
+def _compose_online_catalog_receipt(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    scaffold: MerchantAnalysis,
+    entries: list[OnlineCatalogEntry],
+    rate: Decimal | None,
+    rate_stable: bool,
+    *,
+    index: int,
+) -> dict[str, Any] | None:
+    """Compose one net-new receipt: real scaffold header/totals/footer + freshly
+    rendered online item rows, with recomputed subtotal / tax / grand total."""
+    items = scaffold.line_items
+    band_idx = sorted(
+        {i for item in items for i in item.band_line_indices}
+    )
+    if not band_idx:
+        return None
+    receipt = copy.deepcopy(scaffold.receipt)
+    lines = receipt["lines"]
+    first_i, last_i = min(band_idx), max(band_idx)
+    header, summary = lines[:first_i], lines[last_i + 1 :]
+    geo = _template_fill_geometry(scaffold)
+
+    pitch = _line_step(items)
+    gap = max(6, pitch // 3)
+    cursor = (
+        min(
+            (
+                word["bbox"][1]
+                for line in header
+                for word in line.get("words", []) or []
+                if word.get("bbox")
+            ),
+            default=900,
+        )
+        - pitch
+    )
+    composed: list[dict[str, Any]] = []
+    for offset, entry in enumerate(entries):
+        y0 = max(12, int(cursor) - geo["height"])
+        row = _build_template_filled_row(
+            entry,
+            y0=y0,
+            geo=geo,
+            line_id=_SYNTHETIC_LINE_ID_BASE + offset,
+        )
+        composed.append(row)
+        cursor = min(word["bbox"][1] for word in row["words"]) - gap
+
+    # slide the summary/footer block up to sit just under the composed items
+    summary_top = max(
+        (
+            word["bbox"][3]
+            for line in summary
+            for word in line.get("words", []) or []
+            if word.get("bbox")
+        ),
+        default=int(cursor),
+    )
+    delta_y = int(cursor) - summary_top
+    for line in summary:
+        for word in line.get("words", []) or []:
+            if word.get("bbox"):
+                word["bbox"][1] += delta_y
+                word["bbox"][3] += delta_y
+
+    receipt["lines"] = header + composed + summary
+
+    subtotal = _money_sum(entry.price for entry in entries)
+    taxable_subtotal = _money_sum(
+        entry.price for entry in entries if entry.taxable
+    )
+    # Apply the merchant's robust EFFECTIVE rate (tax/subtotal) to the composed
+    # subtotal so the synthetic receipt reproduces the real tax-to-subtotal
+    # relationship, rather than trusting fragile per-item taxability.
+    if rate is not None:
+        tax = _money(subtotal * rate)
+    else:
+        tax = Decimal("0.00")
+    total = _money(subtotal + tax)
+    updated_labels = _write_composed_totals(receipt, subtotal, tax, total)
+
+    _fit_receipt_to_canvas(receipt)
+    _refresh_words(receipt)
+
+    arithmetic = {
+        "summary_update_policy": "composed_catalog_totals",
+        "new_subtotal": _format_money(subtotal),
+        "new_taxable_subtotal": _format_money(taxable_subtotal),
+        "tax_rate": _format_rate(rate) if rate is not None else None,
+        "tax_basis": "effective_rate_on_subtotal",
+        "tax_rate_stable": bool(rate_stable),
+        "new_tax": _format_money(tax),
+        "new_grand_total": _format_money(total),
+        "subtotal_consistent": (subtotal + tax) == total,
+        "updated_summary_labels": updated_labels,
+    }
+    grounding = {
+        "entries": [entry.to_dict() for entry in entries],
+        "all_priced": all(entry.price > Decimal("0.00") for entry in entries),
+        "all_named": all(str(entry.name).strip() for entry in entries),
+        "source": "merchant_online_catalog",
+    }
+    label_control = _verify_template_row_labels(receipt)
+
+    return _candidate_from_receipt(
+        receipt,
+        merchant_name,
+        source="merchant_online_catalog",
+        operation="compose_online_catalog",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(scaffold.receipt),
+            "composed_item_count": len(entries),
+            "composed_items": [entry.to_dict() for entry in entries],
+            "online_catalog_grounding": grounding,
+            "label_control": label_control,
+            "arithmetic_reconciliation": arithmetic,
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(receipt),
+                analyses,
+            ),
+            "new_subtotal": _format_money(subtotal),
+            "new_tax": _format_money(tax),
+            "new_grand_total": _format_money(total),
+            "balancing_strategy": (
+                "compose a net-new receipt from online catalog rows; recompute "
+                "subtotal, tax on taxable items at the merchant's stable observed "
+                "rate, and the grand total"
+            ),
+        },
+    )
+
+
+def _write_composed_totals(
+    receipt: dict[str, Any],
+    subtotal: Decimal,
+    tax: Decimal,
+    total: Decimal,
+) -> dict[str, int]:
+    """Rewrite the scaffold's SUBTOTAL / TAX / GRAND_TOTAL amounts in place."""
+    counts = {"subtotal": 0, "tax": 0, "grand_total": 0}
+    for line in receipt.get("lines", []) or []:
+        for word in line.get("words", []) or []:
+            labels = set(word.get("labels") or [])
+            if _parse_money(word.get("text")) is None:
+                continue
+            if "SUBTOTAL" in labels:
+                word["text"] = _format_money_like(word["text"], subtotal)
+                _right_align_money_box(word)
+                counts["subtotal"] += 1
+            elif "TAX" in labels:
+                word["text"] = _format_money_like(word["text"], tax)
+                _right_align_money_box(word)
+                counts["tax"] += 1
+            elif "GRAND_TOTAL" in labels:
+                word["text"] = _format_money_like(word["text"], total)
+                _right_align_money_box(word)
+                counts["grand_total"] += 1
+    return counts
+
+
+def _generate_compose_online_catalog_candidates(
+    merchant_name: str,
+    profile: dict[str, Any],
+    analyses: list[MerchantAnalysis],
+    online_catalog: list[OnlineCatalogEntry],
+    *,
+    start_index: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Compose up to ``limit`` distinct online-catalog receipts, high-fidelity
+    first (the bundle gate drops any that are not), each on the cleanest base."""
+    if limit <= 0:
+        return []
+    usable = [
+        analysis
+        for analysis in analyses
+        if analysis.line_items
+        and analysis.grand_total is not None
+        and analysis.subtotal is not None
+    ]
+    if not usable:
+        return []
+    # The effective tax rate is a merchant property; derive it from EVERY receipt
+    # with reliable subtotal/tax totals, not just the few with parsed line items
+    # (that subset is small and can split the median between tax jurisdictions).
+    rate, rate_stable, _ = _stable_tax_rate(analyses)
+    # Without a stable observed rate we cannot put a realistic, internally
+    # consistent tax on a composed taxable receipt, so skip the merchant rather
+    # than print a guessed tax.
+    if rate is None or not rate_stable:
+        return []
+    entries = list(online_catalog)
+    if len(entries) < 2:
+        return []
+    # Cleanest base first so a noisy-footer scaffold never makes a clean
+    # composition fail the catastrophic-splice budget on INHERITED overlap.
+    scaffolds = sorted(
+        usable,
+        key=lambda analysis: (
+            _base_overlap_count(analysis.receipt),
+            _receipt_key(analysis.receipt),
+        ),
+    )
+    max_items = min(len(entries), 5)
+    built: list[dict[str, Any]] = []
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for step in range(limit * 4):
+        scaffold = scaffolds[step % len(scaffolds)]
+        item_count = 2 + (step % max(1, max_items - 1))
+        chosen = _rotate(entries, step)[:item_count]
+        key = (
+            _receipt_key(scaffold.receipt),
+            tuple(entry.name for entry in chosen),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        candidate = _compose_online_catalog_receipt(
+            merchant_name,
+            profile,
+            # Score structure against the merchant's FULL real set so the
+            # real-to-real baseline reflects true variation, not just the few
+            # receipts whose line items happened to parse (a near-identical
+            # subset would set an unreachably high baseline).
+            analyses,
+            scaffold,
+            chosen,
+            rate,
+            rate_stable,
+            index=start_index + len(built),
+        )
+        if candidate:
+            built.append(candidate)
+        if sum(_candidate_is_high_fidelity(c) for c in built) >= limit:
+            break
+    indexed = sorted(
+        enumerate(built),
+        key=lambda item: (
+            _candidate_is_high_fidelity(item[1]),
+            *_candidate_selection_key(item[1]),
+            -item[0],
+        ),
+        reverse=True,
+    )
+    chosen_out: list[dict[str, Any]] = []
+    for offset, (input_index, candidate) in enumerate(indexed[:limit]):
+        _renumber_candidate(candidate, merchant_name, start_index + offset)
+        _set_selection_evidence(
+            candidate,
+            candidate_count=len(built),
+            selected_index=input_index,
+        )
+        chosen_out.append(candidate)
+    return chosen_out
+
+
 def _candidate_from_receipt(
     receipt: dict[str, Any],
     merchant_name: str,
@@ -1948,6 +2530,45 @@ def build_synthesis_candidate_quality(
             "safe_mutable_field": 0.22,
             "stable_field_geometry": 0.16,
             "stable_field_format": 0.16,
+            "token_budget": 0.02,
+        }
+    elif operation == "compose_online_catalog":
+        grounding = metadata.get("online_catalog_grounding")
+        grounding = grounding if isinstance(grounding, dict) else {}
+        label_control = metadata.get("label_control")
+        label_control = label_control if isinstance(label_control, dict) else {}
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        arithmetic = arithmetic if isinstance(arithmetic, dict) else {}
+        components.update(
+            {
+                # online content is grounded when every rendered row has a real
+                # name and a real price
+                "online_catalog_grounding": (
+                    1.0
+                    if grounding.get("all_priced") and grounding.get("all_named")
+                    else 0.0
+                ),
+                # the differentiator vs cloning: every item token carries the
+                # label we assigned
+                "label_control": (
+                    1.0 if label_control.get("all_correct") else 0.0
+                ),
+                # internally consistent totals, tax at a stable observed rate
+                "arithmetic_reconciliation": (
+                    1.0
+                    if arithmetic.get("subtotal_consistent")
+                    and arithmetic.get("tax_rate_stable")
+                    else 0.0
+                ),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.24,
+            "structure_component_pass_rate": 0.06,
+            "layout_integrity": 0.12,
+            "online_catalog_grounding": 0.18,
+            "label_control": 0.22,
+            "arithmetic_reconciliation": 0.16,
             "token_budget": 0.02,
         }
     elif operation == "hard_negative":

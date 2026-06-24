@@ -1547,3 +1547,142 @@ def test_require_high_fidelity_rejects_non_high_fidelity_rows(monkeypatch):
     strict = _select_synthetic_training_examples(rows, require_high_fidelity=True)
     assert strict.rejection_reasons.get("not_high_fidelity") == 1
     assert strict.candidates_accepted == 1
+
+
+def _compose_online_catalog_candidate(
+    *, label_control_ok=True, rate_stable=True
+):
+    """A template-filled compose_online_catalog candidate with clean,
+    self-assigned item-region labels."""
+    candidate = _candidate(candidate_id="compose-1")
+    candidate["tokens"] = [
+        "012345678905",
+        "WIDGET",
+        "PRO",
+        "<A>",
+        "$12.50",
+        "SUBTOTAL",
+        "12.50",
+        "TAX",
+        "0.91",
+        "TOTAL",
+        "13.41",
+    ]
+    candidate["bboxes"] = [
+        [8, 700, 220, 722],
+        [230, 700, 320, 722],
+        [330, 700, 400, 722],
+        [705, 700, 760, 722],
+        [820, 700, 900, 722],
+        [500, 600, 600, 622],
+        [820, 600, 900, 622],
+        [500, 575, 545, 597],
+        [830, 575, 900, 597],
+        [500, 545, 560, 567],
+        [820, 545, 900, 567],
+    ]
+    candidate["ner_tags"] = [
+        "O",
+        "B-PRODUCT_NAME",
+        "I-PRODUCT_NAME",
+        "O",
+        "B-LINE_TOTAL",
+        "O",
+        "B-SUBTOTAL",
+        "O",
+        "B-TAX",
+        "O",
+        "B-GRAND_TOTAL",
+    ]
+    metadata = candidate["metadata"]
+    metadata["source"] = "merchant_online_catalog"
+    metadata["operation"] = "compose_online_catalog"
+    metadata["online_catalog_grounding"] = {
+        "all_priced": True,
+        "all_named": True,
+        "source": "merchant_online_catalog",
+    }
+    metadata["label_control"] = {
+        "item_token_count": 5,
+        "correctly_labeled": 5 if label_control_ok else 4,
+        "all_correct": label_control_ok,
+    }
+    metadata["arithmetic_reconciliation"] = {
+        "summary_update_policy": "composed_catalog_totals",
+        "new_subtotal": "12.50",
+        "new_tax": "0.91",
+        "new_grand_total": "13.41",
+        "tax_rate": "0.0726",
+        "tax_basis": "effective_rate_on_subtotal",
+        "tax_rate_stable": rate_stable,
+        "subtotal_consistent": True,
+    }
+    metadata["candidate_quality"] = {"high_fidelity": True, "score": 0.95}
+    return candidate
+
+
+def test_load_synthetic_training_examples_accepts_compose_online_catalog(
+    tmp_path,
+):
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthetic_receipt_candidates": [
+                    _compose_online_catalog_candidate()
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_seen == 1
+    assert loaded.candidates_accepted == 1
+    assert loaded.rejection_reasons == {}
+
+
+def test_load_synthetic_training_examples_rejects_compose_with_uncontrolled_labels(
+    tmp_path,
+):
+    """The clean-supervision guarantee is enforced: a composed receipt whose
+    item tokens are not all correctly labeled is rejected."""
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthetic_receipt_candidates": [
+                    _compose_online_catalog_candidate(label_control_ok=False)
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"compose_item_labels_uncontrolled": 1}
+
+
+def test_load_synthetic_training_examples_rejects_compose_with_unstable_tax(
+    tmp_path,
+):
+    """Composing taxable receipts requires a stable observed rate."""
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps(
+            {
+                "synthetic_receipt_candidates": [
+                    _compose_online_catalog_candidate(rate_stable=False)
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"invalid_arithmetic_reconciliation": 1}

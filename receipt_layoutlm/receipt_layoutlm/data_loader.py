@@ -16,6 +16,7 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "add_line_item",
     "remove_line_item",
     "replace_field",
+    "compose_online_catalog",
 )
 SYNTHETIC_CANDIDATE_COLLECTION_KEYS = (
     "synthetic_receipt_candidates",
@@ -1696,6 +1697,33 @@ def _synthetic_candidate_quality_failure(
             return "replace_field_invalid_value"
         if replacement.get("format") != evidence.get("stable_format"):
             return "replace_field_format_mismatch"
+        return None
+
+    if operation == "compose_online_catalog":
+        grounding = metadata.get("online_catalog_grounding")
+        label_control = metadata.get("label_control")
+        arithmetic = metadata.get("arithmetic_reconciliation")
+        if not isinstance(grounding, dict) or not isinstance(
+            label_control, dict
+        ):
+            return "compose_missing_evidence"
+        # Every rendered row must have a real name and a real price.
+        if not (grounding.get("all_priced") and grounding.get("all_named")):
+            return "compose_not_grounded"
+        # The defining guarantee of template fill: every item-region token
+        # carries the label we assigned (no inherited label noise).
+        if label_control.get("all_correct") is not True:
+            return "compose_item_labels_uncontrolled"
+        if not isinstance(arithmetic, dict):
+            return "missing_arithmetic_reconciliation"
+        # Internally consistent totals with tax recomputed at a stable observed
+        # rate (a composed receipt's own tax, not an edit to a real tax value).
+        if (
+            arithmetic.get("summary_update_policy") != "composed_catalog_totals"
+            or arithmetic.get("subtotal_consistent") is not True
+            or arithmetic.get("tax_rate_stable") is not True
+        ):
+            return "invalid_arithmetic_reconciliation"
         return None
 
     return "unsupported_operation"
