@@ -748,6 +748,65 @@ def test_layout_integrity_only_fails_on_synthesis_introduced_defects():
     )
 
 
+def test_line_step_falls_back_to_labeled_rows_for_thin_merchants():
+    """When PRODUCT_NAME / LINE_TOTAL pairing yields fewer than two MATCHED items
+    (common for under-labeled "thin" merchants), the row pitch must still be
+    measured from the receipt's labeled item-region rows instead of collapsing to
+    the flat default that no real or synthetic receipt actually matches. The flat
+    default is reached only when no row geometry exists at all.
+    """
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        MerchantLineItem,
+        _DEFAULT_LINE_STEP,
+        _line_step,
+    )
+
+    # No matched items and no receipt -> historical constant, unchanged.
+    assert _line_step([]) == _DEFAULT_LINE_STEP
+
+    # A single matched item cannot yield a measurable gap; without the receipt
+    # the constant is still returned (backwards compatible).
+    one_item = [
+        MerchantLineItem(
+            line_index=3,
+            line_indices=[3],
+            amount=Decimal("1.00"),
+            product_text="EGGS",
+            center_y=658.0,
+            taxable=False,
+        )
+    ]
+    assert _line_step(one_item) == _DEFAULT_LINE_STEP
+
+    # Same single matched item, but the receipt carries SIX labeled LINE_TOTAL
+    # rows on a real, evenly-spaced grid. The pitch is now measured from those
+    # rows (~20 px), not the flat default.
+    receipt = {
+        "lines": [
+            {
+                "line_id": idx,
+                "words": [
+                    _word(
+                        f"{idx}.00",
+                        [830, top, 885, top + 20],
+                        ["LINE_TOTAL"],
+                    )
+                ],
+            }
+            # 6 rows stepping down the receipt by 20 px each.
+            for idx, top in enumerate(range(800, 800 - 6 * 20, -20), start=1)
+        ]
+    }
+    measured = _line_step(one_item, receipt)
+    assert measured != _DEFAULT_LINE_STEP
+    assert 18 <= measured <= 22
+
+    # When neither matched items nor labeled item-region rows exist, the
+    # constant remains the floor (no geometry to measure).
+    empty_receipt = {"lines": [{"line_id": 1, "words": [_word("THANKS", [80, 50, 200, 75])]}]}
+    assert _line_step([], empty_receipt) == _DEFAULT_LINE_STEP
+
+
 def _selection_candidate(
     candidate_id,
     *,
