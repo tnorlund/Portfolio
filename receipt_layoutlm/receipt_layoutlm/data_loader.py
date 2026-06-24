@@ -1172,9 +1172,14 @@ def _synthetic_contract_quality_failure(
     if stable_format and replacement_format and stable_format != replacement_format:
         return "replace_field_contract_format_mismatch"
 
-    observed_count = _safe_int(field_contract.get("observed_count"))
-    if observed_count is not None and observed_count < 2:
-        return "replace_field_not_contract_safe"
+    # A value-scrub field only changes digits in place (mask/length/box
+    # preserved), so its format is self-evident from a single observation; the
+    # multiple-observed-values rule that DATE/TIME need to prove a stable format
+    # does not apply.
+    if stable_format != "value_scrub":
+        observed_count = _safe_int(field_contract.get("observed_count"))
+        if observed_count is not None and observed_count < 2:
+            return "replace_field_not_contract_safe"
     return None
 
 
@@ -1714,6 +1719,65 @@ def _synthetic_candidate_quality_failure(
         if not isinstance(replacement, dict) or not isinstance(evidence, dict):
             return "replace_field_missing_evidence"
         label = str(replacement.get("label") or "").upper()
+
+        # Value-scrub: privacy-safe in-place digit replacement of a single
+        # sensitive identifier (masked PAN / loyalty / membership number). The
+        # only thing allowed to change is the digits — same length, same mask
+        # chars / separators / letters, same token, same box. Verified here
+        # independently of the generator's claims.
+        if isinstance(evidence, dict) and evidence.get("mutation_kind") == (
+            "value_scrub"
+        ):
+            if label not in {"PAYMENT_METHOD", "LOYALTY_ID"}:
+                return "replace_field_unsupported_label"
+            if str(evidence.get("label") or "").upper() != label:
+                return "replace_field_label_mismatch"
+            if evidence.get("safe_to_mutate") is not True:
+                return "replace_field_not_mutable"
+            if evidence.get("stable_geometry") is not True:
+                return "replace_field_unstable_geometry"
+            if evidence.get("token_count_preserved") is not True:
+                return "replace_field_token_count_changed"
+            old_text = str(replacement.get("old_text") or "")
+            new_text = str(replacement.get("new_text") or "")
+            if not old_text or not new_text or old_text == new_text:
+                return "replace_field_invalid_value"
+            # ONLY digit characters may differ. Per-position check (not a digit->'#'
+            # skeleton, which would treat a literal '#' mask char and a digit as
+            # interchangeable): every non-digit position must be byte-identical
+            # (mask char / separator / letter preserved) and every digit position
+            # must stay a digit. Same length, and the value must actually change.
+            if len(old_text) != len(new_text):
+                return "replace_field_scrub_altered_structure"
+            for old_ch, new_ch in zip(old_text, new_text):
+                if old_ch.isdigit():
+                    if not new_ch.isdigit():
+                        return "replace_field_scrub_altered_structure"
+                elif old_ch != new_ch:
+                    return "replace_field_scrub_altered_structure"
+            # Verify against the ACTUAL token sequence, not just the metadata's
+            # claim: the scrubbed value must be present, the original must be
+            # gone (privacy), and the scrubbed token must still carry the field
+            # label. This closes the gap where metadata could assert a scrub the
+            # tokens never received.
+            tokens = row.get("tokens")
+            tokens = tokens if isinstance(tokens, list) else []
+            if new_text not in tokens:
+                return "replace_field_scrub_not_applied"
+            if old_text in tokens:
+                return "replace_field_scrub_residual_original"
+            ner_tags = row.get("ner_tags")
+            ner_tags = ner_tags if isinstance(ner_tags, list) else []
+            scrubbed_index = tokens.index(new_text)
+            tag = (
+                str(ner_tags[scrubbed_index]).upper()
+                if scrubbed_index < len(ner_tags)
+                else ""
+            )
+            if not tag.endswith(label):
+                return "replace_field_scrub_label_lost"
+            return None
+
         if label not in {"DATE", "TIME"}:
             return "replace_field_unsupported_label"
         if str(evidence.get("label") or "").upper() != label:

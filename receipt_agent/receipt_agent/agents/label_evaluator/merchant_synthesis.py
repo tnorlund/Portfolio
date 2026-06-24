@@ -9,6 +9,7 @@ geometry, merchant-local examples, and line-item arithmetic anchors.
 from __future__ import annotations
 
 import copy
+import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -416,6 +417,20 @@ def generate_merchant_synthesis_candidates(
         )
         if replacement:
             candidates.append(replacement)
+
+    for label in _SCRUBBABLE_LABELS:
+        if len(candidates) >= max_candidates:
+            break
+        scrub = _generate_value_scrub_candidate(
+            merchant_name,
+            profile,
+            receipts,
+            analyses,
+            label=label,
+            index=len(candidates) + 1,
+        )
+        if scrub:
+            candidates.append(scrub)
 
     # Hard negatives are the lowest-priority, fill-last operation: they only
     # consume budget the grounded edits / field replacements did not use.
@@ -1659,6 +1674,219 @@ def _next_time_value(old_text: str, pattern: str) -> str | None:
     if "AM/PM" in pattern and " " in raw:
         formatted = formatted[:-2] + " " + formatted[-2:]
     return formatted
+
+
+# ---------------------------------------------------------------------------
+# Value-scrub replace_field: privacy-safe in-place mutation of sensitive
+# single-token identifiers (masked PANs, membership / loyalty numbers). Only the
+# digit characters are replaced; the mask characters, separators, letters, token
+# count, length, label, and bounding box are all preserved. This gives the
+# model value variety while scrubbing real card / membership numbers, with no
+# geometry risk (the box is untouched) and no arithmetic to reconcile.
+# ---------------------------------------------------------------------------
+
+# Labels whose values are safe to scrub digit-by-digit in place.
+_SCRUBBABLE_LABELS: tuple[str, ...] = ("PAYMENT_METHOD", "LOYALTY_ID")
+
+
+def _value_scrub_kind(label: str, text: str) -> str | None:
+    """Classify a labeled value as a safe scrub pattern, or None.
+
+    Conservative on purpose: these labels carry a lot of OCR/label noise
+    (mislabeled ``O`` words like "gift", "card.", "Pro"), so only values whose
+    *whole* token matches a recognizable masked-PAN or numeric-ID shape are
+    eligible. Everything else is skipped rather than scrubbed.
+    """
+    value = text.strip()
+    if not value:
+        return None
+    # Masked PAN: one or more mask chars (X / x / *) then the trailing 4-6 digits
+    # a card receipt prints, e.g. "XXXXXXXXXXXX7645", "************5061",
+    # "*******2902", "*7645". The mask requirement + >=4 trailing digits keeps
+    # this off short codes like "X12". Allowed for card and loyalty labels.
+    if re.fullmatch(r"[Xx*]+\d{4,6}", value):
+        return "masked_pan"
+    # The remaining shapes are membership / loyalty identifiers ONLY. A long
+    # digit run or a hyphen-grouped id sitting on PAYMENT_METHOD is far more
+    # likely an auth / approval / order code than something to scrub, so we never
+    # scrub those — only an explicit LOYALTY_ID label.
+    if label != "LOYALTY_ID":
+        return None
+    if _looks_like_date(value):
+        return None
+    # Pure numeric membership id, e.g. "112012911712" (>=8 digits to avoid
+    # catching short counters / quantities).
+    if re.fullmatch(r"\d{8,}", value):
+        return "numeric_id"
+    # Separator-masked id that prints real mask chars, e.g. "###-###-9416". The
+    # mandatory '#' keeps this off ordinary hyphenated numbers and dates.
+    if (
+        "#" in value
+        and re.fullmatch(r"[#\d]+(?:-[#\d]+)+", value)
+        and sum(ch.isdigit() for ch in value) >= 3
+    ):
+        return "separated_id"
+    return None
+
+
+def _looks_like_date(value: str) -> bool:
+    """True for common printed date shapes, so scrub never mangles a date that a
+    noisy label happened to tag as an identifier."""
+    candidate = value.strip()
+    return bool(
+        re.fullmatch(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}", candidate)
+        or re.fullmatch(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", candidate)
+        # Compact all-digit date (YYYYMMDD, 1900-2099) that a numeric_id match
+        # would otherwise catch and scramble.
+        or re.fullmatch(r"(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])", candidate)
+    )
+
+
+def _digit_only_skeleton(text: str) -> str:
+    """Replace every digit with '#'. Two values share a skeleton iff they differ
+    only in their digits (same length, same mask chars / separators / letters)."""
+    return re.sub(r"\d", "#", text)
+
+
+def _scramble_digits(text: str, seed: str) -> str:
+    """Deterministically replace each digit with another digit. Uses a hashlib
+    seed (not the salted builtin ``hash``) so the output is stable across runs
+    and across processes, which keeps synthesis reproducible."""
+    state = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12], 16)
+    out: list[str] = []
+    for ch in text:
+        if ch.isdigit():
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            out.append(str(state % 10))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _scrub_value(text: str, seed: str) -> str | None:
+    """Return a digit-scrubbed copy that differs from the original, or None if no
+    distinct scramble is possible (e.g. a single repeated digit)."""
+    scrubbed = _scramble_digits(text, seed)
+    if scrubbed != text and _digit_only_skeleton(scrubbed) == _digit_only_skeleton(
+        text
+    ):
+        return scrubbed
+    # Re-seed once to avoid the rare identical scramble (e.g. "...0000").
+    scrubbed = _scramble_digits(text, seed + "#salt")
+    if scrubbed != text and _digit_only_skeleton(scrubbed) == _digit_only_skeleton(
+        text
+    ):
+        return scrubbed
+    return None
+
+
+def _find_scrubbable_word(
+    receipt: dict[str, Any],
+    label: str,
+) -> tuple[dict[str, Any], str, str] | None:
+    """First word labeled ``label`` whose text matches a safe scrub pattern."""
+    for line in receipt.get("lines", []) or []:
+        for word in line.get("words", []) or []:
+            if label not in word.get("labels", []):
+                continue
+            text = str(word.get("text") or "")
+            kind = _value_scrub_kind(label, text)
+            if kind is not None:
+                return word, kind, text
+    return None
+
+
+def _generate_value_scrub_candidate(
+    merchant_name: str,
+    profile: dict[str, Any],
+    receipts: list[dict[str, Any]],
+    analyses: list[MerchantAnalysis],
+    *,
+    label: str,
+    index: int,
+) -> dict[str, Any] | None:
+    field = (profile.get("mutable_fields") or {}).get(label)
+    if not isinstance(field, dict) or field.get("safe_to_mutate") is not True:
+        return None
+    if field.get("mutation_kind") != "value_scrub":
+        return None
+
+    base_receipts = [
+        receipt
+        for receipt in receipts
+        if _find_scrubbable_word(receipt, label) is not None
+    ]
+    if not base_receipts:
+        return None
+
+    base = _choose_base_receipt(base_receipts, used=index - 1)
+    mutated = copy.deepcopy(base)
+    target = _find_scrubbable_word(mutated, label)
+    if target is None:
+        return None
+    word, kind, old_text = target
+    seed = f"{_receipt_key(base)}|{label}|{old_text}|{index}"
+    new_text = _scrub_value(old_text, seed)
+    if not new_text or new_text == old_text:
+        return None
+    # Scrub EVERY labeled occurrence of this exact value to the same scrubbed
+    # value: the same masked card / membership number can be printed more than
+    # once, and leaving any copy behind would defeat the privacy scrub and trip
+    # the loader's "no residual original" check.
+    replaced = 0
+    for line in mutated.get("lines", []) or []:
+        for candidate_word in line.get("words", []) or []:
+            if (
+                label in candidate_word.get("labels", [])
+                and str(candidate_word.get("text") or "") == old_text
+            ):
+                candidate_word["text"] = new_text
+                replaced += 1
+    if replaced == 0:
+        return None
+    _refresh_words(mutated)
+
+    return _candidate_from_receipt(
+        mutated,
+        merchant_name,
+        source="merchant_value_scrub_geometry",
+        operation="replace_field",
+        index=index,
+        metadata={
+            "profile": _profile_summary(profile),
+            "base_receipt_key": _receipt_key(base),
+            "field_replacement": {
+                "label": label,
+                "old_text": old_text,
+                "new_text": new_text,
+                # Matches the contract field's stable_format ("value_scrub"); the
+                # specific shape lives in mutable_field_evidence.scrub_kind.
+                "format": "value_scrub",
+            },
+            "mutable_field_evidence": {
+                "label": label,
+                "safe_to_mutate": True,
+                "mutation_kind": "value_scrub",
+                "scrub_kind": kind,
+                "stable_format": kind,
+                # In-place single-word digit scrub: the bounding box is reused
+                # verbatim, so geometry is preserved by construction.
+                "stable_geometry": True,
+                "token_count_preserved": True,
+                "format_preserved": True,
+                "observed_count": _safe_int(field.get("observed_count")) or 1,
+                "examples": field.get("examples", []),
+            },
+            "structure_similarity": _score_structure_similarity(
+                _analyze_receipt(mutated),
+                analyses,
+            ),
+            "balancing_strategy": (
+                f"scrub {label.lower()} digits in-place; mask, length, geometry, "
+                "token count, and label all preserved"
+            ),
+        },
+    )
 
 
 def _build_remove_item_plans(
@@ -3811,6 +4039,40 @@ def _summarize_mutable_fields(
                 patterns=patterns,
                 stable_format=stable_format,
                 stable_geometry=stable_geometry,
+            ),
+        }
+    for label in _SCRUBBABLE_LABELS:
+        slot = label_slots.get(label)
+        if not isinstance(slot, dict):
+            continue
+        examples = [str(value) for value in slot.get("examples") or []]
+        scrubbable = [
+            example for example in examples if _value_scrub_kind(label, example)
+        ]
+        kinds = Counter(
+            kind
+            for example in scrubbable
+            if (kind := _value_scrub_kind(label, example)) is not None
+        )
+        safe_to_mutate = bool(scrubbable)
+        fields[label] = {
+            "label": label,
+            "safe_to_mutate": safe_to_mutate,
+            "mutation_kind": "value_scrub" if safe_to_mutate else None,
+            "observed_count": len(scrubbable),
+            "examples": scrubbable[:5],
+            "scrub_kind_counts": dict(sorted(kinds.items())),
+            # Per-word in-place scrub reuses the original bbox, so geometry is
+            # stable by construction regardless of the label's overall spread.
+            "stable_geometry": bool(safe_to_mutate),
+            "stable_format": "value_scrub" if safe_to_mutate else None,
+            "mutation_strategy": (
+                f"scrub {label.lower()} digits in-place (mask/length/box preserved)"
+                if safe_to_mutate
+                else None
+            ),
+            "blockers": (
+                [] if safe_to_mutate else ["no_scrubbable_value_observed"]
             ),
         }
     return fields

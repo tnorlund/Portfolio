@@ -190,6 +190,140 @@ def _replace_field_candidate():
     return candidate
 
 
+def _value_scrub_candidate(
+    *,
+    label="PAYMENT_METHOD",
+    old_text="XXXXXXXXXXXX1454",
+    new_text="XXXXXXXXXXXX3618",
+    scrub_kind="masked_pan",
+    token_count_preserved=True,
+):
+    """A privacy-safe value-scrub replace_field candidate (digits-only change)."""
+    candidate = _candidate(candidate_id="scrub-pan")
+    # The token sequence carries the SCRUBBED value (the generator already
+    # applied it); the loader verifies the scrub against these tokens, not the
+    # metadata's claim.
+    candidate["tokens"] = ["MASTERCARD", new_text]
+    candidate["bboxes"] = [[400, 520, 520, 548], [540, 520, 770, 548]]
+    candidate["ner_tags"] = ["B-PAYMENT_METHOD", "B-PAYMENT_METHOD"]
+    candidate["metadata"] = {
+        "source": "merchant_value_scrub_geometry",
+        "operation": "replace_field",
+        "base_receipt_key": "base#00001",
+        "field_replacement": {
+            "label": label,
+            "old_text": old_text,
+            "new_text": new_text,
+            "format": "value_scrub",
+        },
+        "mutable_field_evidence": {
+            "label": label,
+            "safe_to_mutate": True,
+            "mutation_kind": "value_scrub",
+            "scrub_kind": scrub_kind,
+            "stable_format": "value_scrub",
+            "stable_geometry": True,
+            "token_count_preserved": token_count_preserved,
+            "format_preserved": True,
+            "observed_count": 1,
+            "examples": [old_text],
+        },
+        "structure_similarity": {"score": 0.9},
+        "layout_integrity": {"score": 1.0},
+    }
+    return candidate
+
+
+def test_load_synthetic_training_examples_accepts_value_scrub_masked_pan(tmp_path):
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [_value_scrub_candidate()]}),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 1
+    assert loaded.rejection_reasons == {}
+
+
+def test_load_synthetic_training_examples_rejects_value_scrub_altered_structure(
+    tmp_path,
+):
+    # The scrub changed a mask character (an 'X' became a digit): not digits-only.
+    bad = _value_scrub_candidate(
+        old_text="XXXXXXXXXXXX1454", new_text="XXXXXXXXXXX91454"
+    )
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("replace_field_scrub_altered_structure") == 1
+
+
+def test_load_synthetic_training_examples_rejects_value_scrub_unsupported_label(
+    tmp_path,
+):
+    # value_scrub is only allowed for PAYMENT_METHOD / LOYALTY_ID.
+    bad = _value_scrub_candidate(label="WEBSITE")
+    bad["ner_tags"] = ["B-WEBSITE", "B-WEBSITE"]
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("replace_field_unsupported_label") == 1
+
+
+def test_load_synthetic_training_examples_rejects_value_scrub_mask_char_to_digit(
+    tmp_path,
+):
+    # A literal '#' mask char turned into a digit: only digits may change, so a
+    # '#'->digit edit must be rejected (the old digit->'#' skeleton missed this).
+    bad = _value_scrub_candidate(
+        label="LOYALTY_ID",
+        old_text="###-###-9416",
+        new_text="123-###-9416",
+        scrub_kind="separated_id",
+    )
+    bad["ner_tags"] = ["B-PAYMENT_METHOD", "B-LOYALTY_ID"]
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("replace_field_scrub_altered_structure") == 1
+
+
+def test_load_synthetic_training_examples_rejects_value_scrub_not_in_tokens(
+    tmp_path,
+):
+    # Metadata claims a scrub, but the actual token still holds the original
+    # (unscrubbed) value — the privacy scrub was never applied to the data.
+    bad = _value_scrub_candidate(
+        old_text="XXXXXXXXXXXX1454", new_text="XXXXXXXXXXXX3618"
+    )
+    bad["tokens"] = ["MASTERCARD", "XXXXXXXXXXXX1454"]  # original, not scrubbed
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    reasons = loaded.rejection_reasons
+    assert (
+        reasons.get("replace_field_scrub_not_applied")
+        or reasons.get("replace_field_scrub_residual_original")
+    )
+
+
 def _merchant_contract(
     *,
     merchant_name="Sprouts Farmers Market",
