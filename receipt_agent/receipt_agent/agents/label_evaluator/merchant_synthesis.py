@@ -429,7 +429,13 @@ def generate_merchant_synthesis_candidates(
     # exist only for merchants with a registered/injected online catalog, so all
     # other merchants are unaffected. Cap its share so the grounded add-items,
     # arithmetic, field replacements, and hard negatives still get budget.
-    catalog_entries = _merchant_online_catalog(merchant_name, online_catalog)
+    catalog_entries = [
+        entry
+        for entry in _merchant_online_catalog(merchant_name, online_catalog)
+        # Skip entries whose name abbreviates to nothing renderable (all-numeric
+        # / stopwords) — they would compose a nameless item row.
+        if _abbrev_product_name(entry.name)
+    ]
     if catalog_entries and len(candidates) < max_candidates:
         compose_limit = min(
             max_candidates - len(candidates),
@@ -2335,13 +2341,34 @@ _ONLINE_NAME_STOPWORDS = {"THE", "PLUS", "PREMIUM", "OF", "AND", "WITH", "FOR"}
 
 def _abbrev_product_name(name: str, *, max_len: int = 24) -> str:
     """Receipt-style abbreviation: uppercase, drop filler, clip to a width that
-    fits the name column (real receipts abbreviate item names too)."""
+    fits the name column (real receipts abbreviate item names too).
+
+    Clipping is at WORD boundaries (never mid-token, which would leave a partial
+    number like ``12CT`` -> ``1``), and BARE-NUMBER tokens are dropped (a
+    standalone digit like the ``1`` in ``1 PINT`` reads as a quantity/UPC). Both
+    keep every rendered name token cleanly ``PRODUCT_NAME`` so the composed-row
+    label-control check passes.
+    """
     tokens = [
         token
         for token in str(name).upper().split()
         if token not in _ONLINE_NAME_STOPWORDS
     ]
-    return " ".join(tokens)[:max_len].rstrip()
+    kept: list[str] = []
+    length = 0
+    for token in tokens:
+        extra = len(token) + (1 if kept else 0)
+        if length + extra > max_len:
+            break
+        kept.append(token)
+        length += extra
+    kept = [token for token in kept if not token.isdigit()]
+    if not kept:
+        # Fall back to the first NON-numeric token only — never a bare digit,
+        # which would render as PRODUCT_NAME but read as O and fail label
+        # control. An all-numeric name yields "" (the caller skips such entries).
+        kept = [token for token in tokens if not token.isdigit()][:1]
+    return " ".join(kept)
 
 
 def _template_fill_geometry(analysis: MerchantAnalysis) -> dict[str, Any]:
