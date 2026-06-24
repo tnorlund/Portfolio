@@ -1,0 +1,18 @@
+{
+  "merchant_name": "Costco Wholesale",
+  "source_url": "https://www.costco.com/",
+  "entries": [
+    {"name": "KS CAGE FREE EGGS 24CT", "price": "5.99", "upc": "096619000036", "taxable": false},
+    {"name": "KS BONELESS SKINLESS CHICKEN BREAST 6.5LB", "price": "19.44", "upc": null, "taxable": false},
+    {"name": "KS SHARP CHEDDAR CHEESE BLOCK 2LB", "price": "12.99", "upc": null, "taxable": false},
+    {"name": "KS ORGANIC PEANUT BUTTER 28OZ 2PK", "price": "11.69", "upc": null, "taxable": false},
+    {"name": "KS ORGANIC WHOLE MILK 8OZ 18CT", "price": "17.99", "upc": null, "taxable": false},
+    {"name": "KS ORANGE JUICE 59OZ 3CT", "price": "14.99", "upc": null, "taxable": false},
+    {"name": "KS 91% LEAN GROUND BEEF 5LB", "price": "33.99", "upc": "096619598885", "taxable": false},
+    {"name": "KS BATH TISSUE 2PLY 380SH 30RL", "price": "23.49", "upc": "096619004560", "taxable": true},
+    {"name": "KS PAPER TOWELS 2PLY 160SH 12RL", "price": "23.99", "upc": null, "taxable": true},
+    {"name": "KS ULTRA SHINE DISH SOAP 90OZ", "price": "7.99", "upc": null, "taxable": true},
+    {"name": "KS HE LIQUID LAUNDRY DET 194OZ", "price": "17.89", "upc": null, "taxable": true},
+    {"name": "KS FLEX-TECH TRASH BAGS 13GAL 200CT", "price": "20.29", "upc": null, "taxable": true}
+  ]
+}
