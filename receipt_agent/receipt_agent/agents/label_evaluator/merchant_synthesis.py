@@ -21,6 +21,13 @@ from typing import Any
 
 from receipt_dynamo.constants import CORE_LABELS
 
+from .store_profile import (
+    StoreProfile,
+    alternate_profiles,
+    extract_store_profiles,
+    reflow_line_boxes,
+)
+
 
 CORE_LABEL_SET = set(CORE_LABELS.keys())
 UNKNOWN_CATEGORY = "UNCATEGORIZED"
@@ -394,6 +401,26 @@ def generate_merchant_synthesis_candidates(
             )
         )
 
+    # Places-driven store-header diversity: swap the address/phone cluster for a
+    # different cached branch of the same merchant. Only fires for merchants with
+    # >=2 complete cached store locations; capped so it cannot crowd out the
+    # grounded item edits.
+    if len(candidates) < max_candidates:
+        header_limit = min(
+            max_candidates - len(candidates),
+            max(1, max_candidates // 4),
+        )
+        candidates.extend(
+            _generate_compose_store_header_candidates(
+                merchant_name,
+                profile,
+                receipts,
+                analyses,
+                start_index=len(candidates) + 1,
+                limit=header_limit,
+            )
+        )
+
     if len(candidates) < max_candidates:
         arithmetic = _generate_remove_item_candidate(
             merchant_name,
@@ -551,6 +578,22 @@ def _build_synthesis_readiness(
         len(online_catalog) if compose_online_catalog_ready else 0
     )
 
+    # Places-driven store-header diversity is supported when the cache holds at
+    # least two complete store locations for this merchant (one to compose onto,
+    # at least one *other* branch to source from).
+    store_profiles = extract_store_profiles(
+        [
+            receipt.get("receipt_place")
+            for receipt in receipts
+            if isinstance(receipt.get("receipt_place"), dict)
+        ]
+    )
+    store_header_location_count = len(
+        [profile for profile in store_profiles if profile.is_complete()]
+    )
+    if store_header_location_count >= 2:
+        supported_operations.append("compose_store_header")
+
     blockers: list[str] = []
     limitations: list[str] = []
     if not receipts:
@@ -625,6 +668,7 @@ def _build_synthesis_readiness(
         "removable_item_candidate_count": len(remove_plans),
         "mutable_field_count": mutable_field_count,
         "compose_online_catalog_candidate_count": compose_online_catalog_capacity,
+        "compose_store_header_location_count": store_header_location_count,
         "mutable_fields": {
             label: field
             for label, field in mutable_fields.items()
@@ -1887,6 +1931,224 @@ def _generate_value_scrub_candidate(
             ),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# compose_store_header: swap a receipt's store-identity cluster (address + phone)
+# for a DIFFERENT cached branch of the same merchant, sourced coherently from one
+# Google Places record. Gives real store-location diversity (a real layout with a
+# real sibling store's real address/phone), never mixing fields from two places.
+# The address swap is atomic (street + city/state/zip together or not at all) so
+# we never emit a half-swapped, incoherent address.
+# ---------------------------------------------------------------------------
+
+_STORE_HEADER_LABELS = ("ADDRESS_LINE", "PHONE_NUMBER")
+
+
+def _line_core_labels(line: dict[str, Any]) -> set[str]:
+    labels: set[str] = set()
+    for word in line.get("words", []) or []:
+        for label in word.get("labels", []) or []:
+            upper = str(label).upper()
+            if upper in CORE_LABEL_SET:
+                labels.add(upper)
+    return labels
+
+
+def _line_owned_by(line: dict[str, Any], label: str) -> bool:
+    """True when ``label`` is the line's ONLY core label (header lines that can be
+    swapped wholesale without disturbing another entity sharing the line)."""
+    return _line_core_labels(line) == {label}
+
+
+def _swap_owned_line(
+    line: dict[str, Any],
+    label: str,
+    new_text: str,
+) -> dict[str, Any] | None:
+    """Replace an owned line's words with ``new_text``, reflowed across the line's
+    x-span. Returns swap evidence, or None when the value cannot be laid out
+    cleanly (caller then skips the swap rather than emit bad geometry)."""
+    words = [word for word in line.get("words", []) or [] if isinstance(word, dict)]
+    boxes = [
+        word["bbox"]
+        for word in words
+        if isinstance(word.get("bbox"), list) and len(word["bbox"]) == 4
+    ]
+    tokens = [token for token in str(new_text or "").split() if token]
+    if not boxes or not tokens:
+        return None
+    new_boxes = reflow_line_boxes(boxes, tokens)
+    if new_boxes is None:
+        return None
+    line_id = words[0].get("line_id") if words else line.get("line_id")
+    old_text = " ".join(str(word.get("text") or "") for word in words).strip()
+    line["words"] = [
+        {
+            "text": token,
+            "bbox": box,
+            "labels": [label],
+            "line_id": line_id,
+            "word_id": position + 1,
+        }
+        for position, (token, box) in enumerate(zip(tokens, new_boxes))
+    ]
+    return {
+        "label": label,
+        "old_text": old_text,
+        "new_text": new_text,
+        "line_id": line_id,
+        "token_count": len(tokens),
+    }
+
+
+def _apply_store_header_swap(
+    receipt: dict[str, Any],
+    alt: StoreProfile,
+) -> list[dict[str, Any]] | None:
+    """Swap the receipt's address (atomically) + phone for ``alt``'s values.
+
+    Returns the list of field swaps, or None when no coherent swap is possible
+    (e.g. the address lines are not cleanly owned by ADDRESS_LINE).
+    """
+    lines = [line for line in receipt.get("lines", []) or [] if isinstance(line, dict)]
+    address_lines = sorted(
+        (line for line in lines if _line_owned_by(line, "ADDRESS_LINE")),
+        key=lambda line: -_safe_float(line.get("y"), 0.5),
+    )
+    if not address_lines or not alt.street or not alt.city_state_zip:
+        return None
+
+    # The cache gives two address components (street, city/state/zip). A receipt
+    # with MORE than two owned address lines would leave a third line carrying
+    # the ORIGINAL store's identity next to the new one — skip it rather than
+    # ship a mixed address.
+    if len(address_lines) > 2:
+        return None
+    if len(address_lines) == 2:
+        address_targets = [
+            (address_lines[0], alt.street),
+            (address_lines[1], alt.city_state_zip),
+        ]
+    else:
+        address_targets = [
+            (address_lines[0], f"{alt.street} {alt.city_state_zip}")
+        ]
+
+    swaps: list[dict[str, Any]] = []
+    for line, value in address_targets:
+        evidence = _swap_owned_line(line, "ADDRESS_LINE", value)
+        if evidence is None:
+            # Address swap is all-or-nothing: a half-swapped address (new street,
+            # old city) is exactly the incoherent receipt we must not produce.
+            return None
+        swaps.append(evidence)
+
+    # Phone is MANDATORY when the receipt prints one: a new address beside the
+    # original branch's phone is a mixed store identity. If any owned phone line
+    # cannot be swapped to alt's phone, abandon the whole candidate.
+    phone_lines = [line for line in lines if _line_owned_by(line, "PHONE_NUMBER")]
+    if phone_lines:
+        if not alt.phone:
+            return None
+        for line in phone_lines:
+            phone_evidence = _swap_owned_line(line, "PHONE_NUMBER", alt.phone)
+            if phone_evidence is None:
+                return None
+            swaps.append(phone_evidence)
+
+    return swaps or None
+
+
+def _store_merchant_match(name_a: str, name_b: str) -> bool:
+    """Loose same-merchant check (e.g. 'Gelson's Westlake Village' vs 'Gelson's',
+    'VONS' vs 'Vons'): share the first significant token, case-insensitive."""
+
+    def _key(name: str) -> str:
+        tokens = re.findall(r"[A-Za-z0-9']+", str(name).lower())
+        return tokens[0] if tokens else ""
+
+    a, b = _key(name_a), _key(name_b)
+    return bool(a) and a == b
+
+
+def _generate_compose_store_header_candidates(
+    merchant_name: str,
+    profile: dict[str, Any],
+    receipts: list[dict[str, Any]],
+    analyses: list[MerchantAnalysis],
+    *,
+    start_index: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    place_records = [
+        receipt.get("receipt_place")
+        for receipt in receipts
+        if isinstance(receipt.get("receipt_place"), dict)
+    ]
+    pool = extract_store_profiles(place_records)
+    if len([profile for profile in pool if profile.is_complete()]) < 2:
+        return []  # no alternate branch -> no coherent location diversity
+
+    bases = [receipt for receipt in receipts if receipt.get("place_id")]
+    if not bases:
+        return []
+    # Rotate the base order so repeated generations vary which receipts are used.
+    offset = start_index % len(bases)
+    ordered_bases = bases[offset:] + bases[:offset]
+
+    candidates: list[dict[str, Any]] = []
+    index = start_index
+    for base in ordered_bases:
+        if len(candidates) >= limit:
+            break
+        own_place_id = str(base.get("place_id") or "")
+        alts = alternate_profiles(pool, own_place_id)
+        if not alts:
+            continue
+        alt = alts[index % len(alts)]
+        if not _store_merchant_match(merchant_name, alt.merchant_name):
+            continue
+        mutated = copy.deepcopy(base)
+        swaps = _apply_store_header_swap(mutated, alt)
+        if not swaps:
+            continue
+        _refresh_words(mutated)
+        candidates.append(
+            _candidate_from_receipt(
+                mutated,
+                merchant_name,
+                source="merchant_store_header_geometry",
+                operation="compose_store_header",
+                index=index,
+                metadata={
+                    "profile": _profile_summary(profile),
+                    "base_receipt_key": _receipt_key(base),
+                    "store_header_swap": {
+                        "own_place_id": own_place_id,
+                        "source_place_id": alt.place_id,
+                        "source_merchant_name": alt.merchant_name,
+                        "merchant_match": True,
+                        "all_fields_from_single_place": True,
+                        "swapped_labels": sorted(
+                            {swap["label"] for swap in swaps}
+                        ),
+                        "fields_swapped": swaps,
+                    },
+                    "structure_similarity": _score_structure_similarity(
+                        _analyze_receipt(mutated),
+                        analyses,
+                    ),
+                    "balancing_strategy": (
+                        "swap the store-identity cluster (address + phone) for a "
+                        "different cached branch of the same merchant; geometry "
+                        "reflowed in-band, labels preserved, single source place"
+                    ),
+                },
+            )
+        )
+        index += 1
+    return candidates
 
 
 def _build_remove_item_plans(
@@ -3640,6 +3902,12 @@ def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         "receipt_num": receipt.get("receipt_num"),
         "lines": lines,
         "words": words,
+        # Carry the cached Google Places record (if attached upstream) so the
+        # compose_store_header op can swap this receipt's store cluster for a
+        # different branch of the same merchant.
+        "receipt_place": receipt.get("receipt_place"),
+        "place_id": receipt.get("place_id")
+        or (receipt.get("receipt_place") or {}).get("place_id"),
     }
 
 

@@ -4115,6 +4115,32 @@ def _payload_canonical_merchants(
     return out
 
 
+def _payload_place_lookup(
+    payload: dict[str, Any],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Map ``(image_id, receipt_id) -> cached Google Places record``.
+
+    Keyed to match ``_receipt_identity`` so each receipt can attach its own
+    store's place record (address / phone / website / place_id). Image-level
+    rows that carry no receipt_id are keyed under ``(image_id, "")``.
+    """
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for key in ("receipt_places", "places"):
+        rows = payload.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict) or not row.get("place_id"):
+                continue
+            out[
+                (
+                    _id_value(row, "image_id"),
+                    _id_value(row, "receipt_id", "receipt_num"),
+                )
+            ] = row
+    return out
+
+
 def _attach_payload_lines(
     receipts: list[dict[str, Any]],
     payload: dict[str, Any],
@@ -4155,6 +4181,7 @@ def _attach_payload_lines(
     # variants ("SPROUTS", "001 SPROUTS", "5.99 SPROUTS"). Attach it so the
     # merchant grouping does not splinter the same merchant across receipts.
     canonical_merchant = _payload_canonical_merchants(payload)
+    place_lookup = _payload_place_lookup(payload)
 
     normalized_receipts: list[dict[str, Any]] = []
     for receipt in receipts:
@@ -4177,6 +4204,15 @@ def _attach_payload_lines(
         ) or canonical_merchant.get((image_id, ""))
         if canonical:
             next_receipt["merchant_name"] = canonical
+        # Attach the receipt's cached Google Places record (its own store) so
+        # downstream synthesis can read its place_id and swap in a sibling
+        # branch's store cluster. Image-level rows are keyed under (image_id, "").
+        place_record = place_lookup.get((image_id, receipt_id)) or place_lookup.get(
+            (image_id, "")
+        )
+        if place_record:
+            next_receipt["receipt_place"] = place_record
+            next_receipt["place_id"] = str(place_record.get("place_id") or "") or None
         # Receipt-level lines first (crop frame, matching the words); fall back
         # to image-level lines for THIS receipt when it has no receipt-level
         # lines, so it is not left without geometry and dropped.

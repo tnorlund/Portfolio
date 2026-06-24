@@ -1826,6 +1826,53 @@ def _synthetic_candidate_quality_failure(
             return "invalid_arithmetic_reconciliation"
         return None
 
+    if operation == "compose_store_header":
+        swap = metadata.get("store_header_swap")
+        if not isinstance(swap, dict):
+            return "store_header_missing_evidence"
+        source_place = str(swap.get("source_place_id") or "").strip()
+        own_place = str(swap.get("own_place_id") or "").strip()
+        if not source_place:
+            return "store_header_missing_source_place"
+        # The whole point is a DIFFERENT branch: swapping in a receipt's own
+        # store gives no location diversity.
+        if source_place == own_place:
+            return "store_header_same_place"
+        if swap.get("merchant_match") is not True:
+            return "store_header_merchant_mismatch"
+        # Coherence: every swapped field came from the one source place. A header
+        # mixing two stores' fields is the incoherent receipt we must not train.
+        if swap.get("all_fields_from_single_place") is not True:
+            return "store_header_mixed_sources"
+        fields = swap.get("fields_swapped")
+        if not isinstance(fields, list) or not fields:
+            return "store_header_no_fields_swapped"
+        tokens = row.get("tokens")
+        tokens = tokens if isinstance(tokens, list) else []
+        token_set = set(tokens)
+        swapped_labels: set[str] = set()
+        for swapped in fields:
+            if not isinstance(swapped, dict):
+                return "store_header_invalid_field"
+            field_label = str(swapped.get("label") or "").upper()
+            old_value = str(swapped.get("old_text") or "")
+            new_value = str(swapped.get("new_text") or "")
+            if field_label not in {"ADDRESS_LINE", "PHONE_NUMBER", "WEBSITE"}:
+                return "store_header_unsupported_field"
+            if not new_value or old_value == new_value:
+                return "store_header_unchanged_field"
+            # Verify against the ACTUAL tokens, not just metadata: every token of
+            # the swapped-in value must be present in the row. Catches metadata
+            # that claims a swap the payload never received.
+            if any(piece not in token_set for piece in new_value.split()):
+                return "store_header_swap_not_applied"
+            swapped_labels.add(field_label)
+        # The address is the core of a store's identity; a header swap that left
+        # the address untouched is not a location swap.
+        if "ADDRESS_LINE" not in swapped_labels:
+            return "store_header_address_not_swapped"
+        return None
+
     return "unsupported_operation"
 
 

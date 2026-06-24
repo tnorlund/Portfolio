@@ -324,6 +324,129 @@ def test_load_synthetic_training_examples_rejects_value_scrub_not_in_tokens(
     )
 
 
+def _store_header_candidate(
+    *,
+    own_place="placeA",
+    source_place="placeB",
+    merchant_match=True,
+    single_source=True,
+    fields=None,
+):
+    """A compose_store_header candidate: a receipt's address/phone swapped for a
+    different cached branch of the same merchant."""
+    candidate = _candidate(candidate_id="store-header")
+    # Tokens carry the SWAPPED-IN values (address + phone) — the loader verifies
+    # each swapped value's tokens are actually present in the row.
+    candidate["tokens"] = ["VONS", "1790", "N", "Moorpark", "Rd", "877-276-9637"]
+    candidate["bboxes"] = [
+        [100, 900, 300, 920],
+        [100, 860, 180, 880],
+        [185, 860, 230, 880],
+        [235, 860, 400, 880],
+        [405, 860, 470, 880],
+        [100, 830, 300, 850],
+    ]
+    candidate["ner_tags"] = [
+        "B-MERCHANT_NAME",
+        "B-ADDRESS_LINE",
+        "I-ADDRESS_LINE",
+        "I-ADDRESS_LINE",
+        "I-ADDRESS_LINE",
+        "B-PHONE_NUMBER",
+    ]
+    if fields is None:
+        fields = [
+            {
+                "label": "ADDRESS_LINE",
+                "old_text": "2725 Agoura Road",
+                "new_text": "1790 N Moorpark Rd",
+                "line_id": 2,
+                "token_count": 4,
+            },
+            {
+                "label": "PHONE_NUMBER",
+                "old_text": "(805) 497-1921",
+                "new_text": "877-276-9637",
+                "line_id": 3,
+                "token_count": 1,
+            },
+        ]
+    candidate["metadata"] = {
+        "source": "merchant_store_header_geometry",
+        "operation": "compose_store_header",
+        "base_receipt_key": "base#00001",
+        "store_header_swap": {
+            "own_place_id": own_place,
+            "source_place_id": source_place,
+            "source_merchant_name": "Vons",
+            "merchant_match": merchant_match,
+            "all_fields_from_single_place": single_source,
+            "swapped_labels": sorted({field["label"] for field in fields}),
+            "fields_swapped": fields,
+        },
+        "structure_similarity": {"score": 0.95},
+        "layout_integrity": {"score": 1.0},
+    }
+    return candidate
+
+
+def test_load_synthetic_training_examples_accepts_compose_store_header(tmp_path):
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [_store_header_candidate()]}),
+        encoding="utf-8",
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 1
+    assert loaded.rejection_reasons == {}
+
+
+def test_load_synthetic_training_examples_rejects_store_header_same_place(tmp_path):
+    # Swapping in the receipt's OWN store gives no location diversity.
+    bad = _store_header_candidate(own_place="placeA", source_place="placeA")
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("store_header_same_place") == 1
+
+
+def test_load_synthetic_training_examples_rejects_store_header_mixed_sources(tmp_path):
+    bad = _store_header_candidate(single_source=False)
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("store_header_mixed_sources") == 1
+
+
+def test_load_synthetic_training_examples_rejects_store_header_without_address(
+    tmp_path,
+):
+    # A header swap that left the address untouched is not a location swap.
+    phone_only = [
+        {
+            "label": "PHONE_NUMBER",
+            "old_text": "(805) 497-1921",
+            "new_text": "877-276-9637",
+            "line_id": 3,
+            "token_count": 1,
+        }
+    ]
+    bad = _store_header_candidate(fields=phone_only)
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("store_header_address_not_swapped") == 1
+
+
 def _merchant_contract(
     *,
     merchant_name="Sprouts Farmers Market",
