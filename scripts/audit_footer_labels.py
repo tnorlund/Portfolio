@@ -37,7 +37,24 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
+import re
+from collections import Counter, defaultdict
+from decimal import Decimal
+
+
+def _money(text) -> Decimal | None:
+    cleaned = re.sub(r"[^0-9.]", "", str(text or ""))
+    if not cleaned or cleaned == ".":
+        return None
+    try:
+        return Decimal(cleaned)
+    except Exception:
+        return None
+
+
+# Same totals block, so subtotal/grand should sit within this normalized-y window.
+_TOTALS_BLOCK_Y_WINDOW = 0.20
+_FOOTER_MARGIN = 0.005
 
 ITEM_LABELS = {
     "PRODUCT_NAME",
@@ -60,24 +77,93 @@ def _y(word):
     return (word.get("bounding_box") or {}).get("y")
 
 
-def _grand_total_y(labels, words):
-    gt: dict[tuple[str, str], float] = {}
+def _localize_totals_block(labels, words):
+    """Per receipt, return (footer_boundary_y, confidence).
+
+    The footer boundary is the y of the real grand total; an item-region label
+    BELOW it is footer noise. We only trust the boundary when the totals block
+    is CONFIRMED, because a single mislabeled GRAND_TOTAL high on the receipt
+    would otherwise flag every real item below it as footer noise:
+
+      reconciled         : subtotal + tax == grand (strongest)
+      subtotal_confirmed : subtotal sits in the same y-window as grand
+      weak               : grand total only (no subtotal/tax to confirm) ->
+                           NOT used to flag footer items (precision over recall)
+    """
+    block: dict[tuple[str, str], dict[str, list]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for wl in labels:
-        if wl.get("label") != "GRAND_TOTAL":
-            continue
         if str(wl.get("validation_status") or "").upper() != "VALID":
             continue
-        key = (
-            str(wl.get("image_id")),
-            str(wl.get("receipt_id")),
-            str(wl.get("line_id")),
-            str(wl.get("word_id")),
+        label = wl.get("label")
+        if label not in ("SUBTOTAL", "TAX", "GRAND_TOTAL"):
+            continue
+        word = words.get(
+            (
+                str(wl.get("image_id")),
+                str(wl.get("receipt_id")),
+                str(wl.get("line_id")),
+                str(wl.get("word_id")),
+            )
         )
-        word = words.get(key)
         if word and _y(word) is not None:
             r = (str(wl["image_id"]), str(wl["receipt_id"]))
-            gt[r] = max(gt.get(r, 0.0), _y(word))
-    return gt
+            block[r][label].append((_y(word), _money(word.get("text"))))
+
+    out: dict[tuple[str, str], tuple[float | None, str]] = {}
+    for r, a in block.items():
+        grands = a.get("GRAND_TOTAL") or []
+        subs = a.get("SUBTOTAL") or []
+        taxes = a.get("TAX") or []
+        if not grands:
+            out[r] = (None, "none")
+            continue
+        bottom_grand = min(gy for gy, _ in grands)  # real total is the lowest one
+        confidence = "weak"
+        anchor = bottom_grand
+        # reconciled: some grand == some subtotal + some tax
+        for gy, gv in grands:
+            for _, sv in subs:
+                for _, tv in taxes:
+                    if (
+                        None not in (gv, sv, tv)
+                        and abs((sv + tv) - gv) <= Decimal("0.02")
+                    ):
+                        confidence, anchor = "reconciled", gy
+        if confidence == "weak" and subs:
+            # subtotal clustered with a grand total confirms the block
+            for sy, _ in subs:
+                for gy, _ in grands:
+                    if abs(sy - gy) <= _TOTALS_BLOCK_Y_WINDOW:
+                        confidence = "subtotal_confirmed"
+                        anchor = min(anchor, gy)
+        out[r] = (anchor, confidence)
+    return out
+
+
+def _places_context(payload) -> dict:
+    """Merchant location context from receipt_places (Google Places = the
+    internet + the receipt's location): real website + address, used to confirm
+    that a digit token labeled WEBSITE is wrong and to give the reviewer the
+    tax jurisdiction."""
+    places = payload.get("receipt_places") or []
+    by_key: dict[tuple[str, str], dict] = {}
+    fallback: dict = {}
+    for p in places:
+        if not isinstance(p, dict):
+            continue
+        ctx = {
+            "website": p.get("website"),
+            "address": p.get("formatted_address") or p.get("short_address"),
+            "category": p.get("merchant_category"),
+        }
+        image_id = str(p.get("image_id") or "")
+        receipt_id = str(p.get("receipt_id") or "")
+        by_key[(image_id, receipt_id)] = ctx
+        if image_id and not fallback:
+            fallback = ctx
+    return {"by_key": by_key, "fallback": fallback}
 
 
 def audit(payload: dict) -> dict:
@@ -92,28 +178,36 @@ def audit(payload: dict) -> dict:
         for w in (payload.get("receipt_words") or [])
     }
     labels = payload.get("receipt_word_labels") or []
-    gt = _grand_total_y(labels, words)
+    totals = _localize_totals_block(labels, words)
+    places = _places_context(payload)
+
+    def ctx_for(image_id, receipt_id):
+        return (
+            places["by_key"].get((image_id, receipt_id))
+            or places["by_key"].get((image_id, ""))
+            or places["fallback"]
+        )
 
     auto_safe: list[dict] = []
-    review_footer: list[dict] = []
     review_payment: list[dict] = []
+    skipped_unconfirmed_footer = 0
     for wl in labels:
         if str(wl.get("validation_status") or "").upper() != "VALID":
             continue
-        key = (
-            str(wl.get("image_id")),
-            str(wl.get("receipt_id")),
-            str(wl.get("line_id")),
-            str(wl.get("word_id")),
+        word = words.get(
+            (
+                str(wl.get("image_id")),
+                str(wl.get("receipt_id")),
+                str(wl.get("line_id")),
+                str(wl.get("word_id")),
+            )
         )
-        word = words.get(key)
         if not word:
             continue
         text = str(word.get("text") or "")
         label = str(wl.get("label"))
         upper = text.upper().strip(".,")
         r = (str(wl["image_id"]), str(wl["receipt_id"]))
-        below = r in gt and _y(word) is not None and _y(word) < gt[r]
 
         rec = {
             "image_id": str(wl["image_id"]),
@@ -124,27 +218,41 @@ def audit(payload: dict) -> dict:
             "text": text,
         }
         if label == "WEBSITE" and text.replace(".", "").isdigit():
-            auto_safe.append({**rec, "pattern": "store_number_as_website"})
-        elif label in ITEM_LABELS and below:
-            # CANDIDATE ONLY — high false-positive risk on dense receipts.
-            review_footer.append({**rec, "pattern": "item_label_in_footer"})
+            site = (ctx_for(r[0], r[1]) or {}).get("website")
+            auto_safe.append(
+                {**rec, "pattern": "store_number_as_website", "real_website": site}
+            )
+        elif label in ITEM_LABELS:
+            anchor, confidence = totals.get(r, (None, "none"))
+            if anchor is None or _y(word) is None:
+                continue
+            if _y(word) >= anchor - _FOOTER_MARGIN:
+                continue  # above the total -> a real item, not footer
+            if confidence in ("reconciled", "subtotal_confirmed"):
+                auto_safe.append(
+                    {**rec, "pattern": "item_label_in_footer", "localization": confidence}
+                )
+            else:
+                # totals block could not be confirmed -> do NOT flag (a
+                # mislocalized total would otherwise destroy real item labels).
+                skipped_unconfirmed_footer += 1
         elif label == "PAYMENT_METHOD":
             if upper in KEEP_PAYMENT or upper.startswith("XXXX"):
                 continue
-            if upper in FLIP_PAYMENT or text.replace("X", "").isdigit():
+            if upper in FLIP_PAYMENT or upper in REVIEW_PAYMENT or text.replace("X", "").isdigit():
+                # merchant-specific (CARD/CREDIT can be a real tender) -> review
                 review_payment.append({**rec, "pattern": "nonpayment_as_payment"})
-            elif upper in REVIEW_PAYMENT:
-                review_payment.append({**rec, "pattern": "payment_method_ambiguous"})
 
     return {
         "merchant": merchant,
+        "merchant_location": places["fallback"],
         "auto_safe": auto_safe,
-        "review_footer": review_footer,
         "review_payment": review_payment,
         "summary": {
             "auto_safe": len(auto_safe),
-            "review_footer": len(review_footer),
+            "auto_safe_by_pattern": dict(Counter(f["pattern"] for f in auto_safe)),
             "review_payment": len(review_payment),
+            "skipped_unconfirmed_footer": skipped_unconfirmed_footer,
         },
     }
 
@@ -163,9 +271,9 @@ def main():
             fh.write(text)
         s = result["summary"]
         print(
-            f"{result['merchant']}: auto_safe={s['auto_safe']} (store#->WEBSITE), "
-            f"review_footer={s['review_footer']} (verify total localization), "
-            f"review_payment={s['review_payment']} -> {args.out}"
+            f"{result['merchant']}: auto_safe={s['auto_safe']} {s['auto_safe_by_pattern']}, "
+            f"review_payment={s['review_payment']}, "
+            f"skipped_unconfirmed_footer={s['skipped_unconfirmed_footer']} -> {args.out}"
         )
     else:
         print(text)
