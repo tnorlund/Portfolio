@@ -8,13 +8,23 @@
 # warehouse-number label to INVALID), so it changes nothing.
 #
 # Prereqs on the Mac Mini (one-time):
-#   - claude logged in (`claude /login`) OR ANTHROPIC_API_KEY exported
+#   - Auth for HEADLESS claude — plain SSH can't read the macOS login Keychain,
+#     so a bare `claude /login` does NOT work over SSH. Pick one:
+#       * SSH-driven, SUBSCRIPTION (recommended): put a long-lived OAuth token in
+#         ~/.claude_batch_env (sourced automatically). Generate once on any
+#         authed machine:  echo "export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)" \
+#         > ~/.claude_batch_env   (Pro/Max, NOT API billing; account-scoped, so
+#         you can generate it on the MacBook and copy the file to the box).
+#       * GUI session, SUBSCRIPTION: run this with LOCAL=1 in the Mac Mini's own
+#         Terminal (unlocked Keychain) — no token needed.
+#       * ANTHROPIC_API_KEY in ~/.claude_batch_env (per-token API billing).
 #   - receipt-tools MCP registered:
 #       claude mcp add receipt-tools -s user -e PORTFOLIO_ENV=dev -- \
 #         ~/.coreml-venv/bin/python ~/Portfolio/scripts/receipt_mcp_server.py
 #   - AWS creds present (~/.aws/credentials)
 #
-# Usage:  ./scripts/mac_mini_mcp_smoke_test.sh
+# Usage:  ./scripts/mac_mini_mcp_smoke_test.sh          # SSH-driven (token)
+#         LOCAL=1 ./scripts/mac_mini_mcp_smoke_test.sh  # on the box (subscription)
 set -euo pipefail
 
 REMOTE="${REMOTE:-tnorlund@192.168.0.147}"
@@ -45,8 +55,9 @@ else
   scp -q "$PROMPT_FILE" "$REMOTE:/tmp/mcp_smoke_prompt.txt"
   rm -f "$PROMPT_FILE"
   echo ">> Running headless MCP smoke test on $REMOTE ..."
-  # Over SSH the login Keychain is locked, so source ~/.claude_batch_env for
-  # ANTHROPIC_API_KEY (kept off the process list).
+  # Over SSH the login Keychain is locked, so source ~/.claude_batch_env for a
+  # CLAUDE_CODE_OAUTH_TOKEN (subscription, from `claude setup-token`) — or an
+  # ANTHROPIC_API_KEY. Kept off the process list.
   ssh "$REMOTE" '
     export PATH="$HOME/.local/bin:$PATH" RECEIPT_AGENT_DISABLE_PAID_LLM=1 DISABLE_PAID_LLM=1
     [ -f "$HOME/.claude_batch_env" ] && . "$HOME/.claude_batch_env"
@@ -59,9 +70,11 @@ fi
 echo
 if grep -q "SMOKE_TEST read=PASS write=PASS" /tmp/mcp_smoke_test.out; then
   echo "✅ MCP reachable and writable in headless mode — safe to launch the parallel batch."
-elif grep -qi "Not logged in\|/login\|Invalid API key" /tmp/mcp_smoke_test.out; then
-  echo "❌ claude is not authenticated on the Mac Mini. Run 'claude /login' there once,"
-  echo "   or export ANTHROPIC_API_KEY for the headless jobs, then re-run."
+elif grep -qi "Not logged in\|/login\|Invalid API key\|authentication" /tmp/mcp_smoke_test.out; then
+  echo "❌ headless claude is not authenticated. SSH can't read the macOS Keychain,"
+  echo "   so put a SUBSCRIPTION token in ~/.claude_batch_env (run once on any authed box):"
+  echo "     echo \"export CLAUDE_CODE_OAUTH_TOKEN=\$(claude setup-token)\" > ~/.claude_batch_env"
+  echo "   — or run this with LOCAL=1 in the Mac Mini's GUI Terminal (uses the Keychain)."
   exit 1
 elif grep -q "NO_MCP" /tmp/mcp_smoke_test.out; then
   echo "❌ receipt-tools MCP NOT available to headless claude. Register it (see header)."

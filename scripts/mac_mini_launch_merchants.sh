@@ -11,13 +11,16 @@
 #   - Per-merchant grouped exports at $EXPORTS_DIR/<slug>.json
 #
 # Usage:
-#   # over SSH from the MacBook (needs ANTHROPIC_API_KEY in ~/.claude_batch_env,
-#   # because SSH can't read the macOS login Keychain):
+#   # over SSH from the MacBook — SSH can't read the macOS login Keychain, so put a
+#   # token in ~/.claude_batch_env (sourced automatically). Use your SUBSCRIPTION:
+#   #   echo "export CLAUDE_CODE_OAUTH_TOKEN=$(claude setup-token)" > ~/.claude_batch_env
+#   #   chmod 600 ~/.claude_batch_env        # Pro/Max, NOT API billing
+#   # (an ANTHROPIC_API_KEY also works, per-token.)
 #   ./scripts/mac_mini_launch_merchants.sh "Costco Wholesale" "Target"
 #
-#   # IN the Mac Mini's GUI Terminal (Screen Sharing) — uses your SUBSCRIPTION
-#   # via the unlocked Keychain, no API key. Run with LOCAL=1, and first remove
-#   # any placeholder key:  rm -f ~/.claude_batch_env
+#   # OR in the Mac Mini's GUI Terminal (Screen Sharing) — subscription via the
+#   # unlocked Keychain, no token. Run with LOCAL=1; remove any placeholder first:
+#   #   rm -f ~/.claude_batch_env   # only if it holds a placeholder, not a real token
 #   LOCAL=1 ./scripts/mac_mini_launch_merchants.sh "Costco Wholesale" "Target"
 set -euo pipefail
 
@@ -31,7 +34,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 # Run a shell block either locally (GUI session → subscription Keychain) or over
-# SSH (needs an API key in ~/.claude_batch_env).
+# SSH (needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in ~/.claude_batch_env).
 if [ "$LOCAL" = "1" ]; then RUN=(bash -lc); else RUN=(ssh "$REMOTE" bash -lc); fi
 
 slugify() { echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g; s/^_+|_+$//g'; }

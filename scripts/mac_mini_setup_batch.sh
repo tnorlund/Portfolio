@@ -3,8 +3,8 @@
 # MacBook (git + scp only — no claude auth needed). It:
 #   1. adds a git worktree for the feature branch at ~/synth-batch, so the OCR
 #      worker on ~/Portfolio is left untouched;
-#   2. removes any placeholder ANTHROPIC_API_KEY file so the GUI-session
-#      subscription is used instead of an API key;
+#   2. removes a PLACEHOLDER ~/.claude_batch_env only (a real subscription token
+#      or API key is left in place) so the GUI-session subscription can be used;
 #   3. copies per-merchant grouped exports into ~/synth-batch/exports.
 #
 # Usage:
@@ -36,11 +36,13 @@ else
 fi
 echo "   -> \$(git -C "\$WT" rev-parse --abbrev-ref HEAD) @ \$(git -C "\$WT" rev-parse --short HEAD)"
 echo "== placeholder key =="
-if [ -f "\$HOME/.claude_batch_env" ] && grep -q your-key "\$HOME/.claude_batch_env"; then
+# Remove ONLY a placeholder; a real CLAUDE_CODE_OAUTH_TOKEN (subscription) or
+# ANTHROPIC_API_KEY is kept so SSH-driven headless runs still authenticate.
+if [ -f "\$HOME/.claude_batch_env" ] && grep -qE 'your-key|PASTE' "\$HOME/.claude_batch_env"; then
   rm -f "\$HOME/.claude_batch_env"
-  echo "   removed placeholder -> subscription auth (GUI session) will be used"
+  echo "   removed placeholder (use LOCAL=1 in the GUI session, or add a real token)"
 else
-  echo "   none to remove"
+  echo "   none to remove (real token/key left in place if present)"
 fi
 mkdir -p "\$WT/exports"
 echo "== exports dir ready: \$WT/exports =="
@@ -69,8 +71,17 @@ else
 fi
 
 echo
-echo "Next — in the Mac Mini's GUI Terminal (Screen Sharing), using your SUBSCRIPTION:"
-echo "  cd ~/$WORKTREE_NAME"
-echo "  LOCAL=1 ./scripts/mac_mini_mcp_smoke_test.sh        # verify subscription + MCP"
-echo "  LOCAL=1 PROJECT=\$HOME/$WORKTREE_NAME EXPORTS_DIR=\$HOME/$WORKTREE_NAME/exports \\"
-echo "    ./scripts/mac_mini_launch_merchants.sh \"Costco Wholesale\" \"Target\" \"Vons\""
+echo "Next — pick ONE auth path (both use your SUBSCRIPTION, not API billing):"
+echo
+echo "A) SSH-driven from the MacBook (token). Generate once on this authed machine:"
+echo "     echo \"export CLAUDE_CODE_OAUTH_TOKEN=\$(claude setup-token)\" \\"
+echo "       | ssh $REMOTE 'umask 077; cat > ~/.claude_batch_env'"
+echo "   then run from the MacBook (no Screen Sharing needed):"
+echo "     PROJECT=\$HOME/$WORKTREE_NAME EXPORTS_DIR=\$HOME/$WORKTREE_NAME/exports \\"
+echo "       ./scripts/mac_mini_launch_merchants.sh \"Costco Wholesale\" \"Target\" \"Vons\""
+echo
+echo "B) In the Mac Mini's GUI Terminal (Screen Sharing) — unlocked Keychain, no token:"
+echo "     cd ~/$WORKTREE_NAME"
+echo "     LOCAL=1 ./scripts/mac_mini_mcp_smoke_test.sh        # verify subscription + MCP"
+echo "     LOCAL=1 PROJECT=\$HOME/$WORKTREE_NAME EXPORTS_DIR=\$HOME/$WORKTREE_NAME/exports \\"
+echo "       ./scripts/mac_mini_launch_merchants.sh \"Costco Wholesale\" \"Target\" \"Vons\""
