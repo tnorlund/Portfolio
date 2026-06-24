@@ -113,6 +113,11 @@ def _grounded_add_item_metadata():
                 "delta_from_min": 0.10,
             },
         },
+        "layout_integrity": {
+            "score": 1.0,
+            "edit_introduced_overlap_pair_count": 0,
+            "invalid_word_box_count": 0,
+        },
         "synthesis_accuracy_evidence": {
             "operation": "add_line_item",
             "checks": [
@@ -176,6 +181,11 @@ def _replace_field_candidate():
             "blockers": [],
         },
         "structure_similarity": {"score": 0.91},
+        "layout_integrity": {
+            "score": 1.0,
+            "edit_introduced_overlap_pair_count": 0,
+            "invalid_word_box_count": 0,
+        },
     }
     return candidate
 
@@ -433,6 +443,57 @@ def test_load_synthetic_training_examples_rejects_bad_shapes(tmp_path):
     )
 
     assert _load_synthetic_training_examples(str(path)) == []
+
+
+def test_load_synthetic_training_examples_rejects_inverted_box(tmp_path):
+    """A box with y0 > y1 (or x0 > x1) is corrupted geometry and must be
+    rejected even when the row's declared layout_integrity claims it is clean —
+    defense-in-depth against rows authored outside the synthesis pipeline."""
+    path = tmp_path / "patterns.json"
+    inverted = _candidate()
+    inverted["metadata"] = _grounded_add_item_metadata()
+    # Flip the y coordinates of the first box so y0 > y1.
+    inverted["bboxes"][0] = [390, 88, 470, 60]
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [inverted]}),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("invalid_bboxes") == 1
+
+
+def test_load_synthetic_training_examples_requires_layout_integrity_for_edits(
+    tmp_path,
+):
+    """Geometry-mutating ops must carry a layout_integrity score; a hard_negative
+    (which moves no boxes) is exempt and still loads without one."""
+    path = tmp_path / "patterns.json"
+
+    add_no_layout = _candidate()
+    add_no_layout["candidate_id"] = "add-no-layout"
+    add_no_layout["metadata"] = _grounded_add_item_metadata()
+    del add_no_layout["metadata"]["layout_integrity"]
+
+    hard_negative_no_layout = _candidate()  # default op is hard_negative
+    assert "layout_integrity" not in hard_negative_no_layout["metadata"]
+
+    path.write_text(
+        json.dumps(
+            {
+                "synthetic_receipt_candidates": [
+                    add_no_layout,
+                    hard_negative_no_layout,
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.rejection_reasons.get("missing_layout_integrity") == 1
+    assert loaded.candidates_accepted == 1  # the hard_negative still loads
 
 
 def test_load_synthetic_training_examples_rejects_low_structure_similarity(
@@ -878,6 +939,7 @@ def test_load_synthetic_training_examples_rejects_ungrounded_add_item(
             "tax_delta": "0.00",
         },
         "structure_similarity": {"score": 0.94},
+        "layout_integrity": {"score": 1.0},
     }
     path.write_text(
         json.dumps({"synthetic_receipt_candidates": [ungrounded]}),
@@ -983,6 +1045,7 @@ def test_load_synthetic_training_examples_reports_rejection_reasons(tmp_path):
             "tax_delta": "0.00",
         },
         "structure_similarity": {"score": 0.94},
+        "layout_integrity": {"score": 1.0},
     }
     path.write_text(
         json.dumps(
@@ -1416,6 +1479,7 @@ def test_load_synthetic_training_examples_accepts_grounded_remove_item(
             "tax_delta": "0.00",
         },
         "structure_similarity": {"score": 0.88},
+        "layout_integrity": {"score": 1.0},
     }
     path.write_text(
         json.dumps({"synthetic_receipt_candidates": [grounded]}),
@@ -1618,6 +1682,11 @@ def _compose_online_catalog_candidate(
         "subtotal_consistent": True,
     }
     metadata["candidate_quality"] = {"high_fidelity": True, "score": 0.95}
+    metadata["layout_integrity"] = {
+        "score": 1.0,
+        "edit_introduced_overlap_pair_count": 0,
+        "invalid_word_box_count": 0,
+    }
     return candidate
 
 

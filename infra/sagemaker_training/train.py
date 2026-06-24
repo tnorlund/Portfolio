@@ -220,6 +220,35 @@ def main():
             child_env[env_name] = str(value)
             print(f"  setenv {env_name}={value}")
 
+    # Pin the synthetic-data quality gate ON for every training run unless a job
+    # EXPLICITLY opted out via env_LAYOUTLM_SYNTHETIC_QUALITY_GATE. That gate
+    # (receipt_layoutlm.data_loader) is what rejects ungrounded, weak-geometry,
+    # or arithmetic-invalid synthetic rows; leaving it implicit means a stray
+    # environment could silently disable it and let corrupted geometry into
+    # training. We make the resolved state explicit and auditable in the log.
+    gate_key = "LAYOUTLM_SYNTHETIC_QUALITY_GATE"
+    child_env.setdefault(gate_key, "1")
+    gate_on = child_env[gate_key] not in {"0", "false", "False"}
+    struct_thr = child_env.get(
+        "LAYOUTLM_SYNTHETIC_MIN_STRUCTURE_SIMILARITY", "0.60 (default)"
+    )
+    qual_thr = child_env.get(
+        "LAYOUTLM_SYNTHETIC_MIN_CANDIDATE_QUALITY", "0.70 (default)"
+    )
+    print("-" * 60)
+    print("Synthetic quality gate:")
+    print(f"  {gate_key} = {child_env[gate_key]} -> "
+          f"{'ENABLED' if gate_on else 'DISABLED'}")
+    print(f"  min_structure_similarity = {struct_thr}")
+    print(f"  min_candidate_quality    = {qual_thr}")
+    if not gate_on:
+        print(
+            "  WARNING: synthetic quality gate is DISABLED for this run — "
+            "synthetic rows will be admitted with only basic shape/geometry "
+            "checks. Unset env_LAYOUTLM_SYNTHETIC_QUALITY_GATE to re-enable."
+        )
+    print("-" * 60)
+
     # Run training
     result = subprocess.run(cmd, check=False, env=child_env)
 

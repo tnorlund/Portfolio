@@ -714,12 +714,24 @@ def _candidate_rows_with_bundle_readiness(
 
 
 def _valid_box(box: Any) -> bool:
-    """Return True when a bbox is a four-int LayoutLM box."""
-    return (
+    """Return True when a bbox is a non-degenerate four-int LayoutLM box.
+
+    Beyond shape and the 0-1000 coordinate range, the box must be properly
+    ordered: ``x0 < x1`` and ``y0 < y1``. Inverted or zero-area boxes such as
+    ``[124, 729, 170, 723]`` (``y0 > y1``) are corrupted geometry. The
+    generator's own integrity checker rejects them, but this is the loader's
+    defense-in-depth: a degenerate box must never reach training even if a
+    row's declared ``layout_integrity`` is missing, wrong, or authored outside
+    the synthesis pipeline.
+    """
+    if not (
         isinstance(box, list)
         and len(box) == 4
         and all(isinstance(coord, int) and 0 <= coord <= 1000 for coord in box)
-    )
+    ):
+        return False
+    x0, y0, x1, y1 = box
+    return x0 < x1 and y0 < y1
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -1597,16 +1609,26 @@ def _synthetic_candidate_quality_failure(
     if baseline_failure := _synthetic_real_baseline_failure(row):
         return baseline_failure
 
+    operation = str(metadata.get("operation") or "").strip()
+
     # Hard geometry defects the generator already detected must fail on EVERY
     # load path, not only require_high_fidelity bundles. A layout_integrity score
     # below 1.0 means an overlap / off-canvas box / edit-introduced collision;
     # training on it teaches the model corrupted geometry regardless of how high
     # the declared candidate-quality score is.
     layout = metadata.get("layout_integrity")
-    if isinstance(layout, dict):
-        layout_score = _safe_float(layout.get("score"))
-        if layout_score is not None and layout_score < 1.0:
-            return "layout_integrity_failed"
+    layout_score = (
+        _safe_float(layout.get("score")) if isinstance(layout, dict) else None
+    )
+    if layout_score is not None and layout_score < 1.0:
+        return "layout_integrity_failed"
+    # Geometry-mutating operations must CARRY a layout_integrity score. Its
+    # absence means the row was authored outside the synthesis pipeline (or by an
+    # older generator) and its geometry was never integrity-checked — exactly the
+    # case a weak box check would wave through. hard_negative is exempt: it swaps
+    # token labels without moving any box, so its geometry equals the real base.
+    if layout_score is None and operation != "hard_negative":
+        return "missing_layout_integrity"
 
     declared_quality = _synthetic_declared_candidate_quality(row)
     if (
@@ -1615,7 +1637,6 @@ def _synthetic_candidate_quality_failure(
     ):
         return "low_candidate_quality"
 
-    operation = str(metadata.get("operation") or "").strip()
     if operation == "hard_negative":
         if (
             str(metadata.get("error_kind") or "") == "false_positive"

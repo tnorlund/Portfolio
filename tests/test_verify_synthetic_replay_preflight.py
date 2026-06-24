@@ -57,6 +57,7 @@ def _artifact(
     score=0.86,
     candidates=True,
     candidate_quality=True,
+    layout_integrity=True,
     source_receipt_quality=None,
 ):
     artifact = {
@@ -169,6 +170,18 @@ def _artifact(
             else []
         ),
     }
+    if candidates and layout_integrity:
+        # Production candidates always carry a layout_integrity score; the add
+        # (a geometry-mutating op) needs one to pass the loader gate. The
+        # hard_negative moves no boxes, so it is exempt and intentionally left
+        # without one. Tests that exercise the "no independent evidence" hold
+        # path pass layout_integrity=False to opt out.
+        add_item = artifact["synthetic_receipt_candidates"][0]
+        add_item["metadata"]["layout_integrity"] = {
+            "score": 1.0,
+            "edit_introduced_overlap_pair_count": 0,
+            "invalid_word_box_count": 0,
+        }
     if candidates and candidate_quality:
         add_item, hard_negative = artifact["synthetic_receipt_candidates"]
         add_item["metadata"]["candidate_quality"] = {
@@ -1340,7 +1353,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
             "has_cross_receipt_item": True,
             "has_category_evidence": True,
             "has_nearest_real_structure": False,
-            "has_layout_integrity": False,
+            "has_layout_integrity": True,
             "has_arithmetic_reconciliation": True,
             "has_selection_evidence": False,
         },
@@ -1356,7 +1369,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
-        "with_layout_integrity_count": 0,
+        "with_layout_integrity_count": 1,
         "with_arithmetic_reconciliation_count": 1,
         "with_selection_evidence_count": 0,
         "source_receipt_key_count": 2,
@@ -1904,7 +1917,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
             "has_cross_receipt_item": True,
             "has_category_evidence": True,
             "has_nearest_real_structure": False,
-            "has_layout_integrity": False,
+            "has_layout_integrity": True,
             "has_arithmetic_reconciliation": True,
             "has_selection_evidence": True,
         },
@@ -1920,7 +1933,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
-        "with_layout_integrity_count": 0,
+        "with_layout_integrity_count": 1,
         "with_arithmetic_reconciliation_count": 1,
         "with_selection_evidence_count": 1,
         "source_receipt_key_count": 2,
@@ -2567,7 +2580,7 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
         "accepted_candidate_count": 3,
         "selected_candidate_count": 3,
         "candidate_quality_count": 3,
-        "high_fidelity_candidate_count": 0,
+        "high_fidelity_candidate_count": 2,
         "max_synthetic_train_share": 0.0,
         "max_per_merchant": 5,
         "max_per_merchant_operation": 2,
@@ -2653,15 +2666,25 @@ def test_build_local_synthetic_training_bundle_derives_candidate_quality():
 def test_build_local_synthetic_training_bundle_holds_derived_quality_without_independent_evidence():
     module = _load_module()
     bundle = module.build_local_synthetic_training_bundle(
-        [_artifact("Market Mart", candidate_quality=False)],
+        [
+            _artifact(
+                "Market Mart",
+                candidate_quality=False,
+                layout_integrity=False,
+            )
+        ],
         min_grounded_candidate_share=0.4,
     )
 
+    # The add_line_item carries no layout_integrity (layout_integrity=False), so
+    # the loader gate now rejects it outright; only the exempt hard_negative is
+    # accepted. With no declared and no derivable high-fidelity quality, the
+    # batch policy still holds.
     assert bundle["ready"] is False
     assert bundle["reasons"] == ["no_high_fidelity_candidate_quality"]
-    assert bundle["selection"]["candidates_accepted"] == 2
+    assert bundle["selection"]["candidates_accepted"] == 1
     assert bundle["synthetic_training_batch_policy"]["status"] == "hold"
-    assert bundle["synthetic_training_batch_policy"]["candidate_quality_count"] == 2
+    assert bundle["synthetic_training_batch_policy"]["candidate_quality_count"] == 1
     assert (
         bundle["synthetic_training_batch_policy"]["high_fidelity_candidate_count"] == 0
     )
@@ -3856,7 +3879,7 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
             "with_cross_receipt_item_count": 1,
             "with_category_evidence_count": 1,
             "with_nearest_real_structure_count": 0,
-            "with_layout_integrity_count": 0,
+            "with_layout_integrity_count": 1,
             "with_arithmetic_reconciliation_count": 1,
             "with_selection_evidence_count": 0,
             "source_receipt_key_count": 2,
