@@ -437,25 +437,25 @@ def test_build_merchant_synthesis_profile_marks_stable_datetime_mutable():
     )
 
 
-def test_build_merchant_synthesis_profile_records_tax_policy_without_enabling_tax_edits():
+def test_build_merchant_synthesis_profile_enables_taxable_edits_with_stable_rate():
     profile = build_merchant_synthesis_profile(
         "Taxable Mart",
         _merchant_receipts_with_taxable_items(),
     )
 
     assert profile is not None
+    # A stable effective tax rate + real taxable items + TAX anchors unlock
+    # taxable item edits (tax recomputed at the rate, loader-validated).
     assert profile["tax_policy"] == {
-        "supported_policy": "non_taxable_item_delta",
+        "supported_policy": "taxable_item_delta",
         "taxable_item_count": 2,
         "non_taxable_item_count": 2,
         "receipts_with_tax_total": 2,
         "receipts_with_taxable_items": 2,
         "tax_rate_observation_count": 2,
         "stable_tax_rate": True,
-        "tax_changing_synthesis_ready": False,
-        "tax_changing_synthesis_blockers": [
-            "tax_changing_loader_gate_not_enabled"
-        ],
+        "tax_changing_synthesis_ready": True,
+        "tax_changing_synthesis_blockers": [],
         "avg_tax_rate": "0.0778",
         "min_tax_rate": "0.0775",
         "max_tax_rate": "0.0780",
@@ -463,10 +463,7 @@ def test_build_merchant_synthesis_profile_records_tax_policy_without_enabling_ta
     }
     readiness = profile["synthesis_readiness"]
     assert readiness["tax_policy"] == profile["tax_policy"]
-    assert "tax_changing_synthesis_not_enabled" in readiness["limitations"]
-    assert all(
-        row["taxable"] is False for row in profile["observed_item_catalog"]
-    )
+    assert "tax_changing_synthesis_not_enabled" not in readiness["limitations"]
 
 
 def test_generate_merchant_synthesis_candidates_replaces_stable_datetime_fields():

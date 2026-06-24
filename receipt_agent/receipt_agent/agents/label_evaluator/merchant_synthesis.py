@@ -476,6 +476,21 @@ def generate_merchant_synthesis_candidates(
         if arithmetic:
             candidates.append(arithmetic)
 
+    # A dedicated taxable removal (distinct index) so taxable-edit supervision
+    # surfaces even when the best overall removal is a non-taxable item.
+    if len(candidates) < max_candidates:
+        taxable_removal = _generate_remove_item_candidate(
+            merchant_name,
+            profile,
+            analyses,
+            index=len(candidates) + 1,
+            prefer_taxable=True,
+        )
+        if taxable_removal and taxable_removal["candidate_id"] not in {
+            candidate["candidate_id"] for candidate in candidates
+        }:
+            candidates.append(taxable_removal)
+
     for label in ("DATE", "TIME"):
         if len(candidates) >= max_candidates:
             break
@@ -1358,11 +1373,24 @@ def _build_add_item_candidate_from_plan(
         min(inserted_bottoms, default=0) >= summary_top - gap
     )
 
-    new_total = _money(old_total + delta_amount)
-    arithmetic = _apply_non_taxable_delta(
-        receipt,
-        analysis,
-        delta=delta_amount,
+    # Taxable items reconcile subtotal + TAX (at the merchant's stable rate) +
+    # grand total; non-taxable items move subtotal/grand and freeze tax. A
+    # taxable item without a stable rate is not reconcilable, so skip it.
+    if entry.taxable:
+        tax_rate, tax_stable, _ = _stable_tax_rate(analyses)
+        if not tax_stable or tax_rate is None:
+            return None
+        arithmetic = _apply_taxable_delta(
+            receipt, analysis, delta=delta_amount, rate=tax_rate
+        )
+    else:
+        arithmetic = _apply_non_taxable_delta(
+            receipt, analysis, delta=delta_amount
+        )
+    if arithmetic is None:
+        return None
+    new_total = _parse_money(arithmetic["new_grand_total"]) or _money(
+        old_total + delta_amount
     )
     item_count_fields_updated = _reconcile_item_count(receipt, delta_count=1)
     _add_item_base_overlap, _add_item_base_inversions = _base_layout_counts(
@@ -1419,7 +1447,7 @@ def _build_add_item_candidate_from_plan(
                 else None
             ),
             "new_subtotal": arithmetic["new_subtotal"],
-            "tax_delta": "0.00",
+            "tax_delta": arithmetic.get("tax_delta", "0.00"),
             "arithmetic_reconciliation": arithmetic,
             "structure_similarity": _score_structure_similarity(
                 _analyze_receipt(receipt),
@@ -1432,7 +1460,13 @@ def _build_add_item_candidate_from_plan(
                 "selection_basis": "all_feasible_add_item_plans_ranked_by_candidate_quality",
             },
             "item_count_fields_reconciled": item_count_fields_updated,
-            "balancing_strategy": "add observed non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+            "balancing_strategy": (
+                "add observed taxable item; update subtotal, tax (at the "
+                "merchant's stable rate), and final/payment amounts"
+                if entry.taxable
+                else "add observed non-taxable item, update subtotal/final/"
+                "payment amounts, and leave tax unchanged"
+            ),
         },
     )
 
@@ -1444,6 +1478,9 @@ def _build_add_item_plans(
     plans: list[
         tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]
     ] = []
+    # Taxable items are only addable when the merchant has a stable effective tax
+    # rate to recompute TAX with; otherwise restrict to non-taxable items.
+    _, tax_stable, _ = _stable_tax_rate(analyses)
     for analysis in analyses:
         if analysis.grand_total is None or not analysis.line_items:
             continue
@@ -1451,7 +1488,9 @@ def _build_add_item_plans(
         categories = {item.category for item in analysis.line_items}
         existing_products = [item.product_text for item in analysis.line_items]
         for entry in catalog:
-            if entry.taxable or entry.amount <= Decimal("0.00"):
+            if entry.amount <= Decimal("0.00"):
+                continue
+            if entry.taxable and not tax_stable:
                 continue
             if entry.category not in categories:
                 continue
@@ -1479,8 +1518,13 @@ def _generate_remove_item_candidate(
     analyses: list[MerchantAnalysis],
     *,
     index: int,
+    prefer_taxable: bool = False,
 ) -> dict[str, Any] | None:
     plans = _build_remove_item_plans(analyses)
+    if prefer_taxable:
+        # Surface a TAXABLE removal specifically (the overall best is usually a
+        # lower-amount non-taxable item that would otherwise always win).
+        plans = [plan for plan in plans if plan[2].taxable]
     if not plans:
         return None
 
@@ -1543,11 +1587,19 @@ def _build_remove_item_candidate_from_plan(
         band_indices=removed.band_line_indices or sorted(removed.line_indices),
         line_step=line_step,
     )
-    arithmetic = _apply_non_taxable_delta(
-        receipt,
-        refreshed,
-        delta=-removed.amount,
-    )
+    if removed.taxable:
+        tax_rate, tax_stable, _ = _stable_tax_rate(analyses)
+        if not tax_stable or tax_rate is None:
+            return None
+        arithmetic = _apply_taxable_delta(
+            receipt, refreshed, delta=-removed.amount, rate=tax_rate
+        )
+    else:
+        arithmetic = _apply_non_taxable_delta(
+            receipt, refreshed, delta=-removed.amount
+        )
+    if arithmetic is None:
+        return None
     item_count_fields_updated = _reconcile_item_count(receipt, delta_count=-1)
     known_category = removed.category != UNKNOWN_CATEGORY
     category_item_count = (
@@ -1616,14 +1668,14 @@ def _build_remove_item_candidate_from_plan(
                 "selection_reason": selection_reason,
             },
             "old_grand_total": _format_money(old_total),
-            "new_grand_total": _format_money(new_total),
+            "new_grand_total": arithmetic["new_grand_total"],
             "old_subtotal": (
                 _format_money(refreshed.subtotal)
                 if refreshed.subtotal is not None
                 else None
             ),
             "new_subtotal": arithmetic["new_subtotal"],
-            "tax_delta": "0.00",
+            "tax_delta": arithmetic.get("tax_delta", "0.00"),
             "arithmetic_reconciliation": arithmetic,
             "structure_similarity": _score_structure_similarity(
                 post_analysis,
@@ -1636,7 +1688,13 @@ def _build_remove_item_candidate_from_plan(
                 "selection_basis": "all_feasible_remove_item_plans_ranked_by_candidate_quality",
             },
             "item_count_fields_reconciled": item_count_fields_updated,
-            "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
+            "balancing_strategy": (
+                "remove one taxable item; update subtotal, tax (at the "
+                "merchant's stable rate), and final/payment amounts"
+                if removed.taxable
+                else "remove one non-taxable item, update subtotal/final/"
+                "payment amounts, and leave tax unchanged"
+            ),
         },
     )
 
@@ -2236,6 +2294,9 @@ def _build_remove_item_plans(
     analyses: list[MerchantAnalysis],
 ) -> list[tuple[float, MerchantAnalysis, MerchantLineItem]]:
     plans: list[tuple[float, MerchantAnalysis, MerchantLineItem]] = []
+    # Taxable items are only removable when the merchant has a stable effective
+    # tax rate to recompute TAX with; otherwise restrict to non-taxable items.
+    _, tax_stable, _ = _stable_tax_rate(analyses)
     for analysis in analyses:
         if analysis.grand_total is None or len(analysis.line_items) < 2:
             continue
@@ -2243,7 +2304,9 @@ def _build_remove_item_plans(
             item.category for item in analysis.line_items
         )
         for item in analysis.line_items:
-            if item.taxable or item.amount <= Decimal("0.00"):
+            if item.amount <= Decimal("0.00"):
+                continue
+            if item.taxable and not tax_stable:
                 continue
             if (
                 item.category != UNKNOWN_CATEGORY
@@ -4537,17 +4600,24 @@ def _summarize_tax_policy(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
         blockers.append("needs_multiple_tax_rate_observations")
     elif not stable_tax_rate:
         blockers.append("unstable_tax_rate")
-    blockers.append("tax_changing_loader_gate_not_enabled")
+
+    # Taxable item edits are unlocked when the merchant has a stable effective
+    # tax rate plus real taxable items and TAX anchors to reconcile against. The
+    # loader independently re-validates every taxable edit's tax math, so this is
+    # the contract signal, not the guarantee.
+    tax_changing_ready = not blockers
 
     result: dict[str, Any] = {
-        "supported_policy": "non_taxable_item_delta",
+        "supported_policy": (
+            "taxable_item_delta" if tax_changing_ready else "non_taxable_item_delta"
+        ),
         "taxable_item_count": taxable_item_count,
         "non_taxable_item_count": non_taxable_item_count,
         "receipts_with_tax_total": receipts_with_tax_total,
         "receipts_with_taxable_items": receipts_with_taxable_items,
         "tax_rate_observation_count": len(rate_observations),
         "stable_tax_rate": stable_tax_rate,
-        "tax_changing_synthesis_ready": False,
+        "tax_changing_synthesis_ready": tax_changing_ready,
         "tax_changing_synthesis_blockers": blockers,
     }
     if rate_observations:
@@ -4896,6 +4966,92 @@ def _apply_non_taxable_delta(
         "grand_total_delta": _format_money(delta),
         "tax_delta": "0.00",
         "tax_policy": "left unchanged because synthesized item is non-taxable",
+        "updated_summary_labels": updated,
+    }
+
+
+def _apply_taxable_delta(
+    receipt: dict[str, Any],
+    analysis: MerchantAnalysis,
+    *,
+    delta: Decimal,
+    rate: Decimal,
+) -> dict[str, Any] | None:
+    """Reconcile a TAXABLE item add/remove using the merchant's stable effective
+    tax rate: subtotal moves by the item price, tax moves by ``delta * rate``
+    (rounded to cents), and the grand total absorbs both. Unlike the non-taxable
+    path (which freezes tax), this edits the real TAX value — only safe because a
+    validated stable rate is the merchant's tax model.
+
+    Returns the arithmetic evidence, or None when the receipt has no usable
+    subtotal/tax anchors to reconcile against (so we never emit an unbalanced
+    taxable edit).
+    """
+    old_subtotal = analysis.subtotal
+    old_tax = analysis.tax_total
+    if old_subtotal is None or old_tax is None or old_tax <= Decimal("0.00"):
+        return None  # need real SUBTOTAL + TAX anchors to reconcile taxable math
+    old_grand_total = analysis.grand_total
+    if old_grand_total is None:
+        old_grand_total = _money(old_subtotal + old_tax)
+
+    tax_delta = _money(delta * rate)
+    new_subtotal = _money(max(Decimal("0.00"), old_subtotal + delta))
+    # Removing more tax than the receipt carries is not reconcilable — bail
+    # rather than clamp tax to 0 (which would leave tax_delta inconsistent with
+    # the actual tax movement).
+    raw_new_tax = old_tax + tax_delta
+    if raw_new_tax < Decimal("0.00"):
+        return None
+    new_tax = _money(raw_new_tax)
+    new_grand_total = _money(new_subtotal + new_tax)
+
+    updated = {"subtotal": 0, "tax": 0, "grand_total": 0, "payment_or_balance": 0}
+    for line in receipt.get("lines", []):
+        for word in line.get("words", []):
+            labels = set(word.get("labels") or [])
+            value = _parse_money(word.get("text"))
+            if value is None:
+                continue
+            if "SUBTOTAL" in labels:
+                word["text"] = _format_money_like(word["text"], new_subtotal)
+                _right_align_money_box(word)
+                updated["subtotal"] += 1
+            elif "TAX" in labels:
+                word["text"] = _format_money_like(word["text"], new_tax)
+                _right_align_money_box(word)
+                updated["tax"] += 1
+            elif "GRAND_TOTAL" in labels:
+                word["text"] = _format_money_like(word["text"], new_grand_total)
+                _right_align_money_box(word)
+                updated["grand_total"] += 1
+            elif value == old_grand_total and not labels & {
+                "LINE_TOTAL",
+                "TAX",
+                "SUBTOTAL",
+                "GRAND_TOTAL",
+            }:
+                word["text"] = _format_money_like(word["text"], new_grand_total)
+                _right_align_money_box(word)
+                updated["payment_or_balance"] += 1
+
+    _refresh_words(receipt)
+    return {
+        "summary_update_policy": "taxable_item_delta",
+        "old_subtotal": _format_money(old_subtotal),
+        "new_subtotal": _format_money(new_subtotal),
+        "old_tax": _format_money(old_tax),
+        "new_tax": _format_money(new_tax),
+        "old_grand_total": _format_money(old_grand_total),
+        "new_grand_total": _format_money(new_grand_total),
+        "subtotal_delta": _format_money(delta),
+        "tax_delta": _format_money(tax_delta),
+        "grand_total_delta": _format_money(_money(delta + tax_delta)),
+        "tax_rate": _format_rate(rate),
+        "tax_policy": (
+            "tax recomputed at the merchant's stable effective rate "
+            f"({_format_rate(rate)}) for a taxable item edit"
+        ),
         "updated_summary_labels": updated,
     }
 

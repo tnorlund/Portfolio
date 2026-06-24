@@ -424,6 +424,81 @@ def test_load_synthetic_training_examples_rejects_store_header_mixed_sources(tmp
     assert loaded.rejection_reasons.get("store_header_mixed_sources") == 1
 
 
+def _taxable_add_candidate(**arithmetic_overrides):
+    """A grounded add of a TAXABLE item, tax recomputed at a stable rate."""
+    candidate = _candidate(candidate_id="taxable-add")
+    metadata = _grounded_add_item_metadata()
+    metadata["added_item"]["taxable"] = True
+    arithmetic = {
+        "summary_update_policy": "taxable_item_delta",
+        "old_subtotal": "10.00",
+        "new_subtotal": "15.00",
+        "old_tax": "0.72",
+        "new_tax": "1.08",
+        "old_grand_total": "10.72",
+        "new_grand_total": "16.08",
+        "subtotal_delta": "5.00",
+        "tax_delta": "0.36",  # 5.00 * 0.0722 ~= 0.36
+        "tax_rate": "0.0722",
+    }
+    arithmetic.update(arithmetic_overrides)
+    metadata["arithmetic_reconciliation"] = arithmetic
+    candidate["metadata"] = metadata
+    return candidate
+
+
+def test_load_synthetic_training_examples_accepts_taxable_add(tmp_path):
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [_taxable_add_candidate()]}),
+        encoding="utf-8",
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 1
+    assert loaded.rejection_reasons == {}
+
+
+def test_load_synthetic_training_examples_rejects_taxable_totals_not_reconciling(
+    tmp_path,
+):
+    # subtotal + tax must equal grand total.
+    bad = _taxable_add_candidate(new_grand_total="20.00")
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("taxable_totals_do_not_reconcile") == 1
+
+
+def test_load_synthetic_training_examples_rejects_taxable_tax_delta_off_rate(
+    tmp_path,
+):
+    # tax_delta must match subtotal_delta * rate (here 5.00 * 0.0722 ~= 0.36, not
+    # 2.00); new_tax/grand kept consistent so only the rate check fires.
+    bad = _taxable_add_candidate(tax_delta="2.00")
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("taxable_tax_delta_inconsistent") == 1
+
+
+def test_load_synthetic_training_examples_rejects_taxable_item_frozen_tax(tmp_path):
+    # A taxable item that left tax unchanged (non_taxable policy) is invalid.
+    bad = _taxable_add_candidate(summary_update_policy="non_taxable_item_delta")
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}), encoding="utf-8"
+    )
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons.get("invalid_arithmetic_reconciliation") == 1
+
+
 def test_load_synthetic_training_examples_rejects_store_header_without_address(
     tmp_path,
 ):

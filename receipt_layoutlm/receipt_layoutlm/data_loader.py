@@ -1576,6 +1576,93 @@ def _add_item_optional_evidence_failure(
     return None
 
 
+def _labeled_money_values(row: dict[str, Any], label: str) -> List[float]:
+    """Parsed numeric values of the row's tokens carrying ``label`` (e.g. TAX)."""
+    tokens = row.get("tokens") if isinstance(row.get("tokens"), list) else []
+    ner_tags = row.get("ner_tags") if isinstance(row.get("ner_tags"), list) else []
+    values: List[float] = []
+    for token, tag in zip(tokens, ner_tags):
+        if str(tag).upper().endswith(label):
+            parsed = _safe_float(str(token).replace("$", "").replace(",", ""))
+            if parsed is not None:
+                values.append(parsed)
+    return values
+
+
+def _taxable_summary_token_mismatch(
+    row: dict[str, Any],
+    arithmetic: dict[str, Any],
+) -> Optional[str]:
+    """For a taxable edit, the ACTUAL SUBTOTAL/TAX/GRAND_TOTAL tokens the model
+    trains on must carry the recomputed values — not just the metadata. If the
+    receipt labels one of these summaries, a matching token must exist."""
+    for label, key in (
+        ("TAX", "new_tax"),
+        ("SUBTOTAL", "new_subtotal"),
+        ("GRAND_TOTAL", "new_grand_total"),
+    ):
+        target = _safe_float(arithmetic.get(key))
+        values = _labeled_money_values(row, label)
+        if target is not None and values and not any(
+            abs(value - target) <= 0.005 for value in values
+        ):
+            return "taxable_summary_token_mismatch"
+    return None
+
+
+def _arithmetic_reconciliation_failure(
+    arithmetic: dict[str, Any],
+) -> Optional[str]:
+    """Validate an add/remove item arithmetic reconciliation.
+
+    Two policies are accepted, both verified against the receipt's own numbers:
+      * ``non_taxable_item_delta`` — tax frozen (``tax_delta`` is exactly 0.00).
+      * ``taxable_item_delta`` — tax recomputed at the merchant's stable rate.
+        The loader independently re-checks that subtotal + tax == grand total and
+        that the tax delta equals subtotal_delta * rate (within a cent of
+        rounding), so a fabricated or unbalanced taxable edit can't slip in.
+    """
+    policy = arithmetic.get("summary_update_policy")
+    if policy == "non_taxable_item_delta":
+        if arithmetic.get("tax_delta") != "0.00":
+            return "invalid_arithmetic_reconciliation"
+        return None
+    if policy == "taxable_item_delta":
+        old_tax = _safe_float(arithmetic.get("old_tax"))
+        new_subtotal = _safe_float(arithmetic.get("new_subtotal"))
+        new_tax = _safe_float(arithmetic.get("new_tax"))
+        new_grand = _safe_float(arithmetic.get("new_grand_total"))
+        subtotal_delta = _safe_float(arithmetic.get("subtotal_delta"))
+        tax_delta = _safe_float(arithmetic.get("tax_delta"))
+        rate = _safe_float(arithmetic.get("tax_rate"))
+        if None in (
+            old_tax,
+            new_subtotal,
+            new_tax,
+            new_grand,
+            subtotal_delta,
+            tax_delta,
+            rate,
+        ):
+            return "invalid_arithmetic_reconciliation"
+        if abs(tax_delta) < 0.005:  # a taxable edit must actually move tax
+            return "taxable_tax_unchanged"
+        # All values are rounded to cents, so subtotal + tax must EQUAL grand
+        # (half-cent tolerance for float noise, not a free cent).
+        if abs((new_subtotal + new_tax) - new_grand) > 0.005:
+            return "taxable_totals_do_not_reconcile"
+        # The recorded tax_delta must match BOTH the actual tax movement
+        # (catches a clamped new_tax that left tax_delta untouched) AND
+        # subtotal_delta * rate (catches a fabricated rate). Round-half-up to
+        # cents is within 0.005 of exact, so 0.006 admits only real rounding.
+        if abs((new_tax - old_tax) - tax_delta) > 0.005:
+            return "taxable_tax_delta_inconsistent"
+        if abs(tax_delta - subtotal_delta * rate) > 0.006:
+            return "taxable_tax_delta_inconsistent"
+        return None
+    return "invalid_arithmetic_reconciliation"
+
+
 def _synthetic_candidate_quality_failure(
     row: dict[str, Any],
     *,
@@ -1690,11 +1777,20 @@ def _synthetic_candidate_quality_failure(
             return optional_failure
         if not isinstance(arithmetic, dict):
             return "missing_arithmetic_reconciliation"
-        if (
-            arithmetic.get("summary_update_policy") != "non_taxable_item_delta"
-            or arithmetic.get("tax_delta") != "0.00"
-        ):
+        # Taxability must match the reconciliation policy: a taxable add
+        # recomputes tax, anything else freezes it (missing taxability is treated
+        # as non-taxable, matching the add generator's default).
+        if added.get("taxable") is True:
+            if arithmetic.get("summary_update_policy") != "taxable_item_delta":
+                return "invalid_arithmetic_reconciliation"
+        elif arithmetic.get("summary_update_policy") != "non_taxable_item_delta":
             return "invalid_arithmetic_reconciliation"
+        if failure := _arithmetic_reconciliation_failure(arithmetic):
+            return failure
+        if added.get("taxable") is True and (
+            mismatch := _taxable_summary_token_mismatch(row, arithmetic)
+        ):
+            return mismatch
         return None
 
     if operation == "remove_line_item":
@@ -1702,15 +1798,23 @@ def _synthetic_candidate_quality_failure(
         arithmetic = metadata.get("arithmetic_reconciliation")
         if not isinstance(removed, dict):
             return "remove_item_missing_evidence"
-        if removed.get("taxable") is not False:
+        if removed.get("taxable") not in (True, False):
             return "remove_item_taxable_or_unknown"
         if not isinstance(arithmetic, dict):
             return "missing_arithmetic_reconciliation"
-        if (
-            arithmetic.get("summary_update_policy") != "non_taxable_item_delta"
-            or arithmetic.get("tax_delta") != "0.00"
-        ):
+        # The policy must match the removed item's taxability: a taxable removal
+        # recomputes tax, a non-taxable one freezes it.
+        if removed.get("taxable") is True:
+            if arithmetic.get("summary_update_policy") != "taxable_item_delta":
+                return "invalid_arithmetic_reconciliation"
+        elif arithmetic.get("summary_update_policy") != "non_taxable_item_delta":
             return "invalid_arithmetic_reconciliation"
+        if failure := _arithmetic_reconciliation_failure(arithmetic):
+            return failure
+        if removed.get("taxable") is True and (
+            mismatch := _taxable_summary_token_mismatch(row, arithmetic)
+        ):
+            return mismatch
         return None
 
     if operation == "replace_field":
