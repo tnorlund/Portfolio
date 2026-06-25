@@ -43,9 +43,13 @@ for MERCHANT in "$@"; do
   EXPORT="$EXPORTS_DIR/$SLUG.json"
   PROMPT="You are building an ONLINE PRODUCT CATALOG for ONE merchant: \"$MERCHANT\".
 Work only in this git worktree. Steps:
-1. Web-research $MERCHANT's online storefront. Find 8-12 REAL products currently
-   sold, each with a real current price (and a UPC when findable). Prefer items
-   that plausibly appear on $MERCHANT receipts.
+1. Web-research $MERCHANT's OWN online storefront. Find 8-12 REAL products
+   currently sold, each with a real current price (and a UPC when findable).
+   CRITICAL: use $MERCHANT's OWN house/store brands and real product names — do
+   NOT use another retailer's private label. (e.g. Target = Good & Gather /
+   Market Pantry / Up & Up, NOT Walmart's 'Great Value'/'GV'; Costco = Kirkland
+   Signature; Sprouts = Sprouts brand.) Verify the brand belongs to $MERCHANT
+   before adding it. Prefer items that plausibly appear on $MERCHANT receipts.
 2. Write receipt_agent/receipt_agent/agents/label_evaluator/online_catalogs/$SLUG.json
    following online_catalogs/README.md: {\"merchant_name\":\"$MERCHANT\",
    \"source_url\":\"...\",\"entries\":[{\"name\",\"price\",\"upc\",\"taxable\"}]}.
