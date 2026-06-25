@@ -5297,15 +5297,21 @@ def _apply_taxable_delta(
 
     if tax_words:
         original_tax_total = _money_sum(value for _, value in tax_words)
-        running = Decimal("0.00")
+        # Running-remainder distribution: clamp each share to [0, remaining] so
+        # cent rounding can never produce a NEGATIVE tax row, and the last row
+        # takes the exact remainder so the rows sum to new_tax precisely.
+        remaining_tax = new_tax
+        remaining_old = original_tax_total
         for index, (word, value) in enumerate(tax_words):
             if index == len(tax_words) - 1:
-                share = _money(new_tax - running)
-            elif original_tax_total > Decimal("0.00"):
-                share = _money(new_tax * value / original_tax_total)
+                share = remaining_tax
+            elif remaining_old > Decimal("0.00"):
+                share = _money(remaining_tax * value / remaining_old)
+                share = min(max(share, Decimal("0.00")), remaining_tax)
             else:
                 share = Decimal("0.00")
-            running += share
+            remaining_tax -= share
+            remaining_old -= value
             word["text"] = _format_money_like(word["text"], share)
             _right_align_money_box(word)
             updated["tax"] += 1
