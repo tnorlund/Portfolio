@@ -257,17 +257,147 @@ def parse_locality(text: str) -> Optional[str]:
         if not m or m.group(2).upper() not in _US_STATE_CODES:
             continue
         city = re.sub(r"^[A-Za-z]\.\s+", "", m.group(1).strip()).strip()
-        tokens = city.split()
-        suffix_idx = [
-            i
-            for i, tok in enumerate(tokens)
-            if re.sub(r"[^a-z]", "", tok.lower()) in _STREET_SUFFIXES
-        ]
-        if suffix_idx:
-            tokens = tokens[suffix_idx[-1] + 1 :]
+        tokens = _trim_leading_street(city.split())
         city = " ".join(tokens).strip()
         if city:
             return f"{city}, {m.group(2).upper()}"
+    return None
+
+
+# 3-digit ZIP prefix -> state. A ZIP is far more OCR-stable than the two state
+# letters (which a faint scan drops entirely, e.g. "Henderson." over "89014"),
+# so it is the primary state signal for the geo guard. Ranges are (lo, hi, ST)
+# on the first three digits; gaps (military/territory/unused) fall through.
+_ZIP_RANGES = (
+    (10, 27, "MA"),
+    (28, 29, "RI"),
+    (30, 38, "NH"),
+    (39, 49, "ME"),
+    (50, 54, "VT"),
+    (55, 55, "MA"),  # 055xx is a unique MA prefix, not VT
+    (56, 59, "VT"),
+    (60, 69, "CT"),
+    (70, 89, "NJ"),
+    (100, 149, "NY"),
+    (150, 196, "PA"),
+    (197, 199, "DE"),
+    (200, 200, "DC"),
+    (201, 201, "VA"),  # 201xx (Dulles) is VA, not DC
+    (202, 205, "DC"),
+    (206, 219, "MD"),
+    (220, 246, "VA"),
+    (247, 268, "WV"),
+    (270, 289, "NC"),
+    (290, 299, "SC"),
+    (300, 319, "GA"),
+    (320, 339, "FL"),
+    (341, 349, "FL"),  # 340xx is military (AA), not a state
+    (350, 369, "AL"),
+    (370, 385, "TN"),
+    (386, 397, "MS"),
+    (398, 399, "GA"),
+    (400, 427, "KY"),
+    (430, 459, "OH"),
+    (460, 479, "IN"),
+    (480, 499, "MI"),
+    (500, 528, "IA"),
+    (530, 549, "WI"),
+    (550, 567, "MN"),
+    (570, 577, "SD"),
+    (580, 588, "ND"),
+    (590, 599, "MT"),
+    (600, 629, "IL"),
+    (630, 658, "MO"),
+    (660, 679, "KS"),
+    (680, 693, "NE"),
+    (700, 714, "LA"),
+    (716, 729, "AR"),
+    (730, 732, "OK"),
+    (733, 733, "TX"),
+    (734, 749, "OK"),
+    (750, 799, "TX"),
+    (800, 816, "CO"),
+    (820, 831, "WY"),
+    (832, 838, "ID"),
+    (840, 847, "UT"),
+    (850, 865, "AZ"),
+    (870, 884, "NM"),
+    (885, 885, "TX"),
+    (889, 898, "NV"),
+    (900, 961, "CA"),
+    (967, 968, "HI"),
+    (970, 979, "OR"),
+    (980, 994, "WA"),
+    (995, 999, "AK"),
+)
+_ZIP_RE = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+
+
+def state_from_zip(zip5: str) -> Optional[str]:
+    """Map a 5-digit ZIP to its 2-letter state, else ``None``."""
+    if not zip5 or len(zip5) < 3 or not zip5[:3].isdigit():
+        return None
+    prefix = int(zip5[:3])
+    for lo, hi, state in _ZIP_RANGES:
+        if lo <= prefix <= hi:
+            return state
+    return None
+
+
+def _trim_leading_street(parts: List[str]) -> List[str]:
+    """Drop everything up to the last street suffix that is NOT the first token.
+
+    A suffix at index >= 1 means a street name preceded it ("SUNSET RD Henderson"
+    -> "Henderson"). A suffix at index 0 is part of the city name itself
+    ("St. Louis", "Ave Maria") and is kept.
+    """
+    suffix_idx = [
+        i
+        for i, t in enumerate(parts)
+        if i >= 1 and re.sub(r"[^a-z]", "", t.lower()) in _STREET_SUFFIXES
+    ]
+    return parts[suffix_idx[-1] + 1 :] if suffix_idx else parts
+
+
+_ZIP_ONLY_RE = re.compile(r"^\s*(\d{5})(?:-\d{4})?\s*$")
+
+
+def _trailing_city(text: str) -> Optional[str]:
+    """Last 1-3 alpha tokens of *text* as a city (a leading street trimmed)."""
+    if not text:
+        return None
+    toks = re.findall(r"[A-Za-z][A-Za-z.'\-]*", text)
+    toks = [t for t in toks if re.sub(r"[^a-z]", "", t.lower())]
+    parts = _trim_leading_street(toks[-3:])
+    parts = [p.strip(".") for p in parts if p.strip(".")]
+    city = " ".join(parts).strip()
+    return city or None
+
+
+def locality_from_lines(line_texts: List[str]) -> Optional[str]:
+    """Best-effort ``"City, ST"`` from a receipt's lines (in receipt order).
+
+    First the clean per-line form ("City, ST"/"City ST ZIP"); then a fragmented
+    fallback that pairs a **ZIP-only** line with the city on the line just above
+    ("Henderson." over "89014" -> "Henderson, NV"). Requiring the whole line to be
+    the ZIP (not just any 5-digit token) keeps transaction/auth numbers like
+    "AUTH #12345" from fabricating a state. The ZIP-derived state is what makes
+    the geo guard robust to dropped state letters.
+    """
+    for text in line_texts:
+        loc = parse_locality(text)
+        if loc:
+            return loc
+    for idx, text in enumerate(line_texts):
+        m = _ZIP_ONLY_RE.match(text or "")
+        if not m or idx == 0:
+            continue
+        state = state_from_zip(m.group(1))
+        if not state:
+            continue
+        city = _trailing_city(line_texts[idx - 1])
+        if city:
+            return f"{city}, {state}"
     return None
 
 
@@ -634,24 +764,30 @@ class MerchantResolver:
         # Locality ("City, ST") from the receipt — the chain disambiguator. A bare
         # "Trader Joe's" text search returns an arbitrary branch (Boston for a
         # Henderson NV receipt); "Trader Joe's Henderson, NV" resolves the right
-        # store. Parse per-LINE (a city usually prints on its own line, e.g.
-        # "Henderson, NV") rather than a joined address blob, which would let the
-        # street swallow the city. ADDRESS_LINE-labeled lines are tried first.
+        # store. ADDRESS_LINE-labeled lines are tried first (clean "City, ST"
+        # form); then, in receipt order, a fragmented ZIP fallback pairs a bare
+        # ZIP with its city ("Henderson." over "89014" -> "Henderson, NV") — the
+        # ZIP-derived state is what survives a faint scan that drops "NV".
         addr_line_ids = {
             lab.line_id
             for lab in word_labels
             if lab.label == "ADDRESS_LINE"
             and lab.validation_status not in _rejected_status
         }
-        ordered_lines = sorted(
-            (ln for ln in lines if ln.text),
-            key=lambda ln: (ln.line_id not in addr_line_ids, ln.line_id),
+        receipt_order = sorted(
+            (ln for ln in lines if ln.text), key=lambda ln: ln.line_id
         )
-        locality: Optional[str] = None
-        for ln in ordered_lines:
-            locality = parse_locality(ln.text)
-            if locality:
-                break
+        # Clean "City, ST" on an ADDRESS_LINE-labeled line wins first; otherwise
+        # scan all lines in receipt order (clean form, then the ZIP fallback,
+        # whose city/ZIP adjacency needs that order preserved).
+        locality = None
+        for ln in receipt_order:
+            if ln.line_id in addr_line_ids:
+                locality = parse_locality(ln.text)
+                if locality:
+                    break
+        if not locality:
+            locality = locality_from_lines([ln.text for ln in receipt_order])
         # State part of "City, ST" — passed explicitly to the geo guard so it is
         # never disabled by how the text query happens to be tokenized.
         expected_state = (
