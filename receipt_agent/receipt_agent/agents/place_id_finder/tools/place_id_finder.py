@@ -85,6 +85,92 @@ _TOLL_FREE_AREA_CODES = frozenset(
     {"800", "822", "833", "844", "855", "866", "877", "888"}
 )
 
+# US state / territory codes, for rejecting a Places hit whose state contradicts
+# the receipt's own city/state line. A bare chain text search ("Trader Joe's")
+# returns an arbitrary branch (often in another state); the receipt almost always
+# prints its city + state, so a confident state mismatch means wrong location.
+_US_STATE_CODES = frozenset(
+    {
+        "AL",
+        "AK",
+        "AZ",
+        "AR",
+        "CA",
+        "CO",
+        "CT",
+        "DE",
+        "FL",
+        "GA",
+        "HI",
+        "ID",
+        "IL",
+        "IN",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "ME",
+        "MD",
+        "MA",
+        "MI",
+        "MN",
+        "MS",
+        "MO",
+        "MT",
+        "NE",
+        "NV",
+        "NH",
+        "NJ",
+        "NM",
+        "NY",
+        "NC",
+        "ND",
+        "OH",
+        "OK",
+        "OR",
+        "PA",
+        "RI",
+        "SC",
+        "SD",
+        "TN",
+        "TX",
+        "UT",
+        "VT",
+        "VA",
+        "WA",
+        "WV",
+        "WI",
+        "WY",
+        "DC",
+        "PR",
+        "VI",
+        "GU",
+        "AS",
+        "MP",
+    }
+)
+
+
+def _extract_us_state(text: Optional[str]) -> Optional[str]:
+    """Best-effort 2-letter US state code from an address-ish string.
+
+    Only the two *structurally-signalled* forms are trusted: a ``ST 12345`` tail
+    (the canonical US address) and a ``City, ST`` form. A bare two-letter token
+    is deliberately NOT matched — "IN-N-OUT" or a lowercase "or" would otherwise
+    read as Indiana/Oregon. Returns ``None`` when nothing confidently parses;
+    callers treat that as "unknown", never as a mismatch.
+    """
+    if not text:
+        return None
+    up = text.upper()
+    m = re.search(r"\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b", up)
+    if m and m.group(1) in _US_STATE_CODES:
+        return m.group(1)
+    m = re.search(r",\s*([A-Z]{2})\b", up)
+    if m and m.group(1) in _US_STATE_CODES:
+        return m.group(1)
+    return None
+
 
 @dataclass
 class ReceiptRecord:
@@ -98,6 +184,9 @@ class ReceiptRecord:
         address: Current formatted address
         phone: Current phone number
         validation_status: Current validation status
+        expected_state: Receipt's own 2-letter US state, when known. Lets the
+            search reject a Places hit in a contradicting state without re-parsing
+            it from ``address``/``merchant_name``.
     """
 
     image_id: str
@@ -106,6 +195,7 @@ class ReceiptRecord:
     address: Optional[str] = None
     phone: Optional[str] = None
     validation_status: Optional[str] = None
+    expected_state: Optional[str] = None
 
 
 @dataclass
@@ -340,6 +430,28 @@ class PlaceIdFinder:
             match.error = "Google Places client not configured"
             return match
 
+        # The receipt's own state (caller-supplied when known, else parsed from
+        # its address / city-state line); used to reject a Places hit that lands
+        # in the wrong state — a bare chain text search returns an arbitrary
+        # branch (e.g. "Trader Joe's" -> Boston for a Henderson NV receipt;
+        # "CVS" -> Little Elm TX for a Las Vegas receipt).
+        expected_state = (receipt.expected_state or "").strip().upper() or None
+        if expected_state not in _US_STATE_CODES:
+            expected_state = _extract_us_state(
+                receipt.address
+            ) or _extract_us_state(receipt.merchant_name)
+
+        def _wrong_state(place_data: Any) -> bool:
+            """True only when the receipt's state is known AND the result's state
+            is known AND they differ. Unknown on either side => never a conflict.
+            """
+            if not expected_state:
+                return False
+            result_state = _extract_us_state(
+                getattr(place_data, "formatted_address", None)
+            )
+            return bool(result_state) and result_state != expected_state
+
         # Strategy 1: Try phone lookup first (most reliable)
         if receipt.phone:
             # Validate phone number format before searching
@@ -375,7 +487,11 @@ class PlaceIdFinder:
                     logger.debug("Searching by phone: %s", receipt.phone)
                     place_data = self.places.search_by_phone(receipt.phone)
                     # Place is a Pydantic model - use attribute access
-                    if place_data and getattr(place_data, "place_id", None):
+                    if (
+                        place_data
+                        and getattr(place_data, "place_id", None)
+                        and not _wrong_state(place_data)
+                    ):
                         match.place_id = place_data.place_id
                         match.place_name = place_data.name
                         match.place_address = getattr(
@@ -392,6 +508,13 @@ class PlaceIdFinder:
                             receipt, place_data, "phone"
                         )
                         return match
+                    if place_data and _wrong_state(place_data):
+                        logger.debug(
+                            "Ignoring phone hit in wrong state "
+                            "(receipt=%s, result=%s)",
+                            expected_state,
+                            getattr(place_data, "formatted_address", None),
+                        )
                 except Exception as e:
                     logger.debug(
                         "Phone search failed for %s#%s: %s",
@@ -420,7 +543,11 @@ class PlaceIdFinder:
                     )
                     place_data = self.places.search_by_address(receipt.address)
                     # Place is a Pydantic model - use attribute access
-                    if place_data and getattr(place_data, "place_id", None):
+                    if (
+                        place_data
+                        and getattr(place_data, "place_id", None)
+                        and not _wrong_state(place_data)
+                    ):
                         match.place_id = place_data.place_id
                         match.place_name = place_data.name
                         match.place_address = getattr(
@@ -437,6 +564,13 @@ class PlaceIdFinder:
                             receipt, place_data, "address"
                         )
                         return match
+                    if place_data and _wrong_state(place_data):
+                        logger.debug(
+                            "Ignoring address hit in wrong state "
+                            "(receipt=%s, result=%s)",
+                            expected_state,
+                            getattr(place_data, "formatted_address", None),
+                        )
                 except Exception as e:
                     logger.debug(
                         "Address search failed for %s#%s: %s",
@@ -464,7 +598,11 @@ class PlaceIdFinder:
                         receipt.merchant_name
                     )
                     # Place is a Pydantic model - use attribute access
-                    if place_data and getattr(place_data, "place_id", None):
+                    if (
+                        place_data
+                        and getattr(place_data, "place_id", None)
+                        and not _wrong_state(place_data)
+                    ):
                         match.place_id = place_data.place_id
                         match.place_name = place_data.name
                         match.place_address = getattr(
@@ -481,6 +619,13 @@ class PlaceIdFinder:
                             receipt, place_data, "text"
                         )
                         return match
+                    if place_data and _wrong_state(place_data):
+                        logger.debug(
+                            "Ignoring text hit in wrong state "
+                            "(receipt=%s, result=%s)",
+                            expected_state,
+                            getattr(place_data, "formatted_address", None),
+                        )
                 except Exception as e:
                     logger.debug(
                         "Text search failed for %s#%s: %s",

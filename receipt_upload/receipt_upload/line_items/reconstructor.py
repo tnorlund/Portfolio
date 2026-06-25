@@ -28,6 +28,34 @@ _DOT = re.compile(r"^\$?\d{1,4}[.,]$")  # "$3."  (split, left half)
 _FRAG = re.compile(r"^\d{2}$")  # "99"   (split, right half)
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS"}
 _TOTALS = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
+# Tokens that mark a row as a *grand-total* row. Used to elect the canonical
+# copy when a receipt restates the total several times: an explicit "TOTAL: 9.08"
+# row must out-rank a bare restated number (e.g. a stray total that landed in a
+# "TOTAL NUMBER OF ITEMS SOLD" footer), or dedup may keep the stray and a later
+# validator invalidates it — leaving the receipt with no grand total at all.
+_GRAND_TOTAL_KEYWORDS = frozenset(
+    {"total", "balance", "due", "grand", "amount"}
+)
+# Tokens that turn a "total" row into a non-monetary count/summary row (e.g.
+# "TOTAL NUMBER OF ITEMS SOLD"), which must NOT anchor a grand-total election.
+_GRAND_TOTAL_DISQUALIFIERS = frozenset(
+    {
+        "number",
+        "items",
+        "item",
+        "qty",
+        "quantity",
+        "count",
+        "sold",
+        "transactions",
+        "transaction",
+        "pieces",
+        "units",
+        "lines",
+        "savings",
+        "saved",
+    }
+)
 _PROPOSED_BY = "geometry_line_items"
 _RECLASS_BY = "arithmetic_totals_reclass"
 
@@ -293,9 +321,15 @@ def dedupe_grand_total(
       that copy is canonical and only the ``PENDING`` duplicates of it are
       reported. If a group has *multiple* confirmed copies we abstain entirely.
     * When every copy in a value-group is ``PENDING``, the canonical kept copy is
-      the **lowest one on the receipt** (smallest y-center — header is high-y, the
-      final total prints last/lowest); the equal-valued restatements above it are
-      the redundant copies.
+      preferred by **grand-total-keyword context first** (a copy whose row carries
+      "TOTAL"/"BALANCE"/"DUE"/"GRAND"/"AMOUNT" out-ranks a bare restated number),
+      then by **lowest-on-receipt** (smallest y-center — header is high-y, the
+      final total prints last/lowest). Keyword anchoring matters: a stray copy of
+      the total value (e.g. one that landed in a "TOTAL NUMBER OF ITEMS SOLD"
+      footer) must not become canonical over the explicit "TOTAL: <amt>" row, or a
+      downstream validator may invalidate the kept stray and strand the receipt
+      with **no** grand total. The equal-valued restatements are the redundant
+      copies.
 
     Callers should mark each returned label ``INVALID`` (audit trail, never
     delete) and drop it from the pending set so the validators don't resurrect it.
@@ -328,6 +362,23 @@ def dedupe_grand_total(
             continue
         by_value.setdefault(val, []).append(lab)
 
+    # Line IDs whose row is an explicit grand-total row: it carries a grand-total
+    # keyword ("TOTAL"/"BALANCE"/...) AND none of the count-style disqualifiers
+    # ("NUMBER"/"ITEMS"/"SOLD"/...). The guard matters because a footer like
+    # "TOTAL NUMBER OF ITEMS SOLD" carries "TOTAL" but is a count row, not a money
+    # total — anchoring on it would re-elect the very stray we want to drop.
+    line_tokens: Dict[int, Set[str]] = {}
+    for w in words:
+        norm = re.sub(r"[^a-z]", "", str(getattr(w, "text", "")).lower())
+        if norm:
+            line_tokens.setdefault(w.line_id, set()).add(norm)
+    keyword_line_ids = {
+        line_id
+        for line_id, toks in line_tokens.items()
+        if (toks & _GRAND_TOTAL_KEYWORDS)
+        and not (toks & _GRAND_TOTAL_DISQUALIFIERS)
+    }
+
     redundant: List[ReceiptWordLabel] = []
     for _val, labs in by_value.items():
         if len(labs) < 2:
@@ -350,9 +401,16 @@ def dedupe_grand_total(
             # duplicates are redundant (never invalidate the confirmed one).
             redundant.extend(pending)
             continue
-        # All PENDING: keep the lowest-on-receipt copy, invalidate the rest.
-        pending.sort(key=lambda lab: pos.get((lab.line_id, lab.word_id), 0.0))
-        redundant.extend(pending[1:])
+        # All PENDING: elect a canonical copy and invalidate the rest. Prefer a
+        # keyword-anchored row (the explicit total) over a bare restated number;
+        # among the chosen pool, keep the lowest-on-receipt copy.
+        anchored = [lab for lab in pending if lab.line_id in keyword_line_ids]
+        candidates = anchored or pending
+        candidates.sort(
+            key=lambda lab: pos.get((lab.line_id, lab.word_id), 0.0)
+        )
+        canonical = candidates[0]
+        redundant.extend(lab for lab in pending if lab is not canonical)
     return redundant
 
 
