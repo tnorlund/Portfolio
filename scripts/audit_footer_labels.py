@@ -130,7 +130,8 @@ def _localize_totals_block(labels, words):
                         None not in (gv, sv, tv)
                         and abs((sv + tv) - gv) <= Decimal("0.02")
                     ):
-                        confidence, anchor = "reconciled", gy
+                        confidence = "reconciled"
+                        anchor = min(anchor, gy)
         if confidence == "weak" and subs:
             # subtotal clustered with a grand total confirms the block
             for sy, _ in subs:

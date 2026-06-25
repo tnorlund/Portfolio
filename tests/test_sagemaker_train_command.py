@@ -105,3 +105,16 @@ def test_trainer_records_synthetic_quality_gate_metrics():
     assert 'metric_name="synthetic_accepted_mix_balance"' in trainer_source
     assert 'metric_name="synthetic_accepted_grounded_count"' in trainer_source
     assert 'metric_name="synthetic_accepted_arithmetic_count"' in trainer_source
+
+
+def test_train_entrypoint_forces_synthetic_quality_gate_by_default():
+    train_source = (
+        Path(__file__).resolve().parents[1]
+        / "infra"
+        / "sagemaker_training"
+        / "train.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'if f"env_{gate_key}" not in hps:' in train_source
+    assert 'child_env[gate_key] = "1"' in train_source
+    assert "child_env.setdefault(gate_key" not in train_source

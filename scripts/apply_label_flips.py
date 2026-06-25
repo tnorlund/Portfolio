@@ -30,6 +30,45 @@ def _key(rec: dict) -> tuple:
     )
 
 
+def _strip_target_labels(
+    word: dict,
+    targets: set[tuple],
+    *,
+    image_id=None,
+    receipt_id=None,
+    line_id=None,
+) -> int:
+    labels = word.get("labels")
+    if not isinstance(labels, list) or not labels:
+        return 0
+
+    next_labels = []
+    removed = 0
+    for label in labels:
+        try:
+            word_image_id = word.get("image_id")
+            word_receipt_id = word.get("receipt_id")
+            word_line_id = word.get("line_id")
+            key = (
+                str(word_image_id if word_image_id is not None else image_id),
+                int(word_receipt_id if word_receipt_id is not None else receipt_id),
+                int(word_line_id if word_line_id is not None else line_id),
+                int(word.get("word_id")),
+                str(label),
+            )
+        except (TypeError, ValueError):
+            next_labels.append(label)
+            continue
+        if key in targets:
+            removed += 1
+            continue
+        next_labels.append(label)
+
+    if removed:
+        word["labels"] = next_labels
+    return removed
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--flips", required=True, help="audit_footer_labels.py output JSON")
@@ -48,6 +87,7 @@ def main() -> None:
 
     payload = json.load(open(args.export))
     changed = 0
+    embedded_changed = 0
     for wl in payload.get("receipt_word_labels") or []:
         try:
             key = _key(wl)
@@ -56,8 +96,33 @@ def main() -> None:
         if key in targets and str(wl.get("validation_status") or "").upper() == "VALID":
             wl["validation_status"] = "INVALID"
             changed += 1
+
+    for word in payload.get("receipt_words") or []:
+        if isinstance(word, dict):
+            embedded_changed += _strip_target_labels(word, targets)
+
+    for receipt in payload.get("receipts") or []:
+        if not isinstance(receipt, dict):
+            continue
+        image_id = receipt.get("image_id")
+        receipt_id = receipt.get("receipt_id")
+        for line in receipt.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            for word in line.get("words") or []:
+                if isinstance(word, dict):
+                    embedded_changed += _strip_target_labels(
+                        word,
+                        targets,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=line.get("line_id"),
+                    )
     json.dump(payload, open(args.export, "w"))
-    print(f"mirrored {changed}/{len(targets)} flips into {args.export}")
+    print(
+        f"mirrored {changed}/{len(targets)} flips into {args.export}; "
+        f"removed {embedded_changed} embedded labels"
+    )
 
 
 if __name__ == "__main__":

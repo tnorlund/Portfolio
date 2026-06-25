@@ -276,6 +276,8 @@ def _merchant_online_catalog(
 def build_merchant_synthesis_profile(
     merchant_name: str,
     receipts_data: list[dict[str, Any]],
+    *,
+    online_catalog: list[OnlineCatalogEntry] | None = None,
 ) -> dict[str, Any] | None:
     """Build a merchant-local synthesis profile from current receipt data."""
     receipts = [
@@ -288,11 +290,8 @@ def build_merchant_synthesis_profile(
     if not receipts:
         return None
 
-    analyses = [
-        analysis
-        for analysis in (_analyze_receipt(receipt) for receipt in receipts)
-        if analysis.line_items
-    ]
+    all_analyses = [_analyze_receipt(receipt) for receipt in receipts]
+    analyses = [analysis for analysis in all_analyses if analysis.line_items]
     catalog = _build_item_catalog(analyses)
     real_structure_baseline = build_real_structure_baseline(analyses)
     label_slots = {
@@ -318,9 +317,11 @@ def build_merchant_synthesis_profile(
             merchant_name,
             receipts=receipts,
             analyses=analyses,
+            tax_analyses=all_analyses,
             catalog=catalog,
             label_slots=label_slots,
             mutable_fields=mutable_fields,
+            online_catalog=online_catalog,
         ),
         "generation_limits": {
             "max_candidates_per_training_run": 5,
@@ -340,6 +341,7 @@ def build_merchant_synthesis_readiness(
     receipts_data: list[dict[str, Any]],
     *,
     plan: dict[str, Any] | None = None,
+    online_catalog: list[OnlineCatalogEntry] | None = None,
 ) -> dict[str, Any] | None:
     """Score whether a merchant has enough local evidence to synthesize safely."""
     receipts = [
@@ -352,11 +354,8 @@ def build_merchant_synthesis_readiness(
     if not receipts:
         return None
 
-    analyses = [
-        analysis
-        for analysis in (_analyze_receipt(receipt) for receipt in receipts)
-        if analysis.line_items
-    ]
+    all_analyses = [_analyze_receipt(receipt) for receipt in receipts]
+    analyses = [analysis for analysis in all_analyses if analysis.line_items]
     catalog = _build_item_catalog(analyses)
     label_slots = {
         label: slot
@@ -367,10 +366,12 @@ def build_merchant_synthesis_readiness(
         merchant_name,
         receipts=receipts,
         analyses=analyses,
+        tax_analyses=all_analyses,
         catalog=catalog,
         label_slots=label_slots,
         mutable_fields=_summarize_mutable_fields(label_slots),
         plan=plan,
+        online_catalog=online_catalog,
     )
 
 
@@ -390,7 +391,11 @@ def generate_merchant_synthesis_candidates(
     assign, giving clean item-region supervision a cloned real row cannot.
     """
     merchant_name = str(plan.get("merchant_name") or "Unknown merchant")
-    profile = build_merchant_synthesis_profile(merchant_name, receipts_data)
+    profile = build_merchant_synthesis_profile(
+        merchant_name,
+        receipts_data,
+        online_catalog=online_catalog,
+    )
     if profile is None:
         return []
 
@@ -404,6 +409,17 @@ def generate_merchant_synthesis_candidates(
     analyses = [_analyze_receipt(receipt) for receipt in receipts]
     catalog = _build_item_catalog(
         [analysis for analysis in analyses if analysis.line_items]
+    )
+    profile["synthesis_readiness"] = _build_synthesis_readiness(
+        merchant_name,
+        receipts=receipts,
+        analyses=[analysis for analysis in analyses if analysis.line_items],
+        tax_analyses=analyses,
+        catalog=catalog,
+        label_slots=profile.get("label_slots") or {},
+        mutable_fields=profile.get("mutable_fields") or {},
+        plan=plan,
+        online_catalog=online_catalog,
     )
 
     candidates: list[dict[str, Any]] = []
@@ -492,9 +508,15 @@ def generate_merchant_synthesis_candidates(
             index=len(candidates) + 1,
             prefer_taxable=True,
         )
-        if taxable_removal and taxable_removal["candidate_id"] not in {
-            candidate["candidate_id"] for candidate in candidates
-        }:
+        existing_removals = {
+            _removed_item_identity(candidate)
+            for candidate in candidates
+            if _candidate_operation(candidate) == "remove_line_item"
+        }
+        if (
+            taxable_removal
+            and _removed_item_identity(taxable_removal) not in existing_removals
+        ):
             candidates.append(taxable_removal)
 
     for label in ("DATE", "TIME"):
@@ -560,13 +582,16 @@ def _build_synthesis_readiness(
     *,
     receipts: list[dict[str, Any]],
     analyses: list[MerchantAnalysis],
+    tax_analyses: list[MerchantAnalysis] | None = None,
     catalog: list[MerchantCatalogEntry],
     label_slots: dict[str, Any],
     mutable_fields: dict[str, Any] | None = None,
     plan: dict[str, Any] | None = None,
+    online_catalog: list[OnlineCatalogEntry] | None = None,
 ) -> dict[str, Any]:
     """Build a compact offline readiness score for merchant-local synthesis."""
     mutable_fields = mutable_fields or {}
+    tax_analyses = tax_analyses or analyses
     tax_policy = _summarize_tax_policy(analyses)
     add_plans = _build_add_item_plans(analyses, catalog)
     remove_plans = _build_remove_item_plans(analyses)
@@ -623,8 +648,8 @@ def _build_synthesis_readiness(
     # realistic, consistent tax on a composed receipt), and at least one usable
     # scaffold. Without it, composed candidates have no contract and are rejected
     # by the loader's contract gate.
-    online_catalog = _merchant_online_catalog(merchant_name)
-    compose_rate, compose_rate_stable, _ = _stable_tax_rate(analyses)
+    online_catalog_entries = _merchant_online_catalog(merchant_name, online_catalog)
+    compose_rate, compose_rate_stable, _ = _stable_tax_rate(tax_analyses)
     compose_scaffolds = [
         analysis
         for analysis in analyses
@@ -633,7 +658,7 @@ def _build_synthesis_readiness(
         and analysis.subtotal is not None
     ]
     compose_online_catalog_ready = bool(
-        len(online_catalog) >= 2
+        len(online_catalog_entries) >= 2
         and compose_rate is not None
         and compose_rate_stable
         and compose_scaffolds
@@ -641,7 +666,7 @@ def _build_synthesis_readiness(
     if compose_online_catalog_ready:
         supported_operations.append("compose_online_catalog")
     compose_online_catalog_capacity = (
-        len(online_catalog) if compose_online_catalog_ready else 0
+        len(online_catalog_entries) if compose_online_catalog_ready else 0
     )
 
     # Places-driven store-header diversity is supported when the cache holds at
@@ -673,7 +698,10 @@ def _build_synthesis_readiness(
     store_header_location_count = len(
         [profile for profile in store_profiles if profile.is_complete()]
     )
-    if store_header_location_count >= 2:
+    compose_store_header_capacity = (
+        store_header_location_count if store_header_location_count >= 2 else 0
+    )
+    if compose_store_header_capacity:
         supported_operations.append("compose_store_header")
 
     blockers: list[str] = []
@@ -682,8 +710,10 @@ def _build_synthesis_readiness(
         blockers.append("no_receipts")
     if not analyses:
         blockers.append("no_line_items")
-    if not catalog:
+    if not catalog and not compose_online_catalog_ready:
         blockers.append("no_observed_item_catalog")
+    elif not catalog:
+        limitations.append("no_observed_item_catalog")
     if not supported_operations:
         blockers.append("no_supported_operations")
     if false_positive_recipes and not ready_hard_negative_labels:
@@ -704,7 +734,10 @@ def _build_synthesis_readiness(
     score_components = {
         "receipt_depth": min(1.0, len(receipts) / 3.0),
         "line_item_depth": min(1.0, len(analyses) / 2.0),
-        "catalog_grounding": min(1.0, len(catalog) / 4.0),
+        "catalog_grounding": min(
+            1.0,
+            max(len(catalog), compose_online_catalog_capacity) / 4.0,
+        ),
         "category_structure": 1.0 if category_values else 0.0,
         "summary_anchors": min(1.0, receipts_with_grand_total / 2.0),
         "operation_support": min(1.0, len(supported_operations) / 2.0),
@@ -742,7 +775,9 @@ def _build_synthesis_readiness(
             potential_hard_negative_count
             + len(add_plans)
             + len(remove_plans)
-            + mutable_field_count,
+            + mutable_field_count
+            + compose_online_catalog_capacity
+            + compose_store_header_capacity,
         ),
         "hard_negative_label_count": potential_hard_negative_count,
         "ready_hard_negative_labels": ready_hard_negative_labels,
@@ -751,6 +786,7 @@ def _build_synthesis_readiness(
         "mutable_field_count": mutable_field_count,
         "compose_online_catalog_candidate_count": compose_online_catalog_capacity,
         "compose_store_header_location_count": store_header_location_count,
+        "compose_store_header_candidate_count": compose_store_header_capacity,
         "mutable_fields": {
             label: field
             for label, field in mutable_fields.items()
@@ -972,6 +1008,26 @@ def _candidate_is_high_fidelity(candidate: dict[str, Any]) -> bool:
     quality = metadata.get("candidate_quality")
     quality = quality if isinstance(quality, dict) else {}
     return quality.get("high_fidelity") is True
+
+
+def _candidate_operation(candidate: dict[str, Any]) -> str:
+    metadata = candidate.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return str(metadata.get("operation") or "").strip()
+
+
+def _removed_item_identity(candidate: dict[str, Any]) -> tuple[str, str, str, bool | None]:
+    metadata = candidate.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    removed = metadata.get("removed_item")
+    removed = removed if isinstance(removed, dict) else {}
+    taxable = removed.get("taxable")
+    return (
+        str(metadata.get("base_receipt_key") or ""),
+        _normalize_product_text(removed.get("product_text") or ""),
+        str(removed.get("line_total") or ""),
+        taxable if taxable in (True, False) else None,
+    )
 
 
 def _renumber_candidate(
@@ -1379,11 +1435,11 @@ def _build_add_item_candidate_from_plan(
         min(inserted_bottoms, default=0) >= summary_top - gap
     )
 
-    # Taxable items reconcile subtotal + TAX (at the merchant's stable rate) +
+    # Taxable items reconcile subtotal + TAX (at the merchant's taxable-item rate) +
     # grand total; non-taxable items move subtotal/grand and freeze tax. A
     # taxable item without a stable rate is not reconcilable, so skip it.
     if entry.taxable:
-        tax_rate, tax_stable, _ = _stable_tax_rate(analyses)
+        tax_rate, tax_stable, _ = _stable_taxable_item_rate(analyses)
         if not tax_stable or tax_rate is None:
             return None
         arithmetic = _apply_taxable_delta(
@@ -1468,7 +1524,7 @@ def _build_add_item_candidate_from_plan(
             "item_count_fields_reconciled": item_count_fields_updated,
             "balancing_strategy": (
                 "add observed taxable item; update subtotal, tax (at the "
-                "merchant's stable rate), and final/payment amounts"
+                "merchant's stable taxable-item rate), and final/payment amounts"
                 if entry.taxable
                 else "add observed non-taxable item, update subtotal/final/"
                 "payment amounts, and leave tax unchanged"
@@ -1484,9 +1540,9 @@ def _build_add_item_plans(
     plans: list[
         tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]
     ] = []
-    # Taxable items are only addable when the merchant has a stable effective tax
+    # Taxable items are only addable when the merchant has a stable taxable-item tax
     # rate to recompute TAX with; otherwise restrict to non-taxable items.
-    _, tax_stable, _ = _stable_tax_rate(analyses)
+    _, tax_stable, _ = _stable_taxable_item_rate(analyses)
     for analysis in analyses:
         if analysis.grand_total is None or not analysis.line_items:
             continue
@@ -1594,7 +1650,7 @@ def _build_remove_item_candidate_from_plan(
         line_step=line_step,
     )
     if removed.taxable:
-        tax_rate, tax_stable, _ = _stable_tax_rate(analyses)
+        tax_rate, tax_stable, _ = _stable_taxable_item_rate(analyses)
         if not tax_stable or tax_rate is None:
             return None
         arithmetic = _apply_taxable_delta(
@@ -1696,7 +1752,7 @@ def _build_remove_item_candidate_from_plan(
             "item_count_fields_reconciled": item_count_fields_updated,
             "balancing_strategy": (
                 "remove one taxable item; update subtotal, tax (at the "
-                "merchant's stable rate), and final/payment amounts"
+                "merchant's stable taxable-item rate), and final/payment amounts"
                 if removed.taxable
                 else "remove one non-taxable item, update subtotal/final/"
                 "payment amounts, and leave tax unchanged"
@@ -2067,7 +2123,7 @@ def _generate_value_scrub_candidate(
 # we never emit a half-swapped, incoherent address.
 # ---------------------------------------------------------------------------
 
-_STORE_HEADER_LABELS = ("ADDRESS_LINE", "PHONE_NUMBER")
+_STORE_HEADER_LABELS = ("ADDRESS_LINE", "PHONE_NUMBER", "WEBSITE")
 
 
 def _line_core_labels(line: dict[str, Any]) -> set[str]:
@@ -2131,7 +2187,7 @@ def _apply_store_header_swap(
     receipt: dict[str, Any],
     alt: StoreProfile,
 ) -> list[dict[str, Any]] | None:
-    """Swap the receipt's address (atomically) + phone for ``alt``'s values.
+    """Swap the receipt's address (atomically) + phone/website for ``alt``'s values.
 
     Returns the list of field swaps, or None when no coherent swap is possible
     (e.g. the address lines are not cleanly owned by ADDRESS_LINE).
@@ -2141,7 +2197,13 @@ def _apply_store_header_swap(
         (line for line in lines if _line_owned_by(line, "ADDRESS_LINE")),
         key=lambda line: -_safe_float(line.get("y"), 0.5),
     )
+    phone_lines = [line for line in lines if _line_owned_by(line, "PHONE_NUMBER")]
+    website_lines = [line for line in lines if _line_owned_by(line, "WEBSITE")]
     if not address_lines or not alt.street or not alt.city_state_zip:
+        return None
+    if phone_lines and not alt.phone:
+        return None
+    if website_lines and not alt.website:
         return None
 
     # The cache gives two address components (street, city/state/zip). A receipt
@@ -2172,29 +2234,53 @@ def _apply_store_header_swap(
     # Phone is MANDATORY when the receipt prints one: a new address beside the
     # original branch's phone is a mixed store identity. If any owned phone line
     # cannot be swapped to alt's phone, abandon the whole candidate.
-    phone_lines = [line for line in lines if _line_owned_by(line, "PHONE_NUMBER")]
     if phone_lines:
-        if not alt.phone:
-            return None
         for line in phone_lines:
             phone_evidence = _swap_owned_line(line, "PHONE_NUMBER", alt.phone)
             if phone_evidence is None:
                 return None
             swaps.append(phone_evidence)
 
+    # Website is part of the same printed store-identity cluster. If the base
+    # receipt carries one, it must come from the alternate place too; otherwise a
+    # new address/phone could sit beside the original branch's website.
+    if website_lines:
+        for line in website_lines:
+            website_evidence = _swap_owned_line(line, "WEBSITE", alt.website)
+            if website_evidence is None:
+                return None
+            swaps.append(website_evidence)
+
     return swaps or None
 
 
+_GENERIC_STORE_NAME_TOKENS = {"the", "a", "an"}
+
+
+def _store_merchant_tokens(name: str) -> list[str]:
+    tokens = re.findall(r"[A-Za-z0-9']+", str(name).lower())
+    while tokens and tokens[0] in _GENERIC_STORE_NAME_TOKENS:
+        tokens.pop(0)
+    return tokens
+
+
 def _store_merchant_match(name_a: str, name_b: str) -> bool:
-    """Loose same-merchant check (e.g. 'Gelson's Westlake Village' vs 'Gelson's',
-    'VONS' vs 'Vons'): share the first significant token, case-insensitive."""
+    """Same-brand check for Places pools without collapsing unrelated merchants.
 
-    def _key(name: str) -> str:
-        tokens = re.findall(r"[A-Za-z0-9']+", str(name).lower())
-        return tokens[0] if tokens else ""
+    A bare brand can match a location-qualified name (``Gelson's`` vs
+    ``Gelson's Westlake Village``), and a leading article is ignored
+    (``The Home Depot`` vs ``Home Depot``). Names that only share an umbrella
+    first token but diverge immediately (``Amazon Fresh`` vs ``Amazon Go``) do
+    not match.
+    """
 
-    a, b = _key(name_a), _key(name_b)
-    return bool(a) and a == b
+    a, b = _store_merchant_tokens(name_a), _store_merchant_tokens(name_b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) < len(long) and long[: len(short)] == short
 
 
 def _generate_compose_store_header_candidates(
@@ -2300,9 +2386,9 @@ def _build_remove_item_plans(
     analyses: list[MerchantAnalysis],
 ) -> list[tuple[float, MerchantAnalysis, MerchantLineItem]]:
     plans: list[tuple[float, MerchantAnalysis, MerchantLineItem]] = []
-    # Taxable items are only removable when the merchant has a stable effective
+    # Taxable items are only removable when the merchant has a stable taxable-item
     # tax rate to recompute TAX with; otherwise restrict to non-taxable items.
-    _, tax_stable, _ = _stable_tax_rate(analyses)
+    _, tax_stable, _ = _stable_taxable_item_rate(analyses)
     for analysis in analyses:
         if analysis.grand_total is None or len(analysis.line_items) < 2:
             continue
@@ -2421,7 +2507,7 @@ def _build_template_filled_row(
     y0: int,
     geo: dict[str, Any],
     line_id: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """One item row with NON-OVERLAPPING columns and labels we assign:
     UPC/flag -> O, name tokens -> PRODUCT_NAME, price -> LINE_TOTAL."""
     char_w = geo["char_w"]
@@ -2447,10 +2533,19 @@ def _build_template_filled_row(
         )
         word_id += 1
     cursor = geo["name_x0"]
+    product_name_words = 0
     for token in _abbrev_product_name(entry.name).split():
         width = len(token) * char_w
         if cursor + width > flag_x0 - char_w:  # keep clear of the flag/price
-            break
+            if product_name_words:
+                break
+            max_chars = max(0, (flag_x0 - char_w - cursor) // char_w)
+            if max_chars <= 0:
+                return None
+            token = token[:max_chars]
+            width = len(token) * char_w
+            if not token or cursor + width > flag_x0 - char_w:
+                return None
         words.append(
             {
                 "text": token,
@@ -2462,6 +2557,9 @@ def _build_template_filled_row(
         )
         cursor += width + char_w
         word_id += 1
+        product_name_words += 1
+    if product_name_words <= 0:
+        return None
     words.append(
         {
             "text": "<A>",
@@ -2484,13 +2582,32 @@ def _build_template_filled_row(
     return {"line_id": line_id, "y": y0 / 1000, "words": words}
 
 
-def _expected_template_label(text: Any) -> str:
+def _expected_template_label(
+    text: Any,
+    *,
+    word_index: int | None = None,
+    flag_index: int | None = None,
+) -> str:
     """The label a composed item-row token MUST carry (the supervision we assert
     and later verify, so a regression in row rendering is caught)."""
     value = str(text or "")
     if value.startswith("$") and _parse_money(value) is not None:
         return "LINE_TOTAL"
-    if value == "<A>" or value.isdigit():
+    if value == "<A>":
+        return "O"
+    if (
+        word_index == 0
+        and value.isdigit()
+        and len(value) >= 8
+    ):
+        return "O"
+    if (
+        word_index is not None
+        and flag_index is not None
+        and word_index < flag_index
+    ):
+        return "PRODUCT_NAME"
+    if value.isdigit():
         return "O"
     return "PRODUCT_NAME"
 
@@ -2500,19 +2617,47 @@ def _verify_template_row_labels(receipt: dict[str, Any]) -> dict[str, Any]:
     the label we assigned — the clean-supervision guarantee of this path."""
     total = 0
     correct = 0
+    row_count = 0
+    rows_with_product_name = 0
+    product_name_token_count = 0
     for line in receipt.get("lines", []) or []:
         if (line.get("line_id") or 0) < _SYNTHETIC_LINE_ID_BASE:
             continue
-        for word in line.get("words", []) or []:
-            expected = _expected_template_label(word.get("text"))
+        row_count += 1
+        words = line.get("words", []) or []
+        flag_index = next(
+            (
+                index
+                for index, word in enumerate(words)
+                if str(word.get("text") or "") == "<A>"
+            ),
+            None,
+        )
+        row_has_product_name = False
+        for index, word in enumerate(words):
+            expected = _expected_template_label(
+                word.get("text"),
+                word_index=index,
+                flag_index=flag_index,
+            )
             labels = word.get("labels") or []
             got = labels[0] if labels else "O"
             total += 1
             correct += int(got == expected)
+            if expected == "PRODUCT_NAME":
+                row_has_product_name = True
+                product_name_token_count += 1
+        rows_with_product_name += int(row_has_product_name)
     return {
         "item_token_count": total,
         "correctly_labeled": correct,
-        "all_correct": total > 0 and correct == total,
+        "product_name_token_count": product_name_token_count,
+        "all_rows_have_product_name": row_count > 0
+        and rows_with_product_name == row_count,
+        "all_correct": total > 0
+        and correct == total
+        and row_count > 0
+        and rows_with_product_name == row_count,
     }
 
 
@@ -2622,6 +2767,8 @@ def _compose_online_catalog_receipt(
             geo=geo,
             line_id=_SYNTHETIC_LINE_ID_BASE + offset,
         )
+        if row is None:
+            return None
         composed.append(row)
         cursor = min(word["bbox"][1] for word in row["words"]) - gap
 
@@ -2648,11 +2795,11 @@ def _compose_online_catalog_receipt(
     taxable_subtotal = _money_sum(
         entry.price for entry in entries if entry.taxable
     )
-    # Apply the merchant's robust EFFECTIVE rate (tax/subtotal) to the composed
-    # subtotal so the synthetic receipt reproduces the real tax-to-subtotal
-    # relationship, rather than trusting fragile per-item taxability.
-    if rate is not None:
-        tax = _money(subtotal * rate)
+    # Only rendered entries marked taxable contribute to TAX. Exempt catalog rows
+    # (common for grocery compositions) must not inherit positive tax just because
+    # the merchant has a stable observed rate.
+    if rate is not None and taxable_subtotal > Decimal("0.00"):
+        tax = _money(taxable_subtotal * rate)
     else:
         tax = Decimal("0.00")
     total = _money(subtotal + tax)
@@ -2677,7 +2824,7 @@ def _compose_online_catalog_receipt(
         "new_subtotal": _format_money(subtotal),
         "new_taxable_subtotal": _format_money(taxable_subtotal),
         "tax_rate": _format_rate(rate) if rate is not None else None,
-        "tax_basis": "effective_rate_on_subtotal",
+        "tax_basis": "taxable_catalog_subtotal",
         "tax_rate_stable": bool(rate_stable),
         "new_tax": _format_money(tax),
         "new_grand_total": _format_money(total),
@@ -2741,21 +2888,31 @@ def _write_composed_totals(
         "payment_or_balance": 0,
     }
     tax_words: list[tuple[dict[str, Any], Decimal]] = []
+    summary_labels = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
     for line in receipt.get("lines", []) or []:
+        line_labels = {
+            label
+            for word in line.get("words", []) or []
+            for label in (word.get("labels") or [])
+            if label in summary_labels
+        }
         for word in line.get("words", []) or []:
             labels = set(word.get("labels") or [])
             value = _parse_money(word.get("text"))
             if value is None:
                 continue
-            if "SUBTOTAL" in labels:
+            effective_labels = set(labels)
+            if not effective_labels & {"LINE_TOTAL", *summary_labels}:
+                effective_labels |= line_labels
+            if "SUBTOTAL" in effective_labels:
                 word["text"] = _format_money_like(word["text"], subtotal)
                 _right_align_money_box(word)
                 counts["subtotal"] += 1
-            elif "TAX" in labels:
+            elif "TAX" in effective_labels:
                 # Defer: a scaffold can show several TAX rows (e.g. state + city)
                 # and writing the full composed tax into each would overstate it.
                 tax_words.append((word, value))
-            elif "GRAND_TOTAL" in labels:
+            elif "GRAND_TOTAL" in effective_labels:
                 word["text"] = _format_money_like(word["text"], total)
                 _right_align_money_box(word)
                 counts["grand_total"] += 1
@@ -3031,15 +3188,15 @@ def build_layout_integrity_evidence(
         for index in range(len(line_ys) - 1)
         if line_ys[index] < line_ys[index + 1] - _LINE_ORDER_EPSILON
     )
-    # An overlap that touches a SYNTHETIC line (inserted at id >= 20000) is a
-    # collision the synthesis itself introduced (an added row landing on a
-    # neighbor or a summary line) — always a hard defect, unlike the mild
-    # base-OCR overlaps from a rotated photo that the budget tolerates.
+    # An overlap that touches a SYNTHETIC line (inserted at/above the synthetic
+    # id floor) is a collision the synthesis itself introduced (an added row
+    # landing on a neighbor or a summary line) — always a hard defect, unlike the
+    # mild base-OCR overlaps from a rotated photo that the budget tolerates.
     synthetic_overlap_count = sum(
         1
         for overlap in overlaps
-        if (overlap.get("left_line_id") or 0) >= _SYNTHETIC_LINE_ID_BASE
-        or (overlap.get("right_line_id") or 0) >= _SYNTHETIC_LINE_ID_BASE
+        if _is_synthetic_line_id(overlap.get("left_line_id"))
+        or _is_synthetic_line_id(overlap.get("right_line_id"))
     )
     line_order_valid = line_inversion_count == 0
     word_count = len(words) + len(invalid_words) + len(out_of_bounds_words)
@@ -3406,6 +3563,44 @@ def build_synthesis_candidate_quality(
             "arithmetic_reconciliation": 0.16,
             "token_budget": 0.02,
         }
+    elif operation == "compose_store_header":
+        swap = metadata.get("store_header_swap")
+        swap = swap if isinstance(swap, dict) else {}
+        fields = swap.get("fields_swapped")
+        fields = fields if isinstance(fields, list) else []
+        swapped_labels = {
+            str(field.get("label") or "").upper()
+            for field in fields
+            if isinstance(field, dict)
+        }
+        components.update(
+            {
+                "store_identity_coherence": (
+                    1.0
+                    if swap.get("merchant_match") is True
+                    and swap.get("all_fields_from_single_place") is True
+                    and str(swap.get("source_place_id") or "").strip()
+                    and str(swap.get("source_place_id") or "").strip()
+                    != str(swap.get("own_place_id") or "").strip()
+                    else 0.0
+                ),
+                "address_swapped": (
+                    1.0 if "ADDRESS_LINE" in swapped_labels else 0.0
+                ),
+                "store_field_swap_evidence": (
+                    1.0 if bool(fields) and bool(swapped_labels) else 0.0
+                ),
+            }
+        )
+        weights = {
+            "structure_similarity": 0.28,
+            "structure_component_pass_rate": 0.08,
+            "layout_integrity": 0.14,
+            "store_identity_coherence": 0.22,
+            "address_swapped": 0.18,
+            "store_field_swap_evidence": 0.08,
+            "token_budget": 0.02,
+        }
     elif operation == "hard_negative":
         components.update(
             {
@@ -3434,6 +3629,19 @@ def build_synthesis_candidate_quality(
         ),
         3,
     )
+    operation_specific_gate = True
+    if operation == "compose_online_catalog":
+        operation_specific_gate = (
+            components.get("online_catalog_grounding", 0.0) >= 1.0
+            and components.get("label_control", 0.0) >= 1.0
+            and components.get("arithmetic_reconciliation", 0.0) >= 1.0
+        )
+    elif operation == "compose_store_header":
+        operation_specific_gate = (
+            components.get("store_identity_coherence", 0.0) >= 1.0
+            and components.get("address_swapped", 0.0) >= 1.0
+            and components.get("store_field_swap_evidence", 0.0) >= 1.0
+        )
     return {
         "schema_version": "synthetic-candidate-quality-v1",
         "score": score,
@@ -3444,6 +3652,7 @@ def build_synthesis_candidate_quality(
             and components["layout_integrity"] >= 1.0
             and components.get("valid_insertion_position", 1.0) >= 1.0
             and structure_gate["passed"] is True
+            and operation_specific_gate
         ),
         "components": {
             key: round(value, 3) for key, value in sorted(components.items())
@@ -3855,6 +4064,7 @@ def _preview_line_role(text: str, labels: list[str]) -> str:
         "MERCHANT_NAME",
         "ADDRESS_LINE",
         "PHONE_NUMBER",
+        "WEBSITE",
         "STORE_HOURS",
         "DATE",
         "TIME",
@@ -4681,6 +4891,20 @@ def _tax_rate_observations(analyses: list[MerchantAnalysis]) -> list[Decimal]:
     return observations
 
 
+def _stable_taxable_item_rate(
+    analyses: list[MerchantAnalysis],
+) -> tuple[Decimal | None, bool, list[Decimal]]:
+    rates = _tax_rate_observations(analyses)
+    if len(rates) < 2:
+        return None, False, rates
+    median = statistics.median(rates)
+    if not isinstance(median, Decimal):
+        median = Decimal(str(median))
+    median = median.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    stable = max(rates) - min(rates) <= Decimal("0.0050")
+    return median, stable, rates
+
+
 def _format_rate(value: Decimal) -> str:
     return f"{value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP):.4f}"
 
@@ -5004,7 +5228,7 @@ def _apply_taxable_delta(
     delta: Decimal,
     rate: Decimal,
 ) -> dict[str, Any] | None:
-    """Reconcile a TAXABLE item add/remove using the merchant's stable effective
+    """Reconcile a TAXABLE item add/remove using the merchant's stable taxable-item
     tax rate: subtotal moves by the item price, tax moves by ``delta * rate``
     (rounded to cents), and the grand total absorbs both. Unlike the non-taxable
     path (which freezes tax), this edits the real TAX value — only safe because a
@@ -5034,21 +5258,30 @@ def _apply_taxable_delta(
     new_grand_total = _money(new_subtotal + new_tax)
 
     updated = {"subtotal": 0, "tax": 0, "grand_total": 0, "payment_or_balance": 0}
+    tax_words: list[tuple[dict[str, Any], Decimal]] = []
+    summary_labels = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
     for line in receipt.get("lines", []):
+        line_labels = {
+            label
+            for word in line.get("words", []) or []
+            for label in (word.get("labels") or [])
+            if label in summary_labels
+        }
         for word in line.get("words", []):
             labels = set(word.get("labels") or [])
             value = _parse_money(word.get("text"))
             if value is None:
                 continue
-            if "SUBTOTAL" in labels:
+            effective_labels = set(labels)
+            if not effective_labels & {"LINE_TOTAL", *summary_labels}:
+                effective_labels |= line_labels
+            if "SUBTOTAL" in effective_labels:
                 word["text"] = _format_money_like(word["text"], new_subtotal)
                 _right_align_money_box(word)
                 updated["subtotal"] += 1
-            elif "TAX" in labels:
-                word["text"] = _format_money_like(word["text"], new_tax)
-                _right_align_money_box(word)
-                updated["tax"] += 1
-            elif "GRAND_TOTAL" in labels:
+            elif "TAX" in effective_labels:
+                tax_words.append((word, value))
+            elif "GRAND_TOTAL" in effective_labels:
                 word["text"] = _format_money_like(word["text"], new_grand_total)
                 _right_align_money_box(word)
                 updated["grand_total"] += 1
@@ -5061,6 +5294,21 @@ def _apply_taxable_delta(
                 word["text"] = _format_money_like(word["text"], new_grand_total)
                 _right_align_money_box(word)
                 updated["payment_or_balance"] += 1
+
+    if tax_words:
+        original_tax_total = _money_sum(value for _, value in tax_words)
+        running = Decimal("0.00")
+        for index, (word, value) in enumerate(tax_words):
+            if index == len(tax_words) - 1:
+                share = _money(new_tax - running)
+            elif original_tax_total > Decimal("0.00"):
+                share = _money(new_tax * value / original_tax_total)
+            else:
+                share = Decimal("0.00")
+            running += share
+            word["text"] = _format_money_like(word["text"], share)
+            _right_align_money_box(word)
+            updated["tax"] += 1
 
     _refresh_words(receipt)
     return {
@@ -5076,7 +5324,7 @@ def _apply_taxable_delta(
         "grand_total_delta": _format_money(_money(delta + tax_delta)),
         "tax_rate": _format_rate(rate),
         "tax_policy": (
-            "tax recomputed at the merchant's stable effective rate "
+            "tax recomputed at the merchant's stable taxable-item rate "
             f"({_format_rate(rate)}) for a taxable item edit"
         ),
         "updated_summary_labels": updated,
@@ -5634,7 +5882,7 @@ def _choose_base_receipt(
 
 
 def _is_catalog_item(item: MerchantLineItem) -> bool:
-    if item.taxable or item.amount <= Decimal("0.00"):
+    if item.amount <= Decimal("0.00"):
         return False
     text = _normalize_product_text(item.product_text)
     if not text or text.replace(".", "").isdigit():

@@ -65,6 +65,11 @@ def _candidate(
                     "delta_from_min": round(structure_score - baseline_min, 3),
                 },
             },
+            "layout_integrity": {
+                "score": 1.0,
+                "edit_introduced_overlap_pair_count": 0,
+                "invalid_word_box_count": 0,
+            },
         },
     }
 
@@ -799,8 +804,7 @@ def test_load_synthetic_training_examples_rejects_inverted_box(tmp_path):
 def test_load_synthetic_training_examples_requires_layout_integrity_for_edits(
     tmp_path,
 ):
-    """Geometry-mutating ops must carry a layout_integrity score; a hard_negative
-    (which moves no boxes) is exempt and still loads without one."""
+    """Generated ops must carry layout_integrity, including hard negatives."""
     path = tmp_path / "patterns.json"
 
     add_no_layout = _candidate()
@@ -809,7 +813,8 @@ def test_load_synthetic_training_examples_requires_layout_integrity_for_edits(
     del add_no_layout["metadata"]["layout_integrity"]
 
     hard_negative_no_layout = _candidate()  # default op is hard_negative
-    assert "layout_integrity" not in hard_negative_no_layout["metadata"]
+    hard_negative_no_layout["candidate_id"] = "hard-negative-no-layout"
+    del hard_negative_no_layout["metadata"]["layout_integrity"]
 
     path.write_text(
         json.dumps(
@@ -824,8 +829,8 @@ def test_load_synthetic_training_examples_requires_layout_integrity_for_edits(
     )
 
     loaded = _load_synthetic_training_examples_with_summary(str(path))
-    assert loaded.rejection_reasons.get("missing_layout_integrity") == 1
-    assert loaded.candidates_accepted == 1  # the hard_negative still loads
+    assert loaded.rejection_reasons.get("missing_layout_integrity") == 2
+    assert loaded.candidates_accepted == 0
 
 
 def test_load_synthetic_training_examples_rejects_low_structure_similarity(
@@ -1996,6 +2001,13 @@ def _compose_online_catalog_candidate(
     metadata["online_catalog_grounding"] = {
         "all_priced": True,
         "all_named": True,
+        "entries": [
+            {
+                "name": "WIDGET PRO",
+                "line_total": "12.50",
+                "taxable": True,
+            }
+        ],
         "source": "merchant_online_catalog",
     }
     metadata["label_control"] = {
@@ -2006,10 +2018,11 @@ def _compose_online_catalog_candidate(
     metadata["arithmetic_reconciliation"] = {
         "summary_update_policy": "composed_catalog_totals",
         "new_subtotal": "12.50",
+        "new_taxable_subtotal": "12.50",
         "new_tax": "0.91",
         "new_grand_total": "13.41",
         "tax_rate": "0.0726",
-        "tax_basis": "effective_rate_on_subtotal",
+        "tax_basis": "taxable_catalog_subtotal",
         "tax_rate_stable": rate_stable,
         "subtotal_consistent": True,
     }
@@ -2087,6 +2100,24 @@ def test_load_synthetic_training_examples_rejects_compose_with_unstable_tax(
 
     assert loaded.candidates_accepted == 0
     assert loaded.rejection_reasons == {"invalid_arithmetic_reconciliation": 1}
+
+
+def test_load_synthetic_training_examples_rejects_exempt_catalog_tax(
+    tmp_path,
+):
+    bad = _compose_online_catalog_candidate()
+    bad["metadata"]["online_catalog_grounding"]["entries"][0]["taxable"] = False
+    bad["metadata"]["arithmetic_reconciliation"]["new_taxable_subtotal"] = "0.00"
+    path = tmp_path / "patterns.json"
+    path.write_text(
+        json.dumps({"synthetic_receipt_candidates": [bad]}),
+        encoding="utf-8",
+    )
+
+    loaded = _load_synthetic_training_examples_with_summary(str(path))
+
+    assert loaded.candidates_accepted == 0
+    assert loaded.rejection_reasons == {"compose_exempt_items_taxed": 1}
 
 
 def _add_item_row(*, layout_score=1.0, insertion_valid=True):

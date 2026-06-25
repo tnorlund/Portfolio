@@ -102,14 +102,50 @@ def _record_completeness(record: dict[str, Any]) -> int:
     return score
 
 
+def _merge_place_record(
+    current: dict[str, Any] | None,
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    if current is None:
+        return dict(record)
+
+    merged = dict(current)
+    for key in (
+        "merchant_name",
+        "formatted_address",
+        "short_address",
+        "phone_number",
+        "website",
+    ):
+        if not merged.get(key) and record.get(key):
+            merged[key] = record[key]
+
+    current_hours = merged.get("hours_summary")
+    record_hours = record.get("hours_summary")
+    if not current_hours and record_hours:
+        merged["hours_summary"] = record_hours
+    elif isinstance(current_hours, list) and isinstance(record_hours, list):
+        seen = {str(item) for item in current_hours}
+        merged["hours_summary"] = [
+            *current_hours,
+            *[item for item in record_hours if str(item) not in seen],
+        ]
+
+    if _record_completeness(record) > _record_completeness(merged):
+        for key, value in record.items():
+            if value and not merged.get(key):
+                merged[key] = value
+    return merged
+
+
 def extract_store_profiles(
     receipt_places: list[dict[str, Any]] | None,
 ) -> list[StoreProfile]:
     """Build one :class:`StoreProfile` per distinct ``place_id`` in the cache.
 
     When several cached rows share a ``place_id`` (one per receipt at that
-    store), the most complete row wins. Rows without a ``place_id`` or without a
-    parseable address are skipped.
+    store), non-empty fields are merged so split address/phone/website cache rows
+    still form one coherent profile. Rows without a ``place_id`` are skipped.
     """
     if not isinstance(receipt_places, list):
         return []
@@ -121,11 +157,10 @@ def extract_store_profiles(
         place_id = str(record.get("place_id") or "").strip()
         if not place_id:
             continue
-        current = best_by_place.get(place_id)
-        if current is None or _record_completeness(record) > _record_completeness(
-            current
-        ):
-            best_by_place[place_id] = record
+        best_by_place[place_id] = _merge_place_record(
+            best_by_place.get(place_id),
+            record,
+        )
 
     profiles: list[StoreProfile] = []
     for place_id, record in best_by_place.items():

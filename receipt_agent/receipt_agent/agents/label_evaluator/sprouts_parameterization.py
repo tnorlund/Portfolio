@@ -713,6 +713,7 @@ def _generate_add_item_candidate(
     refreshed = _analyze_arithmetic_receipt(receipt)
     if refreshed is None:
         return None
+    base_layout_counts = _base_layout_counts(refreshed.receipt)
 
     added_amount = plan.item.amount
     old_total = refreshed.grand_total
@@ -779,6 +780,7 @@ def _generate_add_item_candidate(
             ),
             "balancing_strategy": "add observed non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
         },
+        base_layout_counts=base_layout_counts,
     )
     return SproutsArithmeticCandidate(
         candidate=candidate,
@@ -808,6 +810,7 @@ def _generate_remove_item_candidate(
     refreshed = _analyze_arithmetic_receipt(receipt)
     if refreshed is None or len(refreshed.line_items) < 2:
         return None
+    base_layout_counts = _base_layout_counts(refreshed.receipt)
 
     removable_items = [
         item for item in refreshed.line_items if not item.taxable
@@ -853,6 +856,7 @@ def _generate_remove_item_candidate(
             ),
             "balancing_strategy": "remove one non-taxable item, update subtotal/final/payment amounts, and leave tax unchanged",
         },
+        base_layout_counts=base_layout_counts,
     )
     return SproutsArithmeticCandidate(
         candidate=candidate,
@@ -1011,6 +1015,7 @@ def _candidate_from_receipt(
     operation: str,
     index: int,
     metadata: dict[str, Any],
+    base_layout_counts: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     tokens, bboxes, ner_tags = _flatten_receipt_lines(receipt.get("lines", []))
 
@@ -1027,8 +1032,15 @@ def _candidate_from_receipt(
         ),
         **metadata,
     }
+    layout_kwargs: dict[str, Any] = {}
+    if base_layout_counts is not None:
+        layout_kwargs = {
+            "base_overlap_count": base_layout_counts[0],
+            "base_line_inversion_count": base_layout_counts[1],
+        }
     candidate_metadata["layout_integrity"] = build_layout_integrity_evidence(
-        receipt
+        receipt,
+        **layout_kwargs,
     )
     candidate_metadata["candidate_quality"] = (
         build_synthesis_candidate_quality(
@@ -1055,6 +1067,14 @@ def _candidate_from_receipt(
         "train_only": True,
         "metadata": candidate_metadata,
     }
+
+
+def _base_layout_counts(receipt: dict[str, Any]) -> tuple[int, int]:
+    evidence = build_layout_integrity_evidence(receipt)
+    return (
+        int(evidence.get("overlap_pair_count") or 0),
+        int(evidence.get("line_inversion_count") or 0),
+    )
 
 
 def _build_line_item_line(
@@ -1869,7 +1889,7 @@ def _can_shift_lines_above_up(
     # path so neither direction clips real content off the receipt.
     top_margin = 8
     for line in receipt.get("lines", []):
-        if _line_y(line) * 1000 <= anchor_y + 1:
+        if _line_y(line) * 1000 < anchor_y - 1:
             continue
         for word in line.get("words", []):
             if word["bbox"][3] + delta > 1000 - top_margin:
@@ -1883,7 +1903,7 @@ def _shift_lines_above_up(
     delta: int,
 ) -> None:
     for line in receipt.get("lines", []):
-        if _line_y(line) * 1000 <= anchor_y + 1:
+        if _line_y(line) * 1000 < anchor_y - 1:
             continue
         for word in line.get("words", []):
             word["bbox"][1] = min(1000, word["bbox"][1] + delta)

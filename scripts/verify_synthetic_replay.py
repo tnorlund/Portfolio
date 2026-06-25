@@ -46,6 +46,8 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "add_line_item",
     "remove_line_item",
     "replace_field",
+    "compose_online_catalog",
+    "compose_store_header",
 )
 DEFAULT_EXPERIMENT_MAX_AWS_SPEND_USD = 200.0
 LLM_MODEL_FRESHNESS_MAX_AGE_DAYS = 30
@@ -442,9 +444,16 @@ def _candidate_is_grounded(candidate: dict[str, Any]) -> bool:
     metadata = _candidate_metadata(candidate)
     added_item = metadata.get("added_item") or {}
     observed = metadata.get("observed_item_evidence") or {}
+    online_catalog = metadata.get("online_catalog_grounding") or {}
     return bool(
         added_item.get("seen_in_other_receipt")
         or observed.get("product_seen_outside_base")
+        or (
+            isinstance(online_catalog, dict)
+            and online_catalog.get("all_priced") is True
+            and online_catalog.get("all_named") is True
+            and online_catalog.get("entries")
+        )
     )
 
 
@@ -874,6 +883,34 @@ def _candidate_has_operation_evidence(candidate: dict[str, Any]) -> bool:
             and removed.get("taxable") is False
             and _candidate_has_arithmetic(candidate)
         )
+    if operation == "compose_online_catalog":
+        label_control = metadata.get("label_control")
+        return (
+            _candidate_is_grounded(candidate)
+            and _candidate_has_arithmetic(candidate)
+            and isinstance(label_control, dict)
+            and label_control.get("all_correct") is True
+        )
+    if operation == "compose_store_header":
+        swap = metadata.get("store_header_swap")
+        if not isinstance(swap, dict):
+            return False
+        source_place = str(swap.get("source_place_id") or "").strip()
+        own_place = str(swap.get("own_place_id") or "").strip()
+        fields = swap.get("fields_swapped")
+        fields = fields if isinstance(fields, list) else []
+        swapped_labels = {
+            str(field.get("label") or "").upper()
+            for field in fields
+            if isinstance(field, dict)
+        }
+        return bool(
+            source_place
+            and source_place != own_place
+            and swap.get("merchant_match") is True
+            and swap.get("all_fields_from_single_place") is True
+            and "ADDRESS_LINE" in swapped_labels
+        )
     if operation == "replace_field":
         field = metadata.get("mutable_field_evidence")
         return (
@@ -1261,6 +1298,18 @@ def _compact_mutation_inventory(
         or 0,
         "mutable_field_count": _safe_int(readiness.get("mutable_field_count")) or 0,
         "mutable_fields": readiness.get("mutable_fields") or {},
+        "compose_online_catalog_candidate_count": _safe_int(
+            readiness.get("compose_online_catalog_candidate_count")
+        )
+        or 0,
+        "compose_store_header_location_count": _safe_int(
+            readiness.get("compose_store_header_location_count")
+        )
+        or 0,
+        "compose_store_header_candidate_count": _safe_int(
+            readiness.get("compose_store_header_candidate_count")
+        )
+        or 0,
         "grounded_add_item_examples": list(
             readiness.get("grounded_add_item_examples") or []
         )[:5],
@@ -1273,6 +1322,7 @@ SYNTHESIS_OPERATION_ORDER = (
     "remove_line_item",
     "replace_field",
     "compose_online_catalog",
+    "compose_store_header",
 )
 
 SYNTHESIS_ACTION_READY_STATUSES = {"ready"}
@@ -1356,6 +1406,24 @@ def _operation_readiness_row(
         evidence.update({"online_catalog_item_count": compose_count})
         if compose_count <= 0:
             blockers.append("no_online_catalog_with_stable_tax")
+    elif operation == "compose_store_header":
+        location_count = (
+            _safe_int(readiness.get("compose_store_header_location_count")) or 0
+        )
+        compose_count = (
+            _safe_int(readiness.get("compose_store_header_candidate_count"))
+            or location_count
+        )
+        contract_capacity_count = compose_count
+        ready = supported_for_operation and location_count >= 2
+        evidence.update(
+            {
+                "store_header_location_count": location_count,
+                "store_header_candidate_count": compose_count,
+            }
+        )
+        if location_count < 2:
+            blockers.append("no_alternate_store_header_profile")
     else:
         ready = False
 
@@ -1398,18 +1466,29 @@ def _operation_readiness_matrix(
         ]
     )
     readiness_status = str(readiness.get("status") or "missing").strip().lower()
-    # compose_online_catalog is an OPT-IN operation: it only applies to merchants
-    # with a registered/injected online catalog. For everyone else it is not
-    # "missing" (you can't mine it into existence), so omit its readiness row
-    # unless the merchant actually has online-catalog capacity or composed rows.
+    # Compose operations are OPT-IN: online catalog needs a registered/injected
+    # catalog, and store-header composition needs a cached alternate branch.
+    # Omit their readiness rows unless the merchant actually has capacity or rows.
     compose_applicable = (
         (_safe_int(readiness.get("compose_online_catalog_candidate_count")) or 0) > 0
         or (_safe_int(operation_counts.get("compose_online_catalog")) or 0) > 0
     )
+    store_header_applicable = (
+        (_safe_int(readiness.get("compose_store_header_location_count")) or 0) >= 2
+        or (_safe_int(readiness.get("compose_store_header_candidate_count")) or 0) > 0
+        or (_safe_int(operation_counts.get("compose_store_header")) or 0) > 0
+    )
     operations = [
         operation
         for operation in SYNTHESIS_OPERATION_ORDER
-        if operation != "compose_online_catalog" or compose_applicable
+        if (
+            operation != "compose_online_catalog"
+            or compose_applicable
+        )
+        and (
+            operation != "compose_store_header"
+            or store_header_applicable
+        )
     ]
     return [
         _operation_readiness_row(
@@ -1689,9 +1768,37 @@ def _source_quality_effective_status(
     return readiness_status
 
 
+def _replace_field_ready_fields_are_value_scrub_only(
+    readiness: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(readiness, dict):
+        return False
+    fields = readiness.get("mutable_fields")
+    if isinstance(fields, dict):
+        values = list(fields.values())
+    elif isinstance(fields, list):
+        values = fields
+    else:
+        values = []
+    ready_fields = [
+        field
+        for field in values
+        if isinstance(field, dict) and field.get("safe_to_mutate") is True
+    ]
+    if not ready_fields:
+        return False
+    return all(
+        str(field.get("stable_format") or "").strip().lower() == "value_scrub"
+        or str(field.get("mutation_kind") or "").strip().lower() == "value_scrub"
+        for field in ready_fields
+    )
+
+
 def _source_quality_operation_blocker(
     source_quality: dict[str, Any],
     operation: str,
+    *,
+    readiness: dict[str, Any] | None = None,
 ) -> str | None:
     if not source_quality:
         return None
@@ -1722,18 +1829,30 @@ def _source_quality_operation_blocker(
         or receipt_count < 2
     ):
         return "source_quality_single_receipt_grounding"
-    if operation == "replace_field" and date_time_receipts == 0:
+    if (
+        operation == "replace_field"
+        and date_time_receipts == 0
+        and not _replace_field_ready_fields_are_value_scrub_only(readiness)
+    ):
         return "source_quality_no_date_time_labels"
     return None
 
 
 def _source_quality_operation_blockers(
     source_quality: dict[str, Any],
+    *,
+    readiness: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     return {
         operation: blocker
         for operation in SYNTHESIS_OPERATION_FAMILIES
-        if (blocker := _source_quality_operation_blocker(source_quality, operation))
+        if (
+            blocker := _source_quality_operation_blocker(
+                source_quality,
+                operation,
+                readiness=readiness,
+            )
+        )
     }
 
 
@@ -1814,7 +1933,8 @@ def build_merchant_synthesis_contracts(
         supported_operation_set = set(supported_operations)
         source_quality = _artifact_source_quality(artifact)
         source_quality_operation_blockers = _source_quality_operation_blockers(
-            source_quality
+            source_quality,
+            readiness=readiness,
         )
         hard_negative_label_count = (
             _safe_int(readiness.get("hard_negative_label_count")) or 0
@@ -1828,6 +1948,13 @@ def build_merchant_synthesis_contracts(
         mutable_field_count = _safe_int(readiness.get("mutable_field_count")) or 0
         compose_online_catalog_count = (
             _safe_int(readiness.get("compose_online_catalog_candidate_count")) or 0
+        )
+        compose_store_header_location_count = (
+            _safe_int(readiness.get("compose_store_header_location_count")) or 0
+        )
+        compose_store_header_count = (
+            _safe_int(readiness.get("compose_store_header_candidate_count"))
+            or compose_store_header_location_count
         )
         contract = {
             "merchant_name": merchant,
@@ -1981,6 +2108,25 @@ def build_merchant_synthesis_contracts(
                     "online_catalog_grounded_rows",
                     "self_assigned_item_labels",
                     "stable_observed_tax_rate",
+                ],
+            }
+        if compose_store_header_location_count >= 2 or compose_store_header_count > 0:
+            contract["operation_contracts"]["compose_store_header"] = {
+                "ready": (
+                    "compose_store_header" in supported_operation_set
+                    and compose_store_header_location_count >= 2
+                )
+                and "compose_store_header"
+                not in source_quality_operation_blockers,
+                "source_quality_blocker": source_quality_operation_blockers.get(
+                    "compose_store_header"
+                ),
+                "candidate_count": compose_store_header_count,
+                "location_count": compose_store_header_location_count,
+                "requires": [
+                    "alternate_cached_store_profile",
+                    "single_source_place_fields",
+                    "address_line_swap",
                 ],
             }
         if not contract["source_receipt_quality"]:
@@ -3035,7 +3181,8 @@ def _compact_readiness_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
     candidates = artifact.get("synthetic_receipt_candidates") or []
     source_quality = _artifact_source_quality(artifact)
     source_quality_operation_blockers = _source_quality_operation_blockers(
-        source_quality
+        source_quality,
+        readiness=readiness,
     )
     candidate_operation_counts = _count_by(
         [
@@ -3070,7 +3217,7 @@ def _compact_readiness_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
             source_quality.get("labeled_word_count")
         ),
         "source_quality_operation_blockers": source_quality_operation_blockers,
-        "supported_operations": list(readiness.get("supported_operations") or [])[:5],
+        "supported_operations": list(readiness.get("supported_operations") or [])[:8],
         "candidate_operation_counts": candidate_operation_counts,
         "candidate_capacity": _safe_int(readiness.get("candidate_capacity")),
         "candidate_count": len(candidates),
@@ -3091,6 +3238,18 @@ def _compact_readiness_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
         )
         or 0,
         "mutable_field_count": _safe_int(readiness.get("mutable_field_count")) or 0,
+        "compose_online_catalog_candidate_count": _safe_int(
+            readiness.get("compose_online_catalog_candidate_count")
+        )
+        or 0,
+        "compose_store_header_location_count": _safe_int(
+            readiness.get("compose_store_header_location_count")
+        )
+        or 0,
+        "compose_store_header_candidate_count": _safe_int(
+            readiness.get("compose_store_header_candidate_count")
+        )
+        or 0,
         "llm_execution": _artifact_llm_execution(artifact),
         "blockers": list(
             dict.fromkeys(
@@ -3161,6 +3320,17 @@ def _operation_gap_reasons(row: dict[str, Any], operation: str) -> list[str]:
             "no_receipts",
             "no_supported_operations",
         },
+        "compose_online_catalog": {
+            "no_line_items",
+            "no_grand_total_anchors",
+            "no_supported_operations",
+            "no_online_catalog_with_stable_tax",
+        },
+        "compose_store_header": {
+            "no_receipts",
+            "no_supported_operations",
+            "no_alternate_store_header_profile",
+        },
     }.get(operation, set())
     for reason in blockers + limitations:
         if reason in relevant and reason not in reasons:
@@ -3177,6 +3347,14 @@ def _operation_gap_reasons(row: dict[str, Any], operation: str) -> list[str]:
         reasons.append("no_removable_non_taxable_items")
     if operation == "replace_field" and not row.get("mutable_field_count"):
         reasons.append("no_safe_mutable_fields")
+    if operation == "compose_online_catalog" and not row.get(
+        "compose_online_catalog_candidate_count"
+    ):
+        reasons.append("no_online_catalog_with_stable_tax")
+    if operation == "compose_store_header" and (
+        (_safe_int(row.get("compose_store_header_location_count")) or 0) < 2
+    ):
+        reasons.append("no_alternate_store_header_profile")
     return list(dict.fromkeys(reasons))[:5]
 
 
@@ -3217,6 +3395,33 @@ def _row_operation_ready(row: dict[str, Any], operation: str) -> bool:
     )
 
 
+def _row_operation_applicable(row: dict[str, Any], operation: str) -> bool:
+    if operation not in {"compose_online_catalog", "compose_store_header"}:
+        return True
+    if operation == "compose_store_header":
+        return bool(
+            operation in set(row.get("supported_operations") or [])
+            or (_operation_counts_for_row(row).get(operation) or 0) > 0
+            or (_accepted_operation_counts_for_row(row).get(operation) or 0) > 0
+            or (_safe_int(row.get("compose_store_header_location_count")) or 0) >= 2
+            or (_safe_int(row.get("compose_store_header_candidate_count")) or 0) > 0
+        )
+    return bool(
+        operation in set(row.get("supported_operations") or [])
+        or (_operation_counts_for_row(row).get(operation) or 0) > 0
+        or (_accepted_operation_counts_for_row(row).get(operation) or 0) > 0
+        or (_safe_int(row.get("compose_online_catalog_candidate_count")) or 0) > 0
+    )
+
+
+def _applicable_operation_families(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        operation
+        for operation in SYNTHESIS_OPERATION_FAMILIES
+        if any(_row_operation_applicable(row, operation) for row in rows)
+    ]
+
+
 def _accepted_operation_coverage_from_rows(
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -3226,7 +3431,8 @@ def _accepted_operation_coverage_from_rows(
     ready_operation_count = 0
     accepted_operation_count = 0
 
-    for operation in SYNTHESIS_OPERATION_FAMILIES:
+    applicable_operations = _applicable_operation_families(rows)
+    for operation in applicable_operations:
         ready_merchants = [
             str(row.get("merchant_name") or "Unknown merchant")
             for row in rows
@@ -3275,7 +3481,7 @@ def _accepted_operation_coverage_from_rows(
         ["cover_ready_operations_before_training"] if uncovered_operations else []
     )
     return {
-        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "operation_count": len(applicable_operations),
         "ready_operation_count": ready_operation_count,
         "accepted_operation_count": accepted_operation_count,
         "accepted_ready_operation_count": accepted_ready_operation_count,
@@ -3298,8 +3504,15 @@ def _operation_coverage_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "add_line_item": "collect_cross_receipt_item_catalog_for_add_item_synthesis",
         "remove_line_item": "collect_multi_item_receipts_for_remove_item_synthesis",
         "replace_field": "collect_stable_date_time_examples_for_field_replacement",
+        "compose_online_catalog": (
+            "collect_stable_tax_receipts_and_online_catalog_for_compose_synthesis"
+        ),
+        "compose_store_header": (
+            "collect_cached_store_profiles_for_header_composition"
+        ),
     }
-    for operation in SYNTHESIS_OPERATION_FAMILIES:
+    applicable_operations = _applicable_operation_families(rows)
+    for operation in applicable_operations:
         ready_merchants = [
             str(row.get("merchant_name") or "Unknown merchant")
             for row in rows
@@ -3340,11 +3553,11 @@ def _operation_coverage_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if _safe_int(operation.get("ready_merchant_count"))
     )
     return {
-        "operation_count": len(SYNTHESIS_OPERATION_FAMILIES),
+        "operation_count": len(applicable_operations),
         "ready_operation_count": ready_operation_count,
         "ready_operation_share": _ratio(
             ready_operation_count,
-            len(SYNTHESIS_OPERATION_FAMILIES),
+            len(applicable_operations),
         ),
         "operations": operations,
         "recommendations": recommendations[:8],
@@ -3357,9 +3570,14 @@ def _merchant_gap_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     limitation_counts: dict[str, int] = {}
     for row in rows:
         merchant = str(row.get("merchant_name") or "Unknown merchant")
-        missing_operations = [
+        applicable_operations = [
             operation
             for operation in SYNTHESIS_OPERATION_FAMILIES
+            if _row_operation_applicable(row, operation)
+        ]
+        missing_operations = [
+            operation
+            for operation in applicable_operations
             if not _row_operation_ready(row, operation)
         ]
         operation_gap_reasons = {
@@ -3386,7 +3604,7 @@ def _merchant_gap_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "score": _safe_float(row.get("readiness_score") or row.get("score")),
                 "candidate_count": candidate_count,
                 "accepted_count": accepted_count,
-                "ready_operation_count": len(SYNTHESIS_OPERATION_FAMILIES)
+                "ready_operation_count": len(applicable_operations)
                 - len(missing_operations),
                 "missing_operations": missing_operations,
                 "operation_gap_reasons": operation_gap_reasons,

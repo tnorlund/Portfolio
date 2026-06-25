@@ -45,21 +45,29 @@ def _shift_lines(lines, dy):
 
 
 def _set_totals(receipt, subtotal, grand_total, old_grand_total, *, tax=None):
+    summary_labels = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}
+    tax_words = []
     for ln in receipt.get("lines", []):
+        line_labels = {
+            label
+            for word in ln.get("words", [])
+            for label in (word.get("labels") or [])
+            if label in summary_labels
+        }
         for w in ln.get("words", []):
             labels = set(w.get("labels") or [])
             val = ms._parse_money(w.get("text"))
             if val is None:
                 continue
-            if "SUBTOTAL" in labels:
+            effective_labels = set(labels)
+            if not effective_labels & {"LINE_TOTAL", *summary_labels}:
+                effective_labels |= line_labels
+            if "SUBTOTAL" in effective_labels:
                 w["text"] = ms._format_money_like(w["text"], subtotal)
                 ms._right_align_money_box(w)
-            elif "TAX" in labels and tax is not None:
-                # The composed items are all non-taxable, so the scaffold's TAX
-                # line must be rewritten (not left at the deleted items' tax).
-                w["text"] = ms._format_money_like(w["text"], tax)
-                ms._right_align_money_box(w)
-            elif "GRAND_TOTAL" in labels:
+            elif "TAX" in effective_labels and tax is not None:
+                tax_words.append((w, val))
+            elif "GRAND_TOTAL" in effective_labels:
                 w["text"] = ms._format_money_like(w["text"], grand_total)
                 ms._right_align_money_box(w)
             elif (
@@ -69,6 +77,19 @@ def _set_totals(receipt, subtotal, grand_total, old_grand_total, *, tax=None):
             ):
                 w["text"] = ms._format_money_like(w["text"], grand_total)
                 ms._right_align_money_box(w)
+    if tax is not None and tax_words:
+        original_tax = ms._money_sum(val for _, val in tax_words)
+        running = Decimal("0.00")
+        for index, (word, val) in enumerate(tax_words):
+            if index == len(tax_words) - 1:
+                share = ms._money(tax - running)
+            elif original_tax > Decimal("0.00"):
+                share = ms._money(tax * val / original_tax)
+            else:
+                share = Decimal("0.00")
+            running += share
+            word["text"] = ms._format_money_like(word["text"], share)
+            ms._right_align_money_box(word)
 
 
 def compose(scaffold, catalog, *, item_count, rng):
@@ -135,14 +156,24 @@ def compose(scaffold, catalog, *, item_count, rng):
 
     tokens, bboxes, tags = ms._flatten_lines(receipt["lines"])
     return {
+        "base_receipt_key": ms._receipt_key(scaffold.receipt),
         "receipt": receipt,
         "tokens": tokens,
         "bboxes": bboxes,
         "ner_tags": tags,
         "item_count": k,
         "subtotal": str(new_subtotal),
+        "tax": str(tax),
         "grand_total": str(new_total),
-        "items": [e.product_text for e in chosen],
+        "items": [
+            {
+                "product_text": e.product_text,
+                "line_total": str(amount),
+                "category": e.category,
+                "source_receipt_keys": e.source_receipt_keys[:5],
+            }
+            for e, amount in zip(chosen, cloned_amounts)
+        ],
         "layout_integrity": ms.build_layout_integrity_evidence(receipt),
     }
 
@@ -161,6 +192,79 @@ def _merchant_models(groups):
         catalog = ms._build_item_catalog(analyses)
         out[g["merchant_name"]] = (analyses, catalog)
     return out
+
+
+def _composition_label_control(receipt):
+    item_label_count = 0
+    item_line_count = 0
+    lines_with_product_name = 0
+    for line in receipt.get("lines", []):
+        if int(line.get("line_id") or 0) < ms._SYNTHETIC_LINE_ID_BASE:
+            continue
+        line_labels = {
+            label
+            for word in line.get("words", [])
+            for label in (word.get("labels") or [])
+        }
+        if not line_labels & {"PRODUCT_NAME", "LINE_TOTAL"}:
+            continue
+        item_line_count += 1
+        lines_with_product_name += int("PRODUCT_NAME" in line_labels)
+        item_label_count += sum(
+            1
+            for word in line.get("words", [])
+            if set(word.get("labels") or []) & {"PRODUCT_NAME", "LINE_TOTAL"}
+        )
+    return {
+        "item_token_count": item_label_count,
+        "correctly_labeled": item_label_count,
+        "all_rows_have_product_name": item_line_count > 0
+        and lines_with_product_name == item_line_count,
+        "all_correct": item_label_count > 0
+        and item_line_count > 0
+        and lines_with_product_name == item_line_count,
+        "source": "observed_item_catalog_clone",
+    }
+
+
+def _candidate_metadata_for_composition(analyses, c):
+    subtotal = Decimal(c["subtotal"])
+    tax = Decimal(c["tax"])
+    grand_total = Decimal(c["grand_total"])
+    return {
+        "base_receipt_key": c["base_receipt_key"],
+        "composed_item_count": c["item_count"],
+        "composed_items": c["items"],
+        "online_catalog_grounding": {
+            "entries": c["items"],
+            "all_priced": all(
+                Decimal(item["line_total"]) > Decimal("0.00") for item in c["items"]
+            ),
+            "all_named": all(
+                str(item["product_text"]).strip() for item in c["items"]
+            ),
+            "source": "observed_item_catalog",
+        },
+        "label_control": _composition_label_control(c["receipt"]),
+        "arithmetic_reconciliation": {
+            "summary_update_policy": "composed_catalog_totals",
+            "new_subtotal": c["subtotal"],
+            "new_tax": c["tax"],
+            "new_grand_total": c["grand_total"],
+            "subtotal_consistent": subtotal + tax == grand_total,
+            "tax_rate_stable": True,
+            "tax_basis": "non_taxable_observed_catalog",
+        },
+        "structure_similarity": ms._score_structure_similarity(
+            ms._analyze_receipt(c["receipt"]),
+            analyses,
+        ),
+        "layout_integrity": c["layout_integrity"],
+        "balancing_strategy": (
+            "compose a net-new receipt from observed non-taxable catalog rows; "
+            "rewrite subtotal, tax, and grand total"
+        ),
+    }
 
 
 def cmd_capacity(args):
@@ -202,19 +306,19 @@ def cmd_generate(args):
             c = compose(rng.choice(analyses), catalog, item_count=rng.choice(counts), rng=rng)
             if not c or c["layout_integrity"]["score"] < 1.0:
                 continue
-            out.append({
-                # Use the standard field the loaders/summaries read, so composed
-                # rows attribute to the right merchant (not "unknown") and get
-                # merchant-level caps/contracts.
-                "merchant_name": merchant,
-                "item_count": c["item_count"],
-                "subtotal": c["subtotal"],
-                "grand_total": c["grand_total"],
-                "items": c["items"],
-                "tokens": c["tokens"],
-                "bboxes": c["bboxes"],
-                "ner_tags": c["ner_tags"],
-            })
+            candidate = ms._candidate_from_receipt(
+                c["receipt"],
+                merchant,
+                source="observed_item_catalog_compose",
+                operation="compose_online_catalog",
+                index=made + 1,
+                metadata=_candidate_metadata_for_composition(analyses, c),
+            )
+            candidate["item_count"] = c["item_count"]
+            candidate["subtotal"] = c["subtotal"]
+            candidate["grand_total"] = c["grand_total"]
+            candidate["items"] = c["items"]
+            out.append(candidate)
             made += 1
         print(f"{merchant}: composed {made} clean receipts")
     Path(args.output).write_text(json.dumps(out))

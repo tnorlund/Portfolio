@@ -227,7 +227,8 @@ def main():
     # environment could silently disable it and let corrupted geometry into
     # training. We make the resolved state explicit and auditable in the log.
     gate_key = "LAYOUTLM_SYNTHETIC_QUALITY_GATE"
-    child_env.setdefault(gate_key, "1")
+    if f"env_{gate_key}" not in hps:
+        child_env[gate_key] = "1"
     gate_on = child_env[gate_key] not in {"0", "false", "False"}
     struct_thr = child_env.get(
         "LAYOUTLM_SYNTHETIC_MIN_STRUCTURE_SIMILARITY", "0.60 (default)"

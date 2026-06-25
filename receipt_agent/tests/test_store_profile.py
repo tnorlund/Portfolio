@@ -76,6 +76,31 @@ def test_extract_dedupes_by_place_keeping_most_complete():
     assert profiles[0].website == "local.vons.com"
 
 
+def test_extract_merges_split_duplicate_place_rows_preserving_address():
+    address_only = _place(
+        "p1",
+        phone_number="",
+        website="",
+        hours_summary=[],
+    )
+    contact_only = _place(
+        "p1",
+        formatted_address="",
+        short_address="",
+        phone_number="(805) 495-6303",
+        website="https://www.vons.com",
+        hours_summary=["Mon-Fri 8AM-9PM"],
+    )
+
+    [profile] = extract_store_profiles([contact_only, address_only])
+
+    assert profile.street == "5671 Kanan Rd"
+    assert profile.city_state_zip == "Agoura Hills, CA 91301"
+    assert profile.phone == "(805) 495-6303"
+    assert profile.website == "vons.com"
+    assert profile.is_complete()
+
+
 def test_extract_skips_rows_without_place_id_or_address():
     profiles = extract_store_profiles(
         [

@@ -171,13 +171,17 @@ def _artifact(
         ),
     }
     if candidates and layout_integrity:
-        # Production candidates always carry a layout_integrity score; the add
-        # (a geometry-mutating op) needs one to pass the loader gate. The
-        # hard_negative moves no boxes, so it is exempt and intentionally left
-        # without one. Tests that exercise the "no independent evidence" hold
-        # path pass layout_integrity=False to opt out.
+        # Production candidates always carry a layout_integrity score, including
+        # hard negatives because current generators can insert distractor rows.
+        # Tests that exercise missing-layout rejection pass layout_integrity=False.
         add_item = artifact["synthetic_receipt_candidates"][0]
         add_item["metadata"]["layout_integrity"] = {
+            "score": 1.0,
+            "edit_introduced_overlap_pair_count": 0,
+            "invalid_word_box_count": 0,
+        }
+        hard_negative = artifact["synthetic_receipt_candidates"][1]
+        hard_negative["metadata"]["layout_integrity"] = {
             "score": 1.0,
             "edit_introduced_overlap_pair_count": 0,
             "invalid_word_box_count": 0,
@@ -1052,6 +1056,8 @@ def test_source_quality_blocked_artifact_cannot_feed_training_bundle():
         "add_line_item": "source_receipt_quality_blocked",
         "remove_line_item": "source_receipt_quality_blocked",
         "replace_field": "source_receipt_quality_blocked",
+        "compose_online_catalog": "source_receipt_quality_blocked",
+        "compose_store_header": "source_receipt_quality_blocked",
     }
 
 
@@ -1341,6 +1347,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "grounded-add-item",
         "hard-negative",
     ]
+
     expected_source_lineage = {
         "schema_version": "synthetic-candidate-lineage-v1",
         "base_receipt_key": "base#00001",
@@ -1369,7 +1376,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
-        "with_layout_integrity_count": 1,
+        "with_layout_integrity_count": 2,
         "with_arithmetic_reconciliation_count": 1,
         "with_selection_evidence_count": 0,
         "source_receipt_key_count": 2,
@@ -1432,7 +1439,7 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
                 "has_cross_receipt_item": False,
                 "has_category_evidence": False,
                 "has_nearest_real_structure": False,
-                "has_layout_integrity": False,
+                "has_layout_integrity": True,
                 "has_arithmetic_reconciliation": False,
                 "has_selection_evidence": False,
             },
@@ -1497,6 +1504,64 @@ def test_build_local_synthetic_training_bundle_writes_loader_ready_rows():
     assert coverage["operations"]["add_line_item"]["candidate_count"] == 1
     assert coverage["operations"]["remove_line_item"]["ready_merchant_count"] == 0
     assert coverage["operations"]["replace_field"]["ready_merchant_count"] == 0
+
+
+def test_online_catalog_compose_candidates_count_as_grounded():
+    module = _load_module()
+
+    assert module._candidate_is_grounded(
+        {
+            "metadata": {
+                "operation": "compose_online_catalog",
+                "online_catalog_grounding": {
+                    "entries": [{"name": "ACME 2 IN ROLL", "line_total": "12.50"}],
+                    "all_priced": True,
+                    "all_named": True,
+                },
+            }
+        }
+    ) is True
+
+
+def test_operation_coverage_includes_ready_compose_contracts():
+    module = _load_module()
+
+    coverage = module._accepted_operation_coverage_from_rows(
+        [
+            {
+                "merchant_name": "Catalog Mart",
+                "readiness_status": "ready",
+                "supported_operations": ["compose_online_catalog"],
+                "candidate_operation_counts": {"compose_online_catalog": 1},
+                "accepted_operation_counts": {},
+            }
+        ]
+    )
+
+    assert coverage["ready_operation_count"] == 1
+    assert coverage["accepted_ready_operation_count"] == 0
+    assert coverage["uncovered_ready_operations"] == ["compose_online_catalog"]
+
+
+def test_operation_coverage_includes_ready_store_header_contracts():
+    module = _load_module()
+
+    coverage = module._accepted_operation_coverage_from_rows(
+        [
+            {
+                "merchant_name": "Branch Mart",
+                "readiness_status": "ready",
+                "supported_operations": ["compose_store_header"],
+                "compose_store_header_location_count": 2,
+                "candidate_operation_counts": {},
+                "accepted_operation_counts": {},
+            }
+        ]
+    )
+
+    assert coverage["ready_operation_count"] == 1
+    assert coverage["accepted_ready_operation_count"] == 0
+    assert coverage["uncovered_ready_operations"] == ["compose_store_header"]
 
 
 def test_generated_local_bundle_preserves_base_lineage_for_layoutlm_loader(tmp_path):
@@ -1721,6 +1786,39 @@ def test_merchant_contract_readiness_requires_support_and_capacity():
     ]
 
 
+def test_value_scrub_replace_field_not_blocked_by_missing_date_time_labels():
+    module = _load_module()
+    artifact = _artifact("Scrub Mart", candidates=False)
+    readiness = artifact["merchant_receipt_parameterization"]["synthesis_readiness"]
+    readiness["status"] = "ready"
+    readiness["supported_operations"] = ["replace_field"]
+    readiness["mutable_field_count"] = 1
+    readiness["mutable_fields"] = {
+        "PAYMENT_METHOD": {
+            "label": "PAYMENT_METHOD",
+            "safe_to_mutate": True,
+            "mutation_kind": "value_scrub",
+            "stable_format": "value_scrub",
+            "stable_geometry": True,
+            "observed_count": 1,
+        }
+    }
+    artifact["source_receipt_quality"] = {
+        "status": "usable",
+        "receipt_count": 2,
+        "receipts_with_line_item_labels": 2,
+        "receipts_with_grand_total_label": 2,
+        "receipts_with_date_or_time_label": 0,
+        "limitations": [],
+    }
+
+    contract = module.build_merchant_synthesis_contracts([artifact])[0]
+
+    replace_contract = contract["operation_contracts"]["replace_field"]
+    assert replace_contract["ready"] is True
+    assert replace_contract.get("source_quality_blocker") is None
+
+
 def test_build_local_synthetic_training_bundle_includes_tax_contract():
     module = _load_module()
     artifact = _artifact("Taxable Mart")
@@ -1933,7 +2031,7 @@ def test_build_local_synthesis_quality_report_summarizes_evidence():
         "with_cross_receipt_item_count": 1,
         "with_category_evidence_count": 1,
         "with_nearest_real_structure_count": 0,
-        "with_layout_integrity_count": 1,
+        "with_layout_integrity_count": 2,
         "with_arithmetic_reconciliation_count": 1,
         "with_selection_evidence_count": 1,
         "source_receipt_key_count": 2,
@@ -2565,7 +2663,6 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
     assert bundle["ready"] is False
     assert bundle["reasons"] == [
         "accepted_synthetic_mix_single_merchant_high_risk",
-        "no_high_fidelity_candidate_quality",
     ]
     assert bundle["selection"]["candidates_accepted"] == 3
     balance = bundle["candidate_mix"]["accepted_mix_balance"]
@@ -2580,7 +2677,7 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
         "accepted_candidate_count": 3,
         "selected_candidate_count": 3,
         "candidate_quality_count": 3,
-        "high_fidelity_candidate_count": 2,
+        "high_fidelity_candidate_count": 3,
         "max_synthetic_train_share": 0.0,
         "max_per_merchant": 5,
         "max_per_merchant_operation": 2,
@@ -2589,7 +2686,6 @@ def test_build_local_synthetic_training_bundle_blocks_high_risk_single_merchant_
         "hold_reasons": [
             "accepted_synthetic_mix_single_merchant_high_risk",
             "rebalance_synthetic_mix_before_training",
-            "no_high_fidelity_candidate_quality",
         ],
         "requires_real_validation_split": True,
         "review_required": True,
@@ -2676,20 +2772,19 @@ def test_build_local_synthetic_training_bundle_holds_derived_quality_without_ind
         min_grounded_candidate_share=0.4,
     )
 
-    # The add_line_item carries no layout_integrity (layout_integrity=False), so
-    # the loader gate now rejects it outright; only the exempt hard_negative is
-    # accepted. With no declared and no derivable high-fidelity quality, the
-    # batch policy still holds.
+    # Both rows carry no layout_integrity (layout_integrity=False), so the loader
+    # gate rejects them outright. With no accepted rows, the batch policy holds.
     assert bundle["ready"] is False
-    assert bundle["reasons"] == ["no_high_fidelity_candidate_quality"]
-    assert bundle["selection"]["candidates_accepted"] == 1
+    assert bundle["reasons"] == ["no_layoutlm_accepted_candidates"]
+    assert bundle["selection"]["candidates_accepted"] == 0
     assert bundle["synthetic_training_batch_policy"]["status"] == "hold"
-    assert bundle["synthetic_training_batch_policy"]["candidate_quality_count"] == 1
+    assert bundle["synthetic_training_batch_policy"]["candidate_quality_count"] == 0
     assert (
         bundle["synthetic_training_batch_policy"]["high_fidelity_candidate_count"] == 0
     )
     assert bundle["synthetic_training_batch_policy"]["hold_reasons"] == [
-        "no_high_fidelity_candidate_quality"
+        "no_layoutlm_accepted_candidates",
+        "no_accepted_synthetic_examples",
     ]
 
 
@@ -3879,7 +3974,7 @@ def test_bundle_cli_writes_local_artifact_without_deployment_lookup(
             "with_cross_receipt_item_count": 1,
             "with_category_evidence_count": 1,
             "with_nearest_real_structure_count": 0,
-            "with_layout_integrity_count": 1,
+            "with_layout_integrity_count": 2,
             "with_arithmetic_reconciliation_count": 1,
             "with_selection_evidence_count": 0,
             "source_receipt_key_count": 2,

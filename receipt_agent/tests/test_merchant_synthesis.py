@@ -1,15 +1,23 @@
 """Tests for generic merchant synthesis profiles and candidates."""
 
+import copy
 from decimal import Decimal
 
 from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+    MerchantAnalysis,
     OnlineCatalogEntry,
+    _SYNTHETIC_LINE_ID_BASE,
     _analyze_receipt,
+    _apply_taxable_delta,
+    _build_template_filled_row,
     _build_remove_item_candidate_from_plan,
     _merchant_online_catalog,
     _normalize_receipt,
     _shift_lines_below_for_insert,
     _stable_tax_rate,
+    _verify_template_row_labels,
+    _write_composed_totals,
+    build_layout_integrity_evidence,
     _summary_block_top_y,
     build_merchant_synthesis_profile,
     build_merchant_synthesis_readiness,
@@ -1484,7 +1492,7 @@ def test_choose_base_receipt_prefers_clean_geometry():
 def _online_catalog():
     """A small online product catalog (name + price + UPC) for template fill."""
     return [
-        OnlineCatalogEntry("ACME WIDGET PRO 12CT", Decimal("12.50"), "012345678905"),
+        OnlineCatalogEntry("ACME 2 IN ROLL", Decimal("12.50"), "012345678905"),
         OnlineCatalogEntry("ACME BOLT KIT 50PC", Decimal("8.25"), "098765432105"),
         OnlineCatalogEntry("ACME TAPE 2IN ROLL", Decimal("4.75"), "076543210982"),
     ]
@@ -1504,6 +1512,68 @@ def _compose_candidate(max_candidates=4):
         if candidate["metadata"]["operation"] == "compose_online_catalog"
     ]
     return composed
+
+
+def _all_taxable_receipts():
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    for receipt in receipts:
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                if word["text"] == "3.00":
+                    word["text"] = "3.00T"
+    return receipts
+
+
+def _numeric_product_receipts():
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    code = 10000
+    for receipt in receipts:
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                if "PRODUCT_NAME" in (word.get("labels") or []):
+                    word["text"] = str(code)
+                    code += 1
+    return receipts
+
+
+def _summary_only_receipt(receipt_id, image_id, *, subtotal, tax, grand_total):
+    return {
+        "receipt_id": receipt_id,
+        "image_id": image_id,
+        "receipt_num": 1,
+        "lines": [
+            {
+                "line_id": 1,
+                "y": 0.96,
+                "words": [_word("TAXABLE", [390, 950, 505, 975], ["MERCHANT_NAME"])],
+            },
+            {
+                "line_id": 2,
+                "y": 0.60,
+                "words": [
+                    _word("SUBTOTAL", [500, 590, 600, 615]),
+                    _word(subtotal, [820, 590, 890, 615], ["SUBTOTAL"]),
+                ],
+            },
+            {
+                "line_id": 3,
+                "y": 0.575,
+                "words": [
+                    _word("TAX", [500, 565, 545, 590]),
+                    _word(tax, [830, 565, 890, 590], ["TAX"]),
+                ],
+            },
+            {
+                "line_id": 4,
+                "y": 0.545,
+                "words": [
+                    _word("BALANCE", [500, 535, 595, 560]),
+                    _word("DUE", [605, 535, 650, 560]),
+                    _word(grand_total, [820, 535, 890, 560], ["GRAND_TOTAL"]),
+                ],
+            },
+        ],
+    }
 
 
 def test_compose_online_catalog_assigns_clean_item_labels():
@@ -1537,6 +1607,20 @@ def test_compose_online_catalog_assigns_clean_item_labels():
     assert price_tokens >= 2
     assert name_tokens >= 2
 
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("ACME 50PC BOLT KIT", Decimal("12.50"), "012345678905"),
+        y0=100,
+        geo={"char_w": 10, "name_x0": 140, "price_x1": 420, "height": 20},
+        line_id=_SYNTHETIC_LINE_ID_BASE,
+    )
+    assert row is not None
+    assert any(
+        any(char.isdigit() for char in str(word["text"]))
+        and word.get("labels") == ["PRODUCT_NAME"]
+        for word in row["words"]
+    )
+    assert _verify_template_row_labels({"lines": [row]})["all_correct"] is True
+
     # High fidelity + valid layout (the LayoutLM-loader gate conditions).
     quality = metadata["candidate_quality"]
     assert quality["high_fidelity"] is True
@@ -1545,25 +1629,173 @@ def test_compose_online_catalog_assigns_clean_item_labels():
 
 
 def test_compose_online_catalog_recomputes_tax_at_stable_observed_rate():
-    """Totals are recomputed: subtotal from the composed items, tax at the
-    merchant's stable EFFECTIVE rate, grand total consistent."""
+    """Totals are recomputed: subtotal from composed items, tax from rendered
+    taxable items at the merchant's stable rate, grand total consistent."""
     composed = _compose_candidate()
     assert composed
     arithmetic = composed[0]["metadata"]["arithmetic_reconciliation"]
 
     subtotal = Decimal(arithmetic["new_subtotal"])
+    taxable_subtotal = Decimal(arithmetic["new_taxable_subtotal"])
     tax = Decimal(arithmetic["new_tax"])
     total = Decimal(arithmetic["new_grand_total"])
     rate = Decimal(arithmetic["tax_rate"])
 
     assert arithmetic["tax_rate_stable"] is True
     assert arithmetic["subtotal_consistent"] is True
-    assert arithmetic["tax_basis"] == "effective_rate_on_subtotal"
-    # tax = round(subtotal * effective_rate); grand total reconciles.
-    assert tax == (subtotal * rate).quantize(Decimal("0.01"))
+    assert arithmetic["tax_basis"] == "taxable_catalog_subtotal"
+    # tax = round(taxable subtotal * rate); grand total reconciles.
+    assert tax == (taxable_subtotal * rate).quantize(Decimal("0.01"))
     assert total == subtotal + tax
     # A realistic sales-tax rate, not a per-item-detection artifact.
     assert Decimal("0.001") <= rate <= Decimal("0.20")
+
+
+def test_compose_online_catalog_does_not_tax_exempt_entries():
+    exempt_catalog = [
+        OnlineCatalogEntry("ACME GROCERY EXEMPT", Decimal("12.50"), taxable=False),
+        OnlineCatalogEntry("ACME BREAD EXEMPT", Decimal("8.25"), taxable=False),
+    ]
+
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        _merchant_receipts_with_taxable_items(),
+        max_candidates=4,
+        online_catalog=exempt_catalog,
+    )
+    composed = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "compose_online_catalog"
+    ]
+
+    assert composed
+    arithmetic = composed[0]["metadata"]["arithmetic_reconciliation"]
+    assert arithmetic["new_taxable_subtotal"] == "0.00"
+    assert arithmetic["new_tax"] == "0.00"
+    assert Decimal(arithmetic["new_grand_total"]) == Decimal(arithmetic["new_subtotal"])
+
+
+def test_taxable_add_items_are_generated_when_tax_model_ready():
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        _merchant_receipts_with_taxable_items(),
+        max_candidates=6,
+    )
+
+    taxable_adds = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "add_line_item"
+        and candidate["metadata"]["added_item"]["taxable"] is True
+    ]
+
+    assert taxable_adds
+    arithmetic = taxable_adds[0]["metadata"]["arithmetic_reconciliation"]
+    assert arithmetic["summary_update_policy"] == "taxable_item_delta"
+    assert arithmetic["tax_rate"] == "0.0778"
+
+
+def test_taxable_delta_splits_tax_across_multiple_tax_rows():
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [
+                    _word("SUBTOTAL", [500, 700, 600, 725], ["SUBTOTAL"]),
+                    _word("100.00", [820, 700, 900, 725], ["SUBTOTAL"]),
+                ],
+            },
+            {
+                "line_id": 2,
+                "words": [
+                    _word("STATE", [500, 670, 570, 695]),
+                    _word("TAX", [580, 670, 620, 695], ["TAX"]),
+                    _word("2.00", [820, 670, 900, 695], ["TAX"]),
+                ],
+            },
+            {
+                "line_id": 3,
+                "words": [
+                    _word("CITY", [500, 640, 550, 665]),
+                    _word("TAX", [560, 640, 600, 665], ["TAX"]),
+                    _word("3.00", [820, 640, 900, 665], ["TAX"]),
+                ],
+            },
+            {
+                "line_id": 4,
+                "words": [
+                    _word("TOTAL", [500, 610, 570, 635], ["GRAND_TOTAL"]),
+                    _word("105.00", [820, 610, 900, 635], ["GRAND_TOTAL"]),
+                ],
+            },
+        ]
+    }
+    analysis = MerchantAnalysis(
+        receipt=receipt,
+        line_items=[],
+        subtotal=Decimal("100.00"),
+        tax_total=Decimal("5.00"),
+        grand_total=Decimal("105.00"),
+        grand_total_line_indices=[3],
+    )
+
+    arithmetic = _apply_taxable_delta(
+        receipt,
+        analysis,
+        delta=Decimal("-10.00"),
+        rate=Decimal("0.1000"),
+    )
+
+    assert arithmetic is not None
+    assert arithmetic["new_tax"] == "4.00"
+    tax_amounts = [
+        word["text"]
+        for line in receipt["lines"]
+        for word in line["words"]
+        if "TAX" in (word.get("labels") or []) and word["text"] not in {"TAX"}
+    ]
+    assert tax_amounts == ["1.60", "2.40"]
+    assert sum(Decimal(value) for value in tax_amounts) == Decimal("4.00")
+
+
+def test_taxable_removal_dedupes_by_removed_item_identity():
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    replacements = {
+        "3.00": "30.00",
+        "13.00": "40.00",
+        "13.78": "40.78",
+        "23.00": "50.00",
+        "24.55": "51.55",
+    }
+    for receipt in receipts:
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                if word["text"] in replacements:
+                    word["text"] = replacements[word["text"]]
+
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Taxable Mart", "recipes": []},
+        receipts,
+        max_candidates=6,
+    )
+    removals = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "remove_line_item"
+    ]
+    identities = {
+        (
+            candidate["metadata"]["base_receipt_key"],
+            candidate["metadata"]["removed_item"]["product_text"],
+            candidate["metadata"]["removed_item"]["line_total"],
+            candidate["metadata"]["removed_item"]["taxable"],
+        )
+        for candidate in removals
+    }
+
+    assert removals
+    assert len(removals) == len(identities)
 
 
 def test_compose_online_catalog_absent_without_a_catalog():
@@ -1601,6 +1833,176 @@ def test_compose_online_catalog_skips_without_stable_tax_rate():
     )
 
 
+def test_compose_quality_requires_compose_specific_guarantees():
+    quality = build_synthesis_candidate_quality(
+        "compose_online_catalog",
+        {
+            "layout_integrity": {"score": 1.0},
+            "structure_similarity": {
+                "score": 0.95,
+                "components": {
+                    "category_sequence": 1.0,
+                    "category_set": 1.0,
+                    "item_count": 1.0,
+                    "token_count": 1.0,
+                    "price_column": 1.0,
+                    "line_step": 1.0,
+                },
+            },
+            "online_catalog_grounding": {
+                "all_priced": True,
+                "all_named": True,
+            },
+            "label_control": {"all_correct": False},
+            "arithmetic_reconciliation": {
+                "subtotal_consistent": True,
+                "tax_rate_stable": True,
+            },
+        },
+        token_count=48,
+    )
+
+    assert quality["components"]["label_control"] == 0.0
+    assert quality["score"] >= 0.75
+    assert quality["high_fidelity"] is False
+
+
+def test_injected_catalog_is_included_in_compose_readiness_contract():
+    readiness = build_merchant_synthesis_readiness(
+        "Injected Catalog Mart",
+        _merchant_receipts_with_taxable_items(),
+        online_catalog=_online_catalog(),
+    )
+
+    assert readiness is not None
+    assert "compose_online_catalog" in readiness["supported_operations"]
+    assert readiness["compose_online_catalog_candidate_count"] == len(_online_catalog())
+
+
+def test_compose_only_merchant_is_not_blocked_by_empty_edit_catalog():
+    readiness = build_merchant_synthesis_readiness(
+        "Taxable Only Mart",
+        _numeric_product_receipts(),
+        online_catalog=_online_catalog(),
+    )
+
+    assert readiness is not None
+    assert "compose_online_catalog" in readiness["supported_operations"]
+    assert "no_observed_item_catalog" not in readiness["blockers"]
+    assert "no_observed_item_catalog" in readiness["limitations"]
+
+
+def test_compose_readiness_uses_same_tax_population_as_generation():
+    receipts = _all_taxable_receipts() + [
+        _summary_only_receipt(
+            "summary_1",
+            "40000000-0000-0000-0000-000000000011",
+            subtotal="10.00",
+            tax="1.20",
+            grand_total="11.20",
+        ),
+        _summary_only_receipt(
+            "summary_2",
+            "40000000-0000-0000-0000-000000000012",
+            subtotal="10.00",
+            tax="1.40",
+            grand_total="11.40",
+        ),
+    ]
+
+    readiness = build_merchant_synthesis_readiness(
+        "Mixed Tax Mart",
+        receipts,
+        online_catalog=_online_catalog(),
+    )
+
+    assert readiness is not None
+    assert "compose_online_catalog" not in readiness["supported_operations"]
+    assert readiness["compose_online_catalog_candidate_count"] == 0
+
+
+def test_template_fill_requires_at_least_one_rendered_product_name():
+    row = _build_template_filled_row(
+        OnlineCatalogEntry("EXTREMELY LONG PRODUCT NAME", Decimal("1.00"), "123"),
+        y0=500,
+        geo={"char_w": 10, "name_x0": 200, "price_x1": 240, "height": 20},
+        line_id=20_000,
+    )
+
+    assert row is None
+
+
+def test_composed_totals_update_unlabeled_amounts_on_labeled_lines():
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [
+                    _word("SUBTOTAL", [500, 590, 600, 615], ["SUBTOTAL"]),
+                    _word("8.00", [830, 590, 890, 615]),
+                ],
+            },
+            {
+                "line_id": 2,
+                "words": [
+                    _word("TAX", [500, 565, 545, 590], ["TAX"]),
+                    _word("0.78", [830, 565, 890, 590]),
+                ],
+            },
+            {
+                "line_id": 3,
+                "words": [
+                    _word("TOTAL", [500, 535, 595, 560], ["GRAND_TOTAL"]),
+                    _word("8.78", [820, 535, 890, 560]),
+                ],
+            },
+        ]
+    }
+
+    counts = _write_composed_totals(
+        receipt,
+        Decimal("10.00"),
+        Decimal("0.80"),
+        Decimal("10.80"),
+        old_grand_total=Decimal("8.78"),
+    )
+
+    assert [word["text"] for line in receipt["lines"] for word in line["words"]] == [
+        "SUBTOTAL",
+        "10.00",
+        "TAX",
+        "0.80",
+        "TOTAL",
+        "10.80",
+    ]
+    assert counts == {
+        "subtotal": 1,
+        "tax": 1,
+        "grand_total": 1,
+        "payment_or_balance": 0,
+    }
+
+
+def test_layout_integrity_counts_lower_synthetic_line_id_collisions():
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "words": [_word("APPLES", [100, 500, 220, 530], ["PRODUCT_NAME"])],
+            },
+            {
+                "line_id": 10_000,
+                "words": [_word("SURVEY", [120, 505, 240, 535])],
+            },
+        ]
+    }
+
+    evidence = build_layout_integrity_evidence(receipt)
+
+    assert evidence["synthetic_overlap_pair_count"] == 1
+    assert evidence["score"] == 0.0
+
+
 def test_home_depot_online_catalog_is_registered():
     """The seeded Home Depot catalog is available via case-insensitive lookup."""
     entries = _merchant_online_catalog("The Home Depot")
@@ -1608,3 +2010,82 @@ def test_home_depot_online_catalog_is_registered():
     assert all(entry.price > Decimal("0.00") and entry.name for entry in entries)
     assert _merchant_online_catalog("the home depot")
     assert _merchant_online_catalog("Unknown Merchant") == []
+
+
+def test_store_merchant_match_uses_significant_prefix_not_first_token():
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _store_merchant_match,
+    )
+
+    assert _store_merchant_match("The Home Depot", "Home Depot #123")
+    assert _store_merchant_match("Gelson's", "Gelson's Westlake Village")
+    assert _store_merchant_match("VONS", "Vons")
+    assert not _store_merchant_match("The Home Depot", "The Coffee Bean")
+    assert not _store_merchant_match("Amazon Fresh", "Amazon Go")
+
+
+def test_store_header_swap_includes_website_lines():
+    from receipt_agent.agents.label_evaluator.merchant_synthesis import (
+        _apply_store_header_swap,
+    )
+    from receipt_agent.agents.label_evaluator.store_profile import StoreProfile
+
+    receipt = {
+        "lines": [
+            {
+                "line_id": 1,
+                "y": 0.90,
+                "words": [
+                    _word("2725", [100, 900, 170, 920], ["ADDRESS_LINE"]),
+                    _word("Agoura", [175, 900, 280, 920], ["ADDRESS_LINE"]),
+                    _word("Road", [285, 900, 360, 920], ["ADDRESS_LINE"]),
+                ],
+            },
+            {
+                "line_id": 2,
+                "y": 0.87,
+                "words": [
+                    _word("Agoura", [100, 870, 210, 890], ["ADDRESS_LINE"]),
+                    _word("Hills,", [215, 870, 300, 890], ["ADDRESS_LINE"]),
+                    _word("CA", [305, 870, 340, 890], ["ADDRESS_LINE"]),
+                    _word("91301", [345, 870, 430, 890], ["ADDRESS_LINE"]),
+                ],
+            },
+            {
+                "line_id": 3,
+                "y": 0.84,
+                "words": [
+                    _word("(805) 497-1921", [100, 840, 310, 860], ["PHONE_NUMBER"])
+                ],
+            },
+            {
+                "line_id": 4,
+                "y": 0.81,
+                "words": [
+                    _word("old.example.com", [100, 810, 320, 830], ["WEBSITE"])
+                ],
+            },
+        ]
+    }
+    alt = StoreProfile(
+        "place-2",
+        "Vons",
+        street="1790 N Moorpark Rd",
+        city_state_zip="Thousand Oaks, CA 91360",
+        phone="877-276-9637",
+        website="local.vons.com",
+    )
+
+    swaps = _apply_store_header_swap(receipt, alt)
+
+    assert swaps is not None
+    assert sorted({swap["label"] for swap in swaps}) == [
+        "ADDRESS_LINE",
+        "PHONE_NUMBER",
+        "WEBSITE",
+    ]
+    assert any(
+        word["text"] == "local.vons.com" and word["labels"] == ["WEBSITE"]
+        for line in receipt["lines"]
+        for word in line["words"]
+    )

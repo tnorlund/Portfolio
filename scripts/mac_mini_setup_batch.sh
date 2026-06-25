@@ -32,7 +32,11 @@ if git worktree list | grep -q "\$WT"; then
   git -C "\$WT" checkout "\$BR"
   git -C "\$WT" pull --ff-only origin "\$BR" || true
 else
-  git worktree add "\$WT" "\$BR" 2>/dev/null || git worktree add --track -b "\$BR" "\$WT" "origin/\$BR"
+  if git show-ref --verify --quiet "refs/heads/\$BR"; then
+    git worktree add -f "\$WT" "\$BR"
+  else
+    git worktree add --track -b "\$BR" "\$WT" "origin/\$BR"
+  fi
 fi
 echo "   -> \$(git -C "\$WT" rev-parse --abbrev-ref HEAD) @ \$(git -C "\$WT" rev-parse --short HEAD)"
 echo "== placeholder key =="

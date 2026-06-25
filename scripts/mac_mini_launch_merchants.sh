@@ -61,8 +61,10 @@ Step Functions, or any cloud/paid job.
      use the 'merchant_location' website to decide. Flip to INVALID ONLY if it is clearly promo/survey
      text, NOT a tender actually used to pay (a 'Shop Card' / 'Credit Card' used as payment STAYS VALID).
      Be conservative; when unsure, keep it VALID.
+   - Write '$OUTDIR/confirmed_flips.json' containing every 'auto_safe' entry from flips.json and ONLY
+     the 'review_payment' entries you actually flipped to INVALID in the live table.
    - Mirror the applied flips into the local export so synthesis sees the cleaned data:
-     python3.12 scripts/apply_label_flips.py --flips '$OUTDIR/flips.json' --export '$EXPORT'
+     python3.12 scripts/apply_label_flips.py --flips '$OUTDIR/confirmed_flips.json' --export '$EXPORT' --include-review-payment
 
 3. Synthesize (isolated to this merchant):
    python3.12 scripts/verify_synthetic_replay.py local-pipeline \

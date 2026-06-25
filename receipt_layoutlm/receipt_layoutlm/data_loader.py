@@ -17,6 +17,7 @@ SYNTHESIS_OPERATION_FAMILIES = (
     "remove_line_item",
     "replace_field",
     "compose_online_catalog",
+    "compose_store_header",
 )
 SYNTHETIC_CANDIDATE_COLLECTION_KEYS = (
     "synthetic_receipt_candidates",
@@ -1663,6 +1664,42 @@ def _arithmetic_reconciliation_failure(
     return "invalid_arithmetic_reconciliation"
 
 
+def _compose_catalog_taxability_failure(
+    grounding: dict[str, Any],
+    arithmetic: dict[str, Any],
+) -> Optional[str]:
+    entries = grounding.get("entries")
+    entries = entries if isinstance(entries, list) else []
+    taxable_entry_total = 0.0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        # Older rows may not carry a taxable flag; treat missing as taxable so the
+        # exemption rule only applies to explicit taxable:false catalog entries.
+        if entry.get("taxable") is False:
+            continue
+        amount = _safe_float(entry.get("line_total"))
+        if amount is not None:
+            taxable_entry_total += amount
+
+    taxable_subtotal = _safe_float(arithmetic.get("new_taxable_subtotal"))
+    new_tax = _safe_float(arithmetic.get("new_tax"))
+    rate = _safe_float(arithmetic.get("tax_rate"))
+    if taxable_subtotal is None or new_tax is None:
+        return "invalid_arithmetic_reconciliation"
+    if abs(taxable_subtotal - taxable_entry_total) > 0.005:
+        return "compose_taxable_subtotal_mismatch"
+    if taxable_subtotal <= 0.005:
+        if abs(new_tax) > 0.005:
+            return "compose_exempt_items_taxed"
+        return None
+    if rate is None:
+        return "invalid_arithmetic_reconciliation"
+    if abs(new_tax - taxable_subtotal * rate) > 0.006:
+        return "compose_taxable_tax_mismatch"
+    return None
+
+
 def _synthetic_candidate_quality_failure(
     row: dict[str, Any],
     *,
@@ -1714,12 +1751,12 @@ def _synthetic_candidate_quality_failure(
     )
     if layout_score is not None and layout_score < 1.0:
         return "layout_integrity_failed"
-    # Geometry-mutating operations must CARRY a layout_integrity score. Its
-    # absence means the row was authored outside the synthesis pipeline (or by an
-    # older generator) and its geometry was never integrity-checked — exactly the
-    # case a weak box check would wave through. hard_negative is exempt: it swaps
-    # token labels without moving any box, so its geometry equals the real base.
-    if layout_score is None and operation != "hard_negative":
+    # Every generated row must CARRY a layout_integrity score. Its absence means
+    # the row was authored outside the synthesis pipeline (or by an older
+    # generator) and its geometry was never integrity-checked — exactly the case a
+    # weak box check would wave through. This includes hard_negative rows: current
+    # generators can insert distractor rows, not only swap labels in place.
+    if layout_score is None:
         return "missing_layout_integrity"
 
     declared_quality = _synthetic_declared_candidate_quality(row)
@@ -1928,6 +1965,8 @@ def _synthetic_candidate_quality_failure(
             or arithmetic.get("tax_rate_stable") is not True
         ):
             return "invalid_arithmetic_reconciliation"
+        if failure := _compose_catalog_taxability_failure(grounding, arithmetic):
+            return failure
         return None
 
     if operation == "compose_store_header":

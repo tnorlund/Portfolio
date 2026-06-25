@@ -36,7 +36,7 @@ PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<'EOF'
 You have the receipt-tools MCP available. Do two steps and report each.
 Step 1: call get_receipts_by_merchant with merchant_name "Costco Wholesale". It passes if it returns a count.
-Step 2: call update_word_label with image_id ed28a4ce-2258-4745-87ba-2fc662c94abf, receipt_id 2, line_id 32, word_id 3, label WEBSITE, new_status INVALID, reasoning "headless MCP smoke test no-op". It passes if the result has success true.
+Step 2: first call list_words_by_label with label WEBSITE, status_filter INVALID, sample_size 1000. Verify the exact target image_id ed28a4ce-2258-4745-87ba-2fc662c94abf, receipt_id 2, line_id 32, word_id 3 appears with validation_status INVALID. If it does not, do NOT call update_word_label and mark write FAIL. Only when that exact record is already INVALID, call update_word_label with image_id ed28a4ce-2258-4745-87ba-2fc662c94abf, receipt_id 2, line_id 32, word_id 3, label WEBSITE, new_status INVALID, reasoning "headless MCP smoke test guarded no-op". It passes if the result has success true.
 Finally output exactly one line: SMOKE_TEST read=PASS_OR_FAIL write=PASS_OR_FAIL
 If the receipt-tools MCP tools are not available at all, output exactly: SMOKE_TEST read=NO_MCP write=NO_MCP
 EOF
