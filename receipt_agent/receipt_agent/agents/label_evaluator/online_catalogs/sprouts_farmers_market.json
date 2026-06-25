@@ -1,0 +1,18 @@
+{
+  "merchant_name": "Sprouts Farmers Market",
+  "source_url": "https://shop.sprouts.com/store/sprouts",
+  "entries": [
+    {"name": "SPROUTS CAGE FREE EGGS 12CT",   "price": "4.19",  "upc": "00646670513046", "taxable": false},
+    {"name": "SPROUTS ORG WHOLE MILK 1GAL",   "price": "7.29",  "upc": "00646670529627", "taxable": false},
+    {"name": "MEDIUM HASS AVOCADO",            "price": "1.00",                           "taxable": false},
+    {"name": "ORG KANZI APPLE BAG 2LB",        "price": "5.99",  "upc": "00847473005480", "taxable": false},
+    {"name": "STONYFIELD ORG YGT PLN 32OZ",   "price": "6.29",  "upc": "00052159000011", "taxable": false},
+    {"name": "SPROUTS ORG RAW ALMONDS 12OZ",  "price": "10.99", "upc": "00646670467103", "taxable": false},
+    {"name": "SPROUTS ORG ROLLED OATS 1LB",   "price": "2.49",                           "taxable": false},
+    {"name": "SPROUTS ORG EVOO 33.8OZ",        "price": "19.99", "upc": "00646670516832", "taxable": false},
+    {"name": "ORG VLY GRASSMILK CHEDDAR 8OZ", "price": "9.49",  "upc": "00093966005011", "taxable": false},
+    {"name": "SPROUTS ORG BABY SPINACH 16OZ", "price": "5.99",  "upc": "00646670541360", "taxable": false},
+    {"name": "SPROUTS ORG WW BREAD 24OZ",     "price": "4.99",  "upc": "00646670527357", "taxable": false},
+    {"name": "HEIRLOOM TOMATOES",              "price": "2.69",                           "taxable": false}
+  ]
+}
