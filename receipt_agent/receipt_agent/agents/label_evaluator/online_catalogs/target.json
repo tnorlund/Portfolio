@@ -1,0 +1,20 @@
+{
+  "merchant_name": "Target",
+  "source_url": "https://www.target.com/ (Good & Gather, Market Pantry, up&up)",
+  "entries": [
+    {"name": "G&G VIT D WHOLE MILK GAL", "price": "2.99", "upc": null, "taxable": false},
+    {"name": "G&G 2% MILK GAL", "price": "2.99", "upc": null, "taxable": false},
+    {"name": "G&G GRADE A LG EGGS 18CT", "price": "2.19", "upc": null, "taxable": false},
+    {"name": "G&G CAGE FREE BROWN EGGS 12CT", "price": "2.69", "upc": null, "taxable": false},
+    {"name": "G&G SHRED MOZZARELLA 8OZ", "price": "1.99", "upc": null, "taxable": false},
+    {"name": "G&G SALTED BUTTER 1LB", "price": "3.19", "upc": null, "taxable": false},
+    {"name": "G&G HALF AND HALF 32OZ", "price": "2.79", "upc": null, "taxable": false},
+    {"name": "G&G SOUR CREAM 16OZ", "price": "1.99", "upc": null, "taxable": false},
+    {"name": "G&G STRING CHEESE 12CT", "price": "3.29", "upc": null, "taxable": false},
+    {"name": "MKT PANTRY WHITE BREAD 20OZ", "price": "1.29", "upc": null, "taxable": false},
+    {"name": "UP AND UP PAPER TOWELS 6RL", "price": "9.99", "upc": null, "taxable": true},
+    {"name": "UP AND UP TRASH BAGS 13GAL 80CT", "price": "9.49", "upc": null, "taxable": true},
+    {"name": "UP AND UP DISINFECTING WIPES 75CT", "price": "4.49", "upc": null, "taxable": true},
+    {"name": "UP AND UP DISH SOAP 24OZ", "price": "2.49", "upc": null, "taxable": true}
+  ]
+}
