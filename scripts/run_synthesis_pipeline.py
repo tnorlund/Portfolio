@@ -34,8 +34,11 @@ Feature flags:
   --research-dir   [Branch 1] Read merchant_intelligence/<slug>.json when present.
                    Falls back to hardcoded merchant_tax_config + online_catalogs.
                    Also supplies the Tier-1 taxable_edit_review status.
-  --render         [Branch 2] Emit QA images per accepted candidate via the
-                   receipt-font-render renderer (not yet implemented; no-ops today).
+  --render         [Branch 2] Render accepted candidates to PNGs for QA REVIEW
+                   (real-vs-synthetic) via the receipt-font-render renderer, and
+                   reference them per merchant in the report. Review-only — never
+                   fed to training (no image training / LayoutLMv3). No-ops if the
+                   rendering deps (Pillow) aren't installed.
 
 Usage (no-spend, backbone only):
     export RECEIPT_AGENT_DISABLE_PAID_LLM=1
@@ -81,6 +84,34 @@ _EXPORT_IMAGE_DEFAULT_REGION = "us-east-1"
 # These are populated lazily so the script can --help without full imports.
 _dynamo = None
 _replay = None
+_render = None
+_render_tried = False
+
+
+def _import_render():
+    """Lazily import the Branch-2 render script module; None if unavailable.
+
+    Reuses the renderer's tested helpers. Degrades gracefully (returns None) when
+    the rendering package or its deps (e.g. Pillow) aren't installed, so the
+    pipeline still runs without --render.
+    """
+    global _render, _render_tried
+    if not _render_tried:
+        _render_tried = True
+        try:
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location(
+                "render_synthetic_receipts",
+                PROJECT_ROOT / "scripts" / "render_synthetic_receipts.py",
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _render = mod
+        except Exception as exc:  # pragma: no cover - import-env dependent
+            print(f"  [render] renderer unavailable: {exc}", file=sys.stderr)
+            _render = None
+    return _render
 
 
 def _export_image_supports_region(export_image) -> bool:
@@ -464,18 +495,150 @@ def _taxable_adds_by_merchant(bundle: dict[str, Any]) -> dict[str, dict[str, Any
     return by_merchant
 
 
-def _render_accepted_candidates(
-    bundle_path: str,
-    render_output_dir: str,
-    merchant_name: str,
-) -> list[str]:
-    """Emit QA images per accepted candidate (Branch 2, stub until renderer lands)."""
-    print(
-        f"  [render] STUB: renderer not yet implemented "
-        f"(branch feat/receipt-font-render). Skipping for {merchant_name!r}.",
-        file=sys.stderr,
-    )
-    return []
+def _bundle_id_to_label(bundle: dict[str, Any]) -> dict[int, str]:
+    """Best-effort ner_tag-id → label map from the bundle (for rendering)."""
+    policy = bundle.get("synthetic_training_batch_policy") or {}
+    for key in ("id_to_label", "label_list", "labels"):
+        value = policy.get(key)
+        if isinstance(value, dict):
+            return {int(k): v for k, v in value.items()}
+        if isinstance(value, list):
+            return {i: lbl for i, lbl in enumerate(value)}
+    return {}
+
+
+def render_accepted_candidates(
+    bundle: dict[str, Any],
+    *,
+    base_output_dir: str,
+    proceeding_names: list[str],
+    limit_per_merchant: int,
+) -> tuple[dict[str, list[str]], str]:
+    """Render accepted candidates per proceeding merchant to PNGs for QA REVIEW.
+
+    QA-review only — these PNGs are never fed to training (LayoutLMv3 / image
+    training is out of scope, no CoreML support). Reuses the Branch-2 renderer's
+    tested helpers; filters the combined bundle by merchant so each candidate is
+    rendered with its own merchant font profile and beside its real base receipt
+    when available. Returns ``(artifacts_by_merchant, status)``; degrades to
+    ``({}, "renderer_unavailable")`` when the renderer/deps aren't installed.
+    """
+    rmod = _import_render()
+    if rmod is None:
+        return {}, "renderer_unavailable"
+
+    examples = bundle.get("synthetic_training_examples") or []
+    id_to_label = _bundle_id_to_label(bundle)
+    proceeding = set(proceeding_names)
+    by_merchant: dict[str, list[dict[str, Any]]] = {}
+    for ex in examples:
+        merchant = ex.get("merchant_name")
+        if merchant in proceeding:
+            by_merchant.setdefault(merchant, []).append(ex)
+
+    eligible = sum(len(v) for v in by_merchant.values())
+    if eligible == 0:
+        return {}, "no_accepted_candidates"
+    if limit_per_merchant <= 0:
+        return {}, "render_limit_zero"
+
+    artifacts: dict[str, list[str]] = {}
+    attempted = 0
+    succeeded = 0
+    failed = 0
+    try:
+        config = rmod.RenderConfig(
+            width=460, height=1100, color_by_label=True, draw_price_column=True
+        )
+        for merchant, exs in by_merchant.items():
+            slug = _slug(merchant)
+            receipt_dir = Path(base_output_dir) / "receipts" / slug
+            out_dir = Path(base_output_dir) / "renders" / slug
+            # Per-merchant setup is isolated: a setup failure (mkdir/permissions)
+            # must never abort the run — rendering is optional QA only.
+            try:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                exports: dict[str, dict] = {}
+                if receipt_dir.exists():
+                    for f in receipt_dir.glob("*.json"):
+                        try:
+                            exports[f.stem] = json.loads(
+                                f.read_text(encoding="utf-8")
+                            )
+                        except Exception:
+                            continue
+                try:
+                    profile = rmod._profile_from_export_dir(merchant, str(receipt_dir))
+                except Exception:
+                    profile = None
+            except Exception as exc:
+                failed += len(exs[:limit_per_merchant])
+                print(
+                    f"  [render] WARNING: setup failed for {merchant!r}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+
+            merchant_arts: list[str] = []
+            for idx, ex in enumerate(exs[:limit_per_merchant]):
+                attempted += 1
+                candidate_id = ex.get("candidate_id") or f"candidate-{idx}"
+                base_key = (ex.get("metadata") or {}).get("base_receipt_key", "")
+                image_id, _, suffix = base_key.partition("#")
+                try:
+                    base_receipt_id = int(suffix)
+                except ValueError:
+                    base_receipt_id = None
+                try:
+                    synthetic = rmod._synthetic_receipt_dict(ex, id_to_label)
+                    synth_path = out_dir / f"{candidate_id}.synthetic.png"
+                    rmod.save_receipt_png(
+                        synthetic, str(synth_path), profile=profile, config=config
+                    )
+                    merchant_arts.append(str(synth_path))
+                    if image_id in exports and base_receipt_id is not None:
+                        real = rmod._real_receipt_dict(
+                            exports[image_id], base_receipt_id
+                        )
+                        combined = rmod.render_real_vs_synthetic(
+                            real,
+                            synthetic,
+                            profile=profile,
+                            config=config,
+                            labels=(
+                                f"real {base_key}",
+                                f"synthetic {ex.get('operation', '')}",
+                            ),
+                        )
+                        combined_path = (
+                            out_dir / f"{candidate_id}.real_vs_synthetic.png"
+                        )
+                        combined.save(str(combined_path))
+                        merchant_arts.append(str(combined_path))
+                    succeeded += 1
+                except Exception as exc:
+                    failed += 1
+                    print(
+                        f"  [render] WARNING: failed to render {candidate_id!r}: "
+                        f"{exc}",
+                        file=sys.stderr,
+                    )
+            if merchant_arts:
+                artifacts[merchant] = merchant_arts
+                print(
+                    f"  [render] {merchant}: {len(merchant_arts)} PNG(s) → {out_dir}"
+                )
+    except Exception as exc:  # pragma: no cover - rendering must never gate the run
+        print(f"  [render] WARNING: rendering aborted: {exc}", file=sys.stderr)
+        return artifacts, "render_failed"
+
+    if succeeded == 0:
+        status = "render_failed"
+    elif failed:
+        status = "render_partial"
+    else:
+        status = "rendered"
+    return artifacts, status
 
 
 # ---------------------------------------------------------------------------
@@ -976,6 +1139,7 @@ def run_single(
     render: bool,
     research_dir: str | None,
     use_merchant_intelligence: bool = True,
+    render_limit_per_merchant: int = 4,
     promote_approved_by: str | None = None,
     print_summary: bool = True,
 ) -> dict[str, Any]:
@@ -1089,14 +1253,6 @@ def run_single(
             "per_merchant": [],
         }
 
-    # --- Phase 3 (Branch 2): render hook over accepted candidates ---
-    render_artifacts: list[str] = []
-    if render:
-        render_dir = str(Path(base_output_dir) / "renders")
-        render_artifacts = _render_accepted_candidates(
-            bundle_path, render_dir, "all-merchants"
-        )
-
     # --- Load the written bundle once (the authoritative, untruncated source) ---
     # A read/parse failure here would silently zero out the acceptance signal,
     # so it fails the run rather than being swallowed.
@@ -1129,6 +1285,26 @@ def run_single(
     per_merchant = build_per_merchant_report(
         bundle, export_stats, intel_by_merchant
     )
+
+    # --- Phase 3 (Branch 2): render accepted candidates to PNGs for QA REVIEW ---
+    # QA-review only; never fed to training (no image training / LayoutLMv3).
+    render_artifacts: dict[str, list[str]] = {}
+    render_status = "disabled"
+    if render:
+        try:
+            render_artifacts, render_status = render_accepted_candidates(
+                bundle,
+                base_output_dir=base_output_dir,
+                proceeding_names=proceeding_names,
+                limit_per_merchant=render_limit_per_merchant,
+            )
+        except Exception as exc:  # rendering is optional QA; never gate the run
+            print(f"  [render] WARNING: rendering aborted: {exc}", file=sys.stderr)
+            render_artifacts, render_status = {}, "render_failed"
+        # Reference each merchant's render artifacts in its report row.
+        for row in per_merchant:
+            row["render_artifacts"] = render_artifacts.get(row["merchant_name"], [])
+
     total_taxable_adds = sum(
         r.get("taxable_add_count", 0) or 0 for r in per_merchant
     )
@@ -1189,7 +1365,9 @@ def run_single(
         "intelligence_contract_violations": intelligence_contract_violations,
         "source_receipt_quality": bundle.get("source_receipt_quality") or {},
         "bundle_path": bundle_path,
+        "render_status": render_status,
         "render_artifacts": render_artifacts,
+        "render_artifact_count": sum(len(v) for v in render_artifacts.values()),
         "tier1_gate": tier1_gate,
         "promotion_gate": promotion_gate,
         "per_merchant": per_merchant,
@@ -1323,6 +1501,7 @@ def run_coverage_loop(
     render: bool,
     research_dir: str | None,
     use_merchant_intelligence: bool = True,
+    render_limit_per_merchant: int = 4,
     promote_approved_by: str | None = None,
     promote: bool = False,
 ) -> int:
@@ -1369,6 +1548,7 @@ def run_coverage_loop(
             render=render,
             research_dir=research_dir,
             use_merchant_intelligence=use_merchant_intelligence,
+            render_limit_per_merchant=render_limit_per_merchant,
             promote_approved_by=promote_approved_by,
             print_summary=False,
         )
@@ -1568,6 +1748,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             render=args.render,
             research_dir=args.research_dir,
             use_merchant_intelligence=args.use_merchant_intelligence,
+            render_limit_per_merchant=args.render_limit_per_merchant,
             promote_approved_by=args.promote_approved_by,
             promote=args.promote,
         )
@@ -1586,6 +1767,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         render=args.render,
         research_dir=args.research_dir,
         use_merchant_intelligence=args.use_merchant_intelligence,
+        render_limit_per_merchant=args.render_limit_per_merchant,
         promote_approved_by=args.promote_approved_by,
     )
     base_exit = _exit_code_from_summary(summary)
@@ -1686,7 +1868,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--render",
         action="store_true",
         default=False,
-        help="[Branch 2] Emit QA render images per accepted candidate (STUB)",
+        help=(
+            "[Branch 2] Render accepted candidates to PNGs for QA REVIEW "
+            "(real-vs-synthetic where a base receipt exists). Review-only — never "
+            "fed to training. Needs the rendering deps (Pillow); no-ops if absent."
+        ),
+    )
+    p.add_argument(
+        "--render-limit-per-merchant",
+        type=int,
+        default=4,
+        help="Max accepted candidates to render per merchant (--render)",
     )
     # Coverage-loop mode (agent-style: retry + escalate until targets met)
     cov = p.add_argument_group("coverage loop (set --coverage-target > 0 to enable)")
