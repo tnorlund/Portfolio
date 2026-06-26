@@ -13,9 +13,12 @@ from receipt_agent.agents.label_evaluator.merchant_research.structure import (
     RESTAURANT_TIP,
     SERVICE,
     UNKNOWN,
+    borrow_structural_prior,
+    build_cluster_priors,
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
+    is_structure_only,
     service_grounding_contract,
     structure_review_status,
     summarize_merchant_structure,
@@ -272,6 +275,86 @@ def test_service_grounding_contract_never_raises_and_defaults_safe(bad):
     # Malformed / non-service / parked -> never grants the override, never raises.
     assert c["valid_grounding_without_line_items"] is False
     assert isinstance(c["applicable_operations"], list)
+
+
+# --------------------------------------------------------------------------- #
+# Cross-merchant structural prior (M8): borrow structure, never content
+# --------------------------------------------------------------------------- #
+
+
+def _labeled_service_receipt(rid):
+    # A header + one service line + total + payment, plus a GARBAGE label that
+    # smuggles content into the label field (mimics real corrupt corpus labels).
+    words = [
+        _word(rid, 1, 1, 0.3, 0.95),
+        _word(rid, 2, 2, 0.1, 0.7, text="WASH"),
+        _word(rid, 2, 3, 0.8, 0.7, w=0.08, text="20.00"),
+        _word(rid, 5, 5, 0.7, 0.4, text="20.00"),
+        _word(rid, 6, 6, 0.3, 0.2, text="VISA"),
+    ]
+    labels = [
+        _lab(rid, 1, 1, "MERCHANT_NAME"),
+        _lab(rid, 2, 2, "PRODUCT_NAME"),
+        _lab(rid, 2, 3, "LINE_TOTAL"),
+        _lab(rid, 5, 5, "GRAND_TOTAL"),
+        # content-bearing garbage label that must NOT leak into a prior:
+        _lab(rid, 6, 6, "DISCOUNT: $20.00 SHOULD BE FREE"),
+    ]
+    return fingerprint_from_labeled_words(words, labels)
+
+
+def test_cluster_priors_are_structure_only_and_drop_content_labels():
+    fps_a = [_labeled_service_receipt(i) for i in range(3)]
+    fps_b = [_labeled_service_receipt(100 + i) for i in range(2)]
+    priors = build_cluster_priors({"MerchA": fps_a, "MerchB": fps_b})
+    assert SERVICE in priors
+    cp = priors[SERVICE]
+    assert is_structure_only(cp.prior)
+    # the garbage content-bearing label must not appear in label_arrangement
+    assert all("SHOULD BE" not in k and "$" not in k for k in cp.prior["label_arrangement"])
+    assert set(cp.contributing_merchants) == {"MerchA", "MerchB"}
+
+
+def test_borrow_is_leave_one_out_from_peers_only():
+    fps_a = [_labeled_service_receipt(i) for i in range(3)]
+    fps_b = [_labeled_service_receipt(100 + i) for i in range(2)]
+    fpm = {"MerchA": fps_a, "MerchB": fps_b}
+    borrowed = borrow_structural_prior("MerchA", SERVICE, fpm)
+    assert borrowed is not None
+    assert borrowed["borrowed_from_peers"] == ["MerchB"]  # own merchant excluded
+    # The prior aggregates PEER receipts ONLY (MerchB's 2), not MerchA's own 3.
+    assert borrowed["prior"]["receipt_count"] == 2
+    assert "cluster membership" in borrowed["grounding"]
+    assert is_structure_only(borrowed["prior"])
+
+
+def test_borrow_returns_none_when_no_peers():
+    # A one-merchant cluster has nobody to borrow from -> None (not its own data).
+    fpm = {"Solo": [_labeled_service_receipt(1), _labeled_service_receipt(2)]}
+    assert borrow_structural_prior("Solo", SERVICE, fpm) is None
+
+
+def test_borrow_returns_none_for_absent_archetype():
+    fpm = {"M": [_labeled_service_receipt(1)], "Peer": [_labeled_service_receipt(2)]}
+    assert borrow_structural_prior("M", LINE_ITEM_RETAIL, fpm) is None
+
+
+def test_aggregate_prior_region_sequence_is_order_independent():
+    a = [_labeled_service_receipt(i) for i in range(3)]
+    b = [_labeled_service_receipt(50 + i) for i in range(3)]
+    p1 = build_cluster_priors({"A": a, "B": b})[SERVICE].prior
+    p2 = build_cluster_priors({"B": b, "A": a})[SERVICE].prior
+    assert p1["typical_region_sequence"] == p2["typical_region_sequence"]
+
+
+def test_is_structure_only_rejects_content():
+    assert is_structure_only({"receipt_count": 3, "typical_region_sequence": ["header"]}) is True
+    # free-text / content values are rejected
+    assert is_structure_only({"item_text": "ONIONS"}) is False
+    assert is_structure_only({"typical_region_sequence": ["ONIONS $4.19"]}) is False
+    assert is_structure_only({"label_arrangement": {"PRODUCT TEXT $4": 1.0}}) is False
+    assert is_structure_only({"label_arrangement": {"PRODUCT_NAME": "lots"}}) is False
+    assert is_structure_only("nope") is False
 
 
 def test_service_grounding_contract_grants_only_when_approved_service():

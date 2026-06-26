@@ -325,9 +325,17 @@ def _aggregate_prior(fps: Sequence[StructureFingerprint]) -> dict[str, Any]:
     for fp in fps:
         seqs[fp.region_sequence] = seqs.get(fp.region_sequence, 0) + 1
         for lab in fp.label_profile:
-            label_union[lab] = label_union.get(lab, 0) + 1
+            # HARD RULE (M8): a structural prior carries only known schema LABEL
+            # NAMES, never content. Drop labels outside the vocabulary — the
+            # corpus contains garbage labels with values/free text baked in
+            # ("DISCOUNT: 0.99", "UNIT_PRICE SHOULD BE $2.20"), which must never
+            # leak into a borrowable prior.
+            if lab in _LABEL_VOCAB:
+                label_union[lab] = label_union.get(lab, 0) + 1
+    # Deterministic: break a frequency tie by the sequence tuple itself, so the
+    # result is independent of merchant/fingerprint input order.
     typical_region_sequence = (
-        list(max(seqs.items(), key=lambda kv: kv[1])[0]) if seqs else []
+        list(max(seqs.items(), key=lambda kv: (kv[1], kv[0]))[0]) if seqs else []
     )
     n = len(fps)
     label_arrangement = {
@@ -479,6 +487,189 @@ def summarize_merchant_structure(
         confidence=confidence,
         provenance=provenance,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Cross-merchant structural prior (M8): borrow STRUCTURE within a cluster, never
+# content. The HARD RULE is enforced by a strict allowlist + value validation.
+# --------------------------------------------------------------------------- #
+
+# The ONLY keys a borrowable structural prior may carry. Everything here is
+# layout/geometry/label-arrangement — never item text, prices, or merchant
+# strings. Any other key (or a free-text value) is a content leak and rejected.
+STRUCTURAL_PRIOR_ALLOWED_KEYS = frozenset(
+    {
+        "receipt_count",
+        "typical_region_sequence",
+        "mean_line_item_count",
+        "mean_row_spacing",
+        "mean_price_column_x",
+        "label_arrangement",
+    }
+)
+# The fixed vocabularies a content-free prior is allowed to name. label_arrangement
+# keys are SCHEMA LABEL NAMES (a bounded vocabulary, e.g. PRODUCT_NAME, DATE),
+# never the labeled word's text/price — so naming any schema label is content-free;
+# the validator rejects anything outside the known label set (a likely leak/bug).
+_REGION_VOCAB = frozenset({"header", "items", "totals", "payment"})
+_LABEL_VOCAB = frozenset(
+    _HEADER_LABELS
+    | _ITEM_LABELS
+    | _TOTALS_LABELS
+    | _TIP_LABELS
+    | _PAYMENT_LABELS
+    | {
+        # Common + legacy/alternate schema label names (all bounded vocabulary,
+        # NOT content). Anything outside this set is dropped from a prior as a
+        # likely garbage label or a content leak (the corpus contains labels like
+        # "DISCOUNT: 0.99" / "UNIT_PRICE SHOULD BE $2.20" with values baked in).
+        "DATE",
+        "TIME",
+        "COUPON",
+        "DISCOUNT",
+        "OTHER",
+        "LOYALTY_ID",
+        "CASH_BACK",
+        "STORE_HOURS",
+        "MERCHANT_NAME",
+        "PHONE_NUMBER",
+        "PHONE",
+        "WEBSITE",
+        "ADDRESS_LINE",
+        "ITEM_NAME",
+        "ITEM_PRICE",
+        "ITEM_QUANTITY",
+        "ITEM_TOTAL",
+        "PAYMENT_TYPE",
+        "REFUND",
+        "TOTAL",
+        "WEIGHT",
+        "UNLABELED",
+    }
+)
+
+
+def is_structure_only(prior: Any) -> bool:
+    """True iff ``prior`` carries ONLY structure (the M8 hard rule).
+
+    Rejects unknown keys and any value that could smuggle content: region
+    sequences must be region-vocabulary names; label_arrangement keys must be
+    schema label names; numeric fields must be numbers/None. No free strings.
+    """
+    if not isinstance(prior, dict):
+        return False
+    if set(prior) - STRUCTURAL_PRIOR_ALLOWED_KEYS:
+        return False
+    seq = prior.get("typical_region_sequence")
+    if seq is not None:
+        if not isinstance(seq, (list, tuple)) or any(r not in _REGION_VOCAB for r in seq):
+            return False
+    arrangement = prior.get("label_arrangement")
+    if arrangement is not None:
+        if not isinstance(arrangement, dict):
+            return False
+        for k, v in arrangement.items():
+            if k not in _LABEL_VOCAB or not isinstance(v, (int, float)):
+                return False
+    for key in ("receipt_count", "mean_line_item_count", "mean_row_spacing", "mean_price_column_x"):
+        v = prior.get(key)
+        if v is not None and not isinstance(v, (int, float)):
+            return False
+    return True
+
+
+@dataclass(frozen=True)
+class ClusterPrior:
+    """A cluster's aggregate structural prior + which merchants contributed it."""
+
+    archetype: str
+    cluster_id: str
+    prior: dict[str, Any]
+    contributing_merchants: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "archetype": self.archetype,
+            "cluster_id": self.cluster_id,
+            "contributing_merchants": list(self.contributing_merchants),
+            "prior": self.prior,
+        }
+
+
+def build_cluster_priors(
+    fingerprints_by_merchant: dict[str, Sequence[StructureFingerprint]],
+) -> dict[str, ClusterPrior]:
+    """Cluster receipts ACROSS merchants by archetype; return a per-archetype
+    structure-only aggregate prior plus the merchants that contributed it.
+
+    The prior is built from EVERY same-cluster receipt across merchants, so a
+    thin merchant can borrow the layout its cluster peers establish — never their
+    content (the prior carries only structure; enforced by ``is_structure_only``).
+    """
+    by_archetype: dict[str, list[StructureFingerprint]] = {}
+    merchants_by_archetype: dict[str, set[str]] = {}
+    for merchant, fps in fingerprints_by_merchant.items():
+        for fp in fps:
+            archetype = classify_archetype(fp).archetype
+            by_archetype.setdefault(archetype, []).append(fp)
+            merchants_by_archetype.setdefault(archetype, set()).add(merchant)
+
+    out: dict[str, ClusterPrior] = {}
+    for archetype in sorted(by_archetype):
+        prior = _aggregate_prior(by_archetype[archetype])
+        # Defensive: the aggregate must be content-free by construction.
+        assert is_structure_only(prior), "aggregate prior leaked non-structure keys"
+        out[archetype] = ClusterPrior(
+            archetype=archetype,
+            cluster_id=f"cluster:{archetype}",
+            prior=prior,
+            contributing_merchants=tuple(sorted(merchants_by_archetype[archetype])),
+        )
+    return out
+
+
+def borrow_structural_prior(
+    merchant: str,
+    primary_archetype: str,
+    fingerprints_by_merchant: dict[str, Sequence[StructureFingerprint]],
+) -> dict[str, Any] | None:
+    """Expose the same-cluster structural prior a thin merchant may borrow.
+
+    The grounding is CLUSTER MEMBERSHIP: the merchant's own receipts placed it in
+    ``primary_archetype``, so that cluster's aggregate STRUCTURE (layout, spacing,
+    label arrangement — never content) is a valid prior for it.
+
+    LEAVE-ONE-MERCHANT-OUT: the prior is aggregated from PEER fingerprints ONLY
+    (the merchant's own receipts are excluded), so it is genuinely *borrowed*
+    structure, not partly its own. Returns ``None`` when no peer has a receipt in
+    this archetype (nothing to borrow). Raises if the aggregate is not
+    content-free (the hard rule must never be violated).
+    """
+    peer_fps: list[StructureFingerprint] = []
+    peers: list[str] = []
+    for other, fps in fingerprints_by_merchant.items():
+        if other == merchant:
+            continue
+        matched = [fp for fp in fps if classify_archetype(fp).archetype == primary_archetype]
+        if matched:
+            peer_fps.extend(matched)
+            peers.append(other)
+    if not peer_fps:
+        return None
+    prior = _aggregate_prior(peer_fps)
+    if not is_structure_only(prior):
+        raise ValueError("refusing to borrow a prior that is not structure-only")
+    return {
+        "cluster_id": f"cluster:{primary_archetype}",
+        "archetype": primary_archetype,
+        "borrowed_from_peers": sorted(peers),
+        "grounding": (
+            f"cluster membership: {merchant}'s own receipts place it in "
+            f"{primary_archetype}; borrowing PEERS' aggregate STRUCTURE "
+            f"(layout/spacing/label arrangement), never content"
+        ),
+        "prior": prior,
+    }
 
 
 def service_grounding_contract(structure: dict[str, Any] | None) -> dict[str, Any]:

@@ -33,7 +33,7 @@ import json
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from .loader import (
     matches_validated_config,
@@ -53,7 +53,11 @@ from .review import (
     REJECTED,
     compute_review,
 )
-from .structure import structure_review_status, summarize_merchant_structure
+from .structure import (
+    is_structure_only,
+    structure_review_status,
+    summarize_merchant_structure,
+)
 from .schema import CatalogEntry, MerchantIntelligence
 
 # Default output dir: the version-controlled artifact directory the loader reads.
@@ -77,6 +81,11 @@ class MerchantResearchInput:
     # archetype), measured by fingerprinting the corpus (M6). Drives the
     # structure block (M7). None when structure has not been derived yet.
     archetype_mix: dict[str, int] | None = None
+    # Cross-merchant structural PRIOR (M8) a THIN merchant borrows from its
+    # same-cluster peers: {cluster_id, archetype, borrowed_from_peers, grounding,
+    # prior}. STRUCTURE ONLY (layout/spacing/label arrangement) — never content.
+    # Built by structure.borrow_structural_prior over the cross-merchant clusters.
+    structural_prior: dict[str, Any] | None = None
 
 
 def _load_catalog_file(filename: str) -> tuple[CatalogEntry, ...]:
@@ -391,6 +400,51 @@ NEW_MERCHANTS: tuple[MerchantResearchInput, ...] = (
         ),
         places=PlacesEvidence(category="service", jurisdictions=("CA-Ventura",)),
         archetype_mix={"service": 2, "line_item_retail": 1},
+        # M8: Tan L.A. is THIN (few service receipts), so it borrows the SERVICE
+        # cluster's aggregate STRUCTURE from same-cluster peers (Nicole Skin
+        # Studio, The HandleBar Barbershop) — layout/spacing/label arrangement
+        # only, NEVER content. Grounding = cluster membership (its own receipts
+        # placed it there). Built by structure.borrow_structural_prior; its trust
+        # follows the structure approval gate (parked until the archetype is
+        # approved).
+        structural_prior={
+            "cluster_id": "cluster:service",
+            "archetype": "service",
+            "borrowed_from_peers": [
+                "Nicole Skin Studio",
+                "The HandleBar Barbershop",
+            ],
+            "grounding": (
+                "cluster membership: Tan L.A.'s own receipts place it in service; "
+                "borrowing PEERS' aggregate STRUCTURE "
+                "(layout/spacing/label arrangement), never content"
+            ),
+            # Leave-one-merchant-out: aggregated from the PEERS only (Tan L.A.'s
+            # own receipts excluded), so it is genuinely borrowed structure.
+            "prior": {
+                "receipt_count": 2,
+                "typical_region_sequence": ["header", "items", "totals", "payment"],
+                "mean_line_item_count": 1.0,
+                "mean_row_spacing": 0.003785,
+                "mean_price_column_x": None,
+                "label_arrangement": {
+                    "ADDRESS_LINE": 1.0,
+                    "COUPON": 0.5,
+                    "DATE": 1.0,
+                    "GRAND_TOTAL": 1.0,
+                    "LINE_TOTAL": 1.0,
+                    "MERCHANT_NAME": 1.0,
+                    "PAYMENT_METHOD": 1.0,
+                    "PHONE_NUMBER": 1.0,
+                    "PRODUCT_NAME": 1.0,
+                    "STORE_HOURS": 0.5,
+                    "SUBTOTAL": 1.0,
+                    "TAX": 0.5,
+                    "TIME": 1.0,
+                    "TIP": 0.5,
+                },
+            },
+        },
     ),
 )
 
@@ -411,6 +465,13 @@ def build_known_artifacts(generated_at: str) -> dict[str, MerchantIntelligence]:
             structure = ms.to_dict()
             # Deterministic gate status (recomputed by the loader; high -> auto).
             structure["status"] = structure_review_status(ms.confidence)
+            if spec.structural_prior is not None:
+                prior_body = spec.structural_prior.get("prior")
+                if not is_structure_only(prior_body):
+                    raise ValueError(
+                        f"{spec.merchant}: structural_prior is not content-free"
+                    )
+                structure["structural_prior"] = spec.structural_prior
         intel = assemble_merchant_intelligence(
             spec.merchant,
             receipts=spec.receipts,

@@ -242,6 +242,46 @@ def test_structure_without_mix_is_parked(tmp_path, monkeypatch):
     assert loader.structure_is_enabling("vons") is False
 
 
+# --- Cross-merchant structural prior (M8) ----------------------------------- #
+
+
+def test_thin_service_merchant_borrows_content_free_structural_prior():
+    from receipt_agent.agents.label_evaluator.merchant_research import is_structure_only
+
+    s = effective_structure("tan_l_a")
+    prior = s.get("structural_prior")
+    assert prior is not None
+    # Borrowed from same-cluster peers, NOT itself.
+    assert "Tan L.A." not in prior["borrowed_from_peers"]
+    assert prior["borrowed_from_peers"]  # at least one peer
+    assert "cluster membership" in prior["grounding"]
+    # HARD RULE: the borrowed prior is structure-only (no items/prices/text).
+    assert is_structure_only(prior["prior"])
+
+
+def test_well_populated_merchant_has_no_borrowed_prior():
+    assert effective_structure("vons").get("structural_prior") is None
+
+
+def test_structural_prior_dropped_if_not_content_free(tmp_path, monkeypatch):
+    import json
+
+    from receipt_agent.agents.label_evaluator.merchant_research import loader
+
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    payload = dict(build_artifact_payloads(GEN_AT)["tan_l_a"])
+    # Inject a content-leaking prior (a price baked into a label key).
+    struct = dict(payload["structure"])
+    struct["structural_prior"] = {
+        "cluster_id": "cluster:service",
+        "prior": {"label_arrangement": {"PRODUCT $4.19": 1.0}},
+    }
+    payload["structure"] = struct
+    (tmp_path / "tan_l_a.json").write_text(json.dumps(payload), encoding="utf-8")
+    # The loader drops the non-content-free prior rather than exposing it.
+    assert loader.effective_structure("tan_l_a").get("structural_prior") is None
+
+
 # --- Service grounding contract hook (M7b) ---------------------------------- #
 
 

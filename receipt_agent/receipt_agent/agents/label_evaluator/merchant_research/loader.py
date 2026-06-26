@@ -248,6 +248,16 @@ def effective_structure(slug: str) -> dict[str, Any] | None:
             structure["approved_by"] = str(approval.get("approved_by") or "unknown")
             structure["approved_at"] = approval.get("approved_at") or None
     structure["status"] = status
+    # Carry through the cross-merchant structural PRIOR (M8) — but ONLY if it is
+    # content-free (enforce the hard rule at read time; drop anything that would
+    # leak items/prices/text). Its TRUST follows ``status`` (a parked structure's
+    # prior is advisory until approved).
+    prior = intel.structure.get("structural_prior")
+    if isinstance(prior, dict):
+        from .structure import is_structure_only  # lazy
+
+        if is_structure_only(prior.get("prior")):
+            structure["structural_prior"] = prior
     return structure
 
 
