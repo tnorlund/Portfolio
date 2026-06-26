@@ -36,6 +36,14 @@ from .review import (
     compute_review,
     tax_block_hash,
 )
+from .structure import (
+    ArchetypeAssignment,
+    ArchetypeCluster,
+    StructureFingerprint,
+    classify_archetype,
+    cluster_fingerprints,
+    fingerprint_from_labeled_words,
+)
 from .research import (
     PlacesEvidence,
     ReceiptEvidence,
@@ -53,9 +61,15 @@ from .schema import (
 
 __all__ = [
     "APPROVED",
+    "ArchetypeAssignment",
+    "ArchetypeCluster",
     "artifact_tax_profile",
     "assemble_merchant_intelligence",
     "AUTO_APPROVED",
+    "classify_archetype",
+    "cluster_fingerprints",
+    "fingerprint_from_labeled_words",
+    "StructureFingerprint",
     "CatalogEntry",
     "compute_review",
     "effective_review",
