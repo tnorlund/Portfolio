@@ -1,0 +1,4 @@
+interface:
+  display_name: "Portfolio Remote Control"
+  short_description: "Launch the Portfolio Claude remote-control trio."
+  default_prompt: "Launch the three Portfolio Claude remote-control sessions and verify they are working."

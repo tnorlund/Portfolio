@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "portfolio-remote-control",
+  "version": "0.1.0",
+  "description": "Launch the Portfolio Claude remote-control trio.",
+  "author": {
+    "name": "Tyler Norlund",
+    "email": "tnorlund@icloud.com"
+  },
+  "skills": [
+    "./"
+  ]
+}
