@@ -1,0 +1,45 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "grocery",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Smith's",
+  "slug": "smiths",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 7,
+      "image_ids": [],
+      "taxed_count": 0
+    },
+    "web": {
+      "jurisdiction": "NV",
+      "published_rate": null,
+      "urls": []
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "high",
+    "jurisdiction": "NV",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [
+      "F"
+    ],
+    "provenance": [
+      "receipts: 7 receipt(s), 0 taxed",
+      "web: Nevada exempts groceries; no positive tax to derive a rate",
+      "no taxable class flag observed on receipts",
+      "no receipt carries positive tax",
+      "no authoritative web rate to pin the single-jurisdiction rate",
+      "confidently off: no positive tax to derive a rate"
+    ],
+    "taxable_flag": "",
+    "validated_rate": null
+  }
+}

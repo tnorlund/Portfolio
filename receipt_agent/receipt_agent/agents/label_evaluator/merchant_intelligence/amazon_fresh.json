@@ -1,0 +1,118 @@
+{
+  "catalog": [
+    {
+      "name": "AMZN FRESH CAGE FREE LG EGGS 18CT",
+      "price": "8.39",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH SM CURD COTTAGE CHEESE 16OZ",
+      "price": "1.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH GREEK NONFAT YOGURT 16OZ",
+      "price": "3.59",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "BLUEBERRIES 1 PINT",
+      "price": "2.97",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "ORGANIC WHITE ONION",
+      "price": "1.49",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "TITOS HANDMADE VODKA 750ML",
+      "price": "15.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": true
+    },
+    {
+      "name": "KNUDSEN LOWFAT SM CURD COTT CH 24OZ",
+      "price": "3.59",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "ROCKENWAGNER FRENCH LOAF",
+      "price": "4.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "CLOROX DISINFECTING BLEACH 121OZ",
+      "price": "8.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": true
+    },
+    {
+      "name": "SIR KENSINGTONS CLASSIC MAYO 16OZ",
+      "price": "8.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "AMZN FRESH HICKORY SMK BACON 12OZ",
+      "price": "4.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    },
+    {
+      "name": "BANANA BUNCH 4-5CT",
+      "price": "0.99",
+      "source": "online_catalog:amazon_fresh.json",
+      "taxable": false
+    }
+  ],
+  "details": {
+    "address": "140 Promenade Way Ste A, Thousand Oaks, CA 91362",
+    "category": "grocery",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Amazon Fresh",
+  "slug": "amazon_fresh",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 6,
+      "image_ids": [],
+      "taxed_count": 2
+    },
+    "web": {
+      "jurisdiction": "CA-Ventura",
+      "published_rate": "0.0725",
+      "urls": [
+        "https://www.cdtfa.ca.gov/taxes-and-fees/sales-use-tax-rates.htm"
+      ]
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": true,
+    "confidence": "medium",
+    "jurisdiction": "CA-Ventura",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [
+      "F"
+    ],
+    "provenance": [
+      "receipts: 6 receipt(s), 2 taxed, effective rate ~0.0409",
+      "web: CA-Ventura published rate 0.0725 (CA statewide base 7.25%; Ventura County no district add-on)",
+      "places: 140 Promenade Way Ste A, Thousand Oaks, CA 91362",
+      "web rate 0.0725 uncontradicted, but only 2 taxed receipts (highest effective 0.0465)"
+    ],
+    "taxable_flag": "T",
+    "validated_rate": "0.0725"
+  }
+}
