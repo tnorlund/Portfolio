@@ -10,6 +10,7 @@ CAFFEINATE_PID_FILE="$BASE_DIR/caffeinate.pid"
 PRIME_TIMEOUT="${PORTFOLIO_RC_PRIME_TIMEOUT:-180}"
 CAFFEINATE_SECONDS="${PORTFOLIO_RC_CAFFEINATE_SECONDS:-86400}"
 DIRTY_WARN="${PORTFOLIO_RC_DIRTY_WARN:-8}"
+LOG_EVIDENCE_PATTERN='Read\(|Bash\(|Edit\(|MultiEdit\(|Write\(|TodoWrite|Grep\(|Glob\(|LS\(|Reading\s*[0-9]+\s*files?'
 
 MISSION_PROMPT="${PORTFOLIO_RC_MISSION:-Read CONTEXT.md then CHARTER.md in this worktree. They hold the full context from the session that set this branch up plus your specific mission. Follow the charter milestones in order and self-review with codex along the way exactly as CONTEXT.md mandates. Begin with milestone 1 now.}"
 
@@ -192,6 +193,26 @@ prime_screens() {
   return "$failed"
 }
 
+log_has_evidence() {
+  local log_file="$1"
+  python3 - "$log_file" "$LOG_EVIDENCE_PATTERN" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+pattern = sys.argv[2]
+data = path.read_bytes()
+data = re.sub(
+    rb"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b[@-_]",
+    b"",
+    data,
+)
+text = data.replace(b"\x00", b"").decode("utf-8", errors="ignore")
+raise SystemExit(0 if re.search(pattern, text) else 1)
+PY
+}
+
 ensure_caffeinate() {
   if [[ -s "$CAFFEINATE_PID_FILE" ]]; then
     local existing_pid
@@ -289,7 +310,7 @@ status() {
       missing=1
     fi
 
-    if [[ -f "$log_file" ]] && grep -aE 'CONTEXT\.md|CHARTER\.md|Read\(|Bash\(|Edit\(|TodoWrite' "$log_file" >/dev/null 2>&1; then
+    if [[ -f "$log_file" ]] && log_has_evidence "$log_file"; then
       log_ok=1
     else
       missing=1

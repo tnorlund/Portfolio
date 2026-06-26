@@ -47,10 +47,10 @@ The durable path is:
 ps axww -o pid= -o command= | grep '[c]laude .*--remote-control'
 screen -ls
 pgrep -fl 'caffeinate.*-dimsu'
-grep -aE 'CONTEXT\.md|CHARTER\.md|Read\(|Bash\(|Edit\(|TodoWrite' /tmp/claude-remote-screen/*/screenlog.0
+scripts/portfolio_remote_control.sh status
 ```
 
-Successful launch means all three remote-control processes are alive, all three screens exist, the logs show the sessions moved past warnings into work, and the user can see `merchant-intel`, `font-render`, and `orchestration` in the Claude mobile app.
+Successful launch means all three remote-control processes are alive, all three screens exist, `status` reports `log_evidence=1` from normalized tool-use text after the mission prompt was submitted, and the user can see `merchant-intel`, `font-render`, and `orchestration` in the Claude mobile app.
 
 ## Supervising the cadence
 

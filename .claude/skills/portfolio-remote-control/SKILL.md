@@ -53,7 +53,7 @@ Before reporting success, verify all of the following:
 
 - `ps` shows all three `claude --permission-mode bypassPermissions --remote-control ...` processes with names `merchant-intel`, `font-render`, and `orchestration`.
 - `screen -ls` shows the three target screens: `claude-merchant-intel-rc`, `claude-font-render-rc`, and `claude-orchestration-rc`.
-- Each screen log under `/tmp/claude-remote-screen/<label>/screenlog.0` shows that the session moved past the warning and began work, ideally including `CONTEXT.md`, `CHARTER.md`, or tool-use text.
+- Each screen log under `/tmp/claude-remote-screen/<label>/screenlog.0` shows actual tool use, such as `Reading 1 file`, `Bash(`, `Edit(`, or `TodoWrite`; the echoed mission prompt alone is not success evidence.
 - A `caffeinate -dimsu` process is alive, preferably the skill-managed 24-hour helper recorded under `/tmp/claude-remote-screen/caffeinate.pid`.
 - Tell the user that the three Claude sessions should now appear by name in the Claude app on their phone for remote control.
 
