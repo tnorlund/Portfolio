@@ -343,6 +343,128 @@ def _aggregate_prior(fps: Sequence[StructureFingerprint]) -> dict[str, Any]:
     }
 
 
+# A merchant is a clean single structure type when its primary archetype holds
+# at least this share of its receipts; otherwise it is hybrid.
+PRIMARY_SHARE_FOR_CLEAN_TYPE = 0.6
+PRIMARY_SHARE_FOR_HIGH_CONFIDENCE = 0.8
+MIN_RECEIPTS_FOR_HIGH_CONFIDENCE = 3
+
+
+@dataclass(frozen=True)
+class MerchantStructure:
+    """A merchant's structural summary, derived from its receipts' archetypes."""
+
+    primary_archetype: str
+    archetype_mix: dict[str, int]
+    structure_type: str  # "line_item" | "service" | "hybrid"
+    applicable_operations: tuple[str, ...]
+    cluster_id: str
+    cluster_size: int
+    confidence: str
+    provenance: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "primary_archetype": self.primary_archetype,
+            "archetype_mix": dict(sorted(self.archetype_mix.items())),
+            "structure_type": self.structure_type,
+            "applicable_operations": list(self.applicable_operations),
+            "cluster_id": self.cluster_id,
+            "cluster_size": self.cluster_size,
+            "confidence": self.confidence,
+            "provenance": list(self.provenance),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "MerchantStructure":
+        return cls(
+            primary_archetype=str(d.get("primary_archetype") or UNKNOWN),
+            archetype_mix={str(k): int(v) for k, v in (d.get("archetype_mix") or {}).items()},
+            structure_type=str(d.get("structure_type") or "hybrid"),
+            applicable_operations=tuple(d.get("applicable_operations") or ()),
+            cluster_id=str(d.get("cluster_id") or ""),
+            cluster_size=int(d.get("cluster_size") or 0),
+            confidence=str(d.get("confidence") or "low"),
+            provenance=tuple(str(p) for p in (d.get("provenance") or [])),
+        )
+
+
+def structure_review_status(confidence: str) -> str:
+    """Approval-gate status for a structural assignment (mirrors the tax gate).
+
+    Only a HIGH-confidence assignment auto-approves; a new/low/medium-confidence
+    archetype is parked at ``needs_review`` so a structural prior we are unsure of
+    is not auto-trusted (CHARTER: apply the approval gate to structure too).
+    Recomputed by the loader — never read from a stored field.
+    """
+    return "auto_approved" if str(confidence).strip().lower() == "high" else "needs_review"
+
+
+def _structure_type_for(primary: str) -> str:
+    if primary in (LINE_ITEM_RETAIL, RESTAURANT_TIP):
+        return "line_item"
+    if primary == SERVICE:
+        return "service"
+    return "hybrid"
+
+
+def summarize_merchant_structure(
+    archetype_mix: dict[str, int],
+    *,
+    cluster_size: int | None = None,
+) -> MerchantStructure:
+    """Summarize a merchant's structure from the archetype mix of its receipts.
+
+    The primary archetype is the most common one across the merchant's receipts;
+    structure_type is ``service`` / ``line_item`` only when the primary holds a
+    clear majority, else ``hybrid``. Confidence reflects how pure and deep the
+    mix is — a thin or split merchant is low/medium so the approval gate can park
+    a structural assignment we are unsure of.
+    """
+    mix = {k: int(v) for k, v in archetype_mix.items() if int(v) > 0}
+    total = sum(mix.values())
+    if total == 0:
+        return MerchantStructure(
+            primary_archetype=UNKNOWN,
+            archetype_mix={},
+            structure_type="hybrid",
+            applicable_operations=STRUCTURE_TYPE_OPERATIONS["hybrid"],
+            cluster_id=f"cluster:{UNKNOWN}",
+            cluster_size=0,
+            confidence="low",
+            provenance=("no classified receipts",),
+        )
+
+    # Primary = highest count; ties broken by a stable archetype order so the
+    # result is deterministic.
+    primary = max(mix, key=lambda a: (mix[a], -ARCHETYPES.index(a) if a in ARCHETYPES else -99))
+    share = mix[primary] / total
+    structure_type = _structure_type_for(primary) if share >= PRIMARY_SHARE_FOR_CLEAN_TYPE else "hybrid"
+
+    if share >= PRIMARY_SHARE_FOR_HIGH_CONFIDENCE and total >= MIN_RECEIPTS_FOR_HIGH_CONFIDENCE:
+        confidence = "high"
+    elif share >= PRIMARY_SHARE_FOR_CLEAN_TYPE:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    provenance = (
+        f"primary archetype {primary} ({mix[primary]}/{total} receipts, "
+        f"share {share:.2f})",
+        f"archetype mix {dict(sorted(mix.items()))}",
+    )
+    return MerchantStructure(
+        primary_archetype=primary,
+        archetype_mix=mix,
+        structure_type=structure_type,
+        applicable_operations=STRUCTURE_TYPE_OPERATIONS[structure_type],
+        cluster_id=f"cluster:{primary}",
+        cluster_size=cluster_size if cluster_size is not None else total,
+        confidence=confidence,
+        provenance=provenance,
+    )
+
+
 def cluster_fingerprints(
     fingerprints: Sequence[StructureFingerprint],
 ) -> list[ArchetypeCluster]:

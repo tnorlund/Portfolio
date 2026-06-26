@@ -53,6 +53,7 @@ from .review import (
     REJECTED,
     compute_review,
 )
+from .structure import structure_review_status, summarize_merchant_structure
 from .schema import CatalogEntry, MerchantIntelligence
 
 # Default output dir: the version-controlled artifact directory the loader reads.
@@ -72,6 +73,10 @@ class MerchantResearchInput:
     block_reason: str | None = None
     catalog_file: str | None = None  # online_catalogs/<file>.json, if any
     catalog: tuple[CatalogEntry, ...] = field(default_factory=tuple)
+    # Archetype distribution across this merchant's real receipts (counts per
+    # archetype), measured by fingerprinting the corpus (M6). Drives the
+    # structure block (M7). None when structure has not been derived yet.
+    archetype_mix: dict[str, int] | None = None
 
 
 def _load_catalog_file(filename: str) -> tuple[CatalogEntry, ...]:
@@ -146,6 +151,13 @@ KNOWN_MERCHANTS: tuple[MerchantResearchInput, ...] = (
         ),
         web=_CA_VENTURA,
         places=PlacesEvidence(category="grocery", jurisdictions=("CA-Ventura",)),
+        # Fingerprinted 28 Vons receipts (M6): dominantly itemized retail.
+        archetype_mix={
+            "line_item_retail": 24,
+            "service": 2,
+            "restaurant_tip": 1,
+            "unknown": 1,
+        },
     ),
     MerchantResearchInput(
         merchant="Sprouts Farmers Market",
@@ -362,6 +374,24 @@ NEW_MERCHANTS: tuple[MerchantResearchInput, ...] = (
         ),
         places=PlacesEvidence(category="grocery", jurisdictions=("",)),
     ),
+    # Tan L.A. — a SERVICE merchant (M7): a tanning salon whose receipts are a
+    # single service charge + total, NO line-item grid. Fingerprinting its
+    # receipts (M6) puts the majority in the `service` archetype, so synthesis
+    # uses field/amount/header ops (no line-item ops) and a no-line-item receipt
+    # is valid grounding rather than "missing line items". No reliable sales-tax
+    # evidence (a service with no itemized taxable goods), so tax stays off.
+    MerchantResearchInput(
+        merchant="Tan L.A.",
+        receipts=ReceiptEvidence(
+            taxable_flag="",
+            nontaxable_flags=(),
+            effective_rates=(),
+            receipt_count=3,
+            taxed_receipt_count=0,
+        ),
+        places=PlacesEvidence(category="service", jurisdictions=("CA-Ventura",)),
+        archetype_mix={"service": 2, "line_item_retail": 1},
+    ),
 )
 
 # Every committed artifact must be reproducible by this builder.
@@ -375,6 +405,12 @@ def build_known_artifacts(generated_at: str) -> dict[str, MerchantIntelligence]:
         catalog: tuple[CatalogEntry, ...] = spec.catalog
         if spec.catalog_file:
             catalog = catalog + _load_catalog_file(spec.catalog_file)
+        structure: dict | None = None
+        if spec.archetype_mix:
+            ms = summarize_merchant_structure(spec.archetype_mix)
+            structure = ms.to_dict()
+            # Deterministic gate status (recomputed by the loader; high -> auto).
+            structure["status"] = structure_review_status(ms.confidence)
         intel = assemble_merchant_intelligence(
             spec.merchant,
             receipts=spec.receipts,
@@ -383,6 +419,7 @@ def build_known_artifacts(generated_at: str) -> dict[str, MerchantIntelligence]:
             catalog=catalog,
             generated_at=generated_at,
             block_reason=spec.block_reason,
+            structure=structure,
         )
         out[intel.slug] = intel
     return out

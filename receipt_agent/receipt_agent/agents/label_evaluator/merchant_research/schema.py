@@ -159,9 +159,15 @@ class MerchantIntelligence:
     details: MerchantDetails
     generated_at: str
     sources: dict[str, Any] = field(default_factory=dict)
+    # Structural taxonomy (M7): primary_archetype, archetype_mix, structure_type
+    # (line_item|service|hybrid), applicable_operations, cluster_id/size,
+    # confidence, provenance, status. Stored as a raw dict so this schema stays
+    # decoupled from the structure module; ``merchant_research.structure`` builds
+    # and parses it. Empty/absent when structure has not been derived.
+    structure: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "merchant": self.merchant,
             "slug": self.slug,
             "tax": self.tax.to_dict(),
@@ -170,6 +176,9 @@ class MerchantIntelligence:
             "generated_at": self.generated_at,
             "sources": self.sources,
         }
+        if self.structure:
+            out["structure"] = self.structure
+        return out
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> MerchantIntelligence:
@@ -183,4 +192,5 @@ class MerchantIntelligence:
             details=MerchantDetails.from_dict(d.get("details") or {}),
             generated_at=str(d.get("generated_at") or ""),
             sources=d.get("sources") or {},
+            structure=d.get("structure") or {},
         )

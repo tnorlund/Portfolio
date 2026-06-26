@@ -23,9 +23,11 @@ Public surface
 from .loader import (
     artifact_tax_profile,
     effective_review,
+    effective_structure,
     load_merchant_intelligence,
     record_approval,
     reviews_by_status,
+    structure_is_enabling,
 )
 from .review import (
     APPROVED,
@@ -39,10 +41,13 @@ from .review import (
 from .structure import (
     ArchetypeAssignment,
     ArchetypeCluster,
+    MerchantStructure,
     StructureFingerprint,
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
+    structure_review_status,
+    summarize_merchant_structure,
 )
 from .research import (
     PlacesEvidence,
@@ -68,8 +73,13 @@ __all__ = [
     "AUTO_APPROVED",
     "classify_archetype",
     "cluster_fingerprints",
+    "effective_structure",
     "fingerprint_from_labeled_words",
+    "MerchantStructure",
+    "structure_is_enabling",
+    "structure_review_status",
     "StructureFingerprint",
+    "summarize_merchant_structure",
     "CatalogEntry",
     "compute_review",
     "effective_review",

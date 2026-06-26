@@ -16,6 +16,8 @@ from receipt_agent.agents.label_evaluator.merchant_research.structure import (
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
+    structure_review_status,
+    summarize_merchant_structure,
 )
 
 
@@ -200,6 +202,58 @@ def test_archetype_is_structural_not_merchant():
 # --------------------------------------------------------------------------- #
 # Clustering + aggregate structural prior
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# Per-merchant structure summary (M7)
+# --------------------------------------------------------------------------- #
+
+
+def test_merchant_summary_line_item_high_confidence():
+    # Dominantly itemized (Vons-like) -> line_item, high, line-item ops included.
+    ms = summarize_merchant_structure(
+        {"line_item_retail": 24, "service": 2, "restaurant_tip": 1, "unknown": 1}
+    )
+    assert ms.structure_type == "line_item"
+    assert ms.confidence == "high"
+    assert "add_line_item" in ms.applicable_operations
+    assert structure_review_status(ms.confidence) == "auto_approved"
+
+
+def test_merchant_summary_service_excludes_line_item_ops():
+    # Dominantly single-service (Tan L.A.-like) -> service; NO line-item ops.
+    ms = summarize_merchant_structure({"service": 2, "line_item_retail": 1})
+    assert ms.structure_type == "service"
+    assert "add_line_item" not in ms.applicable_operations
+    assert "remove_line_item" not in ms.applicable_operations
+    assert set(ms.applicable_operations) == {
+        "replace_field", "amount_mutation", "compose_header", "hard_negative",
+    }
+    # A new/split merchant is parked, not auto-trusted.
+    assert ms.confidence == "medium"
+    assert structure_review_status(ms.confidence) == "needs_review"
+
+
+def test_merchant_summary_split_is_hybrid():
+    ms = summarize_merchant_structure({"line_item_retail": 3, "service": 3})
+    assert ms.structure_type == "hybrid"
+
+
+def test_merchant_summary_empty_is_low_confidence():
+    ms = summarize_merchant_structure({})
+    assert ms.confidence == "low"
+    assert ms.structure_type == "hybrid"
+
+
+def test_structure_review_status_only_high_auto_approves():
+    assert structure_review_status("high") == "auto_approved"
+    assert structure_review_status("medium") == "needs_review"
+    assert structure_review_status("low") == "needs_review"
+
+
+def test_summary_is_deterministic():
+    mix = {"service": 2, "line_item_retail": 1}
+    assert summarize_merchant_structure(mix).to_dict() == summarize_merchant_structure(mix).to_dict()
 
 
 def test_cluster_groups_by_archetype_with_prior():

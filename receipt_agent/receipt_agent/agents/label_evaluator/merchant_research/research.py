@@ -412,11 +412,14 @@ def assemble_merchant_intelligence(
     catalog: Sequence[CatalogEntry] = (),
     generated_at: str,
     block_reason: str | None = None,
+    structure: dict | None = None,
 ) -> MerchantIntelligence:
     """Cross-check the three sources into a locked MerchantIntelligence artifact.
 
     ``generated_at`` is passed in (not stamped here) so callers control the
-    timestamp and the assembly stays deterministic / replayable.
+    timestamp and the assembly stays deterministic / replayable. ``structure`` is
+    the optional structural taxonomy block (M7), built by the caller from the
+    merchant's receipt archetypes.
     """
     recommendation = recommend_taxable_support(
         receipts, web, block_reason=block_reason
@@ -470,4 +473,5 @@ def assemble_merchant_intelligence(
         details=details,
         generated_at=generated_at,
         sources=sources,
+        structure=dict(structure) if structure else {},
     )

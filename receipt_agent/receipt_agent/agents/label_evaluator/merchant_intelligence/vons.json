@@ -33,6 +33,32 @@
       ]
     }
   },
+  "structure": {
+    "applicable_operations": [
+      "add_line_item",
+      "remove_line_item",
+      "replace_field",
+      "amount_mutation",
+      "compose_header",
+      "hard_negative"
+    ],
+    "archetype_mix": {
+      "line_item_retail": 24,
+      "restaurant_tip": 1,
+      "service": 2,
+      "unknown": 1
+    },
+    "cluster_id": "cluster:line_item_retail",
+    "cluster_size": 28,
+    "confidence": "high",
+    "primary_archetype": "line_item_retail",
+    "provenance": [
+      "primary archetype line_item_retail (24/28 receipts, share 0.86)",
+      "archetype mix {'line_item_retail': 24, 'restaurant_tip': 1, 'service': 2, 'unknown': 1}"
+    ],
+    "status": "auto_approved",
+    "structure_type": "line_item"
+  },
   "tax": {
     "can_support_taxable_edits": true,
     "confidence": "high",

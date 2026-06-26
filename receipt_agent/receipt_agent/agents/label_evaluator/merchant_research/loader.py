@@ -187,6 +187,55 @@ def effective_review(slug: str) -> ReviewBlock | None:
     return base
 
 
+def effective_structure(slug: str) -> dict[str, Any] | None:
+    """The artifact's structure block, fully RECOMPUTED from ``archetype_mix``.
+
+    Returns ``None`` when the artifact has no structure block. The structure_type,
+    confidence, applicable_operations, and gate ``status`` are all re-derived from
+    the raw ``archetype_mix`` (the authoritative evidence) — NONE of the derived
+    JSON fields is trusted — so hand-editing ``confidence``/``structure_type``/
+    ``status`` in the file cannot grant a structural prior the deterministic logic
+    would park. (``archetype_mix`` itself is the evidence of record, the same
+    trust model as the tax facts; committed drift is caught by the freshness
+    guard.) If the mix is absent, the structure is treated as unverifiable and
+    parked.
+    """
+    intel = load_merchant_intelligence(slug)
+    if intel is None or not intel.structure:
+        return None
+    # lazy import: avoid an import cycle and keep structure deps off the hot path
+    from .structure import structure_review_status, summarize_merchant_structure
+
+    mix = intel.structure.get("archetype_mix") or {}
+    if not mix:
+        parked = dict(intel.structure)
+        parked["status"] = NEEDS_REVIEW
+        return parked
+    try:
+        ms = summarize_merchant_structure(
+            {str(k): int(v) for k, v in mix.items()},
+            cluster_size=intel.structure.get("cluster_size"),
+        )
+    except Exception:  # pragma: no cover - malformed mix -> park, never raise
+        parked = dict(intel.structure)
+        parked["status"] = NEEDS_REVIEW
+        return parked
+    structure = ms.to_dict()
+    structure["status"] = structure_review_status(ms.confidence)
+    return structure
+
+
+def structure_is_enabling(slug: str) -> bool:
+    """True only when ``slug``'s structural assignment is approved to be trusted.
+
+    ``auto_approved`` (high-confidence) for now; human structure sign-off can be
+    layered on the same ledger later. A parked structure must not grant a
+    structural prior / service-grounding override downstream.
+    """
+    structure = effective_structure(slug)
+    return bool(structure and structure.get("status") == "auto_approved")
+
+
 def artifact_tax_profile(slug: str) -> dict[str, Any] | None:
     """Tax fields for ``slug`` IF its intelligence is approved to enable edits.
 

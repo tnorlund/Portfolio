@@ -29,7 +29,9 @@ from receipt_agent.agents.label_evaluator.merchant_research.known_merchants impo
 )
 from receipt_agent.agents.label_evaluator.merchant_research.loader import (
     _ARTIFACT_DIR,
+    effective_structure,
     list_available_slugs,
+    structure_is_enabling,
 )
 
 GEN_AT = "2026-06-26T00:00:00+00:00"
@@ -175,6 +177,69 @@ def test_new_merchant_off_reasons_are_recorded():
     wf = load_merchant_intelligence("whole_foods_market")
     assert wf is not None and not wf.tax.can_support_taxable_edits
     assert any("1 taxed receipt" in p for p in wf.tax.provenance)
+
+
+# --- Structure blocks (M7) -------------------------------------------------- #
+
+
+def test_vons_structure_is_line_item_and_enabling():
+    s = effective_structure("vons")
+    assert s is not None
+    assert s["structure_type"] == "line_item"
+    assert s["status"] == "auto_approved"
+    assert structure_is_enabling("vons") is True
+    assert "add_line_item" in s["applicable_operations"]
+
+
+def test_tan_la_is_a_service_merchant_parked_for_review():
+    # Tan L.A. (NEW service merchant): classified service, NO line-item ops, and
+    # parked (needs_review) because a new/split structural assignment is not
+    # auto-trusted — synthesis grounding is granted only once it is approved.
+    s = effective_structure("tan_l_a")
+    assert s is not None
+    assert s["structure_type"] == "service"
+    assert "add_line_item" not in s["applicable_operations"]
+    assert "remove_line_item" not in s["applicable_operations"]
+    assert s["status"] == "needs_review"
+    assert structure_is_enabling("tan_l_a") is False
+
+
+def test_hand_edited_structure_status_or_confidence_cannot_enable(tmp_path, monkeypatch):
+    # The loader RECOMPUTES the whole structure from archetype_mix; forging the
+    # stored status OR confidence must not enable a parked structure (codex
+    # MEDIUM). Tan L.A.'s mix (2 service / 1 line_item -> medium) recomputes to
+    # needs_review regardless of edited derived fields.
+    import json
+
+    from receipt_agent.agents.label_evaluator.merchant_research import loader
+
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    payload = dict(build_artifact_payloads(GEN_AT)["tan_l_a"])
+    payload["structure"] = dict(
+        payload["structure"], status="auto_approved", confidence="high"
+    )
+    (tmp_path / "tan_l_a.json").write_text(json.dumps(payload), encoding="utf-8")
+    eff = loader.effective_structure("tan_l_a")
+    assert eff["status"] == "needs_review"
+    assert eff["confidence"] == "medium"  # recomputed from the mix, not the file
+    assert loader.structure_is_enabling("tan_l_a") is False
+
+
+def test_structure_without_mix_is_parked(tmp_path, monkeypatch):
+    import json
+
+    from receipt_agent.agents.label_evaluator.merchant_research import loader
+
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    payload = dict(build_artifact_payloads(GEN_AT)["vons"])
+    # Strip the mix but keep a forged high-confidence auto_approved structure.
+    payload["structure"] = {
+        "structure_type": "line_item", "confidence": "high",
+        "status": "auto_approved", "applicable_operations": ["add_line_item"],
+    }
+    (tmp_path / "vons.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert loader.effective_structure("vons")["status"] == "needs_review"
+    assert loader.structure_is_enabling("vons") is False
 
 
 def test_known_merchants_cover_the_validated_set():

@@ -1,0 +1,67 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "service",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Tan L.A.",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "no tax evidence: no taxed receipts and no validated rate"
+    ],
+    "status": "rejected"
+  },
+  "slug": "tan_l_a",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 3,
+      "image_ids": [],
+      "taxed_count": 0
+    }
+  },
+  "structure": {
+    "applicable_operations": [
+      "replace_field",
+      "amount_mutation",
+      "compose_header",
+      "hard_negative"
+    ],
+    "archetype_mix": {
+      "line_item_retail": 1,
+      "service": 2
+    },
+    "cluster_id": "cluster:service",
+    "cluster_size": 3,
+    "confidence": "medium",
+    "primary_archetype": "service",
+    "provenance": [
+      "primary archetype service (2/3 receipts, share 0.67)",
+      "archetype mix {'line_item_retail': 1, 'service': 2}"
+    ],
+    "status": "needs_review",
+    "structure_type": "service"
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "high",
+    "jurisdiction": "CA-Ventura",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 3 receipt(s), 0 taxed",
+      "no taxable class flag observed on receipts",
+      "no receipt carries positive tax",
+      "no authoritative web rate to pin the single-jurisdiction rate",
+      "confidently off: no positive tax to derive a rate"
+    ],
+    "taxable_flag": "",
+    "validated_rate": null
+  }
+}
