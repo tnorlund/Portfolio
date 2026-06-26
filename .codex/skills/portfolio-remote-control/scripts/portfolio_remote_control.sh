@@ -47,50 +47,86 @@ quote_arg() {
   printf "%q" "$1"
 }
 
-remote_control_pids() {
-  local session_name="$1"
-  ps axww -o pid= -o command= | awk -v target="$session_name" '
+canonical_dir() {
+  cd "$1" 2>/dev/null && pwd -P
+}
+
+process_cwd() {
+  local pid="$1"
+  /usr/sbin/lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '
+    /^n/ {
+      print substr($0, 2)
+      exit
+    }
+  '
+}
+
+process_cwd_matches() {
+  local pid="$1"
+  local expected_dir="$2"
+  local expected actual
+
+  expected="$(canonical_dir "$expected_dir" || true)"
+  actual="$(process_cwd "$pid")"
+  [[ -n "$expected" && -n "$actual" && "$actual" == "$expected" ]]
+}
+
+remote_control_candidates() {
+  ps axww -o pid= -o command= | awk '
     function strip_quotes(value) {
       gsub(/^[\"\047]+|[\"\047]+$/, "", value)
       return value
+    }
+    function print_candidate(value) {
+      value = strip_quotes(value)
+      if (value != "") {
+        print pid "|" value
+      }
     }
     {
       pid = $1
       executable = strip_quotes($2)
       sub(/^.*\//, "", executable)
-      if (executable != "claude") {
+      if (executable == "SCREEN" || executable == "screen" || executable == "login" || executable == "awk") {
         next
       }
       for (i = 3; i <= NF; i++) {
         arg = strip_quotes($i)
         if (arg == "--remote-control" && i < NF) {
-          value = strip_quotes($(i + 1))
-          if (value == target) {
-            print pid
-            next
-          }
+          print_candidate($(i + 1))
+          next
         }
         if (arg ~ /^--remote-control=/) {
-          value = strip_quotes(substr(arg, 18))
-          if (value == target) {
-            print pid
-            next
-          }
+          print_candidate(substr(arg, 18))
+          next
         }
       }
     }
   '
 }
 
+remote_control_pids() {
+  local session_name="$1"
+  local worktree="$2"
+  local pid found_session
+
+  while IFS='|' read -r pid found_session; do
+    if [[ "$found_session" == "$session_name" ]] && process_cwd_matches "$pid" "$worktree"; then
+      printf "%s\n" "$pid"
+    fi
+  done < <(remote_control_candidates)
+}
+
 kill_remote_control_processes() {
   local session_name="$1"
+  local worktree="$2"
   local pid
 
   while IFS= read -r pid; do
     if [[ "$pid" =~ ^[0-9]+$ ]]; then
       kill -9 "$pid" >/dev/null 2>&1 || true
     fi
-  done < <(remote_control_pids "$session_name")
+  done < <(remote_control_pids "$session_name" "$worktree")
 }
 
 require_prereqs() {
@@ -118,7 +154,7 @@ cleanup_targets() {
   echo "Stopping target Portfolio remote-control sessions..."
   while IFS='|' read -r label worktree session_name screen_name; do
     /usr/bin/screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
-    kill_remote_control_processes "$session_name"
+    kill_remote_control_processes "$session_name" "$worktree"
   done < <(entries)
   /usr/bin/screen -wipe >/dev/null 2>&1 || true
 }
@@ -213,69 +249,112 @@ raise SystemExit(0 if re.search(pattern, text) else 1)
 PY
 }
 
+caffeinate_pid_is_managed() {
+  local pid="$1"
+  local command
+
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  [[ "$command" == *caffeinate* && "$command" == *-dimsu* ]]
+}
+
 ensure_caffeinate() {
   if [[ -s "$CAFFEINATE_PID_FILE" ]]; then
     local existing_pid
     existing_pid="$(cat "$CAFFEINATE_PID_FILE" 2>/dev/null || true)"
-    if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 "$existing_pid" >/dev/null 2>&1; then
+    if [[ "$existing_pid" =~ ^[0-9]+$ ]] && caffeinate_pid_is_managed "$existing_pid"; then
       echo "Skill-managed caffeinate is already running as PID $existing_pid."
       return 0
     fi
+    rm -f "$CAFFEINATE_PID_FILE"
   fi
 
   mkdir -p "$BASE_DIR"
   echo "Starting caffeinate for $CAFFEINATE_SECONDS seconds..."
-  nohup /usr/bin/caffeinate -dimsu /bin/sleep "$CAFFEINATE_SECONDS" >"$BASE_DIR/caffeinate.log" 2>&1 &
+  nohup /usr/bin/caffeinate -dimsu -t "$CAFFEINATE_SECONDS" >"$BASE_DIR/caffeinate.log" 2>&1 &
   echo "$!" >"$CAFFEINATE_PID_FILE"
 }
 
 # Agents are useless if they cannot push: the mini's gh token expires and origin
 # can be a dead SSH remote. Verify a real authenticated remote op works.
 check_push_auth() {
-  if git -C "$PORTFOLIO_ROOT" ls-remote origin HEAD >/dev/null 2>&1; then
-    return 0
+  local failed=0
+
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status -h github.com >/dev/null 2>&1; then
+    echo "WARNING: gh is not authenticated for GitHub; agents may not be able to push." >&2
+    failed=1
+  elif ! gh api repos/tnorlund/Portfolio --jq '.permissions.push' 2>/dev/null | grep -q '^true$'; then
+    echo "WARNING: gh token does not report push permission for tnorlund/Portfolio." >&2
+    failed=1
   fi
-  echo "WARNING: cannot reach GitHub origin from $PORTFOLIO_ROOT -- agents will NOT be able to push." >&2
-  echo "  Fix on the mini, then relaunch:" >&2
-  echo "    gh auth status            # if invalid, re-auth (e.g. from a good machine:" >&2
-  echo "    #   gh auth token | ssh <mini> 'gh auth login --with-token')" >&2
-  echo "    gh auth setup-git" >&2
-  echo "    git -C $PORTFOLIO_ROOT remote set-url origin https://github.com/tnorlund/Portfolio.git  # if origin is a dead SSH remote" >&2
-  return 1
+
+  while IFS='|' read -r label worktree session_name screen_name; do
+    local branch
+    branch="$(git -C "$worktree" branch --show-current 2>/dev/null || true)"
+    if [[ -z "$branch" ]] || ! git -C "$worktree" push --dry-run origin "HEAD:refs/heads/$branch" >/dev/null 2>&1; then
+      echo "WARNING: dry-run push failed for $label from $worktree." >&2
+      failed=1
+    fi
+  done < <(entries)
+
+  if [[ "$failed" -ne 0 ]]; then
+    echo "  Fix on the mini, then relaunch:" >&2
+    echo "    gh auth status            # if invalid, re-auth (e.g. from a good machine:" >&2
+    echo "    #   gh auth token | ssh <mini> 'gh auth login --with-token')" >&2
+    echo "    gh auth setup-git" >&2
+    echo "    git -C $PORTFOLIO_ROOT remote set-url origin https://github.com/tnorlund/Portfolio.git  # if origin is a dead SSH remote" >&2
+    return 1
+  fi
+
+  return 0
 }
 
-# Remote-control claude sessions whose name is not one of the expected trio.
+# Remote-control sessions outside the expected trio and worktrees.
 stray_sessions() {
-  ps axww -o command= | awk '
-    function strip_quotes(value) {
-      gsub(/^[\"\047]+|[\"\047]+$/, "", value)
-      return value
-    }
-    function print_if_stray(value) {
-      value = strip_quotes(value)
-      if (value != "merchant-intel" && value != "font-render" && value != "orchestration") {
-        print value
-      }
-    }
+  local pid found_session expected_worktree cwd
+
+  while IFS='|' read -r pid found_session; do
+    expected_worktree=""
+    while IFS='|' read -r label worktree session_name screen_name; do
+      if [[ "$found_session" == "$session_name" ]]; then
+        expected_worktree="$worktree"
+        break
+      fi
+    done < <(entries)
+
+    if [[ -n "$expected_worktree" ]] && process_cwd_matches "$pid" "$expected_worktree"; then
+      continue
+    fi
+
+    cwd="$(process_cwd "$pid")"
+    if [[ -n "$cwd" ]]; then
+      printf "%s pid=%s cwd=%s\n" "$found_session" "$pid" "$cwd"
+    else
+      printf "%s pid=%s\n" "$found_session" "$pid"
+    fi
+  done < <(remote_control_candidates) | sort -u || true
+}
+
+dirty_count() {
+  local worktree="$1"
+  local count
+
+  if count="$(git -C "$worktree" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"; then
+    echo "${count:-0}"
+  else
+    echo 0
+  fi
+}
+
+caffeinate_processes() {
+  ps axww -o pid= -o command= | awk '
     {
-      executable = strip_quotes($1)
+      executable = $2
       sub(/^.*\//, "", executable)
-      if (executable != "claude") {
-        next
-      }
-      for (i = 2; i <= NF; i++) {
-        arg = strip_quotes($i)
-        if (arg == "--remote-control" && i < NF) {
-          print_if_stray($(i + 1))
-          next
-        }
-        if (arg ~ /^--remote-control=/) {
-          print_if_stray(substr(arg, 18))
-          next
-        }
+      if (executable == "caffeinate" && $0 ~ /-dimsu/) {
+        print
       }
     }
-  ' | sort -u || true
+  '
 }
 
 status() {
@@ -298,7 +377,7 @@ status() {
     local log_ok=0
     local log_file="$BASE_DIR/$label/screenlog.0"
 
-    if remote_control_pids "$session_name" | grep -q .; then
+    if remote_control_pids "$session_name" "$worktree" | grep -q .; then
       process_ok=1
     else
       missing=1
@@ -317,7 +396,7 @@ status() {
     fi
 
     local dirty unpushed cadence
-    dirty="$(git -C "$worktree" status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+    dirty="$(dirty_count "$worktree")"
     unpushed="$(git -C "$worktree" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
     cadence=ok
     if [[ "${dirty:-0}" -gt "$DIRTY_WARN" || "${unpushed:-0}" -gt 0 ]]; then
@@ -332,7 +411,7 @@ status() {
   echo "Unexpected remote-control sessions:"
   local strays; strays="$(stray_sessions)"
   if [[ -n "$strays" ]]; then
-    printf "  %s\n" "$strays"
+    printf "%s\n" "$strays" | sed 's/^/  /'
     echo "  (not part of the trio -- close with: screen -S <name> -X quit, or kill the claude pid)"
   else
     echo "  none"
@@ -340,7 +419,10 @@ status() {
 
   echo
   echo "Caffeinate:"
-  if ! pgrep -fl "caffeinate.*-dimsu"; then
+  local caffeinate_lines; caffeinate_lines="$(caffeinate_processes)"
+  if [[ -n "$caffeinate_lines" ]]; then
+    printf "%s\n" "$caffeinate_lines"
+  else
     missing=1
   fi
 
