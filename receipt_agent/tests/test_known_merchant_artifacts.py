@@ -242,6 +242,53 @@ def test_structure_without_mix_is_parked(tmp_path, monkeypatch):
     assert loader.structure_is_enabling("vons") is False
 
 
+# --- Service grounding contract hook (M7b) ---------------------------------- #
+
+
+def test_service_grounding_hook_for_line_item_merchant_is_noop():
+    from receipt_agent.agents.label_evaluator.merchant_research import (
+        service_grounding_for,
+    )
+
+    c = service_grounding_for("vons")
+    assert c["is_service"] is False
+    assert c["valid_grounding_without_line_items"] is False
+
+
+def test_service_grounding_hook_parked_service_grants_no_override():
+    from receipt_agent.agents.label_evaluator.merchant_research import (
+        service_grounding_for,
+    )
+
+    c = service_grounding_for("tan_l_a")
+    assert c["is_service"] is True
+    # Parked (needs_review) -> override NOT granted; line-item ops excluded.
+    assert c["valid_grounding_without_line_items"] is False
+    assert "add_line_item" not in c["applicable_operations"]
+
+
+def test_service_grounding_hook_grants_override_only_when_approved(tmp_path, monkeypatch):
+    from receipt_agent.agents.label_evaluator.merchant_research import loader
+
+    _copy = build_artifact_payloads  # noqa: F841 (ensure import side-effects)
+    import pathlib
+    import shutil
+
+    src = pathlib.Path(loader._ARTIFACT_DIR)
+    for f in src.glob("*.json"):
+        shutil.copy(f, tmp_path / f.name)
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    assert loader.service_grounding_for("tan_l_a")["valid_grounding_without_line_items"] is False
+    loader.record_approval(
+        "tan_l_a", approved_by="tyler", approved_at="t", kind="structure",
+    )
+    c = loader.service_grounding_for("tan_l_a")
+    assert c["valid_grounding_without_line_items"] is True
+    assert set(c["applicable_operations"]) == {
+        "replace_field", "amount_mutation", "compose_header", "hard_negative",
+    }
+
+
 def test_known_merchants_cover_the_validated_set():
     slugs = {
         __import__(

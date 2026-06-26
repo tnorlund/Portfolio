@@ -481,6 +481,58 @@ def summarize_merchant_structure(
     )
 
 
+def service_grounding_contract(structure: dict[str, Any] | None) -> dict[str, Any]:
+    """Contract a consumer (orchestration / source-quality gate) reads to decide
+    whether a merchant's receipts are valid grounding for SERVICE synthesis.
+
+    This is the hook the CHARTER (M7) calls for: it lets the source-quality
+    contract recognize a SERVICE receipt as valid grounding so a receipt with no
+    line items is NOT rejected for "missing line items" — it is valid for
+    field/amount/header synthesis. It is pure DATA; the deterministic gate
+    remains the arbiter. A consumer should:
+
+      * treat ``no_labeled_line_items`` / ``no_line_items`` as an expected
+        LIMITATION (not a hard blocker / "blocked" status) when
+        ``valid_grounding_without_line_items`` is True, so readiness can be
+        "partial" and the train-only loader accepts the example; and
+      * request only ``applicable_operations`` (service excludes line-item ops).
+
+    Returns a benign no-op contract (no override) when the structure is absent,
+    not service-type, or not approved — so a parked/uncertain structural
+    assignment never grants the service-grounding override.
+    """
+    if not isinstance(structure, dict):
+        return {
+            "is_service": False,
+            "valid_grounding_without_line_items": False,
+            "applicable_operations": [],
+            "reason": "no/invalid structure",
+        }
+    raw_ops = structure.get("applicable_operations")
+    ops = [str(o) for o in raw_ops] if isinstance(raw_ops, (list, tuple)) else []
+    if structure.get("structure_type") != "service":
+        return {
+            "is_service": False,
+            "valid_grounding_without_line_items": False,
+            "applicable_operations": ops,
+            "reason": "not a service-type merchant",
+        }
+    enabling = str(structure.get("status") or "") in ("auto_approved", "approved")
+    return {
+        "is_service": True,
+        # Only an APPROVED service structure grants the override; a parked
+        # (needs_review) service merchant is not auto-trusted.
+        "valid_grounding_without_line_items": enabling,
+        "applicable_operations": ops,
+        "reason": (
+            "approved service merchant: a single service line + total is valid "
+            "grounding; line-item ops excluded"
+            if enabling
+            else "service merchant pending structure approval (parked)"
+        ),
+    }
+
+
 def cluster_fingerprints(
     fingerprints: Sequence[StructureFingerprint],
 ) -> list[ArchetypeCluster]:

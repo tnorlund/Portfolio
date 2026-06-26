@@ -213,12 +213,13 @@ def effective_structure(slug: str) -> dict[str, Any] | None:
     parked.
     """
     intel = load_merchant_intelligence(slug)
-    if intel is None or not intel.structure:
+    if intel is None or not isinstance(intel.structure, dict) or not intel.structure:
         return None
     # lazy import: avoid an import cycle and keep structure deps off the hot path
     from .structure import structure_review_status, summarize_merchant_structure
 
-    mix = intel.structure.get("archetype_mix") or {}
+    raw_mix = intel.structure.get("archetype_mix")
+    mix = raw_mix if isinstance(raw_mix, dict) else {}
     if not mix:
         parked = dict(intel.structure)
         parked["status"] = NEEDS_REVIEW
@@ -259,6 +260,19 @@ def structure_is_enabling(slug: str) -> bool:
     """
     structure = effective_structure(slug)
     return bool(structure and structure.get("status") in (AUTO_APPROVED, APPROVED))
+
+
+def service_grounding_for(slug: str) -> dict[str, Any]:
+    """The service-grounding contract for ``slug`` (recomputed structure + gate).
+
+    A consumer (orchestration / source-quality contract) reads this to decide
+    whether a service merchant's no-line-item receipts are valid grounding. The
+    override is granted only for an APPROVED service structure (effective_structure
+    applies the recompute + approval overlay).
+    """
+    from .structure import service_grounding_contract  # lazy
+
+    return service_grounding_contract(effective_structure(slug))
 
 
 def artifact_tax_profile(slug: str) -> dict[str, Any] | None:

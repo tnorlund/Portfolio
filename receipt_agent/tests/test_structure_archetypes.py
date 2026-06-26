@@ -16,6 +16,7 @@ from receipt_agent.agents.label_evaluator.merchant_research.structure import (
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
+    service_grounding_contract,
     structure_review_status,
     summarize_merchant_structure,
 )
@@ -254,6 +255,35 @@ def test_structure_review_status_only_high_auto_approves():
 def test_summary_is_deterministic():
     mix = {"service": 2, "line_item_retail": 1}
     assert summarize_merchant_structure(mix).to_dict() == summarize_merchant_structure(mix).to_dict()
+
+
+# --------------------------------------------------------------------------- #
+# Service grounding contract hook — safety on malformed input
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [None, "bad", 123, [], {"structure_type": "service", "applicable_operations": 7},
+     {"structure_type": "service", "status": "needs_review", "applicable_operations": None}],
+)
+def test_service_grounding_contract_never_raises_and_defaults_safe(bad):
+    c = service_grounding_contract(bad)
+    # Malformed / non-service / parked -> never grants the override, never raises.
+    assert c["valid_grounding_without_line_items"] is False
+    assert isinstance(c["applicable_operations"], list)
+
+
+def test_service_grounding_contract_grants_only_when_approved_service():
+    parked = {"structure_type": "service", "status": "needs_review",
+              "applicable_operations": ["replace_field"]}
+    approved = {"structure_type": "service", "status": "approved",
+                "applicable_operations": ["replace_field", "amount_mutation"]}
+    auto = {"structure_type": "service", "status": "auto_approved",
+            "applicable_operations": ["replace_field"]}
+    assert service_grounding_contract(parked)["valid_grounding_without_line_items"] is False
+    assert service_grounding_contract(approved)["valid_grounding_without_line_items"] is True
+    assert service_grounding_contract(auto)["valid_grounding_without_line_items"] is True
 
 
 def test_cluster_groups_by_archetype_with_prior():

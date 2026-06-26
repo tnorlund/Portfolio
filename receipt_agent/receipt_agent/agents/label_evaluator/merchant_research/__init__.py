@@ -27,6 +27,7 @@ from .loader import (
     load_merchant_intelligence,
     record_approval,
     reviews_by_status,
+    service_grounding_for,
     structure_is_enabling,
 )
 from .review import (
@@ -47,6 +48,7 @@ from .structure import (
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
+    service_grounding_contract,
     structure_review_status,
     summarize_merchant_structure,
 )
@@ -96,6 +98,8 @@ __all__ = [
     "REJECTED",
     "ReviewBlock",
     "reviews_by_status",
+    "service_grounding_for",
+    "service_grounding_contract",
     "tax_block_hash",
     "TaxArtifact",
     "TaxRecommendation",
