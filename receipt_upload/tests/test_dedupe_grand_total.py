@@ -68,6 +68,55 @@ def test_all_pending_keeps_lowest_invalidates_rest():
     assert all(lab.validation_status == _PENDING for lab in redundant)
 
 
+def test_keyword_anchored_copy_wins_over_lower_stray():
+    """Regression for the Smith's June22 receipt: the grand total 9.08 appeared as
+    "TOTAL: 9.08" and as a stray 9.08 that landed lowest (in the "TOTAL NUMBER OF
+    ITEMS SOLD" footer). Lowest-y alone kept the stray, a validator then
+    invalidated it, and the receipt was left with no grand total. The explicit
+    "TOTAL:" row must be elected canonical even though it is not the lowest.
+    """
+    words = [
+        _w(19, 1, "TOTAL:", 0.10, 0.40),  # keyword anchors line 19
+        _w(19, 2, "9.08", 0.72, 0.40),  # the real grand total
+        _w(14, 1, "9.08", 0.72, 0.55),  # "BALANCE" restatement (higher)
+        # Stray 9.08 sits lowest, on a "TOTAL NUMBER OF ITEMS SOLD" count row:
+        # the row carries "TOTAL" but the count disqualifiers must stop it from
+        # anchoring (else lowest-y would re-elect this stray).
+        _w(28, 1, "TOTAL", 0.05, 0.12),
+        _w(28, 2, "NUMBER", 0.15, 0.12),
+        _w(28, 3, "OF", 0.25, 0.12),
+        _w(28, 4, "ITEMS", 0.35, 0.12),
+        _w(28, 5, "SOLD", 0.45, 0.12),
+        _w(28, 6, "9.08", 0.72, 0.12),
+    ]
+    labels = [
+        _label(19, 2, "GRAND_TOTAL", _PENDING),
+        _label(14, 1, "GRAND_TOTAL", _PENDING),
+        _label(28, 6, "GRAND_TOTAL", _PENDING),
+    ]
+    redundant = dedupe_grand_total(words, labels)
+    # The keyword-anchored "TOTAL: 9.08" (L19) is kept; the two restatements go —
+    # including the stray, even though its row contains the word "TOTAL".
+    assert _keys(redundant) == {(14, 1), (28, 6)}
+    assert (19, 2) not in _keys(redundant)
+
+
+def test_lowest_y_among_keyword_anchored_copies():
+    """When several copies are keyword-anchored, keep the lowest-on-receipt one."""
+    words = [
+        _w(10, 1, "BALANCE", 0.10, 0.40),
+        _w(10, 2, "9.08", 0.72, 0.40),  # anchored, higher
+        _w(20, 1, "TOTAL", 0.10, 0.15),
+        _w(20, 2, "9.08", 0.72, 0.15),  # anchored, lowest -> canonical
+    ]
+    labels = [
+        _label(10, 2, "GRAND_TOTAL", _PENDING),
+        _label(20, 2, "GRAND_TOTAL", _PENDING),
+    ]
+    redundant = dedupe_grand_total(words, labels)
+    assert _keys(redundant) == {(10, 2)}
+
+
 def test_confirmed_copy_is_canonical_only_pending_dropped():
     """A VALID (human/validator) copy is canonical and never invalidated; only
     its PENDING duplicates are reported."""

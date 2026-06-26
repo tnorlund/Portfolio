@@ -1344,6 +1344,7 @@ class TestMerchantResolverLabeledFields:
             merchant_name="Whole Foods",
             address="123 Main",
             phone=None,
+            expected_state=None,
         )
         chroma_search.assert_not_called()
 

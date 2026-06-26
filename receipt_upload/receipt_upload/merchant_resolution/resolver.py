@@ -123,6 +123,317 @@ def _log(msg: str, *args: object) -> None:
     logger.info("%s", formatted)
 
 
+# US state / territory codes. Kept here (not imported from receipt_agent's
+# place_id_finder) so the receipt_upload resolver stays decoupled from that
+# package for a pure-regex helper; the two short copies are intentional.
+_US_STATE_CODES = frozenset(
+    {
+        "AL",
+        "AK",
+        "AZ",
+        "AR",
+        "CA",
+        "CO",
+        "CT",
+        "DE",
+        "FL",
+        "GA",
+        "HI",
+        "ID",
+        "IL",
+        "IN",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "ME",
+        "MD",
+        "MA",
+        "MI",
+        "MN",
+        "MS",
+        "MO",
+        "MT",
+        "NE",
+        "NV",
+        "NH",
+        "NJ",
+        "NM",
+        "NY",
+        "NC",
+        "ND",
+        "OH",
+        "OK",
+        "OR",
+        "PA",
+        "RI",
+        "SC",
+        "SD",
+        "TN",
+        "TX",
+        "UT",
+        "VT",
+        "VA",
+        "WA",
+        "WV",
+        "WI",
+        "WY",
+        "DC",
+        "PR",
+        "VI",
+        "GU",
+        "AS",
+        "MP",
+    }
+)
+# "City, ST" (comma form) and "City ST 12345" (zip form) — the two reliable ways
+# a US receipt prints its locality. Both require a strong signal (comma or ZIP)
+# so we don't match incidental two-letter tokens mid-text. The city is bounded to
+# the 1-3 word tokens *immediately* before the state to avoid swallowing the
+# street ("4600 E. SUNSET RD Henderson, NV" -> "Henderson", not the whole line).
+_CITY = r"([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z.'\-]+){0,2})"
+_LOCALITY_COMMA_RE = re.compile(_CITY + r"\s*,\s*([A-Za-z]{2})\b")
+_LOCALITY_ZIP_RE = re.compile(_CITY + r"\s+([A-Za-z]{2})\s+\d{5}(?:-\d{4})?\b")
+# Street-type suffixes. When the captured "city" span actually swallowed a street
+# (a "<street> <suffix> <city>, ST" line that wasn't split into its own line),
+# keep only the tokens AFTER the last suffix — the real city.
+_STREET_SUFFIXES = frozenset(
+    {
+        "st",
+        "street",
+        "ave",
+        "avenue",
+        "blvd",
+        "boulevard",
+        "rd",
+        "road",
+        "dr",
+        "drive",
+        "ln",
+        "lane",
+        "way",
+        "ct",
+        "court",
+        "pkwy",
+        "parkway",
+        "hwy",
+        "highway",
+        "pl",
+        "place",
+        "cir",
+        "circle",
+        "ter",
+        "terrace",
+        "sq",
+        "ste",
+        "suite",
+        "unit",
+        "fwy",
+        "freeway",
+        "trl",
+        "trail",
+    }
+)
+
+
+def parse_locality(text: str) -> Optional[str]:
+    """Return ``"City, ST"`` parsed from an address-ish string, else ``None``.
+
+    The comma is intentional: it keeps the enriched Places text query parseable
+    by the geo guard's ``City, ST`` form (which never matches a bare two-letter
+    token, so it can't misread "IN-N-OUT" as Indiana). Cleanups on the captured
+    city span:
+
+    * a leading directional *abbreviated with a period* ("E.", "N.") is dropped
+      ("E. VEGAS" -> "VEGAS"), but a spelled-out/period-less directional is kept
+      so "N Las Vegas"/"North Las Vegas" stays a distinct city;
+    * if the span swallowed a street (same-line "4600 E. SUNSET RD Henderson"),
+      only the tokens after the last street suffix are kept ("Henderson").
+    """
+    if not text:
+        return None
+    for regex in (_LOCALITY_COMMA_RE, _LOCALITY_ZIP_RE):
+        m = regex.search(text)
+        if not m or m.group(2).upper() not in _US_STATE_CODES:
+            continue
+        city = re.sub(r"^[A-Za-z]\.\s+", "", m.group(1).strip()).strip()
+        tokens = _trim_leading_street(city.split())
+        city = " ".join(tokens).strip()
+        if city:
+            return f"{city}, {m.group(2).upper()}"
+    return None
+
+
+# 3-digit ZIP prefix -> state. A ZIP is far more OCR-stable than the two state
+# letters (which a faint scan drops entirely, e.g. "Henderson." over "89014"),
+# so it is the primary state signal for the geo guard. Ranges are (lo, hi, ST)
+# on the first three digits; gaps (military/territory/unused) fall through.
+_ZIP_RANGES = (
+    (10, 27, "MA"),
+    (28, 29, "RI"),
+    (30, 38, "NH"),
+    (39, 49, "ME"),
+    (50, 54, "VT"),
+    (55, 55, "MA"),  # 055xx is a unique MA prefix, not VT
+    (56, 59, "VT"),
+    (60, 69, "CT"),
+    (70, 89, "NJ"),
+    (100, 149, "NY"),
+    (150, 196, "PA"),
+    (197, 199, "DE"),
+    (200, 200, "DC"),
+    (201, 201, "VA"),  # 201xx (Dulles) is VA, not DC
+    (202, 205, "DC"),
+    (206, 219, "MD"),
+    (220, 246, "VA"),
+    (247, 268, "WV"),
+    (270, 289, "NC"),
+    (290, 299, "SC"),
+    (300, 319, "GA"),
+    (320, 339, "FL"),
+    (341, 349, "FL"),  # 340xx is military (AA), not a state
+    (350, 369, "AL"),
+    (370, 385, "TN"),
+    (386, 397, "MS"),
+    (398, 399, "GA"),
+    (400, 427, "KY"),
+    (430, 459, "OH"),
+    (460, 479, "IN"),
+    (480, 499, "MI"),
+    (500, 528, "IA"),
+    (530, 549, "WI"),
+    (550, 567, "MN"),
+    (570, 577, "SD"),
+    (580, 588, "ND"),
+    (590, 599, "MT"),
+    (600, 629, "IL"),
+    (630, 658, "MO"),
+    (660, 679, "KS"),
+    (680, 693, "NE"),
+    (700, 714, "LA"),
+    (716, 729, "AR"),
+    (730, 732, "OK"),
+    (733, 733, "TX"),
+    (734, 749, "OK"),
+    (750, 799, "TX"),
+    (800, 816, "CO"),
+    (820, 831, "WY"),
+    (832, 838, "ID"),
+    (840, 847, "UT"),
+    (850, 865, "AZ"),
+    (870, 884, "NM"),
+    (885, 885, "TX"),
+    (889, 898, "NV"),
+    (900, 961, "CA"),
+    (967, 968, "HI"),
+    (970, 979, "OR"),
+    (980, 994, "WA"),
+    (995, 999, "AK"),
+)
+_ZIP_RE = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+# Full-ZIP exceptions that a 3-digit prefix can't disambiguate. American Samoa's
+# 96799 sits inside the 967 Hawaii prefix; map it explicitly so an AS receipt
+# isn't tagged HI (which would reject the correct AS Places hit as wrong-state).
+_ZIP_FULL_EXCEPTIONS = {"96799": "AS"}
+
+
+def state_from_zip(zip5: str) -> Optional[str]:
+    """Map a 5-digit ZIP to its 2-letter state, else ``None``."""
+    if not zip5 or len(zip5) < 3 or not zip5[:3].isdigit():
+        return None
+    if zip5[:5] in _ZIP_FULL_EXCEPTIONS:
+        return _ZIP_FULL_EXCEPTIONS[zip5[:5]]
+    prefix = int(zip5[:3])
+    for lo, hi, state in _ZIP_RANGES:
+        if lo <= prefix <= hi:
+            return state
+    return None
+
+
+def state_of_address(address: Optional[str]) -> Optional[str]:
+    """2-letter state from a Google formatted address, else ``None``.
+
+    Prefers the "City, ST" tail, then the ZIP. Used to geo-validate a resolved
+    place against the receipt's own state on the fallback tiers.
+    """
+    if not address:
+        return None
+    loc = parse_locality(address)
+    if loc:
+        return loc.rsplit(",", 1)[-1].strip()
+    m = _ZIP_RE.search(address)
+    return state_from_zip(m.group(1)) if m else None
+
+
+def address_state_conflict(
+    address: Optional[str], expected_state: Optional[str]
+) -> bool:
+    """True only when BOTH the receipt's state and the result's state are known
+    and differ — a conservative wrong-state signal (unknown is never a conflict).
+    """
+    if not expected_state:
+        return False
+    result_state = state_of_address(address)
+    return bool(result_state) and result_state != expected_state
+
+
+def _trim_leading_street(parts: List[str]) -> List[str]:
+    """Drop everything up to the last street suffix that is NOT the first token.
+
+    A suffix at index >= 1 means a street name preceded it ("SUNSET RD Henderson"
+    -> "Henderson"). A suffix at index 0 is part of the city name itself
+    ("St. Louis", "Ave Maria") and is kept.
+    """
+    suffix_idx = [
+        i
+        for i, t in enumerate(parts)
+        if i >= 1 and re.sub(r"[^a-z]", "", t.lower()) in _STREET_SUFFIXES
+    ]
+    return parts[suffix_idx[-1] + 1 :] if suffix_idx else parts
+
+
+_ZIP_ONLY_RE = re.compile(r"^\s*(\d{5})(?:-\d{4})?\s*$")
+
+
+def _trailing_city(text: str) -> Optional[str]:
+    """Last 1-3 alpha tokens of *text* as a city (a leading street trimmed)."""
+    if not text:
+        return None
+    toks = re.findall(r"[A-Za-z][A-Za-z.'\-]*", text)
+    toks = [t for t in toks if re.sub(r"[^a-z]", "", t.lower())]
+    parts = _trim_leading_street(toks[-3:])
+    parts = [p.strip(".") for p in parts if p.strip(".")]
+    city = " ".join(parts).strip()
+    return city or None
+
+
+def locality_from_lines(line_texts: List[str]) -> Optional[str]:
+    """Best-effort ``"City, ST"`` from a receipt's lines (in receipt order).
+
+    First the clean per-line form ("City, ST"/"City ST ZIP"); then a fragmented
+    fallback that pairs a **ZIP-only** line with the city on the line just above
+    ("Henderson." over "89014" -> "Henderson, NV"). Requiring the whole line to be
+    the ZIP (not just any 5-digit token) keeps transaction/auth numbers like
+    "AUTH #12345" from fabricating a state. The ZIP-derived state is what makes
+    the geo guard robust to dropped state letters.
+    """
+    for text in line_texts:
+        loc = parse_locality(text)
+        if loc:
+            return loc
+    for idx, text in enumerate(line_texts):
+        m = _ZIP_ONLY_RE.match(text or "")
+        if not m or idx == 0:
+            continue
+        state = state_from_zip(m.group(1))
+        if not state:
+            continue
+        city = _trailing_city(line_texts[idx - 1])
+        if city:
+            return f"{city}, {state}"
+    return None
+
+
 def tokenize_text(text: str) -> Set[str]:
     """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
     return {
@@ -431,6 +742,11 @@ class MerchantResolver:
         ) or self._extract_labeled_text(
             words, word_labels, "MERCHANT_NAME", require_valid=False
         )
+        # Whether the hint is a real MERCHANT_NAME *label* vs the geometric
+        # top-line fallback (often a check/register number like "105"). Only a
+        # labeled name is trustworthy enough to drive the eager locality text
+        # search below; a top-line guess must defer to Chroma/agentic tiers.
+        has_labeled_merchant = bool(merchant_hint)
         merchant_line = self._get_merchant_line(lines)
         if not merchant_hint:
             merchant_hint = merchant_line.text if merchant_line else None
@@ -478,13 +794,57 @@ class MerchantResolver:
                     place_text_query = cleaned or ln.text
                     break
 
+        # Locality ("City, ST") from the receipt — the chain disambiguator. A bare
+        # "Trader Joe's" text search returns an arbitrary branch (Boston for a
+        # Henderson NV receipt); "Trader Joe's Henderson, NV" resolves the right
+        # store. ADDRESS_LINE-labeled lines are tried first (clean "City, ST"
+        # form); then, in receipt order, a fragmented ZIP fallback pairs a bare
+        # ZIP with its city ("Henderson." over "89014" -> "Henderson, NV") — the
+        # ZIP-derived state is what survives a faint scan that drops "NV".
+        addr_line_ids = {
+            lab.line_id
+            for lab in word_labels
+            if lab.label == "ADDRESS_LINE"
+            and lab.validation_status not in _rejected_status
+        }
+        receipt_order = sorted(
+            (ln for ln in lines if ln.text), key=lambda ln: ln.line_id
+        )
+        # Clean "City, ST" on an ADDRESS_LINE-labeled line wins first; otherwise
+        # scan all lines in receipt order (clean form, then the ZIP fallback,
+        # whose city/ZIP adjacency needs that order preserved).
+        locality = None
+        for ln in receipt_order:
+            if ln.line_id in addr_line_ids:
+                locality = parse_locality(ln.text)
+                if locality:
+                    break
+        if not locality:
+            locality = locality_from_lines([ln.text for ln in receipt_order])
+        # State part of "City, ST" — passed explicitly to the geo guard so it is
+        # never disabled by how the text query happens to be tokenized.
+        expected_state = (
+            locality.rsplit(",", 1)[-1].strip() if locality else None
+        )
+
+        # Append the locality to the text query unless it is already present.
+        if locality:
+            loc_tokens = set(re.findall(r"[a-z]+", locality.lower()))
+            q_tokens = set(
+                re.findall(r"[a-z]+", (place_text_query or "").lower())
+            )
+            if loc_tokens and not loc_tokens <= q_tokens:
+                base = place_text_query or merchant_hint or ""
+                place_text_query = f"{base} {locality}".strip()
+
         _log(
-            "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s...)",
+            "Resolving merchant for %s#%d (hint=%s, phone=%s, address=%s..., locality=%s)",
             image_id[:8],
             receipt_id,
             merchant_hint or "none",
             phone or "none",
             (address[:30] + "...") if address else "none",
+            locality or "none",
         )
 
         # Tier 1: Google Places, keyed on the Apple-NLP phone/address (with the
@@ -498,6 +858,7 @@ class MerchantResolver:
                 merchant_name=place_text_query,
                 address=address,
                 phone=phone,
+                expected_state=expected_state,
             )
             if result.place_id:
                 _log(
@@ -532,6 +893,9 @@ class MerchantResolver:
                 if (
                     result.place_id
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                    and not address_state_conflict(
+                        result.address, expected_state
+                    )
                 ):
                     _log(
                         "Tier 2 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
@@ -561,6 +925,9 @@ class MerchantResolver:
                 if (
                     result.place_id
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                    and not address_state_conflict(
+                        result.address, expected_state
+                    )
                 ):
                     _log(
                         "Tier 2 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
@@ -598,6 +965,7 @@ class MerchantResolver:
             if (
                 result.place_id
                 and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
+                and not address_state_conflict(result.address, expected_state)
             ):
                 _log(
                     "Tier 2 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
@@ -615,11 +983,48 @@ class MerchantResolver:
                     HIGH_CONFIDENCE_THRESHOLD,
                 )
 
+        # Tier 2.5: locality-enriched Places text search. Runs only AFTER the
+        # Chroma "seen-before" tiers (so a previously-resolved exact place_id
+        # wins over a fresh text hit) and only with a real MERCHANT_NAME label +
+        # locality (a weak top-line hint like a check number must not preempt the
+        # agentic tier). The city in the query disambiguates the chain and the geo
+        # guard rejects a wrong-state hit. Covers no-phone/no-address receipts
+        # that previously fell straight to the agent and mis-resolved.
+        if place_text_query and locality and has_labeled_merchant:
+            result = self._run_labeled_place_search(
+                merchant_name=place_text_query,
+                address=address,
+                phone=phone,
+                expected_state=expected_state,
+            )
+            if result.place_id:
+                _log(
+                    "Tier 2.5 SUCCESS (locality text): %s "
+                    "(place_id=%s, conf=%.2f)",
+                    result.merchant_name,
+                    result.place_id,
+                    result.confidence,
+                )
+                return result
+
         # Tier 3: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1/2 failed, invoking Tier 3: Place ID Finder agent")
         result = self._run_place_id_finder(
             lines_client, lines, words, image_id, receipt_id, word_labels
         )
+
+        # Geo guard the agentic result too (#3): the agent path builds its own
+        # ReceiptRecord without expected_state, so a wrong-state chain hit could
+        # otherwise slip through on a faint-scan receipt.
+        if result.place_id and address_state_conflict(
+            result.address, expected_state
+        ):
+            _log(
+                "Tier 3 result rejected: state for %r != receipt state %s",
+                result.address,
+                expected_state,
+            )
+            return MerchantResult()
 
         if result.place_id:
             _log(
@@ -1004,13 +1409,15 @@ class MerchantResolver:
         merchant_name: Optional[str],
         address: Optional[str],
         phone: Optional[str],
+        expected_state: Optional[str] = None,
     ) -> MerchantResult:
         """Search Places directly using receipt evidence (phone/address/name).
 
         Phone and address are the authoritative keys (a phone lookup returns the
         exact business); ``merchant_name`` is only a text-query hint. Runs as long
         as ANY of phone/address/name is present — a phone- or address-only receipt
-        resolves without a labeled name.
+        resolves without a labeled name. ``expected_state`` (the receipt's parsed
+        2-letter state) lets the finder reject a wrong-state Places hit.
         """
         if not self.places_client or not (merchant_name or address or phone):
             return MerchantResult()
@@ -1026,6 +1433,7 @@ class MerchantResolver:
                 merchant_name=merchant_name,
                 address=address,
                 phone=phone,
+                expected_state=expected_state,
             )
             finder = place_id_finder_module.PlaceIdFinder(
                 dynamo_client=self.dynamo,
