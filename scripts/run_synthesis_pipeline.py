@@ -130,8 +130,34 @@ DEFAULT_MERCHANTS = [
 
 
 def _slug(name: str) -> str:
-    cleaned = re.sub(r"['''ʼ`]", "", str(name or "").lower())
+    # Drop apostrophes/quotes BEFORE splitting on non-alphanumerics so "Gelson's"
+    # collapses to "gelsons" not "gelson_s" — matches merchant_tax_config._slug.
+    cleaned = re.sub(r"['‘’ʼ`]", "", str(name or "").lower())
     return re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")
+
+
+def _resolve_artifact_slug(
+    slug: str, available_slugs: list[str] | tuple[str, ...]
+) -> str | None:
+    """Resolve a merchant slug to an artifact slug, mirroring merchant_tax_config.
+
+    Exact match first; then the LONGEST brand-prefix match on a token boundary
+    (``slug.startswith(key + "_")``). The "_" boundary means "Target #123" →
+    ``target_123`` resolves to ``target`` while "Targeted Coupons" → ``targeted_
+    coupons`` does NOT collide with ``target``. Critical for the Tier-1 gate: a
+    needs_review merchant with a store-suffixed name must still resolve to its
+    artifact and be parked, not slip through as "no artifact".
+    """
+    if not slug:
+        return None
+    if slug in available_slugs:
+        return slug
+    best: str | None = None
+    best_len = 0
+    for key in available_slugs:
+        if slug.startswith(key + "_") and len(key) > best_len:
+            best, best_len = key, len(key)
+    return best
 
 
 def _json_print(payload: Any) -> None:
@@ -139,17 +165,62 @@ def _json_print(payload: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Branch 1 hook: merchant intelligence artifacts
+# Branch 1 hook: merchant intelligence artifacts (merchant_intelligence/<slug>.json)
 # ---------------------------------------------------------------------------
 
-def _load_research_artifact(merchant_name: str, research_dir: str | None) -> dict[str, Any] | None:
-    """Load Branch-1 intelligence artifact when present; else return None."""
+# Approval statuses that PARK a merchant out of a run (Tier-1).
+_PARKED_REVIEW_STATUSES = {"needs_review", "rejected"}
+# Enabling = the artifact is trusted to drive taxable edits / applicable_operations.
+_ENABLING_REVIEW_STATUSES = {"auto_approved", "approved"}
+
+_merchant_research = None
+_merchant_research_tried = False
+
+
+def _import_merchant_research():
+    """Lazily import the Branch-1 loader module; None if unavailable.
+
+    Degrades gracefully when the merchant_research package isn't in the tree
+    (e.g. before integration was merged), so the orchestrator still runs.
+    """
+    global _merchant_research, _merchant_research_tried
+    if not _merchant_research_tried:
+        _merchant_research_tried = True
+        try:
+            from receipt_agent.agents.label_evaluator.merchant_research import (
+                loader as _loader,
+            )
+
+            _merchant_research = _loader
+        except Exception as exc:  # pragma: no cover - import-env dependent
+            print(
+                f"  [research] merchant_research loader unavailable: {exc}",
+                file=sys.stderr,
+            )
+            _merchant_research = None
+    return _merchant_research
+
+
+def _load_research_artifact(
+    merchant_name: str, research_dir: str | None
+) -> dict[str, Any] | None:
+    """Load a raw intelligence artifact JSON from an explicit --research-dir.
+
+    Resolves the merchant to an artifact slug with the same exact→brand-prefix
+    rule as the loader path, so a store-suffixed name still finds its artifact.
+    """
     if not research_dir:
         return None
-    slug = _slug(merchant_name)
-    path = Path(research_dir) / f"{slug}.json"
-    if not path.exists():
+    research_path = Path(research_dir)
+    available = [
+        p.stem
+        for p in research_path.glob("*.json")
+        if not p.name.startswith("_")
+    ]
+    resolved = _resolve_artifact_slug(_slug(merchant_name), available)
+    if resolved is None:
         return None
+    path = research_path / f"{resolved}.json"
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -157,71 +228,184 @@ def _load_research_artifact(merchant_name: str, research_dir: str | None) -> dic
         return None
 
 
-# Tier-1 human-review statuses that PARK a merchant out of a run.
-_PARKED_REVIEW_STATUSES = {"needs_review", "rejected"}
-_KNOWN_REVIEW_STATUSES = {"approved", "needs_review", "rejected"}
+def _intel_record(
+    *,
+    present: bool,
+    approval_status: str,
+    reasons: list[str],
+    structure_type: Any,
+    applicable_operations: list[str],
+    can_support_taxable_edits: Any,
+    validated_rate: Any,
+    confidence: Any,
+    source: str,
+) -> dict[str, Any]:
+    """Normalize an intelligence read into the orchestrator's contract shape."""
+    status = str(approval_status or "unknown").strip().lower()
+    # validated_rate may arrive as a Decimal from the loader — stringify so the
+    # summary stays JSON-serializable while preserving the exact value.
+    rate = str(validated_rate) if validated_rate is not None else None
+    return {
+        "present": present,
+        "approval_status": status,
+        "is_enabling": status in _ENABLING_REVIEW_STATUSES,
+        "park": status in _PARKED_REVIEW_STATUSES,
+        "reasons": [str(r) for r in (reasons or [])],
+        "structure_type": structure_type,
+        "applicable_operations": [str(op) for op in (applicable_operations or [])],
+        "can_support_taxable_edits": can_support_taxable_edits,
+        "validated_rate": rate,
+        "confidence": confidence,
+        "source": source,
+    }
 
 
-def _taxable_edit_review_status(
-    research: dict[str, Any] | None,
-) -> tuple[str, str]:
-    """Tier-1 human-review status for a merchant's TAXABLE edits + a reason note.
+def _intel_absent() -> dict[str, Any]:
+    """No artifact / intelligence disabled → proceed, deterministic gate governs."""
+    return _intel_record(
+        present=False,
+        approval_status="unknown",
+        reasons=["no_intelligence_artifact"],
+        structure_type=None,
+        applicable_operations=[],
+        can_support_taxable_edits=None,
+        validated_rate=None,
+        confidence=None,
+        source="none",
+    )
 
-    Reads the Branch-1 intelligence artifact. The contract is TAXABLE-EDIT-
-    SPECIFIC (a generic artifact review state must not park a merchant): a
-    ``taxable_edit_review`` object with a ``status`` of ``approved`` |
-    ``needs_review`` | ``rejected`` (and an optional ``notes``/``reason``), or a
-    top-level ``taxable_edit_review_status`` string. A generic top-level
-    ``review_status`` is intentionally NOT honored.
 
-    Returns ``(status, reason)`` where status is one of approved / needs_review /
-    rejected / unknown. ``unknown`` (no artifact, or no explicit taxable-edit
-    status) means fall back to the deterministic receipt-validated tax-config
-    gate — it does NOT park the merchant. Only an explicit needs_review/rejected
-    parks it.
+def _normalize_raw_intelligence(raw: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize a raw artifact dict (from an explicit --research-dir override).
+
+    Understands the real artifact shape (``review.status``,
+    ``structure.applicable_operations``, ``tax.can_support_taxable_edits``) and,
+    for back-compat with earlier fixtures, a ``taxable_edit_review.status``.
     """
-    if not research:
-        return "unknown", "no_intelligence_artifact"
-    review = research.get("taxable_edit_review")
-    status: Any = None
-    reason = ""
-    if isinstance(review, dict):
-        status = review.get("status")
-        reason = str(review.get("notes") or review.get("reason") or "")
+    if not raw:
+        return _intel_absent()
+    review = raw.get("review") if isinstance(raw.get("review"), dict) else {}
+    status = str(review.get("status") or "").strip().lower()
+    reasons = list(review.get("reasons") or [])
     if not status:
-        # Only a taxable-edit-specific status, never a generic review_status.
-        status = research.get("taxable_edit_review_status")
-    status = str(status or "").strip().lower()
-    if status in _KNOWN_REVIEW_STATUSES:
-        return status, reason
-    return "unknown", "no_taxable_edit_review_status"
+        ter = raw.get("taxable_edit_review")
+        if isinstance(ter, dict):
+            status = str(ter.get("status") or "").strip().lower()
+            note = ter.get("notes") or ter.get("reason")
+            if note:
+                reasons = [str(note)]
+        if not status:
+            status = str(raw.get("taxable_edit_review_status") or "").strip().lower()
+    structure = raw.get("structure") if isinstance(raw.get("structure"), dict) else {}
+    tax = raw.get("tax") if isinstance(raw.get("tax"), dict) else {}
+    return _intel_record(
+        present=True,
+        approval_status=status or "unknown",
+        reasons=reasons,
+        structure_type=structure.get("structure_type"),
+        applicable_operations=structure.get("applicable_operations") or [],
+        can_support_taxable_edits=tax.get("can_support_taxable_edits"),
+        validated_rate=tax.get("validated_rate"),
+        confidence=structure.get("confidence") or tax.get("confidence"),
+        source="research_dir",
+    )
+
+
+def _intel_from_loader(loader, slug: str) -> dict[str, Any]:
+    """Read the authoritative intelligence contract via the Branch-1 loader.
+
+    The loader recomputes review/structure status from the evidence of record and
+    applies the human-approval overlay, so it is preferred over a raw JSON read.
+    """
+    try:
+        review = loader.effective_review(slug)
+    except Exception:  # pragma: no cover - defensive
+        review = None
+    if review is None:
+        return _intel_absent()
+    try:
+        structure = loader.effective_structure(slug) or {}
+    except Exception:  # pragma: no cover - defensive
+        structure = {}
+    try:
+        tax_profile = loader.artifact_tax_profile(slug)  # None when not enabling
+    except Exception:  # pragma: no cover - defensive
+        tax_profile = None
+    return _intel_record(
+        present=True,
+        approval_status=review.status,
+        reasons=list(getattr(review, "reasons", ()) or []),
+        structure_type=structure.get("structure_type"),
+        applicable_operations=structure.get("applicable_operations") or [],
+        can_support_taxable_edits=(
+            tax_profile.get("can_support_taxable_edits") if tax_profile else None
+        ),
+        validated_rate=tax_profile.get("validated_rate") if tax_profile else None,
+        confidence=structure.get("confidence"),
+        source="loader",
+    )
+
+
+def _merchant_intelligence(
+    merchant_name: str,
+    *,
+    research_dir: str | None,
+    use_intelligence: bool,
+) -> dict[str, Any]:
+    """Resolve a merchant's intelligence contract (Tier-1 + report inputs).
+
+    An explicit --research-dir takes precedence (raw JSON override). Otherwise the
+    version-controlled package artifacts are read via the authoritative loader.
+    Disabled, missing, or unreadable → absent (proceed; deterministic gate rules).
+    """
+    if not use_intelligence:
+        return _intel_absent()
+    if research_dir:
+        return _normalize_raw_intelligence(
+            _load_research_artifact(merchant_name, research_dir)
+        )
+    loader = _import_merchant_research()
+    if loader is None:
+        return _intel_absent()
+    try:
+        available = list(loader.list_available_slugs())
+    except Exception:  # pragma: no cover - defensive
+        available = []
+    resolved = _resolve_artifact_slug(_slug(merchant_name), available)
+    if resolved is None:
+        return _intel_absent()
+    return _intel_from_loader(loader, resolved)
 
 
 def _partition_tier1(
     merchants: list[str],
+    *,
     research_dir: str | None,
+    use_intelligence: bool,
 ) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
     """Split requested merchants into proceeding vs. parked (Tier-1 gate).
 
-    A merchant whose intelligence marks its taxable edits ``needs_review`` or
-    ``rejected`` is PARKED — skipped from this run and surfaced in the review
-    queue, never silently dropped. Everything else proceeds (explicitly approved,
-    or unknown → governed by the deterministic tax-config gate).
+    A merchant whose intelligence approval status is ``needs_review`` (awaiting a
+    human sign-off) or ``rejected`` (hard stop) is PARKED — skipped from this run
+    and surfaced in the review queue, never silently dropped. Everything else
+    proceeds: ``auto_approved`` / human-``approved`` (the artifact's
+    applicable_operations + taxable-edit clearance are trusted), or ``unknown``
+    (no artifact → governed by the deterministic tax-config gate).
 
-    Returns ``(proceeding_names, proceeding_records, parked_records)``.
+    Returns ``(proceeding_names, proceeding_records, parked_records)``. Each
+    record carries the intelligence contract for the per-merchant report.
     """
     proceeding_names: list[str] = []
     proceeding: list[dict[str, Any]] = []
     parked: list[dict[str, Any]] = []
     for merchant in merchants:
-        research = _load_research_artifact(merchant, research_dir)
-        status, reason = _taxable_edit_review_status(research)
-        record = {
-            "merchant_name": merchant,
-            "taxable_edit_review_status": status,
-            "reason": reason,
-        }
-        if status in _PARKED_REVIEW_STATUSES:
+        intel = _merchant_intelligence(
+            merchant, research_dir=research_dir, use_intelligence=use_intelligence
+        )
+        # Carry the full normalized intel (present/is_enabling/source/...) so the
+        # report and contract-violation check have everything they need.
+        record = {"merchant_name": merchant, **intel}
+        if intel["park"]:
             parked.append(record)
         else:
             proceeding_names.append(merchant)
@@ -390,15 +574,15 @@ def export_phase(
     region: str,
     base_output_dir: str,
     max_receipts_per_merchant: int,
-    research_dir: str | None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Export each merchant's receipts into a per-merchant subdir.
+    """Export each (already Tier-1-approved) merchant's receipts into a subdir.
 
     Returns ``(export_stats, receipt_files)`` where ``receipt_files`` are the
     explicit JSON paths exported for this run (across all merchants). Feeding
     explicit files — rather than whole dirs — keeps stale files from prior runs
     out of the bundle. A failed export for one merchant is recorded and skipped
-    — it never aborts the others.
+    — it never aborts the others. Intelligence is resolved earlier by the Tier-1
+    partition; this phase just exports.
     """
     export_stats: list[dict[str, Any]] = []
     receipt_files: list[str] = []
@@ -412,20 +596,9 @@ def export_phase(
         receipt_dir = str(Path(base_output_dir) / "receipts" / slug)
         Path(receipt_dir).mkdir(parents=True, exist_ok=True)
 
-        # Branch 1 hook: note an intelligence artifact when present (consumed
-        # by the gate/config layer in a later milestone; recorded here for the
-        # report so the run is auditable).
-        research = _load_research_artifact(merchant, research_dir)
-        if research:
-            print(
-                f"  [research] Loaded intelligence artifact for {merchant!r} "
-                f"(confidence={research.get('confidence', '?')})"
-            )
-
         print(f"[{merchant}] exporting receipts …")
         stat: dict[str, Any] = {
             "merchant_name": merchant,
-            "research_artifact_used": research is not None,
             "receipt_dir": receipt_dir,
         }
         try:
@@ -491,9 +664,54 @@ def _accepted_side_by_merchant(bundle: dict[str, Any]) -> dict[str, dict[str, An
     return accepted
 
 
+# Synthesis emits specific operation keys; the intelligence artifact's
+# applicable_operations use coarser FAMILY names (see structure.py
+# STRUCTURE_TYPE_OPERATIONS). Normalize synthesis ops to the artifact family
+# before comparing so a naming difference isn't mistaken for a violation.
+_OP_FAMILY = {
+    "compose_store_header": "compose_header",
+    "compose_online_catalog": "compose_header",
+}
+# Training controls, not merchant-structure operations — never violations.
+_NON_STRUCTURE_OPS = {"hard_negative"}
+
+
+def _intelligence_contract_violations(
+    intel: dict[str, Any] | None,
+    accepted_operation_counts: dict[str, Any],
+    taxable_add_count: int,
+) -> list[str]:
+    """Flag where the accepted bundle disagrees with a merchant's intelligence.
+
+    Honesty signal only — the deterministic gate already decided what is
+    accepted; this surfaces mismatches with the (approved) artifact contract for
+    human review. It never relaxes or overrides the gate. Operation names are
+    normalized to artifact families before comparison; the applicable-operations
+    check runs only when a non-empty operation contract exists (absence is
+    surfaced separately as ``structure_contract_present`` in the report, not as
+    a false violation).
+    """
+    if not intel or not intel.get("is_enabling"):
+        return []
+    violations: list[str] = []
+    applicable = {
+        _OP_FAMILY.get(op, op) for op in (intel.get("applicable_operations") or [])
+    }
+    if applicable:
+        for op in accepted_operation_counts or {}:
+            if op in _NON_STRUCTURE_OPS:
+                continue
+            if _OP_FAMILY.get(op, op) not in applicable:
+                violations.append(f"accepted_operation_not_applicable:{op}")
+    if taxable_add_count and intel.get("can_support_taxable_edits") is not True:
+        violations.append("taxable_adds_without_artifact_clearance")
+    return violations
+
+
 def build_per_merchant_report(
     bundle: dict[str, Any],
     export_stats: list[dict[str, Any]],
+    intel_by_merchant: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Per-merchant breakdown derived from the one combined bundle.
 
@@ -504,10 +722,13 @@ def build_per_merchant_report(
     counts, rejection reasons) is read from ``candidate_mix.merchants`` when that
     merchant is within the (capped) list; ``rejection_detail_available`` flags
     when it is not, rather than silently reporting zero rejections. We join with
-    export stats (which merchants were requested). Merchants present in the
-    bundle but not requested are still listed — shared receipt images can carry
-    other merchants' receipts.
+    export stats (which merchants were requested) and, when available, each
+    merchant's intelligence contract (approval status, applicable_operations,
+    taxable-edit clearance) plus any contract violations. Merchants present in
+    the bundle but not requested are still listed — shared receipt images can
+    carry other merchants' receipts.
     """
+    intel_by_merchant = intel_by_merchant or {}
     candidate_mix = bundle.get("candidate_mix") or {}
     mix_merchants = candidate_mix.get("merchants") or []
     by_name: dict[str, dict[str, Any]] = {
@@ -532,6 +753,12 @@ def build_per_merchant_report(
         accepted = accepted_by_name.get(name) or {}
         stat = export_by_name.get(name) or {}
         taxable = taxable_by_merchant.get(name) or {}
+        intel = intel_by_merchant.get(name)
+        accepted_ops = accepted.get("accepted_operation_counts") or {}
+        taxable_add_count = taxable.get("taxable_add_count", 0)
+        violations = _intelligence_contract_violations(
+            intel, accepted_ops, taxable_add_count
+        )
         rows.append(
             {
                 "merchant_name": name,
@@ -539,19 +766,36 @@ def build_per_merchant_report(
                 "export_status": stat.get("status", "not_requested"),
                 "exported_receipt_count": stat.get("exported_receipt_count", 0),
                 "failed_image_count": stat.get("failed_image_count", 0),
-                "research_artifact_used": stat.get("research_artifact_used", False),
+                "intelligence": {
+                    "present": bool(intel and intel.get("present")),
+                    "approval_status": (intel or {}).get("approval_status", "unknown"),
+                    "is_enabling": bool(intel and intel.get("is_enabling")),
+                    "structure_type": (intel or {}).get("structure_type"),
+                    "applicable_operations": (intel or {}).get(
+                        "applicable_operations", []
+                    ),
+                    # False when an enabling artifact has no operation contract to
+                    # check accepted ops against (e.g. tax-approved, no structure
+                    # block) — surfaced so an absent contract isn't read as "clean".
+                    "structure_contract_present": bool(
+                        (intel or {}).get("applicable_operations")
+                    ),
+                    "can_support_taxable_edits": (intel or {}).get(
+                        "can_support_taxable_edits"
+                    ),
+                    "validated_rate": (intel or {}).get("validated_rate"),
+                    "source": (intel or {}).get("source", "none"),
+                },
+                "intelligence_contract_violations": violations,
                 "accepted_count": accepted.get("accepted_count", 0),
-                "accepted_operation_counts": accepted.get(
-                    "accepted_operation_counts"
-                )
-                or {},
+                "accepted_operation_counts": accepted_ops,
                 # Rejection detail only when this merchant is in the (capped)
                 # candidate_mix list; flagged so a cap-miss isn't read as zero.
                 "rejection_detail_available": name in by_name,
                 "candidate_count": mix.get("candidate_count", 0),
                 "rejected_count": mix.get("rejected_count", 0),
                 "rejection_reasons": mix.get("rejection_reasons") or {},
-                "taxable_add_count": taxable.get("taxable_add_count", 0),
+                "taxable_add_count": taxable_add_count,
                 "taxable_add_missing_rate_count": taxable.get(
                     "taxable_add_missing_rate_count", 0
                 ),
@@ -677,18 +921,23 @@ def _print_gates(summary: dict[str, Any]) -> None:
 
     proceeding = tier1.get("proceeding_merchants") or []
     parked = tier1.get("parked_merchants") or []
-    print(f"Tier-1 (taxable-edit review) — {len(proceeding)} proceeding, "
+    print(f"Tier-1 (intelligence approval) — {len(proceeding)} proceeding, "
           f"{len(parked)} parked:")
     for rec in proceeding:
+        ops = rec.get("applicable_operations") or []
+        can_tax = rec.get("can_support_taxable_edits")
         print(
             f"  ✓ {rec['merchant_name']} "
-            f"(review={rec.get('taxable_edit_review_status')})"
+            f"(approval={rec.get('approval_status')}, can_taxable_edits={can_tax}"
+            + (f", ops={ops}" if ops else "")
+            + ")"
         )
     for rec in parked:
-        note = f" — {rec['reason']}" if rec.get("reason") else ""
+        reasons = rec.get("reasons") or []
+        note = f" — {reasons[0]}" if reasons else ""
         print(
             f"  ⏸ PARKED: {rec['merchant_name']} "
-            f"(review={rec.get('taxable_edit_review_status')}){note} "
+            f"(approval={rec.get('approval_status')}){note} "
             "— awaiting human approval"
         )
 
@@ -726,6 +975,7 @@ def run_single(
     max_per_merchant_operation: int,
     render: bool,
     research_dir: str | None,
+    use_merchant_intelligence: bool = True,
     promote_approved_by: str | None = None,
     print_summary: bool = True,
 ) -> dict[str, Any]:
@@ -736,12 +986,14 @@ def run_single(
     / ``all_parked`` otherwise. Callers map status (and, for ``ok`` runs,
     export_failures and training_ready) to an exit code via _exit_code_from_summary.
     """
-    # --- Tier-1 human-in-the-loop gate (taxable-edit review) ---
-    # Park merchants whose intelligence marks taxable edits needs_review/rejected;
+    # --- Tier-1 human-in-the-loop gate (intelligence approval status) ---
+    # Park merchants whose intelligence approval status is needs_review/rejected;
     # they are skipped from this run and surfaced in the review queue, never
     # silently dropped.
     proceeding_names, proceeding_records, parked_records = _partition_tier1(
-        merchants, research_dir
+        merchants,
+        research_dir=research_dir,
+        use_intelligence=use_merchant_intelligence,
     )
     tier1_gate = {
         "proceeding_merchants": proceeding_records,
@@ -751,7 +1003,7 @@ def run_single(
     for rec in parked_records:
         print(
             f"[{rec['merchant_name']}] parked: awaiting human approval "
-            f"(taxable_edit_review={rec['taxable_edit_review_status']})"
+            f"(approval_status={rec['approval_status']})"
         )
 
     if not proceeding_names:
@@ -776,7 +1028,6 @@ def run_single(
         region=region,
         base_output_dir=base_output_dir,
         max_receipts_per_merchant=max_receipts_per_merchant,
-        research_dir=research_dir,
     )
     print()
 
@@ -870,10 +1121,22 @@ def run_single(
     # --- Build report from the single bundle ---
     candidate_mix = bundle.get("candidate_mix") or {}
     mix_balance = candidate_mix.get("accepted_mix_balance") or {}
-    per_merchant = build_per_merchant_report(bundle, export_stats)
+    # Intelligence contract by merchant (proceeding + parked) for the report.
+    intel_by_merchant = {
+        rec["merchant_name"]: rec
+        for rec in (proceeding_records + parked_records)
+    }
+    per_merchant = build_per_merchant_report(
+        bundle, export_stats, intel_by_merchant
+    )
     total_taxable_adds = sum(
         r.get("taxable_add_count", 0) or 0 for r in per_merchant
     )
+    intelligence_contract_violations = {
+        r["merchant_name"]: r["intelligence_contract_violations"]
+        for r in per_merchant
+        if r.get("intelligence_contract_violations")
+    }
     total_taxable_missing_rate = sum(
         r.get("taxable_add_missing_rate_count", 0) or 0 for r in per_merchant
     )
@@ -923,6 +1186,7 @@ def run_single(
         "accepted_mix_balance": mix_balance,
         "total_taxable_adds": total_taxable_adds,
         "total_taxable_adds_missing_rate": total_taxable_missing_rate,
+        "intelligence_contract_violations": intelligence_contract_violations,
         "source_receipt_quality": bundle.get("source_receipt_quality") or {},
         "bundle_path": bundle_path,
         "render_artifacts": render_artifacts,
@@ -1058,6 +1322,7 @@ def run_coverage_loop(
     max_per_merchant_operation: int,
     render: bool,
     research_dir: str | None,
+    use_merchant_intelligence: bool = True,
     promote_approved_by: str | None = None,
     promote: bool = False,
 ) -> int:
@@ -1103,6 +1368,7 @@ def run_coverage_loop(
             max_per_merchant_operation=max_per_merchant_operation,
             render=render,
             research_dir=research_dir,
+            use_merchant_intelligence=use_merchant_intelligence,
             promote_approved_by=promote_approved_by,
             print_summary=False,
         )
@@ -1301,6 +1567,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             max_per_merchant_operation=args.max_per_merchant_operation,
             render=args.render,
             research_dir=args.research_dir,
+            use_merchant_intelligence=args.use_merchant_intelligence,
             promote_approved_by=args.promote_approved_by,
             promote=args.promote,
         )
@@ -1318,6 +1585,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         max_per_merchant_operation=args.max_per_merchant_operation,
         render=args.render,
         research_dir=args.research_dir,
+        use_merchant_intelligence=args.use_merchant_intelligence,
         promote_approved_by=args.promote_approved_by,
     )
     base_exit = _exit_code_from_summary(summary)
@@ -1398,8 +1666,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="DIR",
         help=(
-            "[Branch 1] Path to merchant_intelligence/ dir. "
-            "Reads <slug>.json when present; falls back to hardcoded config."
+            "[Branch 1] Override path to raw <slug>.json intelligence artifacts. "
+            "Default (no flag) reads the version-controlled package artifacts via "
+            "the authoritative merchant_research loader."
+        ),
+    )
+    p.add_argument(
+        "--no-merchant-intelligence",
+        dest="use_merchant_intelligence",
+        action="store_false",
+        default=True,
+        help=(
+            "[Branch 1] Disable consulting merchant_intelligence artifacts (no "
+            "Tier-1 parking from intelligence; deterministic gates still apply)."
         ),
     )
     # Branch 2 hook
