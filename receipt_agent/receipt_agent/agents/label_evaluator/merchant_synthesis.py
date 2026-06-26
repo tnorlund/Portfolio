@@ -4930,10 +4930,13 @@ def _receipt_effective_tax_rate(
     """This receipt's EFFECTIVE rate (tax / subtotal) from summary anchors.
 
     Uses the labeled SUBTOTAL, else ``grand_total - tax`` — both reliable, unlike
-    the per-item taxable flags. The effective rate is a lower bound on the
-    taxable-item rate (the taxable base is a subset of the subtotal), so it is a
-    sound one-sided jurisdiction check: effective > validated_rate ⇒ a higher-tax
-    jurisdiction than the config store.
+    the per-item taxable flags. Usually a lower bound on the taxable-item rate
+    (the taxable base is typically a subset of the subtotal), which makes it a
+    conservative one-sided jurisdiction check: effective clearly > validated_rate
+    signals a higher-tax jurisdiction than the config store. It is NOT exact —
+    coupons (tax on the pre-discount base, subtotal post-discount) or cent
+    rounding on tiny receipts can push it above the real rate — so the caller
+    treats a breach as a safe skip, never as proof of a specific rate.
     """
     if analysis.tax_total is None or analysis.tax_total <= Decimal("0.00"):
         return None
@@ -5055,14 +5058,18 @@ def _taxable_edit_rate_for_receipt(
         config_rate = allowed[0]
         # Profiles are brand-matched, so a same-brand receipt from a HIGHER-tax
         # jurisdiction (or a later rate period) could otherwise be edited at the
-        # stale config rate. The receipt's effective rate (tax / subtotal, from
-        # reliable summary anchors — not the sparse per-item flags) can never
-        # exceed the taxable-item rate for a correct-jurisdiction receipt, since
-        # the taxable base is a subset of the subtotal. So an effective rate
-        # above the config rate proves a different, higher jurisdiction — refuse.
-        # (All validated single-rate merchants are CA at the 7.25% state minimum,
-        # so there is no lower-jurisdiction direction to miss.) The tolerance
-        # absorbs cent-rounding on small receipts.
+        # stale config rate. Usually the taxable base is a subset of the subtotal,
+        # so the effective rate (tax / subtotal, from reliable summary anchors —
+        # not the sparse per-item flags) sits at or below the taxable-item rate;
+        # an effective rate clearly above the config rate then signals a
+        # different, higher jurisdiction, and we refuse. (All validated
+        # single-rate merchants are CA at the 7.25% state minimum, so there is no
+        # lower-jurisdiction direction to miss.) This is a CONSERVATIVE one-sided
+        # guard, not exact: a legitimate same-jurisdiction receipt can also breach
+        # it when the printed subtotal is post-discount but tax is on the
+        # pre-discount base (coupons), or via cent-rounding on a tiny receipt.
+        # Those are accepted false-skips — we drop a candidate rather than ever
+        # emit a wrong-jurisdiction tax, which is the safe direction.
         effective = _receipt_effective_tax_rate(analysis)
         if effective is not None and effective > config_rate + Decimal("0.005"):
             return None
