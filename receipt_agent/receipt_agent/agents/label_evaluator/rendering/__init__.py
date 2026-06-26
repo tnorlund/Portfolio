@@ -2,7 +2,7 @@
 
 This package turns a merchant's real receipts into a compact *font profile*
 (typography + spacing geometry) and renders synthesized receipt dicts to PNG
-images for visual QA and, later, LayoutLMv3 visual features.
+images for visual QA / review of synthetic candidates.
 
 Organizing principle (see CHARTER.md): the deterministic safety gates stay
 deterministic. Everything here produces or consumes *geometry data*; it must
@@ -15,15 +15,6 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (
     build_merchant_font_profile,
     build_merchant_font_profile_from_dynamo,
     extract_receipt_font_profile,
-)
-from receipt_agent.agents.label_evaluator.rendering.layoutlm_image import (
-    DomainMatchContract,
-    LayoutLMv3Example,
-    LayoutLMv3ImageContract,
-    apply_domain_match,
-    normalize_pixels,
-    synth_bbox_to_layoutlm,
-    to_layoutlmv3_example,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_renderer import (
     RenderConfig,
@@ -42,11 +33,4 @@ __all__ = [
     "render_receipt",
     "render_real_vs_synthetic",
     "save_receipt_png",
-    "LayoutLMv3Example",
-    "LayoutLMv3ImageContract",
-    "DomainMatchContract",
-    "apply_domain_match",
-    "normalize_pixels",
-    "synth_bbox_to_layoutlm",
-    "to_layoutlmv3_example",
 ]

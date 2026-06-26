@@ -94,86 +94,13 @@ Real measured geometry always wins. Verified end-to-end: threading
 `font_geometry` through the local Vons pipeline leaves the accepted high-fidelity
 candidate set and operation mix unchanged.
 
-## 4. LayoutLMv3 training-image contract (`layoutlm_image.py`)
+## 4. Training-image path — out of scope
 
-**Not wired to training.** This documents the contract and stubs the missing
-piece.
-
-### Scope: structured artifact is canonical; images are QA-first
-
-The **structured example — tokens + bounding boxes + labels — is the primary,
-canonical training artifact.** It is *domain-independent*: boxes and labels carry
-no photo-vs-render distribution gap, so the structured columns are training-ready
-as soon as their coordinates match LayoutLMv3's frame.
-
-Rendered images are **QA-first**. A clean render is **not** a LayoutLMv3 training
-image. Real receipts are photographs — thermal fade, skew, crumple, uneven
-lighting, sensor noise — so a pristine render is a *different distribution*, and
-training v3's visual backbone on clean renders risks a domain gap that can hurt
-the model. An image becomes training-ready only after it is **domain-matched** to
-the receipt-photo distribution (degraded and/or composited onto real
-backgrounds). We document and stub that contract instead of feeding clean renders
-to training.
-
-`to_layoutlmv3_example(example, profile=...)` returns a `LayoutLMv3Example`:
-
-- `tokens` / `bboxes` / `ner_tags`: the **canonical** columns. `bboxes` are
-  integer `[x0,y0,x1,y1]` in **[0,1000]**, **top-left origin, y down**.
-- `image`: rendered RGB receipt at the target size (default **224×224**) —
-  **QA-first**, `domain_matched=False` by default.
-- `image_training_ready` / `to_dict()["image_role"]` (`"qa_only"` vs
-  `"training"`) tell you whether the image may be used for training.
-
-### Domain matching (the gate on image training-readiness)
-
-`DomainMatchContract` enumerates the transforms a render must undergo to become
-training-ready: `skew_rotation`, `perspective_warp`, `crumple_warp`,
-`thermal_fade`, `lighting_gradient`, `sensor_noise`, `jpeg_artifacts`,
-`background_composite`. The domain-match transform is **box-aware**
-(`(image, boxes) -> (image, boxes)`) so geometric transforms move the image and
-its token boxes together and stay aligned. `apply_domain_match(image, boxes,
-transform=...)` applies the (future) degradation/compositing pipeline; **called
-with no transform it raises `NotImplementedError`** — it never silently returns a
-clean render as training-ready.
-
-```python
-out = to_layoutlmv3_example(example)          # image_training_ready == False (QA)
-out = to_layoutlmv3_example(example, domain_match=degrade_pipeline)  # == True
-```
-
-### Token-box alignment (the contract's whole point)
-
-LayoutLMv3 boxes are `[0,1000]` **top-left/y-down**; the synthesis space is
-`[0,1000]` **y-high-is-top**. `synth_bbox_to_layoutlm` flips the y axis
-(`y_layoutlm = 1000 - y_synth`) and clamps, so boxes align with the rendered
-image (which the renderer already draws top-down). Skipping this flip silently
-misaligns every box with the image — the most common LayoutLMv3 integration bug.
-
-### Pixel normalization
-
-`LayoutLMv3ImageContract` defaults mirror the **transformers 4.x**
-`LayoutLMv3ImageProcessor` (`size=224`, `rescale=1/255`, `mean=std=[0.5,0.5,0.5]`,
-bicubic, `apply_ocr=False`). `normalize_pixels(image)` reproduces them (NumPy →
-`(3,H,W)`, else nested lists) so the contract is verifiable without importing
-`transformers`.
-
-> **Version caveat.** transformers 5.x changed the LayoutLMv3 image defaults to
-> ImageNet mean/std + bilinear. The repo allows `transformers>=4.46,<6`, so the
-> 4.x defaults can diverge from a 5.x model. For training, **derive the contract
-> from the actual processor** and persist it with the dataset:
-> ```python
-> from transformers import LayoutLMv3ImageProcessor
-> proc = LayoutLMv3ImageProcessor.from_pretrained("microsoft/layoutlmv3-base", apply_ocr=False)
-> contract = LayoutLMv3ImageContract.from_hf_processor(proc)
-> ```
-
-The renderer for the training image uses `margin=0` so the rendered pixels span
-the same full 0-1000 frame as the emitted boxes (a non-zero margin would inset
-the pixels and misalign them from the boxes).
-
-In production, pass `image` + `tokens` + `bboxes` (+ word labels) to HF's
-`LayoutLMv3Processor(apply_ocr=False)`; the contract guarantees they're already
-in the frame the model expects.
+LayoutLMv3's visual modality does **not** export to CoreML (the target runtime),
+so we do not train on rendered images. The structured receipt (tokens + boxes +
+labels) is the only training artifact. Rendering exists purely to **show /
+v3-training contract was removed; it remains in git history on
+`feat/receipt-font-render` if v3 ever becomes viable.
 
 ## Tests
 
@@ -182,7 +109,6 @@ python3.12 -m pytest \
   receipt_agent/tests/test_font_profile.py \
   receipt_agent/tests/test_receipt_renderer.py \
   receipt_agent/tests/test_merchant_synthesis_font_geometry.py \
-  receipt_agent/tests/test_layoutlm_image.py -q
 
 # Font module (run from the package root):
 (cd receipt_upload && python3.12 -m pytest \
