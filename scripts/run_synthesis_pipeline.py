@@ -1121,6 +1121,113 @@ def _print_gates(summary: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Run metrics (M5): consolidated, persisted view of the headline signals
+# ---------------------------------------------------------------------------
+
+def build_run_metrics(summary: dict[str, Any]) -> dict[str, Any]:
+    """Consolidate the headline run metrics from a run_single summary.
+
+    Surfaces, in one focused object: the accepted mix (count + operation mix +
+    cross-merchant balance), taxable edits (totals + per-merchant rates), the
+    Tier-1 parked review queue, and the render artifacts — plus the readiness and
+    promotion verdicts. Read-only projection of the summary; no gate logic.
+    """
+    per_merchant = summary.get("per_merchant") or []
+    taxable_by_merchant = [
+        {
+            "merchant_name": r["merchant_name"],
+            "taxable_add_count": r.get("taxable_add_count", 0),
+            "taxable_add_rates": r.get("taxable_add_rates", []),
+            "taxable_add_missing_rate_count": r.get(
+                "taxable_add_missing_rate_count", 0
+            ),
+            "taxable_add_base_receipts": r.get("taxable_add_base_receipts", []),
+        }
+        for r in per_merchant
+        if (r.get("taxable_add_count") or 0) > 0
+    ]
+    tier1 = summary.get("tier1_gate") or {}
+    promo = summary.get("promotion_gate") or {}
+    return {
+        "accepted_mix": {
+            "accepted_count": summary.get("accepted_count", 0),
+            "accepted_operation_counts": summary.get("accepted_operation_counts", {}),
+            "mix_balance_risk": summary.get("mix_balance_risk", "unknown"),
+            "accepted_mix_balance": summary.get("accepted_mix_balance", {}),
+        },
+        "taxable_edits": {
+            "total_taxable_adds": summary.get("total_taxable_adds", 0),
+            "total_taxable_adds_missing_rate": summary.get(
+                "total_taxable_adds_missing_rate", 0
+            ),
+            "by_merchant": taxable_by_merchant,
+        },
+        "parked_review_queue": tier1.get("parked_merchants", []),
+        "proceeding_merchants": [
+            r.get("merchant_name") for r in tier1.get("proceeding_merchants", [])
+        ],
+        "render": {
+            "status": summary.get("render_status", "disabled"),
+            "artifact_count": summary.get("render_artifact_count", 0),
+            "artifacts": summary.get("render_artifacts", {}),
+        },
+        "intelligence_contract_violations": summary.get(
+            "intelligence_contract_violations", {}
+        ),
+        "training_ready": summary.get("training_ready"),
+        "training_ready_reasons": summary.get("training_ready_reasons", []),
+        "promotion_blocked": promo.get("blocked"),
+        "promotion_blocking_reasons": promo.get("blocking_reasons", []),
+        "bundle_path": summary.get("bundle_path"),
+    }
+
+
+def _write_run_metrics(metrics: dict[str, Any], base_output_dir: str) -> str:
+    """Persist run metrics to <base_output_dir>/run_metrics.json; return the path."""
+    path = Path(base_output_dir) / "run_metrics.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return str(path)
+
+
+def _print_run_metrics(metrics: dict[str, Any]) -> None:
+    """Print a compact, human-readable RUN METRICS block."""
+    am = metrics.get("accepted_mix", {})
+    tx = metrics.get("taxable_edits", {})
+    rn = metrics.get("render", {})
+    parked = metrics.get("parked_review_queue", [])
+    print("-" * 60)
+    print("RUN METRICS")
+    print("-" * 60)
+    print(
+        f"accepted={am.get('accepted_count', 0)}  "
+        f"mix_balance_risk={am.get('mix_balance_risk')}  "
+        f"ops={am.get('accepted_operation_counts', {})}"
+    )
+    print(
+        f"taxable_adds={tx.get('total_taxable_adds', 0)} "
+        f"(missing_rate={tx.get('total_taxable_adds_missing_rate', 0)}):"
+    )
+    for t in tx.get("by_merchant", []):
+        print(
+            f"  {t['merchant_name']}: {t['taxable_add_count']} @ "
+            f"{t['taxable_add_rates']}"
+        )
+    print(f"parked_review_queue ({len(parked)}): "
+          f"{[p.get('merchant_name') for p in parked]}")
+    print(
+        f"render: {rn.get('status')} ({rn.get('artifact_count', 0)} PNG(s) across "
+        f"{len(rn.get('artifacts', {}))} merchant(s))"
+    )
+    violations = metrics.get("intelligence_contract_violations") or {}
+    if violations:
+        print(f"intelligence_contract_violations: {violations}")
+    print("-" * 60)
+
+
+# ---------------------------------------------------------------------------
 # Single run (one export → combined pipeline → report pass)
 # ---------------------------------------------------------------------------
 
@@ -1373,7 +1480,17 @@ def run_single(
         "per_merchant": per_merchant,
     }
 
+    # M5: persist a consolidated run-metrics artifact for downstream review.
+    run_metrics = build_run_metrics(summary)
+    try:
+        summary["run_metrics_path"] = _write_run_metrics(run_metrics, base_output_dir)
+    except Exception as exc:  # metrics are a report artifact; never gate the run
+        print(f"  [metrics] WARNING: could not write run_metrics: {exc}",
+              file=sys.stderr)
+        summary["run_metrics_path"] = None
+
     if print_summary:
+        _print_run_metrics(run_metrics)
         _print_gates(summary)
         print("=" * 60)
         print("CONSOLIDATED SUMMARY")
@@ -1655,6 +1772,8 @@ def run_coverage_loop(
         "rounds": rounds,
         "final_summary": final_summary,
     }
+    if final_summary.get("status") == "ok":
+        _print_run_metrics(build_run_metrics(final_summary))
     if final_summary:
         _print_gates(final_summary)
     print("=" * 60)
