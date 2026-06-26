@@ -4860,33 +4860,23 @@ def _summarize_tax_policy(
     stable_tax_rate = len(rate_observations) >= 2 and max(
         rate_observations
     ) - min(rate_observations) <= Decimal("0.0050")
+    # Readiness is config-driven, NOT observation-driven: the per-merchant tax
+    # config carries the rate validated from real receipts, so taxable edits do
+    # not require this run to re-derive a clean rate (real per-item taxable-flag
+    # OCR is too sparse — observed per-receipt rates are wildly inflated). The
+    # observation fields above are still reported for transparency.
+    #   * not validated for taxable edits at all -> blocked (keeps Costco/Home
+    #     Depot off: per-item flag OCR untrustworthy); or
+    #   * a MULTI-jurisdiction merchant (Target) where this run can't confirm a
+    #     single jurisdiction rate (needs a clean per-receipt observation).
     blockers: list[str] = []
-    if taxable_item_count <= 0:
-        blockers.append("no_taxable_item_evidence")
-    if receipts_with_tax_total <= 0:
-        blockers.append("no_tax_total_anchors")
-    if len(rate_observations) < 2:
-        blockers.append("needs_multiple_tax_rate_observations")
-    elif not stable_tax_rate:
-        blockers.append("unstable_tax_rate")
-    # The receipt-validated per-merchant tax config is the final gate, matching
-    # exactly what the add/remove builders enforce so readiness never claims an
-    # edit the generator would reject. Two distinct reasons:
-    #   * the merchant is not validated for taxable edits at all (keeps
-    #     Costco/Home Depot off — stable per-receipt rate but untrustworthy
-    #     per-item flag OCR); or
-    #   * it is validated, but the receipts do not unanimously agree on one
-    #     validated jurisdiction rate (a mixed/off-jurisdiction batch).
     if not merchant_supports_taxable_edits(merchant_name):
         blockers.append("merchant_not_validated_for_taxable_edits")
-    elif _consistent_validated_edit_rate(merchant_name, analyses) is None:
+    elif not _merchant_taxable_edits_available(merchant_name, analyses):
         blockers.append("observed_rate_off_validated_jurisdiction")
 
-    # Taxable item edits are unlocked when the merchant has a stable effective
-    # tax rate plus real taxable items and TAX anchors to reconcile against AND
-    # is cleared by the receipt-validated tax config. The loader independently
-    # re-validates every taxable edit's tax math, so this is the contract
-    # signal, not the guarantee.
+    # The loader independently re-validates every taxable edit's tax math, so
+    # this is the contract signal, not the guarantee.
     tax_changing_ready = not blockers
 
     result: dict[str, Any] = {
@@ -4983,6 +4973,27 @@ def _consistent_validated_edit_rate(
     return next(iter(snapped))
 
 
+def _merchant_taxable_edits_available(
+    merchant_name: str, analyses: list[MerchantAnalysis]
+) -> bool:
+    """Merchant-level capability: can ANY taxable edit be produced this run?
+
+    A single-jurisdiction validated merchant always can (the config rate
+    applies). A multi-jurisdiction merchant can only when this run confirms a
+    single jurisdiction rate. Mirrors ``_taxable_edit_rate_for_receipt`` so the
+    readiness report never claims an edit the generators would reject.
+    """
+    profile = merchant_tax_profile(merchant_name)
+    if profile is None or not profile.can_support_taxable_edits:
+        return False
+    if len(profile.allowed_rates()) == 1:
+        return True
+    return (
+        not _has_unobserved_positive_tax_receipt(analyses)
+        and _consistent_validated_edit_rate(merchant_name, analyses) is not None
+    )
+
+
 def _taxable_edit_rate_for_receipt(
     merchant_name: str,
     analyses: list[MerchantAnalysis],
@@ -4990,34 +5001,47 @@ def _taxable_edit_rate_for_receipt(
 ) -> Decimal | None:
     """Validated rate to recompute TAX for a taxable edit ON ``analysis``.
 
-    Two layers:
-      1. The batch must unanimously validate one jurisdiction rate
-         (``_consistent_validated_edit_rate``).
-      2. The specific receipt being edited must be confirmed to share that
-         jurisdiction. For a single-rate merchant every receipt is that one
-         rate, so the batch rate applies even to a receipt with no taxable items
-         of its own. For a MULTI-jurisdiction merchant, the receipt must either
-         observe its own rate snapping to the batch rate, and the batch must
-         contain no unobserved positive-TAX receipt whose jurisdiction is
-         unknown — otherwise a blind off-jurisdiction receipt (missing taxable
-         flag OCR) could be edited at the wrong rate.
+    The merchant's tax config carries the rate(s) validated by reading its real
+    receipts — that is the ground truth. We do NOT re-derive the rate from this
+    run's per-item taxable detection, which is far too sparse to trust (real
+    receipts flag only a fraction of taxable items, so ``tax / detected_taxable
+    _subtotal`` is wildly inflated — e.g. an apparent 147%). Two cases:
+
+      * SINGLE-jurisdiction merchant (one validated rate): apply that rate
+        directly. There is only one possible rate, so no per-receipt observation
+        is needed to disambiguate, and the recomputed TAX uses the verified
+        rate. (A taxable add/remove changes TAX by ``delta * rate``; the
+        receipt's own — possibly broken — taxable detection does not enter the
+        delta math.)
+      * MULTI-jurisdiction merchant (Target: NV vs CA): the rate depends on the
+        store, so the target receipt must itself observe a rate that snaps to a
+        single validated jurisdiction rate, and the batch must contain no
+        unobserved positive-TAX receipt whose jurisdiction is unknown (a blind
+        off-jurisdiction receipt could otherwise be edited at the wrong rate).
+        When real per-item OCR is too sparse to observe a clean per-receipt
+        rate, this correctly yields no taxable edits rather than guessing NV vs
+        CA.
     """
-    batch_rate = _consistent_validated_edit_rate(merchant_name, analyses)
-    if batch_rate is None:
-        return None
     profile = merchant_tax_profile(merchant_name)
-    if profile is not None and len(profile.allowed_rates()) <= 1:
-        return batch_rate
-    # Multi-jurisdiction: refuse if any positive-TAX receipt is unobservable,
-    # and require this receipt's own observed rate to match the batch rate.
+    if profile is None or not profile.can_support_taxable_edits:
+        return None
+    allowed = profile.allowed_rates()
+    if len(allowed) == 1:
+        return allowed[0]
+    # Multi-jurisdiction: need per-receipt jurisdiction confirmation.
     if _has_unobserved_positive_tax_receipt(analyses):
         return None
     own_rate = _receipt_observed_taxable_rate(analysis)
     if own_rate is None:
         return None
-    if merchant_taxable_edit_rate(merchant_name, own_rate) != batch_rate:
+    snapped = merchant_taxable_edit_rate(merchant_name, own_rate)
+    if snapped is None:
         return None
-    return batch_rate
+    # Cross-check the batch agrees on this one jurisdiction so a lone receipt
+    # cannot unlock edits for a mixed batch.
+    if _consistent_validated_edit_rate(merchant_name, analyses) != snapped:
+        return None
+    return snapped
 
 
 def _format_rate(value: Decimal) -> str:
@@ -5353,11 +5377,26 @@ def _apply_taxable_delta(
     subtotal/tax anchors to reconcile against (so we never emit an unbalanced
     taxable edit).
     """
-    old_subtotal = analysis.subtotal
     old_tax = analysis.tax_total
-    if old_subtotal is None or old_tax is None or old_tax <= Decimal("0.00"):
-        return None  # need real SUBTOTAL + TAX anchors to reconcile taxable math
+    if old_tax is None or old_tax <= Decimal("0.00"):
+        return None  # taxable math needs a real TAX anchor to move
     old_grand_total = analysis.grand_total
+    old_subtotal = analysis.subtotal
+    if old_subtotal is None:
+        # Many real receipts label TAX + GRAND_TOTAL but omit a SUBTOTAL line
+        # (e.g. the Vons/Sprouts exports carry zero SUBTOTAL words). Reconstruct
+        # the taxable-math subtotal anchor from grand_total - tax — exact when
+        # both are labeled — else fall back to the line-item sum. The loader
+        # re-validates the emitted receipt's arithmetic, so a reconstructed
+        # anchor that doesn't reconcile is dropped there, not trained on.
+        if old_grand_total is not None:
+            old_subtotal = _money(max(Decimal("0.00"), old_grand_total - old_tax))
+        else:
+            old_subtotal = _money_sum(
+                item.amount for item in analysis.line_items
+            )
+    if old_subtotal <= Decimal("0.00"):
+        return None  # no usable subtotal anchor to reconcile against
     if old_grand_total is None:
         old_grand_total = _money(old_subtotal + old_tax)
 

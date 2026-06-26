@@ -384,6 +384,27 @@ def _taxable_merchant_receipts_at_rates(rate1, rate2):
     return receipts
 
 
+def _validated_merchant_receipts_no_subtotal_noisy_rate():
+    """Vons receipts that (a) carry NO SUBTOTAL label and (b) have a garbage
+    observed tax rate (tax implies ~50%), exercising both follow-ups: the config
+    rate is used directly (not re-derived from the noisy observation) and the
+    taxable-delta reconciles by reconstructing subtotal = grand_total - tax."""
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    # taxable 10.00 + bread 3.00; garbage tax 5.00 (50%); grand 18.00 / 28.00
+    fixups = [("5.00", "18.00"), ("10.00", "33.00")]
+    for receipt, (tax, grand) in zip(receipts, fixups):
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                labels = word.get("labels") or []
+                if "SUBTOTAL" in labels:
+                    word["labels"] = []  # strip the SUBTOTAL anchor entirely
+                if "TAX" in labels:
+                    word["text"] = tax
+                if "GRAND_TOTAL" in labels:
+                    word["text"] = grand
+    return receipts
+
+
 def _blind_positive_tax_receipt():
     """A receipt with positive TAX but NO parsed taxable item (its taxable
     LINE_TOTAL lost its flag to OCR). Its jurisdiction is unobservable, so a
@@ -1822,6 +1843,49 @@ def test_taxable_edits_rejected_for_mixed_jurisdiction_batch():
         is True
     ]
     assert taxable_edits == []
+
+
+def test_single_jurisdiction_uses_config_rate_despite_noisy_observation_and_no_subtotal():
+    """A single-jurisdiction validated merchant (Vons) generates taxable adds at
+    its config rate (7.25%) even when the per-run observed rate is garbage (~50%)
+    and the receipts carry no SUBTOTAL label — the config rate is ground truth
+    and the delta reconciles via grand_total - tax."""
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Vons", "recipes": []},
+        _validated_merchant_receipts_no_subtotal_noisy_rate(),
+        max_candidates=80,
+    )
+    taxable_adds = [
+        c
+        for c in candidates
+        if c["metadata"]["operation"] == "add_line_item"
+        and c["metadata"]["added_item"]["taxable"] is True
+    ]
+    assert taxable_adds
+    # Snapped to the validated 7.25%, NOT the receipts' garbage ~50% observation.
+    assert all(
+        c["metadata"]["arithmetic_reconciliation"]["tax_rate"] == "0.0725"
+        for c in taxable_adds
+    )
+
+
+def test_taxable_delta_reconciles_without_a_subtotal_label():
+    """_apply_taxable_delta reconstructs the subtotal anchor from grand - tax
+    when no SUBTOTAL label exists, so it reconciles instead of bailing."""
+    receipts = _validated_merchant_receipts_no_subtotal_noisy_rate()
+    analysis = _analyze_receipt(_normalize_receipt(receipts[0]))
+    assert analysis.subtotal is None  # no SUBTOTAL label present
+    assert analysis.tax_total is not None and analysis.grand_total is not None
+    result = _apply_taxable_delta(
+        copy.deepcopy(analysis.receipt),
+        analysis,
+        delta=Decimal("-10.00"),
+        rate=Decimal("0.0725"),
+    )
+    assert result is not None
+    # subtotal reconstructed as grand(18.00) - tax(5.00) = 13.00, then -10.00.
+    assert result["new_subtotal"] == "3.00"
+    assert result["summary_update_policy"] == "taxable_item_delta"
 
 
 def test_taxable_edits_rejected_when_a_blind_positive_tax_receipt_is_present():
