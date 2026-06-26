@@ -29,10 +29,32 @@ hand-tune a merchant ON without receipt evidence.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import lru_cache
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Lazy import so merchant_research failures never break the tax gate.
+try:
+    from .merchant_research.loader import artifact_tax_profile as _artifact_tax_profile
+    from .merchant_research.loader import list_available_slugs as _list_artifact_slugs
+except Exception:  # pragma: no cover
+    _artifact_tax_profile = None  # type: ignore[assignment]
+    _list_artifact_slugs = None  # type: ignore[assignment]
+
+
+def _artifact_slugs() -> tuple[str, ...]:
+    """Available artifact slugs, or empty when the loader is unavailable."""
+    if _list_artifact_slugs is None:
+        return ()
+    try:
+        return tuple(_list_artifact_slugs())
+    except Exception:  # pragma: no cover
+        return ()
 
 
 # A run's observed taxable-item rate must land within this of a validated rate
@@ -177,35 +199,99 @@ MERCHANT_TAX_PROFILES: dict[str, MerchantTaxProfile] = {
 
 
 def _slug(name: str) -> str:
-    # Drop apostrophes/quotes BEFORE splitting on non-alphanumerics so "Gelson's"
-    # and "Smith's" collapse to "gelsons"/"smiths" rather than "gelson_s".
+    # Drop apostrophes/quotes BEFORE splitting on non-alphanumerics so "Gelson’s"
+    # and "Smith’s" collapse to "gelsons"/"smiths" rather than "gelson_s".
     cleaned = re.sub(r"['‘’ʼ`]", "", str(name or "").lower())
     return re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")
+
+
+def _profile_from_artifact(slug: str) -> MerchantTaxProfile | None:
+    """Build a MerchantTaxProfile from a merchant intelligence artifact, or None.
+
+    Returns None — never raises — when the artifact loader is unavailable, the
+    file does not exist, or the artifact is missing required fields.  The
+    hardcoded MERCHANT_TAX_PROFILES dict remains the fallback in all such cases.
+    """
+    if _artifact_tax_profile is None:
+        return None
+    try:
+        data: dict[str, Any] | None = _artifact_tax_profile(slug)
+    except Exception as exc:
+        logger.debug(
+            "merchant_tax_config: artifact lookup failed for %s: %s", slug, exc
+        )
+        return None
+    if data is None:
+        return None
+    try:
+        return MerchantTaxProfile(
+            merchant=str(data["merchant"]),
+            taxable_flags=frozenset(data["taxable_flags"]),
+            nontaxable_flags=frozenset(data["nontaxable_flags"]),
+            can_support_taxable_edits=bool(data["can_support_taxable_edits"]),
+            confidence=str(data["confidence"]),
+            validated_rate=data.get("validated_rate"),
+            jurisdiction_rates=tuple(data.get("jurisdiction_rates") or ()),
+            notes=str(data.get("notes") or ""),
+        )
+    except Exception as exc:
+        logger.debug(
+            "merchant_tax_config: could not construct profile from artifact for %s: %s",
+            slug,
+            exc,
+        )
+        return None
 
 
 @lru_cache(maxsize=256)
 def merchant_tax_profile(merchant_name: str) -> MerchantTaxProfile | None:
     """Return the validated tax profile for ``merchant_name``, or ``None``.
 
-    Matches on the normalized slug, then on a brand-prefix so store-specific
-    names ("Gelson's Westlake Village", "Sprouts Farmers Market #123") resolve
-    to their brand profile.
+    Lookup order:
+    1. Merchant intelligence artifact (``merchant_intelligence/<slug>.json``),
+       when the research pipeline has run for this merchant.
+    2. Hardcoded ``MERCHANT_TAX_PROFILES`` dict (the original validated set).
+    3. Brand-prefix match, so store-specific names ("Gelson’s Westlake Village",
+       "Sprouts Farmers Market #123", "CVS Pharmacy") resolve to their brand
+       profile. Artifacts and the hardcoded dict are both searched; the longest
+       matching brand wins, and an artifact wins ties so a research run can
+       still override.
+
+    Artifacts take precedence so a research pipeline run can update stale config
+    without changing Python source — but the hardcoded dict is always the
+    fallback, keeping existing validated merchants unaffected if no artifact exists.
     """
     slug = _slug(merchant_name)
     if not slug:
         return None
+
+    # 1. Prefer generated artifact when available.
+    artifact_profile = _profile_from_artifact(slug)
+    if artifact_profile is not None:
+        return artifact_profile
+
+    # 2. Exact match in the hardcoded validated set.
     profile = MERCHANT_TAX_PROFILES.get(slug)
     if profile is not None:
         return profile
-    # Brand-prefix match on a TOKEN boundary only: a store-specific name extends
+
+    # 3. Brand-prefix match on a TOKEN boundary only: a store-specific name extends
     # the configured brand slug with a "_<suffix>" ("gelsons_westlake_village",
-    # "sprouts_farmers_market_123"). Requiring the "_" separator means a merchant
-    # like "Targeted Coupons" / "Amazon Freshly" / "Vonsmart" can NOT collide
-    # with an enabled profile — a false enable is the dangerous direction here.
-    # Pick the longest matching brand key so the most specific config wins.
+    # "sprouts_farmers_market_123", "cvs_pharmacy"). Requiring the "_" separator
+    # means a merchant like "Targeted Coupons" / "Amazon Freshly" / "Vonsmart"
+    # can NOT collide with an enabled profile — a false enable is the dangerous
+    # direction here. Pick the longest matching brand key so the most specific
+    # config wins; on a length tie an artifact wins over the hardcoded dict so a
+    # research run can override. Artifacts are searched first to win those ties.
     best: MerchantTaxProfile | None = None
     best_len = 0
+    for key in _artifact_slugs():
+        if slug.startswith(key + "_") and len(key) > best_len:
+            candidate = _profile_from_artifact(key)
+            if candidate is not None:
+                best, best_len = candidate, len(key)
     for key, candidate in MERCHANT_TAX_PROFILES.items():
+        # Strictly greater so an equal-length artifact match already chosen wins.
         if slug.startswith(key + "_") and len(key) > best_len:
             best, best_len = candidate, len(key)
     return best
