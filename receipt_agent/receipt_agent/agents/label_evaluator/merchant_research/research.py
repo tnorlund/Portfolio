@@ -256,16 +256,6 @@ def recommend_taxable_support(
                 f"multi-jurisdiction merchant needs >= 2 distinct reconciled "
                 f"rates; got {list(distinct_reconciled)}"
             )
-        if receipts.blind_positive_tax_count > 0:
-            # A positive-tax receipt with no computable effective rate is
-            # invisible to the jurisdiction veto; for a multi-jurisdiction
-            # merchant it could secretly belong to a higher jurisdiction than the
-            # reconciled set. Refuse rather than risk a wrong-jurisdiction edit.
-            reasons.append(
-                f"{receipts.blind_positive_tax_count} positive-tax receipt(s) "
-                f"with no computable effective rate; cannot rule out an "
-                f"unobserved jurisdiction"
-            )
     else:
         # Single-jurisdiction support requires the AUTHORITATIVE web rate to be
         # (a) plausible, (b) uncontradicted by any effective rate (no higher
@@ -320,7 +310,6 @@ def recommend_taxable_support(
             can_support
             and receipts.per_receipt_rates_reconcile
             and len(jurisdiction_rates) >= 2
-            and receipts.blind_positive_tax_count == 0
         )
     else:
         can_support = (
@@ -339,8 +328,22 @@ def recommend_taxable_support(
             reasons.append("confidently off: no positive tax to derive a rate")
     elif receipts.multi_jurisdiction:
         # Multi-jurisdiction confidence rests on per-receipt reconciliation
-        # (already required for can_support), not on a single web rate.
-        confidence = "high" if receipts.taxed_receipt_count >= 3 else "medium"
+        # (already required for can_support), not on a single web rate. Blind
+        # positive-tax receipts (positive tax, no computable effective rate) can
+        # hide an unobserved jurisdiction; we do NOT hard-block the capability
+        # over them — that is the per-run gate's job (merchant_synthesis'
+        # _has_unobserved_positive_tax_receipt skips taxable edits for any RUN
+        # containing one) — but we cap confidence at medium and record them so a
+        # reviewer sees the caveat.
+        if receipts.blind_positive_tax_count > 0:
+            confidence = "medium"
+            reasons.append(
+                f"{receipts.blind_positive_tax_count} blind positive-tax "
+                f"receipt(s) (no computable effective rate); per-run gate must "
+                f"exclude any run containing one"
+            )
+        else:
+            confidence = "high" if receipts.taxed_receipt_count >= 3 else "medium"
         reasons.append(
             f"per-receipt reconciliation across {receipts.taxed_receipt_count} "
             f"taxed receipts to jurisdiction rates {list(jurisdiction_rates)}"

@@ -289,24 +289,32 @@ def test_single_jurisdiction_without_per_item_confirmation_blocked():
     assert any("not confirmed" in r for r in rec.reasons)
 
 
-def test_multi_jurisdiction_blind_positive_tax_receipt_blocked():
-    # A positive-tax receipt with no computable effective rate is invisible to
-    # the jurisdiction veto; for a multi-jurisdiction merchant it could belong to
-    # an unobserved higher jurisdiction -> refuse. (codex MEDIUM.)
+def test_multi_jurisdiction_blind_receipt_caps_confidence_not_capability():
+    # A blind positive-tax receipt (positive tax, no computable effective rate)
+    # could hide an unobserved jurisdiction, but enforcement is the per-run
+    # gate's job (it skips any RUN containing one). The artifact keeps the
+    # CAPABILITY but caps confidence at medium and records the caveat. (codex
+    # MEDIUM 3 — per-run enforcement was codex's own suggested locus.)
     receipts = ReceiptEvidence(
         taxable_flag="T",
         nontaxable_flags=("NF",),
-        effective_rates=(Decimal("0.0838"), Decimal("0.0951")),
+        effective_rates=(Decimal("0.0838"), Decimal("0.0951"), Decimal("0.0974")),
         receipt_count=12,
         taxed_receipt_count=12,
         multi_jurisdiction=True,
         per_receipt_rates_reconcile=True,
-        reconciled_jurisdiction_rates=(Decimal("0.08375"), Decimal("0.0950")),
+        reconciled_jurisdiction_rates=(
+            Decimal("0.08375"),
+            Decimal("0.0950"),
+            Decimal("0.0975"),
+        ),
         blind_positive_tax_count=1,
     )
     rec = recommend_taxable_support(receipts)
-    assert rec.can_support_taxable_edits is False
-    assert any("no computable effective rate" in r for r in rec.reasons)
+    assert rec.can_support_taxable_edits is True
+    assert rec.confidence == "medium"  # capped despite >= 3 taxed receipts
+    assert any("blind positive-tax" in r for r in rec.reasons)
+    assert any("per-run gate" in r for r in rec.reasons)
 
 
 def test_multi_jurisdiction_single_distinct_rate_blocked():
