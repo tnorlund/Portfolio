@@ -41,6 +41,18 @@ merchant-intel|$PORTFOLIO_ROOT/.claude/worktrees/merchant-intel|merchant-intel|c
 font-render|$PORTFOLIO_ROOT/.claude/worktrees/font-render|font-render|claude-font-render-rc|feat/receipt-font-render
 orchestration|$PORTFOLIO_ROOT/.claude/worktrees/orchestration|orchestration|claude-orchestration-rc|feat/synthesis-orchestration
 EOF
+  # Optional extra sessions beyond the default trio so new branch-agents register
+  # everywhere — status, cleanup, and stray-detection all read entries().
+  # Format: PORTFOLIO_RC_EXTRA_SESSIONS="name:branch [name2:branch2 ...]"
+  #   e.g. PORTFOLIO_RC_EXTRA_SESSIONS="glyph-rendering:feat/receipt-glyph-rendering"
+  local spec name branch
+  for spec in ${PORTFOLIO_RC_EXTRA_SESSIONS:-}; do
+    name="${spec%%:*}"
+    branch="${spec#*:}"
+    [[ -z "$name" || "$branch" == "$spec" ]] && continue
+    printf '%s|%s/.claude/worktrees/%s|%s|claude-%s-rc|%s\n' \
+      "$name" "$PORTFOLIO_ROOT" "$name" "$name" "$name" "$branch"
+  done
 }
 
 quote_arg() {
@@ -193,7 +205,7 @@ start_screens() {
     (
       cd "$workdir"
       /usr/bin/screen -L -dmS "$screen_name" /bin/bash -lc \
-        "cd $(quote_arg "$worktree") && exec $(quote_arg "$CLAUDE_BIN") --permission-mode bypassPermissions --remote-control $(quote_arg "$session_name")"
+        "cd $(quote_arg "$worktree") && exec $(quote_arg "$CLAUDE_BIN") --permission-mode bypassPermissions --remote-control $(quote_arg "$session_name") $(quote_arg "$MISSION_PROMPT")"
     )
     sleep 1
   done < <(entries)
@@ -453,14 +465,17 @@ case "$command" in
     cleanup_targets
     check_push_auth || echo "  (continuing launch; fix push auth before the agents try to push)" >&2
     start_screens
-    sleep 2
-    prime_failed=0
-    prime_screens || prime_failed=1
     ensure_caffeinate
     open_attachers
+    echo
+    echo "Each session started with its mission pre-loaded as a positional prompt."
+    echo "Accept the bypass-permissions prompt in each Terminal (Down -> 'Yes, I accept' -> Enter)"
+    echo "to begin; the mission runs automatically on accept. This one human accept per agent is the"
+    echo "deliberate checkpoint for starting an autonomous bypass-permissions session."
+    echo
     status_failed=0
     status || status_failed=1
-    if [[ "$prime_failed" -ne 0 || "$status_failed" -ne 0 ]]; then
+    if [[ "$status_failed" -ne 0 ]]; then
       exit 1
     fi
     ;;
