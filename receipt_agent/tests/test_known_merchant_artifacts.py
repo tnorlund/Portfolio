@@ -133,6 +133,43 @@ def test_target_multi_jurisdiction_rates_via_artifact():
     assert merchant_taxable_edit_rate("Target", Decimal("0.0838")) == Decimal("0.08375")
 
 
+# --- NEW merchants (M5): researched beyond the hand-validated 8 ------------- #
+
+
+def test_cvs_new_merchant_onboarded_at_nv_rate():
+    # CVS is NOT in the hand-validated set; a real Las Vegas receipt
+    # ("PLAN B ONE STEP 49.99T", "NV 8.375% TAX 4.19") onboards it at 8.375%.
+    assert "cvs" not in MERCHANT_TAX_PROFILES
+    prof = merchant_tax_profile("CVS")
+    assert prof is not None
+    assert prof.can_support_taxable_edits is True
+    assert prof.validated_rate == Decimal("0.08375")
+
+
+def test_cvs_store_name_variants_resolve_via_artifact_brand_prefix():
+    # Receipts say "CVS", "CVS Pharmacy", "CVS pharmacy"; all must resolve to the
+    # cvs artifact (exact for "CVS", brand-prefix for the longer variants).
+    for name in ("CVS", "CVS Pharmacy", "CVS pharmacy"):
+        assert merchant_supports_taxable_edits(name) is True
+        assert merchant_taxable_edit_rate(name, Decimal("0.0838")) == Decimal("0.08375")
+
+
+@pytest.mark.parametrize("name", ["Trader Joe's", "TRADER JOE'S", "Whole Foods Market"])
+def test_researched_new_merchants_correctly_off(name):
+    # Both were researched and conservatively REFUSED (mislabeled tax / single
+    # taxed receipt) — the artifact records why, but support stays off.
+    assert merchant_supports_taxable_edits(name) is False
+
+
+def test_new_merchant_off_reasons_are_recorded():
+    tj = load_merchant_intelligence("trader_joes")
+    assert tj is not None and not tj.tax.can_support_taxable_edits
+    assert any("mislabeled" in p for p in tj.tax.provenance)
+    wf = load_merchant_intelligence("whole_foods_market")
+    assert wf is not None and not wf.tax.can_support_taxable_edits
+    assert any("1 taxed receipt" in p for p in wf.tax.provenance)
+
+
 def test_known_merchants_cover_the_validated_set():
     slugs = {
         __import__(

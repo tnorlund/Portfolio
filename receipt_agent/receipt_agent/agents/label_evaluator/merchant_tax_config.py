@@ -41,8 +41,20 @@ logger = logging.getLogger(__name__)
 # Lazy import so merchant_research failures never break the tax gate.
 try:
     from .merchant_research.loader import artifact_tax_profile as _artifact_tax_profile
+    from .merchant_research.loader import list_available_slugs as _list_artifact_slugs
 except Exception:  # pragma: no cover
     _artifact_tax_profile = None  # type: ignore[assignment]
+    _list_artifact_slugs = None  # type: ignore[assignment]
+
+
+def _artifact_slugs() -> tuple[str, ...]:
+    """Available artifact slugs, or empty when the loader is unavailable."""
+    if _list_artifact_slugs is None:
+        return ()
+    try:
+        return tuple(_list_artifact_slugs())
+    except Exception:  # pragma: no cover
+        return ()
 
 
 # A run's observed taxable-item rate must land within this of a validated rate
@@ -239,9 +251,11 @@ def merchant_tax_profile(merchant_name: str) -> MerchantTaxProfile | None:
     1. Merchant intelligence artifact (``merchant_intelligence/<slug>.json``),
        when the research pipeline has run for this merchant.
     2. Hardcoded ``MERCHANT_TAX_PROFILES`` dict (the original validated set).
-    3. Brand-prefix match against the hardcoded dict, so store-specific names
-       ("Gelson’s Westlake Village", "Sprouts Farmers Market #123") resolve to
-       their brand profile.
+    3. Brand-prefix match, so store-specific names ("Gelson’s Westlake Village",
+       "Sprouts Farmers Market #123", "CVS Pharmacy") resolve to their brand
+       profile. Artifacts and the hardcoded dict are both searched; the longest
+       matching brand wins, and an artifact wins ties so a research run can
+       still override.
 
     Artifacts take precedence so a research pipeline run can update stale config
     without changing Python source — but the hardcoded dict is always the
@@ -263,13 +277,21 @@ def merchant_tax_profile(merchant_name: str) -> MerchantTaxProfile | None:
 
     # 3. Brand-prefix match on a TOKEN boundary only: a store-specific name extends
     # the configured brand slug with a "_<suffix>" ("gelsons_westlake_village",
-    # "sprouts_farmers_market_123"). Requiring the "_" separator means a merchant
-    # like "Targeted Coupons" / "Amazon Freshly" / "Vonsmart" can NOT collide
-    # with an enabled profile — a false enable is the dangerous direction here.
-    # Pick the longest matching brand key so the most specific config wins.
+    # "sprouts_farmers_market_123", "cvs_pharmacy"). Requiring the "_" separator
+    # means a merchant like "Targeted Coupons" / "Amazon Freshly" / "Vonsmart"
+    # can NOT collide with an enabled profile — a false enable is the dangerous
+    # direction here. Pick the longest matching brand key so the most specific
+    # config wins; on a length tie an artifact wins over the hardcoded dict so a
+    # research run can override. Artifacts are searched first to win those ties.
     best: MerchantTaxProfile | None = None
     best_len = 0
+    for key in _artifact_slugs():
+        if slug.startswith(key + "_") and len(key) > best_len:
+            candidate = _profile_from_artifact(key)
+            if candidate is not None:
+                best, best_len = candidate, len(key)
     for key, candidate in MERCHANT_TAX_PROFILES.items():
+        # Strictly greater so an equal-length artifact match already chosen wins.
         if slug.startswith(key + "_") and len(key) > best_len:
             best, best_len = candidate, len(key)
     return best

@@ -5,6 +5,28 @@ Each `<slug>.json` is the output of the merchant research pipeline
 synthesis catalog can use the latest validated research without re-running
 the agent.
 
+## How these are generated (do not hand-edit)
+
+Every committed artifact is emitted by the deterministic builder in
+`merchant_research/known_merchants.py`, which feeds per-merchant research
+evidence (receipts via MCP, web/jurisdiction rate, Places) through
+`research.assemble_merchant_intelligence`.  Regenerate with:
+
+```bash
+python -m receipt_agent.agents.label_evaluator.merchant_research.known_merchants \
+  --generated-at <ISO-timestamp>
+```
+
+`test_known_merchant_artifacts.py` enforces that the committed set of artifacts
+EXACTLY equals the builder's output, so a hand-added or hand-edited artifact
+fails CI.  To add a NEW merchant, add a `MerchantResearchInput` to
+`NEW_MERCHANTS` and re-run the builder — never drop a JSON file in by hand.
+
+The tax gate resolves an artifact by exact slug first, then by brand-prefix on a
+`_` boundary (so `CVS Pharmacy` / `Sprouts Farmers Market #123` resolve to the
+`cvs` / `sprouts_farmers_market` artifact), with the hardcoded
+`MERCHANT_TAX_PROFILES` dict as the final fallback.
+
 ## Schema
 
 ```json

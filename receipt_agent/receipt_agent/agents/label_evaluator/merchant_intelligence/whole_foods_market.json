@@ -1,0 +1,36 @@
+{
+  "catalog": [],
+  "details": {
+    "address": null,
+    "category": "grocery",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "Whole Foods Market",
+  "slug": "whole_foods_market",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 5,
+      "image_ids": [],
+      "taxed_count": 1
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": false,
+    "confidence": "medium",
+    "jurisdiction": "",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 5 receipt(s), 1 taxed, effective rate ~0.0838",
+      "no taxable class flag observed on receipts",
+      "only 1 taxed receipt(s); need >= 2 for cross-receipt confirmation",
+      "no authoritative web rate to pin the single-jurisdiction rate"
+    ],
+    "taxable_flag": "",
+    "validated_rate": null
+  }
+}

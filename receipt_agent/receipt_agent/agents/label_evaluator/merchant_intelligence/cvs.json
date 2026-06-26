@@ -1,0 +1,43 @@
+{
+  "catalog": [],
+  "details": {
+    "address": "3810 E Sunset Rd, Las Vegas, NV 89120",
+    "category": "pharmacy",
+    "store_id": null
+  },
+  "generated_at": "2026-06-26T00:00:00+00:00",
+  "merchant": "CVS",
+  "slug": "cvs",
+  "sources": {
+    "places": {
+      "place_ids": []
+    },
+    "receipts": {
+      "count": 18,
+      "image_ids": [],
+      "taxed_count": 4
+    },
+    "web": {
+      "jurisdiction": "NV-Clark",
+      "published_rate": "0.08375",
+      "urls": [
+        "https://tax.nv.gov/"
+      ]
+    }
+  },
+  "tax": {
+    "can_support_taxable_edits": true,
+    "confidence": "high",
+    "jurisdiction": "NV-Clark",
+    "jurisdiction_rates": [],
+    "nontaxable_flags": [],
+    "provenance": [
+      "receipts: 18 receipt(s), 4 taxed, effective rate ~0.0738",
+      "web: NV-Clark published rate 0.08375 (NV Clark County 8.375%; rate printed on the receipt itself)",
+      "places: 3810 E Sunset Rd, Las Vegas, NV 89120",
+      "web rate 0.08375 uncontradicted by 4 taxed receipts (highest effective 0.0841)"
+    ],
+    "taxable_flag": "T",
+    "validated_rate": "0.08375"
+  }
+}

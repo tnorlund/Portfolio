@@ -275,10 +275,91 @@ KNOWN_MERCHANTS: tuple[MerchantResearchInput, ...] = (
 )
 
 
+# --------------------------------------------------------------------------- #
+# NEW merchants the hand-validation never covered — researched end-to-end in
+# this branch from the live corpus, demonstrating the pipeline extends beyond
+# the original 8 with honest confidence/provenance (M5). These are NOT in
+# MERCHANT_TAX_PROFILES; the artifact is the only source.
+# --------------------------------------------------------------------------- #
+
+NEW_MERCHANTS: tuple[MerchantResearchInput, ...] = (
+    # CVS — a clean NEW onboarding. A real Las Vegas receipt prints
+    # "PLAN B ONE STEP 49.99T" and "NV 8.375% TAX 4.19": the T flag marks the
+    # taxable item and 4.19/49.99 = 0.0838 confirms NV Clark County 8.375%.
+    MerchantResearchInput(
+        merchant="CVS",
+        receipts=ReceiptEvidence(
+            taxable_flag="T",
+            nontaxable_flags=(),
+            effective_rates=(
+                Decimal("0.0841"),
+                Decimal("0.0838"),
+                Decimal("0.0838"),
+                Decimal("0.0433"),
+            ),
+            # Near-all-taxable baskets => effective == per-item rate, snapping to
+            # the NV 8.375% the receipts literally print.
+            observed_taxable_rates=(Decimal("0.0838"), Decimal("0.0841")),
+            receipt_count=18,
+            taxed_receipt_count=4,
+        ),
+        web=WebEvidence(
+            jurisdiction="NV-Clark",
+            published_rate=Decimal("0.08375"),
+            urls=("https://tax.nv.gov/",),
+            note="NV Clark County 8.375%; rate printed on the receipt itself",
+        ),
+        places=PlacesEvidence(
+            address="3810 E Sunset Rd, Las Vegas, NV 89120",
+            category="pharmacy",
+            jurisdictions=("NV-Clark",),
+        ),
+    ),
+    # Trader Joe's — researched, correctly REFUSED. The observed TAX/SUBTOTAL
+    # labels are mislabeled payment splits ("Local Cash $4.00", "VISA $32.71"),
+    # and the sampled stores are Henderson NV where groceries are exempt. No
+    # reliable taxable-item rate exists, so support stays OFF.
+    MerchantResearchInput(
+        merchant="Trader Joe's",
+        receipts=ReceiptEvidence(
+            taxable_flag="",  # no reliable tax-class flag observed
+            nontaxable_flags=(),
+            effective_rates=(),  # the "tax" labels are payment splits, not tax
+            receipt_count=19,
+            taxed_receipt_count=4,  # mislabeled; not real tax observations
+        ),
+        block_reason=(
+            "observed TAX/SUBTOTAL labels are mislabeled payment splits "
+            "(e.g. 'Local Cash $4.00', 'VISA $32.71'); sampled stores are "
+            "Henderson NV where groceries are exempt; no reliable taxable-item "
+            "rate"
+        ),
+        places=PlacesEvidence(category="grocery", jurisdictions=("NV",)),
+    ),
+    # Whole Foods Market — researched, OFF for insufficient evidence: only one
+    # taxed receipt in the corpus (single-receipt arithmetic, not a
+    # cross-receipt confirmation), and the taxable flag was not confirmed.
+    MerchantResearchInput(
+        merchant="Whole Foods Market",
+        receipts=ReceiptEvidence(
+            taxable_flag="",  # not confirmed from receipts yet
+            nontaxable_flags=(),
+            effective_rates=(Decimal("0.0838"),),
+            receipt_count=5,
+            taxed_receipt_count=1,  # only ONE taxed receipt
+        ),
+        places=PlacesEvidence(category="grocery", jurisdictions=("",)),
+    ),
+)
+
+# Every committed artifact must be reproducible by this builder.
+ALL_MERCHANTS: tuple[MerchantResearchInput, ...] = KNOWN_MERCHANTS + NEW_MERCHANTS
+
+
 def build_known_artifacts(generated_at: str) -> dict[str, MerchantIntelligence]:
-    """Assemble MerchantIntelligence for every known merchant, keyed by slug."""
+    """Assemble MerchantIntelligence for every known + new merchant, by slug."""
     out: dict[str, MerchantIntelligence] = {}
-    for spec in KNOWN_MERCHANTS:
+    for spec in ALL_MERCHANTS:
         catalog: tuple[CatalogEntry, ...] = spec.catalog
         if spec.catalog_file:
             catalog = catalog + _load_catalog_file(spec.catalog_file)
