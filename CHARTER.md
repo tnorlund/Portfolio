@@ -89,3 +89,62 @@ Artifacts regenerate the current 8-merchant tax/catalog data (matching the
 validated config), the pipeline still yields 5 Vons taxable adds at 7.25%, and a
 few NEW merchants get researched end-to-end with confidence/provenance. Gates
 unchanged; tests green; codex-reviewed.
+
+---
+
+## Addendum — receipt taxonomy & service receipts (M6–M8)
+
+> Added after the milestones above. Do these AFTER the human-approval review gate
+> ships. Review-first cadence (codex on each meaningful change) still applies.
+> **You produce the taxonomy DATA; synthesis/orchestration CONSUME it.** Stay in
+> your file boundaries: emit `merchant_intelligence/<slug>.json` structure data
+> and use the contract/loader hook you own — do NOT edit `merchant_synthesis.py`
+> gate logic or `data_loader.py`.
+
+### Goal
+Make synthesis work for ANY merchant we've seen — including **service receipts**
+(no line-item grid: salons, car washes, parking, medical, mail/shipping,
+subscriptions) — by deriving each merchant's structural ARCHETYPE from its real
+receipts and emitting it as intelligence.
+
+### M6 — Structural fingerprint + archetype clustering
+Define a per-receipt structure FINGERPRINT (regions present + arrangement:
+header, line-item grid vs single service line, totals block, tip line, payment;
+row/column geometry signature; label-set profile — reuse the unified pattern
+builder where it fits). Cluster ALL real receipts across merchants into a small
+set of DATA-DRIVEN archetypes (e.g. `line_item_retail`, `service`,
+`restaurant_tip`). Do NOT hard-code merchant→archetype.
+
+### M7 — Service-receipt recognition + unblock
+In each `merchant_intelligence/<slug>.json` add a `structure` block:
+`{primary_archetype, archetype_mix, structure_type: line_item|service|hybrid,
+applicable_operations, cluster_id, cluster_size, confidence, provenance}`.
+For service, `applicable_operations = [replace_field, amount_mutation,
+compose_header, hard_negative]` (NOT line-item ops). **Critically:** ensure the
+source-quality contract recognizes a service receipt as VALID grounding — a
+receipt with no line items must NOT be rejected for "missing line items"; it is
+valid for service-type synthesis. Do this via the contract/loader hook you own,
+NOT by editing `merchant_synthesis.py` gate logic or `data_loader.py`.
+(Coordination: orchestration consumes `applicable_operations` to request the
+right ops per merchant — flag when M7 lands.)
+
+### M8 — Cross-merchant structural prior (borrow structure, not content)
+For a THIN merchant (few receipts of its archetype), expose the archetype's
+AGGREGATE structural prior (region layout, spacing signature, typical label
+arrangement) — derived ONLY from receipts in the SAME cluster the merchant
+belongs to — as grounded evidence in the artifact. **HARD RULE:** borrow
+STRUCTURE/layout across merchants within a cluster; NEVER borrow CONTENT (items,
+prices, merchant-specific text). Content stays within-merchant. The grounding is
+cluster membership — the merchant's own receipts placed it there, so the
+archetype's structural prior is a valid prior for it.
+
+Apply the approval gate to STRUCTURE too: a new/low-confidence archetype
+assignment → `needs_review` (don't auto-trust a structural prior you're unsure
+of).
+
+### Acceptance test
+A service-type merchant from the corpus (e.g. Sparkling Image Car Wash or AIM
+Mail Center) is classified `service`, is NOT blocked for "no line items," and
+yields >=1 high-fidelity synthetic example via field/amount/header ops. A
+line-item merchant (Vons) stays `line_item` and unaffected — the 5 taxable adds
+at 7.25% still flow.
