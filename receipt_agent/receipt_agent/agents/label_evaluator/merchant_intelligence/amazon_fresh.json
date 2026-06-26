@@ -80,6 +80,15 @@
   },
   "generated_at": "2026-06-26T00:00:00+00:00",
   "merchant": "Amazon Fresh",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "confidence is 'medium', not high",
+      "only 2 corroborating taxed receipt(s); need >= 3"
+    ],
+    "status": "needs_review"
+  },
   "slug": "amazon_fresh",
   "sources": {
     "places": {

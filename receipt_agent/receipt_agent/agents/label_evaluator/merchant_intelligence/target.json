@@ -92,6 +92,16 @@
   },
   "generated_at": "2026-06-26T00:00:00+00:00",
   "merchant": "Target",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "confidence is 'medium', not high",
+      "multi-jurisdiction merchant (per-run jurisdiction safety needed)",
+      "only 1 independent source(s) cross-check the tax facts (receipts)"
+    ],
+    "status": "needs_review"
+  },
   "slug": "target",
   "sources": {
     "places": {

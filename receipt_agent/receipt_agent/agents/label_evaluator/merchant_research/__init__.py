@@ -20,7 +20,22 @@ Public surface
 ``research`` — per-merchant research agent (added in milestone 2).
 """
 
-from .loader import artifact_tax_profile, load_merchant_intelligence
+from .loader import (
+    artifact_tax_profile,
+    effective_review,
+    load_merchant_intelligence,
+    record_approval,
+    reviews_by_status,
+)
+from .review import (
+    APPROVED,
+    AUTO_APPROVED,
+    NEEDS_REVIEW,
+    REJECTED,
+    ReviewBlock,
+    compute_review,
+    tax_block_hash,
+)
 from .research import (
     PlacesEvidence,
     ReceiptEvidence,
@@ -37,15 +52,25 @@ from .schema import (
 )
 
 __all__ = [
+    "APPROVED",
     "artifact_tax_profile",
     "assemble_merchant_intelligence",
+    "AUTO_APPROVED",
     "CatalogEntry",
+    "compute_review",
+    "effective_review",
     "load_merchant_intelligence",
     "MerchantDetails",
     "MerchantIntelligence",
+    "NEEDS_REVIEW",
     "PlacesEvidence",
     "ReceiptEvidence",
     "recommend_taxable_support",
+    "record_approval",
+    "REJECTED",
+    "ReviewBlock",
+    "reviews_by_status",
+    "tax_block_hash",
     "TaxArtifact",
     "TaxRecommendation",
     "WebEvidence",

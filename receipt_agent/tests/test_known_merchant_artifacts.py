@@ -24,9 +24,11 @@ from receipt_agent.agents.label_evaluator.merchant_research import (
 )
 from receipt_agent.agents.label_evaluator.merchant_research.known_merchants import (
     KNOWN_MERCHANTS,
+    build_artifact_payloads,
     build_known_artifacts,
 )
 from receipt_agent.agents.label_evaluator.merchant_research.loader import (
+    _ARTIFACT_DIR,
     list_available_slugs,
 )
 
@@ -82,16 +84,17 @@ def test_every_committed_artifact_is_builder_generated():
 
 
 def test_committed_artifacts_are_fresh():
-    # The committed JSON must equal what the builder emits today, so the
-    # artifacts cannot silently drift from the research inputs.
-    built = build_known_artifacts(GEN_AT)
-    for slug, intel in built.items():
-        on_disk = load_merchant_intelligence(slug)
-        assert on_disk is not None, slug
-        # generated_at is the only field the builder stamps from outside; the
-        # committed artifacts were written with GEN_AT, so they must match fully.
-        assert on_disk.to_dict() == intel.to_dict(), (
-            f"{slug}.json is stale; re-run known_merchants with --generated-at {GEN_AT}"
+    # The committed JSON (INCLUDING the stored review block) must equal what the
+    # builder emits today, so the artifacts cannot silently drift from the
+    # research inputs or carry a stale/hand-edited review block.
+    import json
+
+    payloads = build_artifact_payloads(GEN_AT)
+    for slug, payload in payloads.items():
+        on_disk = json.loads((_ARTIFACT_DIR / f"{slug}.json").read_text("utf-8"))
+        assert on_disk == payload, (
+            f"{slug}.json is stale; re-run "
+            f"`known_merchants write --generated-at {GEN_AT}`"
         )
 
 
@@ -103,9 +106,11 @@ def test_every_known_merchant_has_provenance():
 # --- The gate behaves identically through the artifact path ----------------- #
 
 
-def test_gate_behavior_identical_via_artifacts():
-    # The four validated merchants support edits; the rest do not — same as the
-    # hardcoded set, but now resolved through the committed artifacts.
+def test_gate_behavior_unchanged_with_review_gate():
+    # The four validated merchants support edits; the rest do not — identical to
+    # the hand-validated set. Vons/Sprouts resolve through their AUTO-APPROVED
+    # artifacts; Amazon Fresh/Target are parked (needs_review) and resolve via
+    # the hardcoded fallback — either way the gate values match.
     assert merchant_supports_taxable_edits("Vons") is True
     assert merchant_supports_taxable_edits("Sprouts Farmers Market") is True
     assert merchant_supports_taxable_edits("Amazon Fresh") is True
@@ -116,12 +121,14 @@ def test_gate_behavior_identical_via_artifacts():
     assert merchant_supports_taxable_edits("Smith's") is False
 
 
-def test_vons_edit_rate_snaps_to_7_25_via_artifact():
+def test_vons_edit_rate_snaps_to_7_25_via_approved_artifact():
     # A slightly noisy observed rate snaps to the artifact-sourced 7.25%.
     assert merchant_taxable_edit_rate("Vons", Decimal("0.0726")) == Decimal("0.0725")
 
 
-def test_target_multi_jurisdiction_rates_via_artifact():
+def test_target_multi_jurisdiction_rates_resolve():
+    # Target is parked (medium confidence / multi-jurisdiction) so it resolves
+    # via the hardcoded fallback, but the allowed rates are identical.
     prof = merchant_tax_profile("Target")
     assert prof is not None
     assert prof.allowed_rates() == (

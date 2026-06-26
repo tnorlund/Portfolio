@@ -7,6 +7,14 @@
   },
   "generated_at": "2026-06-26T00:00:00+00:00",
   "merchant": "Trader Joe's",
+  "review": {
+    "approved_at": null,
+    "approved_by": null,
+    "reasons": [
+      "sources contradict / tax evidence unreliable: blocked: observed TAX/SUBTOTAL labels are mislabeled payment splits (e.g. 'Local Cash $4.00', 'VISA $32.71'); sampled stores are Henderson NV where groceries are exempt; no reliable taxable-item rate"
+    ],
+    "status": "rejected"
+  },
   "slug": "trader_joes",
   "sources": {
     "places": {

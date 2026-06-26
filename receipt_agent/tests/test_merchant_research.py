@@ -55,7 +55,14 @@ def _sample_intel(
             category="grocery",
         ),
         generated_at="2026-06-26T00:00:00+00:00",
-        sources={"receipts": {"count": 5, "image_ids": ["abc"]}},
+        # Enough source evidence (receipts + web + places-via-address) and taxed
+        # receipts that the deterministic review auto-approves this single-
+        # jurisdiction high-confidence sample, so artifact_tax_profile (which is
+        # review-gated) actually drives the gate.
+        sources={
+            "receipts": {"count": 5, "taxed_count": 5, "image_ids": ["abc"]},
+            "web": {"published_rate": "0.0725"},
+        },
     )
 
 

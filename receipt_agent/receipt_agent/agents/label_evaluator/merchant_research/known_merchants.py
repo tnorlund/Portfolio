@@ -35,11 +35,23 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Sequence
 
+from .loader import (
+    matches_validated_config,
+    record_approval,
+    reviews_by_status,
+)
 from .research import (
     PlacesEvidence,
     ReceiptEvidence,
     WebEvidence,
     assemble_merchant_intelligence,
+)
+from .review import (
+    APPROVED,
+    AUTO_APPROVED,
+    NEEDS_REVIEW,
+    REJECTED,
+    compute_review,
 )
 from .schema import CatalogEntry, MerchantIntelligence
 
@@ -376,42 +388,114 @@ def build_known_artifacts(generated_at: str) -> dict[str, MerchantIntelligence]:
     return out
 
 
+def build_artifact_payloads(generated_at: str) -> dict[str, dict]:
+    """Full JSON payload (intel + deterministic review block) per slug.
+
+    The review block is written into the artifact for visibility, but the gate
+    always RECOMPUTES it in the loader — the stored block is never trusted, so a
+    hand-edited "auto_approved" cannot enable anything.
+    """
+    payloads: dict[str, dict] = {}
+    for slug, intel in build_known_artifacts(generated_at).items():
+        payload = intel.to_dict()
+        payload["review"] = compute_review(
+            intel, matches_validated_config=matches_validated_config(intel)
+        ).to_dict()
+        payloads[slug] = payload
+    return payloads
+
+
 def write_artifacts(
     out_dir: Path, generated_at: str, *, slugs: Sequence[str] | None = None
 ) -> list[Path]:
-    """Write known-merchant artifacts to ``out_dir`` as ``<slug>.json``."""
+    """Write known + new merchant artifacts to ``out_dir`` as ``<slug>.json``."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    for slug, intel in build_known_artifacts(generated_at).items():
+    for slug, payload in build_artifact_payloads(generated_at).items():
         if slugs is not None and slug not in slugs:
             continue
         path = out_dir / f"{slug}.json"
         path.write_text(
-            json.dumps(intel.to_dict(), indent=2, sort_keys=True) + "\n",
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         written.append(path)
     return written
 
 
+def _cmd_write(args: argparse.Namespace) -> None:
+    for path in write_artifacts(args.out_dir, args.generated_at):
+        print(path)
+
+
+def _cmd_list(args: argparse.Namespace) -> None:
+    grouped = reviews_by_status()
+    order = [NEEDS_REVIEW, REJECTED, AUTO_APPROVED, APPROVED]
+    statuses = [NEEDS_REVIEW] if args.needs_review else order
+    for status in statuses:
+        items = sorted(grouped.get(status, []))
+        if not items:
+            continue
+        print(f"\n{status} ({len(items)}):")
+        for slug, review in items:
+            enabling = "ENABLES edits" if review.is_enabling() else "parked"
+            print(f"  {slug:26s} [{enabling}]")
+            for reason in review.reasons:
+                print(f"      - {reason}")
+
+
+def _cmd_approve(args: argparse.Namespace) -> None:
+    entry = record_approval(
+        args.slug,
+        approved_by=args.by,
+        approved_at=args.at or _now_iso(),
+        note=args.note or "",
+    )
+    print(
+        f"recorded approval for {entry['slug']} "
+        f"(tax_hash={entry['tax_hash'][:12]}…) by {entry['approved_by']}"
+    )
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=ARTIFACT_DIR,
-        help="Directory to write <slug>.json artifacts (default: merchant_intelligence/).",
-    )
-    parser.add_argument(
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_write = sub.add_parser("write", help="(re)generate the artifact JSON files")
+    p_write.add_argument("--out-dir", type=Path, default=ARTIFACT_DIR)
+    p_write.add_argument(
         "--generated-at",
         required=True,
-        help="ISO timestamp to stamp into each artifact (kept out of code so the "
+        help="ISO timestamp stamped into each artifact (kept out of code so the "
         "build stays deterministic/replayable).",
     )
+    p_write.set_defaults(func=_cmd_write)
+
+    p_list = sub.add_parser("list", help="show each artifact's review status")
+    p_list.add_argument(
+        "--needs-review",
+        action="store_true",
+        help="show only artifacts parked awaiting human review",
+    )
+    p_list.set_defaults(func=_cmd_list)
+
+    p_appr = sub.add_parser(
+        "approve", help="record a human sign-off for a merchant's current tax block"
+    )
+    p_appr.add_argument("slug", help="merchant slug to approve")
+    p_appr.add_argument("--by", required=True, help="approver identity")
+    p_appr.add_argument("--at", default="", help="ISO timestamp (default: now, UTC)")
+    p_appr.add_argument("--note", default="", help="optional review note")
+    p_appr.set_defaults(func=_cmd_approve)
+
     args = parser.parse_args()
-    written = write_artifacts(args.out_dir, args.generated_at)
-    for path in written:
-        print(path)
+    args.func(args)
 
 
 if __name__ == "__main__":

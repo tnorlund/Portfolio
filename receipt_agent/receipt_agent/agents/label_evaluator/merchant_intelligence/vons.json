@@ -7,6 +7,14 @@
   },
   "generated_at": "2026-06-26T00:00:00+00:00",
   "merchant": "Vons",
+  "review": {
+    "approved_at": "2026-06-26T00:00:00+00:00",
+    "approved_by": "auto",
+    "reasons": [
+      "high confidence; 2 independent sources (receipts, web); matches existing validated config"
+    ],
+    "status": "auto_approved"
+  },
   "slug": "vons",
   "sources": {
     "places": {

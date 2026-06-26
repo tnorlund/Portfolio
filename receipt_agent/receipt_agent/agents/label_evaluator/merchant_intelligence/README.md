@@ -27,6 +27,42 @@ The tax gate resolves an artifact by exact slug first, then by brand-prefix on a
 `cvs` / `sprouts_farmers_market` artifact), with the hardcoded
 `MERCHANT_TAX_PROFILES` dict as the final fallback.
 
+## Human-approval gate
+
+Each artifact carries a `review` block `{status, reasons, approved_by,
+approved_at}`. **The status is recomputed deterministically in the loader on
+every read — the stored block is informational only, so hand-editing it to
+`auto_approved` enables nothing.**
+
+| status | meaning | drives the gate? |
+| --- | --- | --- |
+| `auto_approved` | high confidence, ≥2 independent sources, matches a validated config OR single-jurisdiction with ≥3 taxed receipts | **yes** |
+| `needs_review` | medium confidence / new merchant or jurisdiction / <2 sources / multi-jurisdiction / too few taxed receipts | no — generated but **parked** |
+| `rejected` | sources contradict / unreliable, or no tax evidence | no |
+| `approved` | a human signed off a `needs_review` artifact (see below) | **yes** |
+
+**Only `auto_approved` or human-`approved` intelligence may enable taxable edits
+or parameterize synthesis.** A parked artifact returns nothing to the gate, so
+known merchants fall back to the hand-validated `MERCHANT_TAX_PROFILES` (a prior
+human validation) and new merchants stay disabled until approved.
+
+Human sign-offs live in `_approvals.json`, **keyed by `(slug, sha256(tax
+block))`** — so changing any tax fact yields a new hash and the merchant reverts
+to `needs_review`, and a research regeneration never wipes a sign-off (it only
+rewrites the `<slug>.json` files, not the ledger).
+
+`_approvals.json` **is** the approval authority: it is a version-controlled,
+code-review-gated ledger, not a tamper-resistant store. Treat a change to it
+like a code change — anyone who can commit a matching entry can approve. The
+content-hash binding limits any single entry to one exact tax block.
+
+```bash
+# See what is parked awaiting review:
+python -m receipt_agent.agents.label_evaluator.merchant_research.known_merchants list --needs-review
+# Sign off on a merchant's current tax block:
+python -m receipt_agent.agents.label_evaluator.merchant_research.known_merchants approve <slug> --by <name> --note "..."
+```
+
 ## Schema
 
 ```json
