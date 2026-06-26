@@ -45,6 +45,52 @@ quote_arg() {
   printf "%q" "$1"
 }
 
+remote_control_pids() {
+  local session_name="$1"
+  ps axww -o pid= -o command= | awk -v target="$session_name" '
+    function strip_quotes(value) {
+      gsub(/^[\"\047]+|[\"\047]+$/, "", value)
+      return value
+    }
+    {
+      pid = $1
+      executable = strip_quotes($2)
+      sub(/^.*\//, "", executable)
+      if (executable != "claude") {
+        next
+      }
+      for (i = 3; i <= NF; i++) {
+        arg = strip_quotes($i)
+        if (arg == "--remote-control" && i < NF) {
+          value = strip_quotes($(i + 1))
+          if (value == target) {
+            print pid
+            next
+          }
+        }
+        if (arg ~ /^--remote-control=/) {
+          value = strip_quotes(substr(arg, 18))
+          if (value == target) {
+            print pid
+            next
+          }
+        }
+      }
+    }
+  '
+}
+
+kill_remote_control_processes() {
+  local session_name="$1"
+  local pid
+
+  while IFS= read -r pid; do
+    if [[ "$pid" =~ ^[0-9]+$ ]]; then
+      kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+  done < <(remote_control_pids "$session_name")
+}
+
 require_prereqs() {
   if [[ ! -x "$CLAUDE_BIN" ]]; then
     echo "Missing executable Claude binary: $CLAUDE_BIN" >&2
@@ -70,8 +116,7 @@ cleanup_targets() {
   echo "Stopping target Portfolio remote-control sessions..."
   while IFS='|' read -r label worktree session_name screen_name; do
     /usr/bin/screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
-    pkill -9 -f "claude.*--remote-control[[:space:]]+$session_name" >/dev/null 2>&1 || true
-    pkill -9 -f "claude.*remote-control.*$session_name" >/dev/null 2>&1 || true
+    kill_remote_control_processes "$session_name"
   done < <(entries)
   /usr/bin/screen -wipe >/dev/null 2>&1 || true
 }
@@ -182,7 +227,7 @@ status() {
     local log_ok=0
     local log_file="$BASE_DIR/$label/screenlog.0"
 
-    if ps axww -o command= | grep '[c]laude .*--remote-control' | grep -F -- "--remote-control $session_name" >/dev/null 2>&1; then
+    if remote_control_pids "$session_name" | grep -q .; then
       process_ok=1
     else
       missing=1
@@ -194,8 +239,10 @@ status() {
       missing=1
     fi
 
-    if [[ -f "$log_file" ]] && grep -aE 'CONTEXT\.md|CHARTER\.md|Read\(|Bash\(|Edit\(|TodoWrite|remote-control is active' "$log_file" >/dev/null 2>&1; then
+    if [[ -f "$log_file" ]] && grep -aE 'CONTEXT\.md|CHARTER\.md|Read\(|Bash\(|Edit\(|TodoWrite' "$log_file" >/dev/null 2>&1; then
       log_ok=1
+    else
+      missing=1
     fi
 
     printf "%-16s process=%s screen=%s log_evidence=%s log=%s\n" \
@@ -204,7 +251,9 @@ status() {
 
   echo
   echo "Caffeinate:"
-  pgrep -fl "caffeinate.*-dimsu" || true
+  if ! pgrep -fl "caffeinate.*-dimsu"; then
+    missing=1
+  fi
 
   return "$missing"
 }
@@ -219,8 +268,11 @@ case "$command" in
     prime_screens || prime_failed=1
     ensure_caffeinate
     open_attachers
-    status || true
-    exit "$prime_failed"
+    status_failed=0
+    status || status_failed=1
+    if [[ "$prime_failed" -ne 0 || "$status_failed" -ne 0 ]]; then
+      exit 1
+    fi
     ;;
   start)
     cleanup_targets
