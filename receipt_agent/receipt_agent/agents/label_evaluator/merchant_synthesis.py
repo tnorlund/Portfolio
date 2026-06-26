@@ -24,6 +24,11 @@ from typing import Any
 
 from receipt_dynamo.constants import CORE_LABELS
 
+from .merchant_tax_config import (
+    merchant_supports_taxable_edits,
+    merchant_tax_profile,
+    merchant_taxable_edit_rate,
+)
 from .store_profile import (
     StoreProfile,
     alternate_profiles,
@@ -310,7 +315,7 @@ def build_merchant_synthesis_profile(
         "label_slots": label_slots,
         "mutable_fields": mutable_fields,
         "category_patterns": _summarize_categories(analyses),
-        "tax_policy": _summarize_tax_policy(analyses),
+        "tax_policy": _summarize_tax_policy(analyses, merchant_name),
         "real_structure_baseline": real_structure_baseline,
         "observed_item_catalog": [entry.to_dict() for entry in catalog[:25]],
         "synthesis_readiness": _build_synthesis_readiness(
@@ -592,9 +597,9 @@ def _build_synthesis_readiness(
     """Build a compact offline readiness score for merchant-local synthesis."""
     mutable_fields = mutable_fields or {}
     tax_analyses = tax_analyses or analyses
-    tax_policy = _summarize_tax_policy(analyses)
-    add_plans = _build_add_item_plans(analyses, catalog)
-    remove_plans = _build_remove_item_plans(analyses)
+    tax_policy = _summarize_tax_policy(analyses, merchant_name)
+    add_plans = _build_add_item_plans(merchant_name, analyses, catalog)
+    remove_plans = _build_remove_item_plans(merchant_name, analyses)
     false_positive_recipes = _false_positive_recipes(plan or {})
     ready_hard_negative_labels = _hard_negative_ready_labels(
         false_positive_recipes,
@@ -893,7 +898,7 @@ def _generate_add_item_candidate(
     *,
     index: int,
 ) -> dict[str, Any] | None:
-    plans = _build_add_item_plans(analyses, catalog)
+    plans = _build_add_item_plans(merchant_name, analyses, catalog)
     if not plans:
         return None
 
@@ -937,7 +942,7 @@ def _generate_add_item_candidates(
     """
     if limit <= 0:
         return []
-    plans = _build_add_item_plans(analyses, catalog)
+    plans = _build_add_item_plans(merchant_name, analyses, catalog)
     if not plans:
         return []
     # Keep the HIGHEST-fidelity candidate per (category, product) instead of the
@@ -1439,11 +1444,18 @@ def _build_add_item_candidate_from_plan(
     # grand total; non-taxable items move subtotal/grand and freeze tax. A
     # taxable item without a stable rate is not reconcilable, so skip it.
     if entry.taxable:
-        tax_rate, tax_stable, _ = _stable_taxable_item_rate(analyses)
-        if not tax_stable or tax_rate is None:
+        # Gate on the receipt-validated per-merchant tax config: a taxable edit
+        # is only allowed when this merchant is cleared for it, the batch agrees
+        # on one validated jurisdiction rate, AND this specific target receipt is
+        # confirmed to share that jurisdiction. Apply that validated rate so OCR
+        # drift never leaks into recomputed TAX.
+        validated_rate = _taxable_edit_rate_for_receipt(
+            merchant_name, analyses, analysis
+        )
+        if validated_rate is None:
             return None
         arithmetic = _apply_taxable_delta(
-            receipt, analysis, delta=delta_amount, rate=tax_rate
+            receipt, analysis, delta=delta_amount, rate=validated_rate
         )
     else:
         arithmetic = _apply_non_taxable_delta(
@@ -1534,25 +1546,32 @@ def _build_add_item_candidate_from_plan(
 
 
 def _build_add_item_plans(
+    merchant_name: str,
     analyses: list[MerchantAnalysis],
     catalog: list[MerchantCatalogEntry],
 ) -> list[tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]]:
     plans: list[
         tuple[float, MerchantAnalysis, MerchantCatalogEntry, float]
     ] = []
-    # Taxable items are only addable when the merchant has a stable taxable-item tax
-    # rate to recompute TAX with; otherwise restrict to non-taxable items.
-    _, tax_stable, _ = _stable_taxable_item_rate(analyses)
+    # Taxable items are only addable when the merchant is receipt-validated for
+    # taxable edits AND the TARGET receipt is confirmed to share one validated
+    # jurisdiction rate to recompute TAX with; otherwise restrict to non-taxable
+    # items. Checked per receipt so a blind off-jurisdiction receipt can't ride a
+    # batch that other receipts validated.
     for analysis in analyses:
         if analysis.grand_total is None or not analysis.line_items:
             continue
+        receipt_taxable_ok = (
+            _taxable_edit_rate_for_receipt(merchant_name, analyses, analysis)
+            is not None
+        )
         base_key = _receipt_key(analysis.receipt)
         categories = {item.category for item in analysis.line_items}
         existing_products = [item.product_text for item in analysis.line_items]
         for entry in catalog:
             if entry.amount <= Decimal("0.00"):
                 continue
-            if entry.taxable and not tax_stable:
+            if entry.taxable and not receipt_taxable_ok:
                 continue
             if entry.category not in categories:
                 continue
@@ -1582,7 +1601,7 @@ def _generate_remove_item_candidate(
     index: int,
     prefer_taxable: bool = False,
 ) -> dict[str, Any] | None:
-    plans = _build_remove_item_plans(analyses)
+    plans = _build_remove_item_plans(merchant_name, analyses)
     if prefer_taxable:
         # Surface a TAXABLE removal specifically (the overall best is usually a
         # lower-amount non-taxable item that would otherwise always win).
@@ -1650,11 +1669,16 @@ def _build_remove_item_candidate_from_plan(
         line_step=line_step,
     )
     if removed.taxable:
-        tax_rate, tax_stable, _ = _stable_taxable_item_rate(analyses)
-        if not tax_stable or tax_rate is None:
+        # Same receipt-validated gate as the add path: only edit taxable items
+        # for merchants cleared by the tax config, at the rate confirmed for THIS
+        # receipt (rejects mixed/blind-jurisdiction batches).
+        validated_rate = _taxable_edit_rate_for_receipt(
+            merchant_name, analyses, analysis
+        )
+        if validated_rate is None:
             return None
         arithmetic = _apply_taxable_delta(
-            receipt, refreshed, delta=-removed.amount, rate=tax_rate
+            receipt, refreshed, delta=-removed.amount, rate=validated_rate
         )
     else:
         arithmetic = _apply_non_taxable_delta(
@@ -2383,22 +2407,28 @@ def _generate_compose_store_header_candidates(
 
 
 def _build_remove_item_plans(
+    merchant_name: str,
     analyses: list[MerchantAnalysis],
 ) -> list[tuple[float, MerchantAnalysis, MerchantLineItem]]:
     plans: list[tuple[float, MerchantAnalysis, MerchantLineItem]] = []
-    # Taxable items are only removable when the merchant has a stable taxable-item
-    # tax rate to recompute TAX with; otherwise restrict to non-taxable items.
-    _, tax_stable, _ = _stable_taxable_item_rate(analyses)
+    # Taxable items are only removable when the merchant is receipt-validated for
+    # taxable edits AND the TARGET receipt is confirmed to share one validated
+    # jurisdiction rate to recompute TAX with; otherwise restrict to non-taxable
+    # items. Checked per receipt (see _build_add_item_plans).
     for analysis in analyses:
         if analysis.grand_total is None or len(analysis.line_items) < 2:
             continue
+        receipt_taxable_ok = (
+            _taxable_edit_rate_for_receipt(merchant_name, analyses, analysis)
+            is not None
+        )
         category_counts = Counter(
             item.category for item in analysis.line_items
         )
         for item in analysis.line_items:
             if item.amount <= Decimal("0.00"):
                 continue
-            if item.taxable and not tax_stable:
+            if item.taxable and not receipt_taxable_ok:
                 continue
             if (
                 item.category != UNKNOWN_CATEGORY
@@ -4800,7 +4830,9 @@ def _summarize_categories(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
     }
 
 
-def _summarize_tax_policy(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
+def _summarize_tax_policy(
+    analyses: list[MerchantAnalysis], merchant_name: str = ""
+) -> dict[str, Any]:
     taxable_item_count = sum(
         1
         for analysis in analyses
@@ -4837,11 +4869,24 @@ def _summarize_tax_policy(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
         blockers.append("needs_multiple_tax_rate_observations")
     elif not stable_tax_rate:
         blockers.append("unstable_tax_rate")
+    # The receipt-validated per-merchant tax config is the final gate, matching
+    # exactly what the add/remove builders enforce so readiness never claims an
+    # edit the generator would reject. Two distinct reasons:
+    #   * the merchant is not validated for taxable edits at all (keeps
+    #     Costco/Home Depot off — stable per-receipt rate but untrustworthy
+    #     per-item flag OCR); or
+    #   * it is validated, but the receipts do not unanimously agree on one
+    #     validated jurisdiction rate (a mixed/off-jurisdiction batch).
+    if not merchant_supports_taxable_edits(merchant_name):
+        blockers.append("merchant_not_validated_for_taxable_edits")
+    elif _consistent_validated_edit_rate(merchant_name, analyses) is None:
+        blockers.append("observed_rate_off_validated_jurisdiction")
 
     # Taxable item edits are unlocked when the merchant has a stable effective
-    # tax rate plus real taxable items and TAX anchors to reconcile against. The
-    # loader independently re-validates every taxable edit's tax math, so this is
-    # the contract signal, not the guarantee.
+    # tax rate plus real taxable items and TAX anchors to reconcile against AND
+    # is cleared by the receipt-validated tax config. The loader independently
+    # re-validates every taxable edit's tax math, so this is the contract
+    # signal, not the guarantee.
     tax_changing_ready = not blockers
 
     result: dict[str, Any] = {
@@ -4872,37 +4917,107 @@ def _summarize_tax_policy(analyses: list[MerchantAnalysis]) -> dict[str, Any]:
     return result
 
 
+def _receipt_observed_taxable_rate(
+    analysis: MerchantAnalysis,
+) -> Decimal | None:
+    """This receipt's own taxable-item rate (tax / sum of taxable line totals),
+    or ``None`` when it has no positive TAX or no parsed taxable items."""
+    if analysis.tax_total is None or analysis.tax_total <= Decimal("0.00"):
+        return None
+    taxable_subtotal = _money_sum(
+        item.amount for item in analysis.line_items if item.taxable
+    )
+    if taxable_subtotal <= Decimal("0.00"):
+        return None
+    return (analysis.tax_total / taxable_subtotal).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+
+
 def _tax_rate_observations(analyses: list[MerchantAnalysis]) -> list[Decimal]:
-    observations: list[Decimal] = []
-    for analysis in analyses:
-        if analysis.tax_total is None or analysis.tax_total <= Decimal("0.00"):
-            continue
-        taxable_subtotal = _money_sum(
-            item.amount for item in analysis.line_items if item.taxable
-        )
-        if taxable_subtotal <= Decimal("0.00"):
-            continue
-        observations.append(
-            (analysis.tax_total / taxable_subtotal).quantize(
-                Decimal("0.0001"),
-                rounding=ROUND_HALF_UP,
-            )
-        )
-    return observations
+    return [
+        rate
+        for analysis in analyses
+        if (rate := _receipt_observed_taxable_rate(analysis)) is not None
+    ]
 
 
-def _stable_taxable_item_rate(
+def _has_unobserved_positive_tax_receipt(
     analyses: list[MerchantAnalysis],
-) -> tuple[Decimal | None, bool, list[Decimal]]:
-    rates = _tax_rate_observations(analyses)
-    if len(rates) < 2:
-        return None, False, rates
-    median = statistics.median(rates)
-    if not isinstance(median, Decimal):
-        median = Decimal(str(median))
-    median = median.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    stable = max(rates) - min(rates) <= Decimal("0.0050")
-    return median, stable, rates
+) -> bool:
+    """True when some receipt has positive TAX but no parsed taxable items.
+
+    Such a receipt is INVISIBLE to the rate-observation set (its jurisdiction
+    can't be confirmed), so for a multi-jurisdiction merchant it could secretly
+    belong to a different jurisdiction than the unanimous batch rate.
+    """
+    return any(
+        analysis.tax_total is not None
+        and analysis.tax_total > Decimal("0.00")
+        and _receipt_observed_taxable_rate(analysis) is None
+        for analysis in analyses
+    )
+
+
+def _consistent_validated_edit_rate(
+    merchant_name: str, analyses: list[MerchantAnalysis]
+) -> Decimal | None:
+    """Single receipt-validated rate to apply to a taxable edit, or ``None``.
+
+    Validates PER RECEIPT, not on the batch median: every receipt's own
+    observed taxable-item rate must snap to the SAME validated jurisdiction
+    rate. A batch median can hide a minority of off-jurisdiction receipts (an
+    imbalanced Target mix ``[9.50, 9.50, 9.75]`` medians to 9.50 yet contains a
+    9.75 receipt) — requiring unanimity rejects any mixed-jurisdiction batch so
+    a recomputed TAX is never applied at the wrong jurisdiction's rate. Needs at
+    least two agreeing observations so a single noisy receipt cannot unlock it.
+    """
+    observations = _tax_rate_observations(analyses)
+    if len(observations) < 2:
+        return None
+    snapped = {
+        merchant_taxable_edit_rate(merchant_name, rate) for rate in observations
+    }
+    if len(snapped) != 1 or None in snapped:
+        return None
+    return next(iter(snapped))
+
+
+def _taxable_edit_rate_for_receipt(
+    merchant_name: str,
+    analyses: list[MerchantAnalysis],
+    analysis: MerchantAnalysis,
+) -> Decimal | None:
+    """Validated rate to recompute TAX for a taxable edit ON ``analysis``.
+
+    Two layers:
+      1. The batch must unanimously validate one jurisdiction rate
+         (``_consistent_validated_edit_rate``).
+      2. The specific receipt being edited must be confirmed to share that
+         jurisdiction. For a single-rate merchant every receipt is that one
+         rate, so the batch rate applies even to a receipt with no taxable items
+         of its own. For a MULTI-jurisdiction merchant, the receipt must either
+         observe its own rate snapping to the batch rate, and the batch must
+         contain no unobserved positive-TAX receipt whose jurisdiction is
+         unknown — otherwise a blind off-jurisdiction receipt (missing taxable
+         flag OCR) could be edited at the wrong rate.
+    """
+    batch_rate = _consistent_validated_edit_rate(merchant_name, analyses)
+    if batch_rate is None:
+        return None
+    profile = merchant_tax_profile(merchant_name)
+    if profile is not None and len(profile.allowed_rates()) <= 1:
+        return batch_rate
+    # Multi-jurisdiction: refuse if any positive-TAX receipt is unobservable,
+    # and require this receipt's own observed rate to match the batch rate.
+    if _has_unobserved_positive_tax_receipt(analyses):
+        return None
+    own_rate = _receipt_observed_taxable_rate(analysis)
+    if own_rate is None:
+        return None
+    if merchant_taxable_edit_rate(merchant_name, own_rate) != batch_rate:
+        return None
+    return batch_rate
 
 
 def _format_rate(value: Decimal) -> str:

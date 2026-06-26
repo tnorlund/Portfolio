@@ -342,6 +342,68 @@ def _merchant_receipts_with_taxable_items():
     ]
 
 
+def _validated_taxable_merchant_receipts():
+    """Same shape as ``_merchant_receipts_with_taxable_items`` but with a
+    Vons-validated 7.25% taxable-item rate, so the receipt-validated tax config
+    clears taxable edits. Used with ``merchant_name="Vons"``.
+
+    receipt 1: taxable 10.00 -> tax 0.73 (7.3%); receipt 2: taxable 20.00 ->
+    tax 1.45 (7.25%). Both land inside the config's 0.50pp match tolerance.
+    """
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    fixups = [("0.73", "13.73"), ("1.45", "24.45")]
+    for receipt, (tax, grand) in zip(receipts, fixups):
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                labels = word.get("labels") or []
+                if "TAX" in labels:
+                    word["text"] = tax
+                if "GRAND_TOTAL" in labels:
+                    word["text"] = grand
+    return receipts
+
+
+def _taxable_merchant_receipts_at_rates(rate1, rate2):
+    """Two taxable receipts whose per-receipt taxable-item rate is ``rate1`` /
+    ``rate2`` (tax = taxable_total * rate). Used to exercise the per-receipt
+    unanimity gate: equal rates -> one jurisdiction (edits allowed); different
+    rates -> mixed jurisdiction (edits rejected)."""
+    receipts = copy.deepcopy(_merchant_receipts_with_taxable_items())
+    taxables = [Decimal("10.00"), Decimal("20.00")]
+    nontax = Decimal("3.00")
+    for receipt, taxable, rate in zip(receipts, taxables, (rate1, rate2)):
+        tax = (taxable * rate).quantize(Decimal("0.01"))
+        grand = taxable + nontax + tax
+        for line in receipt["lines"]:
+            for word in line["words"]:
+                labels = word.get("labels") or []
+                if "TAX" in labels:
+                    word["text"] = f"{tax:.2f}"
+                if "GRAND_TOTAL" in labels:
+                    word["text"] = f"{grand:.2f}"
+    return receipts
+
+
+def _blind_positive_tax_receipt():
+    """A receipt with positive TAX but NO parsed taxable item (its taxable
+    LINE_TOTAL lost its flag to OCR). Its jurisdiction is unobservable, so a
+    multi-jurisdiction merchant must not let it ride a batch other receipts
+    validated. Implied rate here is 9.75% (0.98 / 10.00)."""
+    receipt = copy.deepcopy(_merchant_receipts_with_taxable_items()[0])
+    receipt["receipt_id"] = "taxable_blind"
+    receipt["image_id"] = "40000000-0000-0000-0000-000000000009"
+    for line in receipt["lines"]:
+        for word in line["words"]:
+            labels = word.get("labels") or []
+            if "LINE_TOTAL" in labels and word["text"].endswith("T"):
+                word["text"] = word["text"][:-1]  # drop the taxable flag
+            if "TAX" in labels:
+                word["text"] = "0.98"
+            if "GRAND_TOTAL" in labels:
+                word["text"] = "13.98"
+    return receipt
+
+
 def _plan():
     return {
         "merchant_name": "Market Mart",
@@ -445,25 +507,27 @@ def test_build_merchant_synthesis_profile_marks_stable_datetime_mutable():
     )
 
 
-def test_build_merchant_synthesis_profile_enables_taxable_edits_with_stable_rate():
+def test_profile_blocks_taxable_edits_for_unvalidated_merchant():
+    """A stable observed rate is NOT enough on its own: an unvalidated merchant
+    is gated out of taxable edits by the receipt-validated tax config."""
     profile = build_merchant_synthesis_profile(
         "Taxable Mart",
         _merchant_receipts_with_taxable_items(),
     )
 
     assert profile is not None
-    # A stable effective tax rate + real taxable items + TAX anchors unlock
-    # taxable item edits (tax recomputed at the rate, loader-validated).
     assert profile["tax_policy"] == {
-        "supported_policy": "taxable_item_delta",
+        "supported_policy": "non_taxable_item_delta",
         "taxable_item_count": 2,
         "non_taxable_item_count": 2,
         "receipts_with_tax_total": 2,
         "receipts_with_taxable_items": 2,
         "tax_rate_observation_count": 2,
         "stable_tax_rate": True,
-        "tax_changing_synthesis_ready": True,
-        "tax_changing_synthesis_blockers": [],
+        "tax_changing_synthesis_ready": False,
+        "tax_changing_synthesis_blockers": [
+            "merchant_not_validated_for_taxable_edits"
+        ],
         "avg_tax_rate": "0.0778",
         "min_tax_rate": "0.0775",
         "max_tax_rate": "0.0780",
@@ -471,6 +535,23 @@ def test_build_merchant_synthesis_profile_enables_taxable_edits_with_stable_rate
     }
     readiness = profile["synthesis_readiness"]
     assert readiness["tax_policy"] == profile["tax_policy"]
+    assert "tax_changing_synthesis_not_enabled" in readiness["limitations"]
+
+
+def test_profile_enables_taxable_edits_for_validated_merchant():
+    """A receipt-validated merchant (Vons) with a matching observed rate unlocks
+    taxable item edits — stable rate AND config clearance both present."""
+    profile = build_merchant_synthesis_profile(
+        "Vons",
+        _validated_taxable_merchant_receipts(),
+    )
+
+    assert profile is not None
+    assert profile["tax_policy"]["supported_policy"] == "taxable_item_delta"
+    assert profile["tax_policy"]["stable_tax_rate"] is True
+    assert profile["tax_policy"]["tax_changing_synthesis_ready"] is True
+    assert profile["tax_policy"]["tax_changing_synthesis_blockers"] == []
+    readiness = profile["synthesis_readiness"]
     assert "tax_changing_synthesis_not_enabled" not in readiness["limitations"]
 
 
@@ -1676,7 +1757,9 @@ def test_compose_online_catalog_does_not_tax_exempt_entries():
     assert Decimal(arithmetic["new_grand_total"]) == Decimal(arithmetic["new_subtotal"])
 
 
-def test_taxable_add_items_are_generated_when_tax_model_ready():
+def test_taxable_add_items_blocked_for_unvalidated_merchant():
+    """Even with a stable observed rate, an unvalidated merchant generates NO
+    taxable adds — the per-merchant tax config is the gate, not rate stability."""
     candidates = generate_merchant_synthesis_candidates(
         {"merchant_name": "Taxable Mart", "recipes": []},
         _merchant_receipts_with_taxable_items(),
@@ -1690,10 +1773,127 @@ def test_taxable_add_items_are_generated_when_tax_model_ready():
         and candidate["metadata"]["added_item"]["taxable"] is True
     ]
 
+    assert taxable_adds == []
+
+
+def test_taxable_add_items_generated_for_validated_merchant():
+    """A receipt-validated merchant (Vons) at its validated rate generates
+    taxable adds, and TAX is recomputed at the snapped validated rate."""
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Vons", "recipes": []},
+        _validated_taxable_merchant_receipts(),
+        max_candidates=6,
+    )
+
+    taxable_adds = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "add_line_item"
+        and candidate["metadata"]["added_item"]["taxable"] is True
+    ]
+
     assert taxable_adds
     arithmetic = taxable_adds[0]["metadata"]["arithmetic_reconciliation"]
     assert arithmetic["summary_update_policy"] == "taxable_item_delta"
-    assert arithmetic["tax_rate"] == "0.0778"
+    # Snapped to Vons' receipt-validated 7.25%, not the noisy observed rate.
+    assert arithmetic["tax_rate"] == "0.0725"
+
+
+def test_taxable_edits_rejected_for_mixed_jurisdiction_batch():
+    """A Target batch mixing NV (8.375%) and CA (9.50%) receipts has receipts
+    that disagree on the validated rate, so NO taxable edit is emitted — the
+    batch median must not be allowed to snap the off-jurisdiction receipt."""
+    receipts = _taxable_merchant_receipts_at_rates(
+        Decimal("0.08375"), Decimal("0.0950")
+    )
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Target", "recipes": []},
+        receipts,
+        max_candidates=6,
+    )
+    taxable_edits = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] in ("add_line_item", "remove_line_item")
+        and (
+            candidate["metadata"].get("added_item")
+            or candidate["metadata"].get("removed_item")
+        ).get("taxable")
+        is True
+    ]
+    assert taxable_edits == []
+
+
+def test_taxable_edits_rejected_when_a_blind_positive_tax_receipt_is_present():
+    """Regression: a positive-TAX receipt whose taxable flag didn't parse is
+    invisible to the rate-observation set. For a multi-jurisdiction merchant it
+    could be a different jurisdiction than the unanimous batch rate, so its
+    presence must block ALL taxable edits — no edit may be applied at a rate the
+    blind receipt can't confirm."""
+    receipts = _taxable_merchant_receipts_at_rates(
+        Decimal("0.0950"), Decimal("0.0950")
+    )
+    receipts.append(_blind_positive_tax_receipt())
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Target", "recipes": []},
+        receipts,
+        max_candidates=8,
+    )
+    taxable_edits = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] in ("add_line_item", "remove_line_item")
+        and (
+            candidate["metadata"].get("added_item")
+            or candidate["metadata"].get("removed_item")
+        ).get("taxable")
+        is True
+    ]
+    assert taxable_edits == []
+
+
+def test_blind_positive_tax_receipt_is_tolerated_for_single_jurisdiction():
+    """A single-rate merchant (Vons) has only one possible jurisdiction, so a
+    blind positive-TAX receipt cannot be a different rate — taxable edits on the
+    observed receipts stay enabled."""
+    receipts = _validated_taxable_merchant_receipts()
+    receipts.append(_blind_positive_tax_receipt())
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Vons", "recipes": []},
+        receipts,
+        max_candidates=8,
+    )
+    taxable_adds = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "add_line_item"
+        and candidate["metadata"]["added_item"]["taxable"] is True
+    ]
+    assert taxable_adds
+
+
+def test_taxable_edits_use_one_rate_for_single_jurisdiction_batch():
+    """A single-jurisdiction Target batch (all CA 9.50%) unlocks taxable edits
+    at that one validated rate."""
+    receipts = _taxable_merchant_receipts_at_rates(
+        Decimal("0.0950"), Decimal("0.0950")
+    )
+    candidates = generate_merchant_synthesis_candidates(
+        {"merchant_name": "Target", "recipes": []},
+        receipts,
+        max_candidates=6,
+    )
+    taxable_adds = [
+        candidate
+        for candidate in candidates
+        if candidate["metadata"]["operation"] == "add_line_item"
+        and candidate["metadata"]["added_item"]["taxable"] is True
+    ]
+    assert taxable_adds
+    assert (
+        taxable_adds[0]["metadata"]["arithmetic_reconciliation"]["tax_rate"]
+        == "0.0950"
+    )
 
 
 def test_taxable_delta_splits_tax_across_multiple_tax_rows():
