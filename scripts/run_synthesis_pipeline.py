@@ -514,7 +514,393 @@ def _effective_training_ready(bundle: dict[str, Any]) -> tuple[bool, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Main orchestrator
+# Single run (one export → combined pipeline → report pass)
+# ---------------------------------------------------------------------------
+
+def run_single(
+    *,
+    merchants: list[str],
+    table_name: str,
+    region: str,
+    base_output_dir: str,
+    max_receipts_per_merchant: int,
+    max_candidates: int,
+    min_grounded_candidate_share: float,
+    min_structure_similarity: float,
+    max_per_merchant: int,
+    max_per_merchant_operation: int,
+    render: bool,
+    research_dir: str | None,
+    print_summary: bool = True,
+) -> dict[str, Any]:
+    """One export → combined pipeline → report pass. Returns the summary dict.
+
+    The dict always carries a ``status`` field: ``ok`` when the pipeline ran and
+    a bundle was read; ``no_receipts`` / ``pipeline_failed`` / ``bundle_read_failed``
+    otherwise. Callers map status (and, for ``ok`` runs, export_failures and
+    training_ready) to an exit code via _exit_code_from_summary.
+    """
+    # --- Phase 1: export every merchant's receipts ---
+    export_stats, receipt_files = export_phase(
+        merchants,
+        table_name=table_name,
+        region=region,
+        base_output_dir=base_output_dir,
+        max_receipts_per_merchant=max_receipts_per_merchant,
+        research_dir=research_dir,
+    )
+    print()
+
+    export_failures = [
+        s["merchant_name"] for s in export_stats if s.get("status") == "export_failed"
+    ]
+    exported_merchant_count = sum(
+        1 for s in export_stats if s.get("status") == "exported"
+    )
+
+    if not receipt_files:
+        print(
+            "ERROR: no receipts exported for any merchant; nothing to synthesise.",
+            file=sys.stderr,
+        )
+        return {
+            "status": "no_receipts",
+            "requested_merchant_count": len(merchants),
+            "exported_merchant_count": 0,
+            "export_failures": export_failures,
+            "export_stats": export_stats,
+            "per_merchant": [],
+        }
+
+    # --- Phase 2: ONE combined local synthesis pipeline over all merchants ---
+    # Mix-balance is a cross-merchant concentration signal, so the proven
+    # backbone runs a single combined bundle rather than one bundle per merchant.
+    # Explicit receipt_files (not whole dirs) ensure only THIS run's exports feed
+    # the bundle, even if a reused dir holds stale files from a prior run.
+    artifact_dir = str(Path(base_output_dir) / "artifacts" / "combined")
+    bundle_path = str(Path(base_output_dir) / "bundles" / "combined.json")
+    print(
+        f"Running combined local synthesis pipeline over "
+        f"{len(receipt_files)} receipt file(s) …"
+    )
+    replay = _import_replay()
+    try:
+        pipeline_result = replay.run_local_synthetic_pipeline(
+            receipt_files=receipt_files,
+            artifact_output_dir=artifact_dir,
+            bundle_output=bundle_path,
+            max_candidates=max_candidates,
+            min_grounded_candidate_share=min_grounded_candidate_share,
+            min_structure_similarity=min_structure_similarity,
+            max_per_merchant=max_per_merchant,
+            max_per_merchant_operation=max_per_merchant_operation,
+        )
+    except Exception as exc:
+        print(f"ERROR: combined pipeline failed: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        return {
+            "status": "pipeline_failed",
+            "requested_merchant_count": len(merchants),
+            "exported_merchant_count": exported_merchant_count,
+            "export_failures": export_failures,
+            "error": str(exc),
+            "per_merchant": [],
+        }
+
+    # --- Phase 3 (Branch 2): render hook over accepted candidates ---
+    render_artifacts: list[str] = []
+    if render:
+        render_dir = str(Path(base_output_dir) / "renders")
+        render_artifacts = _render_accepted_candidates(
+            bundle_path, render_dir, "all-merchants"
+        )
+
+    # --- Load the written bundle once (the authoritative, untruncated source) ---
+    # A read/parse failure here would silently zero out the acceptance signal,
+    # so it fails the run rather than being swallowed.
+    try:
+        bundle = json.loads(Path(bundle_path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(
+            f"ERROR: could not read written bundle {bundle_path!r}: {exc}",
+            file=sys.stderr,
+        )
+        return {
+            "status": "bundle_read_failed",
+            "requested_merchant_count": len(merchants),
+            "exported_merchant_count": exported_merchant_count,
+            "export_failures": export_failures,
+            "bundle_path": bundle_path,
+            "error": str(exc),
+            "per_merchant": [],
+        }
+
+    # --- Build report from the single bundle ---
+    candidate_mix = bundle.get("candidate_mix") or {}
+    mix_balance = candidate_mix.get("accepted_mix_balance") or {}
+    per_merchant = build_per_merchant_report(bundle, export_stats)
+    total_taxable_adds = sum(
+        r.get("taxable_add_count", 0) or 0 for r in per_merchant
+    )
+    total_taxable_missing_rate = sum(
+        r.get("taxable_add_missing_rate_count", 0) or 0 for r in per_merchant
+    )
+    total_failed_images = sum(
+        s.get("failed_image_count", 0) or 0 for s in export_stats
+    )
+    # Readiness is the deterministic gate's verdict — reported, never overridden.
+    # We mirror the loader's training-readiness precedence rather than only the
+    # top-level bundle 'ready', so a bundle the loader would reject is not
+    # reported ready / exited 0.
+    training_ready, training_ready_reasons = _effective_training_ready(bundle)
+
+    # Compact inline per-merchant status.
+    for row in per_merchant:
+        print(
+            f"[{row['merchant_name']}] accepted={row['accepted_count']}  "
+            f"taxable_adds={row['taxable_add_count']}  "
+            f"rates={row['taxable_add_rates']}  export={row['export_status']}"
+        )
+    print()
+
+    summary = {
+        "status": "ok",
+        "requested_merchant_count": len(merchants),
+        "exported_merchant_count": exported_merchant_count,
+        "export_failures": export_failures,
+        "total_failed_images": total_failed_images,
+        # bundle_ready reflects the loader's effective training-readiness gate.
+        "bundle_ready": training_ready,
+        "bundle_reasons": list(bundle.get("reasons") or []),
+        "training_ready": training_ready,
+        "training_ready_reasons": training_ready_reasons,
+        "accepted_count": candidate_mix.get("accepted_count")
+        or mix_balance.get("accepted_count", 0),
+        "accepted_operation_counts": candidate_mix.get("accepted_operation_counts")
+        or {},
+        "mix_balance_risk": mix_balance.get("risk_level", "unknown"),
+        "accepted_mix_balance": mix_balance,
+        "total_taxable_adds": total_taxable_adds,
+        "total_taxable_adds_missing_rate": total_taxable_missing_rate,
+        "source_receipt_quality": bundle.get("source_receipt_quality") or {},
+        "bundle_path": bundle_path,
+        "render_artifacts": render_artifacts,
+        "per_merchant": per_merchant,
+    }
+
+    if print_summary:
+        print("=" * 60)
+        print("CONSOLIDATED SUMMARY")
+        print("=" * 60)
+        _json_print(summary)
+
+    return summary
+
+
+def _exit_code_from_summary(summary: dict[str, Any]) -> int:
+    """Map a run_single summary to an honest process exit code.
+
+    2 = operational failure (export failed / no receipts / pipeline error)
+    3 = ran cleanly but the deterministic gate marked the bundle not
+        training-ready (the orchestrator does not override the gate)
+    0 = ran cleanly and the bundle is training-ready
+    """
+    if summary.get("status") != "ok":
+        return 2
+    if summary.get("export_failures"):
+        print(
+            f"\nWARNING: {len(summary['export_failures'])} merchant(s) failed to "
+            f"export: {summary['export_failures']}",
+            file=sys.stderr,
+        )
+        return 2
+    if not summary.get("training_ready"):
+        print(
+            "\nNOTE: bundle is not training-ready per the deterministic gate "
+            f"(reasons: {summary.get('training_ready_reasons')}). Per-merchant "
+            "evidence and the accepted mix above are still valid for review.",
+            file=sys.stderr,
+        )
+        return 3
+    return 0
+
+
+# Mix-balance risk ordering (lower = safer); used by the coverage loop.
+# "none" is what the producer emits when nothing is accepted yet (no
+# concentration to worry about) — it is the safest rank, so an empty round can
+# still escalate rather than being misread as a concentration hold.
+_RISK_ORDER = {"none": 0, "low": 0, "medium": 1, "high": 2, "unknown": 3}
+
+
+def run_coverage_loop(
+    *,
+    merchants: list[str],
+    table_name: str,
+    region: str,
+    base_output_dir: str,
+    coverage_target: int,
+    max_balance_risk: str,
+    max_coverage_rounds: int,
+    coverage_receipt_step: int,
+    max_receipts_cap: int,
+    initial_max_receipts: int,
+    max_candidates: int,
+    min_grounded_candidate_share: float,
+    min_structure_similarity: float,
+    max_per_merchant: int,
+    max_per_merchant_operation: int,
+    render: bool,
+    research_dir: str | None,
+) -> int:
+    """Agent-style coverage loop over the deterministic single-run pass.
+
+    Each round runs run_single, then evaluates coverage: every requested
+    merchant should reach ``coverage_target`` accepted synthetic rows while the
+    cross-merchant mix-balance risk stays at or below ``max_balance_risk``. If
+    some merchants are under target and risk is acceptable, it escalates the
+    per-merchant receipt budget (more source data) and retries — until targets
+    are met, the budget cap / round cap is hit, a round makes no progress, or
+    risk exceeds the threshold (a concentration hold that more data won't fix).
+
+    The loop never relaxes a gate; it only decides what to run next. Coverage
+    being unmet is reported honestly, not papered over.
+    """
+    allowed_risk_rank = _RISK_ORDER.get(max_balance_risk, 0)
+    # Honor the budget cap from the very first round (the initial budget can be
+    # larger than the cap when the caller sets a big --max-receipts-per-merchant).
+    max_receipts = min(initial_max_receipts, max_receipts_cap)
+    rounds: list[dict[str, Any]] = []
+    final_summary: dict[str, Any] = {}
+    outcome = "rounds_exhausted"
+    prev_under_total: int | None = None
+
+    for round_idx in range(1, max_coverage_rounds + 1):
+        print("#" * 60)
+        print(
+            f"COVERAGE ROUND {round_idx}/{max_coverage_rounds} — "
+            f"max_receipts_per_merchant={max_receipts}, target={coverage_target}/merchant"
+        )
+        print("#" * 60)
+        summary = run_single(
+            merchants=merchants,
+            table_name=table_name,
+            region=region,
+            base_output_dir=base_output_dir,
+            max_receipts_per_merchant=max_receipts,
+            max_candidates=max_candidates,
+            min_grounded_candidate_share=min_grounded_candidate_share,
+            min_structure_similarity=min_structure_similarity,
+            max_per_merchant=max_per_merchant,
+            max_per_merchant_operation=max_per_merchant_operation,
+            render=render,
+            research_dir=research_dir,
+            print_summary=False,
+        )
+        final_summary = summary
+
+        if summary.get("status") != "ok":
+            outcome = f"operational_failure:{summary.get('status')}"
+            rounds.append(
+                {
+                    "round": round_idx,
+                    "max_receipts_per_merchant": max_receipts,
+                    "status": summary.get("status"),
+                }
+            )
+            break
+
+        # A whole-merchant export failure is an operational failure, same as in
+        # single-run mode (exit 2) — surface it rather than letting an unmet
+        # loop report the softer "not satisfied" (3).
+        if summary.get("export_failures"):
+            outcome = "operational_failure:export_failed"
+            rounds.append(
+                {
+                    "round": round_idx,
+                    "max_receipts_per_merchant": max_receipts,
+                    "export_failures": summary.get("export_failures"),
+                }
+            )
+            break
+
+        accepted_by_merchant = {
+            r["merchant_name"]: r.get("accepted_count", 0)
+            for r in summary.get("per_merchant", [])
+        }
+        under = {
+            m: accepted_by_merchant.get(m, 0)
+            for m in merchants
+            if accepted_by_merchant.get(m, 0) < coverage_target
+        }
+        risk = summary.get("mix_balance_risk", "unknown")
+        risk_rank = _RISK_ORDER.get(risk, 3)
+        under_total = sum(coverage_target - v for v in under.values())
+
+        round_record = {
+            "round": round_idx,
+            "max_receipts_per_merchant": max_receipts,
+            "accepted_by_requested_merchant": {
+                m: accepted_by_merchant.get(m, 0) for m in merchants
+            },
+            "under_target": under,
+            "mix_balance_risk": risk,
+            "export_failures": summary.get("export_failures", []),
+        }
+        rounds.append(round_record)
+        print(
+            f"  → round {round_idx}: under_target={under} risk={risk} "
+            f"(allowed≤{max_balance_risk})"
+        )
+
+        if risk_rank > allowed_risk_rank:
+            # A concentration hold: escalating uniformly would add more of the
+            # dominant merchant and not fix balance. Stop and report honestly.
+            outcome = "mix_balance_hold"
+            break
+        if not under:
+            outcome = "coverage_met"
+            break
+        if prev_under_total is not None and under_total >= prev_under_total:
+            # No improvement vs the previous round — more budget isn't helping
+            # (e.g. source receipts exhausted). Stop rather than spin.
+            outcome = "no_progress"
+            break
+        prev_under_total = under_total
+        if max_receipts >= max_receipts_cap:
+            outcome = "receipts_cap_reached"
+            break
+        max_receipts = min(max_receipts + coverage_receipt_step, max_receipts_cap)
+
+    coverage_report = {
+        "mode": "coverage_loop",
+        "coverage_target": coverage_target,
+        "max_balance_risk": max_balance_risk,
+        "outcome": outcome,
+        "rounds_run": len(rounds),
+        "rounds": rounds,
+        "final_summary": final_summary,
+    }
+    print("=" * 60)
+    print("COVERAGE LOOP REPORT")
+    print("=" * 60)
+    _json_print(coverage_report)
+
+    # Exit code: 0 only when coverage met AND the gate says training-ready.
+    if outcome == "coverage_met":
+        return _exit_code_from_summary(final_summary)
+    if outcome.startswith("operational_failure"):
+        return 2
+    # Coverage genuinely not satisfied (hold / no progress / exhausted): 3.
+    print(
+        f"\nNOTE: coverage not satisfied (outcome={outcome}). See the coverage "
+        "report above for per-round evidence.",
+        file=sys.stderr,
+    )
+    return 3
+
+
+# ---------------------------------------------------------------------------
+# Main orchestrator / CLI dispatch
 # ---------------------------------------------------------------------------
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -548,7 +934,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
         )
         return 1
 
-    print(f"Synthesis pipeline — {len(merchants)} merchant(s)")
+    mode = "coverage loop" if args.coverage_target > 0 else "single run"
+    print(f"Synthesis pipeline — {len(merchants)} merchant(s) [{mode}]")
     print(f"  table={table_name}  region={region}")
     print(f"  output_dir={base_output_dir}")
     if args.research_dir:
@@ -557,167 +944,42 @@ def run_pipeline(args: argparse.Namespace) -> int:
         print("  [Branch 2] render=enabled (STUB)")
     print()
 
-    # --- Phase 1: export every merchant's receipts ---
-    export_stats, receipt_files = export_phase(
-        merchants,
-        table_name=table_name,
-        region=region,
-        base_output_dir=base_output_dir,
-        max_receipts_per_merchant=args.max_receipts_per_merchant,
-        research_dir=args.research_dir,
-    )
-    print()
-
-    export_failures = [
-        s["merchant_name"] for s in export_stats if s.get("status") == "export_failed"
-    ]
-    exported_merchant_count = sum(
-        1 for s in export_stats if s.get("status") == "exported"
-    )
-
-    if not receipt_files:
-        print(
-            "ERROR: no receipts exported for any merchant; nothing to synthesise.",
-            file=sys.stderr,
-        )
-        _json_print(
-            {
-                "requested_merchant_count": len(merchants),
-                "exported_merchant_count": 0,
-                "export_failures": export_failures,
-                "export_stats": export_stats,
-            }
-        )
-        return 2
-
-    # --- Phase 2: ONE combined local synthesis pipeline over all merchants ---
-    # Mix-balance is a cross-merchant concentration signal, so the proven
-    # backbone runs a single combined bundle rather than one bundle per merchant.
-    # Explicit receipt_files (not whole dirs) ensure only THIS run's exports feed
-    # the bundle, even if a reused dir holds stale files from a prior run.
-    artifact_dir = str(Path(base_output_dir) / "artifacts" / "combined")
-    bundle_path = str(Path(base_output_dir) / "bundles" / "combined.json")
-    print(
-        f"Running combined local synthesis pipeline over "
-        f"{len(receipt_files)} receipt file(s) …"
-    )
-    replay = _import_replay()
-    try:
-        pipeline_result = replay.run_local_synthetic_pipeline(
-            receipt_files=receipt_files,
-            artifact_output_dir=artifact_dir,
-            bundle_output=bundle_path,
+    if args.coverage_target > 0:
+        return run_coverage_loop(
+            merchants=merchants,
+            table_name=table_name,
+            region=region,
+            base_output_dir=base_output_dir,
+            coverage_target=args.coverage_target,
+            max_balance_risk=args.max_balance_risk,
+            max_coverage_rounds=args.max_coverage_rounds,
+            coverage_receipt_step=args.coverage_receipt_step,
+            max_receipts_cap=args.max_receipts_cap,
+            initial_max_receipts=args.max_receipts_per_merchant,
             max_candidates=args.max_candidates,
             min_grounded_candidate_share=args.min_grounded_candidate_share,
             min_structure_similarity=args.min_structure_similarity,
             max_per_merchant=args.max_per_merchant,
             max_per_merchant_operation=args.max_per_merchant_operation,
-        )
-    except Exception as exc:
-        print(f"ERROR: combined pipeline failed: {exc}", file=sys.stderr)
-        traceback.print_exc()
-        return 2
-
-    # --- Phase 3 (Branch 2): render hook over accepted candidates ---
-    render_artifacts: list[str] = []
-    if args.render:
-        render_dir = str(Path(base_output_dir) / "renders")
-        render_artifacts = _render_accepted_candidates(
-            bundle_path, render_dir, "all-merchants"
+            render=args.render,
+            research_dir=args.research_dir,
         )
 
-    # --- Load the written bundle once (the authoritative, untruncated source) ---
-    # A read/parse failure here would silently zero out the acceptance signal,
-    # so it fails the run rather than being swallowed.
-    try:
-        bundle = json.loads(Path(bundle_path).read_text(encoding="utf-8"))
-    except Exception as exc:
-        print(
-            f"ERROR: could not read written bundle {bundle_path!r}: {exc}",
-            file=sys.stderr,
-        )
-        return 2
-
-    # --- Build report from the single bundle ---
-    candidate_mix = bundle.get("candidate_mix") or {}
-    mix_balance = candidate_mix.get("accepted_mix_balance") or {}
-    per_merchant = build_per_merchant_report(bundle, export_stats)
-    total_taxable_adds = sum(
-        r.get("taxable_add_count", 0) or 0 for r in per_merchant
+    summary = run_single(
+        merchants=merchants,
+        table_name=table_name,
+        region=region,
+        base_output_dir=base_output_dir,
+        max_receipts_per_merchant=args.max_receipts_per_merchant,
+        max_candidates=args.max_candidates,
+        min_grounded_candidate_share=args.min_grounded_candidate_share,
+        min_structure_similarity=args.min_structure_similarity,
+        max_per_merchant=args.max_per_merchant,
+        max_per_merchant_operation=args.max_per_merchant_operation,
+        render=args.render,
+        research_dir=args.research_dir,
     )
-    total_taxable_missing_rate = sum(
-        r.get("taxable_add_missing_rate_count", 0) or 0 for r in per_merchant
-    )
-    total_failed_images = sum(
-        s.get("failed_image_count", 0) or 0 for s in export_stats
-    )
-    # Readiness is the deterministic gate's verdict — reported, never overridden.
-    # We mirror the loader's training-readiness precedence rather than only the
-    # top-level bundle 'ready', so a bundle the loader would reject is not
-    # reported ready / exited 0.
-    training_ready, training_ready_reasons = _effective_training_ready(bundle)
-
-    # Compact inline per-merchant status.
-    for row in per_merchant:
-        print(
-            f"[{row['merchant_name']}] accepted={row['accepted_count']}  "
-            f"taxable_adds={row['taxable_add_count']}  "
-            f"rates={row['taxable_add_rates']}  export={row['export_status']}"
-        )
-    print()
-
-    summary = {
-        "requested_merchant_count": len(merchants),
-        "exported_merchant_count": exported_merchant_count,
-        "export_failures": export_failures,
-        "total_failed_images": total_failed_images,
-        # bundle_ready reflects the loader's effective training-readiness gate.
-        "bundle_ready": training_ready,
-        "bundle_reasons": list(bundle.get("reasons") or []),
-        "training_ready": training_ready,
-        "training_ready_reasons": training_ready_reasons,
-        "accepted_count": candidate_mix.get("accepted_count")
-        or mix_balance.get("accepted_count", 0),
-        "accepted_operation_counts": candidate_mix.get("accepted_operation_counts")
-        or {},
-        "mix_balance_risk": mix_balance.get("risk_level", "unknown"),
-        "accepted_mix_balance": mix_balance,
-        "total_taxable_adds": total_taxable_adds,
-        "total_taxable_adds_missing_rate": total_taxable_missing_rate,
-        "source_receipt_quality": bundle.get("source_receipt_quality") or {},
-        "bundle_path": bundle_path,
-        "render_artifacts": render_artifacts,
-        "per_merchant": per_merchant,
-    }
-
-    print("=" * 60)
-    print("CONSOLIDATED SUMMARY")
-    print("=" * 60)
-    _json_print(summary)
-
-    # Exit codes are honest about what happened:
-    #   2 = operational failure (a whole-merchant export failed)
-    #   3 = ran cleanly but the deterministic gate marked the bundle not
-    #       training-ready (the orchestrator does not override the gate)
-    #   0 = ran cleanly and the bundle is training-ready
-    if export_failures:
-        print(
-            f"\nWARNING: {len(export_failures)} merchant(s) failed to export: "
-            f"{export_failures}",
-            file=sys.stderr,
-        )
-        return 2
-
-    if not training_ready:
-        print(
-            "\nNOTE: bundle is not training-ready per the deterministic gate "
-            f"(reasons: {training_ready_reasons}). Per-merchant evidence and "
-            "the accepted mix above are still valid for review.",
-            file=sys.stderr,
-        )
-        return 3
-
-    return 0
+    return _exit_code_from_summary(summary)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -802,6 +1064,41 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="[Branch 2] Emit QA render images per accepted candidate (STUB)",
+    )
+    # Coverage-loop mode (agent-style: retry + escalate until targets met)
+    cov = p.add_argument_group("coverage loop (set --coverage-target > 0 to enable)")
+    cov.add_argument(
+        "--coverage-target",
+        type=int,
+        default=0,
+        help=(
+            "Min accepted synthetic rows required per requested merchant. "
+            ">0 enables the coverage loop (escalate receipts + retry until met)."
+        ),
+    )
+    cov.add_argument(
+        "--max-balance-risk",
+        choices=["low", "medium", "high"],
+        default="low",
+        help="Max acceptable cross-merchant mix-balance risk (coverage loop)",
+    )
+    cov.add_argument(
+        "--max-coverage-rounds",
+        type=int,
+        default=4,
+        help="Max coverage-loop rounds before stopping",
+    )
+    cov.add_argument(
+        "--coverage-receipt-step",
+        type=int,
+        default=25,
+        help="Per-merchant receipt budget increase between coverage rounds",
+    )
+    cov.add_argument(
+        "--max-receipts-cap",
+        type=int,
+        default=200,
+        help="Upper bound on per-merchant receipt budget during the coverage loop",
     )
     return p
 
