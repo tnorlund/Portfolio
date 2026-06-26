@@ -22,6 +22,9 @@ from receipt_dynamo.data._label_count_cache import _LabelCountCache
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
 from receipt_dynamo.data._ocr_job import _OCRJob
+from receipt_dynamo.data._synthetic_training_set import (
+    _SyntheticTrainingSet,
+)
 from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
@@ -110,6 +113,7 @@ class DynamoClient(
     _ReceiptPlace,
     _CompletionBatchResult,
     _OCRJob,
+    _SyntheticTrainingSet,
     _ReceiptSection,
     _OCRRoutingDecision,
     _AIUsageMetric,

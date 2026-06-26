@@ -327,3 +327,7 @@ __all__ = [
     "ContentPattern",
     "SpatialPattern",
 ]
+from receipt_dynamo.entities.synthetic_training_set import (
+    SyntheticTrainingSet,
+    item_to_synthetic_training_set,
+)
