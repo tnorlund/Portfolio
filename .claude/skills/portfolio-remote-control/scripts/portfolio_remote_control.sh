@@ -192,6 +192,8 @@ EOF
 }
 
 start_screens() {
+  # Mission is optional: launch passes it (positional prompt); start passes nothing.
+  local mission="${1:-}"
   require_prereqs
   mkdir -p "$BASE_DIR" "$ATTACH_DIR"
 
@@ -202,10 +204,12 @@ start_screens() {
     write_attacher "$label" "$screen_name"
 
     echo "Starting $label in $screen_name..."
+    local mission_arg=""
+    [[ -n "$mission" ]] && mission_arg=" $(quote_arg "$mission")"
     (
       cd "$workdir"
       /usr/bin/screen -L -dmS "$screen_name" /bin/bash -lc \
-        "cd $(quote_arg "$worktree") && exec $(quote_arg "$CLAUDE_BIN") --permission-mode bypassPermissions --remote-control $(quote_arg "$session_name") $(quote_arg "$MISSION_PROMPT")"
+        "cd $(quote_arg "$worktree") && exec $(quote_arg "$CLAUDE_BIN") --permission-mode bypassPermissions --remote-control $(quote_arg "$session_name")$mission_arg"
     )
     sleep 1
   done < <(entries)
@@ -464,20 +468,16 @@ case "$command" in
     require_prereqs
     cleanup_targets
     check_push_auth || echo "  (continuing launch; fix push auth before the agents try to push)" >&2
-    start_screens
+    start_screens "$MISSION_PROMPT"
     ensure_caffeinate
     open_attachers
     echo
     echo "Each session started with its mission pre-loaded as a positional prompt."
-    echo "Accept the bypass-permissions prompt in each Terminal (Down -> 'Yes, I accept' -> Enter)"
+    echo "Accept the bypass-permissions prompt in each Terminal: press 2 (Yes, I accept), then Enter."
     echo "to begin; the mission runs automatically on accept. This one human accept per agent is the"
     echo "deliberate checkpoint for starting an autonomous bypass-permissions session."
     echo
-    status_failed=0
-    status || status_failed=1
-    if [[ "$status_failed" -ne 0 ]]; then
-      exit 1
-    fi
+    status || true   # informational at launch; sessions are not accepted yet
     ;;
   start)
     require_prereqs
