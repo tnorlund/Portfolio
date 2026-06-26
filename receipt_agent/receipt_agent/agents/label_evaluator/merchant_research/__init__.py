@@ -21,6 +21,14 @@ Public surface
 """
 
 from .loader import artifact_tax_profile, load_merchant_intelligence
+from .research import (
+    PlacesEvidence,
+    ReceiptEvidence,
+    TaxRecommendation,
+    WebEvidence,
+    assemble_merchant_intelligence,
+    recommend_taxable_support,
+)
 from .schema import (
     CatalogEntry,
     MerchantDetails,
@@ -30,9 +38,15 @@ from .schema import (
 
 __all__ = [
     "artifact_tax_profile",
+    "assemble_merchant_intelligence",
     "CatalogEntry",
     "load_merchant_intelligence",
     "MerchantDetails",
     "MerchantIntelligence",
+    "PlacesEvidence",
+    "ReceiptEvidence",
+    "recommend_taxable_support",
     "TaxArtifact",
+    "TaxRecommendation",
+    "WebEvidence",
 ]
