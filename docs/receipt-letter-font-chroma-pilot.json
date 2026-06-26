@@ -1,0 +1,1001 @@
+{
+  "cluster_summaries": [
+    {
+      "avg_box_height": 0.03546,
+      "avg_edge_density": 0.31982,
+      "avg_ink_ratio": 0.15043,
+      "cluster_id": 1,
+      "label": "large wide medium",
+      "normalized_chars": [
+        "e",
+        "a",
+        "*",
+        "0",
+        "o",
+        "t",
+        "r",
+        "i",
+        "n",
+        "s",
+        "1",
+        "."
+      ],
+      "sample_count": 5425,
+      "sections": {
+        "body_other": 2450,
+        "footer": 1032,
+        "header": 944,
+        "line_items": 222,
+        "totals_payments": 777
+      }
+    },
+    {
+      "avg_box_height": 0.01069,
+      "avg_edge_density": 0.21217,
+      "avg_ink_ratio": 0.10302,
+      "cluster_id": 6,
+      "label": "small wide medium",
+      "normalized_chars": [
+        "d",
+        "a",
+        "e",
+        "D",
+        "A",
+        "p",
+        "r",
+        "0",
+        "R",
+        "g",
+        "o",
+        "#"
+      ],
+      "sample_count": 56,
+      "sections": {
+        "body_other": 29,
+        "footer": 14,
+        "header": 8,
+        "totals_payments": 5
+      }
+    },
+    {
+      "avg_box_height": 0.01067,
+      "avg_edge_density": 0.19253,
+      "avg_ink_ratio": 0.08636,
+      "cluster_id": 7,
+      "label": "small wide light",
+      "normalized_chars": [
+        "T",
+        "l",
+        "I",
+        "t",
+        ",",
+        "C",
+        "f",
+        "A",
+        "F",
+        "(",
+        "1",
+        "3"
+      ],
+      "sample_count": 46,
+      "sections": {
+        "body_other": 23,
+        "footer": 10,
+        "header": 5,
+        "totals_payments": 8
+      }
+    },
+    {
+      "avg_box_height": 0.00943,
+      "avg_edge_density": 0.59666,
+      "avg_ink_ratio": 0.17523,
+      "cluster_id": 3,
+      "label": "small wide dark",
+      "normalized_chars": [
+        "*",
+        "4"
+      ],
+      "sample_count": 30,
+      "sections": {
+        "body_other": 22,
+        "footer": 8
+      }
+    },
+    {
+      "avg_box_height": 0.02041,
+      "avg_edge_density": 0.22271,
+      "avg_ink_ratio": 0.12046,
+      "cluster_id": 8,
+      "label": "regular wide medium",
+      "normalized_chars": [
+        "d",
+        "e",
+        "4",
+        "A",
+        "E",
+        "R",
+        "b",
+        "g"
+      ],
+      "sample_count": 10,
+      "sections": {
+        "body_other": 5,
+        "footer": 2,
+        "header": 1,
+        "totals_payments": 2
+      }
+    },
+    {
+      "avg_box_height": 0.0093,
+      "avg_edge_density": 0.58715,
+      "avg_ink_ratio": 0.16785,
+      "cluster_id": 4,
+      "label": "small wide dark",
+      "normalized_chars": [
+        "*",
+        "4"
+      ],
+      "sample_count": 8,
+      "sections": {
+        "body_other": 6,
+        "footer": 2
+      }
+    },
+    {
+      "avg_box_height": 0.01096,
+      "avg_edge_density": 0.29478,
+      "avg_ink_ratio": 0.18185,
+      "cluster_id": 5,
+      "label": "small wide medium",
+      "normalized_chars": [
+        "e",
+        "g",
+        "8",
+        "B",
+        "p"
+      ],
+      "sample_count": 8,
+      "sections": {
+        "body_other": 5,
+        "footer": 3
+      }
+    },
+    {
+      "avg_box_height": 0.0228,
+      "avg_edge_density": 0.27804,
+      "avg_ink_ratio": 0.16459,
+      "cluster_id": 2,
+      "label": "regular wide medium",
+      "normalized_chars": [
+        "e",
+        "9",
+        "g",
+        "h",
+        "o"
+      ],
+      "sample_count": 6,
+      "sections": {
+        "body_other": 2,
+        "footer": 2,
+        "line_items": 1,
+        "totals_payments": 1
+      }
+    }
+  ],
+  "errors": [],
+  "line_cluster_summaries": [
+    {
+      "avg_dominant_letter_cluster_ratio": 0.93151,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.16621,
+      "avg_letter_height": 0.04746,
+      "avg_line_height": 0.07845,
+      "cluster_id": 9,
+      "label": "large-line wide medium tight",
+      "line_count": 202,
+      "sections": {
+        "body_other": 94,
+        "footer": 32,
+        "header": 32,
+        "line_items": 9,
+        "totals_payments": 35
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.65042,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.12759,
+      "avg_letter_height": 0.01942,
+      "avg_line_height": 0.0215,
+      "cluster_id": 2,
+      "label": "regular-line wide medium tight",
+      "line_count": 38,
+      "sections": {
+        "body_other": 20,
+        "footer": 4,
+        "header": 3,
+        "line_items": 4,
+        "totals_payments": 7
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.66003,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.11015,
+      "avg_letter_height": 0.01057,
+      "avg_line_height": 0.01059,
+      "cluster_id": 3,
+      "label": "small-line wide medium tight",
+      "line_count": 8,
+      "sections": {
+        "body_other": 5,
+        "footer": 2,
+        "header": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.97,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.10318,
+      "avg_letter_height": 0.01044,
+      "avg_line_height": 0.01044,
+      "cluster_id": 20,
+      "label": "small-line wide medium tight",
+      "line_count": 5,
+      "sections": {
+        "footer": 5
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 1.0,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.11818,
+      "avg_letter_height": 0.01792,
+      "avg_line_height": 0.01792,
+      "cluster_id": 6,
+      "label": "regular-line wide medium tight",
+      "line_count": 3,
+      "sections": {
+        "line_items": 3
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.62222,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.14913,
+      "avg_letter_height": 0.01505,
+      "avg_line_height": 0.01689,
+      "cluster_id": 13,
+      "label": "regular-line wide medium tight",
+      "line_count": 3,
+      "sections": {
+        "body_other": 3
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.74074,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.05032,
+      "avg_letter_height": 0.0589,
+      "avg_line_height": 0.07024,
+      "cluster_id": 17,
+      "label": "large-line normal light tight",
+      "line_count": 3,
+      "sections": {
+        "body_other": 1,
+        "totals_payments": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.87202,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.13103,
+      "avg_letter_height": 0.029,
+      "avg_line_height": 0.037,
+      "cluster_id": 24,
+      "label": "regular-line normal medium tight",
+      "line_count": 3,
+      "sections": {
+        "body_other": 2,
+        "header": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.875,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15616,
+      "avg_letter_height": 0.05339,
+      "avg_line_height": 0.05339,
+      "cluster_id": 1,
+      "label": "large-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "header": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.8125,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.12701,
+      "avg_letter_height": 0.01601,
+      "avg_line_height": 0.01601,
+      "cluster_id": 4,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "totals_payments": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.7,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.11786,
+      "avg_letter_height": 0.01582,
+      "avg_line_height": 0.01582,
+      "cluster_id": 5,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "totals_payments": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.96875,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.11072,
+      "avg_letter_height": 0.0119,
+      "avg_line_height": 0.01198,
+      "cluster_id": 7,
+      "label": "small-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.94077,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.12815,
+      "avg_letter_height": 0.01083,
+      "avg_line_height": 0.01083,
+      "cluster_id": 8,
+      "label": "small-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.96667,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.14769,
+      "avg_letter_height": 0.02448,
+      "avg_line_height": 0.03432,
+      "cluster_id": 10,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 1,
+        "header": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.9,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.12175,
+      "avg_letter_height": 0.02153,
+      "avg_line_height": 0.02196,
+      "cluster_id": 11,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "line_items": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.50505,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.23522,
+      "avg_letter_height": 0.01231,
+      "avg_line_height": 0.01273,
+      "cluster_id": 12,
+      "label": "small-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 1,
+        "line_items": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.80808,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.23305,
+      "avg_letter_height": 0.01415,
+      "avg_line_height": 0.01776,
+      "cluster_id": 14,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 1,
+        "totals_payments": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.55556,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15405,
+      "avg_letter_height": 0.0093,
+      "avg_line_height": 0.00994,
+      "cluster_id": 15,
+      "label": "small-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 2
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.29167,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.18255,
+      "avg_letter_height": 0.01024,
+      "avg_line_height": 0.01072,
+      "cluster_id": 16,
+      "label": "small-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "body_other": 1,
+        "footer": 1
+      }
+    },
+    {
+      "avg_dominant_letter_cluster_ratio": 0.83333,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.11455,
+      "avg_letter_height": 0.01544,
+      "avg_line_height": 0.01548,
+      "cluster_id": 18,
+      "label": "regular-line wide medium tight",
+      "line_count": 2,
+      "sections": {
+        "header": 2
+      }
+    }
+  ],
+  "line_eps_sweep": [
+    {
+      "assigned_lines": 125,
+      "clusters": 10,
+      "eps": 0.58,
+      "median_clusters_per_receipt": 2,
+      "noise_lines": 401,
+      "noise_rate": 0.7623574144486692,
+      "section_purity": 0.584
+    },
+    {
+      "assigned_lines": 176,
+      "clusters": 13,
+      "eps": 0.7,
+      "median_clusters_per_receipt": 2.0,
+      "noise_lines": 350,
+      "noise_rate": 0.6653992395437263,
+      "section_purity": 0.5909090909090909
+    },
+    {
+      "assigned_lines": 299,
+      "clusters": 25,
+      "eps": 0.85,
+      "median_clusters_per_receipt": 4.5,
+      "noise_lines": 227,
+      "noise_rate": 0.43155893536121676,
+      "section_purity": 0.5451505016722408
+    },
+    {
+      "assigned_lines": 431,
+      "clusters": 11,
+      "eps": 1.0,
+      "median_clusters_per_receipt": 1.5,
+      "noise_lines": 95,
+      "noise_rate": 0.1806083650190114,
+      "section_purity": 0.4756380510440835
+    }
+  ],
+  "line_section_summaries": [
+    {
+      "assigned_lines": 138,
+      "avg_dominant_letter_cluster_ratio": 0.85824,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15127,
+      "avg_letter_height": 0.04256,
+      "avg_line_height": 0.0657,
+      "dominant_cluster_share": 0.6811594202898551,
+      "section": "body_other",
+      "top_cluster_ids": {
+        "13": 3,
+        "15": 2,
+        "19": 2,
+        "2": 20,
+        "3": 5,
+        "7": 2,
+        "8": 2,
+        "9": 94
+      },
+      "top_cluster_labels": {
+        "large-line normal light tight": 1,
+        "large-line wide medium tight": 94,
+        "regular-line normal medium tight": 3,
+        "regular-line wide medium tight": 27,
+        "small-line wide medium tight": 13
+      }
+    },
+    {
+      "assigned_lines": 49,
+      "avg_dominant_letter_cluster_ratio": 0.87286,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15117,
+      "avg_letter_height": 0.03068,
+      "avg_line_height": 0.0508,
+      "dominant_cluster_share": 0.7142857142857143,
+      "section": "totals_payments",
+      "top_cluster_ids": {
+        "14": 1,
+        "17": 2,
+        "2": 7,
+        "4": 2,
+        "5": 2,
+        "9": 35
+      },
+      "top_cluster_labels": {
+        "large-line normal light tight": 2,
+        "large-line wide medium tight": 35,
+        "regular-line wide medium tight": 12
+      }
+    },
+    {
+      "assigned_lines": 49,
+      "avg_dominant_letter_cluster_ratio": 0.87547,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15323,
+      "avg_letter_height": 0.03486,
+      "avg_line_height": 0.05165,
+      "dominant_cluster_share": 0.6530612244897959,
+      "section": "footer",
+      "top_cluster_ids": {
+        "16": 1,
+        "2": 4,
+        "20": 5,
+        "21": 2,
+        "22": 2,
+        "25": 1,
+        "3": 2,
+        "9": 32
+      },
+      "top_cluster_labels": {
+        "large-line wide medium tight": 32,
+        "regular-line normal medium tight": 1,
+        "regular-line wide medium tight": 8,
+        "small-line wide medium tight": 8
+      }
+    },
+    {
+      "assigned_lines": 42,
+      "avg_dominant_letter_cluster_ratio": 0.87291,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.16593,
+      "avg_letter_height": 0.04532,
+      "avg_line_height": 0.07974,
+      "dominant_cluster_share": 0.7619047619047619,
+      "section": "header",
+      "top_cluster_ids": {
+        "1": 2,
+        "10": 1,
+        "18": 2,
+        "2": 3,
+        "24": 1,
+        "3": 1,
+        "9": 32
+      },
+      "top_cluster_labels": {
+        "large-line wide medium tight": 34,
+        "regular-line normal medium tight": 1,
+        "regular-line wide medium tight": 6,
+        "small-line wide medium tight": 1
+      }
+    },
+    {
+      "assigned_lines": 21,
+      "avg_dominant_letter_cluster_ratio": 0.85357,
+      "avg_gap_to_height_ratio": 0.0,
+      "avg_ink_ratio": 0.15162,
+      "avg_letter_height": 0.02238,
+      "avg_line_height": 0.02318,
+      "dominant_cluster_share": 0.42857142857142855,
+      "section": "line_items",
+      "top_cluster_ids": {
+        "11": 2,
+        "12": 1,
+        "2": 4,
+        "23": 2,
+        "6": 3,
+        "9": 9
+      },
+      "top_cluster_labels": {
+        "large-line wide medium tight": 9,
+        "regular-line normal medium tight": 2,
+        "regular-line wide medium tight": 9,
+        "small-line wide medium tight": 1
+      }
+    }
+  ],
+  "receipt_summaries": [
+    {
+      "embedded_letter_count": 258,
+      "image_size": [
+        405,
+        666
+      ],
+      "letter_count": 258,
+      "line_count": 28,
+      "receipt_index": 1,
+      "word_count": 57
+    },
+    {
+      "embedded_letter_count": 459,
+      "image_size": [
+        883,
+        1120
+      ],
+      "letter_count": 462,
+      "line_count": 57,
+      "receipt_index": 2,
+      "word_count": 86
+    },
+    {
+      "embedded_letter_count": 392,
+      "image_size": [
+        771,
+        1002
+      ],
+      "letter_count": 392,
+      "line_count": 35,
+      "receipt_index": 3,
+      "word_count": 80
+    },
+    {
+      "embedded_letter_count": 292,
+      "image_size": [
+        656,
+        980
+      ],
+      "letter_count": 292,
+      "line_count": 34,
+      "receipt_index": 4,
+      "word_count": 60
+    },
+    {
+      "embedded_letter_count": 556,
+      "image_size": [
+        407,
+        923
+      ],
+      "letter_count": 556,
+      "line_count": 43,
+      "receipt_index": 5,
+      "word_count": 85
+    },
+    {
+      "embedded_letter_count": 1260,
+      "image_size": [
+        634,
+        1081
+      ],
+      "letter_count": 1260,
+      "line_count": 83,
+      "receipt_index": 6,
+      "word_count": 217
+    },
+    {
+      "embedded_letter_count": 302,
+      "image_size": [
+        768,
+        879
+      ],
+      "letter_count": 302,
+      "line_count": 18,
+      "receipt_index": 7,
+      "word_count": 65
+    },
+    {
+      "embedded_letter_count": 681,
+      "image_size": [
+        849,
+        2297
+      ],
+      "letter_count": 681,
+      "line_count": 59,
+      "receipt_index": 8,
+      "word_count": 105
+    },
+    {
+      "embedded_letter_count": 468,
+      "image_size": [
+        881,
+        2378
+      ],
+      "letter_count": 468,
+      "line_count": 56,
+      "receipt_index": 9,
+      "word_count": 75
+    },
+    {
+      "embedded_letter_count": 396,
+      "image_size": [
+        830,
+        993
+      ],
+      "letter_count": 396,
+      "line_count": 26,
+      "receipt_index": 10,
+      "word_count": 81
+    },
+    {
+      "embedded_letter_count": 834,
+      "image_size": [
+        837,
+        3705
+      ],
+      "letter_count": 846,
+      "line_count": 73,
+      "receipt_index": 11,
+      "word_count": 152
+    },
+    {
+      "embedded_letter_count": 607,
+      "image_size": [
+        844,
+        1845
+      ],
+      "letter_count": 619,
+      "line_count": 51,
+      "receipt_index": 12,
+      "word_count": 113
+    }
+  ],
+  "section_summaries": [
+    {
+      "assigned_samples": 2542,
+      "avg_box_aspect": 1.1505,
+      "avg_box_height": 0.03612,
+      "avg_edge_density": 0.32808,
+      "avg_ink_ratio": 0.15523,
+      "section": "body_other",
+      "top_cluster_labels": {
+        "large wide medium": 2450,
+        "regular wide medium": 7,
+        "small wide dark": 28,
+        "small wide light": 23,
+        "small wide medium": 34
+      }
+    },
+    {
+      "assigned_samples": 1073,
+      "avg_box_aspect": 1.23311,
+      "avg_box_height": 0.02847,
+      "avg_edge_density": 0.3125,
+      "avg_ink_ratio": 0.14529,
+      "section": "footer",
+      "top_cluster_labels": {
+        "large wide medium": 1032,
+        "regular wide medium": 4,
+        "small wide dark": 10,
+        "small wide light": 10,
+        "small wide medium": 17
+      }
+    },
+    {
+      "assigned_samples": 958,
+      "avg_box_aspect": 1.00033,
+      "avg_box_height": 0.04218,
+      "avg_edge_density": 0.29245,
+      "avg_ink_ratio": 0.13546,
+      "section": "header",
+      "top_cluster_labels": {
+        "large wide medium": 944,
+        "regular wide medium": 1,
+        "small wide light": 5,
+        "small wide medium": 8
+      }
+    },
+    {
+      "assigned_samples": 793,
+      "avg_box_aspect": 0.9378,
+      "avg_box_height": 0.0331,
+      "avg_edge_density": 0.33216,
+      "avg_ink_ratio": 0.15508,
+      "section": "totals_payments",
+      "top_cluster_labels": {
+        "large wide medium": 777,
+        "regular wide medium": 3,
+        "small wide light": 8,
+        "small wide medium": 5
+      }
+    },
+    {
+      "assigned_samples": 223,
+      "avg_box_aspect": 1.03388,
+      "avg_box_height": 0.02348,
+      "avg_edge_density": 0.32165,
+      "avg_ink_ratio": 0.14731,
+      "section": "line_items",
+      "top_cluster_labels": {
+        "large wide medium": 222,
+        "regular wide medium": 1
+      }
+    }
+  ],
+  "summary": {
+    "analysed_receipts": 12,
+    "assigned_letters": 5589,
+    "assigned_lines": 299,
+    "chroma_count": 6505,
+    "collection_name": "letter_font_glyphs",
+    "common_ocr_chars": {
+      "*": 377,
+      "0": 335,
+      "1": 157,
+      "2": 131,
+      "A": 136,
+      "T": 140,
+      "a": 334,
+      "e": 360,
+      "i": 197,
+      "l": 132,
+      "n": 187,
+      "o": 246,
+      "r": 218,
+      "s": 179,
+      "t": 238
+    },
+    "embedded_letters": 6505,
+    "embedded_lines": 526,
+    "eps": 0.15,
+    "errors": 0,
+    "letter_cluster_section_purity": 0.4548219717301843,
+    "line_cluster_section_purity": 0.5451505016722408,
+    "line_eps": 0.85,
+    "line_min_samples": 2,
+    "line_style_clusters": 25,
+    "line_vector_dim": 884,
+    "median_clusters_per_receipt": 1.0,
+    "median_letters_per_receipt": 463.5,
+    "median_line_clusters_per_receipt": 4.5,
+    "metrics_per_letter": 64,
+    "metrics_per_line": 218,
+    "min_letters_per_line": 3,
+    "min_samples": 5,
+    "neighbor_quality": {
+      "checked": 200,
+      "examples": [
+        {
+          "neighbors": [
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "line_items"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "footer"
+            }
+          ],
+          "query_char": "T",
+          "query_cluster": 1
+        },
+        {
+          "neighbors": [
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "footer"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "footer"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "totals_payments"
+            }
+          ],
+          "query_char": "a",
+          "query_cluster": 1
+        },
+        {
+          "neighbors": [
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "line_items"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            }
+          ],
+          "query_char": "6",
+          "query_cluster": 1
+        },
+        {
+          "neighbors": [
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            }
+          ],
+          "query_char": ",",
+          "query_cluster": 1
+        },
+        {
+          "neighbors": [
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "header"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "totals_payments"
+            },
+            {
+              "cluster": 1,
+              "label": "large wide medium",
+              "section": "body_other"
+            }
+          ],
+          "query_char": "2",
+          "query_cluster": 1
+        }
+      ],
+      "same_char_neighbor_found": 200,
+      "top1_same_cluster_rate": 0.97,
+      "top3_any_same_cluster_rate": 0.995
+    },
+    "noise_letters": 916,
+    "noise_line_rate": 0.43155893536121676,
+    "noise_lines": 227,
+    "noise_rate": 0.14081475787855496,
+    "persist_dir": "/tmp/receipt-letter-font-chroma-pilot-rich",
+    "raw_ok_candidates": 48,
+    "raw_vector_dim": 316,
+    "receipt_limit": 12,
+    "receipts_seen": 645,
+    "style_clusters": 8,
+    "style_vector_dim": 333,
+    "table": "redacted"
+  }
+}
