@@ -487,10 +487,11 @@ def _cmd_approve(args: argparse.Namespace) -> None:
         approved_by=args.by,
         approved_at=args.at or _now_iso(),
         note=args.note or "",
+        kind=args.kind,
     )
     print(
-        f"recorded approval for {entry['slug']} "
-        f"(tax_hash={entry['tax_hash'][:12]}…) by {entry['approved_by']}"
+        f"recorded {entry['kind']} approval for {entry['slug']} "
+        f"(hash={entry['content_hash'][:12]}…) by {entry['approved_by']}"
     )
 
 
@@ -527,6 +528,10 @@ def _main() -> None:
     )
     p_appr.add_argument("slug", help="merchant slug to approve")
     p_appr.add_argument("--by", required=True, help="approver identity")
+    p_appr.add_argument(
+        "--kind", choices=("tax", "structure"), default="tax",
+        help="which block to sign off (default: tax)",
+    )
     p_appr.add_argument("--at", default="", help="ISO timestamp (default: now, UTC)")
     p_appr.add_argument("--note", default="", help="optional review note")
     p_appr.set_defaults(func=_cmd_approve)

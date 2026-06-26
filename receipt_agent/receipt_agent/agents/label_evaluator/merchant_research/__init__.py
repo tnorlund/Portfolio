@@ -43,6 +43,7 @@ from .structure import (
     ArchetypeCluster,
     MerchantStructure,
     StructureFingerprint,
+    archetype_mix_hash,
     classify_archetype,
     cluster_fingerprints,
     fingerprint_from_labeled_words,
@@ -66,6 +67,7 @@ from .schema import (
 
 __all__ = [
     "APPROVED",
+    "archetype_mix_hash",
     "ArchetypeAssignment",
     "ArchetypeCluster",
     "artifact_tax_profile",

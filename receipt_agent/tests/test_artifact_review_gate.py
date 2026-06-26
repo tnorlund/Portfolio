@@ -277,6 +277,68 @@ def test_provenance_edit_does_not_revoke_approval(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Structure human-approval (M7b): separate kind, archetype-mix-hash keyed
+# --------------------------------------------------------------------------- #
+
+
+def _copy_artifacts(tmp_path):
+    import pathlib
+    import shutil
+
+    src = pathlib.Path(loader._ARTIFACT_DIR)
+    for f in src.glob("*.json"):
+        shutil.copy(f, tmp_path / f.name)
+
+
+def test_structure_approval_lifts_needs_review_and_enables(tmp_path, monkeypatch):
+    _copy_artifacts(tmp_path)
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    assert loader.effective_structure("tan_l_a")["status"] == NEEDS_REVIEW
+    assert loader.structure_is_enabling("tan_l_a") is False
+    loader.record_approval(
+        "tan_l_a", approved_by="tyler", approved_at="2026-06-26T12:00:00+00:00",
+        kind="structure",
+    )
+    s = loader.effective_structure("tan_l_a")
+    assert s["status"] == "approved"
+    assert s["approved_by"] == "tyler"
+    assert loader.structure_is_enabling("tan_l_a") is True
+
+
+def test_tax_and_structure_approvals_are_independent(tmp_path, monkeypatch):
+    _copy_artifacts(tmp_path)
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    # A STRUCTURE sign-off must not satisfy the TAX gate (Tan L.A. tax is rejected).
+    loader.record_approval(
+        "tan_l_a", approved_by="tyler", approved_at="t", kind="structure",
+    )
+    assert loader.structure_is_enabling("tan_l_a") is True
+    assert loader.effective_review("tan_l_a").status == REJECTED  # tax unchanged
+
+
+def test_structure_approval_reverts_when_mix_changes(tmp_path, monkeypatch):
+    import json
+
+    _copy_artifacts(tmp_path)
+    monkeypatch.setattr(loader, "_ARTIFACT_DIR", tmp_path)
+    loader.record_approval(
+        "tan_l_a", approved_by="tyler", approved_at="t", kind="structure",
+    )
+    assert loader.structure_is_enabling("tan_l_a") is True
+    # Re-fingerprint shifts the mix -> new archetype-mix hash -> sign-off lapses.
+    art = json.loads((tmp_path / "tan_l_a.json").read_text("utf-8"))
+    art["structure"]["archetype_mix"] = {"service": 5, "line_item_retail": 1}
+    (tmp_path / "tan_l_a.json").write_text(json.dumps(art), encoding="utf-8")
+    s = loader.effective_structure("tan_l_a")
+    # New mix (5/6 = 0.83) recomputes to high -> auto_approved anyway, so assert
+    # the OLD sign-off no longer matches by checking a mix that stays medium.
+    art["structure"]["archetype_mix"] = {"service": 2, "line_item_retail": 2}
+    (tmp_path / "tan_l_a.json").write_text(json.dumps(art), encoding="utf-8")
+    assert loader.effective_structure("tan_l_a")["status"] == NEEDS_REVIEW
+    assert loader.structure_is_enabling("tan_l_a") is False
+
+
 def test_committed_review_statuses():
     grouped = loader.reviews_by_status()
     by_slug = {

@@ -389,6 +389,22 @@ class MerchantStructure:
         )
 
 
+def archetype_mix_hash(archetype_mix: dict[str, int]) -> str:
+    """Stable content hash of a merchant's archetype mix (the structure evidence).
+
+    A human structure sign-off is keyed by this hash, so any change to the mix
+    (re-fingerprinting that shifts the archetype distribution) yields a new hash
+    and the old approval no longer applies — the merchant reverts to
+    ``needs_review`` automatically, mirroring the tax-block hash.
+    """
+    import hashlib
+    import json
+
+    normalized = {str(k): int(v) for k, v in (archetype_mix or {}).items() if int(v) > 0}
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def structure_review_status(confidence: str) -> str:
     """Approval-gate status for a structural assignment (mirrors the tax gate).
 

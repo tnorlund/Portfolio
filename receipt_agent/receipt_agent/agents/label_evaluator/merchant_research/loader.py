@@ -26,6 +26,7 @@ from typing import Any
 
 from .review import (
     APPROVED,
+    AUTO_APPROVED,
     NEEDS_REVIEW,
     ReviewBlock,
     compute_review,
@@ -150,10 +151,21 @@ def _load_approvals() -> list[dict[str, Any]]:
     return [e for e in (entries or []) if isinstance(e, dict)]
 
 
-def _find_approval(slug: str, tax_hash: str) -> dict[str, Any] | None:
-    """Return a sign-off matching this slug AND the current tax-block hash."""
+def _find_approval(
+    slug: str, content_hash: str, kind: str = "tax"
+) -> dict[str, Any] | None:
+    """Return a sign-off matching this slug, content hash, AND kind (tax/structure).
+
+    Back-compat: an entry without ``kind`` is treated as ``tax``, and the hash is
+    read from ``content_hash`` or the legacy ``tax_hash`` field.
+    """
     for entry in _load_approvals():
-        if str(entry.get("slug")) == slug and str(entry.get("tax_hash")) == tax_hash:
+        if str(entry.get("slug")) != slug:
+            continue
+        if str(entry.get("kind") or "tax") != kind:
+            continue
+        entry_hash = str(entry.get("content_hash") or entry.get("tax_hash") or "")
+        if entry_hash == content_hash:
             return entry
     return None
 
@@ -176,7 +188,7 @@ def effective_review(slug: str) -> ReviewBlock | None:
     # is a hard stop (sources contradict / no tax evidence — there is nothing
     # sound to enable), and ``auto_approved`` needs no human.
     if base.status == NEEDS_REVIEW:
-        approval = _find_approval(slug, tax_block_hash(intel))
+        approval = _find_approval(slug, tax_block_hash(intel), kind="tax")
         if approval is not None and approval.get("status", "approved") != "revoked":
             return ReviewBlock(
                 status=APPROVED,
@@ -221,19 +233,32 @@ def effective_structure(slug: str) -> dict[str, Any] | None:
         parked["status"] = NEEDS_REVIEW
         return parked
     structure = ms.to_dict()
-    structure["status"] = structure_review_status(ms.confidence)
+    status = structure_review_status(ms.confidence)
+    # A human structure sign-off lifts ONLY needs_review -> approved, keyed by the
+    # archetype-mix hash so a re-fingerprint that shifts the mix reverts it.
+    if status == NEEDS_REVIEW:
+        from .structure import archetype_mix_hash  # lazy
+
+        approval = _find_approval(
+            slug, archetype_mix_hash(ms.archetype_mix), kind="structure"
+        )
+        if approval is not None and approval.get("status", "approved") != "revoked":
+            status = APPROVED
+            structure["approved_by"] = str(approval.get("approved_by") or "unknown")
+            structure["approved_at"] = approval.get("approved_at") or None
+    structure["status"] = status
     return structure
 
 
 def structure_is_enabling(slug: str) -> bool:
     """True only when ``slug``'s structural assignment is approved to be trusted.
 
-    ``auto_approved`` (high-confidence) for now; human structure sign-off can be
-    layered on the same ledger later. A parked structure must not grant a
-    structural prior / service-grounding override downstream.
+    ``auto_approved`` (high-confidence) or human-``approved`` (a sign-off for the
+    current archetype mix). A parked structure must not grant a structural prior /
+    service-grounding override downstream.
     """
     structure = effective_structure(slug)
-    return bool(structure and structure.get("status") == "auto_approved")
+    return bool(structure and structure.get("status") in (AUTO_APPROVED, APPROVED))
 
 
 def artifact_tax_profile(slug: str) -> dict[str, Any] | None:
@@ -287,35 +312,59 @@ def list_available_slugs() -> list[str]:
     )
 
 
-def record_approval(
-    slug: str, *, approved_by: str, approved_at: str, note: str = ""
-) -> dict[str, Any]:
-    """Append a human sign-off for ``slug``'s CURRENT tax block to the ledger.
+def _content_hash_for(intel: MerchantIntelligence, kind: str) -> str:
+    if kind == "structure":
+        from .structure import archetype_mix_hash  # lazy
 
-    Keyed by ``(slug, tax_block_hash)`` so a later regeneration that changes the
-    tax facts produces a new hash and this sign-off no longer applies. Raises
-    ``ValueError`` if no artifact exists for ``slug`` (nothing to sign off on).
-    ``approved_at`` is passed in (not stamped here) to keep this deterministic.
+        return archetype_mix_hash((intel.structure or {}).get("archetype_mix") or {})
+    return tax_block_hash(intel)
+
+
+def record_approval(
+    slug: str,
+    *,
+    approved_by: str,
+    approved_at: str,
+    note: str = "",
+    kind: str = "tax",
+) -> dict[str, Any]:
+    """Append a human sign-off for ``slug``'s CURRENT ``kind`` block to the ledger.
+
+    ``kind`` is ``"tax"`` (keyed by the tax-block hash) or ``"structure"`` (keyed
+    by the archetype-mix hash) so a later regeneration that changes those facts
+    produces a new hash and this sign-off no longer applies. Raises ``ValueError``
+    if no artifact exists for ``slug``. ``approved_at`` is passed in (not stamped
+    here) to keep this deterministic.
     """
+    if kind not in ("tax", "structure"):
+        raise ValueError(f"unknown approval kind {kind!r}")
     intel = load_merchant_intelligence(slug)
     if intel is None:
         raise ValueError(f"no artifact for slug {slug!r}; nothing to approve")
+    if kind == "structure" and not intel.structure:
+        raise ValueError(f"{slug!r} has no structure block to approve")
+    content_hash = _content_hash_for(intel, kind)
     entry = {
         "slug": slug,
         "merchant": intel.merchant,
-        "tax_hash": tax_block_hash(intel),
+        "kind": kind,
+        "content_hash": content_hash,
         "approved_by": approved_by,
         "approved_at": approved_at,
         "note": note,
     }
     path = _ARTIFACT_DIR / _APPROVALS_FILENAME
     approvals = _load_approvals()
-    # Replace any prior sign-off for the same (slug, tax_hash); keep older ones
-    # for other hashes as an audit trail.
+    # Replace any prior sign-off for the same (slug, kind, content_hash); keep
+    # older ones for other hashes as an audit trail.
     approvals = [
         e
         for e in approvals
-        if not (e.get("slug") == slug and e.get("tax_hash") == entry["tax_hash"])
+        if not (
+            e.get("slug") == slug
+            and str(e.get("kind") or "tax") == kind
+            and str(e.get("content_hash") or e.get("tax_hash") or "") == content_hash
+        )
     ]
     approvals.append(entry)
     path.write_text(
