@@ -15,9 +15,25 @@ Runs the full loop for a merchant list:
 This is the INTEGRATION layer: it CALLS the deterministic synthesis pipeline
 and gates; it does not edit synthesis internals or decide what passes.
 
+Human-in-the-loop gates (explicit, always surfaced in the report):
+  Tier-1 (per-merchant): a merchant whose intelligence marks its TAXABLE edits
+    needs_review/rejected is PARKED — skipped from the run and listed in the
+    review queue, never silently dropped. Everything else proceeds (approved, or
+    unknown → governed by the deterministic tax-config gate).
+  Tier-2 (promotion): shipping a model trained on this bundle is BLOCKED unless
+    (a) validation is real-receipts-only, (b) mix-balance risk is not
+    medium/high, and (c) a human --promote-approved-by approval is recorded.
+    --promote refuses (exit 4) when blocked; records promotion_decision.json when
+    allowed. Never auto-ships a model trained on newly-trusted synthetic merchants.
+
+Coverage loop (--coverage-target > 0): retries/escalates per-merchant receipt
+budget until every merchant hits the target accepted-row count at acceptable
+mix-balance, or stops honestly (no_progress / hold / cap / rounds).
+
 Feature flags:
   --research-dir   [Branch 1] Read merchant_intelligence/<slug>.json when present.
                    Falls back to hardcoded merchant_tax_config + online_catalogs.
+                   Also supplies the Tier-1 taxable_edit_review status.
   --render         [Branch 2] Emit QA images per accepted candidate via the
                    receipt-font-render renderer (not yet implemented; no-ops today).
 
@@ -139,6 +155,77 @@ def _load_research_artifact(merchant_name: str, research_dir: str | None) -> dic
     except Exception as exc:
         print(f"  [research] WARNING: could not load {path}: {exc}", file=sys.stderr)
         return None
+
+
+# Tier-1 human-review statuses that PARK a merchant out of a run.
+_PARKED_REVIEW_STATUSES = {"needs_review", "rejected"}
+_KNOWN_REVIEW_STATUSES = {"approved", "needs_review", "rejected"}
+
+
+def _taxable_edit_review_status(
+    research: dict[str, Any] | None,
+) -> tuple[str, str]:
+    """Tier-1 human-review status for a merchant's TAXABLE edits + a reason note.
+
+    Reads the Branch-1 intelligence artifact. The contract (liberal in what it
+    accepts so it works before Branch 1 lands): a ``taxable_edit_review`` object
+    with a ``status`` of ``approved`` | ``needs_review`` | ``rejected`` (and an
+    optional ``notes``/``reason``), or a top-level ``taxable_edit_review_status``
+    / ``review_status`` string.
+
+    Returns ``(status, reason)`` where status is one of approved / needs_review /
+    rejected / unknown. ``unknown`` (no artifact, or no explicit status) means
+    fall back to the deterministic receipt-validated tax-config gate — it does
+    NOT park the merchant. Only an explicit needs_review/rejected parks it.
+    """
+    if not research:
+        return "unknown", "no_intelligence_artifact"
+    review = research.get("taxable_edit_review")
+    status: Any = None
+    reason = ""
+    if isinstance(review, dict):
+        status = review.get("status")
+        reason = str(review.get("notes") or review.get("reason") or "")
+    if not status:
+        status = research.get("taxable_edit_review_status") or research.get(
+            "review_status"
+        )
+    status = str(status or "").strip().lower()
+    if status in _KNOWN_REVIEW_STATUSES:
+        return status, reason
+    return "unknown", "no_taxable_edit_review_status"
+
+
+def _partition_tier1(
+    merchants: list[str],
+    research_dir: str | None,
+) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split requested merchants into proceeding vs. parked (Tier-1 gate).
+
+    A merchant whose intelligence marks its taxable edits ``needs_review`` or
+    ``rejected`` is PARKED — skipped from this run and surfaced in the review
+    queue, never silently dropped. Everything else proceeds (explicitly approved,
+    or unknown → governed by the deterministic tax-config gate).
+
+    Returns ``(proceeding_names, proceeding_records, parked_records)``.
+    """
+    proceeding_names: list[str] = []
+    proceeding: list[dict[str, Any]] = []
+    parked: list[dict[str, Any]] = []
+    for merchant in merchants:
+        research = _load_research_artifact(merchant, research_dir)
+        status, reason = _taxable_edit_review_status(research)
+        record = {
+            "merchant_name": merchant,
+            "taxable_edit_review_status": status,
+            "reason": reason,
+        }
+        if status in _PARKED_REVIEW_STATUSES:
+            parked.append(record)
+        else:
+            proceeding_names.append(merchant)
+            proceeding.append(record)
+    return proceeding_names, proceeding, parked
 
 
 # ---------------------------------------------------------------------------
@@ -514,6 +601,113 @@ def _effective_training_ready(bundle: dict[str, Any]) -> tuple[bool, list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# Tier-2 human-in-the-loop gate: model promotion
+# ---------------------------------------------------------------------------
+
+def evaluate_promotion_gate(
+    bundle: dict[str, Any],
+    per_merchant: list[dict[str, Any]],
+    mix_balance_risk: str,
+    total_taxable_adds: int,
+    approved_by: str | None,
+) -> dict[str, Any]:
+    """Tier-2 gate: a model trained on this bundle may be promoted only if ALL of:
+
+      (a) validation is real-receipts-only (synthetic never enters validation),
+      (b) the augmentation audit's mix-balance risk is not medium/high, and
+      (c) a human ``promote`` approval is recorded.
+
+    This NEVER auto-ships a model trained on newly-trusted synthetic merchants
+    (those contributing taxable edits): even with (a) and (b) satisfied, the
+    human approval (c) is mandatory. The gate reports the per-condition verdict
+    and blocking reasons; it does not relax any deterministic gate.
+    """
+    validation_policy = bundle.get("validation_policy")
+    batch_policy = bundle.get("synthetic_training_batch_policy") or {}
+    real_only_validation = (
+        validation_policy == "real_receipts_only"
+        and batch_policy.get("requires_real_validation_split") is True
+    )
+    # Mix-balance must be at most "low" (none/low ok; medium/high is a hold).
+    mix_balance_ok = _RISK_ORDER.get(mix_balance_risk, 3) <= _RISK_ORDER["low"]
+    approver = (approved_by or "").strip()
+    human_promote_approval = bool(approver)
+
+    conditions = {
+        "real_only_validation": real_only_validation,
+        "mix_balance_not_medium_or_high": mix_balance_ok,
+        "human_promote_approval": human_promote_approval,
+    }
+    blocking_reasons = [name for name, ok in conditions.items() if not ok]
+
+    # Newly-trusted synthetic merchants = those contributing taxable edits in
+    # this bundle; spotlighted because promoting a model trained on them is
+    # exactly what must never auto-ship without human sign-off.
+    newly_trusted = sorted(
+        {
+            r["merchant_name"]
+            for r in per_merchant
+            if (r.get("taxable_add_count") or 0) > 0
+        }
+    )
+
+    return {
+        "conditions": conditions,
+        "blocked": bool(blocking_reasons),
+        "blocking_reasons": blocking_reasons,
+        "approved_by": approver or None,
+        "validation_policy": validation_policy,
+        "mix_balance_risk": mix_balance_risk,
+        "newly_trusted_synthetic_merchants": newly_trusted,
+        "newly_trusted_taxable_add_count": total_taxable_adds,
+        "batch_policy_status": batch_policy.get("status"),
+        "batch_policy_review_required": batch_policy.get("review_required"),
+        "batch_policy_overtraining_risk": batch_policy.get("overtraining_risk_level"),
+    }
+
+
+def _print_gates(summary: dict[str, Any]) -> None:
+    """Print the two human-in-the-loop gates in a readable, always-visible block."""
+    tier1 = summary.get("tier1_gate") or {}
+    promo = summary.get("promotion_gate") or {}
+    print("-" * 60)
+    print("HUMAN-IN-THE-LOOP GATES")
+    print("-" * 60)
+
+    proceeding = tier1.get("proceeding_merchants") or []
+    parked = tier1.get("parked_merchants") or []
+    print(f"Tier-1 (taxable-edit review) — {len(proceeding)} proceeding, "
+          f"{len(parked)} parked:")
+    for rec in proceeding:
+        print(
+            f"  ✓ {rec['merchant_name']} "
+            f"(review={rec.get('taxable_edit_review_status')})"
+        )
+    for rec in parked:
+        note = f" — {rec['reason']}" if rec.get("reason") else ""
+        print(
+            f"  ⏸ PARKED: {rec['merchant_name']} "
+            f"(review={rec.get('taxable_edit_review_status')}){note} "
+            "— awaiting human approval"
+        )
+
+    if promo:
+        verdict = "BLOCKED" if promo.get("blocked") else "ALLOWED"
+        print(f"\nTier-2 (model promotion) — {verdict}:")
+        for name, ok in (promo.get("conditions") or {}).items():
+            print(f"  {'✓' if ok else '✗'} {name}")
+        if promo.get("blocked"):
+            print(f"  blocking: {promo.get('blocking_reasons')}")
+        nt = promo.get("newly_trusted_synthetic_merchants") or []
+        if nt:
+            print(
+                f"  newly-trusted synthetic merchants (need sign-off): {nt} "
+                f"[{promo.get('newly_trusted_taxable_add_count', 0)} taxable adds]"
+            )
+    print("-" * 60)
+
+
+# ---------------------------------------------------------------------------
 # Single run (one export → combined pipeline → report pass)
 # ---------------------------------------------------------------------------
 
@@ -531,18 +725,52 @@ def run_single(
     max_per_merchant_operation: int,
     render: bool,
     research_dir: str | None,
+    promote_approved_by: str | None = None,
     print_summary: bool = True,
 ) -> dict[str, Any]:
     """One export → combined pipeline → report pass. Returns the summary dict.
 
     The dict always carries a ``status`` field: ``ok`` when the pipeline ran and
     a bundle was read; ``no_receipts`` / ``pipeline_failed`` / ``bundle_read_failed``
-    otherwise. Callers map status (and, for ``ok`` runs, export_failures and
-    training_ready) to an exit code via _exit_code_from_summary.
+    / ``all_parked`` otherwise. Callers map status (and, for ``ok`` runs,
+    export_failures and training_ready) to an exit code via _exit_code_from_summary.
     """
-    # --- Phase 1: export every merchant's receipts ---
+    # --- Tier-1 human-in-the-loop gate (taxable-edit review) ---
+    # Park merchants whose intelligence marks taxable edits needs_review/rejected;
+    # they are skipped from this run and surfaced in the review queue, never
+    # silently dropped.
+    proceeding_names, proceeding_records, parked_records = _partition_tier1(
+        merchants, research_dir
+    )
+    tier1_gate = {
+        "proceeding_merchants": proceeding_records,
+        "parked_merchants": parked_records,
+        "parked_count": len(parked_records),
+    }
+    for rec in parked_records:
+        print(
+            f"[{rec['merchant_name']}] parked: awaiting human approval "
+            f"(taxable_edit_review={rec['taxable_edit_review_status']})"
+        )
+
+    if not proceeding_names:
+        print(
+            "All requested merchants are parked awaiting human approval; "
+            "nothing to synthesise this run.",
+            file=sys.stderr,
+        )
+        return {
+            "status": "all_parked",
+            "requested_merchant_count": len(merchants),
+            "exported_merchant_count": 0,
+            "export_failures": [],
+            "tier1_gate": tier1_gate,
+            "per_merchant": [],
+        }
+
+    # --- Phase 1: export each proceeding merchant's receipts ---
     export_stats, receipt_files = export_phase(
-        merchants,
+        proceeding_names,
         table_name=table_name,
         region=region,
         base_output_dir=base_output_dir,
@@ -569,6 +797,7 @@ def run_single(
             "exported_merchant_count": 0,
             "export_failures": export_failures,
             "export_stats": export_stats,
+            "tier1_gate": tier1_gate,
             "per_merchant": [],
         }
 
@@ -663,6 +892,15 @@ def run_single(
         )
     print()
 
+    mix_balance_risk = mix_balance.get("risk_level", "unknown")
+    promotion_gate = evaluate_promotion_gate(
+        bundle,
+        per_merchant,
+        mix_balance_risk=mix_balance_risk,
+        total_taxable_adds=total_taxable_adds,
+        approved_by=promote_approved_by,
+    )
+
     summary = {
         "status": "ok",
         "requested_merchant_count": len(merchants),
@@ -678,17 +916,20 @@ def run_single(
         or mix_balance.get("accepted_count", 0),
         "accepted_operation_counts": candidate_mix.get("accepted_operation_counts")
         or {},
-        "mix_balance_risk": mix_balance.get("risk_level", "unknown"),
+        "mix_balance_risk": mix_balance_risk,
         "accepted_mix_balance": mix_balance,
         "total_taxable_adds": total_taxable_adds,
         "total_taxable_adds_missing_rate": total_taxable_missing_rate,
         "source_receipt_quality": bundle.get("source_receipt_quality") or {},
         "bundle_path": bundle_path,
         "render_artifacts": render_artifacts,
+        "tier1_gate": tier1_gate,
+        "promotion_gate": promotion_gate,
         "per_merchant": per_merchant,
     }
 
     if print_summary:
+        _print_gates(summary)
         print("=" * 60)
         print("CONSOLIDATED SUMMARY")
         print("=" * 60)
@@ -701,10 +942,17 @@ def _exit_code_from_summary(summary: dict[str, Any]) -> int:
     """Map a run_single summary to an honest process exit code.
 
     2 = operational failure (export failed / no receipts / pipeline error)
-    3 = ran cleanly but the deterministic gate marked the bundle not
-        training-ready (the orchestrator does not override the gate)
+    3 = ran cleanly but blocked (deterministic gate not training-ready, or all
+        merchants parked awaiting Tier-1 human approval)
     0 = ran cleanly and the bundle is training-ready
     """
+    if summary.get("status") == "all_parked":
+        print(
+            "\nNOTE: all requested merchants are parked awaiting human approval "
+            "(Tier-1). See the review queue above.",
+            file=sys.stderr,
+        )
+        return 3
     if summary.get("status") != "ok":
         return 2
     if summary.get("export_failures"):
@@ -723,6 +971,62 @@ def _exit_code_from_summary(summary: dict[str, Any]) -> int:
         )
         return 3
     return 0
+
+
+def _enforce_promotion(
+    summary: dict[str, Any], base_exit_code: int, output_dir: str
+) -> int:
+    """Act on an explicit --promote request against the Tier-2 gate.
+
+    Returns 4 when promotion is blocked (gate not satisfied, or there is no
+    bundle to promote). When allowed, records a promotion-decision file and
+    returns the run's base exit code so training-readiness/coverage signals are
+    not masked. The orchestrator never ships a model itself — it records the
+    human-approved decision and refuses when the gate is not satisfied.
+    """
+    gate = summary.get("promotion_gate") or {}
+    if not gate or gate.get("blocked", True):
+        reasons = gate.get("blocking_reasons") or ["no_bundle_to_promote"]
+        print(
+            f"\nPROMOTION BLOCKED — unmet conditions: {reasons}. "
+            "Resolve them (and record a human --promote-approved-by) before "
+            "shipping a model trained on this bundle.",
+            file=sys.stderr,
+        )
+        return 4
+
+    decision = {
+        "promoted": True,
+        "approved_by": gate.get("approved_by"),
+        "bundle_path": summary.get("bundle_path"),
+        "validation_policy": gate.get("validation_policy"),
+        "mix_balance_risk": gate.get("mix_balance_risk"),
+        "newly_trusted_synthetic_merchants": gate.get(
+            "newly_trusted_synthetic_merchants"
+        ),
+        "newly_trusted_taxable_add_count": gate.get(
+            "newly_trusted_taxable_add_count"
+        ),
+        "training_ready": summary.get("training_ready"),
+        "training_ready_reasons": summary.get("training_ready_reasons"),
+    }
+    decision_path = Path(output_dir) / "promotion_decision.json"
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(
+        json.dumps(decision, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    print(
+        f"\nPROMOTION RECORDED (approved_by={gate.get('approved_by')!r}) → "
+        f"{decision_path}"
+    )
+    if not summary.get("training_ready"):
+        print(
+            "  NOTE: promotion approval recorded, but the bundle is not "
+            "training-ready per the deterministic gate — the run exit code still "
+            "reflects that. Train/ship only a training-ready bundle.",
+            file=sys.stderr,
+        )
+    return base_exit_code
 
 
 # Mix-balance risk ordering (lower = safer); used by the coverage loop.
@@ -751,6 +1055,8 @@ def run_coverage_loop(
     max_per_merchant_operation: int,
     render: bool,
     research_dir: str | None,
+    promote_approved_by: str | None = None,
+    promote: bool = False,
 ) -> int:
     """Agent-style coverage loop over the deterministic single-run pass.
 
@@ -794,9 +1100,19 @@ def run_coverage_loop(
             max_per_merchant_operation=max_per_merchant_operation,
             render=render,
             research_dir=research_dir,
+            promote_approved_by=promote_approved_by,
             print_summary=False,
         )
         final_summary = summary
+
+        # All-parked is a Tier-1 human-approval block, not something escalating
+        # receipts can fix — stop and surface the review queue.
+        if summary.get("status") == "all_parked":
+            outcome = "all_parked"
+            rounds.append(
+                {"round": round_idx, "status": "all_parked"}
+            )
+            break
 
         if summary.get("status") != "ok":
             outcome = f"operational_failure:{summary.get('status')}"
@@ -880,6 +1196,8 @@ def run_coverage_loop(
         "rounds": rounds,
         "final_summary": final_summary,
     }
+    if final_summary:
+        _print_gates(final_summary)
     print("=" * 60)
     print("COVERAGE LOOP REPORT")
     print("=" * 60)
@@ -887,16 +1205,23 @@ def run_coverage_loop(
 
     # Exit code: 0 only when coverage met AND the gate says training-ready.
     if outcome == "coverage_met":
-        return _exit_code_from_summary(final_summary)
-    if outcome.startswith("operational_failure"):
-        return 2
-    # Coverage genuinely not satisfied (hold / no progress / exhausted): 3.
-    print(
-        f"\nNOTE: coverage not satisfied (outcome={outcome}). See the coverage "
-        "report above for per-round evidence.",
-        file=sys.stderr,
-    )
-    return 3
+        base_exit = _exit_code_from_summary(final_summary)
+    elif outcome == "all_parked":
+        base_exit = _exit_code_from_summary(final_summary)
+    elif outcome.startswith("operational_failure"):
+        base_exit = 2
+    else:
+        # Coverage genuinely not satisfied (hold / no progress / exhausted): 3.
+        print(
+            f"\nNOTE: coverage not satisfied (outcome={outcome}). See the coverage "
+            "report above for per-round evidence.",
+            file=sys.stderr,
+        )
+        base_exit = 3
+
+    if promote:
+        return _enforce_promotion(final_summary, base_exit, base_output_dir)
+    return base_exit
 
 
 # ---------------------------------------------------------------------------
@@ -963,6 +1288,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             max_per_merchant_operation=args.max_per_merchant_operation,
             render=args.render,
             research_dir=args.research_dir,
+            promote_approved_by=args.promote_approved_by,
+            promote=args.promote,
         )
 
     summary = run_single(
@@ -978,8 +1305,12 @@ def run_pipeline(args: argparse.Namespace) -> int:
         max_per_merchant_operation=args.max_per_merchant_operation,
         render=args.render,
         research_dir=args.research_dir,
+        promote_approved_by=args.promote_approved_by,
     )
-    return _exit_code_from_summary(summary)
+    base_exit = _exit_code_from_summary(summary)
+    if args.promote:
+        return _enforce_promotion(summary, base_exit, base_output_dir)
+    return base_exit
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1099,6 +1430,27 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=200,
         help="Upper bound on per-merchant receipt budget during the coverage loop",
+    )
+    # Human-in-the-loop gates
+    hitl = p.add_argument_group("human-in-the-loop gates")
+    hitl.add_argument(
+        "--promote-approved-by",
+        default=None,
+        metavar="NAME",
+        help=(
+            "[Tier-2] Record a human 'promote' approval by NAME. Required for "
+            "the promotion gate to allow shipping a model trained on this bundle."
+        ),
+    )
+    hitl.add_argument(
+        "--promote",
+        action="store_true",
+        default=False,
+        help=(
+            "[Tier-2] Attempt model promotion: refused (exit 4) unless real-only "
+            "validation + non-medium/high mix-balance + a recorded human approval "
+            "(--promote-approved-by). Records a promotion_decision.json when allowed."
+        ),
     )
     return p
 
