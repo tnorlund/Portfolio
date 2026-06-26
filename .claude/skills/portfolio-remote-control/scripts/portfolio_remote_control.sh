@@ -31,15 +31,15 @@ Environment:
   PORTFOLIO_ROOT                     Portfolio checkout root. Default: $HOME/Portfolio
   PORTFOLIO_RC_OPEN_TERMINAL=0       Skip opening Terminal.app attachers.
   PORTFOLIO_RC_PRIME_TIMEOUT=180     Seconds to wait while priming each screen.
-  PORTFOLIO_RC_CAFFEINATE_SECONDS    Duration for the caffeinate sleep helper. Default: 86400
+  PORTFOLIO_RC_CAFFEINATE_SECONDS    Duration for the caffeinate helper. Default: 86400
 EOF
 }
 
 entries() {
   cat <<EOF
-merchant-intel|$PORTFOLIO_ROOT/.claude/worktrees/merchant-intel|merchant-intel|claude-merchant-intel-rc
-font-render|$PORTFOLIO_ROOT/.claude/worktrees/font-render|font-render|claude-font-render-rc
-orchestration|$PORTFOLIO_ROOT/.claude/worktrees/orchestration|orchestration|claude-orchestration-rc
+merchant-intel|$PORTFOLIO_ROOT/.claude/worktrees/merchant-intel|merchant-intel|claude-merchant-intel-rc|feat/merchant-intelligence-agents
+font-render|$PORTFOLIO_ROOT/.claude/worktrees/font-render|font-render|claude-font-render-rc|feat/receipt-font-render
+orchestration|$PORTFOLIO_ROOT/.claude/worktrees/orchestration|orchestration|claude-orchestration-rc|feat/synthesis-orchestration
 EOF
 }
 
@@ -138,7 +138,7 @@ require_prereqs() {
     echo "Missing /usr/bin/screen" >&2
     return 1
   fi
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     if [[ ! -d "$worktree" ]]; then
       echo "Missing worktree for $label: $worktree" >&2
       return 1
@@ -147,12 +147,18 @@ require_prereqs() {
       echo "Missing CONTEXT.md or CHARTER.md in $worktree" >&2
       return 1
     fi
+    local branch
+    branch="$(git -C "$worktree" branch --show-current 2>/dev/null || true)"
+    if [[ "$branch" != "$expected_branch" ]]; then
+      echo "Wrong branch for $label: expected $expected_branch, got ${branch:-unknown}" >&2
+      return 1
+    fi
   done < <(entries)
 }
 
 cleanup_targets() {
   echo "Stopping target Portfolio remote-control sessions..."
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     /usr/bin/screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
     kill_remote_control_processes "$session_name" "$worktree"
   done < <(entries)
@@ -177,7 +183,7 @@ start_screens() {
   require_prereqs
   mkdir -p "$BASE_DIR" "$ATTACH_DIR"
 
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     local workdir="$BASE_DIR/$label"
     mkdir -p "$workdir"
     rm -f "$workdir/screenlog.0"
@@ -201,7 +207,7 @@ open_attachers() {
     return 0
   fi
 
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     local file="$ATTACH_DIR/$label.command"
     if [[ -x "$file" ]]; then
       /usr/bin/open -a Terminal "$file" >/dev/null 2>&1 || true
@@ -218,7 +224,7 @@ prime_screens() {
     return 1
   fi
 
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     echo "Priming $label..."
     if ! PORTFOLIO_RC_MISSION="$MISSION_PROMPT" python3 "$primer" --screen "$screen_name" --label "$label" --timeout "$PRIME_TIMEOUT"; then
       echo "Prime failed for $label; attach manually with: TERM=xterm-256color screen -x $screen_name" >&2
@@ -287,7 +293,7 @@ check_push_auth() {
     failed=1
   fi
 
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     local branch
     branch="$(git -C "$worktree" branch --show-current 2>/dev/null || true)"
     if [[ -z "$branch" ]] || ! git -C "$worktree" push --dry-run origin "HEAD:refs/heads/$branch" >/dev/null 2>&1; then
@@ -314,7 +320,7 @@ stray_sessions() {
 
   while IFS='|' read -r pid found_session; do
     expected_worktree=""
-    while IFS='|' read -r label worktree session_name screen_name; do
+    while IFS='|' read -r label worktree session_name screen_name expected_branch; do
       if [[ "$found_session" == "$session_name" ]]; then
         expected_worktree="$worktree"
         break
@@ -345,6 +351,17 @@ dirty_count() {
   fi
 }
 
+unpushed_count() {
+  local worktree="$1"
+  local count
+
+  if count="$(git -C "$worktree" rev-list --count '@{u}..HEAD' 2>/dev/null)"; then
+    echo "${count:-0}"
+  else
+    echo unknown
+  fi
+}
+
 caffeinate_processes() {
   ps axww -o pid= -o command= | awk '
     {
@@ -371,7 +388,7 @@ status() {
   printf "%s\n" "$screen_listing" | grep -E 'claude-(merchant-intel|font-render|orchestration)-rc' || true
 
   echo
-  while IFS='|' read -r label worktree session_name screen_name; do
+  while IFS='|' read -r label worktree session_name screen_name expected_branch; do
     local process_ok=0
     local screen_ok=0
     local log_ok=0
@@ -397,9 +414,9 @@ status() {
 
     local dirty unpushed cadence
     dirty="$(dirty_count "$worktree")"
-    unpushed="$(git -C "$worktree" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+    unpushed="$(unpushed_count "$worktree")"
     cadence=ok
-    if [[ "${dirty:-0}" -gt "$DIRTY_WARN" || "${unpushed:-0}" -gt 0 ]]; then
+    if [[ "${dirty:-0}" -gt "$DIRTY_WARN" || "$unpushed" == "unknown" || "$unpushed" -gt 0 ]]; then
       cadence=DRIFT
     fi
 
@@ -432,6 +449,7 @@ status() {
 command="${1:-launch}"
 case "$command" in
   launch)
+    require_prereqs
     cleanup_targets
     check_push_auth || echo "  (continuing launch; fix push auth before the agents try to push)" >&2
     start_screens
@@ -447,6 +465,7 @@ case "$command" in
     fi
     ;;
   start)
+    require_prereqs
     cleanup_targets
     start_screens
     ensure_caffeinate
