@@ -4924,6 +4924,31 @@ def _receipt_observed_taxable_rate(
     )
 
 
+def _receipt_effective_tax_rate(
+    analysis: MerchantAnalysis,
+) -> Decimal | None:
+    """This receipt's EFFECTIVE rate (tax / subtotal) from summary anchors.
+
+    Uses the labeled SUBTOTAL, else ``grand_total - tax`` — both reliable, unlike
+    the per-item taxable flags. The effective rate is a lower bound on the
+    taxable-item rate (the taxable base is a subset of the subtotal), so it is a
+    sound one-sided jurisdiction check: effective > validated_rate ⇒ a higher-tax
+    jurisdiction than the config store.
+    """
+    if analysis.tax_total is None or analysis.tax_total <= Decimal("0.00"):
+        return None
+    subtotal = analysis.subtotal
+    if subtotal is None and analysis.grand_total is not None:
+        subtotal = _money(
+            max(Decimal("0.00"), analysis.grand_total - analysis.tax_total)
+        )
+    if subtotal is None or subtotal <= Decimal("0.00"):
+        return None
+    return (analysis.tax_total / subtotal).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+
+
 def _tax_rate_observations(analyses: list[MerchantAnalysis]) -> list[Decimal]:
     return [
         rate
@@ -5027,7 +5052,21 @@ def _taxable_edit_rate_for_receipt(
         return None
     allowed = profile.allowed_rates()
     if len(allowed) == 1:
-        return allowed[0]
+        config_rate = allowed[0]
+        # Profiles are brand-matched, so a same-brand receipt from a HIGHER-tax
+        # jurisdiction (or a later rate period) could otherwise be edited at the
+        # stale config rate. The receipt's effective rate (tax / subtotal, from
+        # reliable summary anchors — not the sparse per-item flags) can never
+        # exceed the taxable-item rate for a correct-jurisdiction receipt, since
+        # the taxable base is a subset of the subtotal. So an effective rate
+        # above the config rate proves a different, higher jurisdiction — refuse.
+        # (All validated single-rate merchants are CA at the 7.25% state minimum,
+        # so there is no lower-jurisdiction direction to miss.) The tolerance
+        # absorbs cent-rounding on small receipts.
+        effective = _receipt_effective_tax_rate(analysis)
+        if effective is not None and effective > config_rate + Decimal("0.005"):
+            return None
+        return config_rate
     # Multi-jurisdiction: need per-receipt jurisdiction confirmation.
     if _has_unobserved_positive_tax_receipt(analyses):
         return None
@@ -5401,7 +5440,13 @@ def _apply_taxable_delta(
         old_grand_total = _money(old_subtotal + old_tax)
 
     tax_delta = _money(delta * rate)
-    new_subtotal = _money(max(Decimal("0.00"), old_subtotal + delta))
+    # A removal larger than the (possibly reconstructed) subtotal is not
+    # reconcilable — bail rather than clamp to zero, which would emit a
+    # self-consistent receipt whose subtotal movement != the item price.
+    raw_new_subtotal = old_subtotal + delta
+    if raw_new_subtotal < Decimal("0.00"):
+        return None
+    new_subtotal = _money(raw_new_subtotal)
     # Removing more tax than the receipt carries is not reconcilable — bail
     # rather than clamp tax to 0 (which would leave tax_delta inconsistent with
     # the actual tax movement).
