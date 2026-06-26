@@ -8,9 +8,11 @@ locality from real receipt lines while ignoring incidental two-letter tokens.
 import pytest
 
 from receipt_upload.merchant_resolution.resolver import (
+    address_state_conflict,
     locality_from_lines,
     parse_locality,
     state_from_zip,
+    state_of_address,
 )
 
 
@@ -119,3 +121,38 @@ def test_locality_from_lines_ignores_non_zip_5digit_tokens():
 )
 def test_state_from_zip_exceptions(zip5, expected):
     assert state_from_zip(zip5) == expected
+
+
+def test_zip_full_exception_american_samoa():
+    # 96799 is American Samoa, even though 967xx is otherwise Hawaii.
+    assert state_from_zip("96799") == "AS"
+    assert state_from_zip("96701") == "HI"
+
+
+@pytest.mark.parametrize(
+    "addr,expected",
+    [
+        ("1999 Centre St, Boston, MA 02132, USA", "MA"),
+        ("2716 N Green Valley Pkwy, Henderson, NV 89014, USA", "NV"),
+        ("100 N Green Valley Pkwy #345, Henderson, NV 89074", "NV"),
+        ("no state here", None),
+        (None, ""),
+    ],
+)
+def test_state_of_address(addr, expected):
+    # None addr -> None; the "" sentinel below means "expect None"
+    assert state_of_address(addr) == (
+        None if expected in (None, "") else expected
+    )
+
+
+def test_address_state_conflict_only_on_confident_mismatch():
+    # Both known and differ -> conflict.
+    assert address_state_conflict("..., Boston, MA 02132, USA", "NV") is True
+    # Same state -> no conflict.
+    assert (
+        address_state_conflict("..., Henderson, NV 89014, USA", "NV") is False
+    )
+    # Unknown on either side -> never a conflict (conservative).
+    assert address_state_conflict("no parseable state", "NV") is False
+    assert address_state_conflict("..., Boston, MA", None) is False

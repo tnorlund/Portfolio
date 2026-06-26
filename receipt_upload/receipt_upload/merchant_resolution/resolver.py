@@ -331,17 +331,50 @@ _ZIP_RANGES = (
     (995, 999, "AK"),
 )
 _ZIP_RE = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+# Full-ZIP exceptions that a 3-digit prefix can't disambiguate. American Samoa's
+# 96799 sits inside the 967 Hawaii prefix; map it explicitly so an AS receipt
+# isn't tagged HI (which would reject the correct AS Places hit as wrong-state).
+_ZIP_FULL_EXCEPTIONS = {"96799": "AS"}
 
 
 def state_from_zip(zip5: str) -> Optional[str]:
     """Map a 5-digit ZIP to its 2-letter state, else ``None``."""
     if not zip5 or len(zip5) < 3 or not zip5[:3].isdigit():
         return None
+    if zip5[:5] in _ZIP_FULL_EXCEPTIONS:
+        return _ZIP_FULL_EXCEPTIONS[zip5[:5]]
     prefix = int(zip5[:3])
     for lo, hi, state in _ZIP_RANGES:
         if lo <= prefix <= hi:
             return state
     return None
+
+
+def state_of_address(address: Optional[str]) -> Optional[str]:
+    """2-letter state from a Google formatted address, else ``None``.
+
+    Prefers the "City, ST" tail, then the ZIP. Used to geo-validate a resolved
+    place against the receipt's own state on the fallback tiers.
+    """
+    if not address:
+        return None
+    loc = parse_locality(address)
+    if loc:
+        return loc.rsplit(",", 1)[-1].strip()
+    m = _ZIP_RE.search(address)
+    return state_from_zip(m.group(1)) if m else None
+
+
+def address_state_conflict(
+    address: Optional[str], expected_state: Optional[str]
+) -> bool:
+    """True only when BOTH the receipt's state and the result's state are known
+    and differ — a conservative wrong-state signal (unknown is never a conflict).
+    """
+    if not expected_state:
+        return False
+    result_state = state_of_address(address)
+    return bool(result_state) and result_state != expected_state
 
 
 def _trim_leading_street(parts: List[str]) -> List[str]:
@@ -820,17 +853,7 @@ class MerchantResolver:
         # this is the authoritative path. It needs no validated labels, so it
         # leads at upload time — superseding the old "labeled fast path" that was
         # inert because it required VALID labels that don't exist yet here.
-        # Also run when we only have a labeled name + locality (no phone/address):
-        # the locality-enriched text search disambiguates the chain, and the geo
-        # guard rejects a wrong-state hit, so this is safe for name-only receipts
-        # that previously fell through to the agentic tier and mis-resolved. We
-        # require a real MERCHANT_NAME label (not the top-line fallback) so a weak
-        # hint like a check number can't preempt Tier 2/3 with a same-state miss.
-        if (
-            phone
-            or address
-            or (place_text_query and locality and has_labeled_merchant)
-        ):
+        if phone or address:
             result = self._run_labeled_place_search(
                 merchant_name=place_text_query,
                 address=address,
@@ -870,6 +893,9 @@ class MerchantResolver:
                 if (
                     result.place_id
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                    and not address_state_conflict(
+                        result.address, expected_state
+                    )
                 ):
                     _log(
                         "Tier 2 SUCCESS (phone): %s (place_id=%s, conf=%.2f)",
@@ -899,6 +925,9 @@ class MerchantResolver:
                 if (
                     result.place_id
                     and result.confidence >= MIN_SIMILARITY_THRESHOLD
+                    and not address_state_conflict(
+                        result.address, expected_state
+                    )
                 ):
                     _log(
                         "Tier 2 SUCCESS (address): %s (place_id=%s, conf=%.2f)",
@@ -936,6 +965,7 @@ class MerchantResolver:
             if (
                 result.place_id
                 and result.confidence >= HIGH_CONFIDENCE_THRESHOLD
+                and not address_state_conflict(result.address, expected_state)
             ):
                 _log(
                     "Tier 2 SUCCESS (merchant): %s (place_id=%s, conf=%.2f)",
@@ -953,11 +983,48 @@ class MerchantResolver:
                     HIGH_CONFIDENCE_THRESHOLD,
                 )
 
+        # Tier 2.5: locality-enriched Places text search. Runs only AFTER the
+        # Chroma "seen-before" tiers (so a previously-resolved exact place_id
+        # wins over a fresh text hit) and only with a real MERCHANT_NAME label +
+        # locality (a weak top-line hint like a check number must not preempt the
+        # agentic tier). The city in the query disambiguates the chain and the geo
+        # guard rejects a wrong-state hit. Covers no-phone/no-address receipts
+        # that previously fell straight to the agent and mis-resolved.
+        if place_text_query and locality and has_labeled_merchant:
+            result = self._run_labeled_place_search(
+                merchant_name=place_text_query,
+                address=address,
+                phone=phone,
+                expected_state=expected_state,
+            )
+            if result.place_id:
+                _log(
+                    "Tier 2.5 SUCCESS (locality text): %s "
+                    "(place_id=%s, conf=%.2f)",
+                    result.merchant_name,
+                    result.place_id,
+                    result.confidence,
+                )
+                return result
+
         # Tier 3: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1/2 failed, invoking Tier 3: Place ID Finder agent")
         result = self._run_place_id_finder(
             lines_client, lines, words, image_id, receipt_id, word_labels
         )
+
+        # Geo guard the agentic result too (#3): the agent path builds its own
+        # ReceiptRecord without expected_state, so a wrong-state chain hit could
+        # otherwise slip through on a faint-scan receipt.
+        if result.place_id and address_state_conflict(
+            result.address, expected_state
+        ):
+            _log(
+                "Tier 3 result rejected: state for %r != receipt state %s",
+                result.address,
+                expected_state,
+            )
+            return MerchantResult()
 
         if result.place_id:
             _log(
