@@ -167,16 +167,18 @@ def _taxable_edit_review_status(
 ) -> tuple[str, str]:
     """Tier-1 human-review status for a merchant's TAXABLE edits + a reason note.
 
-    Reads the Branch-1 intelligence artifact. The contract (liberal in what it
-    accepts so it works before Branch 1 lands): a ``taxable_edit_review`` object
-    with a ``status`` of ``approved`` | ``needs_review`` | ``rejected`` (and an
-    optional ``notes``/``reason``), or a top-level ``taxable_edit_review_status``
-    / ``review_status`` string.
+    Reads the Branch-1 intelligence artifact. The contract is TAXABLE-EDIT-
+    SPECIFIC (a generic artifact review state must not park a merchant): a
+    ``taxable_edit_review`` object with a ``status`` of ``approved`` |
+    ``needs_review`` | ``rejected`` (and an optional ``notes``/``reason``), or a
+    top-level ``taxable_edit_review_status`` string. A generic top-level
+    ``review_status`` is intentionally NOT honored.
 
     Returns ``(status, reason)`` where status is one of approved / needs_review /
-    rejected / unknown. ``unknown`` (no artifact, or no explicit status) means
-    fall back to the deterministic receipt-validated tax-config gate — it does
-    NOT park the merchant. Only an explicit needs_review/rejected parks it.
+    rejected / unknown. ``unknown`` (no artifact, or no explicit taxable-edit
+    status) means fall back to the deterministic receipt-validated tax-config
+    gate — it does NOT park the merchant. Only an explicit needs_review/rejected
+    parks it.
     """
     if not research:
         return "unknown", "no_intelligence_artifact"
@@ -187,9 +189,8 @@ def _taxable_edit_review_status(
         status = review.get("status")
         reason = str(review.get("notes") or review.get("reason") or "")
     if not status:
-        status = research.get("taxable_edit_review_status") or research.get(
-            "review_status"
-        )
+        # Only a taxable-edit-specific status, never a generic review_status.
+        status = research.get("taxable_edit_review_status")
     status = str(status or "").strip().lower()
     if status in _KNOWN_REVIEW_STATUSES:
         return status, reason
@@ -832,6 +833,7 @@ def run_single(
             "requested_merchant_count": len(merchants),
             "exported_merchant_count": exported_merchant_count,
             "export_failures": export_failures,
+            "tier1_gate": tier1_gate,
             "error": str(exc),
             "per_merchant": [],
         }
@@ -859,6 +861,7 @@ def run_single(
             "requested_merchant_count": len(merchants),
             "exported_merchant_count": exported_merchant_count,
             "export_failures": export_failures,
+            "tier1_gate": tier1_gate,
             "bundle_path": bundle_path,
             "error": str(exc),
             "per_merchant": [],
@@ -1143,9 +1146,19 @@ def run_coverage_loop(
             r["merchant_name"]: r.get("accepted_count", 0)
             for r in summary.get("per_merchant", [])
         }
+        # Evaluate coverage only over merchants that actually ran this round —
+        # Tier-1 parked merchants are never runnable, so counting them as 0
+        # would wedge the loop at no_progress even when every runnable merchant
+        # met target. Parked merchants stay visible in the gate/report.
+        proceeding_merchants = [
+            rec["merchant_name"]
+            for rec in (summary.get("tier1_gate") or {}).get(
+                "proceeding_merchants", []
+            )
+        ] or merchants
         under = {
             m: accepted_by_merchant.get(m, 0)
-            for m in merchants
+            for m in proceeding_merchants
             if accepted_by_merchant.get(m, 0) < coverage_target
         }
         risk = summary.get("mix_balance_risk", "unknown")
